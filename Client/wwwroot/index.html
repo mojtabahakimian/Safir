@@ -6,7 +6,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
     <title>Safir</title>
     <base href="/" />
-
     <link href="css/bootstrap/bootstrap.min.css" rel="stylesheet" />
     <link href="css/app.css" rel="stylesheet" />
     <link href="Safir.Client.styles.css" rel="stylesheet" />
@@ -410,34 +409,27 @@
 </head>
 
 <body>
-    <div class="splash-screen" aria-label="در حال بارگذاری برنامه">
-        <div class="blob"></div>
-        <div class="particles">
-            <span class="particle"></span><span class="particle"></span><span class="particle"></span><span class="particle"></span><span class="particle"></span>
-            <span class="particle"></span><span class="particle"></span><span class="particle"></span><span class="particle"></span><span class="particle"></span>
-            <span class="particle"></span><span class="particle"></span><span class="particle"></span><span class="particle"></span><span class="particle"></span>
-            <span class="particle"></span><span class="particle"></span><span class="particle"></span><span class="particle"></span><span class="particle"></span>
-        </div>
-        <div class="loading-text"></div>
-        <div class="loading-subtext"></div>
-        <div class="progress-container">
-            <div class="progress-track">
-                <div class="progress-fill"></div>
-            </div>
-            <div class="progress-value">0%</div>
-        </div>
-    </div>
 
     <div id="app">
+        <div class="splash-screen" aria-label="در حال بارگذاری برنامه">
+            <div class="blob"></div>
+            <div class="particles">
+                <span class="particle"></span><span class="particle"></span><span class="particle"></span><span class="particle"></span><span class="particle"></span>
+                <span class="particle"></span><span class="particle"></span><span class="particle"></span><span class="particle"></span><span class="particle"></span>
+                <span class="particle"></span><span class="particle"></span><span class="particle"></span><span class="particle"></span><span class="particle"></span>
+                <span class="particle"></span><span class="particle"></span><span class="particle"></span><span class="particle"></span><span class="particle"></span>
+            </div>
+            <div class="loading-text"></div>
+            <div class="loading-subtext"></div>
+            <div class="progress-container">
+                <div class="progress-track">
+                    <div class="progress-fill"></div>
+                </div>
+                <div class="progress-value">0%</div>
+            </div>
+        </div>
     </div>
 
-    <div id="blazor-error-ui">
-        خطایی رخ داده است.
-        <a href="" class="reload">بارگذاری مجدد</a>
-        <a class="dismiss">🗙</a>
-    </div>
-
-    <script src="_content/MudBlazor/MudBlazor.min.js"></script>
     <script>
         // --- اسکریپت‌های اسپلش‌اسکرین ---
         const mainMessages = [
@@ -582,14 +574,20 @@
 
     </script>
 
+    <div id="blazor-error-ui">
+        خطایی رخ داده است.
+        <a href="" class="reload">بارگذاری مجدد</a>
+        <a class="dismiss">🗙</a>
+    </div>
+
+    <script src="_content/MudBlazor/MudBlazor.min.js"></script>
+
     <script src="_framework/blazor.webassembly.js"></script>
 
     <script src="js/theme-storage.js"></script>
     <script src="js/geolocation.js"></script>
     <script src="js/downloadHelper.js"></script>
-    <script>
-        navigator.serviceWorker.register('service-worker.js');
-    </script>
+    <script>navigator.serviceWorker.register('service-worker.js');</script>
 
 </body>
 </html>
