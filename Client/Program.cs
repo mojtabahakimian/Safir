@@ -50,6 +50,10 @@ builder.Services.AddScoped<VisitorApiService>();
 builder.Services.AddBlazoredLocalStorage();
 // --- End Blazored.LocalStorage ---
 
-
+#if DEBUG
+Console.WriteLine("ایجاد تاخیر عمدی برای تست لودینگ...");
+//await Task.Delay(5000); // 5000 میلی‌ثانیه = 5 ثانیه تاخیر
+Console.WriteLine("پایان تاخیر.");
+#endif
 
 await builder.Build().RunAsync();

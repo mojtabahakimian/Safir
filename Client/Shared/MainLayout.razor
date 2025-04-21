@@ -3,6 +3,7 @@
 @using Safir.Shared.Constants;
 @inject ThemeService ThemeService
 @inject AuthenticationStateProvider AuthenticationStateProvider
+@inject IJSRuntime JSRuntime
 
 <MudLayout>
     <MudAppBar Elevation="1" Color="Color.Primary">
@@ -72,4 +73,34 @@
             displayName = user.FindFirst(BaseknowClaimTypes.UUSER)?.Value ?? "";
         }
     }
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        // این متد پس از رندر شدن کامپوننت اجرا می‌شود
+        if (firstRender)
+        {
+            // این بلاک کد فقط *یک بار* پس از اولین رندر اجرا می‌شود
+            Console.WriteLine("MainLayout first render complete. Signaling JS to remove splash screen.");
+
+            // --- فراخوانی تابع جاوااسکریپت برای بستن اسپلش‌اسکرین ---
+            try
+            {
+                await JSRuntime.InvokeVoidAsync("loading.complete");
+                Console.WriteLine("JS function 'loading.complete' invoked successfully.");
+            }
+            catch (JSException jsEx)
+            {
+                Console.Error.WriteLine($"Error invoking JS function 'loading.complete': {jsEx.Message}");
+                // اینجا می‌توانید یک راه حل جایگزین در نظر بگیرید،
+                // مثلاً تلاش برای مخفی کردن دستی اسپلش اگر JS ناموفق بود (پیچیده‌تر است)
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine($"Unexpected error during JS interop: {ex.Message}");
+            }
+            // شاید لازم باشد StateHasChanged() را اینجا صدا بزنید اگر تغییر وضعیت دیگری
+            // بلافاصله پس از لود لازم است که UI را آپدیت کند.
+            // await InvokeAsync(StateHasChanged);
+        }
+    }
+
 }

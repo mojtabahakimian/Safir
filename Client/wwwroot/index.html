@@ -6,99 +6,388 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
     <title>Safir</title>
     <base href="/" />
+
     <link href="css/bootstrap/bootstrap.min.css" rel="stylesheet" />
     <link href="css/app.css" rel="stylesheet" />
     <link href="Safir.Client.styles.css" rel="stylesheet" />
     <link href="manifest.json" rel="manifest" />
     <link rel="apple-touch-icon" sizes="512x512" href="icon-512.png" />
     <link rel="apple-touch-icon" sizes="192x192" href="icon-192.png" />
-
     <link href="FNT/stylesheet.css" rel="stylesheet" />
-
-    <!-- MudBlazor Resources -->
-    <link href="https://fonts.googleapis.com/css?family=Roboto:300,400,500,700&display=swap" rel="stylesheet" />
+    <link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@300;400;500;700&family=Roboto:wght@300;400;500;700&display=swap" rel="stylesheet" />
     <link href="_content/MudBlazor/MudBlazor.min.css" rel="stylesheet" />
 
+    <script>
+        (() => {
+            try {
+                const isDark = localStorage.getItem('isDarkMode') === 'true';
+                document.documentElement.classList.toggle('dark-theme', isDark);
+            } catch { }
+        })();
+    </script>
 
     <style>
-        @keyframes pulse {
+        :root {
+            --loader-primary: #1DB954; /* Spotify Green */
+            --loader-grad-start: #f2fff8;
+            --loader-grad-end: #ffffff;
+            --loader-text: #333;
+            --loader-particle: rgba(29, 185, 84, .2);
+            --progress-bg: rgba(29, 185, 84, 0.15);
+            --progress-glow: rgba(29, 185, 84, 0.6);
+        }
+
+        html.dark-theme {
+            --loader-primary: #25D366; /* WhatsApp Green variant */
+            --loader-grad-start: #080808; /* Darker */
+            --loader-grad-end: #141414;
+            --loader-text: #e2e2e2;
+            --loader-particle: rgba(37, 211, 102, .15);
+            --progress-bg: rgba(37, 211, 102, 0.12);
+            --progress-glow: rgba(37, 211, 102, 0.5);
+        }
+
+        /* ---- کانتینر اصلی اسپلش‌اسکرین ---- */
+        .splash-screen {
+            position: fixed; /* ثابت روی صفحه */
+            inset: 0; /* پوشش کامل */
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            background: linear-gradient(145deg, var(--loader-grad-start), var(--loader-grad-end));
+            animation: bgShift 15s ease-in-out infinite alternate;
+            overflow: hidden;
+            z-index: 9999; /* بالاتر از همه عناصر دیگر */
+            font-family: 'Vazirmatn', 'Roboto', sans-serif;
+            /* انیمیشن محو شدن در زمان بسته شدن */
+            opacity: 1;
+            transform: scale(1);
+            transition: opacity 0.6s ease, transform 0.6s ease;
+        }
+
+        @keyframes bgShift {
             0% {
-                transform: scale(0.95);
-                opacity: 0.7;
+                filter: hue-rotate(0deg);
             }
 
             50% {
-                transform: scale(1.05);
-                opacity: 1;
+                filter: hue-rotate(10deg) brightness(1.03);
             }
 
             100% {
-                transform: scale(0.95);
-                opacity: 0.7;
+                filter: hue-rotate(-10deg);
             }
         }
 
-        @keyframes spin {
-            0% {
-                transform: rotate(0deg);
-            }
-
-            100% {
-                transform: rotate(360deg);
-            }
-        }
-
-        /* حذف استایل‌های body برای حفظ حالت responsive اصلی */
-
-        /* به جای استایل مستقیم روی app، یک کلاس جدید برای لودینگ استفاده می‌کنیم */
-        .loading-container {
+        /* ---- بلاب مرکزی ---- */
+        .blob {
             position: absolute;
             top: 50%;
             left: 50%;
+            width: 340px;
+            height: 340px;
+            background: var(--loader-primary);
+            opacity: .12;
+            filter: blur(60px);
             transform: translate(-50%, -50%);
-            text-align: center;
-            z-index: 1000;
+            animation: blobMorph 30s ease-in-out infinite;
+            pointer-events: none;
         }
 
-        .loading-container {
-            text-align: center;
+        @keyframes blobMorph {
+            0% {
+                border-radius: 28% 72% 49% 51% / 42% 36% 64% 58%;
+                transform: translate(-50%, -50%) scale(1) rotate(0deg);
+            }
+
+            25% {
+                border-radius: 41% 59% 66% 34% / 57% 43% 57% 43%;
+            }
+
+            50% {
+                border-radius: 62% 38% 29% 71% / 38% 47% 53% 62%;
+                transform: translate(-60%, -40%) scale(1.15) rotate(180deg);
+            }
+
+            75% {
+                border-radius: 28% 72% 49% 51% / 71% 62% 38% 29%;
+            }
+
+            100% {
+                border-radius: 28% 72% 49% 51% / 42% 36% 64% 58%;
+                transform: translate(-50%, -50%) scale(1) rotate(360deg);
+            }
         }
 
-        .loading-spinner {
-            display: inline-block;
-            width: 60px;
-            height: 60px;
-            margin-bottom: 20px;
-            border: 5px solid rgba(75, 123, 236, 0.2);
+        /* ---- ذرات شناور ---- */
+        .particles {
+            position: absolute;
+            inset: 0;
+            pointer-events: none;
+        }
+
+        .particle {
+            position: absolute;
+            width: 6px;
+            height: 6px;
             border-radius: 50%;
-            border-top-color: #4b7bec;
-            animation: spin 1s ease-in-out infinite;
+            background: var(--loader-particle);
+            animation: particleFloat linear infinite;
+        }
+
+        @keyframes particleFloat {
+            from {
+                transform: translateY(0) scale(1) rotate(0deg);
+                opacity: 1;
+            }
+
+            to {
+                transform: translateY(-150px) scale(.5) rotate(360deg);
+                opacity: 0;
+            }
+        }
+        /* موقعیت و زمان‌های متفاوت برای 20 ذره (کامل در کد شما وجود داشت، اینجا خلاصه شده برای نمایش) */
+        .particle:nth-child(1) {
+            top: 10%;
+            left: 15%;
+            animation-duration: 6s;
+            animation-delay: -1s;
+        }
+
+        .particle:nth-child(2) {
+            top: 20%;
+            left: 80%;
+            animation-duration: 8s;
+            animation-delay: -3s;
+        }
+        /* ... بقیه 18 ذره ... */
+        .particle:nth-child(3) {
+            top: 65%;
+            left: 5%;
+            animation-duration: 7s;
+            animation-delay: -2s;
+        }
+
+        .particle:nth-child(4) {
+            top: 85%;
+            left: 60%;
+            animation-duration: 9s;
+            animation-delay: -4s;
+        }
+
+        .particle:nth-child(5) {
+            top: 30%;
+            left: 50%;
+            animation-duration: 5s;
+            animation-delay: -5s;
+        }
+
+        .particle:nth-child(6) {
+            top: 55%;
+            left: 75%;
+            animation-duration: 7.5s;
+            animation-delay: -6s;
+        }
+
+        .particle:nth-child(7) {
+            top: 40%;
+            left: 25%;
+            animation-duration: 6.5s;
+            animation-delay: -2s;
+        }
+
+        .particle:nth-child(8) {
+            top: 75%;
+            left: 35%;
+            animation-duration: 11s;
+            animation-delay: -1s;
+        }
+
+        .particle:nth-child(9) {
+            top: 15%;
+            left: 65%;
+            animation-duration: 10s;
+            animation-delay: -7s;
+        }
+
+        .particle:nth-child(10) {
+            top: 50%;
+            left: 90%;
+            animation-duration: 9s;
+            animation-delay: -3s;
+        }
+
+        .particle:nth-child(11) {
+            top: 5%;
+            left: 45%;
+            animation-duration: 7s;
+            animation-delay: -5s;
+        }
+
+        .particle:nth-child(12) {
+            top: 92%;
+            left: 15%;
+            animation-duration: 8s;
+            animation-delay: -4s;
+        }
+
+        .particle:nth-child(13) {
+            top: 38%;
+            left: 88%;
+            animation-duration: 6s;
+            animation-delay: -6s;
+        }
+
+        .particle:nth-child(14) {
+            top: 12%;
+            left: 22%;
+            animation-duration: 5s;
+            animation-delay: -7s;
+        }
+
+        .particle:nth-child(15) {
+            top: 60%;
+            left: 42%;
+            animation-duration: 8s;
+            animation-delay: -8s;
+        }
+
+        .particle:nth-child(16) {
+            top: 70%;
+            left: 70%;
+            animation-duration: 9s;
+            animation-delay: -9s;
+        }
+
+        .particle:nth-child(17) {
+            top: 25%;
+            left: 10%;
+            animation-duration: 6s;
+            animation-delay: -6s;
+        }
+
+        .particle:nth-child(18) {
+            top: 82%;
+            left: 48%;
+            animation-duration: 10s;
+            animation-delay: -3s;
+        }
+
+        .particle:nth-child(19) {
+            top: 45%;
+            left: 30%;
+            animation-duration: 7s;
+            animation-delay: -4s;
+        }
+
+        .particle:nth-child(20) {
+            top: 18%;
+            left: 55%;
+            animation-duration: 6.5s;
+            animation-delay: -2s;
+        }
+
+
+        /* ---- پروگرس بار خطی ---- */
+        .progress-container {
+            position: relative;
+            width: 280px;
+            margin-top: 2rem;
+            margin-bottom: 2.5rem;
+        }
+
+        .progress-track {
+            height: 4px;
+            border-radius: 8px;
+            background: var(--progress-bg);
+            overflow: hidden;
+            position: relative;
+            backdrop-filter: blur(5px);
+            box-shadow: 0 0 20px rgba(0, 0, 0, 0.05);
+        }
+
+        .progress-fill {
+            position: absolute;
+            top: 0;
+            left: 0;
+            height: 100%;
+            width: 0%;
+            background: linear-gradient(90deg, var(--loader-primary) 70%, #80e2a7);
+            border-radius: 8px;
+            box-shadow: 0 0 10px var(--progress-glow);
+            transition: width 0.6s cubic-bezier(0.34, 1.56, 0.64, 1);
+        }
+
+            .progress-fill::after {
+                content: "";
+                position: absolute;
+                top: 0;
+                right: 0;
+                height: 100%;
+                width: 12px;
+                background-color: rgba(255, 255, 255, 0.3);
+                filter: blur(4px);
+                animation: pulse 2s infinite;
+            }
+
+        @keyframes pulse {
+            0%, 100% {
+                opacity: 0.2;
+            }
+
+            50% {
+                opacity: 0.6;
+            }
+        }
+
+        .progress-value {
+            font-size: 0.85rem;
+            margin-top: 0.8rem;
+            text-align: center;
+            color: var(--loader-text);
+            opacity: 0.8;
+            font-weight: 500;
+        }
+
+        /* ---- متن اصلی و زیرمتن ---- */
+        .loading-text, .loading-subtext {
+            opacity: 0;
+            transform: translateY(8px);
+            transition: opacity .6s ease, transform .6s ease;
+            color: var(--loader-text);
+            direction: rtl;
         }
 
         .loading-text {
-            font-size: 22px;
+            font-size: 1.35rem;
             font-weight: 500;
-            color: #3d5af1;
-            margin-top: 15px;
-            animation: pulse 1.5s ease-in-out infinite;
+            min-height: 2.2rem; /* جلوگیری از پرش */
         }
 
         .loading-subtext {
-            font-size: 14px;
-            color: #8395a7;
-            margin-top: 10px;
+            font-size: .9rem;
+            margin-top: .8rem;
+            min-height: 1.4rem; /* جلوگیری از پرش */
         }
 
+        .show {
+            opacity: 1;
+            transform: translateY(0);
+        }
+        /* کلاس مشترک برای نمایان شدن */
+
+        /* ---- خطای Blazor ---- */
         #blazor-error-ui {
-            background-color: #fff0f0;
+            background: #fff0f0;
             color: #ff3636;
-            bottom: 0;
-            box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.1);
             display: none;
-            padding: 1rem;
             position: fixed;
+            bottom: 0;
             width: 100%;
-            z-index: 1000;
+            z-index: 2000;
+            padding: 1rem;
+            box-shadow: 0 -2px 10px rgba(0,0,0,.1);
         }
 
             #blazor-error-ui .dismiss {
@@ -118,17 +407,28 @@
                     text-decoration: underline;
                 }
     </style>
-
 </head>
 
-
 <body>
-    <div id="app">
-        <div class="loading-container">
-            <div class="loading-spinner"></div>
-            <div class="loading-text">در حال بارگذاری</div>
-            <div class="loading-subtext">لطفا صبور باشید...</div>
+    <div class="splash-screen" aria-label="در حال بارگذاری برنامه">
+        <div class="blob"></div>
+        <div class="particles">
+            <span class="particle"></span><span class="particle"></span><span class="particle"></span><span class="particle"></span><span class="particle"></span>
+            <span class="particle"></span><span class="particle"></span><span class="particle"></span><span class="particle"></span><span class="particle"></span>
+            <span class="particle"></span><span class="particle"></span><span class="particle"></span><span class="particle"></span><span class="particle"></span>
+            <span class="particle"></span><span class="particle"></span><span class="particle"></span><span class="particle"></span><span class="particle"></span>
         </div>
+        <div class="loading-text"></div>
+        <div class="loading-subtext"></div>
+        <div class="progress-container">
+            <div class="progress-track">
+                <div class="progress-fill"></div>
+            </div>
+            <div class="progress-value">0%</div>
+        </div>
+    </div>
+
+    <div id="app">
     </div>
 
     <div id="blazor-error-ui">
@@ -136,19 +436,160 @@
         <a href="" class="reload">بارگذاری مجدد</a>
         <a class="dismiss">🗙</a>
     </div>
-    <script src="https://static.neshan.org/sdk/neshan-sdk-latest.min.js"></script>
-    <script src="_framework/blazor.webassembly.js"></script>
+
     <script src="_content/MudBlazor/MudBlazor.min.js"></script>
+    <script>
+        // --- اسکریپت‌های اسپلش‌اسکرین ---
+        const mainMessages = [
+            'در حال آماده‌سازی سفیر ...',
+            'چای یا قهوه را آماده کنید ...',
+            'داده‌ها در حال بروزرسانی‌اند ...',
+            'به‌زودی شروع می‌کنیم ...'
+        ];
+        const subMessages = [
+            'تا لحظاتی دیگر همراه شما هستیم ☕',
+            'انرژی مثبت یادت نره ✨',
+            'نفس عمیق بکش 😌',
+            'این انتظار ارزشش را دارد 😉'
+        ];
+
+        const mainEl = document.querySelector('.loading-text');
+        const subEl = document.querySelector('.loading-subtext');
+        const progressFill = document.querySelector('.progress-fill');
+        const progressValue = document.querySelector('.progress-value');
+        const splashScreen = document.querySelector('.splash-screen');
+        let mIndex = 0;
+        let progressInterval = null; // هندل برای setInterval پیشرفت
+        let messageCycleTimeout = null; // هندل برای setTimeout چرخه پیام
+
+        const visibleTime = 3000; // زمان نمایش هر پیام (میلی‌ثانیه)
+        const fadeTime = 600; // زمان محو شدن (باید با transition CSS هماهنگ باشد)
+
+        // تابع شبیه‌سازی پیشرفت (تا 99% می‌رود)
+        function simulateProgress() {
+            let progress = 0;
+            const loadSteps = [
+                { target: 15, speed: 30 },
+                { target: 35, speed: 50 },
+                { target: 65, speed: 70 },
+                { target: 85, speed: 100 },
+                { target: 95, speed: 150 }
+            ];
+            let currentStep = 0;
+
+            if (progressInterval) clearInterval(progressInterval); // پاک کردن interval قبلی
+
+            progressInterval = setInterval(() => {
+                if (currentStep < loadSteps.length) {
+                    progress += (loadSteps[currentStep].target - progress) / loadSteps[currentStep].speed;
+                    if (progress >= loadSteps[currentStep].target - 0.5) {
+                        currentStep++;
+                    }
+                    const displayProgress = Math.min(progress, 99); // محدود کردن به 99%
+                    progressFill.style.width = displayProgress + '%';
+                    progressValue.textContent = Math.round(displayProgress) + '%';
+                } else {
+                    // در این مرحله دیگر لازم نیست interval را متوقف کنیم
+                    // چون completeLoading آن را متوقف خواهد کرد.
+                }
+            }, 30);
+        }
+
+        // تابع اصلی برای تکمیل و بستن اسپلش‌اسکرین (توسط Blazor فراخوانی می‌شود)
+        window.completeLoading = function () {
+            console.log("CompleteLoading called by Blazor."); // برای دیباگ
+
+            // توقف انیمیشن‌ها و تایمرهای در حال اجرا
+            if (progressInterval) {
+                clearInterval(progressInterval);
+                progressInterval = null;
+                console.log("Progress interval cleared.");
+            }
+            if (messageCycleTimeout) {
+                clearTimeout(messageCycleTimeout);
+                messageCycleTimeout = null;
+                console.log("Message cycle timeout cleared.");
+            }
+
+            // تنظیم نهایی پروگرس بار به 100% با انیمیشن
+            progressFill.style.transition = 'width 0.5s ease-out'; // انیمیشن نرم برای رسیدن به 100%
+            progressFill.style.width = '100%';
+            progressValue.textContent = '100%';
+            console.log("Progress set to 100%.");
+
+            // شروع فرآیند محو کردن و حذف اسپلش‌اسکرین
+            setTimeout(() => {
+                if (splashScreen) {
+                    console.log("Fading out splash screen...");
+                    splashScreen.style.opacity = '0';
+                    splashScreen.style.transform = 'scale(0.95)'; // یا scale(1.05) - افکت کوچک شدن/بزرگ شدن
+
+                    // حذف کامل از DOM پس از اتمام انیمیشن محو شدن
+                    setTimeout(() => {
+                        if (splashScreen) {
+                            splashScreen.remove();
+                            console.log("Splash screen removed from DOM.");
+                        }
+                    }, fadeTime); // زمان باید با transition CSS برابر باشد
+                } else {
+                    console.error("Splash screen element not found for removal.");
+                }
+            }, 400); // تاخیر کوتاه پس از رسیدن به 100%
+        };
+
+        // تابع چرخه پیام‌ها
+        function cycleMessages() {
+            if (messageCycleTimeout) clearTimeout(messageCycleTimeout); // پاک کردن تایم‌اوت قبلی
+
+            mainEl.classList.remove('show');
+            subEl.classList.remove('show');
+
+            setTimeout(() => {
+                if (!splashScreen || splashScreen.style.opacity === '0') return; // اگر در حال محو شدن است، متوقف شو
+
+                mainEl.textContent = mainMessages[mIndex];
+                subEl.textContent = subMessages[mIndex];
+                mainEl.classList.add('show');
+                subEl.classList.add('show');
+                mIndex = (mIndex + 1) % mainMessages.length;
+
+                // زمان‌بندی مجدد چرخه پیام‌ها - فقط اگر هنوز در حال اجرا هستیم
+                messageCycleTimeout = setTimeout(cycleMessages, visibleTime + fadeTime);
+            }, fadeTime);
+        }
+
+        // تعریف آبجکت loading برای فراخوانی از Blazor
+        window.loading = {
+            complete: function () {
+                if (typeof window.completeLoading === 'function') {
+                    window.completeLoading();
+                } else {
+                    console.error("window.completeLoading function is not defined when called from Blazor.");
+                }
+            }
+        };
+
+        // شروع اولیه انیمیشن‌ها
+        if (splashScreen) { // اطمینان از وجود عنصر قبل از شروع
+            console.log("Starting initial splash screen animations.");
+            simulateProgress();
+            cycleMessages();
+        } else {
+            console.error("Splash screen element not found on initial load.");
+        }
+
+        // *** مهم: بخش window.addEventListener('load', ...) که قبلا بود، حذف شده است ***
+
+    </script>
+
+    <script src="_framework/blazor.webassembly.js"></script>
 
     <script src="js/theme-storage.js"></script>
     <script src="js/geolocation.js"></script>
     <script src="js/downloadHelper.js"></script>
-
-    <script>navigator.serviceWorker.register('service-worker.js');</script>
+    <script>
+        navigator.serviceWorker.register('service-worker.js');
+    </script>
 
 </body>
-
 </html>
-
-
-
