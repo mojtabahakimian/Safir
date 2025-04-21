@@ -1,0 +1,203 @@
+﻿@page "/customer-define"
+@using Microsoft.AspNetCore.Authorization;
+@using Safir.Shared.Models.Taarif
+@using Safir.Client.Services
+@using System.ComponentModel.DataAnnotations
+@using Safir.Shared.Models
+
+@attribute [Authorize]
+
+@* Inject Services Here (if not using [Inject] in .cs file) *@
+@inject CustomerApi CustomerApiService
+@inject LookupApiService LookupService
+@inject ISnackbar Snackbar
+
+<MudPaper Class="pa-4" Elevation="3">
+    <MudForm @ref="form" @bind-IsValid="success" ValidationDelay="0">
+        <MudGrid Spacing="2">
+
+            @* Title Bar Simulation (Optional) *@
+            <MudItem xs="12">
+                <MudToolBar Dense="true" Class="rounded">
+                    <MudText Typo="Typo.h6">تعریف مشتری</MudText>
+                    <MudSpacer />
+                    @* Close/Minimize buttons are usually handled by browser/app navigation *@
+                </MudToolBar>
+            </MudItem>
+
+
+
+            <MudItem xs="12">
+                <MudTextField Label="نام" @bind-Value="customerModel.NAME" For="@(() => customerModel.NAME)" Required="true" RequiredError="نام مشتری اجباری است" MaxLength="99" Variant="Variant.Outlined" />
+            </MudItem>
+
+            <MudItem xs="12">
+                <MudTextField Label="آدرس" @bind-Value="customerModel.ADDRESS" For="@(() => customerModel.ADDRESS)" Lines="2" MaxLength="99" Variant="Variant.Outlined" />
+            </MudItem>
+
+            <MudItem xs="12" sm="6" md="4">
+                <MudTextField Label="تلفن" @bind-Value="customerModel.TEL" For="@(() => customerModel.TEL)" MaxLength="49" Variant="Variant.Outlined" />
+            </MudItem>
+
+            <MudItem xs="12" sm="6" md="4">
+                <MudTextField Label="موبایل جهت ارسال پیامک" @bind-Value="customerModel.MOBILE" For="@(() => customerModel.MOBILE)" MaxLength="54" Variant="Variant.Outlined" />
+            </MudItem>
+
+            <MudItem xs="12" sm="6" md="4">
+                @* Assuming ECODE is numeric based on WPF control *@
+                <MudTextField Label="کد اقتصادی" @bind-Value="customerModel.ECODE" For="@(() => customerModel.ECODE)" MaxLength="19" Variant="Variant.Outlined" InputType="InputType.Number" />
+            </MudItem>
+
+            <MudItem xs="12" sm="6" md="4">
+                @* Assuming PCODE is numeric *@
+                <MudTextField Label="کد پستی" @bind-Value="customerModel.PCODE" For="@(() => customerModel.PCODE)" MaxLength="10" Variant="Variant.Outlined" InputType="InputType.Number" />
+            </MudItem>
+
+            <MudItem xs="12" sm="6" md="4">
+                @* Assuming MCODEM is numeric *@
+                <MudTextField Label="کد ملی" @bind-Value="customerModel.MCODEM" For="@(() => customerModel.MCODEM)" MaxLength="10" Variant="Variant.Outlined" InputType="InputType.Number" />
+            </MudItem>
+
+            <MudItem xs="12" sm="6" md="4">
+                <MudSelect T="int?" Label="استان" @bind-Value="customerModel.OSTANID" For="@(() => customerModel.OSTANID)" Variant="Variant.Outlined" OpenIcon="@Icons.Material.Filled.ArrowDropDown">
+                    @* MudSelect ValueChanged is implicitly handled by @bind-Value *@
+                    @if (ostanList != null)
+                    {
+                        @foreach (var ostan in ostanList)
+                        {
+                            <MudSelectItem T="int?" Value="@ostan.Id">@ostan.Name</MudSelectItem>
+                        }
+                    }
+                </MudSelect>
+            </MudItem>
+
+            <MudItem xs="12" sm="6" md="4">
+
+                <MudSelect T="int?" Label="شهرستان" @bind-Value="customerModel.SHAHRID" Variant="Variant.Outlined" Disabled="@(!customerModel.OSTANID.HasValue)" OpenIcon="@Icons.Material.Filled.ArrowDropDown">
+                    @if (shahrList != null)
+                    { // Use the full shahrList for potential filtering
+                        @foreach (var item in shahrList.Where(s => s.ParentId == customerModel.OSTANID))
+                        { // Filter here or use filteredShahrList
+                            <MudSelectItem T="int?" Value="@item.Id">@item.Name</MudSelectItem>
+                        }
+                    }
+                    @* Alternative using pre-filtered list:
+                    @if (filteredShahrList != null) {
+                    @foreach (var item in filteredShahrList) {
+                    <MudSelectItem T="int?" Value="@item.Id">@item.Name</MudSelectItem>
+                    }
+                    }
+                    *@
+                </MudSelect>
+            </MudItem>
+
+            <MudItem xs="12" sm="6" md="4">
+
+                <MudSelect T="int?" Label="نوع مشتری" @bind-Value="customerModel.CUST_COD" Required="true" RequiredError="نوع مشتری انتخاب نشده" Variant="Variant.Outlined" OpenIcon="@Icons.Material.Filled.ArrowDropDown">
+                    @if (customerTypeList != null)
+                    {
+                        @foreach (var item in customerTypeList)
+                        {
+                            <MudSelectItem T="int?" Value="@item.Id">@item.Name</MudSelectItem>
+                        }
+                    }
+                </MudSelect>
+
+            </MudItem>
+
+            <MudItem xs="12" sm="6" md="4">
+                <MudSelect T="int?" Label="شخصیت" @bind-Value="customerModel.TOB" Required="true" RequiredError="شخصیت انتخاب نشده" Variant="Variant.Outlined" OpenIcon="@Icons.Material.Filled.ArrowDropDown">
+                    @* Bind to int? *@
+                    @if (personalityTypeList != null)
+                    {
+                        @foreach (var item in personalityTypeList)
+                        {
+                            <MudSelectItem T="int?" Value="@item.Id">@item.Name</MudSelectItem> @* Value should be int? *@
+                        }
+                    }
+                </MudSelect>
+            </MudItem>
+
+
+
+            <MudItem xs="12" sm="6" md="4">
+                <MudAutocomplete T="RouteLookupDto"
+                                 Label="مسیر ویزیت"
+                                 SearchFunc="@SearchRoutesDto"
+                                 ToStringFunc="@(dto => dto?.DisplayName ?? string.Empty)"
+                                 Variant="Variant.Outlined"
+                                 ResetValueOnEmptyText="true"
+                                 CoerceText="false"
+                                 CoerceValue="false"
+                                 Placeholder="بخشی از نام مسیر را تایپ کنید"
+                                 Value="SelectedRoute"
+                                 ValueChanged="OnSelectedRouteChanged" />
+            </MudItem>
+
+
+
+            <MudItem xs="12" sm="6" md="4">
+                @* نمایش وضعیت دریافت موقعیت در کنار فیلد Latitude *@
+                <MudTextField Label="طول جغرافیایی" @bind-Value="customerModel.Latitude" For="@(() => customerModel.Latitude)" Variant="Variant.Outlined" InputType="InputType.Number" Adornment="Adornment.End" AdornmentIcon="@(isFetchingLocation ? Icons.Material.Filled.Autorenew : "")" AdornmentColor="Color.Primary" ReadOnly="isFetchingLocation" />
+            </MudItem>
+
+            <MudItem xs="12" sm="6" md="4">
+                @* نمایش وضعیت دریافت موقعیت در کنار فیلد Longitude *@
+                <MudTextField Label="عرض جغرافیایی" @bind-Value="customerModel.Longitude" For="@(() => customerModel.Longitude)" Variant="Variant.Outlined" InputType="InputType.Number" Adornment="Adornment.End" AdornmentIcon="@(isFetchingLocation ? Icons.Material.Filled.Autorenew : "")" AdornmentColor="Color.Primary" ReadOnly="isFetchingLocation" />
+            </MudItem>
+
+            <MudButton ButtonType="ButtonType.Submit"
+                       Variant="Variant.Filled"
+                       Color="Color.Primary"
+                       OnClick="FetchAndSetCurrentLocation"
+                       Disabled="@(isFetchingLocation)"
+                       FullWidth="true"
+                       Size="Size.Medium"
+                       EndIcon="@(isFetchingLocation ? null : Icons.Material.Filled.AddLocation)"
+                       Style="height: 50px;"
+                       Class="rounded-lg">
+                @if (isFetchingLocation)
+                {
+                    <MudProgressCircular Indeterminate="true" Size="Size.Small" Style="color: inherit;" />
+                    <MudText Class="ml-2">در حال دریافت موقعیت مکانی...</MudText>
+                }
+                else
+                {
+                    <span>دریافت موقعیت جاری</span>
+                }
+            </MudButton>
+
+
+            <MudItem xs="12" sm="6" md="4">
+                <MudTextField Label="سایر" @bind-Value="customerModel.CODE_E" For="@(() => customerModel.CODE_E)" MaxLength="19" Variant="Variant.Outlined" />
+            </MudItem>
+
+            <MudItem xs="12">
+                <MudTextField Label="توضیح" @bind-Value="customerModel.TOZIH" For="@(() => customerModel.TOZIH)" Lines="3" MaxLength="250" Variant="Variant.Outlined" />
+            </MudItem>
+
+            @* Display Validation Errors *@
+            <MudItem xs="12">
+
+            </MudItem>
+
+            @* Action Buttons *@
+            <MudItem xs="12">
+                <MudStack Row="true" Justify="Justify.FlexEnd" Spacing="2">
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="HandleValidSubmit" Disabled="@isLoading">ذخیره</MudButton>
+                    <MudButton Variant="Variant.Filled" Color="Color.Secondary" OnClick="PrepareNewCustomer" Disabled="@isLoading">مشتری جدید</MudButton>
+                </MudStack>
+            </MudItem>
+
+            @* Loading Indicator *@
+            @if (isLoading)
+            {
+                <MudItem xs="12">
+                    <MudProgressLinear Color="Color.Primary" Indeterminate="true" Class="my-4" />
+                </MudItem>
+            }
+
+        </MudGrid>
+    </MudForm>
+</MudPaper>
+

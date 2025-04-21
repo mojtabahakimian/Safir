@@ -1,0 +1,2 @@
+﻿//"Key": "YOUR_SUPER_SECRET_RANDOM_KEY_CHANGE_THIS_IMMEDIATELY_AND_MAKE_IT_LONG", // Replace with a strong, random key (at least 32 chars)
+    //"Key": "hsgmvbpZbXTbxfHk7x+03c6Zq/K5j0NpVgdJIMYYXanQAnstSOpMoFSHExygq1LKYG2+XYLCfAmmr50UKBTclg==", // Replace with a strong, random key (at least 32 chars)

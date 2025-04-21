@@ -1,0 +1,173 @@
+﻿@page "/login"
+@using Safir.Client.Services
+@using Safir.Shared
+@using Safir.Shared.Interfaces;
+@using Safir.Shared.Models.User_Model;
+@using Microsoft.AspNetCore.Components.Web  @* <-- اضافه کردن این using *@
+@attribute [Microsoft.AspNetCore.Authorization.AllowAnonymous]
+
+@inject IAuthService AuthService
+@inject NavigationManager NavigationManager
+@inject ISnackbar Snackbar
+
+<PageTitle>ورود | سفیر</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.False" Class="d-flex align-center justify-center mud-width-full" Style="min-height: 100vh; background-image: linear-gradient(135deg, var(--mud-palette-background-grey) 0%, var(--mud-palette-drawer-background) 100%);">
+    <MudPaper Elevation="8" Class="pa-8 rounded-xl" Style="width:100%; max-width:440px;">
+
+        @* ... (بخش لوگو و خوش آمد گویی بدون تغییر) ... *@
+        <MudStack AlignItems="AlignItems.Center" Spacing="2" Class="mb-4">
+            <MudAvatar Color="Color.Primary" Variant="Variant.Outlined" Size="Size.Large">
+                <MudIcon Icon="@Icons.Material.Filled.Diamond" Size="Size.Medium" />
+            </MudAvatar>
+            <MudText Typo="Typo.h5" Style="font-weight: 700; color: var(--mud-palette-primary);">سفیر</MudText>
+        </MudStack>
+        <MudStack AlignItems="AlignItems.Center" Spacing="1" Class="mb-6 text-center">
+            <MudText Typo="Typo.h6" GutterBottom="true">خوش آمدید!</MudText>
+            <MudText Typo="Typo.body2" Color="Color.Dark" Style="color: var(--mud-palette-text-secondary);">لطفا اطلاعات کاربری خود را وارد کنید</MudText>
+        </MudStack>
+
+        @if (!string.IsNullOrEmpty(errorMessage))
+        {
+            <MudAlert Severity="Severity.Error" Variant="Variant.Outlined" Class="mb-4" Icon="@Icons.Material.Outlined.ReportProblem">@errorMessage</MudAlert>
+        }
+
+        <MudForm @ref="form" @bind-IsValid="isValid" ValidationDelay="0">
+            @* Username Field - اضافه کردن onkeyup و style *@
+            <MudTextField T="string"
+                          Label="نام کاربری"
+            @bind-Value="loginRequestModel.Username"
+                          Immediate="true"
+                          For="@(() => loginRequestModel.Username)"
+                          Required="true"
+                          RequiredError="نام کاربری الزامی است!"
+                          Variant="Variant.Outlined"
+                          Margin="Margin.Dense"
+                          Class="mb-4"
+                          Adornment="Adornment.Start"
+                          AdornmentIcon="@Icons.Material.Outlined.PersonOutline"
+            @onkeyup="HandleKeyUp" 
+                          Style="min-height: 50px;" /> @* <-- اضافه کردن استایل *@
+
+            @* Password Field - اضافه کردن onkeyup و style *@
+            <MudTextField T="string"
+                          Label="رمز عبور"
+            @bind-Value="loginRequestModel.Password"
+                          Immediate="true"
+                          For="@(() => loginRequestModel.Password)"
+                          Required="true"
+                          RequiredError="رمز عبور الزامی است!"
+                          Variant="Variant.Outlined"
+                          Margin="Margin.Dense"
+                          Class="mb-5"
+                          InputType="@passwordInputType"
+                          Adornment="Adornment.Start"
+                          AdornmentIcon="@Icons.Material.Outlined.Lock"
+                          AdornmentEnd="@(isShowPassword ? Icons.Material.Filled.VisibilityOff : Icons.Material.Filled.Visibility)"
+                          OnAdornmentClick="@TogglePasswordVisibility"
+                          AdornmentAriaLabel="@(isShowPassword ? "مخفی کردن رمز" : "نمایش رمز")"
+            @onkeyup="HandleKeyUp" 
+                          Style="min-height: 50px;" /> @* <-- اضافه کردن استایل *@
+
+            @* Login Button - بدون تغییر *@
+            <MudButton ButtonType="ButtonType.Submit"
+                       Variant="Variant.Filled"
+                       Color="Color.Primary"
+                       OnClick="HandleLogin"
+                       Disabled="@(isProcessing || !isValid)"
+                       FullWidth="true"
+                       Size="Size.Large"
+                       EndIcon="@(isProcessing ? null : Icons.Material.Filled.ArrowForward)"
+                       Style="height: 50px; font-weight: 600;"
+                       Class="rounded-lg">
+                @if (isProcessing)
+                {
+                        <MudProgressCircular Indeterminate="true" Size="Size.Small" Style="color: inherit;" />
+                        <MudText Class="ml-2">در حال احراز هویت...</MudText>
+                }
+                else
+                {
+                        <span>ورود</span>
+                }
+            </MudButton>
+        </MudForm>
+
+    </MudPaper>
+</MudContainer>
+
+@code {
+    private class LoginModel
+    {
+        [System.ComponentModel.DataAnnotations.Required(ErrorMessage = "نام کاربری الزامی است!")]
+        public string Username { get; set; } = string.Empty;
+
+        [System.ComponentModel.DataAnnotations.Required(ErrorMessage = "رمز عبور الزامی است!")]
+        public string Password { get; set; } = string.Empty;
+    }
+
+    private LoginModel loginRequestModel = new();
+    private string? errorMessage;
+    private bool isProcessing = false;
+    private MudForm? form;
+    private bool isValid;
+    private bool isShowPassword = false;
+    private InputType passwordInputType = InputType.Password;
+
+    private void TogglePasswordVisibility()
+    {
+        isShowPassword = !isShowPassword;
+        passwordInputType = isShowPassword ? InputType.Text : InputType.Password;
+    }
+
+    // متد جدید برای مدیریت Enter Key
+    private async Task HandleKeyUp(KeyboardEventArgs args)
+    {
+        if (args.Key == "Enter")
+        {
+            // فقط اگر فرم معتبر است و در حال پردازش نیست، ورود را انجام بده
+            if (isValid && !isProcessing)
+            {
+                await HandleLogin();
+            }
+        }
+    }
+
+    private async Task HandleLogin()
+    {
+        if (form == null) return;
+
+        await form.Validate();
+        if (!isValid) return;
+
+        isProcessing = true;
+        errorMessage = null;
+        var request = new LoginRequest
+            {
+                Username = loginRequestModel.Username.Trim(),
+                Password = loginRequestModel.Password
+            };
+
+        try
+        {
+            var result = await AuthService.Login(request);
+            if (result.Successful)
+            {
+                NavigationManager.NavigateTo("/", forceLoad: true);
+            }
+            else
+            {
+                errorMessage = result.Error ?? "ورود ناموفق بود. لطفا اطلاعات خود را بررسی کنید.";
+            }
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"خطای سیستمی هنگام ورود: {ex.Message}";
+        }
+        finally
+        {
+            isProcessing = false;
+            // فراخوانی StateHasChanged برای اطمینان از به‌روزرسانی UI
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+}

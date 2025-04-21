@@ -1,0 +1,24 @@
+﻿html, body {
+    font-family: 'IRANYekanFN', 'Roboto', Helvetica, Arial, sans-serif;
+}
+
+/* Additional custom styles */
+.loading-progress {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 100vh;
+}
+
+/* Make sure we don't lose font in specific cases */
+.mud-typography, .mud-input, .mud-button-root, .mud-nav-link {
+    font-family: 'IRANYekanFN', 'Roboto', Helvetica, Arial, sans-serif !important;
+}
+
+/* Ensure custom font is applied to all text */
+* {
+    font-family: 'IRANYekanFN', 'Roboto', Helvetica, Arial, sans-serif;
+}
+
+
+/*--------------------------------------------------------------------------------------------------------*/

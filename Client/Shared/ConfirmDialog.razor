@@ -1,0 +1,40 @@
+﻿@using MudBlazor
+
+<MudDialog MaxWidth="MaxWidth.ExtraSmall">
+    <TitleContent>
+        <MudText Typo="Typo.h6">@Title</MudText>
+    </TitleContent>
+
+    <DialogContent>
+        <MudText Typo="Typo.body2">@ContentText</MudText>
+    </DialogContent>
+
+    <DialogActions>
+        <MudButton Color="Color.Error"
+                   Variant="Variant.Filled"
+                   OnClick="() => MudDialog.Close(DialogResult.Ok(true))">
+            @ConfirmButtonText
+        </MudButton>
+        <MudButton Color="Color.Default"
+                   Variant="Variant.Text"
+                   OnClick="() => MudDialog.Cancel()">
+            @CancelButtonText
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] MudDialogInstance MudDialog { get; set; } = default!;
+
+    /// <summary>عنوان دیالوگ در بالای پنجره</summary>
+    [Parameter] public string Title { get; set; } = "تأیید خروج";
+
+    /// <summary>متن اصلی پرسش</summary>
+    [Parameter] public string ContentText { get; set; } = "آیا می‌خواهید خارج شوید؟";
+
+    /// <summary>متن دکمه‌ی تأیید</summary>
+    [Parameter] public string ConfirmButtonText { get; set; } = "خارج شو";
+
+    /// <summary>متن دکمه‌ی انصراف</summary>
+    [Parameter] public string CancelButtonText { get; set; } = "منصرف شدم";
+}

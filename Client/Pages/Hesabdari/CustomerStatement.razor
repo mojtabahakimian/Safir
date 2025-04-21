@@ -1,0 +1,73 @@
+﻿@* مسیر فایل: prg/Safir23/Client/Pages/Hesabdari/CustomerStatement.razor *@
+
+@* تعریف آدرس (Route) صفحه - HesabCode از URL خوانده می شود *@
+@page "/customer-statement/{HesabCode}"
+
+@* اضافه کردن Using ها و Inject ها لازم برای فایل Razor *@
+@using Safir.Shared.Models.Hesabdari
+@* تنظیم عنوان صفحه در مرورگر *@
+<PageTitle>صورت حساب مشتری @HesabCode</PageTitle>
+
+<MudPaper Class="pa-4" Elevation="3">
+
+
+
+   @*  <MudItem>
+        <MudButton Variant="Variant.Outlined"
+                   Color="Color.Secondary"
+                   OnClick="DownloadPdf"
+                   Disabled="@(isLoading || statementItems == null || !statementItems.Any())"
+                   StartIcon="@Icons.Material.Filled.PictureAsPdf">
+            دانلود PDF
+        </MudButton>
+    </MudItem> *@
+
+
+    <MudText Typo="Typo.h5" GutterBottom="true">صورت حساب مشتری: @HesabCode</MudText>
+    @* می‌توانید یک بخش برای انتخاب بازه تاریخ هم اینجا اضافه کنید *@
+    @* <MudDatePicker Label="از تاریخ" @bind-Date="startDate" /> *@
+    @* <MudDatePicker Label="تا تاریخ" @bind-Date="endDate" /> *@
+    @* <MudButton OnClick="LoadStatement">نمایش</MudButton> *@
+
+    <MudDivider Class="my-4" />
+
+    @* نمایش وضعیت لودینگ *@
+    @if (isLoading)
+    {
+        <div class="d-flex justify-center align-center" style="height:200px;">
+            <MudProgressCircular Color="Color.Primary" Indeterminate="true" Size="Size.Large" />
+            <MudText Class="ml-4">در حال بارگذاری صورت حساب...</MudText>
+        </div>
+    }
+    @* نمایش پیام در صورت خالی بودن یا خطا *@
+    else if (statementItems == null || !statementItems.Any())
+    {
+        <MudAlert Severity="Severity.Info" Class="mt-4">هیچ موردی برای نمایش در صورت حساب این مشتری در بازه زمانی انتخاب شده یافت نشد.</MudAlert>
+    }
+    @* نمایش جدول در صورت وجود داده *@
+    else
+    {
+        <MudTable Items="@statementItems" Hover="true" Striped="true" Dense="true" Class="mt-4" Dir="rtl" Elevation="2">
+            <HeaderContent>
+                <MudTh Style="width: 100px;"><MudTableSortLabel SortBy="new Func<ThePart1, object?>(x=>x.DATE_S)">تاریخ</MudTableSortLabel></MudTh>
+                <MudTh Style="width: 100px;">شماره سند</MudTh>
+                <MudTh>شرح</MudTh>
+                <MudTh Style="width: 120px; text-align:left;"><MudTableSortLabel SortBy="new Func<ThePart1, object?>(x=>x.BED)">بدهکار</MudTableSortLabel></MudTh>
+                <MudTh Style="width: 120px; text-align:left;"><MudTableSortLabel SortBy="new Func<ThePart1, object?>(x=>x.BES)">بستانکار</MudTableSortLabel></MudTh>
+                <MudTh Style="width: 140px; text-align:left;"><MudTableSortLabel SortBy="new Func<ThePart1, object?>(x=>x.MAND)">مانده</MudTableSortLabel></MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd DataLabel="تاریخ">@FormatShamsiDateFromLong(context.DATE_S)</MudTd>
+                <MudTd DataLabel="شماره سند">@FormatDocNumber(context.N_S)</MudTd>
+                <MudTd DataLabel="شرح">@context.SHARH</MudTd>
+                <MudTd DataLabel="بدهکار" Style="text-align:left; direction:ltr;">@FormatNumber(context.BED)</MudTd>
+                <MudTd DataLabel="بستانکار" Style="text-align:left; direction:ltr;">@FormatNumber(context.BES)</MudTd>
+                <MudTd DataLabel="مانده" Style="text-align:left; direction:ltr; font-weight:bold;">@FormatNumber(context.MAND)</MudTd>
+            </RowTemplate>
+            <PagerContent>
+                <MudTablePager RowsPerPageString="ردیف در صفحه" />
+            </PagerContent>
+        </MudTable>
+    }
+
+</MudPaper> @* پایان MudPaper *@

@@ -1,0 +1,95 @@
+﻿@using MudBlazor
+@using Microsoft.AspNetCore.Components.Authorization
+@using Safir.Client.Services
+@using Safir.Shared.Interfaces;
+@inject NavigationManager NavigationManager
+@inject IAuthService AuthService
+@inject MudBlazor.IDialogService DialogService
+
+<MudNavMenu>
+    <!-- صفحه اصلی -->
+    <MudNavLink Href="/" Match="NavLinkMatch.All" Icon="@Icons.Material.Filled.Home">
+        صفحه اصلی
+    </MudNavLink>
+
+    <AuthorizeView>
+        <Authorized>
+            <!-- ثبت سفارش -->
+            <MudNavLink Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.ShoppingCart">
+                ثبت سفارش
+            </MudNavLink>
+
+            <!-- مشاهده لیست مشتریان -->
+            <MudNavLink Href="visitor-customers" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.List">
+                مشاهده لیست مشتریان
+            </MudNavLink>
+
+            <!-- بروزرسانی اطلاعات -->
+            <MudNavLink Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.Refresh">
+                بروزرسانی اطلاعات
+            </MudNavLink>
+
+            <!-- ارسال سفارشات به سرور -->
+            <MudNavLink Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.CloudUpload">
+                ارسال سفارشات به سرور
+            </MudNavLink>
+
+            <MudNavLink Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.PersonAdd" Href="customer-define">
+                تعریف مشتری جدید
+            </MudNavLink>
+
+            <!-- گروه تنظیمات -->
+            <MudNavGroup Title="تنظیمات" Icon="@Icons.Material.Filled.Settings" Expanded="false">
+                <MudNavLink Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.Person">@context.User.FindFirst(Safir.Shared.Constants.BaseknowClaimTypes.UUSER)?.Value</MudNavLink>
+                <MudNavLink Href="settings/security" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.Security">
+                    امنیت
+                </MudNavLink>
+            </MudNavGroup>
+
+            <!-- خروج -->
+            <MudNavLink Match="NavLinkMatch.Prefix" @onclick="BeginLogout" Icon="@Icons.Material.Filled.Logout">
+                خروج
+            </MudNavLink>
+        </Authorized>
+        <NotAuthorized>
+            <!-- Optional: Show a link to log in if the user is not authorized -->
+            <MudNavLink Href="login" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.Login">
+                ورود کاربری
+            </MudNavLink>
+        </NotAuthorized>
+    </AuthorizeView>
+</MudNavMenu>
+
+
+@code {
+    private bool collapseNavMenu = true;
+
+    // Computes the CSS class for the main navigation div to make it collapsible
+    private string? NavMenuCssClass => collapseNavMenu ? "collapse" : null;
+
+    // Toggles the expanded/collapsed state of the navigation menu
+    private void ToggleNavMenu()
+    {
+        collapseNavMenu = !collapseNavMenu;
+    }
+
+    // Handles the logout process
+    private async Task BeginLogout()
+    {
+        var options = new DialogOptions { CloseButton = false, MaxWidth = MaxWidth.ExtraSmall };
+        var parameters = new DialogParameters
+            {
+                ["Title"] = "خروج از حساب",
+                ["ContentText"] = "آیا مطمئن هستید می‌خواهید از حساب کاربری خود خارج شوید؟",
+                ["ConfirmButtonText"] = "خارج شو",
+                ["CancelButtonText"] = "منصرف شدم"
+            };
+        var dialog = DialogService.Show<ConfirmDialog>(parameters["Title"]?.ToString()!, parameters, options);
+        var result = await dialog.Result;
+        if (!result.Cancelled)
+        {
+            await AuthService.Logout();
+            NavigationManager.NavigateTo("login", true);
+        }
+    }
+}
