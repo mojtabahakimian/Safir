@@ -7,7 +7,7 @@ using System.Threading.Tasks;
 // prg/Safir23/Shared/Models/Hesabdari/ThePart1.cs
 namespace Safir.Shared.Models.Hesabdari
 {
-    public class ThePart1
+    public class QDAFTARTAFZIL2_H
     {
         public int? HES_K { get; set; }
         public int? HES_M { get; set; }

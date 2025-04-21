@@ -1,5 +1,7 @@
-using Microsoft.AspNetCore.Authentication.JwtBearer;
+﻿using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
+using QuestPDF.Drawing;
+using QuestPDF.Infrastructure;
 using Safir.Server.Services;
 using Safir.Shared.Interfaces;
 using System.Text;
@@ -50,6 +52,33 @@ Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
 
 
 var app = builder.Build();
+
+#region Mine - Font Registration
+// --- رجیستر کردن فونت فارسی برای QuestPDF ---
+try
+{
+    var env = app.Services.GetRequiredService<IWebHostEnvironment>();
+    // <<< --- مسیر و نام فایل فونت اصلاح شد --- >>>
+    string fontPath = Path.Combine(env.ContentRootPath, "Fonts", "IRANYekanFN.ttf"); // استفاده از فونت شما
+
+    if (File.Exists(fontPath))
+    {
+        QuestPDF.Settings.License = LicenseType.Community;
+        FontManager.RegisterFont(File.OpenRead(fontPath));
+        app.Logger.LogInformation("فونت QuestPDF با موفقیت از مسیر {FontPath} رجیستر شد.", fontPath);
+
+        // <<< --- حذف بررسی FontManager.FontFamilies --- >>>
+    }
+    else
+    {
+        app.Logger.LogError("فایل فونت QuestPDF در مسیر مورد انتظار یافت نشد: {FontPath}. از کپی شدن فایل به پوشه خروجی اطمینان حاصل کنید.", fontPath);
+    }
+}
+catch (Exception ex)
+{
+    app.Logger.LogError(ex, "خطا در رجیستر کردن فونت QuestPDF هنگام شروع برنامه.");
+}
+#endregion
 
 // Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())

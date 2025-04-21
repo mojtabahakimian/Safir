@@ -16,6 +16,7 @@ using System.Linq; // <<< ADD for Linq methods like FirstOrDefault
 using static MudBlazor.Icons;
 using static Safir.Shared.Utility.CL_Tarikh;
 using Safir.Shared.Models.Hesabdari;
+using QuestPDF.Fluent;
 
 namespace Safir.Server.Controllers
 {
@@ -350,7 +351,7 @@ namespace Safir.Server.Controllers
 
 
         [HttpGet("{hesabCode}/statement")] // روت API: api/customers/{کد حساب}/statement
-        public async Task<ActionResult<IEnumerable<ThePart1>>> GetCustomerStatement(string hesabCode, [FromQuery] long? startDate = DefaultStartDate, [FromQuery] long? endDate = DefaultEndDate)
+        public async Task<ActionResult<IEnumerable<QDAFTARTAFZIL2_H>>> GetCustomerStatement(string hesabCode, [FromQuery] long? startDate = DefaultStartDate, [FromQuery] long? endDate = DefaultEndDate)
         {
             if (string.IsNullOrWhiteSpace(hesabCode))
             {
@@ -375,10 +376,10 @@ namespace Safir.Server.Controllers
                     { "@HesabCode", hesabCode }
                 };
 
-                // --- اجرای کوئری و دریافت مستقیم لیست ThePart1 ---
-                // نوع TEntity را به صورت <ThePart1> مشخص می کنیم
-                // نتیجه مستقیماً یک IEnumerable<ThePart1> خواهد بود
-                IEnumerable<ThePart1> statementItems = await _dbService.DoGetDataSQLAsync<ThePart1>(query, parameters);
+                // --- اجرای کوئری و دریافت مستقیم لیست QDAFTARTAFZIL2_H ---
+                // نوع TEntity را به صورت <QDAFTARTAFZIL2_H> مشخص می کنیم
+                // نتیجه مستقیماً یک IEnumerable<QDAFTARTAFZIL2_H> خواهد بود
+                IEnumerable<QDAFTARTAFZIL2_H> statementItems = await _dbService.DoGetDataSQLAsync<QDAFTARTAFZIL2_H>(query, parameters);
 
                 // حلقه foreach و تبدیل دستی DataRow حذف شد چون Dapper این کار را انجام داده است!
 
@@ -386,14 +387,14 @@ namespace Safir.Server.Controllers
                 if (statementItems == null)
                 {
                     _logger.LogWarning("DoGetDataSQLAsync returned null for HesabCode: {HesabCode}", hesabCode);
-                    statementItems = new List<ThePart1>(); // برگرداندن لیست خالی
+                    statementItems = new List<QDAFTARTAFZIL2_H>(); // برگرداندن لیست خالی
                 }
 
                 // می‌توانید نتیجه را به لیست تبدیل کنید اگر لازم است
                 var statementList = statementItems.ToList();
 
                 _logger.LogInformation("Found {Count} statement items for HesabCode: {HesabCode}", statementList.Count, hesabCode);
-                return Ok(statementList); // بازگرداندن لیست ThePart1
+                return Ok(statementList); // بازگرداندن لیست QDAFTARTAFZIL2_H
             }
             catch (SqlException sqlEx)
             {
@@ -407,5 +408,93 @@ namespace Safir.Server.Controllers
             }
         }
 
+
+        #region MyRegion
+        // --- متد کمکی برای دریافت داده (برای جلوگیری از تکرار کد) ---
+        private async Task<IEnumerable<QDAFTARTAFZIL2_H>?> FetchStatementDataAsync(string hesabCode, long? startDate, long? endDate)
+        {
+            // همان منطق دریافت داده از متد GetCustomerStatement
+            _logger.LogInformation("Fetching statement data for HesabCode: {HesabCode} from {StartDate} to {EndDate}", hesabCode, startDate, endDate);
+            string query = "SELECT HES_K, HES_M, TAFZILN, HES, SHARH, BED, BES, N_S, DATE_S, MAND " +
+                           "FROM dbo.QDAFTARTAFZIL2_H(@StartDate, @EndDate, @HesabCode);";
+
+            var parameters = new Dictionary<string, object>
+        {
+            { "@StartDate", startDate ?? DefaultStartDate }, // استفاده از مقادیر پیش فرض اگر null باشند
+            { "@EndDate", endDate ?? DefaultEndDate },
+            { "@HesabCode", hesabCode }
+        };
+            try
+            {
+                IEnumerable<QDAFTARTAFZIL2_H> statementItems = await _dbService.DoGetDataSQLAsync<QDAFTARTAFZIL2_H>(query, parameters);
+                return statementItems;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error in FetchStatementDataAsync for HesabCode: {HesabCode}", hesabCode);
+                return null; // یا throw کنید
+            }
+
+        }
+
+
+        // --- Endpoint جدید برای دانلود PDF ---
+        [HttpGet("{hesabCode}/statement/pdf")]
+        public async Task<IActionResult> GetCustomerStatementPdf(string hesabCode, [FromQuery] long? startDate = DefaultStartDate, [FromQuery] long? endDate = DefaultEndDate)
+        {
+            if (string.IsNullOrWhiteSpace(hesabCode))
+                return BadRequest("Customer account code (hesabCode) is required.");
+
+            _logger.LogInformation("Request received for PDF statement. HesabCode: {HesabCode}, Start: {StartDate}, End: {EndDate}", hesabCode, startDate, endDate);
+
+
+            try
+            {
+                // 1. دریافت داده‌های صورت حساب با استفاده از متد کمکی
+                var statementItems = await FetchStatementDataAsync(hesabCode, startDate, endDate);
+
+                if (statementItems == null)
+                {
+                    _logger.LogError("Failed to fetch statement data for PDF generation. HesabCode: {HesabCode}", hesabCode);
+                    return StatusCode(500, "خطا در دریافت اطلاعات صورت حساب برای تولید PDF.");
+                }
+                if (!statementItems.Any())
+                {
+                    _logger.LogWarning("No statement data found to generate PDF for HesabCode: {HesabCode}", hesabCode);
+                    return NotFound("داده‌ای برای تولید گزارش PDF در این بازه زمانی یافت نشد.");
+                }
+
+
+                _logger.LogInformation("Generating PDF for {Count} items. HesabCode: {HesabCode}", statementItems.Count(), hesabCode);
+
+
+                // 2. ایجاد نمونه از کلاس سند PDF
+                // ارسال ILogger به کلاس سند برای لاگ‌گیری داخلی آن
+                var document = new CustomerStatementDocument(statementItems, hesabCode, startDate, endDate, _logger);
+
+                // 3. تولید PDF به صورت بایت (byte array)
+                // GeneratePdf() یک آرایه بایت از PDF تولید شده برمی‌گرداند.
+                byte[] pdfBytes = document.GeneratePdf();
+
+                _logger.LogInformation("PDF generated successfully. Size: {Size} bytes. HesabCode: {HesabCode}", pdfBytes.Length, hesabCode);
+
+
+                // 4. ساخت نام فایل مناسب
+                string startDateStr = startDate?.ToString() ?? "all";
+                string endDateStr = endDate?.ToString() ?? "all";
+                string fileName = $"Statement_{hesabCode}_{startDateStr}_{endDateStr}.pdf";
+
+                // 5. بازگرداندن فایل PDF به کلاینت برای دانلود
+                return File(pdfBytes, "application/pdf", fileName);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error generating or returning PDF statement for HesabCode: {HesabCode}", hesabCode);
+                return StatusCode(500, "خطای داخلی سرور هنگام تولید گزارش PDF رخ داد.");
+            }
+        }
+
+    
+        #endregion
     }
 }
