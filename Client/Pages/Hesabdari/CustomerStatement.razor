@@ -12,7 +12,7 @@
 
 
 
-   @*  <MudItem>
+    <MudItem>
         <MudButton Variant="Variant.Outlined"
                    Color="Color.Secondary"
                    OnClick="DownloadPdf"
@@ -20,7 +20,7 @@
                    StartIcon="@Icons.Material.Filled.PictureAsPdf">
             دانلود PDF
         </MudButton>
-    </MudItem> *@
+    </MudItem>
 
 
     <MudText Typo="Typo.h5" GutterBottom="true">صورت حساب مشتری: @HesabCode</MudText>
@@ -49,12 +49,12 @@
     {
         <MudTable Items="@statementItems" Hover="true" Striped="true" Dense="true" Class="mt-4" Dir="rtl" Elevation="2">
             <HeaderContent>
-                <MudTh Style="width: 100px;"><MudTableSortLabel SortBy="new Func<ThePart1, object?>(x=>x.DATE_S)">تاریخ</MudTableSortLabel></MudTh>
+                <MudTh Style="width: 100px;"><MudTableSortLabel SortBy="new Func<QDAFTARTAFZIL2_H, object?>(x=>x.DATE_S)">تاریخ</MudTableSortLabel></MudTh>
                 <MudTh Style="width: 100px;">شماره سند</MudTh>
                 <MudTh>شرح</MudTh>
-                <MudTh Style="width: 120px; text-align:left;"><MudTableSortLabel SortBy="new Func<ThePart1, object?>(x=>x.BED)">بدهکار</MudTableSortLabel></MudTh>
-                <MudTh Style="width: 120px; text-align:left;"><MudTableSortLabel SortBy="new Func<ThePart1, object?>(x=>x.BES)">بستانکار</MudTableSortLabel></MudTh>
-                <MudTh Style="width: 140px; text-align:left;"><MudTableSortLabel SortBy="new Func<ThePart1, object?>(x=>x.MAND)">مانده</MudTableSortLabel></MudTh>
+                <MudTh Style="width: 120px; text-align:left;"><MudTableSortLabel SortBy="new Func<QDAFTARTAFZIL2_H, object?>(x=>x.BED)">بدهکار</MudTableSortLabel></MudTh>
+                <MudTh Style="width: 120px; text-align:left;"><MudTableSortLabel SortBy="new Func<QDAFTARTAFZIL2_H, object?>(x=>x.BES)">بستانکار</MudTableSortLabel></MudTh>
+                <MudTh Style="width: 140px; text-align:left;"><MudTableSortLabel SortBy="new Func<QDAFTARTAFZIL2_H, object?>(x=>x.MAND)">مانده</MudTableSortLabel></MudTh>
             </HeaderContent>
             <RowTemplate>
                 <MudTd DataLabel="تاریخ">@FormatShamsiDateFromLong(context.DATE_S)</MudTd>

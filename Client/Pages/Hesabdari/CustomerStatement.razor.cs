@@ -8,6 +8,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using MudBlazor;                     // برای ISnackbar و کامپوننت ها
 using Microsoft.Extensions.Logging;  // برای ILogger
+using Microsoft.JSInterop;
 
 namespace Safir.Client.Pages.Hesabdari // مطمئن شوید namespace درست است
 {
@@ -22,13 +23,15 @@ namespace Safir.Client.Pages.Hesabdari // مطمئن شوید namespace درست
         [Inject] private CustomerApi CustomerApi { get; set; } = default!; // <-- به این شکل تغییر دهید
         [Inject] private ISnackbar Snackbar { get; set; } = default!;
         [Inject] private ILogger<CustomerStatement> Logger { get; set; } = default!;
+        [Inject] private IJSRuntime JSRuntime { get; set; } = default!; // <<< تزریق IJSRuntime
 
         [Inject] private NavigationManager NavManager { get; set; } = default!; // <-- این خط رو اضافه کنید
 
         // لیستی برای نگهداری آیتم های صورت حساب دریافتی از سرور
-        private List<ThePart1>? statementItems;
+        private List<QDAFTARTAFZIL2_H>? statementItems;
         // فلگی برای نمایش وضعیت لودینگ
         private bool isLoading = false;
+        private bool isDownloading = false; // <<< فلگ برای نمایش وضعیت دانلود
 
         // تاریخ های پیش فرض برای درخواست از سرور (می توانید بعداً امکان تغییرشان را اضافه کنید)
         private long? currentStartDate = 14030101; // مثال
@@ -47,7 +50,7 @@ namespace Safir.Client.Pages.Hesabdari // مطمئن شوید namespace درست
             if (string.IsNullOrWhiteSpace(HesabCode))
             {
                 Snackbar.Add("کد حساب مشتری نامعتبر است.", Severity.Warning);
-                statementItems = new List<ThePart1>(); // تنظیم لیست خالی
+                statementItems = new List<QDAFTARTAFZIL2_H>(); // تنظیم لیست خالی
                 return;
             }
 
@@ -67,7 +70,7 @@ namespace Safir.Client.Pages.Hesabdari // مطمئن شوید namespace درست
                 {
                     Snackbar.Add("خطا در دریافت اطلاعات صورت حساب از سرور.", Severity.Error);
                     Logger.LogWarning("API returned null statement items for {HesabCode}", HesabCode);
-                    statementItems = new List<ThePart1>(); // تنظیم لیست خالی در صورت خطا
+                    statementItems = new List<QDAFTARTAFZIL2_H>(); // تنظیم لیست خالی در صورت خطا
                 }
                 else
                 {
@@ -78,7 +81,7 @@ namespace Safir.Client.Pages.Hesabdari // مطمئن شوید namespace درست
             {
                 Logger.LogError(ex, "Error loading statement for {HesabCode}", HesabCode);
                 Snackbar.Add($"خطای غیرمنتظره: {ex.Message}", Severity.Error);
-                statementItems = new List<ThePart1>(); // تنظیم لیست خالی در صورت خطا
+                statementItems = new List<QDAFTARTAFZIL2_H>(); // تنظیم لیست خالی در صورت خطا
             }
             finally // این بلاک همیشه اجرا می شود
             {
@@ -121,53 +124,56 @@ namespace Safir.Client.Pages.Hesabdari // مطمئن شوید namespace درست
             return docNumber.Value.ToString("N0");
         }
 
-        private void DownloadPdf() // متد مربوط به دکمه دانلود PDF
+        private async Task DownloadPdf()
         {
-            // 1. بررسی کد حساب
             if (string.IsNullOrWhiteSpace(HesabCode))
             {
                 Snackbar.Add("کد حساب مشتری نامعتبر است.", Severity.Warning);
                 return;
             }
+            if (statementItems == null || !statementItems.Any())
+            {
+                Snackbar.Add("داده ای برای دانلود وجود ندارد.", Severity.Info);
+                return;
+            }
+
+            isDownloading = true; // شروع وضعیت دانلود
+            StateHasChanged(); // بروزرسانی UI
 
             try
             {
-                // 2. ساخت URL برای API دانلود PDF در سرور
-                // (از همان بازه زمانی استفاده می کنیم که در LoadStatement استفاده شد)
-                string pdfUrl = $"api/customers/{Uri.EscapeDataString(HesabCode)}/statement/pdf";
+                // 1. دریافت بایت های PDF از API با استفاده از CustomerApi
+                byte[]? pdfBytes = await CustomerApi.GetCustomerStatementPdfBytesAsync(HesabCode, currentStartDate, currentEndDate);
 
-                // 3. اضافه کردن پارامترهای تاریخ به Query String
-                var queryParams = new Dictionary<string, string?>();
-                if (currentStartDate.HasValue) // currentStartDate از LoadStatement می آید
-                    queryParams["startDate"] = currentStartDate.Value.ToString();
-                if (currentEndDate.HasValue)   // currentEndDate از LoadStatement می آید
-                    queryParams["endDate"] = currentEndDate.Value.ToString();
-
-                // 4. اضافه کردن Query String به URL در صورت وجود پارامتر
-                if (queryParams.Any())
+                if (pdfBytes != null && pdfBytes.Length > 0)
                 {
-                    // تبدیل Dictionary به Query String
-                    string queryString = string.Join("&", queryParams
-                        .Where(kvp => kvp.Value != null) // فقط پارامترهای با مقدار را در نظر بگیر
-                        .Select(kvp => $"{Uri.EscapeDataString(kvp.Key)}={Uri.EscapeDataString(kvp.Value!)}")); // استفاده از ! برای اطمینان از عدم null بودن مقدار
+                    // 2. ساخت نام فایل
+                    string startDateStr = currentStartDate?.ToString() ?? "all";
+                    string endDateStr = currentEndDate?.ToString() ?? "all";
+                    string fileName = $"Statement_{HesabCode}_{startDateStr}_{endDateStr}.pdf";
 
-                    if (!string.IsNullOrEmpty(queryString))
-                    {
-                        pdfUrl += $"?{queryString}";
-                    }
+                    // 3. فراخوانی تابع JavaScript برای شروع دانلود
+                    await JSRuntime.InvokeVoidAsync("downloadFileFromBytes", fileName, pdfBytes);
+
+                    Snackbar.Add("دانلود PDF آغاز شد.", Severity.Success);
+                    Logger.LogInformation("PDF download initiated for HesabCode: {HesabCode}", HesabCode);
                 }
-
-                Logger.LogInformation("Navigating to download PDF URL: {PdfUrl}", pdfUrl);
-
-                // 5. استفاده از NavigationManager برای شروع دانلود
-                // forceLoad: true باعث می شود مرورگر خودش درخواست را ارسال کند
-                NavManager.NavigateTo(pdfUrl, forceLoad: true);
-
+                else
+                {
+                    // اگر بایت ها null یا خالی باشند (یعنی خطا در API رخ داده)
+                    Snackbar.Add("خطا در دریافت فایل PDF از سرور.", Severity.Error);
+                    Logger.LogError("Failed to receive valid PDF bytes for HesabCode: {HesabCode}", HesabCode);
+                }
             }
             catch (Exception ex)
             {
-                Logger.LogError(ex, "Error initiating PDF download for HesabCode: {HesabCode}", HesabCode);
-                Snackbar.Add($"خطا در شروع دانلود PDF: {ex.Message}", Severity.Error);
+                Logger.LogError(ex, "Error during PDF download process for HesabCode: {HesabCode}", HesabCode);
+                Snackbar.Add($"خطای غیرمنتظره هنگام دانلود: {ex.Message}", Severity.Error);
+            }
+            finally
+            {
+                isDownloading = false; // پایان وضعیت دانلود
+                StateHasChanged(); // بروزرسانی UI
             }
         }
     }

@@ -99,7 +99,7 @@ public class CustomerApi
         public double Kol { get; set; } // یا نوع داده مناسب دیگر
         public int Moin { get; set; }
     }
-    public async Task<List<ThePart1>?> GetCustomerStatementAsync(string hesabCode, long? startDate = null, long? endDate = null)
+    public async Task<List<QDAFTARTAFZIL2_H>?> GetCustomerStatementAsync(string hesabCode, long? startDate = null, long? endDate = null)
     {
         if (string.IsNullOrWhiteSpace(hesabCode))
         {
@@ -133,7 +133,7 @@ public class CustomerApi
             _logger.LogInformation("Calling API: {RequestUri}", requestUri);
 
             // ارسال درخواست GET و دریافت پاسخ به صورت List<ThePart1>
-            var result = await _httpClient.GetFromJsonAsync<List<ThePart1>>(requestUri);
+            var result = await _httpClient.GetFromJsonAsync<List<QDAFTARTAFZIL2_H>>(requestUri);
 
             _logger.LogInformation("Received {Count} statement items from API.", result?.Count ?? 0);
             return result;
@@ -148,6 +148,64 @@ public class CustomerApi
         catch (Exception ex) // سایر خطاهای احتمالی (مثل خطای JSON Deserialization)
         {
             _logger.LogError(ex, "Generic error fetching statement for HesabCode: {HesabCode}", hesabCode);
+            return null;
+        }
+    }
+
+    public async Task<byte[]?> GetCustomerStatementPdfBytesAsync(string hesabCode, long? startDate = null, long? endDate = null)
+    {
+        if (string.IsNullOrWhiteSpace(hesabCode))
+        {
+            _logger.LogWarning("GetCustomerStatementPdfBytesAsync called with empty hesabCode.");
+            return null;
+        }
+
+        try
+        {
+            // ساخت Query String
+            var queryParams = System.Web.HttpUtility.ParseQueryString(string.Empty);
+            if (startDate.HasValue)
+                queryParams["startDate"] = startDate.Value.ToString();
+            if (endDate.HasValue)
+                queryParams["endDate"] = endDate.Value.ToString();
+            var queryString = queryParams.ToString();
+
+            // ساخت URI نهایی - دقت کنید که مسیر باید با کنترلر سرور مچ باشد
+            var requestUri = $"api/Customers/{Uri.EscapeDataString(hesabCode)}/statement/pdf";
+            if (!string.IsNullOrEmpty(queryString))
+            {
+                requestUri += $"?{queryString}";
+            }
+
+            _logger.LogInformation("Calling API to get PDF bytes: {RequestUri}", requestUri);
+
+            // ارسال درخواست GET و دریافت پاسخ
+            var response = await _httpClient.GetAsync(requestUri);
+
+            if (response.IsSuccessStatusCode)
+            {
+                // خواندن محتوای پاسخ به صورت آرایه بایت
+                var pdfBytes = await response.Content.ReadAsByteArrayAsync();
+                _logger.LogInformation("Received {Size} PDF bytes from API.", pdfBytes.Length);
+                return pdfBytes;
+            }
+            else
+            {
+                // لاگ کردن خطا بر اساس کد وضعیت
+                var errorContent = await response.Content.ReadAsStringAsync();
+                _logger.LogError("Failed to get PDF bytes from API. Status: {StatusCode}, Reason: {ReasonPhrase}, Content: {ErrorContent}",
+                                response.StatusCode, response.ReasonPhrase, errorContent);
+                return null; // یا throw کنید
+            }
+        }
+        catch (HttpRequestException ex)
+        {
+            _logger.LogError(ex, "HTTP error getting PDF bytes for HesabCode: {HesabCode} - StatusCode: {StatusCode}", hesabCode, ex.StatusCode);
+            return null;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Generic error getting PDF bytes for HesabCode: {HesabCode}", hesabCode);
             return null;
         }
     }
