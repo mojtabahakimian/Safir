@@ -6,6 +6,8 @@ namespace Safir.Shared.Utility
     {
         public static long GETKOL(string SHES)
         {
+
+            ///OK
             long GETKOLRet = default;
             byte i;
             i = 1;
