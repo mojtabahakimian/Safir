@@ -12,22 +12,38 @@
     <MudGrid Justify="Justify.Center" Class="mb-3" Spacing="1">
         @* ----- کمبوباکس انتخاب تاریخ ----- *@
         <MudItem xs="12" sm="7" md="6">
-             <MudSelect T="long?" Label="انتخاب تاریخ ویزیت"
+            <MudSelect T="long?" Label="انتخاب تاریخ ویزیت"
                        @bind-Value="SelectedVisitDate"
                        Disabled="@(datesLoading || !string.IsNullOrEmpty(datesErrorMessage))"
                        Variant="Variant.Outlined" Margin="Margin.Dense">
-                 @if (datesLoading) { <MudSelectItem T="long?" Disabled="true">...</MudSelectItem> }
-                 else if (!string.IsNullOrEmpty(datesErrorMessage)) { <MudSelectItem T="long?" Disabled="true">خطا</MudSelectItem> }
-                 else if (availableDates == null || !availableDates.Any()) { <MudSelectItem T="long?" Disabled="true">تاریخی یافت نشد</MudSelectItem> }
-                 else { @foreach (var date in availableDates!) { <MudSelectItem T="long?" Value="@date">@FormatPersianDate(date.ToString())</MudSelectItem> } }
-             </MudSelect>
-             @if (!string.IsNullOrEmpty(datesErrorMessage)){ <MudText Typo="Typo.caption" Color="Color.Error" Align="Align.Right">@datesErrorMessage</MudText> }
+                @if (datesLoading)
+                {
+                    <MudSelectItem T="long?" Disabled="true">...</MudSelectItem>
+                }
+                else if (!string.IsNullOrEmpty(datesErrorMessage))
+                {
+                    <MudSelectItem T="long?" Disabled="true">خطا</MudSelectItem>
+                }
+                else if (availableDates == null || !availableDates.Any())
+                {
+                    <MudSelectItem T="long?" Disabled="true">تاریخی یافت نشد</MudSelectItem>
+                }
+                else
+                { @foreach (var date in availableDates!)
+                    {
+                        <MudSelectItem T="long?" Value="@date">@FormatPersianDate(date.ToString())</MudSelectItem>
+                    }                          }
+            </MudSelect>
+            @if (!string.IsNullOrEmpty(datesErrorMessage))
+            {
+                <MudText Typo="Typo.caption" Color="Color.Error" Align="Align.Right">@datesErrorMessage</MudText>
+            }
         </MudItem>
 
         @* ----- فیلد جستجو ----- *@
         <MudItem xs="12" sm="5" md="6">
-             <MudTextField T="string" Label="جستجوی مشتری"
-                          @bind-Value="SearchTerm"
+            <MudTextField T="string" Label="جستجوی مشتری"
+            @bind-Value="SearchTerm"
                           Immediate="true"
                           DebounceInterval="300"
                           Disabled="@(isLoading || datesLoading || !string.IsNullOrEmpty(errorMessage) || !string.IsNullOrEmpty(datesErrorMessage))"
@@ -41,8 +57,8 @@
     @if (isLoading)
     {
         @* ... لودینگ ... *@
-         <div class="d-flex justify-content-center mt-6"><MudProgressCircular Color="Color.Secondary" Indeterminate="true" Size="Size.Large" /></div>
-         <MudText Align="Align.Center" Class="mt-4">در حال بارگذاری مشتریان...</MudText>
+        <div class="d-flex justify-content-center mt-6"><MudProgressCircular Color="Color.Secondary" Indeterminate="true" Size="Size.Large" /></div>
+        <MudText Align="Align.Center" Class="mt-4">در حال بارگذاری مشتریان...</MudText>
     }
     else if (!string.IsNullOrEmpty(errorMessage))
     {
@@ -52,21 +68,76 @@
     else if (PagedCustomers == null || !PagedCustomers.Any())
     {
         @* ... پیام های وضعیت (مثل قبل، با توجه به FilteredCustomers یا _originalCustomers برای تشخیص علت خالی بودن) ... *@
-         @if (!string.IsNullOrWhiteSpace(SearchTerm)) { <MudAlert Severity="Severity.Warning" Class="mt-4">مشتری با عبارت جستجو شده یافت نشد.</MudAlert> }
-         else if (SelectedVisitDate.HasValue) { <MudAlert Severity="Severity.Info" Class="mt-4">مشتری برای تاریخ انتخاب شده یافت نشد.</MudAlert> }
-         else if (!datesLoading && (availableDates == null || !availableDates.Any())) { <MudAlert Severity="Severity.Warning" Class="mt-4">هیچ تاریخ ویزیتی برای شما ثبت نشده است.</MudAlert> }
-         else if (!datesLoading && !SelectedVisitDate.HasValue) { <MudAlert Severity="Severity.Info" Class="mt-4">لطفاً یک تاریخ ویزیت انتخاب کنید.</MudAlert> }
+        @if (!string.IsNullOrWhiteSpace(SearchTerm))
+        {
+            <MudAlert Severity="Severity.Warning" Class="mt-4">مشتری با عبارت جستجو شده یافت نشد.</MudAlert>
+        }
+        else if (SelectedVisitDate.HasValue)
+        {
+            <MudAlert Severity="Severity.Info" Class="mt-4">مشتری برای تاریخ انتخاب شده یافت نشد.</MudAlert>
+        }
+        else if (!datesLoading && (availableDates == null || !availableDates.Any()))
+        {
+            <MudAlert Severity="Severity.Warning" Class="mt-4">هیچ تاریخ ویزیتی برای شما ثبت نشده است.</MudAlert>
+        }
+        else if (!datesLoading && !SelectedVisitDate.HasValue)
+        {
+            <MudAlert Severity="Severity.Info" Class="mt-4">لطفاً یک تاریخ ویزیت انتخاب کنید.</MudAlert>
+        }
     }
     else
     {
-        @* --- حلقه روی آیتم های صفحه فعلی --- *@
         <MudList Clickable="false" Class="mt-1">
-            @foreach (var customer in PagedCustomers) @* <<<< تغییر به PagedCustomers *@
+            @foreach (var customer in PagedCustomers)
             {
-                @* ... MudCard مثل قبل ... *@
                 <MudCard Class="mb-3 customer-card" Elevation="3">
-                    <MudCardContent> <MudGrid Spacing="1"> <MudItem xs="10" sm="10"> <MudText Typo="Typo.h6" Style="font-weight: bold;">@customer.person</MudText> <MudText Typo="Typo.body2" Color="Color.Dark">@customer.hes</MudText> <MudText Typo="Typo.caption" Color="Color.Dark">آخرین خرید: @FormatPersianDate(customer.lkharid)</MudText> </MudItem> <MudItem xs="2" sm="2" Class="d-flex justify-content-center align-items-start pt-2"> <MudIcon Icon="@Icons.Material.Filled.LocationOn" Color="Color.Success" Size="Size.Large" /> </MudItem> <MudItem xs="12" Class="mt-2 mb-2"><MudDivider /></MudItem> <MudItem xs="12" sm="6"> <MudText Typo="Typo.body1">مانده حساب: <span style="font-weight:bold; color:@GetMandehColor(customer.mandahh)">@FormatCurrency(customer.mandahh) ریال</span></MudText> </MudItem> <MudItem xs="12" sm="6"> <MudText Typo="Typo.body1">مانده اعتبار: <span style="font-weight:bold;">@FormatCurrency(customer.etebar) ریال</span></MudText> </MudItem> <MudItem xs="12" Class="mt-2 mb-2"><MudDivider /></MudItem> <MudItem xs="12"> <MudText Typo="Typo.body2" Style="line-height: 1.7;"><strong>آدرس:</strong> @customer.addr</MudText> </MudItem> </MudGrid> </MudCardContent>
-                    <MudCardActions Class="pa-2 justify-content-end"> <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="@(() => ShowCustomerStatement(customer.hes))" StartIcon="@Icons.Material.Filled.ReceiptLong" Size="Size.Small"> صورتحساب </MudButton> </MudCardActions>
+                    <MudCardContent>
+                        <MudGrid Spacing="1">
+                            <MudItem xs="10" sm="10">
+                                <MudText Typo="Typo.h6" Style="font-weight: bold;">@customer.person</MudText>
+                                <MudText Typo="Typo.body2" Color="Color.Dark">@customer.hes</MudText>
+                                <MudText Typo="Typo.caption" Color="Color.Dark">آخرین خرید: @FormatPersianDate(customer.lkharid)</MudText>
+                            </MudItem>
+                            <MudItem xs="2" sm="2" Class="d-flex justify-content-center align-items-start pt-2">
+                                <MudIcon Icon="@Icons.Material.Filled.LocationOn" Color="Color.Success" Size="Size.Large" />
+                            </MudItem>
+                            <MudItem xs="12" Class="mt-2 mb-2"><MudDivider /></MudItem>
+                            <MudItem xs="12" sm="6">
+                                <MudText Typo="Typo.body1">مانده حساب: <span style="font-weight:bold; color:@GetMandehColor(customer.mandahh)">@FormatCurrency(customer.mandahh) ریال</span></MudText>
+                            </MudItem>
+                            <MudItem xs="12" sm="6">
+                                <MudText Typo="Typo.body1">مانده اعتبار: <span style="font-weight:bold;">@FormatCurrency(customer.etebar) ریال</span></MudText>
+                            </MudItem>
+                            <MudItem xs="12" Class="mt-2 mb-2"><MudDivider /></MudItem>
+                            <MudItem xs="12">
+                                <MudText Typo="Typo.body2" Style="line-height: 1.7;"><strong>آدرس:</strong> @customer.addr</MudText>
+                            </MudItem>
+                        </MudGrid>
+                    </MudCardContent>
+                    <MudCardActions Class="pa-2 justify-content-end">
+                        @* --- START: تغییرات برای اضافه کردن دکمه ثبت سفارش --- *@
+                        <MudStack Row="true" Spacing="2">
+                            @* دکمه ها کنار هم با فاصله *@
+
+                            <MudButton Variant="Variant.Filled"
+                                       StartIcon="@Icons.Material.Filled.ReceiptLong"
+                                       Color="Color.Secondary"
+                                       Size="Size.Small"
+                                       OnClick="@(() => ShowCustomerStatement(customer.hes))"
+                                       Disabled="@string.IsNullOrWhiteSpace(customer.hes)">
+                                صورت حساب
+                            </MudButton>
+
+                            <MudButton Variant="Variant.Filled"
+                                       StartIcon="@Icons.Material.Filled.AddShoppingCart"
+                                       Color="Color.Success"
+                                       Size="Size.Small"
+                                       Disabled="@string.IsNullOrWhiteSpace(customer.hes)">
+                                ثبت سفارش
+                            </MudButton>
+
+                        </MudStack>
+                    </MudCardActions>
                 </MudCard>
             }
         </MudList>
@@ -78,10 +149,10 @@
                        ShowFirstButton="true" ShowLastButton="true"
                        Disabled="@(isLoading || FilteredCustomers == null || FilteredCustomers.Count == 0)" /> @* اصلاح شرط Disable *@
 
-         @if (FilteredCustomers?.Count > 0) @* نمایش تعداد کل نتایج فیلتر شده *@
-         {
-             <MudText Align="Align.Center" Class="mt-2" Typo="Typo.caption">نمایش @PagedCustomers.Count از @FilteredCustomers.Count مشتری</MudText>
-         }
+        @if (FilteredCustomers?.Count > 0) @* نمایش تعداد کل نتایج فیلتر شده *@
+        {
+            <MudText Align="Align.Center" Class="mt-2" Typo="Typo.caption">نمایش @PagedCustomers.Count از @FilteredCustomers.Count مشتری</MudText>
+        }
     }
     @* ----- پایان نمایش لیست مشتریان ----- *@
 </MudContainer>
