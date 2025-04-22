@@ -25,20 +25,22 @@ namespace Safir.Server.Controllers // یا namespace صحیح شما
         private readonly long? _startDate;
         private readonly long? _endDate;
         private readonly ILogger _logger;
-
+        private readonly string _customerName;
         private const string PersianFontName = "IRANYekanFN";
 
         public CustomerStatementDocument(IEnumerable<QDAFTARTAFZIL2_H> items,
                                          string hesabCode,
+                                         string customerName,   // <‑‑ دریافت نام مشتری
                                          long? start,
                                          long? end,
                                          ILogger logger)
         {
             _statementItems = items ?? new List<QDAFTARTAFZIL2_H>();
-            _hesabCode      = hesabCode;
-            _startDate      = start;
-            _endDate        = end;
-            _logger         = logger;
+            _hesabCode = hesabCode;
+            _customerName = customerName ?? string.Empty;       // ذخیره
+            _startDate = start;
+            _endDate = end;
+            _logger = logger;
 
             // --- ثبت فونت فارسی (در صورت نیاز) ---
             try
@@ -90,8 +92,10 @@ namespace Safir.Server.Controllers // یا namespace صحیح شما
             {
                 row.RelativeItem().Column(column =>
                 {
-                    column.Item().AlignRight().Text($"صورت حساب مشتری: {_hesabCode}")
-                                  .SemiBold().FontSize(14);
+                    // خط عنوان اصلی – حالا شامل نام و کد
+                    column.Item().AlignRight()
+                          .Text($"صورت حساب مشتری: {_customerName} ({_hesabCode})")
+                          .SemiBold().FontSize(14);
 
                     column.Item().AlignRight().Text(text =>
                     {
