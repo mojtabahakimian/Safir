@@ -85,17 +85,6 @@ namespace Safir.Server.Controllers // یا Namespace صحیح فایل شما
 
                     column.Item().AlignRight().Text(text =>
                     {
-                        text.Span("از تاریخ: ").SemiBold();
-                        text.Span(FormatShamsiDateFromLong(_startDate));
-                    });
-
-                    column.Item().AlignRight().Text(text =>
-                    {
-                        text.Span("تا تاریخ: ").SemiBold();
-                        text.Span(FormatShamsiDateFromLong(_endDate));
-                    });
-                    column.Item().AlignRight().Text(text =>
-                    {
                         text.Span("تاریخ تهیه گزارش: ").SemiBold();
                         text.Span(FormatShamsiDateFromLong(CL_Tarikh.PersianCalendarHelper.GetCurrentPersianDateAsLong()) + " " + DateTime.Now.ToString("HH:mm"));
                     });
@@ -112,7 +101,7 @@ namespace Safir.Server.Controllers // یا Namespace صحیح فایل شما
                 // تعریف ستون‌ها با اضافه شدن ستون "تش"
                 table.ColumnsDefinition(columns =>
                 {
-                    columns.RelativeColumn(0.5f); // ردیف
+                    columns.RelativeColumn(1f); // ردیف
                     columns.RelativeColumn(1.2f); // تاریخ
                     columns.RelativeColumn(1f);   // ش سند
                     columns.RelativeColumn(4f);   // شرح
