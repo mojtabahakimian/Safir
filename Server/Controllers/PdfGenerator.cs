@@ -1,4 +1,6 @@
-﻿// using ها را بررسی کنید و موارد لازم را اضافه کنید
+﻿// PdfGenerator.cs
+// -------------------------------
+// using ها را بررسی کنید و موارد لازم را اضافه کنید
 using Microsoft.Extensions.Logging;
 using QuestPDF.Drawing;
 using QuestPDF.Fluent;
@@ -11,9 +13,11 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq; // برای Any()
 
-namespace Safir.Server.Controllers // یا Namespace صحیح فایل شما
+namespace Safir.Server.Controllers // یا namespace صحیح شما
 {
-    // کلاس تعریف سند PDF برای صورت حساب
+    /// <summary>
+    /// کلاس تولید PDF صورت حساب مشتری
+    /// </summary>
     public class CustomerStatementDocument : IDocument
     {
         private readonly IEnumerable<QDAFTARTAFZIL2_H> _statementItems;
@@ -21,166 +25,183 @@ namespace Safir.Server.Controllers // یا Namespace صحیح فایل شما
         private readonly long? _startDate;
         private readonly long? _endDate;
         private readonly ILogger _logger;
+
         private const string PersianFontName = "IRANYekanFN";
-        public CustomerStatementDocument(IEnumerable<QDAFTARTAFZIL2_H> items, string hesabCode, long? start, long? end, ILogger logger)
+
+        public CustomerStatementDocument(IEnumerable<QDAFTARTAFZIL2_H> items,
+                                         string hesabCode,
+                                         long? start,
+                                         long? end,
+                                         ILogger logger)
         {
             _statementItems = items ?? new List<QDAFTARTAFZIL2_H>();
-            _hesabCode = hesabCode;
-            _startDate = start;
-            _endDate = end;
-            _logger = logger;
+            _hesabCode      = hesabCode;
+            _startDate      = start;
+            _endDate        = end;
+            _logger         = logger;
 
-            // --- تنظیمات فونت فارسی ---
+            // --- ثبت فونت فارسی (در صورت نیاز) ---
             try
             {
-                // <<< --- اصلاح شده: حذف شرط بررسی FontFamilies --- >>>
-                // فقط تلاش می‌کنیم فونت را ثبت کنیم. اگر قبلا ثبت شده باشد، معمولا مشکلی پیش نمی‌آید.
-                //FontManager.RegisterFont(File.OpenRead("irsans.ttf")); // مسیر فونت را بررسی کنید
+                // اگر قبلاً ثبت شده باشد مشکلی ایجاد نمی‌شود
+                // FontManager.RegisterFont(File.OpenRead("irsans.ttf"));
                 _logger.LogInformation("Attempted to register Persian font '{FontName}' for QuestPDF.", PersianFontName);
-
             }
             catch (FileNotFoundException ex)
             {
-                _logger.LogError(ex, "Persian font file 'irsans.ttf' not found. PDF might not render Persian text correctly.");
+                _logger.LogError(ex, "Persian font file not found. PDF may not render Persian text correctly.");
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error registering Persian font for QuestPDF.");
             }
-            // ---------------------------
         }
 
         public DocumentMetadata GetMetadata() => DocumentMetadata.Default;
 
         public void Compose(IDocumentContainer container)
         {
-            container
-                .Page(page =>
-                {
-                    page.Margin(30, Unit.Point);
-                    page.PageColor(Colors.White);
-                    page.DefaultTextStyle(x => x.FontSize(10).FontFamily(PersianFontName)); // استفاده از نام فونت
-                    page.ContentFromRightToLeft();
+            container.Page(page =>
+            {
+                // 1) حالت Landscape
+                page.Size(PageSizes.A4.Landscape());
 
-                    page.Header().Element(ComposeHeader);
-                    page.Content().Element(ComposeTable);
-                    page.Footer().AlignCenter().Text(text =>
-                    {
-                        text.Span("صفحه ").FontSize(8);
-                        text.CurrentPageNumber().FontSize(8);
-                        text.Span(" از ").FontSize(8);
-                        text.TotalPages().FontSize(8);
-                    });
+                page.Margin(30, Unit.Point);
+                page.PageColor(Colors.White);
+                page.DefaultTextStyle(x => x.FontSize(10).FontFamily(PersianFontName));
+                page.ContentFromRightToLeft();
+
+                page.Header().Element(ComposeHeader);
+                page.Content().Element(ComposeTable);
+                page.Footer().AlignCenter().Text(text =>
+                {
+                    text.Span("صفحه ").FontSize(8);
+                    text.CurrentPageNumber().FontSize(8);
+                    text.Span(" از ").FontSize(8);
+                    text.TotalPages().FontSize(8);
                 });
+            });
         }
 
-        void ComposeHeader(IContainer container)
+        #region Header
+        private void ComposeHeader(IContainer container)
         {
             container.Row(row =>
             {
                 row.RelativeItem().Column(column =>
                 {
                     column.Item().AlignRight().Text($"صورت حساب مشتری: {_hesabCode}")
-                        .SemiBold().FontSize(14);
+                                  .SemiBold().FontSize(14);
 
                     column.Item().AlignRight().Text(text =>
                     {
                         text.Span("تاریخ تهیه گزارش: ").SemiBold();
-                        text.Span(FormatShamsiDateFromLong(CL_Tarikh.PersianCalendarHelper.GetCurrentPersianDateAsLong()) + " " + DateTime.Now.ToString("HH:mm"));
+                        text.Span($"{FormatShamsiDateFromLong(CL_Tarikh.PersianCalendarHelper.GetCurrentPersianDateAsLong())} {DateTime.Now:HH:mm}");
                     });
                 });
-                // لوگو یا ...
-                // row.ConstantItem(100).Height(50).Placeholder();
+
+                // در صورت نیاز لوگو:
+                // row.ConstantItem(100).Height(50).Image(...);
             });
         }
+        #endregion
 
-        void ComposeTable(IContainer container)
+        #region Table
+        private void ComposeTable(IContainer container)
         {
             container.PaddingTop(10).Table(table =>
             {
-                // تعریف ستون‌ها با اضافه شدن ستون "تش"
+                // 2) ترتیب ستون‌ها (ردیف، تاریخ، ش سند، شرح، بدهکار، بستانکار، تش، مانده)
                 table.ColumnsDefinition(columns =>
                 {
-                    columns.RelativeColumn(1f); // ردیف
+                    columns.RelativeColumn(1f);   // ردیف
                     columns.RelativeColumn(1.2f); // تاریخ
-                    columns.RelativeColumn(1f);   // ش سند
+                    columns.RelativeColumn(1f);   // شماره سند
                     columns.RelativeColumn(4f);   // شرح
                     columns.RelativeColumn(2.2f); // بدهکار
                     columns.RelativeColumn(2.2f); // بستانکار
+                    columns.ConstantColumn(30f);  // تش
                     columns.RelativeColumn(2.5f); // مانده
-                    columns.ConstantColumn(30f);  // <<< ستون جدید "تش" با عرض ثابت 30 پوینت >>>
                 });
 
-                // هدر جدول با اضافه شدن ستون "تش"
+                // هدر
                 table.Header(header =>
                 {
-                    static IContainer HeaderCellStyle(IContainer c) => c.DefaultTextStyle(x => x.SemiBold().FontFamily(PersianFontName)).PaddingVertical(5).BorderBottom(1).BorderColor(Colors.Grey.Lighten2).AlignCenter();
+                    static IContainer HeaderCell(IContainer c) =>
+                        c.DefaultTextStyle(x => x.SemiBold().FontFamily(PersianFontName))
+                         .PaddingVertical(5)
+                         .BorderBottom(1)
+                         .BorderColor(Colors.Grey.Lighten2)
+                         .AlignCenter();
 
-                    // ترتیب جدید هدرها
-                    header.Cell().Element(HeaderCellStyle).Text("ردیف");
-                    header.Cell().Element(HeaderCellStyle).Text("تاریخ");
-                    header.Cell().Element(HeaderCellStyle).Text("ش سند");
-                    header.Cell().Element(HeaderCellStyle).Text("شرح");
-                    header.Cell().Element(HeaderCellStyle).Text("بدهکار");
-                    header.Cell().Element(HeaderCellStyle).Text("بستانکار");
-                    header.Cell().Element(HeaderCellStyle).Text("مانده");
-                    header.Cell().Element(HeaderCellStyle).Text("تش"); // <<< هدر ستون جدید >>>
+                    header.Cell().Element(HeaderCell).Text("ردیف");
+                    header.Cell().Element(HeaderCell).Text("تاریخ");
+                    header.Cell().Element(HeaderCell).Text("ش سند");
+                    header.Cell().Element(HeaderCell).Text("شرح");
+                    header.Cell().Element(HeaderCell).Text("بدهکار");
+                    header.Cell().Element(HeaderCell).Text("بستانکار");
+                    header.Cell().Element(HeaderCell).Text("تش");
+                    header.Cell().Element(HeaderCell).Text("مانده");
                 });
 
-                int rowIndex = 0;
-                // تلورانس برای مقایسه مانده با صفر (برای جلوگیری از خطاهای اعشاری)
-                decimal tolerance = 0.01m;
+                int     rowIndex  = 0;
+                decimal tolerance = 0.01m; // برای تشخیص بده/بس
 
                 foreach (var item in _statementItems)
                 {
                     rowIndex++;
-                    static IContainer BodyCellStyleBase(IContainer c) =>
-                        c.BorderBottom(1).BorderColor(Colors.Grey.Lighten1).PaddingVertical(3).PaddingHorizontal(5);
-                    static IContainer BodyAlignCenter(IContainer c) => BodyCellStyleBase(c).AlignCenter();
-                    static IContainer BodyAlignRight(IContainer c) => BodyCellStyleBase(c).AlignRight();
-                    static IContainer BodyAlignLeft(IContainer c) => BodyCellStyleBase(c).AlignLeft();
 
-                    // محاسبه متن "تش" بر اساس مانده
-                    string tashkhisText = "";
+                    static IContainer BodyCell(IContainer c) =>
+                        c.BorderBottom(1)
+                         .BorderColor(Colors.Grey.Lighten1)
+                         .PaddingVertical(3)
+                         .PaddingHorizontal(5);
+
+                    static IContainer CellCenter(IContainer c) => BodyCell(c).AlignCenter();
+                    static IContainer CellRight(IContainer c)  => BodyCell(c).AlignRight();
+                    static IContainer CellLeft(IContainer c)   => BodyCell(c).AlignLeft();
+
+                    // محاسبه ستون "تش"
+                    string tashkhisText = string.Empty;
                     if (item.MAND.HasValue)
                     {
-                        if (item.MAND.Value > tolerance)
-                        {
-                            tashkhisText = "بده";
-                        }
-                        else if (item.MAND.Value < -tolerance)
-                        {
-                            tashkhisText = "بس";
-                        }
-                        // اگر مانده صفر یا خیلی نزدیک به صفر بود، tashkhisText خالی می‌ماند
+                        if (item.MAND.Value > tolerance)        tashkhisText = "بده";
+                        else if (item.MAND.Value < -tolerance) tashkhisText = "بس";
                     }
 
-                    // نمایش داده‌ها
-                    table.Cell().Element(BodyAlignCenter).Text(rowIndex.ToString());
-                    table.Cell().Element(BodyAlignCenter).Text(FormatShamsiDateFromLong(item.DATE_S));
-                    table.Cell().Element(BodyAlignCenter).Text(FormatDocNumber(item.N_S));
-                    table.Cell().Element(c => BodyAlignRight(c).PaddingRight(10)).Text(item.SHARH ?? string.Empty);
-                    table.Cell().Element(c => BodyAlignLeft(c).PaddingLeft(10)).Text(FormatNumber(item.BED));
-                    table.Cell().Element(c => BodyAlignLeft(c).PaddingLeft(10)).Text(FormatNumber(item.BES));
-                    table.Cell().Element(c => BodyAlignLeft(c).PaddingLeft(10)).Text(FormatNumber(item.MAND));
-                    // <<< نمایش مقدار محاسبه شده "تش" در ستون جدید (وسط‌چین) >>>
-                    table.Cell().Element(BodyAlignCenter).Text(tashkhisText);
+                    // قدر مطلق مانده برای نمایش
+                    decimal? absMand = item.MAND.HasValue ? Math.Abs(item.MAND.Value) : item.MAND;
+
+                    // --- افزودن سلول‌ها به ترتیب جدید ---
+                    table.Cell().Element(CellCenter).Text(rowIndex.ToString());
+                    table.Cell().Element(CellCenter).Text(FormatShamsiDateFromLong(item.DATE_S));
+                    table.Cell().Element(CellCenter).Text(FormatDocNumber(item.N_S));
+                    table.Cell().Element(c => CellRight(c).PaddingRight(10)).Text(item.SHARH ?? string.Empty);
+                    table.Cell().Element(c => CellLeft(c).PaddingLeft(10)).Text(FormatNumber(item.BED));
+                    table.Cell().Element(c => CellLeft(c).PaddingLeft(10)).Text(FormatNumber(item.BES));
+                    table.Cell().Element(CellCenter).Text(tashkhisText);                    // تش
+                    table.Cell().Element(c => CellLeft(c).PaddingLeft(10)).Text(FormatNumber(absMand)); // مانده (قدر مطلق)
                 }
             });
         }
+        #endregion
 
-        // --- توابع کمکی فرمت‌دهی ---
+        #region Helper Format Methods
         private string FormatShamsiDateFromLong(long? dateLong)
         {
             if (!dateLong.HasValue || dateLong.Value <= 0) return string.Empty;
+
             try
             {
-                string dateStr = dateLong.Value.ToString();
-                if (dateStr.Length == 8)
-                    return $"{dateStr.Substring(0, 4)}/{dateStr.Substring(4, 2)}/{dateStr.Substring(6, 2)}";
-                return dateStr;
+                string d = dateLong.Value.ToString();
+                return d.Length == 8
+                    ? $"{d[..4]}/{d.Substring(4, 2)}/{d.Substring(6, 2)}"
+                    : d;
             }
-            catch { return dateLong.Value.ToString(); }
+            catch
+            {
+                return dateLong.Value.ToString();
+            }
         }
 
         private string FormatNumber(decimal? number)
@@ -188,12 +209,17 @@ namespace Safir.Server.Controllers // یا Namespace صحیح فایل شما
             if (!number.HasValue || number.Value == 0) return string.Empty;
             return number.Value.ToString("N0");
         }
+
         private string FormatDocNumber(double? docNumber)
         {
             if (!docNumber.HasValue) return string.Empty;
+
+            // اگر عدد صحیح باشد، بدون جداکننده اعشار چاپ می‌کنیم
             if (docNumber.Value == Math.Floor(docNumber.Value))
                 return ((long)docNumber.Value).ToString();
+
             return docNumber.Value.ToString("N0");
         }
+        #endregion
     }
 }
