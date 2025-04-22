@@ -34,7 +34,7 @@ namespace Safir.Client.Pages.Hesabdari // مطمئن شوید namespace درست
         private bool isDownloading = false; // <<< فلگ برای نمایش وضعیت دانلود
 
         // تاریخ های پیش فرض برای درخواست از سرور (می توانید بعداً امکان تغییرشان را اضافه کنید)
-        private long? currentStartDate = 111110101; // مثال
+        private long? currentStartDate = 1; // مثال
         private long? currentEndDate = 99991230;   // مثال
 
         // این متد زمانی اجرا می شود که پارامترهای ورودی (مثل HesabCode) مقداردهی شوند

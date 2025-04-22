@@ -31,7 +31,7 @@ namespace Safir.Server.Controllers
 
         // private class BlockHesModel { public string HES { get; set; } } // Assuming this is still needed
 
-        private const long DefaultStartDate = 11110101;
+        private const long DefaultStartDate = 1;
         private const long DefaultEndDate = 99991230;
 
         public CustomersController(
@@ -405,6 +405,24 @@ namespace Safir.Server.Controllers
             {
                 _logger.LogError(ex, "Error fetching statement for HesabCode: {HesabCode}", hesabCode);
                 return StatusCode(500, "خطای داخلی سرور هنگام دریافت صورت حساب رخ داد.");
+            }
+        }
+
+        private async Task<string> GetCustomerNameAsync(string hesabCode)
+        {
+            try
+            {
+                string sql = @"SELECT TOP (1) NAME
+                       FROM TDETA_HES
+                       WHERE HES = @HesabCode";          // ستون HES در جدول شما قرار دارد
+
+                var name = await _dbService.DoGetDataSQLAsyncSingle<string>(sql, new { HesabCode = hesabCode });
+                return name ?? string.Empty;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error fetching customer name for HesabCode {HesabCode}", hesabCode);
+                return string.Empty;
             }
         }
 
