@@ -412,11 +412,23 @@ namespace Safir.Server.Controllers
         {
             try
             {
+
+                var _kol = CL_HESABDARI.GETKOL(hesabCode);
+                var _moin = CL_HESABDARI.GETMOIN(hesabCode);
+                var _taf = CL_HESABDARI.GETTAF(hesabCode);
+
                 string sql = @"SELECT TOP (1) NAME
                        FROM TDETA_HES
-                       WHERE HES = @HesabCode";          // ستون HES در جدول شما قرار دارد
+                       WHERE N_KOL = @KOL AND NUMBER = @NUMBER AND TNUMBER = @TNUMBER";          // ستون HES در جدول شما قرار دارد
 
-                var name = await _dbService.DoGetDataSQLAsyncSingle<string>(sql, new { HesabCode = hesabCode });
+                var param = new Dictionary<string, object>
+            {
+                { "@KOL",      _kol  },
+                { "@NUMBER",   _moin },
+                { "@TNUMBER",   _taf }
+            };
+
+                var name = await _dbService.DoGetDataSQLAsyncSingle<string>(sql, param);
                 return name ?? string.Empty;
             }
             catch (Exception ex)
@@ -485,10 +497,23 @@ namespace Safir.Server.Controllers
 
                 _logger.LogInformation("Generating PDF for {Count} items. HesabCode: {HesabCode}", statementItems.Count(), hesabCode);
 
+                //استخراج نام مشتری از اولین ردیف یا متد کمکی
+                string customerName = statementItems.FirstOrDefault()?.TAFZILN;
+
+                if (string.IsNullOrWhiteSpace(customerName))
+                {
+                    customerName = await GetCustomerNameAsync(hesabCode);   //‌ fallback
+                }
 
                 // 2. ایجاد نمونه از کلاس سند PDF
                 // ارسال ILogger به کلاس سند برای لاگ‌گیری داخلی آن
-                var document = new CustomerStatementDocument(statementItems, hesabCode, startDate, endDate, _logger);
+                var document = new CustomerStatementDocument(
+                                    statementItems,
+                                    hesabCode,
+                                    customerName,      // <‑‑ پارامتر جدید
+                                    startDate,
+                                    endDate,
+                                    _logger);
 
                 // 3. تولید PDF به صورت بایت (byte array)
                 // GeneratePdf() یک آرایه بایت از PDF تولید شده برمی‌گرداند.
@@ -512,7 +537,7 @@ namespace Safir.Server.Controllers
             }
         }
 
-    
+
         #endregion
     }
 }
