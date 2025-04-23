@@ -155,7 +155,7 @@ namespace Safir.Server.Controllers // یا namespace صحیح شما
         {
             container.PaddingTop(10).Table(table =>
             {
-                // ... بقیه کد ComposeTable ...
+                // تعریف ستون ها مثل قبل
                 table.ColumnsDefinition(columns =>
                 {
                     columns.RelativeColumn(1f);   // ردیف
@@ -168,66 +168,68 @@ namespace Safir.Server.Controllers // یا namespace صحیح شما
                     columns.RelativeColumn(2.5f); // مانده
                 });
 
+                // ----- تغییرات نهایی در هدر -----
                 table.Header(header =>
                 {
-                    static IContainer HeaderCell(IContainer c) =>
+                    // --- استایل پایه هدر با پدینگ افقی ---
+                    static IContainer BaseHeaderStyle(IContainer c) =>
                         c.DefaultTextStyle(x => x.SemiBold().FontFamily(PersianFontName))
                          .PaddingVertical(5)
+                         .PaddingHorizontal(5) // <<< --- اضافه کردن پدینگ افقی ---
                          .BorderBottom(1)
-                         .BorderColor(Colors.Grey.Lighten2)
-                         .AlignCenter();
+                         .BorderColor(Colors.Grey.Lighten2);
 
-                    header.Cell().Element(HeaderCell).Text("ردیف");
-                    header.Cell().Element(HeaderCell).Text("تاریخ");
-                    header.Cell().Element(HeaderCell).Text("ش سند");
-                    header.Cell().Element(HeaderCell).Text("شرح");
-                    header.Cell().Element(HeaderCell).Text("بدهکار");
-                    header.Cell().Element(HeaderCell).Text("بستانکار");
-                    header.Cell().Element(HeaderCell).Text("تش");
-                    header.Cell().Element(HeaderCell).Text("مانده");
+                    // تعریف استایل‌های تراز مختلف برای هدر (مثل قبل)
+                    static IContainer HeaderCenter(IContainer c) => BaseHeaderStyle(c).AlignCenter();
+                    static IContainer HeaderRight(IContainer c) => BaseHeaderStyle(c).AlignRight();
+
+                    // اعمال تراز به هر سلول هدر (بدون تغییر نسبت به مرحله قبل)
+                    header.Cell().Element(HeaderCenter).Text("ردیف");
+                    header.Cell().Element(HeaderCenter).Text("تاریخ");
+                    header.Cell().Element(HeaderCenter).Text("ش سند");
+                    header.Cell().Element(HeaderRight).Text("شرح");
+                    header.Cell().Element(HeaderRight).Text("بدهکار");
+                    header.Cell().Element(HeaderRight).Text("بستانکار");
+                    header.Cell().Element(HeaderCenter).Text("تش");
+                    header.Cell().Element(HeaderRight).Text("مانده");
                 });
 
+                // ----- بدنه جدول (بدون تغییر نسبت به مرحله قبل) -----
                 int rowIndex = 0;
-                decimal tolerance = 0.01m; // برای تشخیص بده/بس
+                decimal tolerance = 0.01m;
 
                 foreach (var item in _statementItems)
                 {
                     rowIndex++;
 
-                    static IContainer BodyCell(IContainer c) =>
-                        c.BorderBottom(1)
-                         .BorderColor(Colors.Grey.Lighten1)
-                         .PaddingVertical(3)
-                         .PaddingHorizontal(5);
+                    static IContainer BaseCellStyle(IContainer c) =>
+                       c.BorderBottom(1)
+                        .BorderColor(Colors.Grey.Lighten1)
+                        .PaddingVertical(3)
+                        .PaddingHorizontal(5);
 
-                    static IContainer CellCenter(IContainer c) => BodyCell(c).AlignCenter();
-                    static IContainer CellRight(IContainer c) => BodyCell(c).AlignRight();
-                    static IContainer CellLeft(IContainer c) => BodyCell(c).AlignLeft();
+                    static IContainer CellCenter(IContainer c) => BaseCellStyle(c).AlignCenter();
+                    static IContainer CellRight(IContainer c) => BaseCellStyle(c).AlignRight();
 
-                    // محاسبه ستون "تش"
                     string tashkhisText = string.Empty;
                     if (item.MAND.HasValue)
                     {
                         if (item.MAND.Value > tolerance) tashkhisText = "بده";
                         else if (item.MAND.Value < -tolerance) tashkhisText = "بس";
                     }
-
-                    // قدر مطلق مانده برای نمایش
                     decimal? absMand = item.MAND.HasValue ? Math.Abs(item.MAND.Value) : item.MAND;
 
                     table.Cell().Element(CellCenter).Text(rowIndex.ToString());
                     table.Cell().Element(CellCenter).Text(FormatShamsiDateFromLong(item.DATE_S));
                     table.Cell().Element(CellCenter).Text(FormatDocNumber(item.N_S));
-                    table.Cell().Element(c => CellRight(c).PaddingRight(10)).Text(item.SHARH ?? string.Empty);
-                    table.Cell().Element(c => CellLeft(c).PaddingLeft(10)).Text(FormatNumber(item.BED));
-                    table.Cell().Element(c => CellLeft(c).PaddingLeft(10)).Text(FormatNumber(item.BES));
-                    table.Cell().Element(CellCenter).Text(tashkhisText);                    // تش
-                    table.Cell().Element(c => CellLeft(c).PaddingLeft(10)).Text(FormatNumber(absMand)); // مانده (قدر مطلق)
+                    table.Cell().Element(CellRight).Text(item.SHARH ?? string.Empty);
+                    table.Cell().Element(CellRight).Text(FormatNumber(item.BED));
+                    table.Cell().Element(CellRight).Text(FormatNumber(item.BES));
+                    table.Cell().Element(CellCenter).Text(tashkhisText);
+                    table.Cell().Element(CellRight).Text(FormatNumber(absMand));
                 }
             });
-        }
-
-        // متدهای Helper بدون تغییر باقی می مانند...
+        }        // متدهای Helper بدون تغییر باقی می مانند...
         #region Helper Format Methods
         private string FormatShamsiDateFromLong(long? dateLong)
         {
