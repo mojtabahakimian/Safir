@@ -1,0 +1,152 @@
+﻿@page "/cart"
+@attribute [Authorize]
+
+@using Microsoft.AspNetCore.Authorization;
+@using Safir.Client.Services
+@using System.Globalization
+@using Safir.Shared.Models.Kala;
+
+@inject ShoppingCartService CartService
+@inject NavigationManager NavManager
+@inject ISnackbar Snackbar
+
+<MudContainer MaxWidth="MaxWidth.Medium" Class="mt-6">
+    <MudPaper Class="pa-4" Elevation="3">
+        <MudText Typo="Typo.h5" GutterBottom="true">سبد سفارش</MudText>
+
+        @if (CartService.CurrentCustomer != null)
+        {
+            <MudText Typo="Typo.h6" Color="Color.Primary" GutterBottom="true">
+                مشتری: @CartService.CurrentCustomer.person (@CartService.CurrentCustomer.hes)
+            </MudText>
+            <MudDivider Class="mb-4" />
+
+            @if (CartService.Items.Any())
+            {
+                <MudSimpleTable Hover="true" Dense="true">
+                    <thead>
+                        <tr>
+                            <th>کالا</th>
+                            <th>واحد</th>
+                            <th>تعداد</th>
+                            <th>قیمت واحد</th>
+                            <th>قیمت کل</th>
+                            <th></th> @* ستون خالی برای دکمه حذف *@
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var item in CartService.Items)
+                        {
+                            <tr>
+                                <td>@item.ItemName</td>
+                                <td>@item.SelectedUnitName</td>
+                                <td>
+                                    @* TODO: Add ability to edit quantity here if needed *@
+                                    @item.Quantity
+                                </td>
+                                <td>@FormatCurrency(item.PricePerUnit)</td>
+                                <td>@FormatCurrency(item.TotalPrice)</td>
+                                <td>
+                                    <MudIconButton Icon="@Icons.Material.Filled.Delete"
+                                                   Color="Color.Error"
+                                                   Size="Size.Small"
+                                                   OnClick="@(() => RemoveItemFromCart(item))"
+                                                   Title="حذف آیتم" />
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                    <tfoot>
+                        <tr>
+                            <td colspan="4" style="text-align: left; font-weight: bold;">جمع کل:</td>
+                            <td style="font-weight: bold;">@FormatCurrency(CartService.GetTotal())</td>
+                            <td></td>
+                        </tr>
+                    </tfoot>
+                </MudSimpleTable>
+
+                <MudDivider Class="my-4" />
+
+                <MudStack Row="true" Justify="Justify.SpaceBetween">
+                    <MudButton Variant="Variant.Filled"
+                               Color="Color.Error"
+                               OnClick="ClearCart"
+                               StartIcon="@Icons.Material.Filled.RemoveShoppingCart">
+                        خالی کردن سبد
+                    </MudButton>
+                    <MudButton Variant="Variant.Filled"
+                               Color="Color.Success"
+                               OnClick="SubmitOrder"
+                               StartIcon="@Icons.Material.Filled.Send">
+                        ارسال و ثبت پیش فاکتور
+                    </MudButton>
+                </MudStack>
+            }
+            else
+            {
+                <MudAlert Severity="Severity.Info">سبد سفارش شما خالی است.</MudAlert>
+                <MudButton Variant="Variant.Text" Color="Color.Primary" OnClick='() => NavManager.NavigateTo("/item-groups")' Class="mt-4">بازگشت به لیست کالاها</MudButton>
+            }
+        }
+        else
+        {
+            <MudAlert Severity="Severity.Warning">هنوز مشتری برای ثبت سفارش انتخاب نشده است.</MudAlert>
+            <MudButton Variant="Variant.Text" Color="Color.Primary" OnClick='() => NavManager.NavigateTo("/visitor-customers")' Class="mt-4">انتخاب مشتری</MudButton>
+        }
+
+    </MudPaper>
+</MudContainer>
+
+@code {
+
+    protected override void OnInitialized()
+    {
+        // اشتراک در رویداد برای بروزرسانی خودکار صفحه سبد
+        CartService.CartChanged += OnCartChanged;
+    }
+
+    public void Dispose()
+    {
+        CartService.CartChanged -= OnCartChanged;
+    }
+
+    private void OnCartChanged()
+    {
+        InvokeAsync(StateHasChanged); // Re-render the component when cart changes
+    }
+
+    private void RemoveItemFromCart(CartItem item)
+    {
+        CartService.RemoveItem(item.ItemCode, item.SelectedUnitCode);
+        Snackbar.Add($"'{item.ItemName}' از سبد حذف شد.", Severity.Warning);
+    }
+
+    private void ClearCart()
+    {
+        CartService.ClearCart();
+        Snackbar.Add("سبد سفارش خالی شد.", Severity.Info);
+        // Optionally navigate away
+        // NavManager.NavigateTo("/item-groups");
+    }
+
+    private void SubmitOrder()
+    {
+        // TODO: منطق نهایی کردن سفارش و ارسال به سرور
+        // 1. جمع‌آوری اطلاعات لازم (مشتری، آیتم‌ها، تعداد، واحد، قیمت و...)
+        // 2. ایجاد یک مدل DTO برای ارسال سفارش به سرور
+        // 3. فراخوانی یک متد در یک سرویس جدید (مثلا OrderApiService) برای ارسال DTO به API سرور
+        // 4. مدیریت پاسخ سرور (موفقیت یا خطا)
+        // 5. پاک کردن سبد خرید در صورت موفقیت
+
+        Snackbar.Add("منطق ارسال سفارش به سرور هنوز پیاده‌سازی نشده است.", Severity.Info);
+
+        // مثال: پاک کردن سبد پس از ثبت (فرضی)
+        // CartService.ClearCart();
+        // NavManager.NavigateTo("/order-confirmation"); // یا صفحه‌ی دیگر
+    }
+
+    private string FormatCurrency(decimal? value)
+    {
+        return value?.ToString("N0", System.Globalization.CultureInfo.GetCultureInfo("fa-IR")) ?? "0";
+    }
+}

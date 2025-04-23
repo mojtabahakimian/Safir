@@ -8,6 +8,13 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <Compile Remove="Models\**" />
+    <Content Remove="Models\**" />
+    <EmbeddedResource Remove="Models\**" />
+    <None Remove="Models\**" />
+  </ItemGroup>
+
+  <ItemGroup>
     <None Remove="Fonts\2.png" />
     <None Remove="Fonts\IRANYekanFN.TTF" />
   </ItemGroup>
@@ -33,10 +40,6 @@
   <ItemGroup>
     <ProjectReference Include="..\Client\Safir.Client.csproj" />
     <ProjectReference Include="..\Shared\Safir.Shared.csproj" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <Folder Include="Models\" />
   </ItemGroup>
 
 

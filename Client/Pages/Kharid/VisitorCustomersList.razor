@@ -128,11 +128,17 @@
                                 صورت حساب
                             </MudButton>
 
-                            <MudButton Variant="Variant.Filled"
+                      @*       <MudButton Variant="Variant.Filled"
                                        StartIcon="@Icons.Material.Filled.AddShoppingCart"
                                        Color="Color.Success"
                                        Size="Size.Small"
                                        Disabled="@string.IsNullOrWhiteSpace(customer.hes)">
+                                ثبت سفارش
+                            </MudButton> *@
+                            <MudButton Variant="Variant.Filled" Color="Color.Success" Size="Size.Small"
+                                       StartIcon="@Icons.Material.Filled.ShoppingCartCheckout"
+                                       OnClick="@(() => StartOrderForCustomer(customer))">
+                                @* customer نام متغیر حلقه است *@
                                 ثبت سفارش
                             </MudButton>
 

@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Threading.Tasks;
 using System; // برای Exception
 using Microsoft.Extensions.Logging; // برای ILogger
+using Safir.Shared.Models.Kala;
 
 namespace Safir.Server.Controllers
 {
@@ -97,6 +98,23 @@ namespace Safir.Server.Controllers
             {
                 _logger.LogError(ex, "Error fetching Routes");
                 return StatusCode(500, "Internal server error while fetching Routes.");
+            }
+        }
+
+        // اکشن جدید برای واحدها
+        [HttpGet("units")] // مسیر: api/lookup/units
+        public async Task<ActionResult<IEnumerable<TCOD_VAHEDS>>> GetUnits()
+        {
+            const string sql = "SELECT CODE, NAMES FROM dbo.TCOD_VAHEDS ORDER BY NAMES";
+            try
+            {
+                var data = await _dbService.DoGetDataSQLAsync<TCOD_VAHEDS>(sql);
+                return Ok(data ?? new List<TCOD_VAHEDS>());
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error fetching Units (TCOD_VAHEDS)");
+                return StatusCode(500, "Internal server error while fetching units.");
             }
         }
 
