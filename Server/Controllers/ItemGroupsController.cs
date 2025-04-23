@@ -25,7 +25,7 @@ namespace Safir.Server.Controllers
         }
 
         [HttpGet]
-        public async Task<ActionResult<IEnumerable<ItemGroupDto>>> GetItemGroups()
+        public async Task<ActionResult<IEnumerable<TCODE_MENUITEM>>> GetItemGroups()
         {
             // Selecting only necessary columns for the DTO
             // Excluding 'pic' for now, but can be added if needed
@@ -41,13 +41,13 @@ namespace Safir.Server.Controllers
             try
             {
                 _logger.LogInformation("Fetching item groups from TCODE_MENUITEM");
-                var itemGroups = await _dbService.DoGetDataSQLAsync<ItemGroupDto>(sql);
+                var itemGroups = await _dbService.DoGetDataSQLAsync<TCODE_MENUITEM>(sql);
 
                 if (itemGroups == null)
                 {
                     _logger.LogWarning("Fetching item groups returned null.");
                     // Return empty list instead of NotFound or Error if null is unexpected but possible
-                    return Ok(new List<ItemGroupDto>());
+                    return Ok(new List<TCODE_MENUITEM>());
                 }
 
                 _logger.LogInformation("Successfully fetched {Count} item groups.", itemGroups.Count());

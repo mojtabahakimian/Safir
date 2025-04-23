@@ -192,16 +192,16 @@
 
 </MudContainer>
 
-@code 
+@code
 {
     // --- Component State ---
-    private List<ItemGroupDto>? _itemGroups;
-    private ItemGroupDto? _selectedGroup;
+    private List<TCODE_MENUITEM>? _itemGroups;
+    private TCODE_MENUITEM? _selectedGroup;
     private bool _isLoadingGroups = false;
     private string? _groupErrorMessage;
     private string _groupSearchTerm = string.Empty;
 
-    private List<ItemDto>? _items;
+    private List<STUF_DEF>? _items;
     private bool _isItemsLoading = false;
     private string? _itemsErrorMessage;
     private string _itemSearchTerm = string.Empty;
@@ -269,7 +269,7 @@
     }
 
     // --- UI Event Handlers ---
-    private async Task HandleGroupClick(ItemGroupDto group)
+    private async Task HandleGroupClick(TCODE_MENUITEM group)
     {
         if (group == null || _isItemsLoading) return;
         if (_selectedGroup != group)
@@ -326,9 +326,9 @@
     }
 
     // --- Helper Methods ---
-    private IEnumerable<ItemGroupDto> GetFilteredGroups()
+    private IEnumerable<TCODE_MENUITEM> GetFilteredGroups()
     {
-        if (_itemGroups == null) return Enumerable.Empty<ItemGroupDto>();
+        if (_itemGroups == null) return Enumerable.Empty<TCODE_MENUITEM>();
         if (string.IsNullOrWhiteSpace(_groupSearchTerm)) return _itemGroups;
         try { return _itemGroups.Where(g => g.NAMES != null && g.NAMES.Contains(_groupSearchTerm, StringComparison.OrdinalIgnoreCase)).ToList(); }
         catch (Exception ex) { Logger.LogError(ex, "Filter error"); Snackbar.Add("Filter error", Severity.Warning); return _itemGroups; }
