@@ -6,7 +6,7 @@ using System.Threading.Tasks;
 
 namespace Safir.Shared.Models.Kala
 {
-    public class ItemDto
+    public class STUF_DEF
     {
         //(Primary Key)
         public string CODE { get; set; } = string.Empty;

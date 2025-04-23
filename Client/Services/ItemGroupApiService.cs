@@ -25,7 +25,7 @@ namespace Safir.Client.Services
         }
 
         // --- Get Item Groups ---
-        public async Task<List<ItemGroupDto>?> GetItemGroupsAsync()
+        public async Task<List<TCODE_MENUITEM>?> GetItemGroupsAsync()
         {
             string requestUri = "api/itemgroups";
             try
@@ -35,9 +35,9 @@ namespace Safir.Client.Services
 
                 if (response.IsSuccessStatusCode)
                 {
-                    var groups = await response.Content.ReadFromJsonAsync<List<ItemGroupDto>>();
+                    var groups = await response.Content.ReadFromJsonAsync<List<TCODE_MENUITEM>>();
                     _logger.LogInformation("Successfully received {Count} item groups from API.", groups?.Count ?? 0);
-                    return groups ?? new List<ItemGroupDto>();
+                    return groups ?? new List<TCODE_MENUITEM>();
                 }
                 else
                 {
@@ -54,7 +54,7 @@ namespace Safir.Client.Services
         }
 
         // --- Get Items By Group (Corrected Signature & Implementation) ---
-        public async Task<PagedResult<ItemDto>?> GetItemsByGroupAsync(
+        public async Task<PagedResult<STUF_DEF>?> GetItemsByGroupAsync(
             double groupCode,
             int pageNumber = 1,
             int pageSize = 10,
@@ -77,7 +77,7 @@ namespace Safir.Client.Services
 
                 if (response.IsSuccessStatusCode)
                 {
-                    var pagedResult = await response.Content.ReadFromJsonAsync<PagedResult<ItemDto>>();
+                    var pagedResult = await response.Content.ReadFromJsonAsync<PagedResult<STUF_DEF>>();
                     _logger.LogInformation("Received paged items for group {GroupCode}, Search: '{SearchTerm}'", groupCode, searchTerm);
                     return pagedResult; // Can be null if JSON parsing fails
                 }

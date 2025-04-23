@@ -6,7 +6,7 @@ using System.Threading.Tasks;
 
 namespace Safir.Shared.Models.Kala
 {
-    public class ItemGroupDto
+    public class TCODE_MENUITEM
     {
         // Note: SQL CODE is float, using double in C#
         public double CODE { get; set; }
