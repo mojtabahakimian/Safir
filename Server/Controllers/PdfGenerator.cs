@@ -1,6 +1,6 @@
-﻿// PdfGenerator.cs
+﻿// مسیر فایل: Safir.Server/Controllers/PdfGenerator.cs
 // -------------------------------
-// using ها را بررسی کنید و موارد لازم را اضافه کنید
+// using های لازم را بررسی کنید و موارد زیر را اضافه یا جایگزین کنید:
 using Microsoft.Extensions.Logging;
 using QuestPDF.Drawing;
 using QuestPDF.Fluent;
@@ -10,8 +10,9 @@ using Safir.Shared.Models.Hesabdari;
 using Safir.Shared.Utility;
 using System;
 using System.Collections.Generic;
-using System.IO;
-using System.Linq; // برای Any()
+using System.IO; // <--- اضافه شود
+using System.Linq;
+using Microsoft.AspNetCore.Hosting; // <--- اضافه شود
 
 namespace Safir.Server.Controllers // یا namespace صحیح شما
 {
@@ -26,32 +27,54 @@ namespace Safir.Server.Controllers // یا namespace صحیح شما
         private readonly long? _endDate;
         private readonly ILogger _logger;
         private readonly string _customerName;
-        private const string PersianFontName = "IRANYekanFN";
+        private readonly IWebHostEnvironment _env; // <--- اضافه کردن WebHostEnvironment
+        private byte[]? _logoBytes = null;       // <--- متغیر برای نگهداری بایت های لوگو
 
+        private const string PersianFontName = "IRANYekanFN";
+        private const string LogoFileName = "2.png"; // <--- نام فایل لوگو
+        private const string FontsFolderName = "Fonts"; // <--- نام پوشه فونت/لوگو
+
+
+        // --- سازنده (Constructor) را آپدیت کنید ---
         public CustomerStatementDocument(IEnumerable<QDAFTARTAFZIL2_H> items,
                                          string hesabCode,
-                                         string customerName,   // <‑‑ دریافت نام مشتری
+                                         string customerName,
                                          long? start,
                                          long? end,
-                                         ILogger logger)
+                                         ILogger logger,
+                                         IWebHostEnvironment env) // <--- پارامتر جدید
         {
             _statementItems = items ?? new List<QDAFTARTAFZIL2_H>();
             _hesabCode = hesabCode;
-            _customerName = customerName ?? string.Empty;       // ذخیره
+            _customerName = customerName ?? string.Empty;
             _startDate = start;
             _endDate = end;
             _logger = logger;
+            _env = env; // <--- ذخیره کردن env
 
-            // --- ثبت فونت فارسی (در صورت نیاز) ---
+            // --- تلاش برای خواندن فایل لوگو ---
             try
             {
-                // اگر قبلاً ثبت شده باشد مشکلی ایجاد نمی‌شود
-                // FontManager.RegisterFont(File.OpenRead("irsans.ttf"));
-                _logger.LogInformation("Attempted to register Persian font '{FontName}' for QuestPDF.", PersianFontName);
+                string logoPath = Path.Combine(_env.ContentRootPath, FontsFolderName, LogoFileName);
+                if (File.Exists(logoPath))
+                {
+                    _logoBytes = File.ReadAllBytes(logoPath);
+                    _logger.LogInformation("Logo file '{LogoFileName}' loaded successfully from path: {LogoPath}", LogoFileName, logoPath);
+                }
+                else
+                {
+                    _logger.LogWarning("Logo file '{LogoFileName}' not found at path: {LogoPath}", LogoFileName, logoPath);
+                }
             }
-            catch (FileNotFoundException ex)
+            catch (Exception ex)
             {
-                _logger.LogError(ex, "Persian font file not found. PDF may not render Persian text correctly.");
+                _logger.LogError(ex, "Error reading logo file '{LogoFileName}'", LogoFileName);
+                _logoBytes = null;
+            }
+            // بقیه کد ثبت فونت بدون تغییر باقی می ماند...
+            try
+            {
+                _logger.LogInformation("Attempted to register Persian font '{FontName}' for QuestPDF.", PersianFontName);
             }
             catch (Exception ex)
             {
@@ -65,15 +88,13 @@ namespace Safir.Server.Controllers // یا namespace صحیح شما
         {
             container.Page(page =>
             {
-                // 1) حالت Landscape
                 page.Size(PageSizes.A4.Landscape());
-
                 page.Margin(30, Unit.Point);
                 page.PageColor(Colors.White);
                 page.DefaultTextStyle(x => x.FontSize(10).FontFamily(PersianFontName));
-                page.ContentFromRightToLeft();
+                page.ContentFromRightToLeft(); // فعال کردن راست به چپ
 
-                page.Header().Element(ComposeHeader);
+                page.Header().Element(ComposeHeader); // <--- فراخوانی هدر
                 page.Content().Element(ComposeTable);
                 page.Footer().AlignCenter().Text(text =>
                 {
@@ -85,37 +106,56 @@ namespace Safir.Server.Controllers // یا namespace صحیح شما
             });
         }
 
-        #region Header
         private void ComposeHeader(IContainer container)
         {
             container.Row(row =>
             {
+                // ستون سمت چپ برای لوگو
+                if (_logoBytes != null)
+                {
+                    row.ConstantItem(80) // عرض ثابت برای لوگو (مثلا 80 پوینت)
+                       .AlignLeft()      // تراز به چپ
+                       .AlignTop()       // تراز به بالا
+                       .PaddingRight(10) // کمی فاصله از متن
+                       .Image(_logoBytes)
+                       .FitArea(); // یا FitWidth(), FitHeight() بسته به نیاز
+                }
+                else
+                {
+                    // اگر لوگو نیست، یک فضای خالی بگذارید تا تراز متن بهم نخورد
+                    row.ConstantItem(80);
+                }
+
+
+                // ستون سمت راست برای اطلاعات متنی (بقیه فضای موجود را بگیرد)
                 row.RelativeItem().Column(column =>
                 {
-                    // خط عنوان اصلی – حالا شامل نام و کد
+                    // خط عنوان اصلی – راست چین
                     column.Item().AlignRight()
                           .Text($"صورت حساب مشتری: {_customerName} ({_hesabCode})")
                           .SemiBold().FontSize(14);
 
+                    // تاریخ تهیه گزارش - راست چین
                     column.Item().AlignRight().Text(text =>
                     {
                         text.Span("تاریخ تهیه گزارش: ").SemiBold();
                         text.Span($"{FormatShamsiDateFromLong(CL_Tarikh.PersianCalendarHelper.GetCurrentPersianDateAsLong())} {DateTime.Now:HH:mm}");
                     });
+
+                    // سایر اطلاعات هدر در صورت نیاز
                 });
 
-                // در صورت نیاز لوگو:
-                // row.ConstantItem(100).Height(50).Image(...);
+
             });
         }
-        #endregion
 
-        #region Table
+
+        // متد ComposeTable بدون تغییر باقی می ماند...
         private void ComposeTable(IContainer container)
         {
             container.PaddingTop(10).Table(table =>
             {
-                // 2) ترتیب ستون‌ها (ردیف، تاریخ، ش سند، شرح، بدهکار، بستانکار، تش، مانده)
+                // ... بقیه کد ComposeTable ...
                 table.ColumnsDefinition(columns =>
                 {
                     columns.RelativeColumn(1f);   // ردیف
@@ -128,7 +168,6 @@ namespace Safir.Server.Controllers // یا namespace صحیح شما
                     columns.RelativeColumn(2.5f); // مانده
                 });
 
-                // هدر
                 table.Header(header =>
                 {
                     static IContainer HeaderCell(IContainer c) =>
@@ -148,7 +187,7 @@ namespace Safir.Server.Controllers // یا namespace صحیح شما
                     header.Cell().Element(HeaderCell).Text("مانده");
                 });
 
-                int     rowIndex  = 0;
+                int rowIndex = 0;
                 decimal tolerance = 0.01m; // برای تشخیص بده/بس
 
                 foreach (var item in _statementItems)
@@ -162,21 +201,20 @@ namespace Safir.Server.Controllers // یا namespace صحیح شما
                          .PaddingHorizontal(5);
 
                     static IContainer CellCenter(IContainer c) => BodyCell(c).AlignCenter();
-                    static IContainer CellRight(IContainer c)  => BodyCell(c).AlignRight();
-                    static IContainer CellLeft(IContainer c)   => BodyCell(c).AlignLeft();
+                    static IContainer CellRight(IContainer c) => BodyCell(c).AlignRight();
+                    static IContainer CellLeft(IContainer c) => BodyCell(c).AlignLeft();
 
                     // محاسبه ستون "تش"
                     string tashkhisText = string.Empty;
                     if (item.MAND.HasValue)
                     {
-                        if (item.MAND.Value > tolerance)        tashkhisText = "بده";
+                        if (item.MAND.Value > tolerance) tashkhisText = "بده";
                         else if (item.MAND.Value < -tolerance) tashkhisText = "بس";
                     }
 
                     // قدر مطلق مانده برای نمایش
                     decimal? absMand = item.MAND.HasValue ? Math.Abs(item.MAND.Value) : item.MAND;
 
-                    // --- افزودن سلول‌ها به ترتیب جدید ---
                     table.Cell().Element(CellCenter).Text(rowIndex.ToString());
                     table.Cell().Element(CellCenter).Text(FormatShamsiDateFromLong(item.DATE_S));
                     table.Cell().Element(CellCenter).Text(FormatDocNumber(item.N_S));
@@ -188,8 +226,8 @@ namespace Safir.Server.Controllers // یا namespace صحیح شما
                 }
             });
         }
-        #endregion
 
+        // متدهای Helper بدون تغییر باقی می مانند...
         #region Helper Format Methods
         private string FormatShamsiDateFromLong(long? dateLong)
         {
@@ -218,7 +256,6 @@ namespace Safir.Server.Controllers // یا namespace صحیح شما
         {
             if (!docNumber.HasValue) return string.Empty;
 
-            // اگر عدد صحیح باشد، بدون جداکننده اعشار چاپ می‌کنیم
             if (docNumber.Value == Math.Floor(docNumber.Value))
                 return ((long)docNumber.Value).ToString();
 

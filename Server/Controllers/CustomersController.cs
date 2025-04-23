@@ -29,6 +29,7 @@ namespace Safir.Server.Controllers
         private readonly IAppSettingsService _appSettingsService;
         private readonly ILogger<CustomersController> _logger;
 
+        private IWebHostEnvironment _webHostEnvironment { get; set; } = default!;
         // private class BlockHesModel { public string HES { get; set; } } // Assuming this is still needed
 
         private const long DefaultStartDate = 1;
@@ -37,12 +38,15 @@ namespace Safir.Server.Controllers
         public CustomersController(
             IDatabaseService dbService,
             IAppSettingsService appSettingsService,
-            ILogger<CustomersController> logger)
+            ILogger<CustomersController> logger,
+            IWebHostEnvironment webHostEnvironment) // <--- پارامتر جدید در سازنده
         {
             _dbService = dbService;
             _appSettingsService = appSettingsService;
             _logger = logger;
+            _webHostEnvironment = webHostEnvironment; // <--- ذخیره کردن نمونه تزریق شده
         }
+
 
         // --- GetAccountCodesForUserAsync remains the same ---
         private async Task<(int NKol, int Number)?> GetAccountCodesForUserAsync()
@@ -510,10 +514,11 @@ namespace Safir.Server.Controllers
                 var document = new CustomerStatementDocument(
                                     statementItems,
                                     hesabCode,
-                                    customerName,      // <‑‑ پارامتر جدید
+                                    customerName,
                                     startDate,
                                     endDate,
-                                    _logger);
+                                    _logger,
+                                    _webHostEnvironment);
 
                 // 3. تولید PDF به صورت بایت (byte array)
                 // GeneratePdf() یک آرایه بایت از PDF تولید شده برمی‌گرداند.

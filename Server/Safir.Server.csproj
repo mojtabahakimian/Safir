@@ -8,6 +8,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <None Remove="Fonts\2.png" />
     <None Remove="Fonts\IRANYekanFN.TTF" />
   </ItemGroup>
 
@@ -15,6 +16,10 @@
     <Content Include="Fonts\IRANYekanFN.TTF">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </Content>
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="Fonts\2.png" />
   </ItemGroup>
 
   <ItemGroup>
