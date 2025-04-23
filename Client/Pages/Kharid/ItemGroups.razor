@@ -45,13 +45,14 @@
                 {
                     <div style="display: inline-block; margin: 0 4px;">
                         <MudPaper Class="pa-2" Elevation="@(_selectedGroup == group ? 8 : 2)" Style="@($"cursor:pointer; border: {(_selectedGroup == group ? "1px solid var(--mud-palette-primary)" : "none")}; width: 120px; height: 100px; display: flex; flex-direction: column; align-items: center; justify-content: center;")" @onclick="() => HandleGroupClick(group)">
-                            @if (group.pic != null && group.pic.Length > 0)
+
+                            @if (group.ImageExists)
                             {
-                                <MudImage Src="@GetImageDataUrl(group.pic)" Alt="@group.NAMES" Width="48" Height="48" ObjectFit="ObjectFit.Contain" Class="mb-1" />
+                                <img src="@($"api/itemgroups/image/{group.CODE}")" alt="@($"تصویر گروه {group.NAMES}")" style="width: 50px; height: 50px; object-fit: contain;" />
                             }
                             else
                             {
-                                <MudAvatar Size="Size.Medium" Class="mb-1"><MudIcon Icon="@Icons.Material.Filled.Storefront" /></MudAvatar>
+                                <MudIcon Icon="@Icons.Material.Filled.Storefront" Title="بدون تصویر" />
                             }
                             <MudText Typo="Typo.caption" Align="Align.Center" Style="line-height: 1.2; margin-top: 4px;">@group.NAMES</MudText>
                         </MudPaper>
@@ -217,7 +218,7 @@
     // --- Injected Services ---
     [Inject] private ItemGroupApiService ItemGroupService { get; set; } = default!;
     [Inject] private ISnackbar Snackbar { get; set; } = default!;
-    [Inject] private ILogger<ItemGroups> Logger { get; set; } = default!;
+    [Inject] private ILogger<TCODE_MENUITEM> Logger { get; set; } = default!;
     [Inject] private NavigationManager NavManager { get; set; } = default!;
 
 
