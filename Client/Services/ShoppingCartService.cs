@@ -30,7 +30,11 @@ namespace Safir.Client.Services
         // یا سازنده بدون وابستگی اگر واحدها جای دیگری مدیریت می‌شوند
         // public ShoppingCartService() { }
 
-
+        public decimal GetItemQuantity(string itemCode, int unitCode)
+        {
+            var item = Items.FirstOrDefault(i => i.ItemCode == itemCode && i.SelectedUnitCode == unitCode);
+            return item?.Quantity ?? 0; // اگر آیتم پیدا نشد، تعداد صفر است
+        }
         public void SetCustomer(VISITOR_CUSTOMERS? customer)
         {
             if (CurrentCustomer != customer) // فقط اگر مشتری تغییر کرد یا اولین بار است
@@ -93,7 +97,7 @@ namespace Safir.Client.Services
             }
         }
 
-        public void UpdateQuantity(string itemCode, int unitCode, int newQuantity)
+        public void UpdateQuantity(string itemCode, int unitCode, decimal newQuantity)
         {
             var itemToUpdate = Items.FirstOrDefault(i => i.ItemCode == itemCode && i.SelectedUnitCode == unitCode);
             if (itemToUpdate != null)

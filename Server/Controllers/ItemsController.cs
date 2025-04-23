@@ -102,6 +102,7 @@ namespace Safir.Server.Controllers
                 FROM PagedItems
                 WHERE RowNum > @RowStart AND RowNum <= @RowEnd; ";
 
+            //////For Test on Single Kala
             //string itemsSql = $@"
             //    WITH PagedItems AS (
             //        SELECT
@@ -228,13 +229,9 @@ namespace Safir.Server.Controllers
 
             try
             {
-                // TODO: Query the database to get the actual inventory for the itemCode.
-                //       Replace the placeholder logic below with your actual query.
-                // Example Placeholder Query (Needs your actual inventory calculation logic):
-                const string inventorySql = "SELECT TOP 1 InventoryAmount FROM YourInventoryViewOrTable WHERE ItemCode = @Code"; // <<< کوئری خود را جایگزین کنید
-
                 var parameters = new { Code = itemCode };
-                decimal? inventory = await _dbService.DoGetDataSQLAsyncSingle<decimal?>(inventorySql, parameters);
+                //decimal? inventory = await _dbService.DoGetDataSQLAsyncSingle<decimal?>(inventorySql, parameters);
+                decimal? inventory = await _dbService.GetItemInventoryAsync(itemCode);
 
                 if (inventory.HasValue)
                 {

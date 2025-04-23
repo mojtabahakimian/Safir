@@ -12,7 +12,7 @@ namespace Safir.Shared.Models.Kala
         public string? ItemName { get; set; }
         public int SelectedUnitCode { get; set; }
         public string? SelectedUnitName { get; set; }
-        public int Quantity { get; set; }
+        public decimal Quantity { get; set; }
         public decimal PricePerUnit { get; set; } // قیمت واحد بر اساس واحد انتخابی (فعلا قیمت واحد پیش‌فرض را در نظر می‌گیریم)
         public decimal TotalPrice => Quantity * PricePerUnit;
 

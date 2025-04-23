@@ -160,5 +160,34 @@ namespace Safir.Server.Services
                 throw; // Re-throw the original exception
             }
         }
+
+        /* ---------- متد جدید برای موجودی انبار ---------- */
+        public async Task<decimal?> GetItemInventoryAsync(string itemCode)
+        {
+            const string sql = @"
+                DECLARE @inv DECIMAL(18,2);
+                
+                SELECT @inv = ROUND(ISNULL(AK.SMEGH,0) - ISNULL(FR.MEG,0), 2)
+                FROM STUF_DEF SD
+                JOIN TCODE_MENUITEM TM ON SD.MENUIT = TM.CODE
+                JOIN STUF_FSK SF       ON SF.CODE  = SD.CODE  AND SF.ANBAR = TM.ANBAR
+                LEFT JOIN AK_MOGO_AVL_KOL(99999999,1) AK ON AK.CODE = SF.CODE AND AK.ANBAR = SF.ANBAR
+                LEFT JOIN AK_MOGO_FR (99999999,1)   FR ON FR.CODE = SF.CODE AND FR.ANBAR = SF.ANBAR
+                WHERE SD.CODE = @ItemCode;
+                
+                SELECT @inv AS mand;";
+
+            try
+            {
+                using IDbConnection db = new SqlConnection(_connectionString);
+                var result = await db.ExecuteScalarAsync<decimal?>(sql, new { ItemCode = itemCode });
+                return result;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting inventory for {ItemCode}", itemCode);
+                throw;
+            }
+        }
     }
 }

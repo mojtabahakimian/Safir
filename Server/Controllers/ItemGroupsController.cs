@@ -57,7 +57,7 @@ namespace Safir.Server.Controllers
                                     ANBAR,
                                     ID
                                 FROM dbo.TCODE_MENUITEM
-                                ORDER BY NAMES;";
+                                ORDER BY ID;";
             try
             {
                 _logger.LogInformation("Fetching item groups from TCODE_MENUITEM");

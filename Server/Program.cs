@@ -110,6 +110,7 @@ app.UseAuthorization(); // Enforces authorization policies ([Authorize] attribut
 
 app.MapRazorPages();
 app.MapControllers(); // Make sure API controllers are mapped
+
 app.MapFallbackToFile("index.html"); // Fallback for Blazor routing
 
 app.Run();

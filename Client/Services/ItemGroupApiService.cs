@@ -105,7 +105,8 @@ namespace Safir.Client.Services
                 return null;
             }
 
-            string requestUri = $"api/items/inventory/{Uri.EscapeDataString(itemCode)}";
+            //string requestUri = $"api/items/inventory/{Uri.EscapeDataString(itemCode)}";
+            string requestUri = $"api/inventory/{Uri.EscapeDataString(itemCode)}";
             try
             {
                 _logger.LogInformation("Calling API for inventory: {RequestUri}", requestUri);
@@ -135,5 +136,34 @@ namespace Safir.Client.Services
                 return null;
             }
         }
+
+        //public async Task<decimal?> GetItemInventoryAsync(string itemCode)
+        //{
+        //    if (string.IsNullOrWhiteSpace(itemCode))
+        //    {
+        //        _logger.LogWarning("Empty itemCode passed to GetItemInventoryAsync");
+        //        return null;
+        //    }
+
+        //    string requestUri = $"api/items/inventory/{Uri.EscapeDataString(itemCode)}";
+
+        //    try
+        //    {
+        //        var response = await _httpClient.GetAsync(requestUri);
+
+        //        if (response.IsSuccessStatusCode)
+        //            return await response.Content.ReadFromJsonAsync<decimal?>();
+        //        if (response.StatusCode == HttpStatusCode.NotFound)
+        //            return null;
+
+        //        _logger.LogError("Inventory API error {StatusCode}", response.StatusCode);
+        //        return null;
+        //    }
+        //    catch (Exception ex)
+        //    {
+        //        _logger.LogError(ex, "Error calling inventory API");
+        //        return null;
+        //    }
+        //}
     }
 }

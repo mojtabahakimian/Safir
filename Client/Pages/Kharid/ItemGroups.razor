@@ -20,9 +20,7 @@
 
     @* --- بخش نمایش و جستجوی گروه‌ها --- *@
     <MudPaper Outlined="true" Class="mb-4 pa-1">
-        <MudToolBar Dense="true" Class="px-2">
-            <MudText Typo="Typo.h6">گروه‌های کالا</MudText>
-            <MudSpacer />
+     @*    <MudToolBar Dense="true" Class="px-2">
             <MudTextField T="string"
                           @bind-Value="_groupSearchTerm"
                           Placeholder="جستجو گروه..."
@@ -34,7 +32,7 @@
                           Immediate="true"
                           Clearable="true"
                           Style="max-width: 250px;" />
-        </MudToolBar>
+        </MudToolBar> *@
 
         @if (_isLoadingGroups)
         {
@@ -98,8 +96,8 @@
 
         <MudPaper Outlined="true" Class="pa-1">
             <MudToolBar Dense="true" Class="mb-2 px-2">
-                <MudText Typo="Typo.h6">کالاها: @_selectedGroup.NAMES</MudText>
-                <MudSpacer />
+             @*    <MudText Typo="Typo.h6">کالاها: @_selectedGroup.NAMES</MudText>
+                <MudSpacer /> *@
                 <MudTextField T="string"
                 @bind-Value="_itemSearchTerm"
                               Placeholder="جستجو کالا..."

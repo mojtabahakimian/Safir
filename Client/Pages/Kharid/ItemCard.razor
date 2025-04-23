@@ -1,23 +1,20 @@
-﻿@* مسیر پیشنهادی: Safir.Client/Components/ItemCard.razor *@
+﻿@implements IDisposable
 @using Safir.Shared.Models.Kala
 @using System.Globalization
 @using MudBlazor
+@using Safir.Client.Services
+@using System.Timers;
 
 @inject ItemGroupApiService ItemService
 @inject ISnackbar Snackbar
+@inject ShoppingCartService CartService
 
 <MudCard Outlined="true" Class="ma-1 item-card">
 
-    @* --- منطقه نمایش تصویر یا Placeholder با div ساده --- *@
     <div class="image-container">
-        @* استفاده از div ساده *@
         @if (Item?.ImageExists == true)
         {
-            <img src="@($"api/items/image/{Item.CODE}")"
-                 alt="@Item.NAME"
-                 class="item-image"
-                 loading="lazy"
-                 onerror='this.onerror=null; this.style.display="none"; this.parentElement.innerHTML="<div class=\"image-placeholder error\">خطا در بارگذاری تصویر<br/>(src=@($"api/items/image/{Item.CODE}") )</div>";' />
+            <img src="@($"api/items/image/{Item.CODE}")" alt="@Item.NAME" class="item-image" />
         }
         else
         {
@@ -29,16 +26,18 @@
     </div>
 
     <MudCardContent Class="pa-2 flex-grow-1">
-        @* کد بخش محتوا (نام، واحد، قیمت‌ها، پنل‌ها) بدون تغییر *@
-        <MudText Typo="Typo.body1" GutterBottom="true" Style="min-height: 3em; line-height: 1.5em; overflow: hidden; text-align: center; font-weight: 500;">
+
+        <MudText Typo="Typo.body1" GutterBottom="true"
+                 Style="min-height: 1.5em; overflow: hidden; text-align: center; font-weight: 500;">
             @(Item?.NAME ?? "نام کالا")
         </MudText>
 
         <MudDivider Class="my-1" />
 
-        @if (AvailableUnits != null && AvailableUnits.Any())
+        @if (AvailableUnits?.Any() == true)
         {
-            <MudSelect T="int" Label="واحد" @bind-Value="_selectedVahedCode" Variant="Variant.Outlined" Margin="Margin.Dense" Dense="true">
+            <MudSelect T="int" Label="واحد" @bind-Value="_selectedVahedCode"
+                       Variant="Variant.Outlined" Margin="Margin.Dense" Dense="true">
                 @foreach (var unit in AvailableUnits)
                 {
                     <MudSelectItem Value="@unit.CODE">@unit.NAMES</MudSelectItem>
@@ -52,173 +51,259 @@
 
         <MudGrid Spacing="1" Justify="Justify.SpaceBetween" Class="mt-2">
             <MudItem xs="6"><MudText Typo="Typo.caption">فی عمده:</MudText></MudItem>
-            <MudItem xs="6" Class="d-flex justify-end"><MudText Typo="Typo.body2" Style="direction: ltr;">@FormatCurrency(Item?.MABL_F)</MudText></MudItem>
+            <MudItem xs="6" Class="d-flex justify-end">
+                <MudText Typo="Typo.caption" Style="direction:ltr;">@FormatCurrency(Item?.MABL_F)</MudText>
+            </MudItem>
             <MudItem xs="6"><MudText Typo="Typo.caption">فی خرده:</MudText></MudItem>
-            <MudItem xs="6" Class="d-flex justify-end"><MudText Typo="Typo.body2" Style="direction: ltr;">@FormatCurrency(Item?.B_SEF)</MudText></MudItem>
+            <MudItem xs="6" Class="d-flex justify-end">
+                <MudText Typo="Typo.caption" Style="direction:ltr;">@FormatCurrency(Item?.B_SEF)</MudText>
+            </MudItem>
             <MudItem xs="6"><MudText Typo="Typo.caption">مصرف کننده:</MudText></MudItem>
-            <MudItem xs="6" Class="d-flex justify-end"><MudText Typo="Typo.body2" Style="direction: ltr;">@FormatCurrency(Item?.MAX_M)</MudText></MudItem>
+            <MudItem xs="6" Class="d-flex justify-end">
+                <MudText Typo="Typo.caption" Style="direction:ltr;">@FormatCurrency(Item?.MAX_M)</MudText>
+            </MudItem>
         </MudGrid>
 
-        <MudExpansionPanels Dense="true" Class="mt-2" Style="background-color: inherit;">
-            <MudExpansionPanel Text="توضیحات" Dense="true">
-                <MudText Typo="Typo.body2" Class="px-2 py-1">@(String.IsNullOrWhiteSpace(Item?.TOZIH) ? "-" : Item.TOZIH)</MudText>
-                </MudExpansionPanel>
-                <MudExpansionPanel Text="موجودی" @ref="_inventoryPanel" Dense="true" IsExpandedChanged="InventoryPanelExpandedChanged" IsExpanded="_isInventoryExpanded">
-                    <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Class="px-2 py-1">
-                        @if (_isFetchingInventory)
-                    {
-                        <MudProgressCircular Indeterminate="true" Size="Size.Small" Color="Color.Primary" /> <MudText Typo="Typo.body2" Class="ml-2">در حال دریافت...</MudText>
-                    }
-                    else if (_errorFetchingInventory)
-                    {
-                        <MudText Typo="Typo.body2" Color="Color.Error">خطا</MudText> <MudIconButton Icon="@Icons.Material.Filled.Refresh" Color="Color.Warning" Size="Size.Small" OnClick="FetchInventory" Title="تلاش مجدد" />
-                    }
-                    else if (_inventoryAmount.HasValue)
-                    {
-                        <MudText Typo="Typo.body2">موجودی:</MudText> <MudChip Label="true" Color="GetInventoryColor(_inventoryAmount)" Size="Size.Small">@FormatNumber(_inventoryAmount)</MudChip>
-                    }
-                    else
-                    {
-                        <MudText Typo="Typo.body2">...</MudText> <MudIconButton Icon="@Icons.Material.Filled.Refresh" Color="Color.Primary" Size="Size.Small" OnClick="FetchInventory" Title="دریافت موجودی" />
-                    }
-                </MudStack>
-            </MudExpansionPanel>
-        </MudExpansionPanels>
+        <MudDivider Class="my-1" />
+
+        <!-- موجودی با دکمه Refresh -->
+        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1">
+            <MudText Typo="Typo.caption" Color="@GetInventoryColor(_inventoryAmount)">
+                موجودی: @_inventoryAmount?.ToString("N0", new CultureInfo("fa-IR"))
+            </MudText>
+            <MudIconButton Icon="@Icons.Material.Filled.Refresh" Size="Size.Small"
+                           Disabled="_isFetchingInventory"
+                           Title="بروزرسانی موجودی"
+                           OnClick="FetchInventory" />
+        </MudStack>
 
     </MudCardContent>
 
-    <MudCardActions Class="pa-2 mt-auto">
-        <MudStack Row="true" Justify="Justify.SpaceBetween" Style="width: 100%;">
-            <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="0">
-                <MudIconButton Icon="@Icons.Material.Filled.Remove" OnClick="DecrementQuantity" Disabled="_quantity <= 0" Size="Size.Small" />
-                <MudNumericField @bind-Value="_quantity" Variant="Variant.Text" Margin="Margin.Dense" Min="0" Max="999" Class="quantity-input" HideSpinButtons="true" />
-                <MudIconButton Icon="@Icons.Material.Filled.Add" OnClick="IncrementQuantity" Disabled="_quantity >= 999" Size="Size.Small" />
-            </MudStack>
-            <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="HandleAdd" Disabled="_quantity <= 0" StartIcon="@Icons.Material.Filled.AddShoppingCart" Size="Size.Small">
-                اضافه کن
+    <!-- دکمه‌های سبد -->
+    <MudCardActions Style="display: flex; justify-content: center;" Class="pa-2 mt-auto">
+        @if (_cartQuantity == 0)
+        {
+            <MudButton Style="width:100%;" Color="Color.Success"
+                       Variant="Variant.Filled"
+                       StartIcon="@Icons.Material.Filled.AddShoppingCart"
+                       OnClick="AddFirstToCart">
+                افزودن به سبد
             </MudButton>
-        </MudStack>
+        }
+        else
+        {
+            <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1" Class="cart-actions">
+                <MudIconButton Icon="@Icons.Material.Filled.Delete" Color="Color.Error" Size="Size.Small" OnClick="RemoveFromCart" />
+                @* <MudSpacer /> *@
+
+                <div class="spacer"></div>
+
+                <!-- دکمه‌ی کم کردن -->
+                <MudIconButton Icon="@Icons.Material.Filled.Remove" Color="Color.Primary" Size="Size.Small" Disabled="_cartQuantity <= 1"
+                @onmousedown="@(e => StartLongPress(false))"
+                @onmouseup="StopLongPress"
+                @onclick="() => ChangeQuantity(-1)" />
+
+                <MudNumericField T="decimal" Class="quantity-input" HideSpinButtons="true"
+                                 Value="_cartQuantity" ValueChanged="ApplyQuantity"
+                                 Min="0" Max="9999" DebounceInterval="500" />
+
+                <MudIconButton Icon="@Icons.Material.Filled.Add" Color="Color.Primary" Size="Size.Small"
+                @onmousedown="@(e => StartLongPress(true))"
+                @onmouseup="StopLongPress"
+                @onclick="() => ChangeQuantity(+1)" />
+            </MudStack>
+        }
     </MudCardActions>
 </MudCard>
 
 @code {
-    // --- بخش @code بدون تغییر نسبت به پاسخ قبلی ---
     [Parameter, EditorRequired] public ItemDisplayDto Item { get; set; } = default!;
     [Parameter] public List<TCOD_VAHEDS>? AvailableUnits { get; set; }
-    [Parameter] public EventCallback<(ItemDisplayDto Item, int Quantity, int SelectedUnitCode)> OnAddToCart { get; set; } = default!;
+    [Parameter] public EventCallback<(ItemDisplayDto Item, int Quantity, int SelectedUnitCode)> OnAddToCart { get; set; }
 
-    private int _quantity = 0;
-    private decimal? _inventoryAmount = null;
-    private bool _isFetchingInventory = false;
-    private bool _errorFetchingInventory = false;
-    private MudExpansionPanel _inventoryPanel = default!;
-    private bool _isInventoryExpanded = false;
     private int _selectedVahedCode;
+    private decimal _cartQuantity;
+    private decimal? _inventoryAmount;
+    private bool _isFetchingInventory;
+    private bool _errorFetchingInventory;
 
-    protected override void OnParametersSet()
+    protected override async Task OnInitializedAsync()
     {
-        if (Item == null) return;
-        _quantity = 0;
-        _inventoryAmount = null;
-        _isFetchingInventory = false;
-        _errorFetchingInventory = false;
-        _isInventoryExpanded = false;
+        CartService.CartChanged += HandleCartChanged;
         _selectedVahedCode = Item.VahedCode;
-        // Console.WriteLine($"ItemCard OnParametersSet - Code: {Item.CODE}, Name: {Item.NAME}, ImageExists: {Item.ImageExists}, ImageURL: {($"api/items/image/{Item.CODE}")}"); // لاگ دیباگ حذف شد
+        UpdateCartQuantity();
+        await FetchInventory();
     }
 
-    private void IncrementQuantity() => _quantity++;
-    private void DecrementQuantity() { if (_quantity > 0) _quantity--; }
-    private async Task InventoryPanelExpandedChanged(bool isExpanded) { _isInventoryExpanded = isExpanded; if (isExpanded && !_isFetchingInventory && !_inventoryAmount.HasValue && !_errorFetchingInventory) { await FetchInventory(); } }
-    private async Task FetchInventory() { if (_isFetchingInventory || Item == null) return; _isFetchingInventory = true; _inventoryAmount = null; _errorFetchingInventory = false; await InvokeAsync(StateHasChanged); try { _inventoryAmount = await ItemService.GetItemInventoryAsync(Item.CODE); if (!_inventoryAmount.HasValue) { _inventoryAmount = 0; } } catch (Exception ex) { _errorFetchingInventory = true; _inventoryAmount = null; Snackbar.Add($"خطا در دریافت موجودی: {ex.Message}", Severity.Error); Console.WriteLine($"Inventory fetch error for {Item.CODE}: {ex}"); } finally { _isFetchingInventory = false; await InvokeAsync(StateHasChanged); } }
-    private Color GetInventoryColor(decimal? amount) { if (!amount.HasValue || amount <= 0) return Color.Error; if (amount < 10) return Color.Warning; return Color.Success; }
-    private async Task HandleAdd() { if (Item == null) return; if (OnAddToCart.HasDelegate) { await OnAddToCart.InvokeAsync((Item, _quantity, _selectedVahedCode)); } else { Snackbar.Add($"{_quantity} عدد '{Item.NAME}' با واحد انتخابی اضافه شد (رویداد تعریف نشده).", Severity.Warning); } _quantity = 0; StateHasChanged(); }
-    private string FormatCurrency(decimal? value) { return value?.ToString("N0", CultureInfo.GetCultureInfo("fa-IR")) ?? "-"; }
-    private string FormatNumber(decimal? value) { return value?.ToString("N0", CultureInfo.GetCultureInfo("fa-IR")) ?? "0"; }
+    private Timer? _longPressTimer;
+    private bool _increment; // True == ‌زیاد کردن، False == کم کردن
+
+    void ChangeQuantity(decimal delta)
+    {
+        var newVal = Math.Max(0, _cartQuantity + delta);
+        ApplyQuantity(newVal);
+    }
+
+    void ApplyQuantity(decimal newQty)
+    {
+        if (newQty == _cartQuantity) return;
+
+        _cartQuantity = newQty;
+
+        if (_cartQuantity == 0)
+            CartService.RemoveItem(Item.CODE, _selectedVahedCode);
+        else
+            CartService.UpdateQuantity(Item.CODE, _selectedVahedCode, _cartQuantity);
+
+        StateHasChanged();
+    }
+
+    /* ---------- Long-press ---------- */
+    void StartLongPress(bool inc)
+    {
+        _increment = inc;
+        _longPressTimer = new Timer(500) { AutoReset = false };
+        _longPressTimer.Elapsed += FirstLongPress;
+        _longPressTimer.Start();
+    }
+
+    void StopLongPress()
+    {
+        _longPressTimer?.Stop();
+        _longPressTimer?.Dispose();
+        _longPressTimer = null;
+    }
+
+    void FirstLongPress(object? sender, ElapsedEventArgs e)
+    {
+        InvokeAsync(() => ChangeQuantity(_increment ? +10 : -10));
+        _longPressTimer!.Elapsed -= FirstLongPress;
+        _longPressTimer!.Elapsed += RepeatingLongPress;
+        _longPressTimer!.Interval = 200;
+        _longPressTimer!.Start();
+    }
+
+    void RepeatingLongPress(object? sender, ElapsedEventArgs e) => InvokeAsync(() => ChangeQuantity(_increment ? +10 : -10));
+
+    private void UpdateCartQuantity() =>
+        _cartQuantity = CartService.GetItemQuantity(Item.CODE, _selectedVahedCode);
+
+    private void HandleCartChanged()
+    {
+        UpdateCartQuantity();
+        InvokeAsync(StateHasChanged);
+    }
+
+    private async Task AddFirstToCart()
+    {
+        if (OnAddToCart.HasDelegate)
+            await OnAddToCart.InvokeAsync((Item, 1, _selectedVahedCode));
+    }
+
+    private void RemoveFromCart()
+    {
+        CartService.RemoveItem(Item.CODE, _selectedVahedCode);
+        UpdateCartQuantity();
+    }
+
+    private async Task FetchInventory()
+    {
+        if (_isFetchingInventory) return;
+        _isFetchingInventory = true;
+        _errorFetchingInventory = false;
+
+        try
+        {
+            _inventoryAmount = await ItemService.GetItemInventoryAsync(Item.CODE);
+        }
+        catch
+        {
+            _errorFetchingInventory = true;
+            _inventoryAmount = null;
+        }
+        finally
+        {
+            _isFetchingInventory = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private Color GetInventoryColor(decimal? amount)
+    {
+        if (!amount.HasValue) return Color.Default;
+        if (amount < 10) return Color.Warning;
+        return Color.Success;
+    }
+
+    private static string FormatCurrency(decimal? value) =>
+        value.HasValue ? value.Value.ToString("N0", new CultureInfo("fa-IR")) : "--";
+
+    public void Dispose() => CartService.CartChanged -= HandleCartChanged;
 }
 
 <style>
+
+    .spacer {
+        width: 16px;
+    }
+
     .item-card {
         height: 100%;
         display: flex;
         flex-direction: column;
-        transition: box-shadow 0.2s ease-in-out;
+        transition: box-shadow .2s ease-in-out;
     }
 
         .item-card:hover {
             box-shadow: var(--mud-elevation-6);
         }
 
-    /* استایل برای کانتینر تصویر/placeholder (div ساده) */
     .image-container {
-        /* حذف حاشیه قرمز */
-        min-height: 160px;
         display: flex;
-        align-items: center;
         justify-content: center;
-        background-color: #f5f5f5;
+        align-items: center;
+        background: #f5f5f5;
         overflow: hidden;
-        position: relative;
+        height: 150px;
     }
 
     .item-image {
-        display: block;
-        max-height: 150px;
+        max-height: 100%;
         max-width: 100%;
         object-fit: contain;
         padding: 5px;
     }
 
     .image-placeholder {
-        height: 150px;
+        height: 100%;
         width: 100%;
         display: flex;
         flex-direction: column;
-        align-items: center;
         justify-content: center;
-        color: var(--mud-palette-action-disabled);
-        /* حذف حاشیه آبی */
-        padding: 5px;
-        text-align: center;
-        font-size: 0.8em;
+        align-items: center;
+        color: var(--mud-palette-text-secondary);
     }
 
-        .image-placeholder.error {
-            background-color: rgba(255,0,0,0.1);
-            color: red;
-            font-weight: bold;
-            border: 1px solid red;
-        }
-
-    .mud-card-content {
-        flex-grow: 1;
-    }
-
-    .mud-card-actions {
-        margin-top: auto;
-    }
-
-    .quantity-input .mud-input-slot input[type=number] {
-        text-align: center !important;
-        padding-left: 2px !important;
-        padding-right: 2px !important;
+    .cart-actions .mud-icon-button {
+        margin-inline: 2px;
     }
 
     .quantity-input {
-        width: 50px;
+        width: 70px;
     }
 
-    .mud-expansion-panels .mud-expansion-panel .mud-expansion-panel-header {
-        padding: 4px 8px;
-        min-height: unset;
-        font-size: 0.8rem;
-    }
+        .quantity-input input {
+            text-align: center;
+        }
 
-    .mud-expansion-panels .mud-expansion-panel .mud-expansion-panel-content {
-        padding: 0px;
-    }
+            .quantity-input input::-webkit-outer-spin-button,
+            .quantity-input input::-webkit-inner-spin-button {
+                -webkit-appearance: none;
+                margin: 0;
+            }
 
-    .mud-chip.mud-chip-size-small {
-        font-size: 0.75rem;
-    }
+            .quantity-input input[type=number] {
+                -moz-appearance: textfield;
+            }
 </style>

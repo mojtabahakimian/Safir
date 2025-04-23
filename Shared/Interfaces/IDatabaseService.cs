@@ -30,5 +30,8 @@ namespace Safir.Shared.Interfaces
         /// <returns>The result returned by the actions function.</returns>
         Task<TResult> ExecuteInTransactionAsync<TResult>(Func<IDbConnection, IDbTransaction, Task<TResult>> actions, IsolationLevel isolationLevel = IsolationLevel.RepeatableRead);
 
+
+        /* --- متد جدید برای موجودی --- */
+        Task<decimal?> GetItemInventoryAsync(string itemCode);
     }
 }
