@@ -48,6 +48,8 @@ builder.Services.AddAuthentication(options =>
 // Ensure Encoding provider is registered if needed by decoding logic globally
 Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
 
+
+
 #endregion
 
 

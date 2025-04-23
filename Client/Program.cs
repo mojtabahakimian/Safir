@@ -43,6 +43,9 @@ builder.Services.AddScoped<CustomerApi>();
 builder.Services.AddScoped<LookupApiService>();
 
 builder.Services.AddScoped<VisitorApiService>();
+
+// Add this line within the builder.Services configuration section
+builder.Services.AddScoped<ItemGroupApiService>();
 #endregion
 
 
