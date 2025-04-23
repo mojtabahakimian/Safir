@@ -46,6 +46,8 @@ builder.Services.AddScoped<VisitorApiService>();
 
 // Add this line within the builder.Services configuration section
 builder.Services.AddScoped<ItemGroupApiService>();
+
+builder.Services.AddScoped<ShoppingCartService>();
 #endregion
 
 

@@ -44,8 +44,9 @@ namespace Safir.Server.Controllers
         }
 
 
+        // <<< متد به‌روز شده برای دریافت کالاها >>>
         [HttpGet("bygroup/{groupCode}")]
-        public async Task<ActionResult<PagedResult<STUF_DEF>>> GetItemsByGroup(
+        public async Task<ActionResult<PagedResult<ItemDisplayDto>>> GetItemsByGroup( // <<< نوع خروجی به ItemDisplayDto تغییر کرد
                double groupCode,
                [FromQuery] int pageNumber = 1,
                [FromQuery] int pageSize = 10,
@@ -56,71 +57,124 @@ namespace Safir.Server.Controllers
 
             if (pageNumber < 1) pageNumber = 1;
             if (pageSize < 1) pageSize = 10;
-            if (pageSize > 100) pageSize = 100;
+            if (pageSize > 100) pageSize = 100; // Limit page size
             int offset = (pageNumber - 1) * pageSize;
 
             var whereConditions = new List<string>();
             var parameters = new DynamicParameters();
 
-            whereConditions.Add("MENUIT = @GroupCode");
+            whereConditions.Add("sd.MENUIT = @GroupCode"); // sd = alias for STUF_DEF
             parameters.Add("GroupCode", groupCode);
-            whereConditions.Add("ISNULL(OKF, 1) = 1");
+            whereConditions.Add("ISNULL(sd.OKF, 1) = 1"); // <<< اضافه شد: فرض وجود ستون OKF برای کالاهای فعال >>>
 
-            // --- Normalize Search Term (C# side) and Add Search Condition ---
+            // --- Search Term Handling ---
             string? normalizedSearchTerm = null;
             if (!string.IsNullOrWhiteSpace(searchTerm))
             {
-                // 1. Normalize whitespace and Persian/Arabic characters using existing helper
                 normalizedSearchTerm = searchTerm.Trim();
-                normalizedSearchTerm = Regex.Replace(normalizedSearchTerm, @"\s+", " "); // Normalize spaces
-                normalizedSearchTerm = normalizedSearchTerm.FixPersianChars(); // <<< APPLY FixPersianChars
+                normalizedSearchTerm = Regex.Replace(normalizedSearchTerm, @"\s+", " ");
+                normalizedSearchTerm = normalizedSearchTerm.FixPersianChars();
 
-                // 2. Add WHERE condition using normalized search term and SQL REPLACE for NAME column
-                //    (Replace Arabic ي and ك with Persian ی and ک in NAME before comparing)
-                //   Also include the previous SPACE normalization for robustness
-                string normalizedNameSql = "REPLACE(REPLACE(REPLACE(REPLACE(NAME, N'ي', N'ی'), N'ك', N'ک'), NCHAR(160), N' '), N'  ', N' ')";
-
-                whereConditions.Add($"({normalizedNameSql} LIKE @SearchPattern OR CODE LIKE @SearchPattern)");
+                string normalizedNameSql = "REPLACE(REPLACE(REPLACE(REPLACE(sd.NAME, N'ي', N'ی'), N'ك', N'ک'), NCHAR(160), N' '), N'  ', N' ')";
+                whereConditions.Add($"(({normalizedNameSql} LIKE @SearchPattern) OR (sd.CODE LIKE @SearchPattern))"); // Add parentheses
                 parameters.Add("SearchPattern", $"%{normalizedSearchTerm}%");
             }
-            // --- End Search Condition Handling ---
+            // --- End Search ---
 
             string commonWhereClause = string.Join(" AND ", whereConditions);
 
-            // --- SQL Queries using ROW_NUMBER() ---
-            // Applying REPLACE to NAME column for better matching of spaces
-            // NOTE: This might prevent index usage on the NAME column. Test performance.
+            // --- SQL Query with JOIN and new fields ---
+            // <<< ستون‌های B_SEF, MAX_M, TOZIH اضافه شد (با فرض نام ستون) >>>
+            // <<< JOIN با TCOD_VAHEDS برای گرفتن نام واحد اضافه شد >>>
+
             string itemsSql = $@"
                 WITH PagedItems AS (
                     SELECT
-                        CODE, NAME, MABL_F, VAHED, MENUIT,
-                        ROW_NUMBER() OVER (ORDER BY NAME) AS RowNum
-                    FROM dbo.STUF_DEF
+                        sd.CODE, sd.NAME, sd.MABL_F, sd.VAHED AS VahedCode,
+                        sd.MENUIT, sd.B_SEF, sd.MAX_M, sd.TOZIH,
+                        tv.NAMES AS VahedName,
+                        ROW_NUMBER() OVER (ORDER BY sd.NAME) AS RowNum
+                    FROM dbo.STUF_DEF sd
+                    LEFT JOIN dbo.TCOD_VAHEDS tv ON sd.VAHED = tv.CODE
                     WHERE {commonWhereClause}
                 )
-                SELECT CODE, NAME, MABL_F, VAHED, MENUIT
+                SELECT CODE, NAME, MABL_F, B_SEF, MAX_M, TOZIH, MENUIT, VahedCode, VahedName
                 FROM PagedItems
                 WHERE RowNum > @RowStart AND RowNum <= @RowEnd; ";
 
-            // Also apply REPLACE to the count query's WHERE clause
+            //string itemsSql = $@"
+            //    WITH PagedItems AS (
+            //        SELECT
+            //            sd.CODE, sd.NAME, sd.MABL_F, sd.VAHED AS VahedCode,
+            //            sd.MENUIT, sd.B_SEF, sd.MAX_M, sd.TOZIH,
+            //            tv.NAMES AS VahedName
+            //        FROM dbo.STUF_DEF sd
+            //        LEFT JOIN dbo.TCOD_VAHEDS tv ON sd.VAHED = tv.CODE
+            //    )
+            //    SELECT CODE, NAME, MABL_F, B_SEF, MAX_M, TOZIH, MENUIT
+            //    FROM STUF_DEF 
+            //    WHERE code = 3352";
+
+            // --- Count Query ---
             string countSql = $@"
-                SELECT COUNT(*)
-                FROM dbo.STUF_DEF
-                WHERE {commonWhereClause};";
+                 SELECT COUNT(*)
+                 FROM dbo.STUF_DEF sd -- Alias added for consistency
+                 WHERE {commonWhereClause};";
+
 
             parameters.Add("RowStart", offset);
             parameters.Add("RowEnd", offset + pageSize);
 
             try
             {
-                IEnumerable<STUF_DEF> items = await _dbService.DoGetDataSQLAsync<STUF_DEF>(itemsSql, parameters);
+                // <<< نوع TEntity به ItemDisplayDto تغییر کرد >>>
+                IEnumerable<ItemDisplayDto> items = await _dbService.DoGetDataSQLAsync<ItemDisplayDto>(itemsSql, parameters);
                 int totalItemCount = await _dbService.DoGetDataSQLAsyncSingle<int>(countSql, parameters);
 
-                List<STUF_DEF> itemsList = items.ToList();
-                // ... (Image check logic remains the same) ...
-                if (!string.IsNullOrEmpty(_imageBasePath)) { foreach (var item in itemsList) { item.ImageExists = SupportedImageExtensions.Any(ext => System.IO.File.Exists(Path.Combine(_imageBasePath, item.CODE + ext))); } }
+                List<ItemDisplayDto> itemsList = items.ToList();
 
-                var pagedResult = new PagedResult<STUF_DEF>
+                // <<< بررسی وجود تصویر (بدون تغییر منطق، فقط روی DTO اعمال می‌شود) >>>
+                // --- بررسی دقیق وجود تصویر ---
+                if (!string.IsNullOrEmpty(_imageBasePath))
+                {
+                    _logger.LogInformation("Image Base Path for Checks: {BasePath}", _imageBasePath); // لاگ مسیر پایه
+                    foreach (var item in itemsList)
+                    {
+                        string itemCodeStr = item.CODE; // فرض کنیم CODE از نوع string است، اگر نه تبدیل کنید
+                        item.ImageExists = false; // پیش‌فرض false
+                        _logger.LogTrace("Checking image for Item Code: {ItemCode}", itemCodeStr); // لاگ کد کالا
+                        foreach (var ext in SupportedImageExtensions)
+                        {
+                            string potentialPath = Path.Combine(_imageBasePath, itemCodeStr + ext);
+                            try // اضافه کردن try-catch برای خطای احتمالی File.Exists
+                            {
+                                if (System.IO.File.Exists(potentialPath))
+                                {
+                                    item.ImageExists = true;
+                                    _logger.LogInformation("Image FOUND for Item Code: {ItemCode} at Path: {Path}", itemCodeStr, potentialPath); // لاگ در صورت پیدا شدن
+                                    break; // از حلقه پسوندها خارج شو چون پیدا شد
+                                }
+                                // else { _logger.LogTrace("File not found at: {Path}", potentialPath); } // لاگ اضافی برای هر پسوند
+                            }
+                            catch (Exception ex)
+                            {
+                                _logger.LogWarning(ex, "Error checking file existence for path: {Path}", potentialPath);
+                                // ادامه بده تا پسوندهای دیگر بررسی شوند
+                            }
+                        }
+                        if (!item.ImageExists)
+                        {
+                            _logger.LogWarning("Image NOT found for Item Code: {ItemCode} after checking all extensions.", itemCodeStr); // لاگ فقط اگر هیچکدام پیدا نشد
+                        }
+                    }
+                }
+                else
+                {
+                    _logger.LogWarning("ImageSharePath is not configured. All items will have ImageExists=false.");
+                }
+                // --- پایان بررسی تصویر ---
+
+                var pagedResult = new PagedResult<ItemDisplayDto> // <<< نوع PagedResult به ItemDisplayDto تغییر کرد
                 {
                     Items = itemsList,
                     TotalCount = totalItemCount,
@@ -128,19 +182,18 @@ namespace Safir.Server.Controllers
                     PageSize = pageSize
                 };
 
-                _logger.LogInformation("Fetched page {PageNumber}/{TotalPages} for group {GroupCode}, Search: '{OrigSearch}' (Normalized: '{NormSearch}'). Found {ItemCount} items (Total: {TotalCount})",
-                   pageNumber, pagedResult.TotalPages, groupCode, searchTerm, normalizedSearchTerm ?? "N/A", itemsList.Count, totalItemCount);
+                _logger.LogInformation("Fetched page {PageNumber}/{TotalPages} for group {GroupCode}, Search: '{OrigSearch}'. Found {ItemCount} items (Total: {TotalCount})",
+                    pageNumber, pagedResult.TotalPages, groupCode, searchTerm ?? "N/A", itemsList.Count, totalItemCount);
 
 
                 return Ok(pagedResult);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error fetching paged/searched items (SQL Server 2008 compat mode) for group {GroupCode}, Search: '{SearchTerm}'", groupCode, searchTerm);
+                _logger.LogError(ex, "Error fetching paged/searched items for group {GroupCode}, Search: '{SearchTerm}'", groupCode, searchTerm);
                 return StatusCode(StatusCodes.Status500InternalServerError, "خطا در دریافت لیست کالاها.");
             }
         }
-
 
         // --- GetItemImage endpoint remains the same ---
         [HttpGet("image/{itemCode}")]
@@ -160,6 +213,45 @@ namespace Safir.Server.Controllers
                 return File(fileBytes, contentType);
             }
             catch (Exception ex) { _logger.LogError(ex, "Error serving image {ItemCode}", itemCode); return StatusCode(StatusCodes.Status500InternalServerError, "Error serving image."); }
+        }
+
+        // --- API جدید برای دریافت موجودی ---
+        [HttpGet("inventory/{itemCode}")]
+        public async Task<ActionResult<decimal?>> GetItemInventory(string itemCode)
+        {
+            if (string.IsNullOrWhiteSpace(itemCode))
+            {
+                return BadRequest("Item code is required.");
+            }
+
+            _logger.LogInformation("Request received for inventory of item code: {ItemCode}", itemCode);
+
+            try
+            {
+                // TODO: Query the database to get the actual inventory for the itemCode.
+                //       Replace the placeholder logic below with your actual query.
+                // Example Placeholder Query (Needs your actual inventory calculation logic):
+                const string inventorySql = "SELECT TOP 1 InventoryAmount FROM YourInventoryViewOrTable WHERE ItemCode = @Code"; // <<< کوئری خود را جایگزین کنید
+
+                var parameters = new { Code = itemCode };
+                decimal? inventory = await _dbService.DoGetDataSQLAsyncSingle<decimal?>(inventorySql, parameters);
+
+                if (inventory.HasValue)
+                {
+                    _logger.LogInformation("Inventory for item {ItemCode} is {Inventory}", itemCode, inventory.Value);
+                    return Ok(inventory.Value);
+                }
+                else
+                {
+                    _logger.LogWarning("Inventory data not found for item {ItemCode}", itemCode);
+                    return Ok(0); // Or NotFound() if 0 is not appropriate for "not found"
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error fetching inventory for item code: {ItemCode}", itemCode);
+                return StatusCode(StatusCodes.Status500InternalServerError, "خطا در دریافت موجودی کالا.");
+            }
         }
     }
 }
