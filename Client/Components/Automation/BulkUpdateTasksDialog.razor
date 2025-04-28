@@ -1,0 +1,181 @@
+﻿@using Safir.Shared.Models.Automation
+@using Safir.Shared.Interfaces
+@using MudBlazor
+@using System.ComponentModel.DataAnnotations
+
+@inject IAutomationApiService AutomationService
+@inject ISnackbar Snackbar
+
+<MudDialog>
+    <TitleContent>
+        <MudText Typo="Typo.h6">ویرایش گروهی @SelectedTaskIds.Count وظیفه</MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudText Typo="Typo.body2" Class="mb-4">فیلدهایی که می‌خواهید برای وظایف انتخاب شده تغییر دهید را علامت زده و مقدار جدید را انتخاب کنید.</MudText>
+        <MudForm @ref="_form">
+            <MudGrid Spacing="2">
+                @* --- تغییر کاربر مجری --- *@
+                <MudItem xs="4" Class="d-flex align-center">
+                    <MudCheckBox @bind-Checked="@_updatePersonel" Label="تغییر کاربر مجری به:" Size="Size.Small" />
+                </MudItem>
+                <MudItem xs="8">
+                    <MudSelect T="int?" Label="کاربر مجری جدید"
+                               @bind-Value="@_newPersonelId"
+                               Disabled="!_updatePersonel"
+                               Dense="true" Variant="Variant.Outlined" Clearable="true">
+                        <MudSelectItem T="int?" Value="null">-- انتخاب کنید --</MudSelectItem>
+                        @if (_personelLookup != null)
+                        {
+                            foreach (var personel in _personelLookup)
+                            {
+                                <MudSelectItem T="int?" Value="@personel.USERCO">@personel.SAL_NAME</MudSelectItem>
+                            }
+                        }
+                        else
+                        {
+                            <MudSelectItem T="int?" Value="null" Disabled="true">در حال بارگذاری...</MudSelectItem>
+                        }
+                    </MudSelect>
+                </MudItem>
+
+                @* --- تغییر وضعیت --- *@
+                <MudItem xs="4" Class="d-flex align-center">
+                    <MudCheckBox @bind-Checked="@_updateStatus" Label="تغییر وضعیت به:" Size="Size.Small" />
+                </MudItem>
+                <MudItem xs="8">
+                    <MudSelect T="int?" Label="وضعیت جدید"
+                               @bind-Value="@_newStatusId"
+                               Disabled="!_updateStatus"
+                               Dense="true" Variant="Variant.Outlined" Clearable="true">
+                        <MudSelectItem T="int?" Value="null">-- انتخاب کنید --</MudSelectItem>
+                        <MudSelectItem T="int?" Value="1">انجام نشده</MudSelectItem>
+                        <MudSelectItem T="int?" Value="2">انجام شده</MudSelectItem>
+                        <MudSelectItem T="int?" Value="3">لغو شده</MudSelectItem>
+                    </MudSelect>
+                </MudItem>
+
+                @* --- تغییر اولویت --- *@
+                <MudItem xs="4" Class="d-flex align-center">
+                    <MudCheckBox @bind-Checked="@_updatePriority" Label="تغییر اولویت به:" Size="Size.Small" />
+                </MudItem>
+                <MudItem xs="8">
+                    <MudSelect T="int?" Label="اولویت جدید"
+                               @bind-Value="@_newPriorityId"
+                               Disabled="!_updatePriority"
+                               Dense="true" Variant="Variant.Outlined" Clearable="true">
+                        <MudSelectItem T="int?" Value="null">-- انتخاب کنید --</MudSelectItem>
+                        <MudSelectItem T="int?" Value="1">فوری</MudSelectItem>
+                        <MudSelectItem T="int?" Value="2">معمولی</MudSelectItem>
+                    </MudSelect>
+                </MudItem>
+
+            </MudGrid>
+        </MudForm>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel" Color="Color.Secondary">لغو</MudButton>
+        <MudButton OnClick="UpdateTasksAsync" Variant="Variant.Filled" Color="Color.Primary" Disabled="@_isSaving">اعمال تغییرات</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] MudDialogInstance MudDialog { get; set; } = default!;
+    [Parameter] public List<long> SelectedTaskIds { get; set; } = new List<long>();
+
+    private MudForm? _form;
+    private List<PersonelLookupModel>? _personelLookup;
+
+    // وضعیت CheckBox ها
+    private bool _updatePersonel = false;
+    private bool _updateStatus = false;
+    private bool _updatePriority = false;
+
+    // مقادیر جدید انتخاب شده
+    private int? _newPersonelId = null;
+    private int? _newStatusId = null;
+    private int? _newPriorityId = null;
+
+    private bool _isLoading = false;
+    private bool _isSaving = false;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _isLoading = true;
+        try
+        {
+            // بارگذاری لیست کاربران برای انتخاب مجری
+            _personelLookup = (await AutomationService.GetPersonelLookupAsync())?.ToList();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"خطا در بارگذاری لیست کاربران: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private async Task UpdateTasksAsync()
+    {
+        // بررسی اینکه حداقل یک فیلد برای آپدیت انتخاب شده باشد
+        if (!_updatePersonel && !_updateStatus && !_updatePriority)
+        {
+            Snackbar.Add("حداقل یک فیلد برای ویرایش گروهی انتخاب کنید.", Severity.Warning);
+            return;
+        }
+
+        // بررسی اینکه برای فیلدهای انتخاب شده، مقدار جدید تعیین شده باشد
+        if ((_updatePersonel && !_newPersonelId.HasValue) ||
+            (_updateStatus && !_newStatusId.HasValue) ||
+            (_updatePriority && !_newPriorityId.HasValue))
+        {
+            Snackbar.Add("لطفاً برای فیلدهای انتخاب شده، مقدار جدید را تعیین کنید.", Severity.Warning);
+            return;
+        }
+
+        _isSaving = true;
+        StateHasChanged();
+
+        try
+        {
+            // ساخت مدل مقادیر جدید بر اساس فیلدهای انتخاب شده
+            var updateValues = new TaskModel(); // فقط فیلدهای مورد نظر مقداردهی می‌شوند
+            if (_updatePersonel) updateValues.PERSONEL = _newPersonelId!.Value;
+            if (_updateStatus) updateValues.STATUS = _newStatusId!.Value;
+            if (_updatePriority) updateValues.PERIORITY = _newPriorityId!.Value;
+
+            // فراخوانی سرویس برای آپدیت گروهی
+            // نکته: سرویس UpdateTasksBulkAsync هنوز در AutomationApiService پیاده سازی نشده است
+            // bool success = await AutomationService.UpdateTasksBulkAsync(SelectedTaskIds, updateValues);
+
+            // ------------ شروع بخش موقت تا پیاده سازی سرویس --------------
+            // شبیه سازی آپدیت - این بخش باید با فراخوانی واقعی سرویس جایگزین شود
+            await Task.Delay(500); // شبیه سازی تاخیر شبکه
+            bool success = true; // فرض موفقیت آمیز بودن
+            Snackbar.Add($"شبیه سازی: {SelectedTaskIds.Count} وظیفه آپدیت شد (سرویس واقعی باید پیاده‌سازی شود).", Severity.Info);
+            // ------------ پایان بخش موقت --------------------------------
+
+            if (success)
+            {
+                Snackbar.Add("وظایف با موفقیت بروزرسانی شدند.", Severity.Success);
+                MudDialog.Close(DialogResult.Ok(true)); // بستن دیالوگ و اعلام موفقیت
+            }
+            else
+            {
+                Snackbar.Add("خطا در بروزرسانی گروهی وظایف.", Severity.Error);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"خطا در زمان بروزرسانی گروهی: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _isSaving = false;
+            StateHasChanged();
+        }
+    }
+
+    void Cancel() => MudDialog.Cancel();
+}

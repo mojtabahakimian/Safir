@@ -139,7 +139,7 @@ namespace Safir.Server.Controllers // یا namespace صحیح شما
                     column.Item().AlignRight().Text(text =>
                     {
                         text.Span("تاریخ تهیه گزارش: ").SemiBold();
-                        text.Span($"{FormatShamsiDateFromLong(CL_Tarikh.PersianCalendarHelper.GetCurrentPersianDateAsLong())} {DateTime.Now:HH:mm}");
+                        text.Span($"{FormatShamsiDateFromLong(CL_Tarikh.GetCurrentPersianDateAsLong())} {DateTime.Now:HH:mm}");
                     });
 
                     // سایر اطلاعات هدر در صورت نیاز
@@ -164,49 +164,48 @@ namespace Safir.Server.Controllers // یا namespace صحیح شما
                     columns.RelativeColumn(4f);   // شرح
                     columns.RelativeColumn(2.2f); // بدهکار
                     columns.RelativeColumn(2.2f); // بستانکار
-                    columns.ConstantColumn(30f);  // تش
+                    columns.ConstantColumn(30f);  // تش (عرض کم)
                     columns.RelativeColumn(2.5f); // مانده
                 });
 
-                // ----- تغییرات نهایی در هدر -----
+                // ----- تنظیم دقیق پدینگ هدر -----
                 table.Header(header =>
                 {
-                    // --- استایل پایه هدر با پدینگ افقی ---
+                    // استایل پایه هدر (بدون پدینگ افقی عمومی)
                     static IContainer BaseHeaderStyle(IContainer c) =>
                         c.DefaultTextStyle(x => x.SemiBold().FontFamily(PersianFontName))
-                         .PaddingVertical(5)
-                         .PaddingHorizontal(5) // <<< --- اضافه کردن پدینگ افقی ---
+                         .PaddingVertical(5) // فقط پدینگ عمودی
                          .BorderBottom(1)
                          .BorderColor(Colors.Grey.Lighten2);
 
-                    // تعریف استایل‌های تراز مختلف برای هدر (مثل قبل)
+                    // تعریف استایل‌های تراز (مثل قبل)
                     static IContainer HeaderCenter(IContainer c) => BaseHeaderStyle(c).AlignCenter();
                     static IContainer HeaderRight(IContainer c) => BaseHeaderStyle(c).AlignRight();
 
-                    // اعمال تراز به هر سلول هدر (بدون تغییر نسبت به مرحله قبل)
-                    header.Cell().Element(HeaderCenter).Text("ردیف");
-                    header.Cell().Element(HeaderCenter).Text("تاریخ");
-                    header.Cell().Element(HeaderCenter).Text("ش سند");
-                    header.Cell().Element(HeaderRight).Text("شرح");
-                    header.Cell().Element(HeaderRight).Text("بدهکار");
-                    header.Cell().Element(HeaderRight).Text("بستانکار");
-                    header.Cell().Element(HeaderCenter).Text("تش");
-                    header.Cell().Element(HeaderRight).Text("مانده");
+                    // --- اعمال تراز و پدینگ افقی *مجزا* به هر سلول هدر ---
+                    // میتونی مقادیر PaddingHorizontal رو برای تنظیم دقیق‌تر تغییر بدی
+                    header.Cell().Element(HeaderCenter).PaddingHorizontal(5).Text("ردیف");      // پدینگ 5
+                    header.Cell().Element(HeaderCenter).PaddingHorizontal(5).Text("تاریخ");     // پدینگ 5
+                    header.Cell().Element(HeaderCenter).PaddingHorizontal(5).Text("ش سند");    // پدینگ 5
+                    header.Cell().Element(HeaderRight).PaddingHorizontal(5).Text("شرح");       // پدینگ 5 (برای ستون عریض)
+                    header.Cell().Element(HeaderRight).PaddingHorizontal(8).Text("بدهکار");    // پدینگ بیشتر برای اعداد
+                    header.Cell().Element(HeaderRight).PaddingHorizontal(8).Text("بستانکار");  // پدینگ بیشتر برای اعداد
+                    header.Cell().Element(HeaderCenter).PaddingHorizontal(3).Text("تش");       // پدینگ کمتر برای ستون باریک
+                    header.Cell().Element(HeaderRight).PaddingHorizontal(8).Text("مانده");     // پدینگ بیشتر برای اعداد
                 });
 
-                // ----- بدنه جدول (بدون تغییر نسبت به مرحله قبل) -----
+                // ----- بدنه جدول (بدون تغییر) -----
                 int rowIndex = 0;
                 decimal tolerance = 0.01m;
 
                 foreach (var item in _statementItems)
                 {
                     rowIndex++;
-
                     static IContainer BaseCellStyle(IContainer c) =>
                        c.BorderBottom(1)
                         .BorderColor(Colors.Grey.Lighten1)
                         .PaddingVertical(3)
-                        .PaddingHorizontal(5);
+                        .PaddingHorizontal(5); // پدینگ افقی سلول های بدنه هم 5 هست
 
                     static IContainer CellCenter(IContainer c) => BaseCellStyle(c).AlignCenter();
                     static IContainer CellRight(IContainer c) => BaseCellStyle(c).AlignRight();
@@ -229,7 +228,7 @@ namespace Safir.Server.Controllers // یا namespace صحیح شما
                     table.Cell().Element(CellRight).Text(FormatNumber(absMand));
                 }
             });
-        }        // متدهای Helper بدون تغییر باقی می مانند...
+        }
         #region Helper Format Methods
         private string FormatShamsiDateFromLong(long? dateLong)
         {
