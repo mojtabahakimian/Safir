@@ -1,0 +1,148 @@
+﻿@using Safir.Shared.Models.Automation
+@using Safir.Shared.Interfaces
+@using MudBlazor
+@using System.ComponentModel.DataAnnotations
+
+@inject IAutomationApiService AutomationService
+@inject ISnackbar Snackbar
+
+<MudDialog>
+    <TitleContent>
+        <MudText Typo="Typo.h6">رویدادهای وظیفه @TaskId</MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudTable Items="@_events" Dense="true" Hover="true" Striped="true" Class="mb-4" Style="max-height: 300px; overflow-y: auto;" Loading="@_isLoadingEvents" LoadingProgressColor="Color.Info">
+            <HeaderContent>
+                <MudTh>#</MudTh>
+                <MudTh>شرح رویداد</MudTh>
+                @* حذف ستون زمان صرف شده *@
+                <MudTh>کاربر</MudTh>
+                <MudTh>تاریخ ثبت</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd DataLabel="#">@context.IDD</MudTd>
+                <MudTd DataLabel="شرح رویداد" Style="white-space: pre-wrap;">@context.EVENTS</MudTd>
+                @* حذف ستون زمان صرف شده *@
+                <MudTd DataLabel="کاربر">@context.USERNAME</MudTd>
+                <MudTd DataLabel="تاریخ ثبت">@context.STDATE?.ToString("yyyy/MM/dd") @context.STTIME?.ToString("hh:mm")</MudTd>
+            </RowTemplate>
+            <NoRecordsContent>
+                <MudText>رویدادی برای این وظیفه ثبت نشده است.</MudText>
+            </NoRecordsContent>
+            <LoadingContent>
+                <MudText>در حال بارگذاری رویدادها...</MudText>
+            </LoadingContent>
+        </MudTable>
+
+        <MudDivider Class="my-4" />
+
+        <MudText Typo="Typo.subtitle1" GutterBottom="true">ثبت رویداد جدید</MudText>
+        <EditForm Model="@_newEvent" OnValidSubmit="SaveNewEventAsync">
+            <DataAnnotationsValidator />
+            <MudForm @ref="_newEventForm">
+                <MudTextField Label="شرح رویداد"
+                              @bind-Value="_newEvent.EVENTS"
+                              For="@(() => _newEvent.EVENTS)"
+                              Lines="3"
+                              Variant="Variant.Outlined"
+                              Required="true"
+                              RequiredError="شرح رویداد الزامی است." />
+
+                @* حذف کامل MudTimePicker مربوط به SUMTIME *@
+
+                <ValidationSummary Class="mt-2" />
+                <MudButton ButtonType="ButtonType.Submit"
+                           Variant="Variant.Filled"
+                           Color="Color.Primary"
+                           Disabled="@_isSavingEvent"
+                           Class="mt-4">ثبت رویداد</MudButton>
+            </MudForm>
+        </EditForm>
+
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">بستن</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] MudDialogInstance MudDialog { get; set; } = default!;
+    [Parameter] public long TaskId { get; set; }
+
+    private MudForm? _newEventForm;
+    private List<EventModel> _events = new List<EventModel>();
+    private EventModel _newEvent = new EventModel(); // SUMTIME در این مدل به صورت پیش‌فرض null خواهد بود
+
+    private bool _isLoadingEvents = false;
+    private bool _isSavingEvent = false;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadEventsAsync();
+    }
+
+    private async Task LoadEventsAsync()
+    {
+        _isLoadingEvents = true;
+        StateHasChanged();
+        try
+        {
+            var result = await AutomationService.GetEventsAsync(TaskId);
+            _events = result?.ToList() ?? new List<EventModel>();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"خطا در بارگذاری رویدادها: {ex.Message}", Severity.Error);
+            _events = new List<EventModel>();
+        }
+        finally
+        {
+            _isLoadingEvents = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task SaveNewEventAsync()
+    {
+        await (_newEventForm?.Validate() ?? Task.CompletedTask);
+        // فقط اعتبار سنجی شرح رویداد بررسی می‌شود چون زمان حذف شد
+        if (_newEventForm?.IsValid != true)
+        {
+            Snackbar.Add("لطفا شرح رویداد را وارد کنید.", Severity.Warning);
+            return;
+        }
+
+        _isSavingEvent = true;
+        StateHasChanged();
+        try
+        {
+            _newEvent.IDNUM = TaskId;
+            // SUMTIME به صورت null ارسال خواهد شد چون از فرم حذف شده
+            var createdEvent = await AutomationService.CreateEventAsync(TaskId, _newEvent);
+
+            if (createdEvent != null && createdEvent.IDD > 0)
+            {
+                Snackbar.Add("رویداد با موفقیت ثبت شد.", Severity.Success);
+                _newEvent = new EventModel(); // Reset مدل
+                _newEventForm?.Reset();
+                _newEventForm?.ResetValidation();
+                await LoadEventsAsync();
+            }
+            else
+            {
+                Snackbar.Add("خطا در ثبت رویداد. لطفاً دوباره تلاش کنید.", Severity.Error);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"خطا در زمان ثبت رویداد: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _isSavingEvent = false;
+            StateHasChanged();
+        }
+    }
+
+    void Cancel() => MudDialog.Cancel();
+}

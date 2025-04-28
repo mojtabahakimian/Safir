@@ -6,6 +6,8 @@ using System.Collections.Generic;
 using System.Threading.Tasks;
 using System; // برای Exception
 using Microsoft.Extensions.Logging; // برای ILogger
+using Safir.Shared.Models.Automation;
+using Safir.Shared.Utility;
 using Safir.Shared.Models.Kala;
 
 namespace Safir.Server.Controllers
@@ -17,6 +19,39 @@ namespace Safir.Server.Controllers
     {
         private readonly IDatabaseService _dbService;
         private readonly ILogger<LookupController> _logger;
+
+
+        [HttpGet("personnel")] // آدرس: /api/lookup/personnel
+        public async Task<ActionResult<IEnumerable<PersonelLookupModel>>> GetPersonnel()
+        {
+            // کوئری مشابه آنچه در WPF برای پر کردن کمبوباکس مجری استفاده می‌شد
+            const string sql = "SELECT IDD as USERCO, SAL_NAME FROM SALA_DTL WHERE (ENABL=0) AND (IDD <> 1) ORDER BY SAL_NAME"; // IDD=1 معمولا کاربر سیستم است
+            try
+            {
+                // خواندن داده‌های خام از دیتابیس
+                var usersRaw = await _dbService.DoGetDataSQLAsync<dynamic>(sql); // یا یک مدل موقت
+
+                if (usersRaw == null) return Ok(Enumerable.Empty<PersonelLookupModel>());
+
+                // Decode کردن نام‌ها و ایجاد لیست نهایی
+                var personnelList = usersRaw.Select(u => new PersonelLookupModel
+                {
+                    USERCO = (int)u.USERCO,
+                    // استفاده از متد Decode و اصلاح کاراکترها
+                    SAL_NAME = CL_METHODS.FixPersianChars(CL_METHODS.DECODEUN(u.SAL_NAME ?? string.Empty))
+                })
+                .OrderBy(p => p.SAL_NAME) // مرتب‌سازی بر اساس نام Decode شده
+                .ToList();
+
+                _logger.LogInformation("API: Successfully fetched and decoded {Count} personnel.", personnelList.Count);
+                return Ok(personnelList);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "API: Error fetching personnel lookup.");
+                return StatusCode(500, "Internal server error while fetching personnel.");
+            }
+        }
 
         public LookupController(IDatabaseService dbService, ILogger<LookupController> logger)
         {

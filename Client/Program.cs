@@ -11,7 +11,7 @@ using MudBlazor.Services;
 var builder = WebAssemblyHostBuilder.CreateDefault(args);
 builder.RootComponents.Add<App>("#app"); // Check if App.razor exists, or use HeadOutlet/Routes
 builder.RootComponents.Add<HeadOutlet>("head::after");
-
+builder.Services.AddScoped<IAutomationApiService, AutomationApiService>(); // Register interface and implementation
 
 
 
