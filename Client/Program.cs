@@ -48,6 +48,8 @@ builder.Services.AddScoped<VisitorApiService>();
 builder.Services.AddScoped<ItemGroupApiService>();
 
 builder.Services.AddScoped<ShoppingCartService>();
+
+builder.Services.AddScoped<ProformaApiService>();
 #endregion
 
 

@@ -1,16 +1,24 @@
 ﻿@implements IDisposable
+@using Microsoft.AspNetCore.Authorization
 @using Safir.Shared.Models.Kala
 @using System.Globalization
 @using MudBlazor
 @using Safir.Client.Services
-@using System.Timers;
+@using System.Timers
+@using Microsoft.AspNetCore.Components
+@using Safir.Client.Shared
+
+@attribute [Authorize]
 
 @inject ItemGroupApiService ItemService
 @inject ISnackbar Snackbar
+@inject IDialogService DialogService
 @inject ShoppingCartService CartService
+@inject ILogger<ItemCard> Logger
 
 <MudCard Outlined="true" Class="ma-1 item-card">
 
+    <!-- تصویر و نام کالا -->
     <div class="image-container">
         @if (Item?.ImageExists == true)
         {
@@ -26,17 +34,15 @@
     </div>
 
     <MudCardContent Class="pa-2 flex-grow-1">
-
-        <MudText Typo="Typo.body1" GutterBottom="true"
-                 Style="min-height: 1.5em; overflow: hidden; text-align: center; font-weight: 500;">
+        <MudText Typo="Typo.body1" GutterBottom="true" Style="min-height: 1.5em; overflow: hidden; text-align: center; font-weight: 500;">
             @(Item?.NAME ?? "نام کالا")
         </MudText>
-
         <MudDivider Class="my-1" />
 
+        <!-- انتخاب واحد -->
         @if (AvailableUnits?.Any() == true)
         {
-            <MudSelect T="int" Label="واحد" @bind-Value="_selectedVahedCode"
+            <MudSelect T="int" Label="واحد" @bind-Value="SelectedVahedCode" Disabled="@(_cartQuantity > 0)"
                        Variant="Variant.Outlined" Margin="Margin.Dense" Dense="true">
                 @foreach (var unit in AvailableUnits)
                 {
@@ -49,178 +55,265 @@
             <MudText Typo="Typo.caption">واحد: @(Item?.VahedName ?? "-")</MudText>
         }
 
-        <MudGrid Spacing="1" Justify="Justify.SpaceBetween" Class="mt-2">
-            <MudItem xs="6"><MudText Typo="Typo.caption">فی عمده:</MudText></MudItem>
-            <MudItem xs="6" Class="d-flex justify-end">
-                <MudText Typo="Typo.caption" Style="direction:ltr;">@FormatCurrency(Item?.MABL_F)</MudText>
+        <!-- قیمت‌ها و تخفیف -->
+        <MudGrid Spacing="0" Justify="Justify.SpaceBetween" Class="mt-2 price-section-grid">
+            <MudItem xs="7" Class="d-flex align-center justify-start pa-1">
+                <MudText Typo="Typo.caption">فی عمده:</MudText>
             </MudItem>
-            <MudItem xs="6"><MudText Typo="Typo.caption">فی خرده:</MudText></MudItem>
-            <MudItem xs="6" Class="d-flex justify-end">
-                <MudText Typo="Typo.caption" Style="direction:ltr;">@FormatCurrency(Item?.B_SEF)</MudText>
+            <MudItem xs="5" Class="d-flex align-center justify-end pa-1">
+                <MudNumericField @bind-Value="EditableMablF" Label="" Placeholder="0"
+                                 Variant="Variant.Text" Format="N0" Culture='_faCulture' HideSpinButtons="true"
+                                 Immediate="true" DebounceInterval="500" OnDebounceIntervalElapsed="PriceOrDiscountChanged"
+                                 Disabled="@(AnbarCode <= 0 || _cartQuantity > 0)"
+                                 Style="direction:ltr; width: 100%;" InputStyle="text-align: left;" Margin="Margin.Dense" Class="dense-numeric" />
             </MudItem>
-            <MudItem xs="6"><MudText Typo="Typo.caption">مصرف کننده:</MudText></MudItem>
-            <MudItem xs="6" Class="d-flex justify-end">
-                <MudText Typo="Typo.caption" Style="direction:ltr;">@FormatCurrency(Item?.MAX_M)</MudText>
+            <MudItem xs="7" Class="d-flex align-center justify-start pa-1">
+                <MudText Typo="Typo.caption">فی خرده:</MudText>
+            </MudItem>
+            <MudItem xs="5" Class="d-flex align-center justify-end pa-1">
+                <MudNumericField @bind-Value="EditableBSEF" Label="" Placeholder="0" ReadOnly="true"
+                                 Variant="Variant.Text" Format="N0" Culture='_faCulture' HideSpinButtons="true"
+                                 Immediate="true" DebounceInterval="500" OnDebounceIntervalElapsed="PriceOrDiscountChanged"
+                                 Disabled="@(AnbarCode <= 0 || _cartQuantity > 0)"
+                                 Style="direction:ltr; width: 100%;" InputStyle="text-align: left;" Margin="Margin.Dense" Class="dense-numeric" />
+            </MudItem>
+            <MudItem xs="7" Class="d-flex align-center justify-start pa-1">
+                <MudText Typo="Typo.caption">مصرف کننده:</MudText>
+            </MudItem>
+            <MudItem xs="5" Class="d-flex align-center justify-end pa-1">
+                <MudTextField Value="@FormatCurrency(Item?.MAX_M)"
+                              ReadOnly="true"
+                              Variant="Variant.Text"
+                              Margin="Margin.Dense"
+                              Class="dense-numeric"
+                              Style="direction: ltr; width: 100%; "
+                              InputStyle="text-align: left;" />
+            </MudItem>
+            <MudItem xs="7" Class="d-flex align-center justify-start pa-1">
+                <MudText Typo="Typo.caption">تخفیف (%):</MudText>
+            </MudItem>
+            <MudItem xs="5" Class="d-flex align-center justify-end pa-1">
+                <MudNumericField @bind-Value="EditableNKOL" Label="" Placeholder="0"
+                                 Variant="Variant.Text" Format="0.#" Culture='_faCulture' HideSpinButtons="true"
+                                 Immediate="true" DebounceInterval="500" OnDebounceIntervalElapsed="PriceOrDiscountChanged"
+                                 Min="0" Max="100" Disabled="@(AnbarCode <= 0 || _cartQuantity > 0)"
+                                 Style="direction:ltr; width: 100%;" InputStyle="text-align: left;" Margin="Margin.Dense" Class="dense-numeric" />
             </MudItem>
         </MudGrid>
 
         <MudDivider Class="my-1" />
 
-        <!-- موجودی با دکمه Refresh -->
+        <!-- موجودی -->
         <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1">
-            <MudText Typo="Typo.caption" Color="@GetInventoryColor(_inventoryAmount)">
-                موجودی: @_inventoryAmount?.ToString("N0", new CultureInfo("fa-IR"))
+            <MudText Typo="Typo.caption" Style="@GetInventoryStyle()">
+                موجودی: @_inventoryDetails?.CurrentInventory?.ToString("N0", _faCulture)
+                @if (_inventoryDetails?.MinimumInventory > 0)
+                {
+                    <span style="font-size: smaller;"> (حد: @_inventoryDetails.MinimumInventory?.ToString("N0", _faCulture))</span>
+                }
             </MudText>
             <MudIconButton Icon="@Icons.Material.Filled.Refresh" Size="Size.Small"
-                           Disabled="_isFetchingInventory"
+                           Disabled="@(_isFetchingInventory || AnbarCode <= 0)"
                            Title="بروزرسانی موجودی"
                            OnClick="FetchInventory" />
         </MudStack>
-
     </MudCardContent>
 
-    <!-- دکمه‌های سبد -->
+    <!-- بخش کنترل تعداد کالا با استایل دیجی‌کالا -->
     <MudCardActions Style="display: flex; justify-content: center;" Class="pa-2 mt-auto">
         @if (_cartQuantity == 0)
         {
             <MudButton Style="width:100%;" Color="Color.Success"
                        Variant="Variant.Filled"
                        StartIcon="@Icons.Material.Filled.AddShoppingCart"
-                       OnClick="AddFirstToCart">
+                       OnClick="@(() => HandleAddToCart(1))"
+                       Disabled="@(_isFetchingInventory || AnbarCode <= 0)">
                 افزودن به سبد
             </MudButton>
         }
         else
         {
-            <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1" Class="cart-actions">
-                <MudIconButton Icon="@Icons.Material.Filled.Delete" Color="Color.Error" Size="Size.Small" OnClick="RemoveFromCart" />
-                @* <MudSpacer /> *@
+            <div class="cart-quantity-container">
+                <MudIconButton Icon="@Icons.Material.Filled.Delete" Color="Color.Error" Size="Size.Small" OnClick="RemoveFromCart" Title="حذف از سبد" Class="cart-delete-btn" />
 
-                <div class="spacer"></div>
+                <MudPaper Class="cart-quantity-box" Elevation="3">
 
-                <!-- دکمه‌ی کم کردن -->
-                <MudIconButton Icon="@Icons.Material.Filled.Remove" Color="Color.Primary" Size="Size.Small" Disabled="_cartQuantity <= 1"
-                @onmousedown="@(e => StartLongPress(false))"
-                @onmouseup="StopLongPress"
-                @onclick="() => ChangeQuantity(-1)" />
+                    @* <MudIconButton Icon="@(_cartQuantity==1 ? Icons.Material.Filled.Delete   : Icons.Material.Filled.Remove)" *@
+                    <MudIconButton Icon="@(Icons.Material.Filled.Remove)"
+                                   Color="@(_cartQuantity==1 ? Color.Error : Color.Primary)"
+                                   Size="Size.Small"
+                                   Class="qty-btn"
+                                   Title="@(_cartQuantity==1 ? "حذف از سبد" : "کاهش")"
+                                   @onmousedown="@(e => StartLongPress(false))"
+                                   @onmouseup="StopLongPress"
+                                   @onmouseleave="StopLongPress"
+                                   OnClick="@(() => HandleQuantityChange(-1))" />
 
-                <MudNumericField T="decimal" Class="quantity-input" HideSpinButtons="true"
-                                 Value="_cartQuantity" ValueChanged="ApplyQuantity"
-                                 Min="0" Max="9999" DebounceInterval="500" />
+                   @*  <MudText Class="cart-quantity-value">@_cartQuantity</MudText> *@
 
-                <MudIconButton Icon="@Icons.Material.Filled.Add" Color="Color.Primary" Size="Size.Small"
-                @onmousedown="@(e => StartLongPress(true))"
-                @onmouseup="StopLongPress"
-                @onclick="() => ChangeQuantity(+1)" />
-            </MudStack>
+                    <MudNumericField Class="quantity-input" T="decimal" HideSpinButtons="true" Variant="Variant.Outlined"
+                                     Value="_cartQuantity" ValueChanged="HandleNumericFieldChange"
+                                     Min="0" Max="9999" DebounceInterval="700" Disabled="@(_isFetchingInventory || AnbarCode <= 0)" />
+
+                    <MudIconButton Icon="@Icons.Material.Filled.Add"
+                                   Color="Color.Success"
+                                   Size="Size.Small"
+                                   Class="qty-btn"
+                                   Title="افزایش"
+                                   @onmousedown="@(e => StartLongPress(true))"
+                                   @onmouseup="StopLongPress"
+                                   @onmouseleave="StopLongPress"
+                                   OnClick="@(() => HandleQuantityChange(+1))" />
+                </MudPaper>
+            </div>
         }
     </MudCardActions>
 </MudCard>
 
+
+@* --- کد @code و <style> بدون تغییر نسبت به مرحله قبل --- *@
 @code {
     [Parameter, EditorRequired] public ItemDisplayDto Item { get; set; } = default!;
     [Parameter] public List<TCOD_VAHEDS>? AvailableUnits { get; set; }
-    [Parameter] public EventCallback<(ItemDisplayDto Item, int Quantity, int SelectedUnitCode)> OnAddToCart { get; set; }
+    [Parameter] public int AnbarCode { get; set; }
 
-    private int _selectedVahedCode;
+    private int _selectedVahedCodeField;
     private decimal _cartQuantity;
-    private decimal? _inventoryAmount;
+    private InventoryDetailsDto? _inventoryDetails;
     private bool _isFetchingInventory;
     private bool _errorFetchingInventory;
+    private Timer? _longPressTimer;
+    private bool _increment;
+
+
+    private decimal? EditableMablF { get; set; } // Price - Wholesale
+    private decimal? EditableBSEF { get; set; }  // Price - Retail
+    private double? EditableNKOL { get; set; } // <<<--- Discount Percentage ---<<<
+
+    private static readonly CultureInfo _faCulture = new CultureInfo("fa-IR");
+
+    private int SelectedVahedCode
+    {
+        get => _selectedVahedCodeField;
+        set
+        {
+            if (_selectedVahedCodeField != value)
+            {
+                if (_cartQuantity > 0 && Item != null)
+                {
+                    // Remove the item with the OLD unit code before changing
+                    CartService.RemoveItem(Item.CODE, _selectedVahedCodeField);
+                }
+                _selectedVahedCodeField = value;
+                UpdateLocalEditablesFromItem(); // Update editable fields for the new unit
+                UpdateCartQuantity(); // Check if item with NEW unit exists in cart
+                Logger?.LogInformation("Selected unit changed for item {ItemCode} to {UnitCode}", Item?.CODE, value);
+            }
+        }
+    }
 
     protected override async Task OnInitializedAsync()
     {
         CartService.CartChanged += HandleCartChanged;
-        _selectedVahedCode = Item.VahedCode;
-        UpdateCartQuantity();
-        await FetchInventory();
+        await UpdateLocalEditablesFromItem(); // Initialize editable fields
+        if (Item != null)
+        {
+            _selectedVahedCodeField = Item.VahedCode; // Set initial unit
+            UpdateCartQuantity(); // Get initial cart quantity for this unit
+            if (AnbarCode > 0) { await FetchInventory(); }
+            else
+            {
+                Logger?.LogWarning("ItemCard init without valid AnbarCode for Item {ItemCode}.", Item?.CODE ?? "N/A");
+                _inventoryDetails = new InventoryDetailsDto { CurrentInventory = null, MinimumInventory = 0 };
+                _errorFetchingInventory = true;
+            }
+        }
+        else { Logger?.LogError("ItemCard init with null Item."); _errorFetchingInventory = true; }
     }
 
-    private Timer? _longPressTimer;
-    private bool _increment; // True == ‌زیاد کردن، False == کم کردن
-
-    void ChangeQuantity(decimal delta)
+    protected override async Task OnParametersSetAsync()
     {
-        var newVal = Math.Max(0, _cartQuantity + delta);
-        ApplyQuantity(newVal);
+        if (Item == null) return;
+
+        // Update editable fields if Item object itself has changed
+        await UpdateLocalEditablesFromItem();
+
+        // Reset selected unit only if not in cart (allows changing unit before adding)
+        if (_selectedVahedCodeField != Item.VahedCode && _cartQuantity == 0)
+        {
+            _selectedVahedCodeField = Item.VahedCode;
+        }
+
+        // Re-fetch inventory if AnbarCode changed or if initial fetch failed
+        if (AnbarCode > 0 && (_inventoryDetails == null || _errorFetchingInventory || AnbarCode != AnbarCode)) // Check if AnbarCode actually changed
+        {
+            await FetchInventory();
+        }
+        else if (AnbarCode <= 0 && (_inventoryDetails != null || !_errorFetchingInventory))
+        {
+            // Clear inventory if AnbarCode becomes invalid
+            //AnbarCode = 0;
+            _inventoryDetails = new InventoryDetailsDto { CurrentInventory = null, MinimumInventory = 0 };
+            _errorFetchingInventory = true;
+        }
+        UpdateCartQuantity(); // Update quantity display based on potentially new parameters
     }
 
-    void ApplyQuantity(decimal newQty)
+    public void Dispose()
     {
-        if (newQty == _cartQuantity) return;
-
-        _cartQuantity = newQty;
-
-        if (_cartQuantity == 0)
-            CartService.RemoveItem(Item.CODE, _selectedVahedCode);
-        else
-            CartService.UpdateQuantity(Item.CODE, _selectedVahedCode, _cartQuantity);
-
-        StateHasChanged();
-    }
-
-    /* ---------- Long-press ---------- */
-    void StartLongPress(bool inc)
-    {
-        _increment = inc;
-        _longPressTimer = new Timer(500) { AutoReset = false };
-        _longPressTimer.Elapsed += FirstLongPress;
-        _longPressTimer.Start();
-    }
-
-    void StopLongPress()
-    {
-        _longPressTimer?.Stop();
+        CartService.CartChanged -= HandleCartChanged;
+        StopLongPress(); // Dispose timer if active
         _longPressTimer?.Dispose();
-        _longPressTimer = null;
     }
 
-    void FirstLongPress(object? sender, ElapsedEventArgs e)
+    private Task UpdateLocalEditablesFromItem()
     {
-        InvokeAsync(() => ChangeQuantity(_increment ? +10 : -10));
-        _longPressTimer!.Elapsed -= FirstLongPress;
-        _longPressTimer!.Elapsed += RepeatingLongPress;
-        _longPressTimer!.Interval = 200;
-        _longPressTimer!.Start();
-    }
-
-    void RepeatingLongPress(object? sender, ElapsedEventArgs e) => InvokeAsync(() => ChangeQuantity(_increment ? +10 : -10));
-
-    private void UpdateCartQuantity() =>
-        _cartQuantity = CartService.GetItemQuantity(Item.CODE, _selectedVahedCode);
-
-    private void HandleCartChanged()
-    {
-        UpdateCartQuantity();
-        InvokeAsync(StateHasChanged);
-    }
-
-    private async Task AddFirstToCart()
-    {
-        if (OnAddToCart.HasDelegate)
-            await OnAddToCart.InvokeAsync((Item, 1, _selectedVahedCode));
-    }
-
-    private void RemoveFromCart()
-    {
-        CartService.RemoveItem(Item.CODE, _selectedVahedCode);
-        UpdateCartQuantity();
+        if (Item != null)
+        {
+            var cartItem = CartService.GetCartItem(Item.CODE, SelectedVahedCode);
+            if (cartItem == null || _cartQuantity == 0) // If not in cart or quantity is 0
+            {
+                // Reset to defaults from ItemDisplayDto
+                EditableMablF = Item.MABL_F;
+                EditableBSEF = Item.B_SEF;
+                EditableNKOL = 0; // Default discount is 0
+            }
+            else
+            {
+                // Load values from the existing cart item
+                EditableMablF = cartItem.PricePerUnit; // Use price stored in cart
+                EditableBSEF = Item.B_SEF; // Retail price usually comes from Item DTO
+                EditableNKOL = cartItem.DiscountPercent; // <<<--- Load discount from cart ---<<<
+            }
+        }
+        else
+        {
+            // Clear if item is null
+            EditableMablF = null;
+            EditableBSEF = null;
+            EditableNKOL = null;
+        }
+        return Task.CompletedTask;
     }
 
     private async Task FetchInventory()
     {
-        if (_isFetchingInventory) return;
+        if (_isFetchingInventory || AnbarCode <= 0 || Item == null) return;
         _isFetchingInventory = true;
         _errorFetchingInventory = false;
-
+        _inventoryDetails = null;
+        await InvokeAsync(StateHasChanged);
         try
         {
-            _inventoryAmount = await ItemService.GetItemInventoryAsync(Item.CODE);
+            _inventoryDetails = await ItemService.GetItemInventoryDetailsAsync(Item.CODE, AnbarCode);
+            _errorFetchingInventory = (_inventoryDetails == null);
+            if (_errorFetchingInventory) _inventoryDetails = new InventoryDetailsDto { CurrentInventory = null, MinimumInventory = 0 };
         }
-        catch
+        catch (Exception ex)
         {
             _errorFetchingInventory = true;
-            _inventoryAmount = null;
+            _inventoryDetails = new InventoryDetailsDto { CurrentInventory = null, MinimumInventory = 0 };
+            Logger.LogError(ex, "Exception fetching inventory details for Item {ItemCode}, Anbar {AnbarCode}", Item?.CODE, AnbarCode);
         }
         finally
         {
@@ -229,20 +322,219 @@
         }
     }
 
-    private Color GetInventoryColor(decimal? amount)
+    private async Task HandleAddToCart(decimal quantityToAdd)
     {
-        if (!amount.HasValue) return Color.Default;
-        if (amount < 10) return Color.Warning;
-        return Color.Success;
+        if (_isFetchingInventory || AnbarCode <= 0 || Item == null || quantityToAdd <= 0) return;
+        await CheckInventoryAndProceed(quantityToAdd, isInitialAdd: true, EditableMablF, EditableNKOL);
     }
 
-    private static string FormatCurrency(decimal? value) =>
-        value.HasValue ? value.Value.ToString("N0", new CultureInfo("fa-IR")) : "--";
+    private async Task HandleQuantityChange(decimal delta)
+    {
+        if (_isFetchingInventory || AnbarCode <= 0 || Item == null) return;
+        var newQuantity = _cartQuantity + delta;
+        await CheckInventoryAndProceed(newQuantity, isInitialAdd: false, EditableMablF, EditableNKOL);
+    }
 
-    public void Dispose() => CartService.CartChanged -= HandleCartChanged;
+
+    private async Task HandleNumericFieldChange(decimal newQuantity)
+    {
+        if (_isFetchingInventory || AnbarCode <= 0 || Item == null) return;
+        await CheckInventoryAndProceed(newQuantity, isInitialAdd: false, EditableMablF, EditableNKOL);
+    }
+
+    private async Task CheckInventoryAndProceed(decimal requestedQuantity, bool isInitialAdd, decimal? priceOverride, double? discountPercent)
+    {
+        if (Item == null) return;
+        if (requestedQuantity <= 0)
+        {
+            RemoveFromCart(); // This already updates state via CartChanged event
+            await UpdateLocalEditablesFromItem(); // Reset editables to defaults
+            await InvokeAsync(StateHasChanged); // Ensure UI updates if needed
+            return;
+        }
+        if (AnbarCode <= 0) { Snackbar.Add("خطا: انبار نامعتبر است.", Severity.Error); return; }
+
+        await FetchInventory();
+        if (_inventoryDetails == null || _errorFetchingInventory) { Snackbar.Add("خطا در بررسی موجودی کالا.", Severity.Error); return; }
+
+        decimal minInventory = _inventoryDetails.MinimumInventory ?? 0;
+        decimal currentInventory = _inventoryDetails.CurrentInventory ?? 0;
+        decimal resultingInventory = currentInventory - requestedQuantity;
+
+        // Calculate inventory *difference* relative to what's already in the cart
+
+        bool proceed = true;
+        if (resultingInventory < minInventory - 0.001m)
+        {
+            proceed = false;
+            Logger.LogWarning("Inventory check FAILED for Item {ItemCode}. Requested: {ReqQty}, Resulting: {ResInv}, Min: {MinInv}", Item.CODE, requestedQuantity, resultingInventory, minInventory);
+            var parameters = new DialogParameters
+                {
+                    ["ContentText"] = $"فروش این مقدار ({requestedQuantity:N0}) از کالا ({Item.NAME}) باعث کاهش موجودی به زیر حد مجاز ({minInventory:N0}) می‌شود. (موجودی فعلی: {currentInventory:N0}). آیا مایل به ادامه هستید؟",
+                    ["ConfirmButtonText"] = "بله، ادامه بده"
+                };
+            var dialogReference = DialogService.Show<Shared.ConfirmDialog>("موجودی به حد مجاز می‌رسد", parameters);
+            var result = await dialogReference.Result;
+            proceed = !result.Cancelled && result.Data is bool confirmation && confirmation;
+        }
+
+        if (proceed)
+        {
+            decimal priceToSend = priceOverride ?? Item.MABL_F;
+            if (isInitialAdd)
+            {
+                CartService.AddItem(Item, requestedQuantity, SelectedVahedCode, AnbarCode, AvailableUnits, priceToSend, discountPercent);
+            }
+            else
+            {
+                CartService.UpdateQuantity(Item.CODE, SelectedVahedCode, requestedQuantity, priceToSend, discountPercent);
+            }
+        }
+        else
+        {
+            Logger.LogInformation("User CANCELLED adding/updating Item {ItemCode} due to inventory.", Item.CODE);
+            await UpdateLocalEditablesFromItem();
+            UpdateCartQuantity();
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+
+
+    private async Task PriceOrDiscountChanged()
+    {
+        if (_cartQuantity > 0 && Item != null)
+        {
+            Logger.LogInformation("Price/Discount changed for item {ItemCode} already in cart. Updating cart.", Item.CODE);
+            await CheckInventoryAndProceed(_cartQuantity, isInitialAdd: false, EditableMablF, EditableNKOL);
+        }
+    }
+
+    private void RemoveFromCart()
+    {
+        if (AnbarCode <= 0 || Item == null) return;
+        CartService.RemoveItem(Item.CODE, SelectedVahedCode);
+    }
+
+    private void UpdateCartQuantity()
+    {
+        _cartQuantity = (AnbarCode > 0 && Item != null) ? CartService.GetItemQuantity(Item.CODE, SelectedVahedCode) : 0;
+    }
+
+    private void HandleCartChanged()
+    {
+        // This is called when ANY item in the cart changes
+        // We only care about the quantity of THIS specific item/unit combo
+        UpdateCartQuantity();
+        // Also reload local editable fields if the item IS in the cart or was just removed
+        UpdateLocalEditablesFromItem();
+        InvokeAsync(StateHasChanged);
+    }
+
+    // --- Long Press Logic ---
+    void StartLongPress(bool inc)
+    {
+        if (AnbarCode <= 0 || Item == null) return;
+        _increment = inc;
+        _longPressTimer = new Timer(500) { AutoReset = false };
+        _longPressTimer.Elapsed += FirstLongPress;
+        _longPressTimer.Start();
+    }
+    void StopLongPress()
+    {
+        _longPressTimer?.Stop();
+        _longPressTimer?.Dispose();
+        _longPressTimer = null;
+    }
+    async void FirstLongPress(object? sender, ElapsedEventArgs e)
+    {
+        if (_longPressTimer == null) return;
+        await InvokeAsync(() => HandleQuantityChange(_increment ? +10 : -10));
+        if (_longPressTimer == null) return;
+        _longPressTimer.Elapsed -= FirstLongPress;
+        _longPressTimer.Elapsed += RepeatingLongPress;
+        _longPressTimer.Interval = 200;
+        _longPressTimer.Start();
+    }
+    async void RepeatingLongPress(object? sender, ElapsedEventArgs e)
+    {
+        if (_longPressTimer == null) return;
+        await InvokeAsync(() => HandleQuantityChange(_increment ? +10 : -10));
+    }
+
+    // --- GetInventoryStyle ---
+    private string GetInventoryStyle()
+    {
+        string defaultColor = "color: #333;";
+        if (AnbarCode <= 0) return "color: var(--mud-palette-text-disabled);";
+        if (_inventoryDetails?.CurrentInventory == null || _errorFetchingInventory) return "color: var(--mud-palette-error);";
+        decimal min = _inventoryDetails.MinimumInventory ?? 0;
+        decimal current = _inventoryDetails.CurrentInventory.Value;
+        if (current < min + 0.001m) return "color: var(--mud-palette-error); font-weight: bold;";
+        if (current < min + 10) return "color: var(--mud-palette-warning);";
+        return "color: var(--mud-palette-success);";
+    }
+
+    private static string FormatCurrency(decimal? value) => value.HasValue ? value.Value.ToString("N0", _faCulture) : "--";
 }
 
 <style>
+    .quantity-input .mud-input-outlined-border {
+        border: none !important;
+    }
+
+    .quantity-input {
+        width: 60px;
+    }
+
+        .quantity-input input {
+            text-align: center !important;
+            padding-left: 4px !important;
+            padding-right: 4px !important;
+        }
+
+            .quantity-input input::-webkit-outer-spin-button, .quantity-input input::-webkit-inner-spin-button {
+                -webkit-appearance: none;
+                margin: 0;
+            }
+
+            .quantity-input input[type=number] {
+                -moz-appearance: textfield;
+            }
+
+    .cart-quantity-container {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        margin-top: 8px;
+    }
+
+    .cart-quantity-box {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 16px;
+        box-shadow: 0 2px 8px rgba(60,60,60,0.10);
+        background: #fff;
+        padding: 4px 16px;
+        min-width: 90px;
+        min-height: 40px;
+        gap: 8px;
+    }
+
+    .cart-quantity-value {
+        font-size: 1.15rem;
+        font-weight: 600;
+        width: 28px;
+        text-align: center;
+        user-select: none;
+    }
+
+    .cart-delete-btn {
+        margin-left: 4px;
+        margin-right: 4px;
+    }
+
 
     .spacer {
         width: 16px;
@@ -289,21 +581,57 @@
         margin-inline: 2px;
     }
 
-    .quantity-input {
-        width: 70px;
-    }
 
-        .quantity-input input {
-            text-align: center;
+    /* --- استایل برای بخش قیمت با MudGrid --- */
+    .price-section-grid .mud-grid-item {
+        padding-top: 1px !important; /* کاهش فاصله عمودی */
+        padding-bottom: 1px !important;
+        display: flex; /* برای تراز عمودی بهتر آیتم‌ها */
+        align-items: center; /* تراز عمودی آیتم‌ها در مرکز */
+    }
+        /* تراز راست برای ستون لیبل */
+        .price-section-grid .mud-grid-item:nth-child(odd) { /* انتخاب آیتم‌های فرد (ستون لیبل) */
+            justify-content: flex-start; /* تراز به راست (چون Grid در RTL است) */
+        }
+        /* تراز چپ برای ستون مقدار */
+        .price-section-grid .mud-grid-item:nth-child(even) { /* انتخاب آیتم‌های زوج (ستون مقدار) */
+            justify-content: flex-end; /* تراز به چپ (چون Grid در RTL است) */
         }
 
-            .quantity-input input::-webkit-outer-spin-button,
-            .quantity-input input::-webkit-inner-spin-button {
-                -webkit-appearance: none;
-                margin: 0;
-            }
+    .price-section-grid .mud-input-control {
+        margin-top: -6px !important; /* تنظیم دقیق تر فاصله عمودی */
+        margin-bottom: -6px !important;
+        width: 100%; /* فیلد کل عرض ستون خود را بگیرد */
+    }
 
-            .quantity-input input[type=number] {
-                -moz-appearance: textfield;
-            }
+    .price-section-grid .mud-input-slot {
+        font-size: var(--mud-typography-caption-size); /* فونت کوچکتر */
+    }
+
+    .price-section-grid input.mud-input-text {
+        padding-left: 2px !important; /* کاهش پدینگ داخلی */
+        padding-right: 2px !important;
+        text-align: left !important; /* اطمینان از تراز چپ عدد */
+        direction: ltr !important; /* اطمینان از جهت چپ به راست عدد */
+    }
+
+    .price-section-grid .mud-typography-caption {
+        white-space: nowrap; /* جلوگیری از شکستن لیبل‌ها */
+        text-align: left; /* تراز چپ برای متن مقدار مصرف کننده */
+        direction: ltr; /* جهت چپ به راست برای مقدار مصرف کننده */
+        width: 100%;
+        margin-top: 30px;
+        /* گرفتن کل عرض برای تراز */
+    }
+    /* استثنا برای لیبل‌ها که باید راست‌چین باشند */
+    .price-section-grid .mud-grid-item:nth-child(odd) .mud-typography-caption {
+        text-align: right !important;
+        direction: rtl !important;
+        width: auto; /* عرض خودکار برای لیبل */
+    }
+
+    .dense-numeric.mud-input-control .mud-input-control-input-container .mud-input-slot {
+        height: 30px; /* کاهش ارتفاع فیلد عددی */
+    }
+
 </style>

@@ -7,6 +7,7 @@ using System;
 using System.Threading.Tasks;
 using System.Collections.Generic; // For IEnumerable
 using System.Data.SqlClient;
+using Safir.Shared.Models.Kala;
 
 namespace Safir.Server.Services
 {
@@ -189,5 +190,93 @@ namespace Safir.Server.Services
                 throw;
             }
         }
+
+        /* --- متد جدید برای جزئیات موجودی (شامل حداقل موجودی) --- */
+        public async Task<InventoryDetailsDto?> GetItemInventoryDetailsAsync(string itemCode, int anbarCode)
+        {
+            // SQL to get both current inventory and minimum inventory (MIN_M from STUF_FSK)
+            const string sql = @"
+                SELECT
+                    ROUND(ISNULL(AK.SMEGH,0) - ISNULL(FR.MEG,0), 2) AS CurrentInventory,
+                    FSK.MIN_M AS MinimumInventory
+                FROM dbo.STUF_DEF SD
+                LEFT JOIN dbo.STUF_FSK FSK ON SD.CODE = FSK.CODE AND FSK.ANBAR = @AnbarCode
+                LEFT JOIN dbo.AK_MOGO_AVL_KOL(99999999, @AnbarCode) AK ON AK.CODE = SD.CODE AND AK.ANBAR = @AnbarCode
+                LEFT JOIN dbo.AK_MOGO_FR(99999999, @AnbarCode) FR ON FR.CODE = SD.CODE AND FR.ANBAR = @AnbarCode
+                WHERE SD.CODE = @ItemCode;";
+
+            try
+            {
+                using IDbConnection db = new SqlConnection(_connectionString);
+                // Use QuerySingleOrDefaultAsync as we expect one row per item/anbar combination
+                var result = await db.QuerySingleOrDefaultAsync<InventoryDetailsDto>(sql, new { ItemCode = itemCode, AnbarCode = anbarCode });
+                // MIN_M in STUF_FSK might be null, handle this
+                if (result != null && result.MinimumInventory == null)
+                {
+                    result.MinimumInventory = 0; // Default to 0 if MIN_M is null
+                }
+                return result;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting inventory details for Item: {ItemCode}, Anbar: {AnbarCode}", itemCode, anbarCode);
+                return null; // Return null on error
+            }
+        }
+
+
+        public async Task<SqlMapper.GridReader> DoGetDataSQLAsyncMultiple(string sql, object? parameters = null)
+        {
+            try
+            {
+                // Create a NEW connection for GridReader as it needs to stay open
+                // while the reader is processed. Cannot use 'using' directly here
+                // if the GridReader is returned. The caller MUST dispose the GridReader.
+                // OR: Keep the connection open within this method and return mapped results (safer).
+                // Let's return mapped results for better resource management.
+
+                // *** Option 1: Return GridReader (Caller must dispose) ***
+                // var connection = new SqlConnection(_connectionString);
+                // await connection.OpenAsync(); // Open explicitly
+                // return await connection.QueryMultipleAsync(sql, parameters);
+                // WARNING: If returning GridReader, the connection remains open until the reader is disposed by the caller.
+
+                // *** Option 2: Map results here and return specific DTO (Safer) ***
+                // This requires knowing the expected result structure in advance or using generics.
+                // Since FetchProformaPrintDataAsync knows the structure, let's keep the logic there
+                // and just provide the basic QueryMultipleAsync capability if needed elsewhere.
+                // For THIS specific use case, FetchProformaPrintDataAsync will handle mapping.
+                // So, let's implement the GridReader return for general purpose, assuming caller disposes.
+
+                var connection = new SqlConnection(_connectionString);
+                await connection.OpenAsync(); // Must open manually for QueryMultipleAsync when connection is managed outside
+                try
+                {
+                    return await connection.QueryMultipleAsync(sql, parameters);
+                    // Caller IS RESPONSIBLE for disposing the GridReader AND the connection.
+                    // This is generally not recommended. Let's change the approach.
+                }
+                catch
+                {
+                    connection.Dispose(); // Ensure connection is disposed on error before returning reader
+                    throw;
+                }
+
+                // *** Reconsidering: Let's make FetchProformaPrintDataAsync handle its own connection ***
+                // This avoids returning an open GridReader and connection.
+                // So, no change needed in IDatabaseService or DatabaseService for *this* specific feature.
+                // The existing DoGetDataSQLAsync<T> is sufficient if used carefully in the controller.
+                // Let's revert FetchProformaPrintDataAsync to use DoGetDataSQLAsync<T> twice.
+
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error in DoGetDataSQLAsyncMultiple running SQL: {Sql}", sql);
+                throw;
+            }
+            // If Option 2 was used, map results here and return the DTO.
+            // return mappedDto;
+        }
+
     }
 }

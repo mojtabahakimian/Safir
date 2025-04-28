@@ -137,33 +137,46 @@ namespace Safir.Client.Services
             }
         }
 
-        //public async Task<decimal?> GetItemInventoryAsync(string itemCode)
-        //{
-        //    if (string.IsNullOrWhiteSpace(itemCode))
-        //    {
-        //        _logger.LogWarning("Empty itemCode passed to GetItemInventoryAsync");
-        //        return null;
-        //    }
+        // --- New Method to Fetch Inventory Details ---
+        public async Task<InventoryDetailsDto?> GetItemInventoryDetailsAsync(string itemCode, int anbarCode)
+        {
+            if (string.IsNullOrWhiteSpace(itemCode))
+            {
+                _logger.LogWarning("GetItemInventoryDetailsAsync called with empty itemCode.");
+                return null;
+            }
 
-        //    string requestUri = $"api/items/inventory/{Uri.EscapeDataString(itemCode)}";
+            // Construct the URI with the anbarCode query parameter
+            string requestUri = $"api/inventory/{Uri.EscapeDataString(itemCode)}/details?anbarCode={anbarCode}";
+            try
+            {
+                _logger.LogInformation("Calling API for inventory details: {RequestUri}", requestUri);
+                var response = await _httpClient.GetAsync(requestUri);
 
-        //    try
-        //    {
-        //        var response = await _httpClient.GetAsync(requestUri);
-
-        //        if (response.IsSuccessStatusCode)
-        //            return await response.Content.ReadFromJsonAsync<decimal?>();
-        //        if (response.StatusCode == HttpStatusCode.NotFound)
-        //            return null;
-
-        //        _logger.LogError("Inventory API error {StatusCode}", response.StatusCode);
-        //        return null;
-        //    }
-        //    catch (Exception ex)
-        //    {
-        //        _logger.LogError(ex, "Error calling inventory API");
-        //        return null;
-        //    }
-        //}
+                if (response.IsSuccessStatusCode)
+                {
+                    var details = await response.Content.ReadFromJsonAsync<InventoryDetailsDto>();
+                    _logger.LogInformation("Received inventory details for {ItemCode} in Anbar {AnbarCode}", itemCode, anbarCode);
+                    return details;
+                }
+                else if (response.StatusCode == HttpStatusCode.NotFound)
+                {
+                    _logger.LogWarning("Inventory details API returned NotFound for Item: {ItemCode}, Anbar: {AnbarCode}", itemCode, anbarCode);
+                    // Return a default DTO or null depending on how the client should handle 'not found'
+                    return new InventoryDetailsDto { CurrentInventory = 0, MinimumInventory = 0 }; // Default to 0
+                }
+                else
+                {
+                    var errorContent = await response.Content.ReadAsStringAsync();
+                    _logger.LogError("API Error fetching inventory details. Status: {StatusCode}, URI: {RequestUri}, Content: {ErrorContent}", response.StatusCode, requestUri, errorContent);
+                    return null; // Indicate error
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Exception fetching inventory details from {RequestUri}", requestUri);
+                return null;
+            }
+        }
     }
 }

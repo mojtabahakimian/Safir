@@ -16,6 +16,8 @@ using Dapper;
 using System.Text;
 using System.Text.RegularExpressions;
 using Safir.Shared.Utility;
+using System.Security.Claims; // <<< اضافه شد برای دسترسی به Claims
+using Safir.Shared.Constants; // <<< اضافه شد برای BaseknowClaimTypes
 
 namespace Safir.Server.Controllers
 {
@@ -24,7 +26,6 @@ namespace Safir.Server.Controllers
     [Authorize]
     public class ItemsController : ControllerBase
     {
-        // ... Fields and Constructor remain the same ...
         private readonly IDatabaseService _dbService;
         private readonly IConfiguration _configuration;
         private readonly ILogger<ItemsController> _logger;
@@ -43,29 +44,42 @@ namespace Safir.Server.Controllers
             }
         }
 
-
-        // <<< متد به‌روز شده برای دریافت کالاها >>>
         [HttpGet("bygroup/{groupCode}")]
-        public async Task<ActionResult<PagedResult<ItemDisplayDto>>> GetItemsByGroup( // <<< نوع خروجی به ItemDisplayDto تغییر کرد
-               double groupCode,
+        public async Task<ActionResult<PagedResult<ItemDisplayDto>>> GetItemsByGroup(
+               double groupCode, // <<< پارامتر groupCode اکنون استفاده می‌شود >>>
                [FromQuery] int pageNumber = 1,
                [FromQuery] int pageSize = 10,
                [FromQuery] string? searchTerm = null)
         {
-            _logger.LogInformation("Fetching items page {PageNumber} (size {PageSize}) for group code: {GroupCode}, Search: '{SearchTerm}'",
-                pageNumber, pageSize, groupCode, searchTerm);
+            var porIdClaim = User.FindFirstValue(BaseknowClaimTypes.PORID);
+            if (!int.TryParse(porIdClaim, out int userPorId))
+            {
+                _logger.LogWarning("User PORID claim ('{PorIdClaim}') is missing or invalid for User: {Username}", porIdClaim, User.Identity?.Name);
+                return Ok(new PagedResult<ItemDisplayDto> { Items = new List<ItemDisplayDto>(), TotalCount = 0, PageNumber = pageNumber, PageSize = pageSize });
+            }
+            _logger.LogInformation("Fetching items for Group: {GroupCode}, User PORID: {UserPorId}, Page: {PageNumber}, Size: {PageSize}, Search: '{SearchTerm}'",
+               groupCode, userPorId, pageNumber, pageSize, searchTerm); // Log GroupCode
+
 
             if (pageNumber < 1) pageNumber = 1;
             if (pageSize < 1) pageSize = 10;
-            if (pageSize > 100) pageSize = 100; // Limit page size
+            if (pageSize > 100) pageSize = 100;
             int offset = (pageNumber - 1) * pageSize;
 
             var whereConditions = new List<string>();
             var parameters = new DynamicParameters();
 
-            whereConditions.Add("sd.MENUIT = @GroupCode"); // sd = alias for STUF_DEF
-            parameters.Add("GroupCode", groupCode);
-            whereConditions.Add("ISNULL(sd.OKF, 1) = 1"); // <<< اضافه شد: فرض وجود ستون OKF برای کالاهای فعال >>>
+            // --- Filter based on Group Code ---
+            whereConditions.Add("sd.MENUIT = @GroupCode"); // <<< --- فعال شد --- >>>
+            parameters.Add("GroupCode", groupCode);       // <<< --- پارامتر اضافه شد --- >>>
+
+            // --- Filter based on User's PORID ---
+            whereConditions.Add("vpk.PORID = @UserPorId");
+            parameters.Add("UserPorId", userPorId);
+
+            // Other base filters
+            whereConditions.Add("sd.MENUIT IS NOT NULL");
+            whereConditions.Add("ISNULL(sd.OKF, 1) = 1");
 
             // --- Search Term Handling ---
             string? normalizedSearchTerm = null;
@@ -76,50 +90,36 @@ namespace Safir.Server.Controllers
                 normalizedSearchTerm = normalizedSearchTerm.FixPersianChars();
 
                 string normalizedNameSql = "REPLACE(REPLACE(REPLACE(REPLACE(sd.NAME, N'ي', N'ی'), N'ك', N'ک'), NCHAR(160), N' '), N'  ', N' ')";
-                whereConditions.Add($"(({normalizedNameSql} LIKE @SearchPattern) OR (sd.CODE LIKE @SearchPattern))"); // Add parentheses
+                whereConditions.Add($"(({normalizedNameSql} LIKE @SearchPattern) OR (sd.CODE LIKE @SearchPattern))");
                 parameters.Add("SearchPattern", $"%{normalizedSearchTerm}%");
             }
             // --- End Search ---
 
             string commonWhereClause = string.Join(" AND ", whereConditions);
 
-            // --- SQL Query with JOIN and new fields ---
-            // <<< ستون‌های B_SEF, MAX_M, TOZIH اضافه شد (با فرض نام ستون) >>>
-            // <<< JOIN با TCOD_VAHEDS برای گرفتن نام واحد اضافه شد >>>
-
+            // --- Items Query ---
             string itemsSql = $@"
                 WITH PagedItems AS (
                     SELECT
-                        sd.CODE, sd.NAME, sd.MABL_F, sd.VAHED AS VahedCode,
-                        sd.MENUIT, sd.B_SEF, sd.MAX_M, sd.TOZIH,
+                        sd.CODE, sd.NAME, sd.MABL_F, sd.VAHED AS VahedCode, sd.B_SEF, sd.MAX_M, sd.TOZIH,
+                        sd.MENUIT,
                         tv.NAMES AS VahedName,
+                        vpk.PORSANT,
                         ROW_NUMBER() OVER (ORDER BY sd.NAME) AS RowNum
                     FROM dbo.STUF_DEF sd
+                    INNER JOIN dbo.VISITORS_PORSANT_KALA vpk ON sd.CODE = vpk.CODE
                     LEFT JOIN dbo.TCOD_VAHEDS tv ON sd.VAHED = tv.CODE
                     WHERE {commonWhereClause}
                 )
-                SELECT CODE, NAME, MABL_F, B_SEF, MAX_M, TOZIH, MENUIT, VahedCode, VahedName
+                SELECT CODE, NAME, MABL_F, B_SEF, MAX_M, TOZIH, MENUIT, VahedCode, VahedName, PORSANT
                 FROM PagedItems
-                WHERE RowNum > @RowStart AND RowNum <= @RowEnd; ";
-
-            //////For Test on Single Kala
-            //string itemsSql = $@"
-            //    WITH PagedItems AS (
-            //        SELECT
-            //            sd.CODE, sd.NAME, sd.MABL_F, sd.VAHED AS VahedCode,
-            //            sd.MENUIT, sd.B_SEF, sd.MAX_M, sd.TOZIH,
-            //            tv.NAMES AS VahedName
-            //        FROM dbo.STUF_DEF sd
-            //        LEFT JOIN dbo.TCOD_VAHEDS tv ON sd.VAHED = tv.CODE
-            //    )
-            //    SELECT CODE, NAME, MABL_F, B_SEF, MAX_M, TOZIH, MENUIT
-            //    FROM STUF_DEF 
-            //    WHERE code = 3352";
+                WHERE RowNum > @RowStart AND RowNum <= @RowEnd;";
 
             // --- Count Query ---
             string countSql = $@"
                  SELECT COUNT(*)
-                 FROM dbo.STUF_DEF sd -- Alias added for consistency
+                 FROM dbo.STUF_DEF sd
+                 INNER JOIN dbo.VISITORS_PORSANT_KALA vpk ON sd.CODE = vpk.CODE
                  WHERE {commonWhereClause};";
 
 
@@ -128,54 +128,44 @@ namespace Safir.Server.Controllers
 
             try
             {
-                // <<< نوع TEntity به ItemDisplayDto تغییر کرد >>>
                 IEnumerable<ItemDisplayDto> items = await _dbService.DoGetDataSQLAsync<ItemDisplayDto>(itemsSql, parameters);
                 int totalItemCount = await _dbService.DoGetDataSQLAsyncSingle<int>(countSql, parameters);
 
                 List<ItemDisplayDto> itemsList = items.ToList();
 
-                // <<< بررسی وجود تصویر (بدون تغییر منطق، فقط روی DTO اعمال می‌شود) >>>
-                // --- بررسی دقیق وجود تصویر ---
+                // --- Image Check Logic (Unchanged) ---
                 if (!string.IsNullOrEmpty(_imageBasePath))
                 {
-                    _logger.LogInformation("Image Base Path for Checks: {BasePath}", _imageBasePath); // لاگ مسیر پایه
+                    // _logger.LogInformation("Image Base Path for Checks: {BasePath}", _imageBasePath);
                     foreach (var item in itemsList)
                     {
-                        string itemCodeStr = item.CODE; // فرض کنیم CODE از نوع string است، اگر نه تبدیل کنید
-                        item.ImageExists = false; // پیش‌فرض false
-                        _logger.LogTrace("Checking image for Item Code: {ItemCode}", itemCodeStr); // لاگ کد کالا
+                        string itemCodeStr = item.CODE;
+                        item.ImageExists = false;
+                        // _logger.LogTrace("Checking image for Item Code: {ItemCode}", itemCodeStr);
                         foreach (var ext in SupportedImageExtensions)
                         {
                             string potentialPath = Path.Combine(_imageBasePath, itemCodeStr + ext);
-                            try // اضافه کردن try-catch برای خطای احتمالی File.Exists
+                            try
                             {
                                 if (System.IO.File.Exists(potentialPath))
                                 {
                                     item.ImageExists = true;
-                                    _logger.LogInformation("Image FOUND for Item Code: {ItemCode} at Path: {Path}", itemCodeStr, potentialPath); // لاگ در صورت پیدا شدن
-                                    break; // از حلقه پسوندها خارج شو چون پیدا شد
+                                    // _logger.LogInformation("Image FOUND for Item Code: {ItemCode} at Path: {Path}", itemCodeStr, potentialPath);
+                                    break;
                                 }
-                                // else { _logger.LogTrace("File not found at: {Path}", potentialPath); } // لاگ اضافی برای هر پسوند
                             }
                             catch (Exception ex)
                             {
                                 _logger.LogWarning(ex, "Error checking file existence for path: {Path}", potentialPath);
-                                // ادامه بده تا پسوندهای دیگر بررسی شوند
                             }
                         }
-                        if (!item.ImageExists)
-                        {
-                            _logger.LogWarning("Image NOT found for Item Code: {ItemCode} after checking all extensions.", itemCodeStr); // لاگ فقط اگر هیچکدام پیدا نشد
-                        }
+                        // if (!item.ImageExists) { _logger.LogWarning("Image NOT found for Item Code: {ItemCode}", itemCodeStr); }
                     }
                 }
-                else
-                {
-                    _logger.LogWarning("ImageSharePath is not configured. All items will have ImageExists=false.");
-                }
-                // --- پایان بررسی تصویر ---
+                else { _logger.LogWarning("ImageSharePath is not configured. Skipping image checks."); }
+                // --- End Image Check ---
 
-                var pagedResult = new PagedResult<ItemDisplayDto> // <<< نوع PagedResult به ItemDisplayDto تغییر کرد
+                var pagedResult = new PagedResult<ItemDisplayDto>
                 {
                     Items = itemsList,
                     TotalCount = totalItemCount,
@@ -183,19 +173,17 @@ namespace Safir.Server.Controllers
                     PageSize = pageSize
                 };
 
-                _logger.LogInformation("Fetched page {PageNumber}/{TotalPages} for group {GroupCode}, Search: '{OrigSearch}'. Found {ItemCount} items (Total: {TotalCount})",
-                    pageNumber, pagedResult.TotalPages, groupCode, searchTerm ?? "N/A", itemsList.Count, totalItemCount);
-
+                _logger.LogInformation("Fetched page {PageNumber}/{TotalPages} for Group {GroupCode}, User PORID {UserPorId}, Search: '{OrigSearch}'. Found {ItemCount} items (Total: {TotalCount})",
+                    pageNumber, pagedResult.TotalPages, groupCode, userPorId, searchTerm ?? "N/A", itemsList.Count, totalItemCount);
 
                 return Ok(pagedResult);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error fetching paged/searched items for group {GroupCode}, Search: '{SearchTerm}'", groupCode, searchTerm);
+                _logger.LogError(ex, "Error fetching paged items for Group {GroupCode}, User PORID {UserPorId}, Search: '{SearchTerm}'", groupCode, userPorId, searchTerm);
                 return StatusCode(StatusCodes.Status500InternalServerError, "خطا در دریافت لیست کالاها.");
             }
         }
-
         // --- GetItemImage endpoint remains the same ---
         [HttpGet("image/{itemCode}")]
         [AllowAnonymous]
@@ -216,7 +204,7 @@ namespace Safir.Server.Controllers
             catch (Exception ex) { _logger.LogError(ex, "Error serving image {ItemCode}", itemCode); return StatusCode(StatusCodes.Status500InternalServerError, "Error serving image."); }
         }
 
-        // --- API جدید برای دریافت موجودی ---
+        // --- GetItemInventory endpoint remains the same ---
         [HttpGet("inventory/{itemCode}")]
         public async Task<ActionResult<decimal?>> GetItemInventory(string itemCode)
         {
@@ -230,7 +218,6 @@ namespace Safir.Server.Controllers
             try
             {
                 var parameters = new { Code = itemCode };
-                //decimal? inventory = await _dbService.DoGetDataSQLAsyncSingle<decimal?>(inventorySql, parameters);
                 decimal? inventory = await _dbService.GetItemInventoryAsync(itemCode);
 
                 if (inventory.HasValue)

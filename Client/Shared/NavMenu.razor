@@ -5,6 +5,7 @@
 @inject NavigationManager NavigationManager
 @inject IAuthService AuthService
 @inject MudBlazor.IDialogService DialogService
+@inject ShoppingCartService CartService
 
 <MudNavMenu>
     <!-- صفحه اصلی -->
@@ -14,17 +15,20 @@
 
     <AuthorizeView>
         <Authorized>
-            @*   <!-- ثبت سفارش -->
-            <MudNavLink Href="item-groups" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.ShoppingCart">
-            ثبت سفارش
-            </MudNavLink> *@
+              <!-- ثبت سفارش -->
+            @if (_isCustomerSelected)
+            {
+                <MudNavLink Href="item-groups" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.ShoppingCart">
+                    ثبت سفارش
+                </MudNavLink>
+            }
 
             <!-- مشاهده لیست مشتریان -->
             <MudNavLink Href="visitor-customers" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.List">
                 مشاهده لیست مشتریان
             </MudNavLink>
 
-            <!-- بروزرسانی اطلاعات -->
+    @*         <!-- بروزرسانی اطلاعات -->
             <MudNavLink Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.Refresh">
                 بروزرسانی اطلاعات
             </MudNavLink>
@@ -32,7 +36,7 @@
             <!-- ارسال سفارشات به سرور -->
             <MudNavLink Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.CloudUpload">
                 ارسال سفارشات به سرور
-            </MudNavLink>
+            </MudNavLink> *@
 
             <MudNavLink Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.PersonAdd" Href="customer-define">
                 تعریف مشتری جدید
@@ -63,6 +67,31 @@
 
 @code {
     private bool collapseNavMenu = true;
+
+    private bool _isCustomerSelected = false;
+
+    // --- Lifecycle and Event Handling ---
+    protected override void OnInitialized()
+    {
+        // Set initial state based on current cart status
+        _isCustomerSelected = CartService.CurrentCustomer != null;
+        // Subscribe to the CartChanged event
+        CartService.CartChanged += OnCartChanged;
+        base.OnInitialized();
+    }
+    private void OnCartChanged()
+    {
+        // Update the state when the cart changes
+        _isCustomerSelected = CartService.CurrentCustomer != null;
+        // Notify the component to re-render
+        InvokeAsync(StateHasChanged);
+    }
+    public void Dispose()
+    {
+        // Unsubscribe from the event when the component is disposed
+        CartService.CartChanged -= OnCartChanged;
+    }
+
 
     // Computes the CSS class for the main navigation div to make it collapsible
     private string? NavMenuCssClass => collapseNavMenu ? "collapse" : null;

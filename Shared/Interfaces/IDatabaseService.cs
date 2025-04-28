@@ -1,4 +1,6 @@
-﻿using System.Data;
+﻿using Dapper;
+using Safir.Shared.Models.Kala;
+using System.Data;
 
 namespace Safir.Shared.Interfaces
 {
@@ -33,5 +35,12 @@ namespace Safir.Shared.Interfaces
 
         /* --- متد جدید برای موجودی --- */
         Task<decimal?> GetItemInventoryAsync(string itemCode);
+
+        Task<InventoryDetailsDto?> GetItemInventoryDetailsAsync(string itemCode, int anbarCode); // New Method
+
+
+        Task<SqlMapper.GridReader> DoGetDataSQLAsyncMultiple(string sql, object? parameters = null);
+
+
     }
 }

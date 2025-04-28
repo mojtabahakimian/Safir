@@ -1,10 +1,18 @@
-﻿@inherits LayoutComponentBase
+﻿@* Safir/Client/Shared/MainLayout.razor *@
+@inherits LayoutComponentBase
+@implements IDisposable
 @using MudBlazor
-@using Safir.Shared.Constants;
+@using Safir.Shared.Constants
+@using Safir.Shared.Interfaces;
+@using Safir.Shared.Models.Visitory
+
 @inject ThemeService ThemeService
 @inject AuthenticationStateProvider AuthenticationStateProvider
 @inject IJSRuntime JSRuntime
 @inject ShoppingCartService CartService
+@inject NavigationManager NavManager
+@inject IAuthService AuthService
+@inject ISnackbar Snackbar
 
 <MudLayout>
     <MudAppBar Elevation="1" Color="Color.Primary">
@@ -13,39 +21,56 @@
         <MudSpacer />
 
         @* نمایش نام مشتری انتخاب شده برای سفارش *@
-        @if (CartService.CurrentCustomer != null)
+        @if (CurrentCustomer != null)
         {
-            <MudChip Color="Color.Info" Size="Size.Small" Class="mx-4">
-                سفارش برای: @CartService.CurrentCustomer.person
-            </MudChip>
+            @* Only Show in PC Hover => Class="mx-2 customer-chip-display"*@
+            <MudHidden Breakpoint="Breakpoint.MdAndUp">
+                <MudTooltip Text="@($"سفارش برای: {CurrentCustomer.person} ({CurrentCustomer.hes})")" Arrow="true">
+                    <MudIconButton Icon="@Icons.Material.Filled.PersonPin" Size="Size.Small" Color="Color.Inherit" Class="mx-2 customer-chip-display" />
+                </MudTooltip>
+            </MudHidden>
+
+            @* Only Show in Mobile Blue Box => Class="mx-1 customer-icon-display" *@
+            <MudHidden Breakpoint="Breakpoint.SmAndDown">
+                <MudTooltip Text="@($"سفارش برای: {CurrentCustomer.person} ({CurrentCustomer.hes})")" Arrow="true">
+                    <MudChip Color="Color.Info" Size="Size.Small"  Class="mx-1 customer-icon-display">
+                        @($"سفارش برای: {Truncate(CurrentCustomer.person, 30)}")
+                    </MudChip>
+                </MudTooltip>
+            </MudHidden>
         }
 
         @* دکمه و Badge سبد خرید *@
-        <MudBadge Content="@CartService.Items.Count" Color="Color.Error" Overlap="true" Bordered="true" Visible="@(CartService.Items.Count > 0)">
-            <MudIconButton Icon="@Icons.Material.Filled.ShoppingCart" Color="Color.Inherit" Link="/cart" Title="مشاهده سبد سفارش" />
-        </MudBadge>
+        <MudTooltip Text="سبد خرید" Arrow="true">
+            <MudBadge Content="@CartItemCount" Color="Color.Error" Overlap="true" Bordered="true" Visible="@(CartItemCount > 0)" Class="mx-2">
+                @* تغییر Link به OnClick برای سازگاری بهتر *@
+                <MudIconButton Icon="@Icons.Material.Filled.ShoppingCart" Color="Color.Inherit" OnClick='() => NavManager.NavigateTo("/cart")' Title="مشاهده سبد سفارش" />
+            </MudBadge>
+        </MudTooltip>
 
-        <MudToggleIconButton @bind-Toggled="@ThemeService.IsDarkMode"
-                             Icon="@Icons.Material.Filled.LightMode" Color="Color.Inherit" Title="Light Mode"
-                             ToggledIcon="@Icons.Material.Filled.DarkMode" ToggledColor="Color.Inherit" ToggledTitle="Dark Mode" />
-        <MudIconButton Icon="@Icons.Material.Filled.Notifications" Color="Color.Inherit" />
+        @* دکمه تغییر تم *@
+        <MudTooltip Text="@(ThemeService.IsDarkMode ? "تم روشن" : "تم تاریک")" Arrow="true">
+            @* استفاده از OnClick به جای bind-Toggled برای فراخوانی متد سرویس تم *@
+            <MudIconButton Icon="@(ThemeService.IsDarkMode ? Icons.Material.Filled.WbSunny : Icons.Material.Filled.NightsStay)"
+                           Color="Color.Inherit"
+                           OnClick="ToggleTheme" />
+        </MudTooltip>
 
-        <MudIconButton Icon="@Icons.Material.Filled.Person" Color="Color.Inherit" />
-
-        @* User Logged in *@
-        <AuthorizeView>
-            <Authorized Context="authContext">
-                <MudText Class="ml-2" Typo="Typo.subtitle2">
-                    @authContext.User.FindFirst(BaseknowClaimTypes.UUSER)?.Value
-                </MudText>
-            </Authorized>
-        </AuthorizeView>
-
-      
+        @* منوی کاربر *@
+        <MudMenu Icon="@Icons.Material.Filled.Person" Color="Color.Inherit"
+                 AnchorOrigin="Origin.BottomRight"
+                 TransformOrigin="Origin.TopCenter">
+            <MudMenuItem Disabled="true">
+                @DisplayName
+            </MudMenuItem>
+             <MudMenuItem Link="/profile" Disabled="true">پروفایل</MudMenuItem>
+             <MudDivider />
+             <MudMenuItem OnClick="LogoutUser">خروج</MudMenuItem>
+        </MudMenu>
 
     </MudAppBar>
 
-
+    @* --- کامنت از اینجا حذف شد --- *@
     <MudDrawer @bind-Open="_drawerOpen"
                Anchor="Anchor.End"
                Elevation="2"
@@ -57,7 +82,7 @@
             <MudText Typo="Typo.h6">منو</MudText>
         </MudDrawerHeader>
 
-        @* Items: *@
+        @* آیتم‌های منو *@
         <NavMenu />
 
     </MudDrawer>
@@ -70,15 +95,10 @@
 </MudLayout>
 
 @code {
-    private bool _drawerOpen = true;
-
-    private void DrawerToggle()
-    {
-        _drawerOpen = !_drawerOpen;
-    }
-
-    private string? displayName;
-    private string? userId;
+    private bool _drawerOpen = false; // پیش‌فرض بسته در موبایل
+    private string? DisplayName;
+    private VISITOR_CUSTOMERS? CurrentCustomer;
+    private int CartItemCount = 0;
 
     protected override async Task OnInitializedAsync()
     {
@@ -87,53 +107,74 @@
 
         if (user.Identity != null && user.Identity.IsAuthenticated)
         {
-            displayName = user.FindFirst(BaseknowClaimTypes.UUSER)?.Value ?? "";
+            DisplayName = user.FindFirst(BaseknowClaimTypes.UUSER)?.Value ?? "کاربر";
         }
 
         // اشتراک در رویداد تغییر سبد خرید
         CartService.CartChanged += OnCartChanged;
+        // دریافت وضعیت اولیه سبد
+        UpdateCartState();
+    }
+
+    // متد برای بروزرسانی اطلاعات مشتری و تعداد آیتم‌ها
+    private void UpdateCartState()
+    {
+        CurrentCustomer = CartService.CurrentCustomer;
+        CartItemCount = CartService.Items.Count;
     }
 
     // متد برای بروزرسانی UI هنگام تغییر سبد خرید
     private void OnCartChanged()
     {
+        UpdateCartState();
         InvokeAsync(StateHasChanged); // بروزرسانی UI
+    }
+
+    private void DrawerToggle()
+    {
+        _drawerOpen = !_drawerOpen;
+    }
+
+    private async Task ToggleTheme()
+    {
+        await ThemeService.ToggleTheme();
+        // StateHasChanged(); // معمولا سرویس تم خودش UI را آپدیت می‌کند
+    }
+
+    private async Task LogoutUser()
+    {
+        await AuthService.Logout();
+        NavManager.NavigateTo("/login", forceLoad: true); // forceLoad برای اطمینان از پاک شدن کامل وضعیت
+        Snackbar.Add("با موفقیت خارج شدید.", Severity.Success);
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        // این متد پس از رندر شدن کامپوننت اجرا می‌شود
         if (firstRender)
         {
-            // این بلاک کد فقط *یک بار* پس از اولین رندر اجرا می‌شود
-            Console.WriteLine("MainLayout first render complete. Signaling JS to remove splash screen.");
-
-            // --- فراخوانی تابع جاوااسکریپت برای بستن اسپلش‌اسکرین ---
+            //Console.WriteLine("MainLayout first render complete. Signaling JS to remove splash screen.");
             try
             {
                 await JSRuntime.InvokeVoidAsync("loading.complete");
-                Console.WriteLine("JS function 'loading.complete' invoked successfully.");
+                //Console.WriteLine("JS function 'loading.complete' invoked successfully.");
             }
-            catch (JSException jsEx)
+            catch (Exception ex) when (ex is JSException || ex is InvalidOperationException) // Handle JS errors or if disposed
             {
-                Console.Error.WriteLine($"Error invoking JS function 'loading.complete': {jsEx.Message}");
-                // اینجا می‌توانید یک راه حل جایگزین در نظر بگیرید،
-                // مثلاً تلاش برای مخفی کردن دستی اسپلش اگر JS ناموفق بود (پیچیده‌تر است)
+                //Console.Error.WriteLine($"Error invoking JS function 'loading.complete': {ex.Message}");
             }
-            catch (Exception ex)
-            {
-                Console.Error.WriteLine($"Unexpected error during JS interop: {ex.Message}");
-            }
-            // شاید لازم باشد StateHasChanged() را اینجا صدا بزنید اگر تغییر وضعیت دیگری
-            // بلافاصله پس از لود لازم است که UI را آپدیت کند.
-            // await InvokeAsync(StateHasChanged);
         }
     }
     public void Dispose()
     {
-        // لغو اشتراک رویدادها
+        // لغو اشتراک رویداد
         CartService.CartChanged -= OnCartChanged;
-        // ThemeService.ThemeChanged -= OnThemeChanged; // اگر از سرویس تم قبلی استفاده می‌کنید
+        GC.SuppressFinalize(this); // جلوگیری از فراخوانی دوباره Finalizer
     }
 
+    // --- تابع کمکی برای کوتاه کردن رشته ---
+    private string Truncate(string? value, int maxLength)
+    {
+        if (string.IsNullOrEmpty(value)) return string.Empty;
+        return value.Length <= maxLength ? value : value.Substring(0, maxLength) + "...";
+    }
 }

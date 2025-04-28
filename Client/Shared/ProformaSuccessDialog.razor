@@ -1,0 +1,101 @@
+﻿@using MudBlazor
+@using System.Net
+
+@inject ProformaApiService ProformaApi
+@inject IJSRuntime JSRuntime
+@inject ISnackbar Snackbar
+@inject ILogger<ProformaSuccessDialog> Logger
+
+<MudDialog>
+    <TitleContent>
+        <MudText Typo="Typo.h6">
+            <MudIcon Icon="@Icons.Material.Filled.CheckCircle" Color="Color.Success" Class="mr-2 mb-n1" />
+            ثبت موفق
+        </MudText>
+    </TitleContent>
+    <DialogContent>
+        @* Display the success message passed as parameter *@
+        <MudText>@ContentText</MudText>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel" Color="Color.Secondary">بستن</MudButton>
+        <MudButton Variant="Variant.Filled"
+                   Color="Color.Primary"
+                   OnClick="DownloadProformaPdf"
+                   Disabled="@(!ProformaNumber.HasValue || isDownloading)"
+                   StartIcon="@Icons.Material.Filled.Download">
+            @if (isDownloading)
+            {
+                <MudProgressCircular Class="ms-n1" Size="Size.Small" Indeterminate="true" />
+                <MudText Class="ms-2">در حال آماده‌سازی...</MudText>
+            }
+            else
+            {
+                <MudText>دانلود PDF پیش‌فاکتور</MudText>
+            }
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] MudDialogInstance MudDialog { get; set; } = default!;
+
+    [Parameter] public string ContentText { get; set; } = "پیش فاکتور با موفقیت ثبت شد."; // Default message
+    [Parameter] public double? ProformaNumber { get; set; } // Passed from Cart.razor.cs
+
+    private bool isDownloading = false;
+
+    private void Cancel() => MudDialog.Cancel();
+
+    private async Task DownloadProformaPdf()
+    {
+        if (!ProformaNumber.HasValue)
+        {
+            Snackbar.Add("شماره پیش فاکتور نامعتبر است.", Severity.Warning);
+            return;
+        }
+
+        isDownloading = true;
+        StateHasChanged();
+
+        try
+        {
+            Logger.LogInformation("Attempting to download PDF for Proforma Number: {ProformaNumber}", ProformaNumber.Value);
+            var (pdfBytes, errorMessage, statusCode) = await ProformaApi.GetProformaPdfBytesAsync(ProformaNumber.Value);
+
+            if (pdfBytes != null && pdfBytes.Length > 0)
+            {
+                string fileName = $"Proforma_{ProformaNumber.Value.ToString("F0")}.pdf";
+                await JSRuntime.InvokeVoidAsync("downloadFileFromBytes", fileName, pdfBytes);
+                Snackbar.Add("دانلود PDF آغاز شد.", Severity.Success);
+                Logger.LogInformation("PDF download initiated for Proforma: {ProformaNumber}", ProformaNumber.Value);
+                // Optionally close the dialog after successful download start
+                // MudDialog.Close(DialogResult.Ok(true));
+            }
+            else
+            {
+                string displayError = "خطا در دریافت فایل PDF.";
+                if (statusCode == HttpStatusCode.NotFound)
+                {
+                    displayError = $"پیش فاکتور با شماره {ProformaNumber.Value} یافت نشد.";
+                }
+                else if (!string.IsNullOrWhiteSpace(errorMessage))
+                {
+                    displayError = $"خطا در دریافت PDF: {errorMessage}";
+                }
+                Snackbar.Add(displayError, Severity.Error);
+                Logger.LogError("Failed to download Proforma PDF {ProformaNumber}. Status: {StatusCode}, Message: {ErrorMessage}", ProformaNumber.Value, statusCode, errorMessage);
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Client-side exception during DownloadProformaPdf for number {ProformaNumber}", ProformaNumber.Value);
+            Snackbar.Add($"خطای پیش‌بینی نشده هنگام دانلود: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            isDownloading = false;
+            StateHasChanged();
+        }
+    }
+}

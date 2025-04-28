@@ -13,29 +13,41 @@ namespace Safir.Shared.Models.Kala
         public int SelectedUnitCode { get; set; }
         public string? SelectedUnitName { get; set; }
         public decimal Quantity { get; set; }
-        public decimal PricePerUnit { get; set; } // قیمت واحد بر اساس واحد انتخابی (فعلا قیمت واحد پیش‌فرض را در نظر می‌گیریم)
-        public decimal TotalPrice => Quantity * PricePerUnit;
+        public decimal PricePerUnit { get; set; } // قیمت واحد پس از ویرایش احتمالی
+
+        // قیمت کل ردیف قبل از هرگونه تخفیف
+        public decimal TotalPriceBeforeDiscount => Quantity * PricePerUnit;
+
+        // درصد تخفیف اصلی (N_KOL)
+        public double? DiscountPercent { get; set; }
+
+        // مبلغ تخفیف محاسبه شده فقط بر اساس DiscountPercent (برای نمایش در گرید کلاینت)
+        public decimal LineDiscountAmount => Math.Round(((decimal)(DiscountPercent ?? 0) * TotalPriceBeforeDiscount) / 100m);
+
+        // قیمت کل نهایی ردیف *بعد* از اعمال فقط DiscountPercent (برای نمایش در گرید کلاینت)
+        // توجه: این با MABL_K در INVO_LST که قبل از تخفیف است، فرق دارد.
+        public decimal TotalPriceAfterDiscount => TotalPriceBeforeDiscount - LineDiscountAmount;
+
+        public int AnbarCode { get; set; }
 
         // نگهداری کل آبجکت DTO برای دسترسی به سایر اطلاعات در صورت نیاز
         public ItemDisplayDto? SourceItem { get; set; }
 
-        // سازنده برای سهولت ایجاد آیتم
-        public CartItem(ItemDisplayDto item, int quantity, TCOD_VAHEDS? selectedUnit)
+        // سازنده پیش‌فرض
+        public CartItem() { }
+
+        // سازنده کمکی (اختیاری)
+        public CartItem(ItemDisplayDto item, decimal quantity, TCOD_VAHEDS? selectedUnit, int anbarCode, decimal pricePerUnitOverride, double? discountPercent)
         {
             SourceItem = item;
             ItemCode = item.CODE;
             ItemName = item.NAME;
             Quantity = quantity;
-            SelectedUnitCode = selectedUnit?.CODE ?? item.VahedCode; // اگر واحد انتخابی null بود، از واحد پیش‌فرض استفاده کن
+            SelectedUnitCode = selectedUnit?.CODE ?? item.VahedCode;
             SelectedUnitName = selectedUnit?.NAMES ?? item.VahedName;
-
-            // TODO: منطق تعیین قیمت بر اساس واحد انتخابی
-            // فعلا فرض می‌کنیم قیمت همیشه بر اساس واحد پیش‌فرض (MABL_F) است
-            // در آینده باید بررسی شود اگر واحد انتخابی متفاوت است، قیمت متناسب تغییر کند یا خیر
-            PricePerUnit = item.MABL_F;
+            PricePerUnit = pricePerUnitOverride;
+            AnbarCode = anbarCode;
+            DiscountPercent = discountPercent;
         }
-
-        // سازنده پیش‌فرض برای سریال‌سازی احتمالی
-        public CartItem() { }
     }
 }

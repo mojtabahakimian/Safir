@@ -90,6 +90,8 @@ public class AuthController : ControllerBase
         // Decode username for claims (if needed, otherwise use encoded or a display name field)
         var decodedUsername = CL_METHODS.DECODEUN(user.SAL_NAME).Fixp(); // Use Fixp as in WPF code
 
+        string? _PORID_ = Convert.ToString(user?.PORID ?? null); //پيش فرض الگوي پرداخت پورسانت برای کالا های مشخص شده برای این کاربر
+        string? _erjabe_ = Convert.ToString(user?.erjabe ?? null); //پيش فرض الگوي پرداخت پورسانت برای کالا های مشخص شده برای این کاربر
 
         // Create Claims (pieces of information about the user)
         var claims = new List<Claim>
@@ -106,6 +108,8 @@ public class AuthController : ControllerBase
             new Claim(BaseknowClaimTypes.IDD, user.IDD.ToString()), // Subject (usually user ID)
             new Claim(BaseknowClaimTypes.GRSAL, user.GRSAL.ToString()), // Role claim based on GRSAL
             new Claim(BaseknowClaimTypes.USER_HES, user.HES ?? string.Empty), // معین معادل یا همون کد حسابداری این کاربر در سیستم
+            new Claim(BaseknowClaimTypes.PORID, _PORID_ ?? string.Empty), // معین معادل یا همون کد حسابداری این کاربر در سیستم
+            new Claim(BaseknowClaimTypes.erjabe, _erjabe_ ?? string.Empty), //توی اتوماسیون فاکتور برای چه کاربری ارسال بشه : کد اون کاربر
         };
 
         var tokenDescriptor = new SecurityTokenDescriptor
