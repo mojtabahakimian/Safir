@@ -4,6 +4,7 @@ using System.Net.Http;
 using System.Net.Http.Json; // For GetFromJsonAsync
 using System.Threading.Tasks;
 using System; // For Exception
+using Safir.Shared.Models.Kala;
 
 namespace Safir.Client.Services
 {
@@ -79,6 +80,20 @@ namespace Safir.Client.Services
             catch (Exception ex)
             {
                 Console.WriteLine($"Error fetching Personality Types: {ex.Message}");
+                return null;
+            }
+        }
+        public async Task<List<TCOD_VAHEDS>?> GetUnitsAsync()
+        {
+            try
+            {
+                // مسیر API که در کنترلر سرور ایجاد خواهیم کرد
+                return await _httpClient.GetFromJsonAsync<List<TCOD_VAHEDS>>("api/lookup/units");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error fetching Units: {ex.Message}"); // یا استفاده از ILogger
+                // می‌توانید خطا را throw کنید یا null برگردانید
                 return null;
             }
         }

@@ -1,6 +1,8 @@
 ﻿@page "/item-groups"
+@attribute [Authorize]
 @implements IDisposable
 
+@using Microsoft.AspNetCore.Authorization;
 @using Safir.Shared.Models.Kala
 @using Safir.Shared.Models
 @using Microsoft.AspNetCore.Components
@@ -10,187 +12,248 @@
 @using System.Linq
 @using System.Timers
 
+@inject LookupApiService LookupService
+@inject ShoppingCartService CartService // <<< تزریق سرویس سبد خرید
 
-<MudContainer MaxWidth="MaxWidth.False" Class="mt-4 px-0">
+<MudContainer MaxWidth="MaxWidth.False" Class="mt-4 px-md-4 px-2">
+    @* بهبود Padding برای نمایش بهتر در موبایل *@
 
-    <MudToolBar Dense="true" Class="mb-4 px-2">
-        <MudText Typo="Typo.h6">گروه‌های کالا</MudText>
-        <MudSpacer />
-        <MudTextField T="string"
-                      Value="_groupSearchTerm" ValueChanged="OnGroupSearchTermChanged" Placeholder="جستجو گروه..."
-                      Variant="Variant.Outlined"
-                      Margin="Margin.Dense"
-                      Adornment="Adornment.Start"
-                      AdornmentIcon="@Icons.Material.Filled.Search"
-                      IconSize="Size.Small"
-                      Immediate="true"
-                      Clearable="true"
-                      Style="max-width: 300px;" />
-    </MudToolBar>
+    @* --- بخش نمایش و جستجوی گروه‌ها --- *@
+    <MudPaper Outlined="true" Class="mb-4 pa-1">
+        <MudToolBar Dense="true" Class="px-2">
+            <MudText Typo="Typo.h6">گروه‌های کالا</MudText>
+            <MudSpacer />
+            <MudTextField T="string"
+                          @bind-Value="_groupSearchTerm"
+                          Placeholder="جستجو گروه..."
+                          Variant="Variant.Outlined"
+                          Margin="Margin.Dense"
+                          Adornment="Adornment.Start"
+                          AdornmentIcon="@Icons.Material.Filled.Search"
+                          IconSize="Size.Small"
+                          Immediate="true"
+                          Clearable="true"
+                          Style="max-width: 250px;" />
+        </MudToolBar>
 
-    @if (_isLoadingGroups)
-    {
-        <MudProgressLinear Color="Color.Primary" Indeterminate="true" Class="my-2" />
-    }
-    else if (!string.IsNullOrEmpty(_groupErrorMessage))
-    {
-        <MudAlert Severity="Severity.Error" Class="mx-2">@_groupErrorMessage</MudAlert>
-    }
-    else
-    {
-        <div style="display: flex; overflow-x: auto; white-space: nowrap; padding: 8px 4px; margin-bottom: 16px; background-color: var(--mud-palette-background-grey); border-radius: var(--mud-default-borderradius);" class="mud-scrollbar-thin">
-            @if (GetFilteredGroups().Any())
-            {
-                @foreach (var group in GetFilteredGroups())
+        @if (_isLoadingGroups)
+        {
+            <MudProgressLinear Color="Color.Primary" Indeterminate="true" Class="my-2" />
+        }
+        else if (!string.IsNullOrEmpty(_groupErrorMessage))
+        {
+            <MudAlert Severity="Severity.Error" Class="ma-2">@_groupErrorMessage</MudAlert>
+        }
+        else
+        {
+            @* نوار اسکرول افقی برای گروه‌ها *@
+            <div style="display: flex; overflow-x: auto; white-space: nowrap; padding: 8px 4px; background-color: var(--mud-palette-background-grey); border-radius: var(--mud-default-borderradius);" class="mud-scrollbar-thin">
+                @if (GetFilteredGroups().Any())
                 {
-                    <div style="display: inline-block; margin: 0 4px;">
-                        <MudPaper Class="pa-2" Elevation="@(_selectedGroup == group ? 8 : 2)" Style="@($"cursor:pointer; border: {(_selectedGroup == group ? "1px solid var(--mud-palette-primary)" : "none")}; width: 120px; height: 100px; display: flex; flex-direction: column; align-items: center; justify-content: center;")" @onclick="() => HandleGroupClick(group)">
-                            @if (group.pic != null && group.pic.Length > 0)
-                            {
-                                <MudImage Src="@GetImageDataUrl(group.pic)" Alt="@group.NAMES" Width="48" Height="48" ObjectFit="ObjectFit.Contain" Class="mb-1" />
-                            }
-                            else
-                            {
-                                <MudAvatar Size="Size.Medium" Class="mb-1"><MudIcon Icon="@Icons.Material.Filled.Storefront" /></MudAvatar>
-                            }
-                            <MudText Typo="Typo.caption" Align="Align.Center" Style="line-height: 1.2; margin-top: 4px;">@group.NAMES</MudText>
-                        </MudPaper>
-                    </div>
-                }
-            }
-            else
-            {
-                <MudAlert Severity="Severity.Info" Dense="true" Style="width:100%;" Elevation="0" Square="true">
-                    @if (string.IsNullOrWhiteSpace(_groupSearchTerm))
+                    @foreach (var group in GetFilteredGroups())
                     {
-                        @("هیچ گروهی یافت نشد.")
-                    }
-                    else
-                    {
-                        @($"موردی با '{_groupSearchTerm}' یافت نشد.")
-                    }
-                </MudAlert>
-            }
-        </div> <MudContainer MaxWidth="MaxWidth.False" Class="px-2">
-            @if (_selectedGroup != null)
-            {
-                <MudDivider Class="my-4" />
+                        <div style="display: inline-block; margin: 0 4px;" @key="group.CODE">
+                            @* اضافه کردن key *@
+                            <MudPaper Class="pa-2 group-card"
+                                      Elevation="@(_selectedGroup == group ? 8 : 2)"
+                                      Style="@($"border: {(_selectedGroup == group ? "1px solid var(--mud-palette-primary)" : "1px solid transparent")};")"
+                            @onclick="() => HandleGroupClick(group)">
 
-                <MudToolBar Dense="true" Class="mb-2">
-                    <MudText Typo="Typo.h6">کالاها: @_selectedGroup.NAMES</MudText>
-                    <MudSpacer />
-                    <MudTextField T="string"
-                                  Value="_itemSearchTerm" ValueChanged="OnItemSearchInput" Placeholder="جستجو کالا..."
-                                  Variant="Variant.Outlined"
-                                  Margin="Margin.Dense"
-                                  Adornment="Adornment.Start"
-                                  AdornmentIcon="@Icons.Material.Filled.Search"
-                                  IconSize="Size.Small"
-                                  Immediate="true"
-                                  Clearable="true"
-                                  Style="max-width: 250px; margin-left: 8px;" />
-                    <MudToggleIconButton Toggled="_isListView" ToggledChanged="OnViewToggleChanged" Icon="@Icons.Material.Filled.ViewModule" Color="Color.Primary" Title="نمایش کارتی"
-                                         ToggledIcon="@Icons.Material.Filled.ViewList" ToggledColor="Color.Secondary" ToggledTitle="نمایش لیستی" />
-                </MudToolBar>
-
-                @if (_isItemsLoading)
-                {
-                    <div class="d-flex justify-center align-center pa-4" style="height: 200px;"> <MudProgressCircular Color="Color.Secondary" Indeterminate="true" Size="Size.Large" /> </div>
-                }
-                else if (!string.IsNullOrEmpty(_itemsErrorMessage))
-                {
-                    <MudAlert Severity="Severity.Warning" Class="mt-2">@_itemsErrorMessage</MudAlert>
-                }
-                else if (_items == null || !_items.Any())
-                {
-                    <MudAlert Severity="Severity.Info" Class="mt-2">
-                        @if (string.IsNullOrWhiteSpace(_itemSearchTerm))
-                        {
-                            @("کالایی در این گروه یافت نشد.")
-                        }
-                        else
-                        {
-                            @($"کالایی با عبارت '{_itemSearchTerm}' در این گروه یافت نشد.")
-                        }
-                    </MudAlert>
+                                @if (group.ImageExists)
+                                {
+                                    <img src="@($"api/itemgroups/image/{group.CODE}")" alt="@group.NAMES" class="group-image" loading="lazy" />
+                                }
+                                else
+                                {
+                                    <div class="group-image-placeholder">
+                                        <MudIcon Icon="@Icons.Material.Filled.Storefront" Title="بدون تصویر" Size="Size.Large" />
+                                    </div>
+                                }
+                                <MudText Typo="Typo.caption" Align="Align.Center" Class="group-name-text">@group.NAMES</MudText>
+                            </MudPaper>
+                        </div>
+                    }
                 }
                 else
                 {
-                    @if (_isListView)
+                    <MudAlert Severity="Severity.Info" Dense="true" Style="width:100%;" Elevation="0" Square="true" Class="mx-auto">
+                        @if (string.IsNullOrWhiteSpace(_groupSearchTerm))
+                        {
+                            @("هیچ گروهی یافت نشد.")
+                        }
+                        else
+                        {
+                            @($"موردی با '{_groupSearchTerm}' یافت نشد.")
+                        }
+                    </MudAlert>
+                }
+            </div>
+        }
+    </MudPaper>
+
+    @* --- بخش نمایش کالاها برای گروه انتخاب شده --- *@
+    @if (_selectedGroup != null)
+    {
+        <MudDivider Class="my-4" />
+
+        <MudPaper Outlined="true" Class="pa-1">
+            <MudToolBar Dense="true" Class="mb-2 px-2">
+                <MudText Typo="Typo.h6">کالاها: @_selectedGroup.NAMES</MudText>
+                <MudSpacer />
+                <MudTextField T="string"
+                @bind-Value="_itemSearchTerm"
+                              Placeholder="جستجو کالا..."
+                              Variant="Variant.Outlined"
+                              Margin="Margin.Dense"
+                              Adornment="Adornment.Start"
+                              AdornmentIcon="@Icons.Material.Filled.Search"
+                              IconSize="Size.Small"
+                              Immediate="true"
+                              Clearable="true"
+                              Style="max-width: 250px; margin-left: 8px;"
+                              DebounceInterval="500"
+                              OnDebounceIntervalElapsed="HandleItemSearchDebounced" />
+                <MudToggleIconButton @bind-Toggled="_isListView"
+                                     Icon="@Icons.Material.Filled.ViewModule" Color="@( !_isListView ? Color.Primary : Color.Default)" Title="نمایش کارتی"
+                                     ToggledIcon="@Icons.Material.Filled.ViewList" ToggledColor="@( _isListView ? Color.Primary : Color.Default)" ToggledTitle="نمایش لیستی" />
+            </MudToolBar>
+
+            @if (_isItemsLoading)
+            {
+                <div class="d-flex justify-center align-center pa-4" style="min-height: 300px;">
+                    <MudProgressCircular Color="Color.Secondary" Indeterminate="true" Size="Size.Large" />
+                </div>
+            }
+            else if (!string.IsNullOrEmpty(_itemsErrorMessage))
+            {
+                <MudAlert Severity="Severity.Warning" Class="ma-2">@_itemsErrorMessage</MudAlert>
+            }
+            else if (_items == null || !_items.Any())
+            {
+                <MudAlert Severity="Severity.Info" Class="ma-2">
+                    @if (string.IsNullOrWhiteSpace(_itemSearchTerm))
                     {
-                        <MudList Clickable="true">
-                            @foreach (var item in _items)
-                            {
-                                <MudListItem>
-                                    <MudListItemAvatar>
-                                        @if (item.ImageExists)
-                                        {
-                                            <MudAvatar Image="@($"api/items/image/{item.CODE}")" Alt="@item.NAME" />
-                                        }
-                                        else
-                                        {
-                                            <MudAvatar Color="Color.Default"><MudIcon Icon="@Icons.Material.Filled.ShoppingBag" /></MudAvatar>
-                                        }
-                                    </MudListItemAvatar>
-                                    <MudListItemText>
-                                        <MudText Typo="Typo.body1">@item.NAME</MudText>
-                                        <MudText Typo="Typo.body2">کد: @item.CODE | قیمت: @item.MABL_F.ToString("N0") ریال</MudText>
-                                    </MudListItemText>
-                                    <MudListItemAction>
-                                        <MudIconButton Icon="@Icons.Material.Filled.AddShoppingCart" Color="Color.Secondary" Size="Size.Small" />
-                                    </MudListItemAction>
-                                </MudListItem>
-                                <MudDivider Inset="true" />
-                            }
-                        </MudList>
+                        @("کالایی در این گروه یافت نشد.")
                     }
                     else
                     {
-                        <MudGrid Spacing="3" Justify="Justify.FlexStart">
-                            @foreach (var item in _items)
-                            {
-                                <MudItem xs="12" sm="6" md="4" lg="3" xl="2">
-                                    <MudCard Elevation="3" Style="min-height: 330px; display: flex; flex-direction: column;">
-                                        <div style="height: 180px; display: flex; align-items: center; justify-content: center; background-color: var(--mud-palette-background-grey);">
-                                            @if (item.ImageExists)
-                                            {
-                                                <MudImage Src="@($"api/items/image/{item.CODE}")" Alt="@item.NAME" Height="170" ObjectFit="ObjectFit.Contain" />
-                                            }
-                                            else
-                                            {
-                                                <MudIcon Icon="@Icons.Material.Filled.ShoppingBag" Size="Size.Large" Color="Color.Default" />
-                                            }
-                                        </div>
-                                        <MudCardContent Style="flex-grow: 1;">
-                                            <MudText Typo="Typo.body2" Style="min-height: 3.6em; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;">@item.NAME</MudText>
-                                            <MudText Typo="Typo.caption" Color="Color.Secondary">کد: @item.CODE</MudText>
-                                            <MudText Typo="Typo.body1" Align="Align.End" Color="Color.Primary" Class="mt-2">@item.MABL_F.ToString("N0") ریال</MudText>
-                                        </MudCardContent>
-                                        <MudCardActions Class="mt-auto">
-                                            <MudButton Size="Size.Small" Variant="Variant.Text" Color="Color.Primary">جزئیات</MudButton>
-                                            <MudSpacer />
-                                            <MudIconButton Size="Size.Small" Icon="@Icons.Material.Filled.AddShoppingCart" Color="Color.Secondary" />
-                                        </MudCardActions>
-                                    </MudCard>
-                                </MudItem>
-                            }
-                        </MudGrid>
+                        @($"کالایی با عبارت '{_itemSearchTerm}' در این گروه یافت نشد.")
                     }
+                </MudAlert>
+            }
+            else
+            {
+                @* --- نمایش لیستی یا کارتی --- *@
+                @if (_isListView)
+                {
+                    <MudList Clickable="false">
+                        @* Clickable روی آیتم معنی ندارد اگر اکشن جدا دارد *@
+                        @foreach (var item in _items)
+                        {
+                            <MudListItem @key="item.CODE">
+                                @* اضافه کردن key *@
+                                <MudListItemAvatar>
+                                    @if (item.ImageExists)
+                                    {
+                                        <MudAvatar Image="@($"api/items/image/{item.CODE}")" Alt="@item.NAME" />
+                                    }
+                                    else
+                                    {
+                                        <MudAvatar Color="Color.Default"><MudIcon Icon="@Icons.Material.Filled.ShoppingBag" /></MudAvatar>
+                                    }
+                                </MudListItemAvatar>
+                                <MudListItemText>
+                                    <MudText Typo="Typo.body1">@item.NAME</MudText>
+                                    <MudText Typo="Typo.body2" Color="Color.Secondary">کد: @item.CODE | واحد: @item.VahedName</MudText>
+                                    <MudText Typo="Typo.body2">قیمت عمده: @item.MABL_F.ToString("N0") ریال</MudText>
+                                    @* می‌توانید قیمت‌های دیگر را هم در حالت لیست نمایش دهید *@
+                                </MudListItemText>
+                                <MudListItemAction>
+                                    @* TODO: Add quantity selector and add button for list view if needed *@
+                                    <MudIconButton Icon="@Icons.Material.Filled.AddShoppingCart" Color="Color.Secondary" Size="Size.Small" OnClick="@(() => AddItemToCart(item, 1))" Title="افزودن ۱ عدد" />
+                                </MudListItemAction>
+                            </MudListItem>
+                            <MudDivider Inset="Inset.Avatar" />
+                        }
+                    </MudList>
+                }
+                else // <<< نمایش کارتی با استفاده از ItemCard >>>
+                {
+                    <MudGrid Spacing="3" Justify="Justify.FlexStart">
+                        @* افزایش فاصله بین کارت‌ها *@
+                        @foreach (var itemDto in _items)
+                        {
+                            @* افزایش مقادیر ستون‌ها برای عرض بیشتر کارت *@
+                            <MudItem xs="12" sm="6" md="6" lg="6" xl="4" @key="itemDto.CODE">
+                                <ItemCard Item="itemDto" AvailableUnits="_availableUnits" OnAddToCart="HandleItemAddedToCart" />
+                            </MudItem>
+                        }
+                    </MudGrid>
+                }
 
-                    @if (_totalPages > 1)
-                    {
-                        <MudPagination Count="_totalPages"
-                                       Selected="_currentPage" SelectedChanged="HandlePageChangedAsync" Class="mt-4 d-flex justify-center"
-                                       ShowFirstButton="true"
-                                       ShowLastButton="true"
-                                       Color="Color.Primary" />
-                    }
+                @* --- کنترل‌های صفحه‌بندی --- *@
+                @if (_totalPages > 1)
+                {
+                    <MudPagination Count="_totalPages"
+                                   Selected="_currentPage" SelectedChanged="HandlePageChangedAsync" Class="mt-4 mb-2 d-flex justify-center"
+                                   ShowFirstButton="true"
+                                   ShowLastButton="true"
+                                   Color="Color.Primary"
+                                   BoundaryCount="1" MiddleCount="3" /> @* تنظیمات ظاهری بهتر *@
                 }
             }
-        </MudContainer>
+        </MudPaper>
     }
 
 </MudContainer>
+
+@* استایل‌های CSS برای ظاهر بهتر *@
+<style>
+    .group-card {
+        cursor: pointer;
+        width: 110px; /* کمی کوچک‌تر برای جای بیشتر */
+        height: 100px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        text-align: center;
+        transition: all 0.2s ease-in-out;
+    }
+
+        .group-card:hover {
+            transform: translateY(-2px);
+            box-shadow: var(--mud-elevation-4);
+        }
+
+    .group-image, .group-image-placeholder {
+        width: 50px;
+        height: 50px;
+        object-fit: contain;
+        margin-bottom: 4px;
+    }
+
+    .group-image-placeholder {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background-color: var(--mud-palette-background-grey);
+        color: var(--mud-palette-action-disabled);
+        border-radius: var(--mud-default-borderradius);
+    }
+
+    .group-name-text {
+        line-height: 1.2;
+        /* برای جلوگیری از شکستن نام‌های طولانی */
+        white-space: normal;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        display: -webkit-box;
+        -webkit-line-clamp: 2; /* نمایش حداکثر ۲ خط */
+        -webkit-box-orient: vertical;
+        min-height: 2.4em; /* ارتفاع حداقلی برای دو خط */
+    }
+</style>
 
 @code
 {
@@ -199,128 +262,200 @@
     private TCODE_MENUITEM? _selectedGroup;
     private bool _isLoadingGroups = false;
     private string? _groupErrorMessage;
-    private string _groupSearchTerm = string.Empty;
+    private string _groupSearchTerm = string.Empty; // برای جستجوی گروه
+    private List<TCOD_VAHEDS>? _availableUnits;
 
-    private List<STUF_DEF>? _items;
+    private List<ItemDisplayDto>? _items; // <<< نوع داده به ItemDisplayDto تغییر کرد >>>
     private bool _isItemsLoading = false;
     private string? _itemsErrorMessage;
-    private string _itemSearchTerm = string.Empty;
-    private Timer? _itemSearchDebounceTimer;
+    private string _itemSearchTerm = string.Empty; // برای جستجوی کالا
+                                                   // حذف تایمر چون از Debounce داخلی MudTextField استفاده می‌کنیم
+                                                   // private Timer? _itemSearchDebounceTimer;
 
     private int _currentPage = 1;
-    private int _pageSize = 12;
+    private int _pageSize = 12; // تعداد کارت در هر صفحه
     private int _totalItemCount = 0;
     private int _totalPages => (_totalItemCount == 0 || _pageSize <= 0) ? 0 : (_totalItemCount + _pageSize - 1) / _pageSize;
 
-    private bool _isListView = false;
+    private bool _isListView = false; // شروع با نمایش کارتی
 
     // --- Injected Services ---
     [Inject] private ItemGroupApiService ItemGroupService { get; set; } = default!;
     [Inject] private ISnackbar Snackbar { get; set; } = default!;
-    [Inject] private ILogger<ItemGroups> Logger { get; set; } = default!;
+    [Inject] private ILogger<ItemGroups> Logger { get; set; } = default!; // نام کلاس را به ItemGroups تغییر دهید اگر نام فایل ItemGroups.razor است
     [Inject] private NavigationManager NavManager { get; set; } = default!;
 
 
     // --- Lifecycle Methods ---
-    protected override void OnInitialized()
-    {
-        _itemSearchDebounceTimer = new Timer(500);
-        _itemSearchDebounceTimer.Elapsed += async (s, e) => await HandleItemSearchDebounced();
-        _itemSearchDebounceTimer.AutoReset = false;
-    }
+    // حذف OnInitialized مربوط به تایمر
 
     protected override async Task OnInitializedAsync()
     {
-        await LoadGroupsAsync();
-    }
+        // --- بررسی وجود مشتری انتخاب شده ---
+        if (CartService.CurrentCustomer == null)
+        {
+            Logger.LogWarning("Access to ItemGroups page denied. No customer selected in CartService.");
+            Snackbar.Add("لطفاً ابتدا از لیست مشتریان، مشتری مورد نظر برای ثبت سفارش را انتخاب کنید.", Severity.Warning);
+            NavManager.NavigateTo("/visitor-customers"); // هدایت به صفحه انتخاب مشتری
+            return; // توقف اجرای بقیه متد
+        }
 
+        var groupsTask = LoadGroupsAsync(); // بارگذاری گروه‌ها
+        var unitsTask = LoadUnitsAsync(); // بارگذاری واحدها
+        await Task.WhenAll(groupsTask, unitsTask); // اجرای همزمان
+
+        // --- انتخاب خودکار اولین گروه پس از بارگذاری اولیه ---
+        if (_itemGroups != null && _itemGroups.Any() && _selectedGroup == null)
+        {
+            // await HandleGroupClick(_itemGroups.First()); // انتخاب اولین گروه
+            // HandleGroupClick به صورت async نیست، بنابراین await لازم نیست
+            HandleGroupClick(_itemGroups.First()); // انتخاب اولین گروه
+            StateHasChanged(); // اطمینان از بروزرسانی UI پس از انتخاب خودکار
+        }
+        // --- پایان انتخاب خودکار ---
+    }
+    private async Task LoadUnitsAsync()
+    {
+        try
+        {
+            _availableUnits = await LookupService.GetUnitsAsync(); // فراخوانی متد جدید سرویس
+            if (_availableUnits == null)
+            {
+                Snackbar.Add("خطا در بارگذاری لیست واحدها.", Severity.Warning);
+                _availableUnits = new List<TCOD_VAHEDS>();
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error loading units.");
+            Snackbar.Add("خطای پیش‌بینی نشده در بارگذاری واحدها.", Severity.Error);
+            _availableUnits = new List<TCOD_VAHEDS>();
+        }
+    }
     public void Dispose()
     {
-        _itemSearchDebounceTimer?.Dispose();
+        // حذف Dispose تایمر
     }
 
+    // --- Data Loading ---
     private async Task LoadGroupsAsync()
     {
         if (_isLoadingGroups) return;
-        _isLoadingGroups = true; _groupErrorMessage = null; _selectedGroup = null; _items = null; _isItemsLoading = false; _itemsErrorMessage = null; _currentPage = 1; _totalItemCount = 0; _itemSearchTerm = string.Empty; _groupSearchTerm = string.Empty;
+        _isLoadingGroups = true;
+        _groupErrorMessage = null;
+        _selectedGroup = null; // Reset selection
+        _items = null; // Clear items when loading groups
+        _isItemsLoading = false;
+        _itemsErrorMessage = null;
+        _currentPage = 1;
+        _totalItemCount = 0;
+        _itemSearchTerm = string.Empty;
+        // groupSearchTerm should not be reset here, user might want to keep it
         await InvokeAsync(StateHasChanged);
-        try { _itemGroups = await ItemGroupService.GetItemGroupsAsync(); if (_itemGroups == null) { _groupErrorMessage = "Error loading groups."; _itemGroups = new(); Snackbar.Add(_groupErrorMessage, Severity.Error); } }
-        catch (Exception ex) { _groupErrorMessage = "Unexpected error loading groups."; Logger.LogError(ex, _groupErrorMessage); Snackbar.Add(_groupErrorMessage, Severity.Error); _itemGroups ??= new(); }
-        finally { _isLoadingGroups = false; await InvokeAsync(StateHasChanged); }
+        try
+        {
+            _itemGroups = await ItemGroupService.GetItemGroupsAsync();
+            if (_itemGroups == null)
+            {
+                _groupErrorMessage = "خطا در بارگذاری گروه‌ها.";
+                _itemGroups = new();
+                Snackbar.Add(_groupErrorMessage, Severity.Error);
+            }
+        }
+        catch (Exception ex)
+        {
+            _groupErrorMessage = "خطای پیش‌بینی نشده در بارگذاری گروه‌ها.";
+            Logger.LogError(ex, _groupErrorMessage);
+            Snackbar.Add(_groupErrorMessage, Severity.Error);
+            _itemGroups ??= new();
+        }
+        finally
+        {
+            _isLoadingGroups = false;
+            await InvokeAsync(StateHasChanged);
+        }
     }
 
     private async Task LoadItemsForSelectedGroupAsync()
     {
         if (_selectedGroup == null || _isItemsLoading) return;
-        _isItemsLoading = true; _itemsErrorMessage = null;
-        await InvokeAsync(StateHasChanged);
+        _isItemsLoading = true;
+        _itemsErrorMessage = null;
+        await InvokeAsync(StateHasChanged); // Show loading indicator
+
         try
         {
             Logger.LogInformation("Loading items page {Page} for group {GroupCode}, Search: '{ItemSearch}'", _currentPage, _selectedGroup.CODE, _itemSearchTerm);
-            var pagedResult = await ItemGroupService.GetItemsByGroupAsync(_selectedGroup.CODE, _currentPage, _pageSize, _itemSearchTerm); // Pass search term
-            if (pagedResult != null) { _items = pagedResult.Items; _totalItemCount = pagedResult.TotalCount; }
-            else { _itemsErrorMessage = "Error loading items."; Snackbar.Add(_itemsErrorMessage, Severity.Warning); _items = new(); _totalItemCount = 0; }
+            // <<< استفاده از ItemDisplayDto >>>
+            var pagedResult = await ItemGroupService.GetItemsByGroupAsync(_selectedGroup.CODE, _currentPage, _pageSize, _itemSearchTerm);
+            if (pagedResult != null)
+            {
+                _items = pagedResult.Items;
+                _totalItemCount = pagedResult.TotalCount;
+            }
+            else
+            {
+                _itemsErrorMessage = "خطا در بارگذاری کالاها.";
+                Snackbar.Add(_itemsErrorMessage, Severity.Warning);
+                _items = new List<ItemDisplayDto>(); // Initialize to empty list
+                _totalItemCount = 0;
+            }
         }
         catch (Exception ex)
         {
-            _itemsErrorMessage = "Unexpected error loading items."; Logger.LogError(ex, "Error loading items"); Snackbar.Add(_itemsErrorMessage, Severity.Error); _items = new(); _totalItemCount = 0;
+            _itemsErrorMessage = "خطای پیش‌بینی نشده در بارگذاری کالاها.";
+            Logger.LogError(ex, "Error loading items for group {GroupCode}", _selectedGroup.CODE);
+            Snackbar.Add(_itemsErrorMessage, Severity.Error);
+            _items = new List<ItemDisplayDto>(); // Initialize to empty list
+            _totalItemCount = 0;
         }
-        finally { _isItemsLoading = false; await InvokeAsync(StateHasChanged); }
+        finally
+        {
+            _isItemsLoading = false;
+            await InvokeAsync(StateHasChanged); // Update UI with results or error message
+        }
     }
 
     // --- UI Event Handlers ---
     private async Task HandleGroupClick(TCODE_MENUITEM group)
     {
         if (group == null || _isItemsLoading) return;
-        if (_selectedGroup != group)
-        {
-            _selectedGroup = group; _currentPage = 1; _totalItemCount = 0; _items = null; _itemSearchTerm = string.Empty; _isListView = false;
-            _itemSearchDebounceTimer?.Stop();
-            await LoadItemsForSelectedGroupAsync();
-        }
+        // Allow re-clicking the same group to refresh items (optional)
+        // if (_selectedGroup != group)
+        // {
+        _selectedGroup = group;
+        _currentPage = 1; // Reset to first page on new group selection
+        _totalItemCount = 0;
+        _items = null; // Clear previous items immediately
+        _itemSearchTerm = string.Empty; // Clear item search on group change
+        // _isListView = false; // Reset to default view? Optional.
+        // No need to handle debounce timer here anymore
+        await LoadItemsForSelectedGroupAsync();
+        // }
     }
 
+    // Called by MudTextField's OnDebounceIntervalElapsed
     private async Task HandleItemSearchDebounced()
     {
         await InvokeAsync(async () =>
         {
             if (_selectedGroup == null) return;
             Logger.LogInformation("Debounced item search triggered for: {SearchTerm}", _itemSearchTerm);
-            _currentPage = 1;
+            _currentPage = 1; // Reset page on new search
             _totalItemCount = 0;
-            await LoadItemsForSelectedGroupAsync();
+            await LoadItemsForSelectedGroupAsync(); // Load items with the current search term
         });
     }
 
-    // UPDATED: Handles ValueChanged for group search
-    private void OnGroupSearchTermChanged(string newValue)
-    {
-        //     StateHasChanged(); // Trigger filter re-render
-        _groupSearchTerm = newValue;
-        // No need to call StateHasChanged usually, filter method is called on render
-    }
 
-    // UPDATED: Handles ValueChanged for item search, triggers debounce
-    private void OnItemSearchInput(string newValue)
-    {
-        _itemSearchTerm = newValue;
-        _itemSearchDebounceTimer?.Stop();
-        _itemSearchDebounceTimer?.Start();
-    }
+    // حذف OnItemSearchInput چون از bind-Value و Debounce داخلی استفاده می‌کنیم
 
-    // UPDATED: Handles ToggledChanged for view toggle
-    private void OnViewToggleChanged(bool newValue)
-    {
-        _isListView = newValue;
-        // Optional: log or add other logic if needed when view changes
-    }
+    // حذف OnViewToggleChanged چون از bind-Toggled استفاده می‌کنیم
 
-
-    // UPDATED: Handles SelectedChanged for pagination
     private async Task HandlePageChangedAsync(int newPage)
     {
-        if (_isItemsLoading) return; // Prevent changing page while loading
-        _currentPage = newPage; // Update the current page
+        if (_isItemsLoading) return;
+        _currentPage = newPage;
         Logger.LogInformation("Page changed to: {NewPage}", _currentPage);
         await LoadItemsForSelectedGroupAsync();
     }
@@ -330,14 +465,37 @@
     {
         if (_itemGroups == null) return Enumerable.Empty<TCODE_MENUITEM>();
         if (string.IsNullOrWhiteSpace(_groupSearchTerm)) return _itemGroups;
-        try { return _itemGroups.Where(g => g.NAMES != null && g.NAMES.Contains(_groupSearchTerm, StringComparison.OrdinalIgnoreCase)).ToList(); }
-        catch (Exception ex) { Logger.LogError(ex, "Filter error"); Snackbar.Add("Filter error", Severity.Warning); return _itemGroups; }
+        try
+        {
+            // Filter by group name containing the search term
+            return _itemGroups.Where(g => g.NAMES != null && g.NAMES.Contains(_groupSearchTerm, StringComparison.OrdinalIgnoreCase)).ToList();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error filtering groups for search term: {SearchTerm}", _groupSearchTerm);
+            Snackbar.Add("خطا در فیلتر کردن گروه‌ها.", Severity.Warning);
+            return _itemGroups; // Return all groups on error
+        }
     }
 
-    private string? GetImageDataUrl(byte[]? imageData)
+    // حذف متد GetImageDataUrl چون دیگر استفاده نمی‌شود (تصویر از API خوانده می‌شود)
+
+    // <<< متد برای مدیریت رویداد افزودن از ItemCard >>>
+    // متد نمونه برای افزودن از حالت لیست (اصلاح شد)
+
+    private void HandleItemAddedToCart((ItemDisplayDto Item, int Quantity, int SelectedUnitCode) args)
     {
-        if (imageData == null || imageData.Length == 0) return null;
-        try { var b64 = Convert.ToBase64String(imageData); return $"data:image/jpeg;base64,{b64}"; }
-        catch (Exception ex) { Logger.LogError(ex, "Base64 error"); return null; }
+        Logger.LogInformation("Adding {Quantity} of '{ItemName}' (Code: {ItemCode}) with Unit Code {UnitCode} to cart.", args.Quantity, args.Item.NAME, args.Item.CODE, args.SelectedUnitCode);
+        // فراخوانی سرویس سبد خرید برای افزودن آیتم
+        CartService.AddItem(args.Item, args.Quantity, args.SelectedUnitCode, _availableUnits ?? new List<TCOD_VAHEDS>());
+        Snackbar.Add($"{args.Quantity} عدد '{args.Item.NAME}' به سبد اضافه شد.", Severity.Success);
     }
+
+    // --- متد برای افزودن از حالت لیست ---
+    private void AddItemToCart(ItemDisplayDto item, int quantity)
+    {
+        // ارسال واحد پیش‌فرض
+        HandleItemAddedToCart((item, quantity, item.VahedCode));
+    }
+
 }

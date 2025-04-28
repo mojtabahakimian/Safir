@@ -15,7 +15,9 @@ namespace Safir.Shared.Models.Kala
 
         // SQL pic is image, maps to byte[]
         // Not including pic initially for simplicity, can be added later
-        public byte[]? pic { get; set; }
+        //public byte[]? pic { get; set; }
+
+        public bool ImageExists { get; set; } = false;
 
         public int ANBAR { get; set; }
 

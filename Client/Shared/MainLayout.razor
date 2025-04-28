@@ -4,12 +4,27 @@
 @inject ThemeService ThemeService
 @inject AuthenticationStateProvider AuthenticationStateProvider
 @inject IJSRuntime JSRuntime
+@inject ShoppingCartService CartService
 
 <MudLayout>
     <MudAppBar Elevation="1" Color="Color.Primary">
         <MudIconButton Icon="@Icons.Material.Filled.Menu" Color="Color.Inherit" Edge="Edge.Start" OnClick="@((e) => DrawerToggle())" />
         <MudText Typo="Typo.h5" Class="ml-3">سفیر</MudText>
         <MudSpacer />
+
+        @* نمایش نام مشتری انتخاب شده برای سفارش *@
+        @if (CartService.CurrentCustomer != null)
+        {
+            <MudChip Color="Color.Info" Size="Size.Small" Class="mx-4">
+                سفارش برای: @CartService.CurrentCustomer.person
+            </MudChip>
+        }
+
+        @* دکمه و Badge سبد خرید *@
+        <MudBadge Content="@CartService.Items.Count" Color="Color.Error" Overlap="true" Bordered="true" Visible="@(CartService.Items.Count > 0)">
+            <MudIconButton Icon="@Icons.Material.Filled.ShoppingCart" Color="Color.Inherit" Link="/cart" Title="مشاهده سبد سفارش" />
+        </MudBadge>
+
         <MudToggleIconButton @bind-Toggled="@ThemeService.IsDarkMode"
                              Icon="@Icons.Material.Filled.LightMode" Color="Color.Inherit" Title="Light Mode"
                              ToggledIcon="@Icons.Material.Filled.DarkMode" ToggledColor="Color.Inherit" ToggledTitle="Dark Mode" />
@@ -25,6 +40,8 @@
                 </MudText>
             </Authorized>
         </AuthorizeView>
+
+      
 
     </MudAppBar>
 
@@ -72,7 +89,17 @@
         {
             displayName = user.FindFirst(BaseknowClaimTypes.UUSER)?.Value ?? "";
         }
+
+        // اشتراک در رویداد تغییر سبد خرید
+        CartService.CartChanged += OnCartChanged;
     }
+
+    // متد برای بروزرسانی UI هنگام تغییر سبد خرید
+    private void OnCartChanged()
+    {
+        InvokeAsync(StateHasChanged); // بروزرسانی UI
+    }
+
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         // این متد پس از رندر شدن کامپوننت اجرا می‌شود
@@ -101,6 +128,12 @@
             // بلافاصله پس از لود لازم است که UI را آپدیت کند.
             // await InvokeAsync(StateHasChanged);
         }
+    }
+    public void Dispose()
+    {
+        // لغو اشتراک رویدادها
+        CartService.CartChanged -= OnCartChanged;
+        // ThemeService.ThemeChanged -= OnThemeChanged; // اگر از سرویس تم قبلی استفاده می‌کنید
     }
 
 }

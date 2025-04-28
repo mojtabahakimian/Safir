@@ -12,6 +12,7 @@ namespace Safir.Client.Pages.Kharid
         [Inject] private NavigationManager NavManager { get; set; } = default!;
         [Inject] private ISnackbar Snackbar { get; set; } = default!;
         [Inject] private ILogger<VisitorCustomersList> Logger { get; set; } = default!;
+        [Inject] private ShoppingCartService CartService { get; set; } = default!; // <<< تزریق سرویس سبد خرید
 
         private List<VISITOR_CUSTOMERS>? _originalCustomers;
         private List<long>? availableDates;
@@ -125,6 +126,33 @@ namespace Safir.Client.Pages.Kharid
         {
             _debounceTimer?.Dispose();
         }
+
+        // --- متد مربوط به دکمه "ثبت سفارش" ---
+        private void StartOrderForCustomer(VISITOR_CUSTOMERS? customer)
+        {
+            if (customer == null || string.IsNullOrEmpty(customer.hes))
+            {
+                Snackbar.Add("اطلاعات مشتری برای شروع سفارش معتبر نیست.", Severity.Warning);
+                return;
+            }
+
+            try
+            {
+                Logger.LogInformation("Starting order for customer: {CustomerName} ({CustomerHes})", customer.person, customer.hes);
+                // تنظیم مشتری فعلی در سرویس سبد خرید
+                CartService.SetCustomer(customer);
+
+                // هدایت به صفحه انتخاب کالا (مثلا /item-groups)
+                // می‌توانید customer.hes را هم به عنوان پارامتر بفرستید اگر لازم است
+                NavManager.NavigateTo("/item-groups");
+            }
+            catch (Exception ex)
+            {
+                Logger.LogError(ex, "Error starting order for customer {CustomerHes}", customer.hes);
+                Snackbar.Add("خطا در شروع فرآیند سفارش.", Severity.Error);
+            }
+        }
+
 
         private async Task LoadVisitDatesAsync()
         {

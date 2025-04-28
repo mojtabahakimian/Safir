@@ -17,6 +17,9 @@ namespace Safir.Shared.Models.Kala
         // From STUF_DEF.MABL_F (Assuming this is a price or relevant value)
         // Using decimal for potential monetary values, adjust if it's just float
         public decimal MABL_F { get; set; }
+        public decimal? B_SEF { get; set; }  // فی خرده (فرض نام ستون) - nullable
+        public decimal? MAX_M { get; set; }  // قیمت مصرف (فرض نام ستون) - nullable
+        public string? TOZIH { get; set; }  // توضیحات (فرض نام ستون) - nullable
 
         // From STUF_DEF.VAHED (Could be joined with TCOD_VAHEDS later for name)
         public int VAHED { get; set; }
