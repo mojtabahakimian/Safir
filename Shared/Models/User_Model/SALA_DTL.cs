@@ -17,5 +17,7 @@ namespace Safir.Shared.Models.User_Model
         public int? PORID { get; set; }
         public byte[] EMZA { get; set; }
         public int? menup { get; set; }
+
+        public int? erjabe { get; set; }
     }
 }

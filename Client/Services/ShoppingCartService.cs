@@ -1,9 +1,11 @@
-﻿// مسیر: Safir.Client/Services/ShoppingCartService.cs
+﻿// File: Client/Services/ShoppingCartService.cs
 using Safir.Shared.Models.Kala;
-using Safir.Shared.Models.Visitory; // برای VISITOR_CUSTOMERS
+using Safir.Shared.Models.Visitory; // For VISITOR_CUSTOMERS
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Microsoft.Extensions.Logging; // Added for logging
+using Safir.Client.Services; // Added for LookupApiService (optional)
 
 namespace Safir.Client.Services
 {
@@ -11,63 +13,79 @@ namespace Safir.Client.Services
     {
         public VISITOR_CUSTOMERS? CurrentCustomer { get; private set; }
         public List<CartItem> Items { get; private set; } = new List<CartItem>();
-
-        // رویداد برای اطلاع‌رسانی تغییرات در سبد
+        public int? CurrentAnbarCode { get; private set; } // Keep this if needed for ItemCard logic
         public event Action? CartChanged;
+        private readonly ILogger<ShoppingCartService>? _logger;
+        private readonly LookupApiService? _lookupService;
 
-        private readonly List<TCOD_VAHEDS>? _availableUnits; // نگهداری لیست واحدها
-
-        // دریافت لیست واحدها از طریق سازنده (از کامپوننت والد یا سرویس دیگر)
-        // یا بارگذاری آن در اینجا با تزریق LookupApiService
-        public ShoppingCartService(LookupApiService lookupService)
+        public ShoppingCartService(ILogger<ShoppingCartService>? logger = null, LookupApiService? lookupService = null)
         {
-            // در اینجا می‌توانیم واحدها را بارگذاری کنیم، اما بهتر است
-            // واحدها یکبار در کامپوننت اصلی بارگذاری و به این سرویس پاس داده شوند
-            // یا به عنوان یک وابستگی جداگانه تزریق شوند.
-            // فعلا فرض می‌کنیم در متد AddItem واحد مربوطه را می‌گیریم.
+            _logger = logger;
+            _lookupService = lookupService;
         }
 
-        // یا سازنده بدون وابستگی اگر واحدها جای دیگری مدیریت می‌شوند
-        // public ShoppingCartService() { }
-
-
+        // Methods SetCurrentAnbarCode, GetCurrentAnbarCode, GetItemQuantity, GetCartItem, SetCustomer remain unchanged
+        public void SetCurrentAnbarCode(int anbarCode)
+        {
+            if (CurrentAnbarCode != anbarCode && Items.Any())
+            {
+                Console.WriteLine($"Warning: AnbarCode changed from {CurrentAnbarCode} to {anbarCode} while cart has items.");
+            }
+            CurrentAnbarCode = anbarCode;
+        }
+        public int? GetCurrentAnbarCode() => CurrentAnbarCode;
+        public decimal GetItemQuantity(string itemCode, int unitCode) => Items.FirstOrDefault(i => i.ItemCode == itemCode && i.SelectedUnitCode == unitCode)?.Quantity ?? 0;
+        public CartItem? GetCartItem(string itemCode, int unitCode) => Items.FirstOrDefault(i => i.ItemCode == itemCode && i.SelectedUnitCode == unitCode);
         public void SetCustomer(VISITOR_CUSTOMERS? customer)
         {
-            if (CurrentCustomer != customer) // فقط اگر مشتری تغییر کرد یا اولین بار است
+            if (CurrentCustomer != customer)
             {
-                // اگر مشتری جدیدی انتخاب می‌شود، سبد قبلی را پاک کن
                 if (customer != null && CurrentCustomer != null && Items.Any())
                 {
-                    ClearCartInternal(); // پاک کردن سبد بدون مشتری
+                    ClearCartInternal();
                 }
                 CurrentCustomer = customer;
                 NotifyCartChanged();
             }
         }
 
-        public void AddItem(ItemDisplayDto item, int quantity, int unitCode, List<TCOD_VAHEDS> availableUnits)
+
+        // --- AddItem method updated ---
+        public void AddItem(
+            ItemDisplayDto item,
+            decimal quantity,
+            int unitCode,
+            int anbarCode,
+            List<TCOD_VAHEDS>? availableUnits,
+            decimal? priceOverride = null,
+            double? discountPercent = null) // <<< Added discountPercent parameter
         {
             if (item == null || quantity <= 0) return;
+            if (anbarCode <= 0)
+            {
+                _logger?.LogError("Attempted to add item {ItemCode} with invalid AnbarCode {AnbarCode}", item.CODE, anbarCode);
+                return;
+            }
 
             var selectedUnit = availableUnits?.FirstOrDefault(u => u.CODE == unitCode);
-            string? selectedUnitName = selectedUnit?.NAMES ?? item.VahedName; // نام واحد
+            string? selectedUnitName = selectedUnit?.NAMES ?? item.VahedName;
+            decimal pricePerUnit = priceOverride ?? item.MABL_F; // Use override or default price
 
-            // TODO: در آینده، بررسی کنید آیا قیمت باید بر اساس واحد انتخابی تعدیل شود؟
-            // فعلا از MABL_F (فی عمده) به عنوان قیمت واحد استفاده می‌کنیم.
-            decimal pricePerUnit = item.MABL_F;
-
-            // بررسی اینکه آیا این کالا با همین واحد قبلا اضافه شده؟
-            var existingItem = Items.FirstOrDefault(i => i.ItemCode == item.CODE && i.SelectedUnitCode == unitCode);
+            // Find existing item based on ItemCode, UnitCode, AND AnbarCode
+            var existingItem = Items.FirstOrDefault(i => i.ItemCode == item.CODE && i.SelectedUnitCode == unitCode && i.AnbarCode == anbarCode);
 
             if (existingItem != null)
             {
-                // فقط تعداد را افزایش بده
-                existingItem.Quantity += quantity;
+                // Item exists: Update quantity, price, and discount
+                existingItem.Quantity = quantity;
+                existingItem.PricePerUnit = pricePerUnit;
+                existingItem.DiscountPercent = discountPercent; // <<< Update discount
+                _logger?.LogInformation("AddItem (Updating existing): Item {ItemCode}, Unit {UnitCode}, Anbar {AnbarCode}, New Qty {Qty}, New Price {Price}, New Disc {Disc}%",
+                                         item.CODE, unitCode, anbarCode, quantity, pricePerUnit, discountPercent);
             }
             else
             {
-                // آیتم جدید به لیست اضافه کن
-                // استفاده از سازنده CartItem برای مقداردهی اولیه
+                // Create new item
                 var newItem = new CartItem
                 {
                     SourceItem = item,
@@ -76,63 +94,98 @@ namespace Safir.Client.Services
                     Quantity = quantity,
                     SelectedUnitCode = unitCode,
                     SelectedUnitName = selectedUnitName,
-                    PricePerUnit = pricePerUnit
+                    PricePerUnit = pricePerUnit,
+                    AnbarCode = anbarCode,
+                    DiscountPercent = discountPercent // <<< Set discount
                 };
                 Items.Add(newItem);
+                _logger?.LogInformation("AddItem (New): Item {ItemCode}, Unit {UnitCode}, Anbar {AnbarCode}, Qty {Qty}, Price {Price}, Disc {Disc}%",
+                                         item.CODE, unitCode, anbarCode, quantity, pricePerUnit, discountPercent);
             }
             NotifyCartChanged();
         }
 
         public void RemoveItem(string itemCode, int unitCode)
         {
-            var itemToRemove = Items.FirstOrDefault(i => i.ItemCode == itemCode && i.SelectedUnitCode == unitCode);
-            if (itemToRemove != null)
+            // Assuming deletion doesn't need AnbarCode specificity,
+            // otherwise, it needs to be passed and included in the Where clause.
+            var itemsToRemove = Items.Where(i => i.ItemCode == itemCode && i.SelectedUnitCode == unitCode).ToList();
+            if (itemsToRemove.Any())
             {
-                Items.Remove(itemToRemove);
+                foreach (var item in itemsToRemove)
+                {
+                    Items.Remove(item);
+                    _logger?.LogInformation("RemoveItem: Item {ItemCode}, Unit {UnitCode}, Anbar {AnbarCode}", item.ItemCode, item.SelectedUnitCode, item.AnbarCode);
+                }
                 NotifyCartChanged();
             }
         }
 
-        public void UpdateQuantity(string itemCode, int unitCode, int newQuantity)
+
+        // --- UpdateQuantity method updated ---
+        public void UpdateQuantity(
+            string itemCode,
+            int unitCode,
+            decimal newQuantity,
+            decimal? priceOverride = null,
+            double? discountPercent = null) // <<< Added discountPercent parameter
         {
+            // Find item based on ItemCode and UnitCode.
+            // TODO: Consider adding AnbarCode here if one item can be added from multiple warehouses distinctly.
             var itemToUpdate = Items.FirstOrDefault(i => i.ItemCode == itemCode && i.SelectedUnitCode == unitCode);
             if (itemToUpdate != null)
             {
                 if (newQuantity > 0)
                 {
                     itemToUpdate.Quantity = newQuantity;
+                    if (priceOverride.HasValue) // Update price if provided
+                    {
+                        itemToUpdate.PricePerUnit = priceOverride.Value;
+                    }
+                    // Update discount (allow setting it back to null/0 if discountPercent is null/0)
+                    itemToUpdate.DiscountPercent = discountPercent;
+
+                    _logger?.LogInformation("UpdateQuantity: Item {ItemCode}, Unit {UnitCode}, Anbar {AnbarCode}, New Qty {Qty}, New Price {Price}, New Disc {Disc}%",
+                                             itemToUpdate.ItemCode, itemToUpdate.SelectedUnitCode, itemToUpdate.AnbarCode, newQuantity, itemToUpdate.PricePerUnit, itemToUpdate.DiscountPercent);
                 }
                 else
                 {
-                    // اگر تعداد صفر یا کمتر شد، آیتم را حذف کن
+                    // Remove item if quantity is zero or less
                     Items.Remove(itemToUpdate);
+                    _logger?.LogInformation("UpdateQuantity (Removed): Item {ItemCode}, Unit {UnitCode}, Anbar {AnbarCode}",
+                                             itemToUpdate.ItemCode, itemToUpdate.SelectedUnitCode, itemToUpdate.AnbarCode);
                 }
                 NotifyCartChanged();
             }
+            else
+            {
+                _logger?.LogWarning("UpdateQuantity: Item not found {ItemCode}, Unit {UnitCode}", itemCode, unitCode);
+            }
         }
 
-        public decimal GetTotal()
-        {
-            return Items.Sum(item => item.TotalPrice);
-        }
+        // --- GetTotal method (Calculates total AFTER discount) ---
+        public decimal GetTotal() => Items.Sum(item => item.TotalPriceAfterDiscount);
+
+        // --- GetTotalDiscountAmount method (Calculates total discount amount) ---
+        public decimal GetTotalDiscountAmount() => Items.Sum(item => item.LineDiscountAmount);
+
+        // --- <<< NEW Method: GetTotalAmountBeforeDiscount >>> ---
+        /// <summary>
+        /// Calculates the sum of (Quantity * PricePerUnit) for all items, before any discount.
+        /// </summary>
+        /// <returns>Total amount before discount.</returns>
+        public decimal GetTotalAmountBeforeDiscount() => Items.Sum(item => item.TotalPriceBeforeDiscount);
+        // --- <<< End NEW Method >>> ---
 
         public void ClearCart()
         {
-            ClearCartInternal();
-            CurrentCustomer = null; // مشتری را هم پاک کن
-            NotifyCartChanged();
-        }
-
-        private void ClearCartInternal()
-        {
             Items.Clear();
-            // NotifyCartChanged(); // در ClearCart اصلی انجام می‌شود
+            CurrentCustomer = null;
+            NotifyCartChanged();
+            _logger?.LogInformation("ClearCart: Cart cleared.");
         }
 
-
-        private void NotifyCartChanged()
-        {
-            CartChanged?.Invoke();
-        }
+        private void ClearCartInternal() => Items.Clear();
+        private void NotifyCartChanged() => CartChanged?.Invoke();
     }
 }

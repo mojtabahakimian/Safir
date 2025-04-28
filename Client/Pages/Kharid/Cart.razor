@@ -1,14 +1,20 @@
 ﻿@page "/cart"
 @attribute [Authorize]
+@implements IDisposable
 
-@using Microsoft.AspNetCore.Authorization;
+@using Microsoft.AspNetCore.Authorization
 @using Safir.Client.Services
 @using System.Globalization
-@using Safir.Shared.Models.Kala;
+@using Safir.Shared.Models.Kala
+@using Safir.Shared.Models.Kharid
+@using Safir.Shared.Utility
 
 @inject ShoppingCartService CartService
+@inject ProformaApiService ProformaApi
+@inject ILogger<Cart> Logger
 @inject NavigationManager NavManager
 @inject ISnackbar Snackbar
+@inject IDialogService DialogService
 
 <MudContainer MaxWidth="MaxWidth.Medium" Class="mt-6">
     <MudPaper Class="pa-4" Elevation="3">
@@ -23,15 +29,18 @@
 
             @if (CartService.Items.Any())
             {
-                <MudSimpleTable Hover="true" Dense="true">
+                <MudSimpleTable Hover="true" Dense="true" Class="mb-4">
                     <thead>
                         <tr>
                             <th>کالا</th>
+                            <th>انبار</th>
                             <th>واحد</th>
                             <th>تعداد</th>
                             <th>قیمت واحد</th>
-                            <th>قیمت کل</th>
-                            <th></th> @* ستون خالی برای دکمه حذف *@
+                            <th>تخفیف ٪</th>
+                            <th>مبلغ تخفیف</th>
+                            <th>قیمت کل</th> @* (Price after line discount) *@
+                            <th></th> @* Delete button column *@
                         </tr>
                     </thead>
                     <tbody>
@@ -39,13 +48,13 @@
                         {
                             <tr>
                                 <td>@item.ItemName</td>
+                                <td>@GetAnbarName(item.AnbarCode)</td>
                                 <td>@item.SelectedUnitName</td>
-                                <td>
-                                    @* TODO: Add ability to edit quantity here if needed *@
-                                    @item.Quantity
-                                </td>
+                                <td>@item.Quantity.ToString("N0")</td>
                                 <td>@FormatCurrency(item.PricePerUnit)</td>
-                                <td>@FormatCurrency(item.TotalPrice)</td>
+                                <td>@FormatPercentage(item.DiscountPercent)</td>
+                                <td>@FormatCurrency(item.LineDiscountAmount)</td>
+                                <td>@FormatCurrency(item.TotalPriceAfterDiscount)</td>
                                 <td>
                                     <MudIconButton Icon="@Icons.Material.Filled.Delete"
                                                    Color="Color.Error"
@@ -56,52 +65,107 @@
                             </tr>
                         }
                     </tbody>
+                    @* --- Updated Footer --- *@
                     <tfoot>
+                        @* --- NEW: Total Before Discount Row --- *@
                         <tr>
-                            <td colspan="4" style="text-align: left; font-weight: bold;">جمع کل:</td>
+                            <td colspan="7" style="text-align: left; font-weight: bold;">جمع مبلغ قبل از تخفیف:</td> @* Colspan = 7 *@
+                            <td style="font-weight: bold;">@FormatCurrency(CartService.GetTotalAmountBeforeDiscount())</td> @* Call new service method *@
+                            <td></td> @* Delete button spacer *@
+                        </tr>
+
+                        @* --- Total Discount Row --- *@
+                        <tr>
+                            <td colspan="6" style="text-align: left; font-weight: bold;">جمع کل تخفیف:</td> @* Colspan = 6 *@
+                            <td style="font-weight: bold;">@FormatCurrency(CartService.GetTotalDiscountAmount())</td>
+                            <td></td> @* Price column spacer *@
+                            <td></td> @* Delete button spacer *@
+                        </tr>
+
+                        @* --- Grand Total Row (After Discount) --- *@
+                        <tr>
+                            <td colspan="7" style="text-align: left; font-weight: bold;">جمع کل (پس از تخفیف):</td> @* Colspan = 7 *@
                             <td style="font-weight: bold;">@FormatCurrency(CartService.GetTotal())</td>
-                            <td></td>
+                            <td></td> @* Delete button spacer *@
                         </tr>
                     </tfoot>
+                    @* --- End Updated Footer --- *@
                 </MudSimpleTable>
+
+                @* Header Input Fields (Unchanged) *@
+                <MudTextField @bind-Value="headerNotes" Label="ملاحظات سربرگ" Lines="3" Variant="Variant.Outlined" Class="mb-3" />
+                <MudTextField @bind-Value="headerConditions" Label="شرح شرایط" Lines="2" Variant="Variant.Outlined" Class="mb-3" />
+                <MudNumericField @bind-Value="headerShippingCost" Label="هزینه حمل/خدمات (ریال)" Variant="Variant.Outlined" Format="N0" Culture='new CultureInfo("fa-IR")' Class="mb-3" />
+                @* <MudNumericField @bind-Value="headerTotalDiscount" Label="تخفیف کلی سربرگ" Variant="Variant.Outlined" Format="N0" Culture='new CultureInfo("fa-IR")' Class="mb-3" /> *@
+                <MudCheckBox @bind-Checked="headerApplyVat"
+                @onclick="ToggleApplyVat"
+                             Label="محاسبه ارزش افزوده"
+                             Color="Color.Primary"
+                             Class="mb-3" />
+
 
                 <MudDivider Class="my-4" />
 
+                @* Action Buttons (Unchanged) *@
                 <MudStack Row="true" Justify="Justify.SpaceBetween">
                     <MudButton Variant="Variant.Filled"
                                Color="Color.Error"
                                OnClick="ClearCart"
+                               Disabled="@(!CartService.Items.Any())"
                                StartIcon="@Icons.Material.Filled.RemoveShoppingCart">
                         خالی کردن سبد
                     </MudButton>
                     <MudButton Variant="Variant.Filled"
                                Color="Color.Success"
-                               OnClick="SubmitOrder"
+                               OnClick="SaveProformaAsync"
+                               Disabled="@(isSaving || CartService.CurrentCustomer == null || !CartService.Items.Any())"
                                StartIcon="@Icons.Material.Filled.Send">
-                        ارسال و ثبت پیش فاکتور
+                        @if (isSaving)
+                        {
+                            <MudProgressCircular Class="ms-n1" Size="Size.Small" Indeterminate="true" />
+                            <MudText Class="ms-2">در حال ذخیره...</MudText>
+                        }
+                        else
+                        {
+                            <MudText>ارسال و ثبت پیش فاکتور</MudText>
+                        }
                     </MudButton>
                 </MudStack>
             }
-            else
+            else @* Cart is empty message (Unchanged) *@
             {
                 <MudAlert Severity="Severity.Info">سبد سفارش شما خالی است.</MudAlert>
                 <MudButton Variant="Variant.Text" Color="Color.Primary" OnClick='() => NavManager.NavigateTo("/item-groups")' Class="mt-4">بازگشت به لیست کالاها</MudButton>
             }
         }
-        else
+        else @* No customer selected message (Unchanged) *@
         {
             <MudAlert Severity="Severity.Warning">هنوز مشتری برای ثبت سفارش انتخاب نشده است.</MudAlert>
             <MudButton Variant="Variant.Text" Color="Color.Primary" OnClick='() => NavManager.NavigateTo("/visitor-customers")' Class="mt-4">انتخاب مشتری</MudButton>
         }
-
     </MudPaper>
 </MudContainer>
 
-@code {
 
+@code {
+    // Private fields
+    private bool isSaving = false;
+    private string? headerNotes;
+    private string? headerConditions;
+    private decimal? headerShippingCost;
+    private decimal? headerTotalDiscount;
+    private bool headerApplyVat = false;
+    private void ToggleApplyVat()
+    {
+        headerApplyVat = !headerApplyVat;
+        Logger.LogInformation("ToggleApplyVat executed. New value: {VatValue}", headerApplyVat);
+        StateHasChanged(); // Explicitly call StateHasChanged after manual update
+    }
+
+
+    // Lifecycle methods
     protected override void OnInitialized()
     {
-        // اشتراک در رویداد برای بروزرسانی خودکار صفحه سبد
         CartService.CartChanged += OnCartChanged;
     }
 
@@ -112,11 +176,13 @@
 
     private void OnCartChanged()
     {
-        InvokeAsync(StateHasChanged); // Re-render the component when cart changes
+        InvokeAsync(StateHasChanged);
     }
 
+    // UI Interaction methods
     private void RemoveItemFromCart(CartItem item)
     {
+        if (item == null) return;
         CartService.RemoveItem(item.ItemCode, item.SelectedUnitCode);
         Snackbar.Add($"'{item.ItemName}' از سبد حذف شد.", Severity.Warning);
     }
@@ -124,29 +190,136 @@
     private void ClearCart()
     {
         CartService.ClearCart();
-        Snackbar.Add("سبد سفارش خالی شد.", Severity.Info);
-        // Optionally navigate away
-        // NavManager.NavigateTo("/item-groups");
+        headerNotes = null;
+        headerConditions = null;
+        headerShippingCost = null;
+        headerTotalDiscount = null;
+        headerApplyVat = false;
+        // StateHasChanged called via OnCartChanged
     }
 
-    private void SubmitOrder()
+    // --- SaveProformaAsync Method (DepartmentCode assignment removed) ---
+    private async Task SaveProformaAsync()
     {
-        // TODO: منطق نهایی کردن سفارش و ارسال به سرور
-        // 1. جمع‌آوری اطلاعات لازم (مشتری، آیتم‌ها، تعداد، واحد، قیمت و...)
-        // 2. ایجاد یک مدل DTO برای ارسال سفارش به سرور
-        // 3. فراخوانی یک متد در یک سرویس جدید (مثلا OrderApiService) برای ارسال DTO به API سرور
-        // 4. مدیریت پاسخ سرور (موفقیت یا خطا)
-        // 5. پاک کردن سبد خرید در صورت موفقیت
+        if (isSaving || CartService.Items == null || !CartService.Items.Any()) return;
+        if (CartService.CurrentCustomer == null || string.IsNullOrEmpty(CartService.CurrentCustomer.hes))
+        {
+            Snackbar.Add("مشتری انتخاب نشده یا سبد خرید خالی است.", Severity.Warning);
+            return;
+        }
 
-        Snackbar.Add("منطق ارسال سفارش به سرور هنوز پیاده‌سازی نشده است.", Severity.Info);
+        Logger.LogInformation("SaveProformaAsync called. Apply VAT checkbox value before sending: {ApplyVatValue}", headerApplyVat);
 
-        // مثال: پاک کردن سبد پس از ثبت (فرضی)
-        // CartService.ClearCart();
-        // NavManager.NavigateTo("/order-confirmation"); // یا صفحه‌ی دیگر
+        isSaving = true;
+        StateHasChanged();
+        try
+        {
+            var request = new ProformaSaveRequestDto { /* ... DTO creation ... */ };
+            // (DTO creation logic remains the same as previous correct version)
+            request = new ProformaSaveRequestDto
+                {
+                    Header = new ProformaHeaderDto
+                    {
+                        CustomerHesCode = CartService.CurrentCustomer.hes,
+                        Date = CL_Tarikh.PersianCalendarHelper.GetCurrentPersianDateAsLong(),
+                        Notes = headerNotes,
+                        Conditions = headerConditions,
+                        CustomerKindCode = null,
+                        PaymentTermId = null,
+                        AgreedDuration = null,
+                        PriceListId = null,
+                        DiscountListId = null,
+                        ApplyVat = headerApplyVat,
+                        CalculateAward = false,
+                        ShippingCost = headerShippingCost,
+                        TotalDiscount = headerTotalDiscount
+                    },
+                    Lines = CartService.Items.Select(cartItem => new ProformaLineDto
+                    {
+                        AnbarCode = cartItem.AnbarCode,
+                        ItemCode = cartItem.ItemCode,
+                        SelectedUnitCode = cartItem.SelectedUnitCode,
+                        Quantity = cartItem.Quantity,
+                        PricePerUnit = cartItem.PricePerUnit,
+                        DiscountPercent = cartItem.DiscountPercent,
+                        CashDiscountPercent = 0,
+                        Notes = null
+                    }).ToList(),
+                    OverrideInventoryCheck = false
+                };
+
+
+            var initialResponse = await ProformaApi.SaveProformaAsync(request);
+
+            if (!initialResponse.Success && initialResponse.RequiresInventoryConfirmation)
+            {
+                bool? userConfirmed = await DialogService.ShowMessageBox(
+                    "تأیید ارسال", initialResponse.Message ?? "...", yesText: "بله", noText: "خیر");
+                if (userConfirmed == true)
+                {
+                    request.OverrideInventoryCheck = true;
+                    var finalResponse = await ProformaApi.SaveProformaAsync(request);
+                    if (finalResponse.Success)
+                    {
+                        var successMsg = finalResponse.Message ?? $"پیش فاکتور {finalResponse.ProformaNumber} ثبت شد.";
+                        // <<< --- MODIFIED: Show custom dialog instead of MessageBox --- >>>
+                        ShowSuccessDialog(successMsg, finalResponse.ProformaNumber);
+                        CartService.ClearCart();
+                    }
+                    else { Snackbar.Add(finalResponse.Message ?? "...", Severity.Error); }
+                }
+                else { Snackbar.Add("لغو شد.", Severity.Info); }
+            }
+            else if (initialResponse.Success)
+            {
+                var successMsg = initialResponse.Message ?? $"پیش فاکتور {initialResponse.ProformaNumber} ثبت شد.";
+                // <<< --- MODIFIED: Show custom dialog instead of MessageBox --- >>>
+                ShowSuccessDialog(successMsg, initialResponse.ProformaNumber);
+                CartService.ClearCart();
+            }
+            else { Snackbar.Add(initialResponse.Message ?? "...", Severity.Error); }
+        }
+        catch (Exception ex)
+        {
+            Logger?.LogError(ex, "Client error during SaveProformaAsync.");
+            Snackbar.Add($"خطا: {ex.Message}", Severity.Error);
+        }
+        finally { isSaving = false; StateHasChanged(); }
+    }
+    // Helper methods
+    private string GetAnbarName(int anbarCode)
+    {
+        // Placeholder - Implement if needed
+        return anbarCode.ToString();
+    }
+
+    private async Task ShowSuccessMsg(string msg) // Changed to Task for await
+    {
+        await DialogService.ShowMessageBox(
+          "ثبت موفق", // Title
+          msg,
+          yesText: "متوجه شدم"); // OK button text
     }
 
     private string FormatCurrency(decimal? value)
     {
-        return value?.ToString("N0", System.Globalization.CultureInfo.GetCultureInfo("fa-IR")) ?? "0";
+        return value?.ToString("N0", new CultureInfo("fa-IR")) ?? "0";
+    }
+
+    // Added Helper to format percentage display
+    private string FormatPercentage(double? value)
+    {
+        return value?.ToString("0.#", CultureInfo.InvariantCulture) ?? "0"; // "N1" for one decimal place
+    }
+
+    private void ShowSuccessDialog(string message, double? proformaNumber)
+    {
+        var parameters = new DialogParameters
+            {
+                ["ContentText"] = message,
+                ["ProformaNumber"] = proformaNumber
+            };
+
+        DialogService.Show<ProformaSuccessDialog>("ثبت موفق", parameters);
     }
 }

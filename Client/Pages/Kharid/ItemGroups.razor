@@ -2,7 +2,7 @@
 @attribute [Authorize]
 @implements IDisposable
 
-@using Microsoft.AspNetCore.Authorization;
+@using Microsoft.AspNetCore.Authorization
 @using Safir.Shared.Models.Kala
 @using Safir.Shared.Models
 @using Microsoft.AspNetCore.Components
@@ -11,18 +11,21 @@
 @using System.Collections.Generic
 @using System.Linq
 @using System.Timers
+@using Safir.Client.Shared
 
 @inject LookupApiService LookupService
-@inject ShoppingCartService CartService // <<< تزریق سرویس سبد خرید
+@inject ShoppingCartService CartService
+@inject ItemGroupApiService ItemGroupService
+@inject ISnackbar Snackbar
+@inject ILogger<ItemGroups> Logger
+@inject NavigationManager NavManager
 
 <MudContainer MaxWidth="MaxWidth.False" Class="mt-4 px-md-4 px-2">
     @* بهبود Padding برای نمایش بهتر در موبایل *@
 
     @* --- بخش نمایش و جستجوی گروه‌ها --- *@
     <MudPaper Outlined="true" Class="mb-4 pa-1">
-        <MudToolBar Dense="true" Class="px-2">
-            <MudText Typo="Typo.h6">گروه‌های کالا</MudText>
-            <MudSpacer />
+     @*    <MudToolBar Dense="true" Class="px-2">
             <MudTextField T="string"
                           @bind-Value="_groupSearchTerm"
                           Placeholder="جستجو گروه..."
@@ -34,7 +37,7 @@
                           Immediate="true"
                           Clearable="true"
                           Style="max-width: 250px;" />
-        </MudToolBar>
+        </MudToolBar> *@
 
         @if (_isLoadingGroups)
         {
@@ -98,8 +101,8 @@
 
         <MudPaper Outlined="true" Class="pa-1">
             <MudToolBar Dense="true" Class="mb-2 px-2">
-                <MudText Typo="Typo.h6">کالاها: @_selectedGroup.NAMES</MudText>
-                <MudSpacer />
+             @*    <MudText Typo="Typo.h6">کالاها: @_selectedGroup.NAMES</MudText>
+                <MudSpacer /> *@
                 <MudTextField T="string"
                 @bind-Value="_itemSearchTerm"
                               Placeholder="جستجو کالا..."
@@ -170,7 +173,7 @@
                                 </MudListItemText>
                                 <MudListItemAction>
                                     @* TODO: Add quantity selector and add button for list view if needed *@
-                                    <MudIconButton Icon="@Icons.Material.Filled.AddShoppingCart" Color="Color.Secondary" Size="Size.Small" OnClick="@(() => AddItemToCart(item, 1))" Title="افزودن ۱ عدد" />
+                                    <MudIconButton Icon="@Icons.Material.Filled.AddShoppingCart" Color="Color.Secondary" Size="Size.Small" OnClick="@(() => AddItemToCartFromList(item, 1))" Title="افزودن ۱ عدد" />
                                 </MudListItemAction>
                             </MudListItem>
                             <MudDivider Inset="Inset.Avatar" />
@@ -185,9 +188,11 @@
                         {
                             @* افزایش مقادیر ستون‌ها برای عرض بیشتر کارت *@
                             <MudItem xs="12" sm="6" md="6" lg="6" xl="4" @key="itemDto.CODE">
-                                <ItemCard Item="itemDto" AvailableUnits="_availableUnits" OnAddToCart="HandleItemAddedToCart" />
+                                <ItemCard Item="itemDto" AvailableUnits="_availableUnits" AnbarCode="@(_selectedGroup.ANBAR)" />
                             </MudItem>
                         }
+
+
                     </MudGrid>
                 }
 
@@ -257,63 +262,48 @@
 
 @code
 {
-    // --- Component State ---
     private List<TCODE_MENUITEM>? _itemGroups;
     private TCODE_MENUITEM? _selectedGroup;
     private bool _isLoadingGroups = false;
     private string? _groupErrorMessage;
-    private string _groupSearchTerm = string.Empty; // برای جستجوی گروه
+    private string _groupSearchTerm = string.Empty;
     private List<TCOD_VAHEDS>? _availableUnits;
 
-    private List<ItemDisplayDto>? _items; // <<< نوع داده به ItemDisplayDto تغییر کرد >>>
+    private List<ItemDisplayDto>? _items;
     private bool _isItemsLoading = false;
     private string? _itemsErrorMessage;
-    private string _itemSearchTerm = string.Empty; // برای جستجوی کالا
-                                                   // حذف تایمر چون از Debounce داخلی MudTextField استفاده می‌کنیم
-                                                   // private Timer? _itemSearchDebounceTimer;
+    private string _itemSearchTerm = string.Empty;
 
     private int _currentPage = 1;
-    private int _pageSize = 12; // تعداد کارت در هر صفحه
+    private int _pageSize = 12;
     private int _totalItemCount = 0;
     private int _totalPages => (_totalItemCount == 0 || _pageSize <= 0) ? 0 : (_totalItemCount + _pageSize - 1) / _pageSize;
 
-    private bool _isListView = false; // شروع با نمایش کارتی
+    private bool _isListView = false;
 
-    // --- Injected Services ---
-    [Inject] private ItemGroupApiService ItemGroupService { get; set; } = default!;
-    [Inject] private ISnackbar Snackbar { get; set; } = default!;
-    [Inject] private ILogger<ItemGroups> Logger { get; set; } = default!; // نام کلاس را به ItemGroups تغییر دهید اگر نام فایل ItemGroups.razor است
-    [Inject] private NavigationManager NavManager { get; set; } = default!;
-
-
-    // --- Lifecycle Methods ---
-    // حذف OnInitialized مربوط به تایمر
 
     protected override async Task OnInitializedAsync()
     {
-        // --- بررسی وجود مشتری انتخاب شده ---
         if (CartService.CurrentCustomer == null)
         {
-            Logger.LogWarning("Access to ItemGroups page denied. No customer selected in CartService.");
-            Snackbar.Add("لطفاً ابتدا از لیست مشتریان، مشتری مورد نظر برای ثبت سفارش را انتخاب کنید.", Severity.Warning);
-            NavManager.NavigateTo("/visitor-customers"); // هدایت به صفحه انتخاب مشتری
-            return; // توقف اجرای بقیه متد
+            Logger.LogWarning("Access to ItemGroups denied. No customer selected.");
+            Snackbar.Add("لطفاً ابتدا مشتری مورد نظر را انتخاب کنید.", Severity.Warning);
+            NavManager.NavigateTo("/visitor-customers");
+            return;
         }
 
-        var groupsTask = LoadGroupsAsync(); // بارگذاری گروه‌ها
-        var unitsTask = LoadUnitsAsync(); // بارگذاری واحدها
-        await Task.WhenAll(groupsTask, unitsTask); // اجرای همزمان
+        var groupsTask = LoadGroupsAsync();
+        var unitsTask = LoadUnitsAsync();
+        await Task.WhenAll(groupsTask, unitsTask);
 
-        // --- انتخاب خودکار اولین گروه پس از بارگذاری اولیه ---
         if (_itemGroups != null && _itemGroups.Any() && _selectedGroup == null)
         {
-            // await HandleGroupClick(_itemGroups.First()); // انتخاب اولین گروه
-            // HandleGroupClick به صورت async نیست، بنابراین await لازم نیست
-            HandleGroupClick(_itemGroups.First()); // انتخاب اولین گروه
-            StateHasChanged(); // اطمینان از بروزرسانی UI پس از انتخاب خودکار
+            // Use await HandleGroupClick as it now loads items
+            await HandleGroupClick(_itemGroups.First());
+            // StateHasChanged is called within LoadItemsForSelectedGroupAsync triggered by HandleGroupClick
         }
-        // --- پایان انتخاب خودکار ---
     }
+
     private async Task LoadUnitsAsync()
     {
         try
@@ -332,48 +322,26 @@
             _availableUnits = new List<TCOD_VAHEDS>();
         }
     }
-    public void Dispose()
-    {
-        // حذف Dispose تایمر
-    }
 
-    // --- Data Loading ---
+    public void Dispose() { }
+
     private async Task LoadGroupsAsync()
     {
         if (_isLoadingGroups) return;
-        _isLoadingGroups = true;
-        _groupErrorMessage = null;
-        _selectedGroup = null; // Reset selection
-        _items = null; // Clear items when loading groups
-        _isItemsLoading = false;
-        _itemsErrorMessage = null;
-        _currentPage = 1;
-        _totalItemCount = 0;
-        _itemSearchTerm = string.Empty;
-        // groupSearchTerm should not be reset here, user might want to keep it
+        _isLoadingGroups = true; _groupErrorMessage = null; _selectedGroup = null; _items = null;
+        _isItemsLoading = false; _itemsErrorMessage = null; _currentPage = 1; _totalItemCount = 0; _itemSearchTerm = string.Empty;
         await InvokeAsync(StateHasChanged);
         try
         {
-            _itemGroups = await ItemGroupService.GetItemGroupsAsync();
-            if (_itemGroups == null)
-            {
-                _groupErrorMessage = "خطا در بارگذاری گروه‌ها.";
-                _itemGroups = new();
-                Snackbar.Add(_groupErrorMessage, Severity.Error);
-            }
+            _itemGroups = await ItemGroupService.GetItemGroupsAsync() ?? new();
+            if (!_itemGroups.Any()) _groupErrorMessage = "گروهی یافت نشد.";
         }
         catch (Exception ex)
         {
             _groupErrorMessage = "خطای پیش‌بینی نشده در بارگذاری گروه‌ها.";
-            Logger.LogError(ex, _groupErrorMessage);
-            Snackbar.Add(_groupErrorMessage, Severity.Error);
-            _itemGroups ??= new();
+            Logger.LogError(ex, _groupErrorMessage); _itemGroups ??= new();
         }
-        finally
-        {
-            _isLoadingGroups = false;
-            await InvokeAsync(StateHasChanged);
-        }
+        finally { _isLoadingGroups = false; await InvokeAsync(StateHasChanged); }
     }
 
     private async Task LoadItemsForSelectedGroupAsync()
@@ -416,86 +384,56 @@
         }
     }
 
-    // --- UI Event Handlers ---
     private async Task HandleGroupClick(TCODE_MENUITEM group)
     {
         if (group == null || _isItemsLoading) return;
-        // Allow re-clicking the same group to refresh items (optional)
-        // if (_selectedGroup != group)
-        // {
         _selectedGroup = group;
-        _currentPage = 1; // Reset to first page on new group selection
-        _totalItemCount = 0;
-        _items = null; // Clear previous items immediately
-        _itemSearchTerm = string.Empty; // Clear item search on group change
-        // _isListView = false; // Reset to default view? Optional.
-        // No need to handle debounce timer here anymore
-        await LoadItemsForSelectedGroupAsync();
-        // }
+        // *** CartService.SetCurrentAnbarCode removed ***
+        Logger.LogInformation("Selected Group: {N}, Anbar: {A}", group.NAMES, group.ANBAR);
+        _currentPage = 1; _totalItemCount = 0; _items = null; _itemSearchTerm = string.Empty;
+        await LoadItemsForSelectedGroupAsync(); // Now awaited correctly
     }
 
-    // Called by MudTextField's OnDebounceIntervalElapsed
+
     private async Task HandleItemSearchDebounced()
     {
         await InvokeAsync(async () =>
         {
             if (_selectedGroup == null) return;
-            Logger.LogInformation("Debounced item search triggered for: {SearchTerm}", _itemSearchTerm);
-            _currentPage = 1; // Reset page on new search
-            _totalItemCount = 0;
-            await LoadItemsForSelectedGroupAsync(); // Load items with the current search term
+            Logger.LogInformation("Debounced item search: {SearchTerm}", _itemSearchTerm);
+            _currentPage = 1; _totalItemCount = 0;
+            await LoadItemsForSelectedGroupAsync();
         });
     }
-
-
-    // حذف OnItemSearchInput چون از bind-Value و Debounce داخلی استفاده می‌کنیم
-
-    // حذف OnViewToggleChanged چون از bind-Toggled استفاده می‌کنیم
 
     private async Task HandlePageChangedAsync(int newPage)
     {
         if (_isItemsLoading) return;
         _currentPage = newPage;
-        Logger.LogInformation("Page changed to: {NewPage}", _currentPage);
         await LoadItemsForSelectedGroupAsync();
     }
 
-    // --- Helper Methods ---
     private IEnumerable<TCODE_MENUITEM> GetFilteredGroups()
     {
         if (_itemGroups == null) return Enumerable.Empty<TCODE_MENUITEM>();
         if (string.IsNullOrWhiteSpace(_groupSearchTerm)) return _itemGroups;
-        try
-        {
-            // Filter by group name containing the search term
-            return _itemGroups.Where(g => g.NAMES != null && g.NAMES.Contains(_groupSearchTerm, StringComparison.OrdinalIgnoreCase)).ToList();
-        }
-        catch (Exception ex)
-        {
-            Logger.LogError(ex, "Error filtering groups for search term: {SearchTerm}", _groupSearchTerm);
-            Snackbar.Add("خطا در فیلتر کردن گروه‌ها.", Severity.Warning);
-            return _itemGroups; // Return all groups on error
-        }
+        try { return _itemGroups.Where(g => g.NAMES != null && g.NAMES.Contains(_groupSearchTerm, StringComparison.OrdinalIgnoreCase)); }
+        catch { return _itemGroups; } // Basic error handling
     }
 
-    // حذف متد GetImageDataUrl چون دیگر استفاده نمی‌شود (تصویر از API خوانده می‌شود)
-
-    // <<< متد برای مدیریت رویداد افزودن از ItemCard >>>
-    // متد نمونه برای افزودن از حالت لیست (اصلاح شد)
-
-    private void HandleItemAddedToCart((ItemDisplayDto Item, int Quantity, int SelectedUnitCode) args)
+    // Add item from List view
+    private void AddItemToCartFromList(ItemDisplayDto item, int quantity)
     {
-        Logger.LogInformation("Adding {Quantity} of '{ItemName}' (Code: {ItemCode}) with Unit Code {UnitCode} to cart.", args.Quantity, args.Item.NAME, args.Item.CODE, args.SelectedUnitCode);
-        // فراخوانی سرویس سبد خرید برای افزودن آیتم
-        CartService.AddItem(args.Item, args.Quantity, args.SelectedUnitCode, _availableUnits ?? new List<TCOD_VAHEDS>());
-        Snackbar.Add($"{args.Quantity} عدد '{args.Item.NAME}' به سبد اضافه شد.", Severity.Success);
+        if (_selectedGroup == null)
+        {
+            Snackbar.Add("خطا: گروه کالا انتخاب نشده است.", Severity.Error);
+            return;
+        }
+        // Pass the AnbarCode from the currently selected group
+        CartService.AddItem(item, quantity, item.VahedCode, _selectedGroup.ANBAR, _availableUnits ?? new List<TCOD_VAHEDS>());
+        Snackbar.Add($"{quantity} عدد '{item.NAME}' به سبد اضافه شد.", Severity.Success);
     }
 
-    // --- متد برای افزودن از حالت لیست ---
-    private void AddItemToCart(ItemDisplayDto item, int quantity)
-    {
-        // ارسال واحد پیش‌فرض
-        HandleItemAddedToCart((item, quantity, item.VahedCode));
-    }
-
+    // HandleItemAddedToCart removed as it's handled within ItemCard now
+    // private void HandleItemAddedToCart((ItemDisplayDto Item, int Quantity, int SelectedUnitCode) args) { ... }
 }

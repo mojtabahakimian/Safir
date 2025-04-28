@@ -22,7 +22,7 @@ namespace Safir.Server.Services
 
         public async Task<SALA_DTL?> GetUserByEncodedUsernameAsync(string encodedUsername)
         {
-            const string sql = "SELECT IDD, SAL_NAME, PSAL_NAME, GRSAL, ENABL FROM SALA_DTL WHERE SAL_NAME = @Username AND ENABL = 0";
+            const string sql = "SELECT IDD, SAL_NAME, PSAL_NAME, GRSAL,PORID , ENABL FROM SALA_DTL WHERE SAL_NAME = @Username AND ENABL = 0";
             try
             {
                 // Use the injected interface field
@@ -39,7 +39,7 @@ namespace Safir.Server.Services
 
         public async Task<SALA_DTL?> GetUserByDecodedUsernameAsync(string decodedUsername)
         {
-            const string sql = "SELECT IDD, SAL_NAME, PSAL_NAME, GRSAL, HES, ENABL FROM SALA_DTL WHERE ENABL = 0";
+            const string sql = "SELECT IDD, SAL_NAME, PSAL_NAME, GRSAL, HES, PORID,erjabe, ENABL FROM SALA_DTL WHERE ENABL = 0";
             try
             {
                 // Use the injected interface field
