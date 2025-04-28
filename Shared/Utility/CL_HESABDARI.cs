@@ -209,6 +209,8 @@ namespace Safir.Shared.Utility
 
             return ALPHANUMRet;
 
+        }
+
         public static void GETTAF3(string SHES, ref double? TKOL, ref double? TMOIN, ref double? TTAF, ref double? TTAF2, ref double? TTAF3, ref double? TTAF4)
         {
             // Reset refs
