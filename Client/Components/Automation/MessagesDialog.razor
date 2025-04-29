@@ -84,7 +84,7 @@
                                       Lines="4" Variant="Variant.Outlined" Required="true" RequiredError="متن پیام الزامی است." />
 
                         <ValidationSummary Class="mt-2" />
-                        <MudButton @onclick="TestSendClick" Variant="Variant.Filled" Color="Color.Primary" Disabled="@_isSending" Class="mt-4">ارسال پیام</MudButton>
+                        <MudButton @onclick="SendNewMessageAsync" Variant="Variant.Filled" Color="Color.Primary" Disabled="@_isSending" Class="mt-4">ارسال پیام</MudButton>
                     </MudForm>
                 </EditForm>
             </MudTabPanel>

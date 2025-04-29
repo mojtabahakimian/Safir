@@ -100,7 +100,7 @@ namespace Safir.Server.Controllers
                 return Unauthorized(new ProformaSaveResponseDto { Success = false, Message = "اطلاعات کاربر نامعتبر است." });
             }
 
-            long currentDate = CL_Tarikh.PersianCalendarHelper.GetCurrentPersianDateAsLong();
+            long currentDate = CL_Tarikh.GetCurrentPersianDateAsLong();
             int currentTime = int.Parse(DateTime.Now.ToString("HHmmss"));
 
             // --- Inventory Pre-Check (Unchanged) ---

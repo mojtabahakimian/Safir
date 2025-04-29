@@ -2,6 +2,7 @@
 @using Safir.Shared.Interfaces
 @using MudBlazor
 @using System.ComponentModel.DataAnnotations
+@using System.Globalization // برای PersianCalendar
 
 @inject IAutomationApiService AutomationService
 @inject ISnackbar Snackbar
@@ -11,20 +12,23 @@
         <MudText Typo="Typo.h6">رویدادهای وظیفه @TaskId</MudText>
     </TitleContent>
     <DialogContent>
+        @* --- جدول نمایش رویدادها --- *@
         <MudTable Items="@_events" Dense="true" Hover="true" Striped="true" Class="mb-4" Style="max-height: 300px; overflow-y: auto;" Loading="@_isLoadingEvents" LoadingProgressColor="Color.Info">
             <HeaderContent>
                 <MudTh>#</MudTh>
                 <MudTh>شرح رویداد</MudTh>
-                @* حذف ستون زمان صرف شده *@
                 <MudTh>کاربر</MudTh>
-                <MudTh>تاریخ ثبت</MudTh>
+                <MudTh>تاریخ ثبت</MudTh> @* <<< فقط تاریخ *@
             </HeaderContent>
             <RowTemplate>
                 <MudTd DataLabel="#">@context.IDD</MudTd>
                 <MudTd DataLabel="شرح رویداد" Style="white-space: pre-wrap;">@context.EVENTS</MudTd>
-                @* حذف ستون زمان صرف شده *@
                 <MudTd DataLabel="کاربر">@context.USERNAME</MudTd>
-                <MudTd DataLabel="تاریخ ثبت">@context.STDATE?.ToString("yyyy/MM/dd") @context.STTIME?.ToString("hh:mm")</MudTd>
+                @* --- **اصلاح شده:** حذف کامل نمایش زمان --- *@
+                <MudTd DataLabel="تاریخ ثبت">
+                    @FormatShamsiDateFromDateTime(context.STDATE)
+                </MudTd>
+                @* --------------------------------------- *@
             </RowTemplate>
             <NoRecordsContent>
                 <MudText>رویدادی برای این وظیفه ثبت نشده است.</MudText>
@@ -36,6 +40,7 @@
 
         <MudDivider Class="my-4" />
 
+        @* --- فرم ثبت رویداد جدید --- *@
         <MudText Typo="Typo.subtitle1" GutterBottom="true">ثبت رویداد جدید</MudText>
         <EditForm Model="@_newEvent" OnValidSubmit="SaveNewEventAsync">
             <DataAnnotationsValidator />
@@ -48,12 +53,13 @@
                               Required="true"
                               RequiredError="شرح رویداد الزامی است." />
 
-                @* حذف کامل MudTimePicker مربوط به SUMTIME *@
-
                 <ValidationSummary Class="mt-2" />
+                @* --- دکمه ثبت باید الان نمایش داده شود --- *@
                 <MudButton ButtonType="ButtonType.Submit"
+                           type="submit"
                            Variant="Variant.Filled"
                            Color="Color.Primary"
+                           @onclick="SaveNewEventAsync"
                            Disabled="@_isSavingEvent"
                            Class="mt-4">ثبت رویداد</MudButton>
             </MudForm>
@@ -71,7 +77,7 @@
 
     private MudForm? _newEventForm;
     private List<EventModel> _events = new List<EventModel>();
-    private EventModel _newEvent = new EventModel(); // SUMTIME در این مدل به صورت پیش‌فرض null خواهد بود
+    private EventModel _newEvent = new EventModel();
 
     private bool _isLoadingEvents = false;
     private bool _isSavingEvent = false;
@@ -79,6 +85,21 @@
     protected override async Task OnInitializedAsync()
     {
         await LoadEventsAsync();
+    }
+
+    // تابع کمکی برای فرمت تاریخ شمسی
+    private string FormatShamsiDateFromDateTime(DateTime? dt)
+    {
+        if (!dt.HasValue) return string.Empty;
+        try
+        {
+            PersianCalendar pc = new PersianCalendar();
+            int year = pc.GetYear(dt.Value);
+            int month = pc.GetMonth(dt.Value);
+            int day = pc.GetDayOfMonth(dt.Value);
+            return $"{year:D4}/{month:D2}/{day:D2}";
+        }
+        catch { return dt.Value.ToString("yyyy/MM/dd"); }
     }
 
     private async Task LoadEventsAsync()
@@ -104,9 +125,10 @@
 
     private async Task SaveNewEventAsync()
     {
-        await (_newEventForm?.Validate() ?? Task.CompletedTask);
-        // فقط اعتبار سنجی شرح رویداد بررسی می‌شود چون زمان حذف شد
-        if (_newEventForm?.IsValid != true)
+        if (_newEventForm == null) return;
+
+        await _newEventForm.Validate();
+        if (!_newEventForm.IsValid)
         {
             Snackbar.Add("لطفا شرح رویداد را وارد کنید.", Severity.Warning);
             return;
@@ -117,13 +139,12 @@
         try
         {
             _newEvent.IDNUM = TaskId;
-            // SUMTIME به صورت null ارسال خواهد شد چون از فرم حذف شده
             var createdEvent = await AutomationService.CreateEventAsync(TaskId, _newEvent);
 
             if (createdEvent != null && createdEvent.IDD > 0)
             {
                 Snackbar.Add("رویداد با موفقیت ثبت شد.", Severity.Success);
-                _newEvent = new EventModel(); // Reset مدل
+                _newEvent = new EventModel();
                 _newEventForm?.Reset();
                 _newEventForm?.ResetValidation();
                 await LoadEventsAsync();
