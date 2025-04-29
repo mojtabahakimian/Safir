@@ -7,6 +7,7 @@
 @using Safir.Shared.Models
 @using Safir.Shared.Utility
 @using System.Globalization
+
 @inject IAutomationApiService AutomationService
 @inject ISnackbar Snackbar
 @inject IDialogService DialogService
@@ -16,7 +17,7 @@
 
 @implements IDisposable
 
-<MudContainer MaxWidth="MaxWidth.False" Class="pa-2 mt-4 d-flex flex-column" Style="height: calc(100vh - 64px - 1rem);">
+<MudContainer MaxWidth="MaxWidth.False" Class="pa-2 mt-4">
 
     @* نمایش عنوان و دکمه‌ها *@
     <MudPaper Elevation="2" Class="pa-4 mb-4">
@@ -25,54 +26,51 @@
                 <MudText Typo="Typo.h5">کارتابل اتوماسیون</MudText>
             </MudItem>
             <MudItem>
-                <MudStack Row="true" Spacing="2">
-                    <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="LoadTasksAsync" StartIcon="@Icons.Material.Filled.Refresh" Disabled="_isLoading">بروزرسانی</MudButton>
-                    <MudButton Variant="Variant.Filled" Color="Color.Success" OnClick="ShowBulkUpdateDialog" StartIcon="@Icons.Material.Filled.EditNote" Disabled="!_selectedTasks.Any()">ویرایش گروهی</MudButton>
-                    <MudButton Variant="Variant.Filled" Color="Color.Info" OnClick="ShowMessagesDialog" StartIcon="@Icons.Material.Filled.Message">پیام‌ها (@_unreadMessageCount)</MudButton>
-                    <MudButton Variant="Variant.Filled" Color="Color.Warning" OnClick="ShowRemindersDialog" StartIcon="@Icons.Material.Filled.NotificationsActive">یادآوری‌ها (@_activeReminderCount)</MudButton>
+                <MudStack Row="true" Spacing="2" Class="flex-wrap">
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="LoadTasksAsync" StartIcon="@Icons.Material.Filled.Refresh" Disabled="_isLoading" Class="ma-1">بروزرسانی</MudButton>
+                    <MudButton Variant="Variant.Filled" Color="Color.Success" OnClick="ShowBulkUpdateDialog" StartIcon="@Icons.Material.Filled.EditNote" Disabled="!_selectedTasks.Any()" Class="ma-1">ویرایش گروهی</MudButton>
+                    <MudButton Variant="Variant.Filled" Color="Color.Info" OnClick="ShowMessagesDialog" StartIcon="@Icons.Material.Filled.Message" Class="ma-1">پیام‌ها (@_unreadMessageCount)</MudButton>
+                    <MudButton Variant="Variant.Filled" Color="Color.Warning" OnClick="ShowRemindersDialog" StartIcon="@Icons.Material.Filled.NotificationsActive" Class="ma-1">یادآوری‌ها (@_activeReminderCount)</MudButton>
                 </MudStack>
             </MudItem>
         </MudGrid>
     </MudPaper>
 
+    @* گرید اصلی *@
     <MudGrid Spacing="2" Style="flex-grow: 1;">
         @* --- بخش فیلترها --- *@
         <MudItem xs="12" md="2">
             <MudPaper Elevation="2" Class="pa-3" Style="height: 100%;">
                 <MudText Typo="Typo.h6" GutterBottom="true">فیلترها</MudText>
                 <MudStack Spacing="2">
-                    @* --- فیلتر وضعیت با ValueChanged --- *@
+                    @* فیلتر وضعیت *@
                     <MudRadioGroup T="int" Value="_filterStatus" ValueChanged="((int newValue) => OnStatusFilterChanged(newValue))">
                         <MudRadio Option="1" Color="Color.Primary" Size="Size.Small">انجام نشده (@_countStatus1)</MudRadio>
                         <MudRadio Option="2" Color="Color.Primary" Size="Size.Small">انجام شده (@_countStatus2)</MudRadio>
                         <MudRadio Option="3" Color="Color.Primary" Size="Size.Small">لغو شده (@_countStatus3)</MudRadio>
                         <MudRadio Option="0" Color="Color.Primary" Size="Size.Small">همه (@_countStatus0)</MudRadio>
                     </MudRadioGroup>
-
                     <MudDivider Class="my-2" />
-
-                    @* --- فیلتر کاربر مجری با ValueChanged --- *@
+                    @* فیلتر کاربر مجری *@
                     @if (_canFilterByUser)
                     {
                         <MudSelect T="int?" Label="کاربر مجری" Value="_filterAssignedUserId" ValueChanged="((int? newValue) => OnUserFilterChanged(newValue))" Dense="true" Variant="Variant.Outlined" Clearable="true">
                             <MudSelectItem T="int?" Value="null">-- کاربر جاری --</MudSelectItem>
                             @if (_personelLookup != null)
                             {
-                                foreach (var personel in _personelLookup)
+                                foreach (var p in _personelLookup)
                                 {
-                                    <MudSelectItem T="int?" Value="@personel.USERCO">@personel.SAL_NAME</MudSelectItem>
+                                    <MudSelectItem T="int?" Value="@p.USERCO">@p.SAL_NAME</MudSelectItem>
                                 }
                             }
                             else
                             {
-                                <MudSelectItem T="int?" Value="null" Disabled="true">در حال بارگذاری...</MudSelectItem>
+                                <MudSelectItem T="int?" Value="null" Disabled="true">...</MudSelectItem>
                             }
                         </MudSelect>
                     }
-
-                    @* --- فیلتر نوع سند با Debounce --- *@
+                    @* فیلتر نوع سند *@
                     <MudTextField T="string" Label="انواع سند (skid با کاما)" @bind-Value="_filterTaskTypes" Variant="Variant.Outlined" Dense="true" OnDebounceIntervalElapsed="OnFilterChangedDebounced" DebounceInterval="500" />
-
                 </MudStack>
             </MudPaper>
         </MudItem>
@@ -81,62 +79,64 @@
         <MudItem xs="12" md="10" Class="d-flex flex-column">
             @* --- فرم ورود/ویرایش وظیفه --- *@
             <MudPaper Elevation="2" Class="pa-3 mb-3">
-                <EditForm Model="@_currentTask" @ref="_editContextForm">
+                <EditForm Model="@_currentTask">
                     <DataAnnotationsValidator />
                     <MudForm @ref="_form">
+                        @* --- **اصلاح شده:** تغییر نهایی اندازه ستون‌های داخلی فرم در دسکتاپ --- *@
                         <MudGrid Spacing="2">
                             <MudItem xs="12">
-                                <MudTextField Label="شرح وظیفه" @bind-Value="_currentTask.TASK" For="@(() => _currentTask.TASK)" Lines="3" Variant="Variant.Outlined" Required="true" />
+                                <MudTextField Label="شرح وظیفه*" @bind-Value="_currentTask.TASK" For="@(() => _currentTask.TASK)" Lines="2" Variant="Variant.Outlined" Required="true" />
                             </MudItem>
                             <MudItem xs="12" sm="6" md="3">
-                                <MudSelect T="int" Label="کاربر مجری" @bind-Value="_currentTask.PERSONEL" For="@(() => _currentTask.PERSONEL)" Variant="Variant.Outlined" Required="true">
+                                @* <<< کاربر مجری: md=3 *@
+                                <MudSelect T="int" Label="کاربر مجری*" @bind-Value="_currentTask.PERSONEL" For="@(() => _currentTask.PERSONEL)" Variant="Variant.Outlined" Required="true" Dense="true">
                                     @if (_personelLookup != null)
                                     {
-                                        foreach (var personel in _personelLookup)
+                                        foreach (var p in _personelLookup)
                                         {
-                                            <MudSelectItem T="int" Value="@personel.USERCO">@personel.SAL_NAME</MudSelectItem>
+                                            <MudSelectItem T="int" Value="@p.USERCO">@p.SAL_NAME</MudSelectItem>
                                         }
                                     }
                                     else
                                     {
-                                        <MudSelectItem T="int" Value="0" Disabled="true">در حال بارگذاری...</MudSelectItem>
+                                        <MudSelectItem T="int" Value="0" Disabled="true">...</MudSelectItem>
                                     }
                                 </MudSelect>
                             </MudItem>
                             <MudItem xs="6" sm="3" md="2">
-                                <MudSelect T="int" Label="اولویت" @bind-Value="_currentTask.PERIORITY" For="@(() => _currentTask.PERIORITY)" Variant="Variant.Outlined" Required="true">
-                                    <MudSelectItem T="int" Value="1">فوری</MudSelectItem>
-                                    <MudSelectItem T="int" Value="2">معمولی</MudSelectItem>
+                                @* <<< اولویت: md=2 *@
+                                <MudSelect T="int" Label="اولویت*" @bind-Value="_currentTask.PERIORITY" For="@(() => _currentTask.PERIORITY)" Variant="Variant.Outlined" Required="true" Dense="true">
+                                    <MudSelectItem T="int" Value="1">فوری</MudSelectItem> <MudSelectItem T="int" Value="2">معمولی</MudSelectItem>
                                 </MudSelect>
                             </MudItem>
                             <MudItem xs="6" sm="3" md="2">
-                                <MudSelect T="int" Label="وضعیت" @bind-Value="_currentTask.STATUS" For="@(() => _currentTask.STATUS)" Variant="Variant.Outlined" Required="true">
-                                    <MudSelectItem T="int" Value="1">انجام نشده</MudSelectItem>
-                                    <MudSelectItem T="int" Value="2">انجام شده</MudSelectItem>
-                                    <MudSelectItem T="int" Value="3">لغو شده</MudSelectItem>
+                                @* <<< وضعیت: md=2 *@
+                                <MudSelect T="int" Label="وضعیت*" @bind-Value="_currentTask.STATUS" For="@(() => _currentTask.STATUS)" Variant="Variant.Outlined" Required="true" Dense="true">
+                                    <MudSelectItem T="int" Value="1">انجام نشده</MudSelectItem> <MudSelectItem T="int" Value="2">انجام شده</MudSelectItem> <MudSelectItem T="int" Value="3">لغو شده</MudSelectItem>
                                 </MudSelect>
                             </MudItem>
-                            <MudItem xs="12" sm="6" md="5">
-                                <MudSelect T="string" Label="گیرنده" @bind-Value="_currentTask.COMP_COD" For="@(() => _currentTask.COMP_COD)"
-                                           Variant="Variant.Outlined" Dense="true" Clearable="true" AnchorOrigin="Origin.BottomCenter"
-                                           EnableFilter="true" Required="true">
+                            <MudItem xs="12" sm="8" md="2">
+                                @* <<< گیرنده: md=2 *@
+                                <MudSelect T="string" Label="گیرنده*" @bind-Value="_currentTask.COMP_COD" For="@(() => _currentTask.COMP_COD)"
+                                           Variant="Variant.Outlined" Dense="true" Clearable="true" AnchorOrigin="Origin.BottomCenter" EnableFilter="true" Required="true">
                                     @if (_customerLookup != null)
                                     {
-                                        foreach (var customer in _customerLookup)
+                                        foreach (var c in _customerLookup)
                                         {
-                                            <MudSelectItem T="string" Value="@customer.Id">@customer.Name (@customer.Id)</MudSelectItem>
+                                            <MudSelectItem T="string" Value="@c.Id">@c.Name (@c.Id)</MudSelectItem>
                                         }
                                     }
                                     else
                                     {
-                                        <MudSelectItem T="string" Value="null" Disabled="true">در حال بارگذاری گیرندگان...</MudSelectItem>
+                                        <MudSelectItem T="string" Value="null" Disabled="true">...</MudSelectItem>
                                     }
                                 </MudSelect>
                             </MudItem>
-                            <MudItem xs="12" Class="d-flex justify-end align-center">
+                            <MudItem xs="12" sm="4" md="3" Class="d-flex justify-end align-self-center">
+                                @* <<< دکمه ها: md=3 *@
                                 <MudStack Row="true" Spacing="2">
-                                    <MudButton ButtonType="ButtonType.Button" @onclick="SaveTaskAsync" Variant="Variant.Filled" Color="Color.Success" Disabled="_isSaving" StartIcon="@Icons.Material.Filled.Save">ذخیره وظیفه</MudButton>
-                                    <MudButton Variant="Variant.Filled" Color="Color.Default" OnClick="ClearForm" Disabled="_isSaving" StartIcon="@Icons.Material.Filled.Clear">جدید</MudButton>
+                                    <MudButton ButtonType="ButtonType.Button" @onclick="SaveTaskAsync" Variant="Variant.Filled" Color="Color.Success" Disabled="_isSaving" StartIcon="@Icons.Material.Filled.Save" Size="Size.Small">ذخیره وظیفه</MudButton>
+                                    <MudButton Variant="Variant.Filled" Color="Color.Default" OnClick="ClearForm" Disabled="_isSaving" StartIcon="@Icons.Material.Filled.Clear" Size="Size.Small">جدید</MudButton>
                                 </MudStack>
                             </MudItem>
                         </MudGrid>
@@ -146,7 +146,7 @@
             </MudPaper>
 
             @* --- جدول وظایف --- *@
-            <MudPaper Elevation="2" Class="pa-1" Style="flex-grow: 1; overflow-y: auto; height: 0;">
+            <MudPaper Elevation="2" Class="pa-1" Style="flex: 1; overflow-y: auto; min-height: 400px;">
                 <MudTable ServerData="@(new Func<TableState, Task<TableData<TaskModel>>>(ServerReload))"
                           Dense="true" Hover="true" @ref="_table" MultiSelection="true" @bind-SelectedItems="_selectedTasks"
                           Elevation="0" Breakpoint="Breakpoint.Sm" Loading="_isLoading" LoadingProgressColor="Color.Info">
@@ -180,16 +180,12 @@
                         <MudTd DataLabel="تاریخ انجام">@FormatShamsiDateFromDateTime(context.ENDATE) @context.ENTIME?.ToString("hh\\:mm")</MudTd>
                         <MudTd DataLabel="نام گیرنده">@GetCustomerName(context.COMP_COD)</MudTd>
                         <MudTd DataLabel="عملیات">
-                            <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small" Variant="Variant.Outlined" Color="Color.Primary" OnClick="@(() => SelectTaskForEdit(context))" Title="ویرایش این وظیفه" />
-                            <MudIconButton Icon="@Icons.Material.Filled.ListAlt" Size="Size.Small" Variant="Variant.Outlined" Color="Color.Secondary" OnClick="@(() => ShowEventsDialog(context.IDNUM))" Title="مشاهده رویدادها" />
+                            <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small" Variant="Variant.Outlined" Color="Color.Primary" OnClick="@(() => SelectTaskForEdit(context))" Title="ویرایش" />
+                            <MudIconButton Icon="@Icons.Material.Filled.ListAlt" Size="Size.Small" Variant="Variant.Outlined" Color="Color.Secondary" OnClick="@(() => ShowEventsDialog(context.IDNUM))" Title="رویدادها" />
                         </MudTd>
                     </RowTemplate>
-                    <NoRecordsContent>
-                        <MudText>وظیفه‌ای یافت نشد.</MudText>
-                    </NoRecordsContent>
-                    <LoadingContent>
-                        <MudText>در حال بارگذاری اطلاعات...</MudText>
-                    </LoadingContent>
+                    <NoRecordsContent> <MudText>وظیفه‌ای یافت نشد.</MudText> </NoRecordsContent>
+                    <LoadingContent> <MudText>در حال بارگذاری...</MudText> </LoadingContent>
                     <PagerContent>
                         <MudTablePager RowsPerPageString="تعداد در صفحه" InfoFormat="{first_item}-{last_item} از {all_items}" />
                         <MudSpacer />
@@ -202,6 +198,7 @@
 </MudContainer>
 
 @code {
+    // --- (بخش @code بدون تغییر نسبت به آخرین نسخه صحیح ارائه شده باقی می‌ماند) ---
     private MudTable<TaskModel>? _table;
     private MudForm? _form;
     private EditForm? _editContextForm;
@@ -209,17 +206,17 @@
     private TaskModel _currentTask = new TaskModel { PERIORITY = 2, STATUS = 1 };
     private HashSet<TaskModel> _selectedTasks = new HashSet<TaskModel>();
 
-    // فیلترها
+    // Filters
     private int _filterStatus = 1;
     private int? _filterAssignedUserId = null;
     private string? _filterTaskTypes = "1000";
     private string _searchString = "";
 
-    // داده‌های Lookup
+    // Lookups
     private List<PersonelLookupModel>? _personelLookup;
-    private List<LookupDto<string>>? _customerLookup;
+    private List<LookupDto<string>>? _customerLookup; // Dummy data for now
 
-    // متغیرهای وضعیت
+    // State Variables
     private bool _isLoading = false;
     private bool _isSaving = false;
     private int _totalItems = 0;
@@ -227,13 +224,13 @@
     private int _unreadMessageCount = 0;
     private int _activeReminderCount = 0;
 
-    // شمارنده‌ها برای فیلتر
+    // Filter Counters
     private int _countStatus0 = 0;
     private int _countStatus1 = 0;
     private int _countStatus2 = 0;
     private int _countStatus3 = 0;
 
-    // تایمرها
+    // Timers
     private System.Threading.Timer? _notificationTimer;
     private System.Timers.Timer? _debounceTimer;
 
@@ -266,7 +263,6 @@
         try
         {
             var personelTask = AutomationService.GetPersonelLookupAsync();
-            // Dummy data for customers
             _customerLookup = new List<LookupDto<string>>() {
                 new LookupDto<string>{ Id = "1001-1-1", Name = "مشتری نمونه یک" },
                 new LookupDto<string>{ Id = "1001-1-2", Name = "مشتری نمونه دو" },
@@ -291,10 +287,7 @@
             _activeReminderCount = await AutomationService.GetActiveReminderCountAsync();
             await InvokeAsync(StateHasChanged);
         }
-        catch (Exception ex)
-        {
-            Snackbar.Add($"خطا در دریافت تعداد اعلان‌ها: {ex.Message}", Severity.Warning);
-        }
+        catch (Exception ex) { Snackbar.Add($"خطا در دریافت تعداد اعلان‌ها: {ex.Message}", Severity.Warning); }
     }
 
     private void SetupNotificationTimer()
@@ -311,26 +304,18 @@
     {
         _isLoading = true;
         await InvokeAsync(StateHasChanged);
-
         IEnumerable<TaskModel>? result = null;
         try
         {
             result = await AutomationService.GetTasksAsync(
                 statusFilter: _filterStatus,
                 assignedUserId: _filterAssignedUserId,
-                taskTypes: string.IsNullOrWhiteSpace(_filterTaskTypes) || _filterTaskTypes.Trim() == "1000" ? "1000" : _filterTaskTypes
-            );
+                taskTypes: string.IsNullOrWhiteSpace(_filterTaskTypes) || _filterTaskTypes.Trim() == "1000" ? "1000" : _filterTaskTypes);
         }
-        catch (Exception ex)
-        {
-            Snackbar.Add($"خطا در بارگذاری وظایف: {ex.Message}", Severity.Error);
-        }
-
+        catch (Exception ex) { Snackbar.Add($"خطا در بارگذاری وظایف: {ex.Message}", Severity.Error); }
         _tasks = result ?? Enumerable.Empty<TaskModel>();
         _totalItems = _tasks.Count();
-
         UpdateStatusCounts();
-
         var sortedData = _tasks;
         if (!string.IsNullOrEmpty(state.SortLabel))
         {
@@ -343,9 +328,7 @@
                 case "endate_field": sortedData = sortedData.OrderByDirection(state.SortDirection, t => t.ENDATE); break;
             }
         }
-
         var pagedData = sortedData.Skip(state.Page * state.PageSize).Take(state.PageSize).ToList();
-
         _isLoading = false;
         await InvokeAsync(StateHasChanged);
         return new TableData<TaskModel>() { TotalItems = _totalItems, Items = pagedData };
@@ -353,10 +336,7 @@
 
     private async Task LoadTasksAsync()
     {
-        if (_table != null)
-        {
-            await _table.ReloadServerData();
-        }
+        if (_table != null) { await _table.ReloadServerData(); }
     }
 
     private void UpdateStatusCounts()
@@ -371,12 +351,7 @@
     {
         if (_form == null) return;
         await _form.Validate();
-        if (!_form.IsValid)
-        {
-            Snackbar.Add("لطفاً اطلاعات الزامی فرم را تکمیل کنید.", Severity.Warning);
-            return;
-        }
-
+        if (!_form.IsValid) { Snackbar.Add("لطفاً اطلاعات الزامی فرم را تکمیل کنید.", Severity.Warning); return; }
         _isSaving = true; StateHasChanged();
         bool success = false; string successMessage = "";
         try
@@ -407,9 +382,7 @@
     private void ClearForm()
     {
         _currentTask = new TaskModel { PERIORITY = 2, STATUS = 1 };
-        _form?.Reset();
-        _form?.ResetValidation();
-        StateHasChanged();
+        _form?.Reset(); _form?.ResetValidation(); StateHasChanged();
     }
 
     private void SelectTaskForEdit(TaskModel task)
@@ -430,35 +403,13 @@
                 skid = task.skid,
                 num = task.num
             };
-        _form?.ResetValidation();
-        StateHasChanged();
+        _form?.ResetValidation(); StateHasChanged();
     }
 
-    // --- **اصلاح شده** ---
-    private async Task OnStatusFilterChanged(int newValue)
-    {
-        _filterStatus = newValue;
-        await LoadTasksAsync(); // فراخوانی بارگذاری مجدد
-    }
-
-    private async Task OnUserFilterChanged(int? newValue)
-    {
-        _filterAssignedUserId = newValue;
-        await LoadTasksAsync(); // فراخوانی بارگذاری مجدد
-    }
-
-    private void OnFilterChangedDebounced(string? value)
-    {
-        _debounceTimer?.Stop();
-        _debounceTimer?.Start();
-    }
-
-    private async void HandleDebounceTimerElapsed(object? sender, ElapsedEventArgs e)
-    {
-        // --- **اصلاح شده** ---
-        await InvokeAsync(async () => await LoadTasksAsync()); // فراخوانی بارگذاری مجدد
-    }
-    // --------------------
+    private async Task OnStatusFilterChanged(int newValue) { _filterStatus = newValue; await LoadTasksAsync(); }
+    private async Task OnUserFilterChanged(int? newValue) { _filterAssignedUserId = newValue; await LoadTasksAsync(); }
+    private void OnFilterChangedDebounced(string? value) { _debounceTimer?.Stop(); _debounceTimer?.Start(); }
+    private async void HandleDebounceTimerElapsed(object? sender, ElapsedEventArgs e) { await InvokeAsync(LoadTasksAsync); }
 
     private string GetPersonelName(int personelId) => _personelLookup?.FirstOrDefault(p => p.USERCO == personelId)?.SAL_NAME ?? personelId.ToString();
     private string GetStatusName(int statusId) => statusId switch { 1 => "انجام نشده", 2 => "انجام شده", 3 => "لغو شده", _ => "نامشخص" };
@@ -473,9 +424,7 @@
         var result = await dialog.Result;
         if (result != null && !result.Cancelled && result.Data is bool && (bool)result.Data)
         {
-            _selectedTasks.Clear();
-            await LoadTasksAsync();
-            Snackbar.Add("تغییرات گروهی اعمال شد.", Severity.Success);
+            _selectedTasks.Clear(); await LoadTasksAsync(); Snackbar.Add("تغییرات گروهی اعمال شد.", Severity.Success);
         }
     }
 
@@ -496,9 +445,5 @@
 
     private void ShowRemindersDialog() { Snackbar.Add("نمایش یادآوری‌ها هنوز پیاده‌سازی نشده است.", Severity.Info); }
 
-    public void Dispose()
-    {
-        _notificationTimer?.Dispose();
-        _debounceTimer?.Dispose();
-    }
+    public void Dispose() { _notificationTimer?.Dispose(); _debounceTimer?.Dispose(); }
 }
