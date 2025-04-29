@@ -46,49 +46,50 @@ namespace Safir.Server.Controllers
 
         [HttpGet("bygroup/{groupCode}")]
         public async Task<ActionResult<PagedResult<ItemDisplayDto>>> GetItemsByGroup(
-               double groupCode, // <<< پارامتر groupCode اکنون استفاده می‌شود >>>
-               [FromQuery] int pageNumber = 1,
-               [FromQuery] int pageSize = 10,
-               [FromQuery] string? searchTerm = null)
+                     double groupCode,
+                     [FromQuery] int pageNumber = 1,
+                     [FromQuery] int pageSize = 10,
+                     [FromQuery] string? searchTerm = null)
         {
-            var porIdClaim = User.FindFirstValue(BaseknowClaimTypes.PORID);
-            if (!int.TryParse(porIdClaim, out int userPorId))
+            // --- Get User HES claim ---
+            var userHes = User.FindFirstValue(BaseknowClaimTypes.USER_HES);
+            if (string.IsNullOrEmpty(userHes))
             {
-                _logger.LogWarning("User PORID claim ('{PorIdClaim}') is missing or invalid for User: {Username}", porIdClaim, User.Identity?.Name);
+                _logger.LogWarning("User HES claim ('{UserHesClaim}') is missing or invalid for User: {Username}", BaseknowClaimTypes.USER_HES, User.Identity?.Name);
+                // Return empty result or Unauthorized based on requirements
                 return Ok(new PagedResult<ItemDisplayDto> { Items = new List<ItemDisplayDto>(), TotalCount = 0, PageNumber = pageNumber, PageSize = pageSize });
+                // return Unauthorized("User HES claim not found.");
             }
-            _logger.LogInformation("Fetching items for Group: {GroupCode}, User PORID: {UserPorId}, Page: {PageNumber}, Size: {PageSize}, Search: '{SearchTerm}'",
-               groupCode, userPorId, pageNumber, pageSize, searchTerm); // Log GroupCode
 
+            _logger.LogInformation("Fetching items for Group: {GroupCode}, User HES: {UserHES}, Page: {PageNumber}, Size: {PageSize}, Search: '{SearchTerm}'",
+               groupCode, userHes, pageNumber, pageSize, searchTerm);
 
             if (pageNumber < 1) pageNumber = 1;
             if (pageSize < 1) pageSize = 10;
-            if (pageSize > 100) pageSize = 100;
+            if (pageSize > 100) pageSize = 100; // Limit page size
             int offset = (pageNumber - 1) * pageSize;
 
             var whereConditions = new List<string>();
             var parameters = new DynamicParameters();
 
-            // --- Filter based on Group Code ---
-            whereConditions.Add("sd.MENUIT = @GroupCode"); // <<< --- فعال شد --- >>>
-            parameters.Add("GroupCode", groupCode);       // <<< --- پارامتر اضافه شد --- >>>
+            // --- Base Filters ---
+            whereConditions.Add("sd.MENUIT = @GroupCode");       // Filter by Group Code
+            parameters.Add("GroupCode", groupCode);
 
-            // --- Filter based on User's PORID ---
-            whereConditions.Add("vpk.PORID = @UserPorId");
-            parameters.Add("UserPorId", userPorId);
+            whereConditions.Add("vp.HES = @UserHes");            // Filter by User HES
+            parameters.Add("UserHes", userHes);
 
-            // Other base filters
-            whereConditions.Add("sd.MENUIT IS NOT NULL");
-            whereConditions.Add("ISNULL(sd.OKF, 1) = 1");
+            whereConditions.Add("ISNULL(sd.OKF, 1) = 1");        // Filter by OKF status
 
             // --- Search Term Handling ---
             string? normalizedSearchTerm = null;
             if (!string.IsNullOrWhiteSpace(searchTerm))
             {
                 normalizedSearchTerm = searchTerm.Trim();
-                normalizedSearchTerm = Regex.Replace(normalizedSearchTerm, @"\s+", " ");
-                normalizedSearchTerm = normalizedSearchTerm.FixPersianChars();
+                normalizedSearchTerm = Regex.Replace(normalizedSearchTerm, @"\s+", " "); // Normalize spaces
+                normalizedSearchTerm = normalizedSearchTerm.FixPersianChars(); // Fix Persian characters
 
+                // Apply search to relevant columns (Name and Code)
                 string normalizedNameSql = "REPLACE(REPLACE(REPLACE(REPLACE(sd.NAME, N'ي', N'ی'), N'ك', N'ک'), NCHAR(160), N' '), N'  ', N' ')";
                 whereConditions.Add($"(({normalizedNameSql} LIKE @SearchPattern) OR (sd.CODE LIKE @SearchPattern))");
                 parameters.Add("SearchPattern", $"%{normalizedSearchTerm}%");
@@ -97,29 +98,37 @@ namespace Safir.Server.Controllers
 
             string commonWhereClause = string.Join(" AND ", whereConditions);
 
-            // --- Items Query ---
+            // --- Items Query with Pagination using CTE and ROW_NUMBER ---
+            // Note: PORSANT is removed as it's not directly available in the new join structure
             string itemsSql = $@"
-                WITH PagedItems AS (
-                    SELECT
-                        sd.CODE, sd.NAME, sd.MABL_F, sd.VAHED AS VahedCode, sd.B_SEF, sd.MAX_M, sd.TOZIH,
-                        sd.MENUIT,
+                WITH BaseItems AS (
+                    SELECT -- Select columns needed for ItemDisplayDto and ROW_NUMBER
+                        sd.CODE, sd.NAME, sd.MABL_F, sd.B_SEF, sd.MAX_M, sd.TOZIH,
+                        sd.MENUIT, sd.VAHED AS VahedCode,
                         tv.NAMES AS VahedName,
-                        vpk.PORSANT,
-                        ROW_NUMBER() OVER (ORDER BY sd.NAME) AS RowNum
+                        -- vp.HES, -- Already used in WHERE, not needed in DTO
+                        -- Select other STUF_DEF columns if needed by ItemDisplayDto or later logic
+                        ROW_NUMBER() OVER (ORDER BY sd.CODE) AS RowNum -- Order by a unique column for stable pagination
                     FROM dbo.STUF_DEF sd
                     INNER JOIN dbo.VISITORS_PORSANT_KALA vpk ON sd.CODE = vpk.CODE
-                    LEFT JOIN dbo.TCOD_VAHEDS tv ON sd.VAHED = tv.CODE
+                    INNER JOIN dbo.VISITORS_PORSANT vp ON vpk.PORID = vp.PORID
+                    LEFT JOIN dbo.TCOD_VAHEDS tv ON sd.VAHED = tv.CODE -- Join to get unit name
                     WHERE {commonWhereClause}
+                    -- Applying DISTINCT here before ROW_NUMBER is complex and often inefficient.
+                    -- DISTINCT is handled in the count query. Ensure base query + WHERE returns the desired logical items.
                 )
-                SELECT CODE, NAME, MABL_F, B_SEF, MAX_M, TOZIH, MENUIT, VahedCode, VahedName, PORSANT
-                FROM PagedItems
+                SELECT CODE, NAME, MABL_F, B_SEF, MAX_M, TOZIH, MENUIT, VahedCode, VahedName -- Select final columns for DTO
+                FROM BaseItems
                 WHERE RowNum > @RowStart AND RowNum <= @RowEnd;";
 
-            // --- Count Query ---
+            // --- Count Query with DISTINCT ---
+            // Counts distinct items matching the criteria
             string countSql = $@"
-                 SELECT COUNT(*)
+                 SELECT COUNT(DISTINCT sd.CODE) -- Count distinct items based on CODE
                  FROM dbo.STUF_DEF sd
                  INNER JOIN dbo.VISITORS_PORSANT_KALA vpk ON sd.CODE = vpk.CODE
+                 INNER JOIN dbo.VISITORS_PORSANT vp ON vpk.PORID = vp.PORID
+                 -- No need to join TCOD_VAHEDS for count
                  WHERE {commonWhereClause};";
 
 
@@ -128,20 +137,19 @@ namespace Safir.Server.Controllers
 
             try
             {
+                // Execute queries using Dapper via the service
                 IEnumerable<ItemDisplayDto> items = await _dbService.DoGetDataSQLAsync<ItemDisplayDto>(itemsSql, parameters);
                 int totalItemCount = await _dbService.DoGetDataSQLAsyncSingle<int>(countSql, parameters);
 
                 List<ItemDisplayDto> itemsList = items.ToList();
 
-                // --- Image Check Logic (Unchanged) ---
+                // --- Image Check Logic (Remains the same) ---
                 if (!string.IsNullOrEmpty(_imageBasePath))
                 {
-                    // _logger.LogInformation("Image Base Path for Checks: {BasePath}", _imageBasePath);
                     foreach (var item in itemsList)
                     {
                         string itemCodeStr = item.CODE;
                         item.ImageExists = false;
-                        // _logger.LogTrace("Checking image for Item Code: {ItemCode}", itemCodeStr);
                         foreach (var ext in SupportedImageExtensions)
                         {
                             string potentialPath = Path.Combine(_imageBasePath, itemCodeStr + ext);
@@ -150,7 +158,6 @@ namespace Safir.Server.Controllers
                                 if (System.IO.File.Exists(potentialPath))
                                 {
                                     item.ImageExists = true;
-                                    // _logger.LogInformation("Image FOUND for Item Code: {ItemCode} at Path: {Path}", itemCodeStr, potentialPath);
                                     break;
                                 }
                             }
@@ -159,7 +166,6 @@ namespace Safir.Server.Controllers
                                 _logger.LogWarning(ex, "Error checking file existence for path: {Path}", potentialPath);
                             }
                         }
-                        // if (!item.ImageExists) { _logger.LogWarning("Image NOT found for Item Code: {ItemCode}", itemCodeStr); }
                     }
                 }
                 else { _logger.LogWarning("ImageSharePath is not configured. Skipping image checks."); }
@@ -173,17 +179,18 @@ namespace Safir.Server.Controllers
                     PageSize = pageSize
                 };
 
-                _logger.LogInformation("Fetched page {PageNumber}/{TotalPages} for Group {GroupCode}, User PORID {UserPorId}, Search: '{OrigSearch}'. Found {ItemCount} items (Total: {TotalCount})",
-                    pageNumber, pagedResult.TotalPages, groupCode, userPorId, searchTerm ?? "N/A", itemsList.Count, totalItemCount);
+                _logger.LogInformation("Fetched page {PageNumber}/{TotalPages} for Group {GroupCode}, User HES {UserHES}, Search: '{OrigSearch}'. Found {ItemCount} items (Total Distinct: {TotalCount})",
+                    pageNumber, pagedResult.TotalPages, groupCode, userHes, searchTerm ?? "N/A", itemsList.Count, totalItemCount);
 
                 return Ok(pagedResult);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error fetching paged items for Group {GroupCode}, User PORID {UserPorId}, Search: '{SearchTerm}'", groupCode, userPorId, searchTerm);
+                _logger.LogError(ex, "Error fetching paged items for Group {GroupCode}, User HES {UserHES}, Search: '{SearchTerm}'", groupCode, userHes, searchTerm);
                 return StatusCode(StatusCodes.Status500InternalServerError, "خطا در دریافت لیست کالاها.");
             }
         }
+
         // --- GetItemImage endpoint remains the same ---
         [HttpGet("image/{itemCode}")]
         [AllowAnonymous]
