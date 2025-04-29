@@ -221,7 +221,7 @@
                     Header = new ProformaHeaderDto
                     {
                         CustomerHesCode = CartService.CurrentCustomer.hes,
-                        Date = CL_Tarikh.PersianCalendarHelper.GetCurrentPersianDateAsLong(),
+                        Date = CL_Tarikh.GetCurrentPersianDateAsLong(),
                         Notes = headerNotes,
                         Conditions = headerConditions,
                         CustomerKindCode = null,

@@ -3,25 +3,22 @@
 @using Safir.Shared.Interfaces
 @using MudBlazor
 @using System.Timers
-@using Safir.Shared.Models // برای LookupDto
-@using Safir.Shared.Utility // برای CL_Tarikh
-@using System.Globalization // برای PersianCalendar
-
+@using System.Threading
+@using Safir.Shared.Models
+@using Safir.Shared.Utility
+@using System.Globalization
 @inject IAutomationApiService AutomationService
 @inject ISnackbar Snackbar
 @inject IDialogService DialogService
 @inject NavigationManager NavManager
 @inject AppState AppState
-@* @inject LookupApiService LookupService // دیگر لازم نیست *@
 @using Safir.Client.Components.Automation
 
 @implements IDisposable
 
-@* --- کاهش Padding با pa-2 و حفظ MaxWidth.False --- *@
 <MudContainer MaxWidth="MaxWidth.False" Class="pa-2 mt-4 d-flex flex-column" Style="height: calc(100vh - 64px - 1rem);">
-    @* کمی ارتفاع بیشتر *@
 
-    @* نمایش عنوان و دکمه‌ها (بدون تغییر) *@
+    @* نمایش عنوان و دکمه‌ها *@
     <MudPaper Elevation="2" Class="pa-4 mb-4">
         <MudGrid Justify="Justify.SpaceBetween" AlignItems="Align.Center">
             <MudItem>
@@ -38,31 +35,26 @@
         </MudGrid>
     </MudPaper>
 
-    @* --- تغییر تقسیم‌بندی گرید اصلی: فیلتر 2 ستون، محتوا 10 ستون --- *@
     <MudGrid Spacing="2" Style="flex-grow: 1;">
-        @* کاهش Spacing گرید اصلی *@
         @* --- بخش فیلترها --- *@
         <MudItem xs="12" md="2">
-            @* عرض کمتر برای فیلترها *@
             <MudPaper Elevation="2" Class="pa-3" Style="height: 100%;">
-                @* کاهش Padding داخلی *@
                 <MudText Typo="Typo.h6" GutterBottom="true">فیلترها</MudText>
                 <MudStack Spacing="2">
-                    @* کاهش Spacing *@
-                    @* فیلتر وضعیت *@
-                    <MudRadioGroup @bind-Value="_filterStatus" SelectedValueChanged="OnFilterChanged">
+                    @* --- فیلتر وضعیت با ValueChanged --- *@
+                    <MudRadioGroup T="int" Value="_filterStatus" ValueChanged="((int newValue) => OnStatusFilterChanged(newValue))">
                         <MudRadio Option="1" Color="Color.Primary" Size="Size.Small">انجام نشده (@_countStatus1)</MudRadio>
                         <MudRadio Option="2" Color="Color.Primary" Size="Size.Small">انجام شده (@_countStatus2)</MudRadio>
                         <MudRadio Option="3" Color="Color.Primary" Size="Size.Small">لغو شده (@_countStatus3)</MudRadio>
                         <MudRadio Option="0" Color="Color.Primary" Size="Size.Small">همه (@_countStatus0)</MudRadio>
                     </MudRadioGroup>
 
-                    <MudDivider Class="my-2" /> @* کاهش Margin Divider *@
+                    <MudDivider Class="my-2" />
 
-                    @* فیلتر کاربر مجری *@
+                    @* --- فیلتر کاربر مجری با ValueChanged --- *@
                     @if (_canFilterByUser)
                     {
-                        <MudSelect T="int?" Label="کاربر مجری" @bind-Value="_filterAssignedUserId" SelectedValuesChanged="OnFilterChanged" Dense="true" Variant="Variant.Outlined" Clearable="true">
+                        <MudSelect T="int?" Label="کاربر مجری" Value="_filterAssignedUserId" ValueChanged="((int? newValue) => OnUserFilterChanged(newValue))" Dense="true" Variant="Variant.Outlined" Clearable="true">
                             <MudSelectItem T="int?" Value="null">-- کاربر جاری --</MudSelectItem>
                             @if (_personelLookup != null)
                             {
@@ -78,8 +70,8 @@
                         </MudSelect>
                     }
 
-                    @* فیلتر نوع سند (skid) *@
-                    <MudTextField T="string" Label="انواع سند (skid با کاما)" @bind-Value="_filterTaskTypes" Variant="Variant.Outlined" Dense="true" OnDebounceIntervalElapsed="OnFilterChanged" DebounceInterval="500" />
+                    @* --- فیلتر نوع سند با Debounce --- *@
+                    <MudTextField T="string" Label="انواع سند (skid با کاما)" @bind-Value="_filterTaskTypes" Variant="Variant.Outlined" Dense="true" OnDebounceIntervalElapsed="OnFilterChangedDebounced" DebounceInterval="500" />
 
                 </MudStack>
             </MudPaper>
@@ -87,10 +79,8 @@
 
         @* --- بخش اصلی (فرم و جدول) --- *@
         <MudItem xs="12" md="10" Class="d-flex flex-column">
-            @* عرض بیشتر برای محتوا *@
             @* --- فرم ورود/ویرایش وظیفه --- *@
             <MudPaper Elevation="2" Class="pa-3 mb-3">
-                @* کاهش Padding و Margin *@
                 <EditForm Model="@_currentTask" @ref="_editContextForm">
                     <DataAnnotationsValidator />
                     <MudForm @ref="_form">
@@ -98,9 +88,7 @@
                             <MudItem xs="12">
                                 <MudTextField Label="شرح وظیفه" @bind-Value="_currentTask.TASK" For="@(() => _currentTask.TASK)" Lines="3" Variant="Variant.Outlined" Required="true" />
                             </MudItem>
-                            @* --- تغییر اندازه ستون‌های فرم --- *@
                             <MudItem xs="12" sm="6" md="3">
-                                @* کاربر مجری کوچکتر شد *@
                                 <MudSelect T="int" Label="کاربر مجری" @bind-Value="_currentTask.PERSONEL" For="@(() => _currentTask.PERSONEL)" Variant="Variant.Outlined" Required="true">
                                     @if (_personelLookup != null)
                                     {
@@ -116,14 +104,12 @@
                                 </MudSelect>
                             </MudItem>
                             <MudItem xs="6" sm="3" md="2">
-                                @* اولویت *@
                                 <MudSelect T="int" Label="اولویت" @bind-Value="_currentTask.PERIORITY" For="@(() => _currentTask.PERIORITY)" Variant="Variant.Outlined" Required="true">
                                     <MudSelectItem T="int" Value="1">فوری</MudSelectItem>
                                     <MudSelectItem T="int" Value="2">معمولی</MudSelectItem>
                                 </MudSelect>
                             </MudItem>
                             <MudItem xs="6" sm="3" md="2">
-                                @* وضعیت *@
                                 <MudSelect T="int" Label="وضعیت" @bind-Value="_currentTask.STATUS" For="@(() => _currentTask.STATUS)" Variant="Variant.Outlined" Required="true">
                                     <MudSelectItem T="int" Value="1">انجام نشده</MudSelectItem>
                                     <MudSelectItem T="int" Value="2">انجام شده</MudSelectItem>
@@ -131,7 +117,6 @@
                                 </MudSelect>
                             </MudItem>
                             <MudItem xs="12" sm="6" md="5">
-                                @* گیرنده فضای باقیمانده *@
                                 <MudSelect T="string" Label="گیرنده" @bind-Value="_currentTask.COMP_COD" For="@(() => _currentTask.COMP_COD)"
                                            Variant="Variant.Outlined" Dense="true" Clearable="true" AnchorOrigin="Origin.BottomCenter"
                                            EnableFilter="true" Required="true">
@@ -149,7 +134,6 @@
                                 </MudSelect>
                             </MudItem>
                             <MudItem xs="12" Class="d-flex justify-end align-center">
-                                @* دکمه‌ها در انتهای فرم و وسط‌چین عمودی *@
                                 <MudStack Row="true" Spacing="2">
                                     <MudButton ButtonType="ButtonType.Button" @onclick="SaveTaskAsync" Variant="Variant.Filled" Color="Color.Success" Disabled="_isSaving" StartIcon="@Icons.Material.Filled.Save">ذخیره وظیفه</MudButton>
                                     <MudButton Variant="Variant.Filled" Color="Color.Default" OnClick="ClearForm" Disabled="_isSaving" StartIcon="@Icons.Material.Filled.Clear">جدید</MudButton>
@@ -163,7 +147,6 @@
 
             @* --- جدول وظایف --- *@
             <MudPaper Elevation="2" Class="pa-1" Style="flex-grow: 1; overflow-y: auto; height: 0;">
-                @* کاهش Padding *@
                 <MudTable ServerData="@(new Func<TableState, Task<TableData<TaskModel>>>(ServerReload))"
                           Dense="true" Hover="true" @ref="_table" MultiSelection="true" @bind-SelectedItems="_selectedTasks"
                           Elevation="0" Breakpoint="Breakpoint.Sm" Loading="_isLoading" LoadingProgressColor="Color.Info">
@@ -216,14 +199,13 @@
             </MudPaper>
         </MudItem>
     </MudGrid>
-
 </MudContainer>
 
 @code {
     private MudTable<TaskModel>? _table;
     private MudForm? _form;
     private EditForm? _editContextForm;
-    private IEnumerable<TaskModel> _tasks = new List<TaskModel>();
+    private IEnumerable<TaskModel> _tasks = new List<TaskModel>(); // Full filtered list
     private TaskModel _currentTask = new TaskModel { PERIORITY = 2, STATUS = 1 };
     private HashSet<TaskModel> _selectedTasks = new HashSet<TaskModel>();
 
@@ -235,7 +217,7 @@
 
     // داده‌های Lookup
     private List<PersonelLookupModel>? _personelLookup;
-    private List<LookupDto<string>>? _customerLookup; // برای لیست گیرندگان
+    private List<LookupDto<string>>? _customerLookup;
 
     // متغیرهای وضعیت
     private bool _isLoading = false;
@@ -251,59 +233,47 @@
     private int _countStatus2 = 0;
     private int _countStatus3 = 0;
 
-    // تایمر
-    private Timer? _notificationTimer;
+    // تایمرها
+    private System.Threading.Timer? _notificationTimer;
+    private System.Timers.Timer? _debounceTimer;
 
     protected override async Task OnInitializedAsync()
     {
-        _canFilterByUser = (AppState.UGRP == 1); // Example: Assuming UGRP 1 is admin/manager
+        _canFilterByUser = (AppState.UGRP == 1);
         _isLoading = true;
         await LoadLookupsAsync();
         await LoadNotificationCountsAsync();
         SetupNotificationTimer();
+        _debounceTimer = new System.Timers.Timer(500);
+        _debounceTimer.Elapsed += HandleDebounceTimerElapsed;
+        _debounceTimer.AutoReset = false;
         _isLoading = false;
-        // No need to call LoadTasksAsync here, MudTable's ServerData will call ServerReload on init
     }
 
-    // تابع کمکی برای فرمت تاریخ شمسی
     private string FormatShamsiDateFromDateTime(DateTime? dt)
     {
         if (!dt.HasValue) return string.Empty;
         try
         {
             PersianCalendar pc = new PersianCalendar();
-            int year = pc.GetYear(dt.Value);
-            int month = pc.GetMonth(dt.Value);
-            int day = pc.GetDayOfMonth(dt.Value);
-            return $"{year:D4}/{month:D2}/{day:D2}";
+            return $"{pc.GetYear(dt.Value):D4}/{pc.GetMonth(dt.Value):D2}/{pc.GetDayOfMonth(dt.Value):D2}";
         }
-        catch
-        {
-            return dt.Value.ToString("yyyy/MM/dd"); // Fallback
-        }
+        catch { return dt.Value.ToString("yyyy/MM/dd"); }
     }
 
-    // بارگذاری لیست‌های پایه (با لیست ساختگی برای گیرندگان)
     private async Task LoadLookupsAsync()
     {
         try
         {
             var personelTask = AutomationService.GetPersonelLookupAsync();
-            // TODO: Replace dummy customer data with actual API call when available
-            // var customerTask = LookupService.GetSomeCustomerLookupAsync(); // Example
-
-            await Task.WhenAll(personelTask /*, customerTask*/);
-
-            _personelLookup = (await personelTask)?.ToList();
-
-            // Dummy data for customers/receivers
-            await Task.Delay(10); // Simulate short delay if needed
+            // Dummy data for customers
             _customerLookup = new List<LookupDto<string>>() {
                 new LookupDto<string>{ Id = "1001-1-1", Name = "مشتری نمونه یک" },
                 new LookupDto<string>{ Id = "1001-1-2", Name = "مشتری نمونه دو" },
                 new LookupDto<string>{ Id = "1002-1-1", Name = "شرکت نمونه آلفا" },
                 new LookupDto<string>{ Id = "HES1", Name = "حساب داخلی یک" }
             };
+            _personelLookup = (await personelTask)?.ToList();
         }
         catch (Exception ex)
         {
@@ -311,7 +281,6 @@
             _personelLookup ??= new List<PersonelLookupModel>();
             _customerLookup ??= new List<LookupDto<string>>();
         }
-        StateHasChanged();
     }
 
     private async Task LoadNotificationCountsAsync()
@@ -320,20 +289,17 @@
         {
             _unreadMessageCount = await AutomationService.GetUnreadMessageCountAsync();
             _activeReminderCount = await AutomationService.GetActiveReminderCountAsync();
-            StateHasChanged();
+            await InvokeAsync(StateHasChanged);
         }
         catch (Exception ex)
         {
-            Snackbar.Add($"خطا در دریافت تعداد اعلان‌ها: {ex.Message}", Severity.Error);
+            Snackbar.Add($"خطا در دریافت تعداد اعلان‌ها: {ex.Message}", Severity.Warning);
         }
     }
 
     private void SetupNotificationTimer()
     {
-        _notificationTimer = new Timer(TimeSpan.FromMinutes(1).TotalMilliseconds);
-        _notificationTimer.Elapsed += async (sender, e) => await HandleTimerCallback();
-        _notificationTimer.AutoReset = true;
-        _notificationTimer.Enabled = true;
+        _notificationTimer = new System.Threading.Timer(async _ => await HandleTimerCallback(), null, TimeSpan.FromMinutes(1), TimeSpan.FromMinutes(1));
     }
 
     private async Task HandleTimerCallback()
@@ -341,20 +307,19 @@
         await InvokeAsync(LoadNotificationCountsAsync);
     }
 
-    // منطق جدول و بارگذاری داده
     private async Task<TableData<TaskModel>> ServerReload(TableState state)
     {
         _isLoading = true;
-        StateHasChanged();
+        await InvokeAsync(StateHasChanged);
 
         IEnumerable<TaskModel>? result = null;
         try
         {
-            // Pass current filters to API
             result = await AutomationService.GetTasksAsync(
                 statusFilter: _filterStatus,
                 assignedUserId: _filterAssignedUserId,
-                taskTypes: string.IsNullOrWhiteSpace(_filterTaskTypes) ? "1000" : _filterTaskTypes); // Send "1000" if empty
+                taskTypes: string.IsNullOrWhiteSpace(_filterTaskTypes) || _filterTaskTypes.Trim() == "1000" ? "1000" : _filterTaskTypes
+            );
         }
         catch (Exception ex)
         {
@@ -362,67 +327,49 @@
         }
 
         _tasks = result ?? Enumerable.Empty<TaskModel>();
-        _totalItems = _tasks.Count(); // Client-side paging for now
+        _totalItems = _tasks.Count();
 
-        UpdateStatusCounts(); // Update counts based on the full filtered list
+        UpdateStatusCounts();
 
-        // --- Apply client-side sorting and paging based on MudTable state ---
-        // Sorting
+        var sortedData = _tasks;
         if (!string.IsNullOrEmpty(state.SortLabel))
         {
             switch (state.SortLabel)
             {
-                case "idnum_field":
-                    _tasks = _tasks.OrderByDirection(state.SortDirection, t => t.IDNUM);
-                    break;
-                case "task_field":
-                    _tasks = _tasks.OrderByDirection(state.SortDirection, t => t.TASK);
-                    break;
-                case "status_field":
-                    _tasks = _tasks.OrderByDirection(state.SortDirection, t => t.STATUS);
-                    break;
-                case "stdate_field":
-                    _tasks = _tasks.OrderByDirection(state.SortDirection, t => t.STDATE);
-                    break;
-                case "endate_field":
-                    _tasks = _tasks.OrderByDirection(state.SortDirection, t => t.ENDATE);
-                    break;
-                    // Add cases for other sortable columns if needed
+                case "idnum_field": sortedData = sortedData.OrderByDirection(state.SortDirection, t => t.IDNUM); break;
+                case "task_field": sortedData = sortedData.OrderByDirection(state.SortDirection, t => t.TASK); break;
+                case "status_field": sortedData = sortedData.OrderByDirection(state.SortDirection, t => t.STATUS); break;
+                case "stdate_field": sortedData = sortedData.OrderByDirection(state.SortDirection, t => t.STDATE); break;
+                case "endate_field": sortedData = sortedData.OrderByDirection(state.SortDirection, t => t.ENDATE); break;
             }
         }
 
-        // Paging
-        var pagedData = _tasks.Skip(state.Page * state.PageSize).Take(state.PageSize).ToList();
-        // --------------------------------------------------------------
+        var pagedData = sortedData.Skip(state.Page * state.PageSize).Take(state.PageSize).ToList();
 
         _isLoading = false;
-        StateHasChanged();
-        return new TableData<TaskModel>() { TotalItems = _totalItems, Items = pagedData }; // Return paged data
+        await InvokeAsync(StateHasChanged);
+        return new TableData<TaskModel>() { TotalItems = _totalItems, Items = pagedData };
     }
-
 
     private async Task LoadTasksAsync()
     {
-        await (_table?.ReloadServerData() ?? Task.CompletedTask);
+        if (_table != null)
+        {
+            await _table.ReloadServerData();
+        }
     }
 
     private void UpdateStatusCounts()
     {
-        // Counts should reflect the total filtered list before paging
         _countStatus1 = _tasks.Count(t => t.STATUS == 1);
         _countStatus2 = _tasks.Count(t => t.STATUS == 2);
         _countStatus3 = _tasks.Count(t => t.STATUS == 3);
         _countStatus0 = _totalItems;
     }
 
-    // منطق فرم
     private async Task SaveTaskAsync()
     {
-        if (_form == null)
-        {
-            Snackbar.Add("خطای داخلی: فرم یافت نشد.", Severity.Error);
-            return;
-        }
+        if (_form == null) return;
         await _form.Validate();
         if (!_form.IsValid)
         {
@@ -430,11 +377,8 @@
             return;
         }
 
-        _isSaving = true;
-        StateHasChanged();
-
-        bool success = false;
-        string successMessage = "";
+        _isSaving = true; StateHasChanged();
+        bool success = false; string successMessage = "";
         try
         {
             if (_currentTask.IDNUM > 0)
@@ -448,39 +392,28 @@
                 success = createdTask != null;
                 successMessage = "وظیفه با موفقیت ایجاد شد.";
             }
-
             if (success)
             {
                 Snackbar.Add(successMessage, Severity.Success);
                 ClearForm();
                 await LoadTasksAsync();
             }
-            else
-            {
-                Snackbar.Add("خطا در ذخیره سازی وظیفه.", Severity.Error);
-            }
+            else { Snackbar.Add("خطا در ذخیره سازی وظیفه.", Severity.Error); }
         }
-        catch (Exception ex)
-        {
-            Snackbar.Add($"خطا در ذخیره سازی: {ex.Message}", Severity.Error);
-        }
-        finally
-        {
-            _isSaving = false;
-            StateHasChanged();
-        }
+        catch (Exception ex) { Snackbar.Add($"خطا در ذخیره سازی: {ex.Message}", Severity.Error); }
+        finally { _isSaving = false; StateHasChanged(); }
     }
 
     private void ClearForm()
     {
         _currentTask = new TaskModel { PERIORITY = 2, STATUS = 1 };
+        _form?.Reset();
         _form?.ResetValidation();
         StateHasChanged();
     }
 
     private void SelectTaskForEdit(TaskModel task)
     {
-        // Create a shallow copy for editing to avoid modifying the table directly
         _currentTask = new TaskModel
             {
                 IDNUM = task.IDNUM,
@@ -495,94 +428,77 @@
                 COMP_COD = task.COMP_COD,
                 NAME = task.NAME,
                 skid = task.skid,
-                num = task.num,
-                // Copy other relevant fields if needed
+                num = task.num
             };
-        _form?.ResetValidation(); // Reset validation when selecting a new task
+        _form?.ResetValidation();
         StateHasChanged();
     }
 
-    // منطق فیلتر
-    private async void OnFilterChanged(object? value)
+    // --- **اصلاح شده** ---
+    private async Task OnStatusFilterChanged(int newValue)
     {
-        await LoadTasksAsync();
+        _filterStatus = newValue;
+        await LoadTasksAsync(); // فراخوانی بارگذاری مجدد
     }
 
-    // توابع کمکی
-    private string GetPersonelName(int personelId)
+    private async Task OnUserFilterChanged(int? newValue)
     {
-        return _personelLookup?.FirstOrDefault(p => p.USERCO == personelId)?.SAL_NAME ?? personelId.ToString();
+        _filterAssignedUserId = newValue;
+        await LoadTasksAsync(); // فراخوانی بارگذاری مجدد
     }
 
-    private string GetStatusName(int statusId)
+    private void OnFilterChangedDebounced(string? value)
     {
-        return statusId switch
-        {
-            1 => "انجام نشده",
-            2 => "انجام شده",
-            3 => "لغو شده",
-            _ => "نامشخص"
-        };
+        _debounceTimer?.Stop();
+        _debounceTimer?.Start();
     }
 
-    private string GetCustomerName(string? customerCode)
+    private async void HandleDebounceTimerElapsed(object? sender, ElapsedEventArgs e)
     {
-        if (string.IsNullOrEmpty(customerCode)) return string.Empty;
-        return _customerLookup?.FirstOrDefault(c => c.Id == customerCode)?.Name ?? customerCode;
+        // --- **اصلاح شده** ---
+        await InvokeAsync(async () => await LoadTasksAsync()); // فراخوانی بارگذاری مجدد
     }
+    // --------------------
 
-    // --- دیالوگ‌ها ---
+    private string GetPersonelName(int personelId) => _personelLookup?.FirstOrDefault(p => p.USERCO == personelId)?.SAL_NAME ?? personelId.ToString();
+    private string GetStatusName(int statusId) => statusId switch { 1 => "انجام نشده", 2 => "انجام شده", 3 => "لغو شده", _ => "نامشخص" };
+    private string GetCustomerName(string? customerCode) => _customerLookup?.FirstOrDefault(c => c.Id == customerCode)?.Name ?? customerCode ?? string.Empty;
+
     private async Task ShowBulkUpdateDialog()
     {
-        if (!_selectedTasks.Any())
-        {
-            Snackbar.Add("لطفاً ابتدا وظایف مورد نظر را از جدول انتخاب کنید.", Severity.Warning);
-            return;
-        }
-        var parameters = new DialogParameters<BulkUpdateTasksDialog>
-        {
-            { x => x.SelectedTaskIds, _selectedTasks.Select(t => t.IDNUM).ToList() }
-        };
+        if (!_selectedTasks.Any()) { Snackbar.Add("لطفاً ابتدا وظایف مورد نظر را از جدول انتخاب کنید.", Severity.Warning); return; }
+        var parameters = new DialogParameters<BulkUpdateTasksDialog> { { x => x.SelectedTaskIds, _selectedTasks.Select(t => t.IDNUM).ToList() } };
         var options = new DialogOptions { CloseOnEscapeKey = true, MaxWidth = MaxWidth.Small, FullWidth = true };
         var dialog = await DialogService.ShowAsync<BulkUpdateTasksDialog>("ویرایش گروهی وظایف", parameters, options);
         var result = await dialog.Result;
         if (result != null && !result.Cancelled && result.Data is bool && (bool)result.Data)
         {
-            _selectedTasks.Clear(); // Clear selection after successful update
-            StateHasChanged();
+            _selectedTasks.Clear();
             await LoadTasksAsync();
-            Snackbar.Add("تغییرات گروهی اعمال شد و لیست بروزرسانی گردید.", Severity.Success);
+            Snackbar.Add("تغییرات گروهی اعمال شد.", Severity.Success);
         }
     }
 
     private async Task ShowEventsDialog(long taskId)
     {
         if (taskId <= 0) return;
-        var parameters = new DialogParameters<TaskEventsDialog>
-        {
-            { x => x.TaskId, taskId }
-        };
+        var parameters = new DialogParameters<TaskEventsDialog> { { x => x.TaskId, taskId } };
         var options = new DialogOptions { CloseOnEscapeKey = true, MaxWidth = MaxWidth.Medium, FullWidth = true };
         await DialogService.ShowAsync<TaskEventsDialog>($"رویدادهای وظیفه {taskId}", parameters, options);
-        // No automatic refresh after closing events dialog for now
     }
 
     private async Task ShowMessagesDialog()
     {
         var options = new DialogOptions { CloseOnEscapeKey = true, MaxWidth = MaxWidth.Medium, FullWidth = true };
         await DialogService.ShowAsync<MessagesDialog>("پیام‌های داخلی", options);
-        await LoadNotificationCountsAsync(); // Update count after closing
+        await LoadNotificationCountsAsync();
     }
 
-    private void ShowRemindersDialog()
-    {
-        // TODO: Navigate or show reminder dialog
-        Snackbar.Add("نمایش یادآوری‌ها هنوز پیاده‌سازی نشده است.", Severity.Info);
-    }
+    private void ShowRemindersDialog() { Snackbar.Add("نمایش یادآوری‌ها هنوز پیاده‌سازی نشده است.", Severity.Info); }
 
-    // آزادسازی تایمر
     public void Dispose()
     {
         _notificationTimer?.Dispose();
+        _debounceTimer?.Dispose();
     }
 }
