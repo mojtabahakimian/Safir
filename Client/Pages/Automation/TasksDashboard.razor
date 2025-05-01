@@ -220,7 +220,7 @@
     private bool _isLoading = false;
     private bool _isSaving = false;
     private int _totalItems = 0;
-    private bool _canFilterByUser = false;
+    private bool _canFilterByUser = true;
     private int _unreadMessageCount = 0;
     private int _activeReminderCount = 0;
 
@@ -236,15 +236,33 @@
 
     protected override async Task OnInitializedAsync()
     {
-        _canFilterByUser = (AppState.UGRP == 1);
-        _isLoading = true;
-        await LoadLookupsAsync();
-        await LoadNotificationCountsAsync();
+        _isLoading = true; // شروع لودینگ
+
+        // بررسی دسترسی مشاهده فعالیت دیگران
+        try
+        {
+            _canFilterByUser = await AutomationService.CanViewSubordinateTasksAsync();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"خطا در بررسی سطح دسترسی: {ex.Message}", Severity.Error);
+            _canFilterByUser = false; // پیش‌فرض عدم دسترسی در صورت خطا
+        }
+
+        // ادامه بارگذاری‌ها
+        var lookupTask = LoadLookupsAsync();
+        var countsTask = LoadNotificationCountsAsync();
+
+        await Task.WhenAll(lookupTask, countsTask);
+
         SetupNotificationTimer();
         _debounceTimer = new System.Timers.Timer(500);
         _debounceTimer.Elapsed += HandleDebounceTimerElapsed;
         _debounceTimer.AutoReset = false;
-        _isLoading = false;
+
+        _isLoading = false; // پایان لودینگ اولیه
+                            // StateHasChanged(); // نیازی نیست چون بعد از await در OnInitializedAsync خودکار فراخوانی می‌شود
+                            // اما اگر بخواهیم بلافاصله UI آپدیت شود، می‌توان آن را فراخوانی کرد
     }
 
     private string FormatShamsiDateFromDateTime(DateTime? dt)

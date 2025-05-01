@@ -13,12 +13,12 @@ namespace Safir.Client.Services
     public class AutomationApiService : IAutomationApiService
     {
         private readonly HttpClient _httpClient;
-        private readonly ILogger<AutomationApiService> _logger; // Optional
+        private readonly ILogger<AutomationApiService> _logger;
 
         public AutomationApiService(HttpClient httpClient, ILogger<AutomationApiService> logger)
         {
             _httpClient = httpClient ?? throw new ArgumentNullException(nameof(httpClient));
-            _logger = logger; // Optional
+            _logger = logger;
         }
 
         // --- Tasks ---
@@ -368,6 +368,30 @@ namespace Safir.Client.Services
             };
             return Task.FromResult<IEnumerable<DocumentTypeLookupModel>?>(docTypes);
             // throw new NotImplementedException();
+        }
+
+        public async Task<bool> CanViewSubordinateTasksAsync()
+        {
+            string requestUri = "api/users/permissions/can-view-subordinate-tasks"; // آدرس Endpoint جدید
+            try
+            {
+                // این Endpoint نیازی به ارسال داده ندارد، فقط وضعیت کاربر فعلی را بر اساس توکن چک می‌کند
+                var response = await _httpClient.GetAsync(requestUri);
+                if (response.IsSuccessStatusCode)
+                {
+                    return await response.Content.ReadFromJsonAsync<bool>();
+                }
+                else
+                {
+                    _logger.LogError("Error fetching permission 'CanViewSubordinateTasks'. Status: {StatusCode}", response.StatusCode);
+                    return false; // پیش‌فرض عدم دسترسی در صورت خطا
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Exception fetching permission 'CanViewSubordinateTasks' from {RequestUri}", requestUri);
+                return false; // پیش‌فرض عدم دسترسی در صورت خطا
+            }
         }
 
     }

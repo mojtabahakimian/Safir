@@ -4,6 +4,7 @@ using Safir.Shared.Interfaces; // Make sure this is included
 using Safir.Shared.Models.User_Model;
 using Safir.Shared.Utility;
 using System.Data.SqlClient;
+using System.Security.Claims;
 
 namespace Safir.Server.Services
 {
@@ -12,11 +13,16 @@ namespace Safir.Server.Services
         // Change the type here to the interface
         private readonly IDatabaseService dbms; // _dbService Use the interface type
 
+        private readonly IDatabaseService _dbService;
+        private readonly IHttpContextAccessor _httpContextAccessor; // برای دسترسی به User Claims
+        private readonly ILogger<UserService> _logger;
+
         // Inject the interface in the constructor
-        public UserService(IDatabaseService dbService) // Inject the interface
+        public UserService(IDatabaseService dbService, IHttpContextAccessor httpContextAccessor, ILogger<UserService> logger)
         {
-            dbms = dbService; // Assign to the interface field
-            // Ensure Encoding provider is registered if needed by decoding
+            _dbService = dbService;
+            _httpContextAccessor = httpContextAccessor;
+            _logger = logger;
             System.Text.Encoding.RegisterProvider(System.Text.CodePagesEncodingProvider.Instance);
         }
 
@@ -56,6 +62,31 @@ namespace Safir.Server.Services
             {
                 Console.WriteLine($"Error fetching or decoding users for username '{decodedUsername}': {ex.Message}");
                 return null;
+            }
+        }
+
+        public async Task<bool> CanViewSubordinateTasksAsync()
+        {
+            var userIdClaim = _httpContextAccessor.HttpContext?.User.FindFirstValue(ClaimTypes.NameIdentifier);
+            if (!int.TryParse(userIdClaim, out int userCod))
+            {
+                _logger.LogWarning("CanViewSubordinateTasksAsync: Could not parse User ID from claims.");
+                return false; // یا throw exception?
+            }
+
+            try
+            {
+                // کوئری برای چک کردن وجود رکورد در CHARTSAZMANI
+                const string sql = "SELECT COUNT(*) FROM dbo.CHARTSAZMANI WHERE USERCO = @UserCod";
+                int count = await _dbService.DoGetDataSQLAsyncSingle<int>(sql, new { UserCod = userCod });
+                bool canView = count > 0;
+                _logger.LogInformation("CanViewSubordinateTasksAsync: User {UserCod} check resulted in: {CanViewResult} (Count: {Count})", userCod, canView, count);
+                return canView;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "CanViewSubordinateTasksAsync: Error checking CHARTSAZMANI for User {UserCod}", userCod);
+                return false; // در صورت خطا، دسترسی نده
             }
         }
     }
