@@ -39,6 +39,7 @@
                           Style="max-width: 250px;" />
         </MudToolBar> *@
 
+
         @if (_isLoadingGroups)
         {
             <MudProgressLinear Color="Color.Primary" Indeterminate="true" Class="my-2" />
@@ -120,6 +121,8 @@
                                      Icon="@Icons.Material.Filled.ViewModule" Color="@( !_isListView ? Color.Primary : Color.Default)" Title="نمایش کارتی"
                                      ToggledIcon="@Icons.Material.Filled.ViewList" ToggledColor="@( _isListView ? Color.Primary : Color.Default)" ToggledTitle="نمایش لیستی" />
             </MudToolBar>
+
+            <MudText Typo="Typo.caption" Class="mb-2 px-2">تعداد کل کالاهای یافت شده: @_totalItemCount.ToString("N0")</MudText>
 
             @if (_isItemsLoading)
             {
