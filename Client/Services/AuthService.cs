@@ -58,18 +58,21 @@ namespace Safir.Client.Services
                 var handler = new JwtSecurityTokenHandler();
                 var jwtToken = handler.ReadJwtToken(token);
 
-                var username = jwtToken.Claims.FirstOrDefault(c => c.Type == ClaimTypes.Name)?.Value;
-                var userIdStr = jwtToken.Claims.FirstOrDefault(c => c.Type == ClaimTypes.NameIdentifier)?.Value;
-                var roleStr = jwtToken.Claims.FirstOrDefault(c => c.Type == ClaimTypes.Role)?.Value;
+                var username = jwtToken.Claims.FirstOrDefault(c => c.Type == System.Security.Claims.ClaimTypes.Name)?.Value;
+                var userIdStr = jwtToken.Claims.FirstOrDefault(c => c.Type == System.Security.Claims.ClaimTypes.NameIdentifier)?.Value; // Or BaseknowClaimTypes.IDD
+                var roleStr = jwtToken.Claims.FirstOrDefault(c => c.Type == System.Security.Claims.ClaimTypes.Role)?.Value; // Or BaseknowClaimTypes.GRSAL
+                var userHes = jwtToken.Claims.FirstOrDefault(c => c.Type == Safir.Shared.Constants.BaseknowClaimTypes.USER_HES)?.Value; // *** ADDED ***
 
                 if (!string.IsNullOrEmpty(username))
                     _appState.SetUUSER(username);
 
                 if (int.TryParse(userIdStr, out var userId))
-                    _appState.USERCOD = userId;
+                    _appState.SetUSERCOD(userId);
 
                 if (int.TryParse(roleStr, out var roleId))
-                    _appState.UGRP = roleId;
+                    _appState.SetUGRP(roleId);
+
+                _appState.SetUSER_HES(userHes);
                 #endregion
 
 
