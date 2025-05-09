@@ -11,8 +11,6 @@ namespace Safir.Server.Services
     public class UserService : IUserService
     {
         // Change the type here to the interface
-        private readonly IDatabaseService dbms; // _dbService Use the interface type
-
         private readonly IDatabaseService _dbService;
         private readonly IHttpContextAccessor _httpContextAccessor; // برای دسترسی به User Claims
         private readonly ILogger<UserService> _logger;
@@ -32,7 +30,7 @@ namespace Safir.Server.Services
             try
             {
                 // Use the injected interface field
-                var user = await dbms.DoGetDataSQLAsyncSingle<SALA_DTL>(sql, new { Username = encodedUsername });
+                var user = await _dbService.DoGetDataSQLAsyncSingle<SALA_DTL>(sql, new { Username = encodedUsername });
 
                 return user;
             }
@@ -49,7 +47,7 @@ namespace Safir.Server.Services
             try
             {
                 // Use the injected interface field
-                var allUsers = await dbms.DoGetDataSQLAsync<SALA_DTL>(sql);
+                var allUsers = await _dbService.DoGetDataSQLAsync<SALA_DTL>(sql);
 
                 var targetUsernameFixed = decodedUsername.FixPersianChars();
                 var user = allUsers.FirstOrDefault(u =>

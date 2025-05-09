@@ -1,37 +1,19 @@
-﻿namespace Safir.Client.Services
+﻿// File: Client/Services/AppState.cs
+namespace Safir.Client.Services
 {
-    /// <summary>
-    /// Baseknow
-    /// </summary>
     public class AppState
     {
-        // مثلا اطلاعات کاربر جاری
-        public string? UUSER { get; private set; } //Current User Name to display
-        public int USERCOD { get; set; } // User Code (User id)
-        public int UGRP { get; set; } //User Role (Group id)
+        public string? UUSER { get; private set; }
+        public int USERCOD { get; set; }
+        public int UGRP { get; set; }
+        public string? USER_HES { get; private set; } // *** ADDED ***
 
-        // روشی برای ست کردن داده
-        public void SetUUSER(string username)
-        {
-            UUSER = username;
-        }
-        public void SetUSERCOD(int userco)
-        {
-            USERCOD = userco;
-        }
-        public void SetUGRP(int userco)
-        {
-            UGRP = userco;
-        }
+        public void SetUUSER(string username) { UUSER = username; }
+        public void SetUSERCOD(int userco) { USERCOD = userco; }
+        public void SetUGRP(int userco) { UGRP = userco; }
+        public void SetUSER_HES(string? userHes) { USER_HES = userHes; } // *** ADDED ***
 
-        // تنظیمات اپلیکیشن
         public Dictionary<string, string>? Settings { get; private set; }
-
-        public void SetSettings(Dictionary<string, string> settings)
-        {
-            Settings = settings;
-        }
-
+        public void SetSettings(Dictionary<string, string> settings) { Settings = settings; }
     }
-
 }

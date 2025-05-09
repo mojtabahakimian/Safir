@@ -1,4 +1,6 @@
 ﻿@page "/automation/tasks"
+@*@using System.Security.Claims*@ @* Can be removed if all claims are accessed via AppState *@
+@using Safir.Shared.Constants
 @using Safir.Shared.Models.Automation
 @using Safir.Shared.Interfaces
 @using MudBlazor
@@ -12,13 +14,15 @@
 @inject ISnackbar Snackbar
 @inject IDialogService DialogService
 @inject NavigationManager NavManager
+@inject LookupApiService LookupService
 @inject AppState AppState
+@inject AuthenticationStateProvider AuthenticationStateProvider
 @using Safir.Client.Components.Automation
-
 @implements IDisposable
 
 <MudContainer MaxWidth="MaxWidth.False" Class="pa-2 mt-4">
 
+    @* ... (بخش HTML بدون تغییر باقی می‌ماند، مگر اینکه ارجاع مستقیمی به user.FindFirstValue در آن بوده باشد که بعید است) ... *@
     @* نمایش عنوان و دکمه‌ها *@
     <MudPaper Elevation="2" Class="pa-4 mb-4">
         <MudGrid Justify="Justify.SpaceBetween" AlignItems="Align.Center">
@@ -54,11 +58,11 @@
                     @* فیلتر کاربر مجری *@
                     @if (_canFilterByUser)
                     {
-                        <MudSelect T="int?" Label="کاربر مجری" Value="_filterAssignedUserId" ValueChanged="((int? newValue) => OnUserFilterChanged(newValue))" Dense="true" Variant="Variant.Outlined" Clearable="true">
-                            <MudSelectItem T="int?" Value="null">-- کاربر جاری --</MudSelectItem>
-                            @if (_personelLookup != null)
+                        <MudSelect T="int?" Label="وظایف کاربر" Value="_filterAssignedUserId" ValueChanged="((int? newValue) => OnUserFilterChanged(newValue))" Dense="true" Variant="Variant.Outlined" Clearable="true" Placeholder="-- انتخاب کاربر --">
+                            <MudSelectItem T="int?" Value="AppState.USERCOD">کاربر جاری (@AppState.UUSER)</MudSelectItem>
+                            @if (_subordinatePersonnelLookup != null)
                             {
-                                foreach (var p in _personelLookup)
+                                foreach (var p in _subordinatePersonnelLookup)
                                 {
                                     <MudSelectItem T="int?" Value="@p.USERCO">@p.SAL_NAME</MudSelectItem>
                                 }
@@ -82,13 +86,11 @@
                 <EditForm Model="@_currentTask">
                     <DataAnnotationsValidator />
                     <MudForm @ref="_form">
-                        @* --- **اصلاح شده:** تغییر نهایی اندازه ستون‌های داخلی فرم در دسکتاپ --- *@
                         <MudGrid Spacing="2">
                             <MudItem xs="12">
                                 <MudTextField Label="شرح وظیفه*" @bind-Value="_currentTask.TASK" For="@(() => _currentTask.TASK)" Lines="2" Variant="Variant.Outlined" Required="true" />
                             </MudItem>
                             <MudItem xs="12" sm="6" md="3">
-                                @* <<< کاربر مجری: md=3 *@
                                 <MudSelect T="int" Label="کاربر مجری*" @bind-Value="_currentTask.PERSONEL" For="@(() => _currentTask.PERSONEL)" Variant="Variant.Outlined" Required="true" Dense="true">
                                     @if (_personelLookup != null)
                                     {
@@ -104,19 +106,16 @@
                                 </MudSelect>
                             </MudItem>
                             <MudItem xs="6" sm="3" md="2">
-                                @* <<< اولویت: md=2 *@
                                 <MudSelect T="int" Label="اولویت*" @bind-Value="_currentTask.PERIORITY" For="@(() => _currentTask.PERIORITY)" Variant="Variant.Outlined" Required="true" Dense="true">
                                     <MudSelectItem T="int" Value="1">فوری</MudSelectItem> <MudSelectItem T="int" Value="2">معمولی</MudSelectItem>
                                 </MudSelect>
                             </MudItem>
                             <MudItem xs="6" sm="3" md="2">
-                                @* <<< وضعیت: md=2 *@
                                 <MudSelect T="int" Label="وضعیت*" @bind-Value="_currentTask.STATUS" For="@(() => _currentTask.STATUS)" Variant="Variant.Outlined" Required="true" Dense="true">
                                     <MudSelectItem T="int" Value="1">انجام نشده</MudSelectItem> <MudSelectItem T="int" Value="2">انجام شده</MudSelectItem> <MudSelectItem T="int" Value="3">لغو شده</MudSelectItem>
                                 </MudSelect>
                             </MudItem>
                             <MudItem xs="12" sm="8" md="2">
-                                @* <<< گیرنده: md=2 *@
                                 <MudSelect T="string" Label="گیرنده*" @bind-Value="_currentTask.COMP_COD" For="@(() => _currentTask.COMP_COD)"
                                            Variant="Variant.Outlined" Dense="true" Clearable="true" AnchorOrigin="Origin.BottomCenter" EnableFilter="true" Required="true">
                                     @if (_customerLookup != null)
@@ -133,10 +132,9 @@
                                 </MudSelect>
                             </MudItem>
                             <MudItem xs="12" sm="4" md="3" Class="d-flex justify-end align-self-center">
-                                @* <<< دکمه ها: md=3 *@
                                 <MudStack Row="true" Spacing="2">
                                     <MudButton ButtonType="ButtonType.Button" @onclick="SaveTaskAsync" Variant="Variant.Filled" Color="Color.Success" Disabled="_isSaving" StartIcon="@Icons.Material.Filled.Save" Size="Size.Small">ذخیره وظیفه</MudButton>
-                                    <MudButton Variant="Variant.Filled" Color="Color.Default" OnClick="ClearForm" Disabled="_isSaving" StartIcon="@Icons.Material.Filled.Clear" Size="Size.Small">جدید</MudButton>
+                                    <MudButton Variant="Variant.Filled" Color="Color.Default" OnClick="ClearFormAsync" Disabled="_isSaving" StartIcon="@Icons.Material.Filled.Clear" Size="Size.Small">جدید</MudButton>
                                 </MudStack>
                             </MudItem>
                         </MudGrid>
@@ -198,25 +196,22 @@
 </MudContainer>
 
 @code {
-    // --- (بخش @code بدون تغییر نسبت به آخرین نسخه صحیح ارائه شده باقی می‌ماند) ---
     private MudTable<TaskModel>? _table;
     private MudForm? _form;
     private EditForm? _editContextForm;
-    private IEnumerable<TaskModel> _tasks = new List<TaskModel>(); // Full filtered list
+    private IEnumerable<TaskModel> _tasks = new List<TaskModel>();
     private TaskModel _currentTask = new TaskModel { PERIORITY = 2, STATUS = 1 };
     private HashSet<TaskModel> _selectedTasks = new HashSet<TaskModel>();
 
-    // Filters
     private int _filterStatus = 1;
-    private int? _filterAssignedUserId = null;
+    private int? _filterAssignedUserId;
     private string? _filterTaskTypes = "1000";
     private string _searchString = "";
 
-    // Lookups
     private List<PersonelLookupModel>? _personelLookup;
-    private List<LookupDto<string>>? _customerLookup; // Dummy data for now
+    private List<PersonelLookupModel>? _subordinatePersonnelLookup;
+    private List<LookupDto<string>>? _customerLookup;
 
-    // State Variables
     private bool _isLoading = false;
     private bool _isSaving = false;
     private int _totalItems = 0;
@@ -224,21 +219,31 @@
     private int _unreadMessageCount = 0;
     private int _activeReminderCount = 0;
 
-    // Filter Counters
     private int _countStatus0 = 0;
     private int _countStatus1 = 0;
     private int _countStatus2 = 0;
     private int _countStatus3 = 0;
 
-    // Timers
     private System.Threading.Timer? _notificationTimer;
     private System.Timers.Timer? _debounceTimer;
 
+    // private string? _currentUserHes; // No longer needed here directly, will use AppState.USER_HES
+
     protected override async Task OnInitializedAsync()
     {
-        _isLoading = true; // شروع لودینگ
+        _isLoading = true;
 
-        // بررسی دسترسی مشاهده فعالیت دیگران
+        // AppState should be populated by AuthService upon login
+        if (AppState != null)
+        {
+            _filterAssignedUserId = AppState.USERCOD;
+            _currentTask.PERSONEL = AppState.USERCOD;
+            if (!string.IsNullOrWhiteSpace(AppState.USER_HES))
+            {
+                _currentTask.COMP_COD = AppState.USER_HES;
+            }
+        }
+
         try
         {
             _canFilterByUser = await AutomationService.CanViewSubordinateTasksAsync();
@@ -246,11 +251,10 @@
         catch (Exception ex)
         {
             Snackbar.Add($"خطا در بررسی سطح دسترسی: {ex.Message}", Severity.Error);
-            _canFilterByUser = false; // پیش‌فرض عدم دسترسی در صورت خطا
+            _canFilterByUser = false;
         }
 
-        // ادامه بارگذاری‌ها
-        var lookupTask = LoadLookupsAsync();
+        var lookupTask = LoadLookupsAsync(); // This will use AppState.USER_HES if available
         var countsTask = LoadNotificationCountsAsync();
 
         await Task.WhenAll(lookupTask, countsTask);
@@ -260,9 +264,7 @@
         _debounceTimer.Elapsed += HandleDebounceTimerElapsed;
         _debounceTimer.AutoReset = false;
 
-        _isLoading = false; // پایان لودینگ اولیه
-                            // StateHasChanged(); // نیازی نیست چون بعد از await در OnInitializedAsync خودکار فراخوانی می‌شود
-                            // اما اگر بخواهیم بلافاصله UI آپدیت شود، می‌توان آن را فراخوانی کرد
+        _isLoading = false;
     }
 
     private string FormatShamsiDateFromDateTime(DateTime? dt)
@@ -280,19 +282,34 @@
     {
         try
         {
-            var personelTask = AutomationService.GetPersonelLookupAsync();
+            _personelLookup = (await AutomationService.GetPersonelLookupAsync())?.ToList() ?? new List<PersonelLookupModel>();
+
+            if (_canFilterByUser)
+            {
+                _subordinatePersonnelLookup = (await LookupService.GetSubordinatesAsync())?.ToList() ?? new List<PersonelLookupModel>();
+            }
+            else
+            {
+                _subordinatePersonnelLookup = new List<PersonelLookupModel>();
+            }
+
             _customerLookup = new List<LookupDto<string>>() {
                 new LookupDto<string>{ Id = "1001-1-1", Name = "مشتری نمونه یک" },
                 new LookupDto<string>{ Id = "1001-1-2", Name = "مشتری نمونه دو" },
-                new LookupDto<string>{ Id = "1002-1-1", Name = "شرکت نمونه آلفا" },
-                new LookupDto<string>{ Id = "HES1", Name = "حساب داخلی یک" }
+                new LookupDto<string>{ Id = "1002-1-1", Name = "شرکت نمونه آلفا" }
             };
-            _personelLookup = (await personelTask)?.ToList();
+
+            if (AppState != null && !string.IsNullOrWhiteSpace(AppState.USER_HES) && _customerLookup.All(c => c.Id != AppState.USER_HES))
+            {
+                // TODO: Fetch actual customer name for AppState.USER_HES
+                _customerLookup.Insert(0, new LookupDto<string> { Id = AppState.USER_HES, Name = $"مشتری پیشفرض ({AppState.USER_HES})" });
+            }
         }
         catch (Exception ex)
         {
             Snackbar.Add($"خطا در بارگذاری لیست‌های پایه: {ex.Message}", Severity.Error);
             _personelLookup ??= new List<PersonelLookupModel>();
+            _subordinatePersonnelLookup ??= new List<PersonelLookupModel>();
             _customerLookup ??= new List<LookupDto<string>>();
         }
     }
@@ -325,9 +342,17 @@
         IEnumerable<TaskModel>? result = null;
         try
         {
+            int? userIdForApi = _filterAssignedUserId;
+            // If filter is on "Current User" (represented by AppState.USERCOD or null if not set yet)
+            // or if _filterAssignedUserId is null (initial load, not yet explicitly changed by user)
+            // use AppState.USERCOD for the API call.
+            if (_filterAssignedUserId == null || _filterAssignedUserId == AppState?.USERCOD) {
+                userIdForApi = AppState?.USERCOD;
+            }
+
             result = await AutomationService.GetTasksAsync(
                 statusFilter: _filterStatus,
-                assignedUserId: _filterAssignedUserId,
+                assignedUserId: userIdForApi,
                 taskTypes: string.IsNullOrWhiteSpace(_filterTaskTypes) || _filterTaskTypes.Trim() == "1000" ? "1000" : _filterTaskTypes);
         }
         catch (Exception ex) { Snackbar.Add($"خطا در بارگذاری وظایف: {ex.Message}", Severity.Error); }
@@ -388,7 +413,7 @@
             if (success)
             {
                 Snackbar.Add(successMessage, Severity.Success);
-                ClearForm();
+                await ClearFormAsync();
                 await LoadTasksAsync();
             }
             else { Snackbar.Add("خطا در ذخیره سازی وظیفه.", Severity.Error); }
@@ -397,11 +422,25 @@
         finally { _isSaving = false; StateHasChanged(); }
     }
 
-    private void ClearForm()
+    private async Task ClearFormAsync() // Now async
     {
         _currentTask = new TaskModel { PERIORITY = 2, STATUS = 1 };
-        _form?.Reset(); _form?.ResetValidation(); StateHasChanged();
+        if (AppState != null)
+        {
+            _currentTask.PERSONEL = AppState.USERCOD;
+            if (!string.IsNullOrWhiteSpace(AppState.USER_HES))
+            {
+                _currentTask.COMP_COD = AppState.USER_HES;
+            }
+        }
+        if (_form != null)
+        {
+            _form.Reset();
+            _form.ResetValidation();
+        }
+        await InvokeAsync(StateHasChanged); // Call StateHasChanged within InvokeAsync if needed after async ops
     }
+
 
     private void SelectTaskForEdit(TaskModel task)
     {
