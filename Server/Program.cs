@@ -22,6 +22,7 @@ builder.Services.AddScoped<IUserService, UserService>();
 // --- End Custom Services ---
 builder.Services.AddSingleton<IAppSettingsService, AppSettingsService>();
 
+
 // --- Add JWT Authentication ---
 builder.Services.AddAuthentication(options =>
 {
@@ -48,7 +49,7 @@ builder.Services.AddAuthentication(options =>
 // Ensure Encoding provider is registered if needed by decoding logic globally
 Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
 
-
+builder.Services.AddScoped<IPermissionService, PermissionService>();
 
 #endregion
 

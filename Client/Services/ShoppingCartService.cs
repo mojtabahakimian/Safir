@@ -1,91 +1,143 @@
-﻿// File: Client/Services/ShoppingCartService.cs
+﻿// File: MyBlazor/Client/Services/ShoppingCartService.cs
+using Blazored.LocalStorage; // اضافه شود
 using Safir.Shared.Models.Kala;
-using Safir.Shared.Models.Visitory; // For VISITOR_CUSTOMERS
+using Safir.Shared.Models.Visitory;
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using Microsoft.Extensions.Logging; // Added for logging
-using Safir.Client.Services; // Added for LookupApiService (optional)
+using System.Threading.Tasks; // اضافه شود برای متدهای آسنکرون LocalStorage
+using Microsoft.Extensions.Logging;
 
 namespace Safir.Client.Services
 {
     public class ShoppingCartService
     {
+        private readonly ILocalStorageService _localStorage; // <--- تزریق LocalStorage
+        private readonly ILogger<ShoppingCartService> _logger;
+
+        private const string CustomerStorageKey = "current_cart_customer"; // کلید برای ذخیره مشتری
+        private const string CartItemsStorageKey = "current_cart_items";   // کلید برای ذخیره آیتم‌های سبد
+
         public VISITOR_CUSTOMERS? CurrentCustomer { get; private set; }
         public List<CartItem> Items { get; private set; } = new List<CartItem>();
-        public int? CurrentAnbarCode { get; private set; } // Keep this if needed for ItemCard logic
+        public int? CurrentAnbarCode { get; private set; } // این را نگه می‌داریم
         public event Action? CartChanged;
-        private readonly ILogger<ShoppingCartService>? _logger;
-        private readonly LookupApiService? _lookupService;
 
-        public ShoppingCartService(ILogger<ShoppingCartService>? logger = null, LookupApiService? lookupService = null)
+        private Task? _initializationTask; // <--- فیلد برای نگهداری تسک بارگذاری اولیه
+        private bool _isInitialized = false; // <--- فلگ برای جلوگیری از اجرای مجدد منطق اصلی
+
+
+        // سازنده به‌روز شده
+        public ShoppingCartService(ILocalStorageService localStorage, ILogger<ShoppingCartService> logger)
         {
+            _localStorage = localStorage;
             _logger = logger;
-            _lookupService = lookupService;
+            // InitializeCartFromLocalStorage(); // در OnInitializedAsync کامپوننت اصلی یا MainLayout فراخوانی شود
         }
 
-        // Methods SetCurrentAnbarCode, GetCurrentAnbarCode, GetItemQuantity, GetCartItem, SetCustomer remain unchanged
-        public void SetCurrentAnbarCode(int anbarCode)
+        // این متد باید یکبار هنگام شروع برنامه فراخوانی شود
+        // بهترین جا برای فراخوانی آن، متد OnInitializedAsync در MainLayout.razor یا App.razor است
+ 
+        // این متد توسط MainLayout و سایر کامپوننت‌ها فراخوانی می‌شود
+        public Task InitializeCartFromLocalStorageAsync()
         {
-            if (CurrentAnbarCode != anbarCode && Items.Any())
+            // اگر تسک بارگذاری اولیه قبلاً ایجاد نشده، آن را ایجاد کن
+            if (_initializationTask == null)
             {
-                Console.WriteLine($"Warning: AnbarCode changed from {CurrentAnbarCode} to {anbarCode} while cart has items.");
+                _logger.LogInformation("Creating and starting initialization task for ShoppingCartService.");
+                _initializationTask = InitializeInternalAsync();
             }
-            CurrentAnbarCode = anbarCode;
+            else
+            {
+                _logger.LogInformation("Returning existing initialization task for ShoppingCartService.");
+            }
+            return _initializationTask; // تسک موجود یا جدید را برگردان
         }
-        public int? GetCurrentAnbarCode() => CurrentAnbarCode;
-        public decimal GetItemQuantity(string itemCode, int unitCode) => Items.FirstOrDefault(i => i.ItemCode == itemCode && i.SelectedUnitCode == unitCode)?.Quantity ?? 0;
-        public CartItem? GetCartItem(string itemCode, int unitCode) => Items.FirstOrDefault(i => i.ItemCode == itemCode && i.SelectedUnitCode == unitCode);
-        public void SetCustomer(VISITOR_CUSTOMERS? customer)
+        private async Task InitializeInternalAsync()
         {
-            if (CurrentCustomer != customer)
+            // اگر قبلاً مقداردهی اولیه انجام شده، خارج شو
+            if (_isInitialized)
+            {
+                _logger.LogInformation("ShoppingCartService already initialized. Skipping InitializeInternalAsync logic.");
+                return;
+            }
+
+            _logger.LogInformation("InitializeInternalAsync started for ShoppingCartService.");
+            try
+            {
+                CurrentCustomer = await _localStorage.GetItemAsync<VISITOR_CUSTOMERS>(CustomerStorageKey);
+                var storedItems = await _localStorage.GetItemAsync<List<CartItem>>(CartItemsStorageKey);
+                Items = storedItems ?? new List<CartItem>();
+                _logger.LogInformation("Cart successfully initialized from local storage. Customer: {CustomerName}, Items: {ItemCount}", CurrentCustomer?.person ?? "None", Items.Count);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error initializing cart from local storage.");
+                CurrentCustomer = null;
+                Items = new List<CartItem>();
+            }
+            finally
+            {
+                _isInitialized = true; // علامت‌گذاری به عنوان مقداردهی شده (حتی در صورت خطا برای جلوگیری از تلاش مجدد)
+                _logger.LogInformation("InitializeInternalAsync finished for ShoppingCartService. Notifying cart changed.");
+                NotifyCartChanged(); // برای به‌روزرسانی UI پس از بارگذاری
+            }
+        }
+
+        public async Task SetCustomerAsync(VISITOR_CUSTOMERS? customer)
+        {
+            if (CurrentCustomer?.hes != customer?.hes)
             {
                 if (customer != null && CurrentCustomer != null && Items.Any())
                 {
-                    ClearCartInternal();
+                    await ClearCartAsync();
                 }
                 CurrentCustomer = customer;
+                if (customer != null)
+                {
+                    await _localStorage.SetItemAsync(CustomerStorageKey, customer);
+                    _logger.LogInformation("Customer {CustomerHes} set and saved to local storage.", customer.hes);
+                }
+                else
+                {
+                    await _localStorage.RemoveItemAsync(CustomerStorageKey);
+                    _logger.LogInformation("Current customer removed from local storage.");
+                }
                 NotifyCartChanged();
             }
         }
 
+        // متدهای دیگر مانند GetCurrentAnbarCode، GetItemQuantity، GetCartItem بدون تغییر باقی می‌مانند
 
-        // --- AddItem method updated ---
-        public void AddItem(
+        public async Task AddItemAsync(
             ItemDisplayDto item,
             decimal quantity,
             int unitCode,
+            List<UnitInfo>? availableUnitsForThisItem,
             int anbarCode,
-            List<TCOD_VAHEDS>? availableUnits,
             decimal? priceOverride = null,
-            double? discountPercent = null) // <<< Added discountPercent parameter
+            double? discountPercent = null)
         {
             if (item == null || quantity <= 0) return;
-            if (anbarCode <= 0)
-            {
-                _logger?.LogError("Attempted to add item {ItemCode} with invalid AnbarCode {AnbarCode}", item.CODE, anbarCode);
-                return;
-            }
+            // ... (بقیه منطق AddItem مانند قبل با فرض اینکه nesbat را به درستی از availableUnitsForThisItem می‌گیرید) ...
+            UnitInfo? selectedUnitInfo = availableUnitsForThisItem?.FirstOrDefault(u => u.VahedCode == unitCode);
+            string? selectedUnitName = selectedUnitInfo?.VahedName ?? item.VahedName;
+            double nesbat = selectedUnitInfo?.Nesbat ?? 1.0;
+            decimal pricePerUnitToUse = priceOverride ?? item.MABL_F;
 
-            var selectedUnit = availableUnits?.FirstOrDefault(u => u.CODE == unitCode);
-            string? selectedUnitName = selectedUnit?.NAMES ?? item.VahedName;
-            decimal pricePerUnit = priceOverride ?? item.MABL_F; // Use override or default price
-
-            // Find existing item based on ItemCode, UnitCode, AND AnbarCode
             var existingItem = Items.FirstOrDefault(i => i.ItemCode == item.CODE && i.SelectedUnitCode == unitCode && i.AnbarCode == anbarCode);
 
             if (existingItem != null)
             {
-                // Item exists: Update quantity, price, and discount
                 existingItem.Quantity = quantity;
-                existingItem.PricePerUnit = pricePerUnit;
-                existingItem.DiscountPercent = discountPercent; // <<< Update discount
-                _logger?.LogInformation("AddItem (Updating existing): Item {ItemCode}, Unit {UnitCode}, Anbar {AnbarCode}, New Qty {Qty}, New Price {Price}, New Disc {Disc}%",
-                                         item.CODE, unitCode, anbarCode, quantity, pricePerUnit, discountPercent);
+                existingItem.PricePerUnit = pricePerUnitToUse;
+                existingItem.PricePerUnitBeforeDiscount = pricePerUnitToUse;
+                existingItem.DiscountPercent = discountPercent;
+                existingItem.Nesbat = nesbat;
+                existingItem.SelectedUnitName = selectedUnitName;
             }
             else
             {
-                // Create new item
                 var newItem = new CartItem
                 {
                     SourceItem = item,
@@ -94,98 +146,114 @@ namespace Safir.Client.Services
                     Quantity = quantity,
                     SelectedUnitCode = unitCode,
                     SelectedUnitName = selectedUnitName,
-                    PricePerUnit = pricePerUnit,
+                    PricePerUnit = pricePerUnitToUse,
+                    PricePerUnitBeforeDiscount = pricePerUnitToUse,
                     AnbarCode = anbarCode,
-                    DiscountPercent = discountPercent // <<< Set discount
+                    DiscountPercent = discountPercent,
+                    Nesbat = nesbat,
+                    VahedCode = unitCode,
+                    VahedName = selectedUnitName ?? string.Empty
                 };
                 Items.Add(newItem);
-                _logger?.LogInformation("AddItem (New): Item {ItemCode}, Unit {UnitCode}, Anbar {AnbarCode}, Qty {Qty}, Price {Price}, Disc {Disc}%",
-                                         item.CODE, unitCode, anbarCode, quantity, pricePerUnit, discountPercent);
             }
+            await SaveCartItemsToLocalStorageAsync(); // <--- ذخیره پس از تغییر
             NotifyCartChanged();
         }
 
-        public void RemoveItem(string itemCode, int unitCode)
-        {
-            // Assuming deletion doesn't need AnbarCode specificity,
-            // otherwise, it needs to be passed and included in the Where clause.
-            var itemsToRemove = Items.Where(i => i.ItemCode == itemCode && i.SelectedUnitCode == unitCode).ToList();
-            if (itemsToRemove.Any())
-            {
-                foreach (var item in itemsToRemove)
-                {
-                    Items.Remove(item);
-                    _logger?.LogInformation("RemoveItem: Item {ItemCode}, Unit {UnitCode}, Anbar {AnbarCode}", item.ItemCode, item.SelectedUnitCode, item.AnbarCode);
-                }
-                NotifyCartChanged();
-            }
-        }
-
-
-        // --- UpdateQuantity method updated ---
-        public void UpdateQuantity(
+        public async Task UpdateQuantityAsync(
             string itemCode,
             int unitCode,
             decimal newQuantity,
             decimal? priceOverride = null,
-            double? discountPercent = null) // <<< Added discountPercent parameter
+            double? discountPercent = null)
         {
-            // Find item based on ItemCode and UnitCode.
-            // TODO: Consider adding AnbarCode here if one item can be added from multiple warehouses distinctly.
             var itemToUpdate = Items.FirstOrDefault(i => i.ItemCode == itemCode && i.SelectedUnitCode == unitCode);
             if (itemToUpdate != null)
             {
                 if (newQuantity > 0)
                 {
                     itemToUpdate.Quantity = newQuantity;
-                    if (priceOverride.HasValue) // Update price if provided
+                    if (priceOverride.HasValue)
                     {
                         itemToUpdate.PricePerUnit = priceOverride.Value;
+                        itemToUpdate.PricePerUnitBeforeDiscount = priceOverride.Value;
                     }
-                    // Update discount (allow setting it back to null/0 if discountPercent is null/0)
                     itemToUpdate.DiscountPercent = discountPercent;
-
-                    _logger?.LogInformation("UpdateQuantity: Item {ItemCode}, Unit {UnitCode}, Anbar {AnbarCode}, New Qty {Qty}, New Price {Price}, New Disc {Disc}%",
-                                             itemToUpdate.ItemCode, itemToUpdate.SelectedUnitCode, itemToUpdate.AnbarCode, newQuantity, itemToUpdate.PricePerUnit, itemToUpdate.DiscountPercent);
                 }
                 else
                 {
-                    // Remove item if quantity is zero or less
                     Items.Remove(itemToUpdate);
-                    _logger?.LogInformation("UpdateQuantity (Removed): Item {ItemCode}, Unit {UnitCode}, Anbar {AnbarCode}",
-                                             itemToUpdate.ItemCode, itemToUpdate.SelectedUnitCode, itemToUpdate.AnbarCode);
                 }
+                await SaveCartItemsToLocalStorageAsync(); // <--- ذخیره پس از تغییر
                 NotifyCartChanged();
             }
-            else
+        }
+
+        public async Task RemoveItemAsync(string itemCode, int unitCode)
+        {
+            var itemsToRemove = Items.Where(i => i.ItemCode == itemCode && i.SelectedUnitCode == unitCode).ToList();
+            if (itemsToRemove.Any())
             {
-                _logger?.LogWarning("UpdateQuantity: Item not found {ItemCode}, Unit {UnitCode}", itemCode, unitCode);
+                foreach (var item in itemsToRemove)
+                {
+                    Items.Remove(item);
+                }
+                await SaveCartItemsToLocalStorageAsync(); // <--- ذخیره پس از تغییر
+                NotifyCartChanged();
             }
         }
 
-        // --- GetTotal method (Calculates total AFTER discount) ---
-        public decimal GetTotal() => Items.Sum(item => item.TotalPriceAfterDiscount);
-
-        // --- GetTotalDiscountAmount method (Calculates total discount amount) ---
-        public decimal GetTotalDiscountAmount() => Items.Sum(item => item.LineDiscountAmount);
-
-        // --- <<< NEW Method: GetTotalAmountBeforeDiscount >>> ---
-        /// <summary>
-        /// Calculates the sum of (Quantity * PricePerUnit) for all items, before any discount.
-        /// </summary>
-        /// <returns>Total amount before discount.</returns>
-        public decimal GetTotalAmountBeforeDiscount() => Items.Sum(item => item.TotalPriceBeforeDiscount);
-        // --- <<< End NEW Method >>> ---
-
-        public void ClearCart()
+        public async Task ClearCartAsync() // تبدیل به متد آسنکرون
         {
             Items.Clear();
-            CurrentCustomer = null;
+            // CurrentCustomer را اینجا null نکنید، SetCustomerAsync مسئول آن است
+            // CurrentCustomer = null; 
+            await _localStorage.RemoveItemAsync(CartItemsStorageKey);
+            // await _localStorage.RemoveItemAsync(CustomerStorageKey); // مشتری را هم جداگانه مدیریت می‌کنیم
+            _logger.LogInformation("Cart items cleared from local storage.");
             NotifyCartChanged();
-            _logger?.LogInformation("ClearCart: Cart cleared.");
         }
 
-        private void ClearCartInternal() => Items.Clear();
+        // متد خصوصی برای ذخیره آیتم‌های سبد
+        private async Task SaveCartItemsToLocalStorageAsync()
+        {
+            try
+            {
+                await _localStorage.SetItemAsync(CartItemsStorageKey, Items);
+                _logger.LogInformation("{ItemCount} cart items saved to local storage.", Items.Count);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error saving cart items to local storage.");
+            }
+        }
+
+        // سایر متدها (GetTotal و ...) بدون تغییر باقی می‌مانند یا در صورت نیاز آسنکرون می‌شوند
+        // ... (متدهای GetTotalAmountBeforeDiscountConsideringNesbat, GetTotalLineDiscountAmount, GetFinalTotal) ...
+        public decimal GetTotalAmountBeforeDiscountConsideringNesbat() => Items.Sum(item => item.CalculatedRowTotalPriceBeforeLineDiscount);
+        public decimal GetTotalLineDiscountAmount() => Items.Sum(item => item.LineDiscountAmountCalculatedOnFullPrice);
+        public decimal GetFinalTotal() => Items.Sum(item => item.FinalRowPriceAfterLineDiscount);
+        public decimal GetTotal() => GetFinalTotal();
+
+
+        // SetCurrentAnbarCode, GetCurrentAnbarCode, GetItemQuantity, GetCartItem
+        // این متدها اگر وضعیت داخلی سرویس را تغییر نمی‌دهند که نیاز به ذخیره‌سازی داشته باشد، می‌توانند سنکرون باقی بمانند.
+        public void SetCurrentAnbarCode(int anbarCode)
+        {
+            if (CurrentAnbarCode != anbarCode && Items.Any())
+            {
+                Console.WriteLine($"Warning: AnbarCode changed from {CurrentAnbarCode} to {anbarCode} while cart has items.");
+                // در این حالت معمولاً باید سبد خرید پاک شود یا به کاربر هشدار داده شود
+                // فعلا فقط لاگ می‌کنیم
+            }
+            CurrentAnbarCode = anbarCode;
+            // ذخیره CurrentAnbarCode در localStorage اگر لازم است (معمولا لازم نیست چون با انتخاب گروه کالا مجدد تنظیم می‌شود)
+        }
+        public int? GetCurrentAnbarCode() => CurrentAnbarCode;
+        public decimal GetItemQuantity(string itemCode, int unitCode) => Items.FirstOrDefault(i => i.ItemCode == itemCode && i.SelectedUnitCode == unitCode)?.Quantity ?? 0;
+        public CartItem? GetCartItem(string itemCode, int unitCode) => Items.FirstOrDefault(i => i.ItemCode == itemCode && i.SelectedUnitCode == unitCode);
+
+
         private void NotifyCartChanged() => CartChanged?.Invoke();
     }
 }

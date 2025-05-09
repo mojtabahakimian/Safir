@@ -275,7 +275,9 @@ namespace Safir.Server.Controllers
                                                                          // MABL_K is Total Price in Base Unit: QtyInBaseUnit * PricePerBaseUnit
                                                                          // We have PricePerUnit (which is price for the SELECTED unit from client)
                                                                          // Let's calculate MABL_K = Quantity * PricePerUnit (Total price for selected unit)
-                        decimal mablK = line.Quantity * line.PricePerUnit; // Total price for the quantity of the selected unit
+                        
+                        decimal mablK = line.PricePerUnit * meghK; // <--- کد جدید: قیمت واحد انتخابی * مقدار کل با واحد پایه
+
 
                         decimal nKolValue = (decimal)(line.DiscountPercent ?? 0); // N_KOL (%)
                         decimal tkhnValue = (decimal)(line.CashDiscountPercent ?? 0); // TKHN (%)

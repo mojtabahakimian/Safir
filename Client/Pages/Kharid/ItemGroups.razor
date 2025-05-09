@@ -2,16 +2,25 @@
 @attribute [Authorize]
 @implements IDisposable
 
-@using Microsoft.AspNetCore.Authorization
-@using Safir.Shared.Models.Kala
-@using Safir.Shared.Models
-@using Microsoft.AspNetCore.Components
-@using Microsoft.Extensions.Logging
-@using Safir.Client.Services
+@using System.Security.Claims
 @using System.Collections.Generic
 @using System.Linq
 @using System.Timers
+@using Microsoft.AspNetCore.Components
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.Extensions.Logging
+@using MudBlazor
+
+@using Safir.Client.Services
 @using Safir.Client.Shared
+@using Safir.Shared.Constants
+@using Safir.Shared.Models
+@using Safir.Shared.Models.Kala
+@using Safir.Shared.Models.Kharid
+@using Safir.Shared.Models.Taarif
+
+@using Microsoft.AspNetCore.Components.Authorization
+@inject AuthenticationStateProvider AuthenticationStateProvider
 
 @inject LookupApiService LookupService
 @inject ShoppingCartService CartService
@@ -19,27 +28,160 @@
 @inject ISnackbar Snackbar
 @inject ILogger<ItemGroups> Logger
 @inject NavigationManager NavManager
+@inject PermissionApiService PermissionService
+@inject ClientAppSettingsService AppSettingsService
 
 <MudContainer MaxWidth="MaxWidth.False" Class="mt-4 px-md-4 px-2">
-    @* بهبود Padding برای نمایش بهتر در موبایل *@
 
-    @* --- بخش نمایش و جستجوی گروه‌ها --- *@
+    <MudPaper Elevation="2" Class="mb-4 pa-3">
+        <MudText Typo="Typo.h6" GutterBottom="true">اطلاعات سربرگ سفارش</MudText>
+        @if (_isLoadingLookups)
+        {
+            <MudProgressLinear Color="Color.Primary" Indeterminate="true" Class="my-2" />
+        }
+        <MudGrid Spacing="2">
+            @*   <MudItem xs="12" sm="6" md="4" lg="3">
+            <MudAutocomplete T="LookupDto<int?>" Label="نوع مشتری" Clearable="true" ClearIcon="@Icons.Material.Filled.ClearAll"
+            SearchFunc="@SearchCustomerTypes" @bind-Value="_selectedCustomerType" ToStringFunc="@(c => c?.Name ?? string.Empty)"
+            Variant="Variant.Outlined"
+            ReadOnly="!_canChangeCustomerType || _isLoadingLookups"
+            Margin="Margin.Dense" ResetValueOnEmptyText="true" CoerceText="false" CoerceValue="false"
+            Placeholder="جستجو یا انتخاب..." />
+            </MudItem> *@
+
+            <MudItem xs="12" sm="6" md="4" lg="3">
+                <MudSelect T="LookupDto<int?>" Label="نوع مشتری" Disabled="@_isLoadingLookups"
+                           Value="_selectedCustomerType"
+                           ValueChanged="(LookupDto<int?> newValue) => HandleCustomerTypeChanged(newValue)"
+                           ToStringFunc="@(c => c?.Name ?? string.Empty)"
+                           Variant="Variant.Outlined"
+                           ReadOnly="!_canChangeCustomerType || _isLoadingLookups"
+                           Margin="Margin.Dense" Placeholder="انتخاب کنید..." Dense="true">
+                    @if (_customerTypeList != null)
+                    {
+                        @foreach (var custType in _customerTypeList)
+                        {
+                            <MudSelectItem Value="custType">@custType.Name</MudSelectItem>
+                        }
+                    }
+                </MudSelect>
+            </MudItem>
+
+
+            <MudItem xs="12" sm="6" md="4" lg="3">
+                <MudAutocomplete T="LookupDto<int?>" Label="واحد (دپارتمان)" Disabled="@_isLoadingLookups"
+                                 ReadOnly="!_canChangeDepartment || _isLoadingLookups" Clearable="true" ClearIcon="@Icons.Material.Filled.ClearAll"
+                                 SearchFunc="@SearchDepartments"
+                                 Value="_selectedDepartment"
+                                 ValueChanged="(LookupDto<int?> newValue) => OnSelectedDepartmentChangedAsync(newValue)"
+                                 ToStringFunc="@(d => d?.Name ?? string.Empty)"
+                                 Variant="Variant.Outlined" Margin="Margin.Dense" ResetValueOnEmptyText="true" CoerceText="false" CoerceValue="false"
+                                 Placeholder="جستجو یا انتخاب..." />
+            </MudItem>
+
+            <MudItem xs="12" sm="8" md="6" lg="4">
+                @*    <MudAutocomplete T="PaymentTermDto" Label="نحوه پرداخت"
+                ReadOnly="_isLoadingLookups" Clearable="true" ClearIcon="@Icons.Material.Filled.ClearAll"
+                SearchFunc="@SearchPaymentTerms"
+                Value="_selectedPaymentTerm"
+                ValueChanged="(PaymentTermDto? newValue) => OnSelectedPaymentTermChanged(newValue)"
+                ToStringFunc="@(p => p?.Name ?? string.Empty)"
+                Variant="Variant.Outlined" Margin="Margin.Dense" ResetValueOnEmptyText="true" CoerceText="false" CoerceValue="false"
+                Placeholder="جستجو یا انتخاب..." /> *@
+
+                <MudSelect T="PaymentTermDto" Label="نحوه پرداخت" Disabled="@_isLoadingLookups"
+                           ReadOnly="_isLoadingLookups"
+                           Value="_selectedPaymentTerm"
+                           ValueChanged="(PaymentTermDto? newValue) => OnSelectedPaymentTermChanged(newValue)"
+                           ToStringFunc="@(p => p?.Name ?? string.Empty)"
+                           Variant="Variant.Outlined" Margin="Margin.Dense" Placeholder="انتخاب کنید..." Dense="true">
+                    @if (_paymentTermList != null)
+                    {
+                        @foreach (var paymentTerm in _paymentTermList)
+                        {
+                            <MudSelectItem Value="paymentTerm">@paymentTerm.Name</MudSelectItem>
+                        }
+                    }
+                </MudSelect>
+            </MudItem>
+
+            <MudItem xs="12" sm="4" md="2" lg="2">
+                <MudNumericField T="int?" Label="مدت" Disabled="@_isLoadingLookups"
+                                 Value="_agreedDuration"
+                                 ValueChanged="(int? newValue) => HandleDurationChanged(newValue)"
+                                 ReadOnly="_isDurationReadOnly" Variant="Variant.Outlined" Margin="Margin.Dense" Min="0" />
+
+            </MudItem>
+
+            <MudItem xs="12" md="6" lg="6">
+                @* AutoComplete Commented might be use later : *@
+                @*   <MudAutocomplete T="PriceListDto" Label="اعلامیه قیمت"
+                ReadOnly="!_canChangePriceLists || _isLoadingLookups"
+                Clearable="true" ClearIcon="@Icons.Material.Filled.ClearAll"
+                SearchFunc="@SearchPriceLists" @bind-Value="_selectedPriceList" ToStringFunc="@(p => p?.Name ?? string.Empty)"
+                Variant="Variant.Outlined" Margin="Margin.Dense" ResetValueOnEmptyText="true" CoerceText="false" CoerceValue="false"
+                Placeholder="جستجو یا انتخاب..." /> *@
+
+                <MudSelect T="PriceListDto" Label="اعلامیه قیمت" ReadOnly="!_canChangePriceLists || _isLoadingLookups"
+                           Value="_selectedPriceList" Disabled="@_isLoadingLookups"
+                           ValueChanged="(PriceListDto? newValue) => HandlePriceListChanged(newValue)"
+                           ToStringFunc="@(p => p?.Name ?? string.Empty)"
+                           Variant="Variant.Outlined" Margin="Margin.Dense" Placeholder="انتخاب کنید..." Dense="true">
+                    @if (_priceLists != null)
+                    {
+                        @foreach (var priceList in _priceLists)
+                        {
+                            <MudSelectItem Value="priceList">@priceList.Name</MudSelectItem>
+                        }
+                    }
+                </MudSelect>
+            </MudItem>
+
+            <MudItem xs="12" md="6" lg="6">
+                @* AutoComplete Commented might be use later : *@
+                @*  <MudAutocomplete T="DiscountListDto" Label="اعلامیه تخفیف"
+                Clearable="true" ClearIcon="@Icons.Material.Filled.ClearAll"
+                SearchFunc="@SearchDiscountLists"
+                ReadOnly="!_canChangePriceLists || _isLoadingLookups"
+                Value="_selectedDiscountList"
+                ValueChanged="(DiscountListDto? newValue) => OnSelectedDiscountListChangedAsync(newValue)"
+                ToStringFunc="@(d => d?.Name ?? string.Empty)"
+                Variant="Variant.Outlined" Margin="Margin.Dense" ResetValueOnEmptyText="true" CoerceText="false" CoerceValue="false"
+                Placeholder="جستجو یا انتخاب..." /> *@
+
+                <MudSelect T="DiscountListDto" Label="اعلامیه تخفیف" Disabled="@_isLoadingLookups"
+                           ReadOnly="!_canChangePriceLists || _isLoadingLookups"
+                           Value="_selectedDiscountList"
+                           ValueChanged="(DiscountListDto? newValue) => OnSelectedDiscountListChangedAsync(newValue)"
+                           ToStringFunc="@(d => d?.Name ?? string.Empty)"
+                           Variant="Variant.Outlined" Margin="Margin.Dense" Placeholder="انتخاب کنید..." Dense="true">
+                    @if (_discountLists != null)
+                    {
+                        @foreach (var discountList in _discountLists)
+                        {
+                            <MudSelectItem Value="discountList">@discountList.Name</MudSelectItem>
+                        }
+                    }
+                </MudSelect>
+            </MudItem>
+        </MudGrid>
+    </MudPaper>
+
+    @if (!_areHeadersValid && _headerValidationMessages.Any())
+    {
+        <MudAlert Severity="Severity.Warning" Class="my-3" Elevation="2">
+            <MudText Typo="Typo.body1" Class="mb-2"><strong>برای ادامه، لطفاً موارد زیر را در سربرگ سفارش تکمیل کنید:</strong></MudText>
+            <ul style="padding-right: 20px;">
+                @foreach (var msg in _headerValidationMessages)
+                {
+                    <li style="text-align: right;">@msg</li>
+                }
+            </ul>
+        </MudAlert>
+    }
+
+
     <MudPaper Outlined="true" Class="mb-4 pa-1">
-     @*    <MudToolBar Dense="true" Class="px-2">
-            <MudTextField T="string"
-                          @bind-Value="_groupSearchTerm"
-                          Placeholder="جستجو گروه..."
-                          Variant="Variant.Outlined"
-                          Margin="Margin.Dense"
-                          Adornment="Adornment.Start"
-                          AdornmentIcon="@Icons.Material.Filled.Search"
-                          IconSize="Size.Small"
-                          Immediate="true"
-                          Clearable="true"
-                          Style="max-width: 250px;" />
-        </MudToolBar> *@
-
-
         @if (_isLoadingGroups)
         {
             <MudProgressLinear Color="Color.Primary" Indeterminate="true" Class="my-2" />
@@ -50,14 +192,12 @@
         }
         else
         {
-            @* نوار اسکرول افقی برای گروه‌ها *@
             <div style="display: flex; overflow-x: auto; white-space: nowrap; padding: 8px 4px; background-color: var(--mud-palette-background-grey); border-radius: var(--mud-default-borderradius);" class="mud-scrollbar-thin">
                 @if (GetFilteredGroups().Any())
                 {
                     @foreach (var group in GetFilteredGroups())
                     {
                         <div style="display: inline-block; margin: 0 4px;" @key="group.CODE">
-                            @* اضافه کردن key *@
                             <MudPaper Class="pa-2 group-card"
                                       Elevation="@(_selectedGroup == group ? 8 : 2)"
                                       Style="@($"border: {(_selectedGroup == group ? "1px solid var(--mud-palette-primary)" : "1px solid transparent")};")"
@@ -95,15 +235,11 @@
         }
     </MudPaper>
 
-    @* --- بخش نمایش کالاها برای گروه انتخاب شده --- *@
     @if (_selectedGroup != null)
     {
         <MudDivider Class="my-4" />
-
         <MudPaper Outlined="true" Class="pa-1">
             <MudToolBar Dense="true" Class="mb-2 px-2">
-             @*    <MudText Typo="Typo.h6">کالاها: @_selectedGroup.NAMES</MudText>
-                <MudSpacer /> *@
                 <MudTextField T="string"
                 @bind-Value="_itemSearchTerm"
                               Placeholder="جستجو کالا..."
@@ -149,15 +285,12 @@
             }
             else
             {
-                @* --- نمایش لیستی یا کارتی --- *@
                 @if (_isListView)
                 {
                     <MudList Clickable="false">
-                        @* Clickable روی آیتم معنی ندارد اگر اکشن جدا دارد *@
                         @foreach (var item in _items)
                         {
                             <MudListItem @key="item.CODE">
-                                @* اضافه کردن key *@
                                 <MudListItemAvatar>
                                     @if (item.ImageExists)
                                     {
@@ -172,10 +305,8 @@
                                     <MudText Typo="Typo.body1">@item.NAME</MudText>
                                     <MudText Typo="Typo.body2" Color="Color.Secondary">کد: @item.CODE | واحد: @item.VahedName</MudText>
                                     <MudText Typo="Typo.body2">قیمت عمده: @item.MABL_F.ToString("N0") ریال</MudText>
-                                    @* می‌توانید قیمت‌های دیگر را هم در حالت لیست نمایش دهید *@
                                 </MudListItemText>
                                 <MudListItemAction>
-                                    @* TODO: Add quantity selector and add button for list view if needed *@
                                     <MudIconButton Icon="@Icons.Material.Filled.AddShoppingCart" Color="Color.Secondary" Size="Size.Small" OnClick="@(() => AddItemToCartFromList(item, 1))" Title="افزودن ۱ عدد" />
                                 </MudListItemAction>
                             </MudListItem>
@@ -183,23 +314,18 @@
                         }
                     </MudList>
                 }
-                else // <<< نمایش کارتی با استفاده از ItemCard >>>
+                else
                 {
                     <MudGrid Spacing="3" Justify="Justify.FlexStart">
-                        @* افزایش فاصله بین کارت‌ها *@
                         @foreach (var itemDto in _items)
                         {
-                            @* افزایش مقادیر ستون‌ها برای عرض بیشتر کارت *@
                             <MudItem xs="12" sm="6" md="6" lg="6" xl="4" @key="itemDto.CODE">
-                                <ItemCard Item="itemDto" AvailableUnits="_availableUnits" AnbarCode="@(_selectedGroup.ANBAR)" />
+                                <ItemCard Item="itemDto" HeadersValid="_areHeadersValid" AvailableUnits="_availableUnits" AnbarCode="@(_selectedGroup.ANBAR)" CanEditDiscount="_canEditItemDiscount" />
                             </MudItem>
                         }
-
-
                     </MudGrid>
                 }
 
-                @* --- کنترل‌های صفحه‌بندی --- *@
                 @if (_totalPages > 1)
                 {
                     <MudPagination Count="_totalPages"
@@ -207,19 +333,17 @@
                                    ShowFirstButton="true"
                                    ShowLastButton="true"
                                    Color="Color.Primary"
-                                   BoundaryCount="1" MiddleCount="3" /> @* تنظیمات ظاهری بهتر *@
+                                   BoundaryCount="1" MiddleCount="3" />
                 }
             }
         </MudPaper>
     }
-
 </MudContainer>
 
-@* استایل‌های CSS برای ظاهر بهتر *@
 <style>
     .group-card {
         cursor: pointer;
-        width: 110px; /* کمی کوچک‌تر برای جای بیشتر */
+        width: 110px;
         height: 100px;
         display: flex;
         flex-direction: column;
@@ -252,14 +376,13 @@
 
     .group-name-text {
         line-height: 1.2;
-        /* برای جلوگیری از شکستن نام‌های طولانی */
         white-space: normal;
         overflow: hidden;
         text-overflow: ellipsis;
         display: -webkit-box;
-        -webkit-line-clamp: 2; /* نمایش حداکثر ۲ خط */
+        -webkit-line-clamp: 2;
         -webkit-box-orient: vertical;
-        min-height: 2.4em; /* ارتفاع حداقلی برای دو خط */
+        min-height: 2.4em;
     }
 </style>
 
@@ -282,36 +405,572 @@
     private int _totalItemCount = 0;
     private int _totalPages => (_totalItemCount == 0 || _pageSize <= 0) ? 0 : (_totalItemCount + _pageSize - 1) / _pageSize;
 
+    private bool _canChangeDepartment = true;   // DEFA
+    private bool _canChangeCustomerType = true; // CUSTEN
+    private bool _canChangePriceLists = true;   // elamghe + Baseknow.GHAYM
+    private bool _canEditItemDiscount = true;   // !TFTMLOCK (برای ارسال به ItemCard)
+                                                // مقدار Baseknow.GHAYM از کجا می‌آید؟ (فرض کنید از Claim یا سرویس دیگری خوانده می‌شود)
+    private short? _baseknowGhaym = 7;
+    private SAZMAN? _sazmanSettings;
+
     private bool _isListView = false;
 
+    private LookupDto<int?>? _selectedCustomerType;
+    private List<LookupDto<int?>> _customerTypeList = new();
+
+    private LookupDto<int?>? _selectedDepartment;
+    private List<LookupDto<int?>> _departmentList = new();
+
+    private PaymentTermDto? _selectedPaymentTerm;
+    private List<PaymentTermDto> _paymentTermList = new();
+
+    private int? _agreedDuration = 1;
+
+    private PriceListDto? _selectedPriceList;
+    private List<PriceListDto> _priceLists = new();
+
+    private DiscountListDto? _selectedDiscountList;
+    private List<DiscountListDto> _discountLists = new();
+
+    private bool _isLoadingLookups = true;
+    private ClaimsPrincipal? _currentUserPrincipal;
+    private int? _currentUserId;
+    private int? _currentUserTfSazman = 20; //مقدار پیشفرض داشته باشه درصورت خالی بودن
+    private string? _currentCustomerHesCode;
+
+    private List<string> _headerValidationMessages = new List<string>();
+    private bool _areHeadersValid = false; // برای کنترل وضعیت کلی اعتبار
+
+    private bool _canUseAzadPay = true; // دسترسی به نحوه پرداخت آزاد
+    private bool _isDurationReadOnly = true; // برای ReadOnly کردن فیلد مدت
+    private PaymentTermDto? _previousSelectedPaymentTerm = null; // برای بازگرداندن انتخاب در صورت عدم دسترسی
 
     protected override async Task OnInitializedAsync()
     {
-        if (CartService.CurrentCustomer == null)
+
+
+        Logger.LogInformation("ItemGroups.razor: OnInitializedAsync started.");
+        if (CartService != null)
         {
-            Logger.LogWarning("Access to ItemGroups denied. No customer selected.");
-            Snackbar.Add("لطفاً ابتدا مشتری مورد نظر را انتخاب کنید.", Severity.Warning);
-            NavManager.NavigateTo("/visitor-customers");
+            await CartService.InitializeCartFromLocalStorageAsync();
+        }
+        else
+        {
+            Logger.LogError("ShoppingCartService is null!");
+            Snackbar.Add("خطای سرویس سبد خرید!", Severity.Error);
+            NavManager.NavigateTo("/");
             return;
         }
 
-        var groupsTask = LoadGroupsAsync();
-        var unitsTask = LoadUnitsAsync();
-        await Task.WhenAll(groupsTask, unitsTask);
+        if (CartService.CurrentCustomer == null)
+        {
+            Logger.LogWarning("No customer selected. Redirecting...");
+            Snackbar.Add("لطفا ابتدا مشتری را انتخاب کنید.", Severity.Info);
+            NavManager.NavigateTo("/visitor-customers");
+            return;
+        }
+        Logger.LogInformation($"Customer HES code from CartService: {CartService.CurrentCustomer?.hes}"); // اصلاح شده به HES
+
+        _isLoadingLookups = true; // <<< شروع نشانگر بارگذاری اصلی
+        await InvokeAsync(StateHasChanged); // اطمینان از نمایش نشانگر
+
+        try
+        {
+            // 1. بارگذاری تنظیمات SAZMAN (برای _baseknowGhaym)
+            await LoadSazmanSettingsAsync();
+
+            // 2. بررسی دسترسی‌های کلی صفحه (از جمله AZADPAY)
+            await CheckPagePermissionsAsync();
+
+            // 3. بارگذاری اطلاعات اولیه سربرگ (نوع مشتری، دپارتمان، لیست‌های اعلامیه قیمت و تخفیف و پیش‌فرض‌های آنها)
+            // این متد خودش باید await های داخلی داشته باشد و _currentUserTfSazman را از Claim بخواند
+            await LoadHeaderDataAndSetDefaultsAsync();
+
+            // 4. حالا که دپارتمان و اعلامیه تخفیف پیش‌فرض مشخص شده‌اند، نحوه پرداخت را بارگذاری کنید
+            await LoadDynamicPaymentTermsAndSetDefaultAsync();
+
+            // 5. بارگذاری گروه‌ها و واحدها می‌تواند همزمان با برخی از مراحل بالا انجام شود،
+            // اما برای سادگی فعلا پس از سربرگ می‌گذاریم.
+            // اگر مستقل هستند، می‌توانید آنها را زودتر و با Task.WhenAll اجرا کنید.
+            var groupsTask = LoadGroupsAsync();
+            var unitsTask = LoadUnitsAsync();
+            await Task.WhenAll(groupsTask, unitsTask);
+
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "An error occurred during the initialization of ItemGroups page.");
+            Snackbar.Add("خطا در بارگذاری اطلاعات صفحه.", Severity.Error);
+        }
+        finally
+        {
+            _isLoadingLookups = false; // <<< پایان نشانگر بارگذاری اصلی
+            UpdateHeaderValidationState(); // بررسی نهایی وضعیت اعتبارسنجی
+            await InvokeAsync(StateHasChanged); // اطمینان از پنهان شدن نشانگر و به‌روز شدن UI
+        }
 
         if (_itemGroups != null && _itemGroups.Any() && _selectedGroup == null)
         {
-            // Use await HandleGroupClick as it now loads items
             await HandleGroupClick(_itemGroups.First());
-            // StateHasChanged is called within LoadItemsForSelectedGroupAsync triggered by HandleGroupClick
         }
+
+        Logger.LogInformation("ItemGroups.razor: OnInitializedAsync completed.");
+    }
+    private async Task LoadSazmanSettingsAsync()
+    {
+        try
+        {
+            _sazmanSettings = await AppSettingsService.GetSettingsAsync(); // فراخوانی سرویس تزریق شده
+            _baseknowGhaym = _sazmanSettings?.GHAYM;
+            Logger.LogInformation("SAZMAN settings loaded via ClientAppSettingsService. GHAYM = {GhaymValue}", _baseknowGhaym?.ToString() ?? "null");
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error loading SAZMAN settings via ClientAppSettingsService.");
+            Snackbar.Add("خطا در بارگذاری تنظیمات برنامه (SAZMAN).", Severity.Error);
+            // مقدار پیش‌فرض null باقی می‌ماند
+        }
+    }
+    private bool AreHeaderFieldsValidForAddingItems()
+    {
+        _headerValidationMessages.Clear();
+
+        // 1. بررسی فیلدهای اجباری اصلی
+        if (_selectedCustomerType == null)
+            _headerValidationMessages.Add("نوع مشتری انتخاب نشده است.");
+        if (_selectedDepartment == null)
+            _headerValidationMessages.Add("واحد (دپارتمان) انتخاب نشده است.");
+        if (_selectedPaymentTerm == null)
+            _headerValidationMessages.Add("نحوه پرداخت انتخاب نشده است.");
+
+        if (!_agreedDuration.HasValue || _agreedDuration.Value <= 0) // شرط: null نباشد و کمتر از 1 نباشد
+        {
+            // اگر نحوه پرداخت "آزاد" انتخاب شده (و مدت توسط کاربر وارد می‌شود)
+            if (_selectedPaymentTerm?.Id == 0)
+            {
+                _headerValidationMessages.Add("مقدار 'مدت' برای نحوه پرداخت آزاد باید حداقل 1 باشد.");
+            }
+            // اگر نحوه پرداخت "آزاد" نیست (و مدت از خود نحوه پرداخت می‌آید)
+            // و نحوه پرداخت انتخاب شده است اما مدتش معتبر نیست
+            else if (_selectedPaymentTerm != null && (!_agreedDuration.HasValue || _agreedDuration.Value < 0))
+            {
+                _headerValidationMessages.Add($"مقدار 'مدت' ({_agreedDuration?.ToString() ?? "تعیین نشده"}) برای نحوه پرداخت انتخابی نامعتبر است).");
+            }
+            // اگر _selectedPaymentTerm اصلا انتخاب نشده باشد، خطای "نحوه پرداخت انتخاب نشده است" قبلا اضافه شده است.
+        }
+
+
+        // 2. بررسی فیلدهای اجباری شرطی
+        bool isPaymentAzad = _selectedPaymentTerm?.Id == 0;
+        if (!isPaymentAzad) // اگر نحوه پرداخت "آزاد" نیست
+        {
+            if (_selectedPriceList == null)
+                _headerValidationMessages.Add("اعلامیه قیمت (در صورت عدم انتخاب نحوه پرداخت آزاد) الزامی است.");
+            if (_selectedDiscountList == null)
+                _headerValidationMessages.Add("اعلامیه تخفیف (در صورت عدم انتخاب نحوه پرداخت آزاد) الزامی است.");
+        }
+
+        return !_headerValidationMessages.Any();
+    }
+
+    private void HandleCustomerTypeChanged(LookupDto<int?> newValue)
+    {
+        _selectedCustomerType = newValue; // مقدار فیلد را با مقدار جدید آپدیت کن
+        UpdateHeaderValidationState();
+    }
+
+    private void HandleDurationChanged(int? newValue)
+    {
+        _agreedDuration = newValue; // مقدار فیلد را با مقدار جدید آپدیت کن
+        UpdateHeaderValidationState();
+    }
+
+    private void HandlePriceListChanged(PriceListDto? newValue)
+    {
+        _selectedPriceList = newValue; // مقدار فیلد را با مقدار جدید آپدیت کن
+        UpdateHeaderValidationState();
+    }
+
+    // این متد در OnInitializedAsync و پس از تغییر هر فیلد سربرگ فراخوانی می‌شود
+    private void UpdateHeaderValidationState()
+    {
+        _areHeadersValid = AreHeaderFieldsValidForAddingItems();
+        // StateHasChanged(); // اگر از خارج از چرخه رندر Blazor فراخوانی شود، لازم است
+    }
+    // متدهایی برای فراخوانی UpdateHeaderValidationState پس از تغییر هر فیلد
+    private void HandleCustomerTypeChanged() { UpdateHeaderValidationState(); }
+    private void HandlePriceListChanged() { UpdateHeaderValidationState(); }
+    private void HandleDurationChanged() { UpdateHeaderValidationState(); } // برای فیلد مدت
+
+    // متد جدید برای بررسی دسترسی‌ها
+    private async Task CheckPagePermissionsAsync()
+    {
+        var tasks = new List<Task>();
+
+        // بررسی دسترسی‌ها به صورت موازی
+        tasks.Add(Task.Run(async () => _canChangeDepartment = await PermissionService.CanRunFormAsync("DEFA")));
+        tasks.Add(Task.Run(async () => _canChangeCustomerType = await PermissionService.CanRunFormAsync("CUSTEN")));
+        // برای تخفیف آیتم: اگر دسترسی TFTMLOCK وجود *دارد*، قابل ویرایش *نیست*
+        tasks.Add(Task.Run(async () => _canEditItemDiscount = !(await PermissionService.CanRunFormAsync("TFTMLOCK"))));
+
+        //دتسرسی نحوه پرداخت آزاد دارد یا نه ؟
+        tasks.Add(Task.Run(async () => _canUseAzadPay = await PermissionService.CanRunFormAsync("AZADPAY"))); // اضافه کردن این خط
+
+        // بررسی دسترسی اعلامیه‌ها بر اساس GHAYM و elamghe
+        // منطق WPF: if(GHAYM==7 && LETSGO("elamghe")) disabled = true
+        // به نظر می‌رسد اگر GHAYM==7 و دسترسی elamghe *وجود داشته باشد*، باید غیرفعال شود.
+        if (_baseknowGhaym.HasValue && _baseknowGhaym.Value == 7)
+        {
+            tasks.Add(Task.Run(async () =>
+            {
+                bool canRunElamghe = await PermissionService.CanRunFormAsync("elamghe");
+                _canChangePriceLists = canRunElamghe; // اگر دسترسی elamghe دارد، نمی‌تواند تغییر دهد
+            }));
+        }
+        else
+        {
+            _canChangePriceLists = true; // اگر GHAYM برابر 7 نیست، می‌تواند تغییر دهد
+        }
+
+        try
+        {
+            await Task.WhenAll(tasks);
+            Logger.LogInformation($"Permissions checked: Dept={_canChangeDepartment}, CustType={_canChangeCustomerType}, PriceList={_canChangePriceLists}, ItemDiscount={_canEditItemDiscount}");
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error during permission checks.");
+            // در صورت خطا، دسترسی‌ها به مقدار پیش‌فرض true باقی می‌مانند یا می‌توانید false کنید
+            Snackbar.Add("خطا در بررسی دسترسی‌های کاربر.", Severity.Warning);
+            // تنظیم پیش‌فرض‌های امن‌تر در صورت خطا
+            _canChangeDepartment = false;
+            _canChangeCustomerType = false;
+            _canChangePriceLists = false;
+            _canEditItemDiscount = false;
+        }
+        await InvokeAsync(StateHasChanged); // برای اطمینان از اعمال وضعیت Disabled/ReadOnly
+    }
+
+    private async Task LoadHeaderDataAndSetDefaultsAsync()
+    {
+        // _isLoadingLookups = true;
+        // await InvokeAsync(StateHasChanged);
+
+        try
+        {
+            var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync(); // این باید کار کند اگر AuthenticationStateProvider به درستی تزریق شده باشد
+            _currentUserPrincipal = authState.User;
+            if (_currentUserPrincipal?.Identity?.IsAuthenticated == true)
+            {
+                _currentUserId = int.TryParse(_currentUserPrincipal.FindFirst(BaseknowClaimTypes.IDD)?.Value, out var uid) ? uid : (int?)null; // این باید کار کند اگر System.Security.Claims استفاده شده باشد
+                _currentUserTfSazman = int.TryParse(_currentUserPrincipal.FindFirst(BaseknowClaimTypes.TFSAZMAN)?.Value, out var tf) ? tf : 20;
+            }
+
+            _currentCustomerHesCode = CartService.CurrentCustomer?.hes; // اصلاح شده به HES
+            if (string.IsNullOrEmpty(_currentCustomerHesCode))
+            {
+                // Snackbar.Add("مشتری انتخاب نشده یا کد حساب مشتری نامعتبر است.", Severity.Warning); // این پیام ممکن است زیاد تکرار شود اگر مشتری همیشه انتخاب شده نیست
+            }
+
+            _customerTypeList = await LookupService.GetCustomerTypesAsync() ?? new();
+            if (!string.IsNullOrEmpty(_currentCustomerHesCode))
+            {
+                var custHesInfo = await LookupService.GetCustomerHesabInfoByHesCodeAsync(_currentCustomerHesCode); // اطمینان از وجود این متد در LookupApiService
+                if (custHesInfo?.CustCod.HasValue == true)
+                {
+                    _selectedCustomerType = _customerTypeList.FirstOrDefault(c => c.Id == custHesInfo.CustCod.Value);
+                }
+            }
+            _selectedCustomerType ??= _customerTypeList.FirstOrDefault();
+
+            _departmentList = await LookupService.GetDepartmentsAsync() ?? new();
+            if (_currentUserTfSazman.HasValue)
+            {
+                _selectedDepartment = _departmentList.FirstOrDefault(d => d.Id == _currentUserTfSazman.Value);
+            }
+            _selectedDepartment ??= _departmentList.FirstOrDefault();
+
+            _paymentTermList = await LookupService.GetPaymentTermsAsync() ?? new();
+            if (_currentUserId.HasValue)
+            {
+                var defaultPaymentTermId = await LookupService.GetDefaultPaymentTermIdForUserAsync(_currentUserId.Value);
+                if (defaultPaymentTermId.HasValue)
+                {
+                    _selectedPaymentTerm = _paymentTermList.FirstOrDefault(p => p.Id == defaultPaymentTermId.Value);
+                }
+            }
+            _selectedPaymentTerm ??= _paymentTermList.FirstOrDefault();
+
+            if (_selectedPaymentTerm?.Modat > 0)
+            {
+                _agreedDuration = _selectedPaymentTerm?.Modat;
+            }
+
+            _priceLists = await LookupService.GetPriceListsAsync() ?? new();
+            if (_selectedDepartment?.Id.HasValue == true)
+            {
+                var defaultPriceListId = await LookupService.GetDefaultPriceListIdAsync(_selectedDepartment.Id.Value);
+                if (defaultPriceListId.HasValue)
+                {
+                    _selectedPriceList = _priceLists.FirstOrDefault(p => p.Id == defaultPriceListId.Value);
+                }
+            }
+            _selectedPriceList ??= _priceLists.FirstOrDefault();
+
+            _discountLists = await LookupService.GetDiscountListsAsync() ?? new();
+            if (_selectedDepartment?.Id.HasValue == true)
+            {
+                var defaultDiscountListId = await LookupService.GetDefaultDiscountListIdAsync(_selectedDepartment.Id.Value);
+                if (defaultDiscountListId.HasValue)
+                {
+                    _selectedDiscountList = _discountLists.FirstOrDefault(d => d.Id == defaultDiscountListId.Value);
+                }
+            }
+            _selectedDiscountList ??= _discountLists.FirstOrDefault();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "خطا در بارگذاری اطلاعات سربرگ سفارش در ItemGroups.");
+            Snackbar.Add("خطا در بارگذاری اطلاعات پایه سربرگ.", Severity.Error);
+        }
+        finally
+        {
+            // _isLoadingLookups = false;
+            // await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private async Task LoadDynamicPaymentTermsAndSetDefaultAsync()
+    {
+        // _isLoadingLookups = true; // یا یک فلگ لودینگ جدا برای نحوه پرداخت
+        // await InvokeAsync(StateHasChanged);
+
+        PaymentTermDto? previouslySelected = _selectedPaymentTerm; // ذخیره انتخاب فعلی (اگر وجود دارد)
+
+        try
+        {
+            int? deptId = _selectedDepartment?.Id;
+            int? discountId = _selectedDiscountList?.Id;
+
+            _paymentTermList = await LookupService.GetDynamicPaymentTermsAsync(deptId, discountId);
+
+            // تلاش برای انتخاب مجدد گزینه قبلی یا پیش‌فرض کاربر یا اولین گزینه
+            if (previouslySelected != null && _paymentTermList.Any(pt => pt.Id == previouslySelected.Id))
+            {
+                _selectedPaymentTerm = _paymentTermList.First(pt => pt.Id == previouslySelected.Id);
+            }
+            else if (_currentUserId.HasValue)
+            {
+                var userDefaultPpid = await LookupService.GetDefaultPaymentTermIdForUserAsync(_currentUserId.Value);
+                if (userDefaultPpid.HasValue && _paymentTermList.Any(pt => pt.Id == userDefaultPpid.Value))
+                {
+                    _selectedPaymentTerm = _paymentTermList.First(pt => pt.Id == userDefaultPpid.Value);
+                }
+                else
+                {
+                    _selectedPaymentTerm = _paymentTermList.FirstOrDefault();
+                }
+            }
+            else
+            {
+                _selectedPaymentTerm = _paymentTermList.FirstOrDefault();
+            }
+            // اطمینان از اینکه مقدار قبلی برای بازگرداندن صحیح است
+            _previousSelectedPaymentTerm = _selectedPaymentTerm;
+            // فراخوانی دستی متد تغییر برای اعمال منطق ReadOnly مدت و دسترسی آزاد
+            HandlePaymentTermChangeLogic(_selectedPaymentTerm);
+
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error loading dynamic payment terms in ItemGroups.");
+            Snackbar.Add("خطا در بارگذاری لیست نحوه پرداخت.", Severity.Error);
+            _paymentTermList = new List<PaymentTermDto> { new PaymentTermDto { Id = 0, Name = "آزاد", Modat = 0 } }; // حداقل گزینه آزاد
+            _selectedPaymentTerm = _paymentTermList.First();
+            HandlePaymentTermChangeLogic(_selectedPaymentTerm);
+        }
+        finally
+        {
+            //_isLoadingLookups = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private async Task OnSelectedDepartmentChangedAsync(LookupDto<int?> newDepartment)
+    {
+        _selectedDepartment = newDepartment; // به‌روزرسانی دستی فیلد
+
+        _isLoadingLookups = true;
+        await InvokeAsync(StateHasChanged);
+        try
+        {
+            // بارگذاری مجدد اعلامیه قیمت و تخفیف بر اساس دپارتمان جدید
+            if (_selectedDepartment?.Id.HasValue == true)
+            {
+                var defaultPriceListId = await LookupService.GetDefaultPriceListIdAsync(_selectedDepartment.Id.Value);
+                _selectedPriceList = defaultPriceListId.HasValue ? _priceLists.FirstOrDefault(p => p.Id == defaultPriceListId.Value) : _priceLists.FirstOrDefault();
+
+                var defaultDiscountListId = await LookupService.GetDefaultDiscountListIdAsync(_selectedDepartment.Id.Value);
+                _selectedDiscountList = defaultDiscountListId.HasValue ? _discountLists.FirstOrDefault(d => d.Id == defaultDiscountListId.Value) : _discountLists.FirstOrDefault();
+            }
+            else
+            {
+                _selectedPriceList = _priceLists.FirstOrDefault();
+                _selectedDiscountList = _discountLists.FirstOrDefault();
+            }
+
+            // *** سپس بارگذاری مجدد نحوه پرداخت ***
+            await LoadDynamicPaymentTermsAndSetDefaultAsync();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error updating price/discount lists on department change.");
+            Snackbar.Add("خطا در به‌روزرسانی لیست‌های قیمت/تخفیف.", Severity.Warning);
+        }
+        finally
+        {
+            _isLoadingLookups = false;
+            UpdateHeaderValidationState();
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private void OnSelectedPaymentTermChanged(PaymentTermDto? newValue)
+    {
+        if (newValue?.Id == 0 && !_canUseAzadPay)
+        {
+            Snackbar.Add("شما اجازه انتخاب نحوه پرداخت آزاد را ندارید.", Severity.Error);
+            if (_selectedPaymentTerm?.Id != _previousSelectedPaymentTerm?.Id)
+            {
+                _selectedPaymentTerm = _previousSelectedPaymentTerm;
+                _agreedDuration = _selectedPaymentTerm?.Modat;
+                _isDurationReadOnly = (_selectedPaymentTerm?.Id != 0);
+            }
+            StateHasChanged();
+            UpdateHeaderValidationState(); // بررسی مجدد پس از بازگرداندن
+            return;
+        }
+
+        _previousSelectedPaymentTerm = _selectedPaymentTerm;
+        _selectedPaymentTerm = newValue;
+        _agreedDuration = _selectedPaymentTerm?.Modat;
+        _isDurationReadOnly = (_selectedPaymentTerm?.Id != 0);
+        UpdateHeaderValidationState();
+
+        /////HandlePaymentTermChangeLogic(newPaymentTerm); // newPaymentTerm همان _selectedPaymentTerm است
+
+
+    }
+
+    private async Task OnSelectedDiscountListChangedAsync(DiscountListDto? newDiscountList)
+    {
+        _selectedDiscountList = newDiscountList;
+        _isLoadingLookups = true;
+        await InvokeAsync(StateHasChanged);
+        try
+        {
+            await LoadDynamicPaymentTermsAndSetDefaultAsync(); // این دیگر _isLoadingLookups را تغییر نمی‌دهد
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error updating price/discount lists on department change.");
+            Snackbar.Add("خطا در به‌روزرسانی لیست‌ اعلامیه تخفیف.", Severity.Warning);
+        }
+        finally
+        {
+            _isLoadingLookups = false; // فقط اینجا false شود
+            UpdateHeaderValidationState();
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private void HandlePaymentTermChangeLogic(PaymentTermDto? currentSelection)
+    {
+        if (currentSelection == null && _baseknowGhaym == 7)
+        {
+            Snackbar.Add("لطفاً نحوه پرداختی را انتخاب نمایید.", Severity.Warning);
+            // اینجا می‌توانید انتخاب را به گزینه قبلی برگردانید اگر _previousSelectedPaymentTerm معتبر است
+            // یا کاربر را مجبور به انتخاب کنید.
+        }
+
+        // بررسی دسترسی "AZADPAY"
+        if (currentSelection?.Id == 0 && !_canUseAzadPay)
+        {
+            Snackbar.Add("شما اجازه انتخاب نحوه پرداخت آزاد را ندارید.", Severity.Error);
+            // برگرداندن به انتخاب قبلی معتبر
+            _selectedPaymentTerm = _previousSelectedPaymentTerm ?? _paymentTermList.FirstOrDefault(pt => pt.Id != 0);
+            // اگر _previousSelectedPaymentTerm هم null بود، اولین گزینه غیر آزاد را انتخاب کن
+            _selectedPaymentTerm ??= _paymentTermList.FirstOrDefault(pt => pt.Id != 0);
+
+            // مجددا منطق را با انتخاب جدید (غیر آزاد) اجرا کن
+            if (_selectedPaymentTerm != null) HandlePaymentTermChangeLogic(_selectedPaymentTerm);
+            return; // خروج از متد
+        }
+
+        if (currentSelection?.Id == 0)
+        {
+            if (currentSelection?.Modat > 0)
+            {
+                _agreedDuration = currentSelection?.Modat;
+            }
+        }
+        else
+        {
+            _agreedDuration = currentSelection?.Modat;
+        }
+
+        _isDurationReadOnly = (currentSelection?.Id != 0);
+
+        // ذخیره انتخاب فعلی به عنوان انتخاب قبلی برای دفعه بعد (اگر معتبر بود)
+        if (currentSelection != null && (currentSelection.Id != 0 || _canUseAzadPay))
+        {
+            _previousSelectedPaymentTerm = currentSelection;
+        }
+
+        // GoGheymateUpdator(); // اگر لازم است
+        // IF_NOT_IS_AZAD_Then_Lock(); // اگر لازم است
+    }
+
+    private async Task<IEnumerable<LookupDto<int?>>> SearchCustomerTypes(string value)
+    {
+        await Task.Delay(5);
+        if (string.IsNullOrEmpty(value)) return _customerTypeList;
+        return _customerTypeList.Where(c => c.Name != null && c.Name.Contains(value, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private async Task<IEnumerable<LookupDto<int?>>> SearchDepartments(string value)
+    {
+        await Task.Delay(5);
+        if (string.IsNullOrEmpty(value)) return _departmentList;
+        return _departmentList.Where(d => d.Name != null && d.Name.Contains(value, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private async Task<IEnumerable<PaymentTermDto>> SearchPaymentTerms(string value)
+    {
+        await Task.Delay(5);
+        if (string.IsNullOrEmpty(value)) return _paymentTermList;
+        return _paymentTermList.Where(p => p.Name != null && p.Name.Contains(value, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private async Task<IEnumerable<PriceListDto>> SearchPriceLists(string value)
+    {
+        await Task.Delay(5);
+        if (string.IsNullOrEmpty(value)) return _priceLists;
+        return _priceLists.Where(p => p.Name != null && p.Name.Contains(value, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private async Task<IEnumerable<DiscountListDto>> SearchDiscountLists(string value)
+    {
+        await Task.Delay(5);
+        if (string.IsNullOrEmpty(value)) return _discountLists;
+        return _discountLists.Where(d => d.Name != null && d.Name.Contains(value, StringComparison.OrdinalIgnoreCase));
     }
 
     private async Task LoadUnitsAsync()
     {
         try
         {
-            _availableUnits = await LookupService.GetUnitsAsync(); // فراخوانی متد جدید سرویس
+            _availableUnits = await LookupService.GetUnitsAsync();
             if (_availableUnits == null)
             {
                 Snackbar.Add("خطا در بارگذاری لیست واحدها.", Severity.Warning);
@@ -326,7 +985,7 @@
         }
     }
 
-    public void Dispose() { }
+    public void Dispose() { } // پیاده‌سازی اولیه
 
     private async Task LoadGroupsAsync()
     {
@@ -352,12 +1011,11 @@
         if (_selectedGroup == null || _isItemsLoading) return;
         _isItemsLoading = true;
         _itemsErrorMessage = null;
-        await InvokeAsync(StateHasChanged); // Show loading indicator
+        await InvokeAsync(StateHasChanged);
 
         try
         {
             Logger.LogInformation("Loading items page {Page} for group {GroupCode}, Search: '{ItemSearch}'", _currentPage, _selectedGroup.CODE, _itemSearchTerm);
-            // <<< استفاده از ItemDisplayDto >>>
             var pagedResult = await ItemGroupService.GetItemsByGroupAsync(_selectedGroup.CODE, _currentPage, _pageSize, _itemSearchTerm);
             if (pagedResult != null)
             {
@@ -368,7 +1026,7 @@
             {
                 _itemsErrorMessage = "خطا در بارگذاری کالاها.";
                 Snackbar.Add(_itemsErrorMessage, Severity.Warning);
-                _items = new List<ItemDisplayDto>(); // Initialize to empty list
+                _items = new List<ItemDisplayDto>();
                 _totalItemCount = 0;
             }
         }
@@ -377,13 +1035,13 @@
             _itemsErrorMessage = "خطای پیش‌بینی نشده در بارگذاری کالاها.";
             Logger.LogError(ex, "Error loading items for group {GroupCode}", _selectedGroup.CODE);
             Snackbar.Add(_itemsErrorMessage, Severity.Error);
-            _items = new List<ItemDisplayDto>(); // Initialize to empty list
+            _items = new List<ItemDisplayDto>();
             _totalItemCount = 0;
         }
         finally
         {
             _isItemsLoading = false;
-            await InvokeAsync(StateHasChanged); // Update UI with results or error message
+            await InvokeAsync(StateHasChanged);
         }
     }
 
@@ -391,12 +1049,10 @@
     {
         if (group == null || _isItemsLoading) return;
         _selectedGroup = group;
-        // *** CartService.SetCurrentAnbarCode removed ***
         Logger.LogInformation("Selected Group: {N}, Anbar: {A}", group.NAMES, group.ANBAR);
         _currentPage = 1; _totalItemCount = 0; _items = null; _itemSearchTerm = string.Empty;
-        await LoadItemsForSelectedGroupAsync(); // Now awaited correctly
+        await LoadItemsForSelectedGroupAsync();
     }
-
 
     private async Task HandleItemSearchDebounced()
     {
@@ -421,22 +1077,49 @@
         if (_itemGroups == null) return Enumerable.Empty<TCODE_MENUITEM>();
         if (string.IsNullOrWhiteSpace(_groupSearchTerm)) return _itemGroups;
         try { return _itemGroups.Where(g => g.NAMES != null && g.NAMES.Contains(_groupSearchTerm, StringComparison.OrdinalIgnoreCase)); }
-        catch { return _itemGroups; } // Basic error handling
+        catch { return _itemGroups; }
     }
 
-    // Add item from List view
-    private void AddItemToCartFromList(ItemDisplayDto item, int quantity)
+    private async void AddItemToCartFromList(ItemDisplayDto item, int quantity)
     {
+        UpdateHeaderValidationState(); // اطمینان از آخرین وضعیت اعتبار سنجی
+        if (!_areHeadersValid)
+        {
+            Snackbar.Add($"لطفاً ابتدا موارد سربرگ سفارش را تکمیل کنید: {string.Join("، ", _headerValidationMessages)}", Severity.Error, config => { config.VisibleStateDuration = 7000; });
+            return;
+        }
+
         if (_selectedGroup == null)
         {
             Snackbar.Add("خطا: گروه کالا انتخاب نشده است.", Severity.Error);
+            Logger.LogWarning("AddItemToCartFromList called but _selectedGroup is null.");
             return;
         }
-        // Pass the AnbarCode from the currently selected group
-        CartService.AddItem(item, quantity, item.VahedCode, _selectedGroup.ANBAR, _availableUnits ?? new List<TCOD_VAHEDS>());
-        Snackbar.Add($"{quantity} عدد '{item.NAME}' به سبد اضافه شد.", Severity.Success);
-    }
 
-    // HandleItemAddedToCart removed as it's handled within ItemCard now
-    // private void HandleItemAddedToCart((ItemDisplayDto Item, int Quantity, int SelectedUnitCode) args) { ... }
+        if (item == null)
+        {
+            Snackbar.Add("خطا: اطلاعات کالا نامعتبر است.", Severity.Error);
+            Logger.LogWarning("AddItemToCartFromList called with null item.");
+            return;
+        }
+        var unitInfoForSelectedItem = new List<UnitInfo>
+        {
+            new UnitInfo {
+                VahedCode = item.VahedCode,
+                VahedName = item.VahedName ?? "واحد اصلی",
+                Nesbat = 1.0
+            }
+        };
+
+        await CartService.AddItemAsync(
+                 item,
+                Convert.ToDecimal(quantity),
+                item.VahedCode,
+                unitInfoForSelectedItem,
+                _selectedGroup.ANBAR,
+                item.MABL_F,
+                0
+        );
+        Snackbar.Add($"{quantity} عدد '{item.NAME}' ({item.VahedName ?? "واحد اصلی"}) به سبد اضافه شد.", Severity.Success);
+    }
 }

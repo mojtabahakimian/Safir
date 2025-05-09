@@ -8,5 +8,8 @@
         public const string USER_HES = "HES";
         public const string PORID = "PORID";
         public const string erjabe = "erjabe";
+
+        public const string TFSAZMAN = "TFSAZMAN"; // کد واحد سازمانی (دپارتمان) کاربر
+        public const string SHIFT = "SHIFT";       // کد شیفت کاری کاربر
     }
 }

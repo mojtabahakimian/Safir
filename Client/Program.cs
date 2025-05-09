@@ -21,8 +21,6 @@ builder.Services.AddScoped(sp => new HttpClient { BaseAddress = new Uri(builder.
 // --- End HttpClient ---
 
 #region Mine
-
-
 // مسیر: Client/Program.cs
 builder.Services.AddSingleton<AppState>();
 
@@ -50,6 +48,11 @@ builder.Services.AddScoped<ItemGroupApiService>();
 builder.Services.AddScoped<ShoppingCartService>();
 
 builder.Services.AddScoped<ProformaApiService>();
+
+// --- ثبت سرویس تنظیمات کلاینت ---
+builder.Services.AddScoped<ClientAppSettingsService>(); // Scoped مناسب است
+
+builder.Services.AddScoped<PermissionApiService>();
 #endregion
 
 

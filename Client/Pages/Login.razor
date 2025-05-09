@@ -46,7 +46,7 @@
                           Class="mb-4"
                           Adornment="Adornment.Start"
                           AdornmentIcon="@Icons.Material.Outlined.PersonOutline"
-            @onkeyup="HandleKeyUp" 
+            @onkeyup="HandleKeyUp"
                           Style="min-height: 50px;" /> @* <-- اضافه کردن استایل *@
 
             @* Password Field - اضافه کردن onkeyup و style *@
@@ -66,7 +66,7 @@
                           AdornmentEnd="@(isShowPassword ? Icons.Material.Filled.VisibilityOff : Icons.Material.Filled.Visibility)"
                           OnAdornmentClick="@TogglePasswordVisibility"
                           AdornmentAriaLabel="@(isShowPassword ? "مخفی کردن رمز" : "نمایش رمز")"
-            @onkeyup="HandleKeyUp" 
+            @onkeyup="HandleKeyUp"
                           Style="min-height: 50px;" /> @* <-- اضافه کردن استایل *@
 
             @* Login Button - بدون تغییر *@
@@ -82,12 +82,12 @@
                        Class="rounded-lg">
                 @if (isProcessing)
                 {
-                        <MudProgressCircular Indeterminate="true" Size="Size.Small" Style="color: inherit;" />
-                        <MudText Class="ml-2">در حال احراز هویت...</MudText>
+                    <MudProgressCircular Indeterminate="true" Size="Size.Small" Style="color: inherit;" />
+                    <MudText Class="ml-2">در حال احراز هویت...</MudText>
                 }
                 else
                 {
-                        <span>ورود</span>
+                    <span>ورود</span>
                 }
             </MudButton>
         </MudForm>

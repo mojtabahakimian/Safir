@@ -1,5 +1,9 @@
 ﻿using Dapper;
+using Safir.Shared.Models;
 using Safir.Shared.Models.Kala;
+using Safir.Shared.Models.Kharid;
+using Safir.Shared.Models.Taarif;
+using Safir.Shared.Models.User_Model;
 using System.Data;
 
 namespace Safir.Shared.Interfaces
@@ -40,6 +44,22 @@ namespace Safir.Shared.Interfaces
 
 
         Task<SqlMapper.GridReader> DoGetDataSQLAsyncMultiple(string sql, object? parameters = null);
+
+
+        Task<UserDefaultDep?> GetUserDefaultDepAsync(int userId); // متد جدید
+
+        Task<IEnumerable<LookupDto<int>>> GetCustomerKindsAsync();
+        Task<CustomerHesabInfo?> GetCustomerHesabInfoByHesCodeAsync(string customerHesCode);
+        Task<IEnumerable<LookupDto<int>>> GetDepartmentsAsync();
+        Task<IEnumerable<PaymentTermDto>> GetPaymentTermsAsync();
+        Task<int?> GetDefaultPaymentTermIdForUserAsync(int userId); // از SALA_DTL.DEFAULT_NAHVA
+        Task<IEnumerable<PriceListDto>> GetPriceListsAsync();
+        Task<int?> GetDefaultPriceListIdAsync(long currentDate, int departmentId);
+        Task<IEnumerable<DiscountListDto>> GetDiscountListsAsync();
+        Task<int?> GetDefaultDiscountListIdAsync(long currentDate, int departmentId);
+
+        Task<IEnumerable<PaymentTermDto>> GetDynamicPaymentTermsAsync(int? departmentId, int? selectedDiscountListId, long currentDate);
+        Task<int?> GetLatestDiscountListIdAsync(long currentDate, int departmentId); // برای کمک به یافتن PEID مناسب
 
 
     }

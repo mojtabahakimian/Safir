@@ -11,5 +11,8 @@ namespace Safir.Shared.Models.User_Model
         public bool Successful { get; set; }
         public string Error { get; set; }
         public string Token { get; set; } // The JWT Token
+
+        public int? TFSAZMAN { get; set; }
+        public int? SHIFT { get; set; }
     }
 }

@@ -210,4 +210,52 @@ public class CustomerApi
         }
     }
 
+    // --- START: Code to Add ---
+    /// <summary>
+    /// وضعیت مسدودی حساب مشتری را از سرور استعلام می‌کند.
+    /// </summary>
+    /// <param name="hesabCode">کد حساب مشتری (HES)</param>
+    /// <returns>True اگر مشتری مسدود باشد، False در غیر این صورت یا در صورت بروز خطا.</returns>
+    public async Task<bool> CheckCustomerBlockedAsync(string hesabCode)
+    {
+        // بررسی اولیه کد حساب در سمت کلاینت
+        if (string.IsNullOrWhiteSpace(hesabCode))
+        {
+            _logger.LogWarning("CheckCustomerBlockedAsync called with empty hesabCode.");
+            return false; // پیش‌فرض: مسدود نیست اگر کد نامعتبر است
+        }
+
+        // ساخت آدرس API با استفاده از EscapeDataString برای امنیت
+        string requestUri = $"api/customers/{Uri.EscapeDataString(hesabCode)}/is-blocked";
+        _logger.LogInformation("Client API Call: Checking block status from {RequestUri}", requestUri);
+
+        try
+        {
+            // فراخوانی API و دریافت مستقیم نتیجه boolean
+            // GetFromJsonAsync در صورت موفقیت (کد 200 OK) مقدار boolean را برمی‌گرداند
+            bool isBlocked = await _httpClient.GetFromJsonAsync<bool>(requestUri);
+            _logger.LogInformation("Client API Response: Block status for {HesabCode}: {IsBlocked}", hesabCode, isBlocked);
+            return isBlocked;
+        }
+        catch (HttpRequestException httpEx)
+        {
+            // خطاهای HTTP مانند 404 (یافت نشد) یا 500 (خطای سرور)
+            _logger.LogError(httpEx, "Client API Error: HTTP error checking block status for {HesabCode}. Status: {StatusCode}", hesabCode, httpEx.StatusCode);
+            // در صورت بروز خطا، فرض می‌کنیم مسدود نیست تا جلوی کار کاربر بیهوده گرفته نشود،
+            // اما خطا را لاگ می‌کنیم. می‌توان پیام خطا به کاربر نشان داد.
+            // Snackbar.Add("خطا در بررسی وضعیت مسدودی حساب.", Severity.Warning);
+            return false;
+        }
+        catch (System.Text.Json.JsonException jsonEx) // خطای احتمالی در تبدیل پاسخ JSON
+        {
+            _logger.LogError(jsonEx, "Client API Error: JSON parsing error checking block status for {HesabCode}.", hesabCode);
+            return false;
+        }
+        catch (Exception ex) // سایر خطاهای پیش‌بینی نشده
+        {
+            _logger.LogError(ex, "Client API Error: Generic error checking block status for {HesabCode}", hesabCode);
+            return false;
+        }
+    }
+    // --- END: Code to Add ---
 }

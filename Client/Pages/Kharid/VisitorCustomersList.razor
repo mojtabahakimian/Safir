@@ -122,26 +122,20 @@
                             <MudButton Variant="Variant.Filled"
                                        StartIcon="@Icons.Material.Filled.ReceiptLong"
                                        Color="Color.Secondary"
-                                       Size="Size.Small"
+                                       Size="Size.Small"  Disabled="@_isCheckingBlock"
                                        OnClick="@(() => ShowCustomerStatement(customer.hes))"
-                                       Disabled="@string.IsNullOrWhiteSpace(customer.hes)">
+                                      >
                                 صورت حساب
                             </MudButton>
-
-                      @*       <MudButton Variant="Variant.Filled"
-                                       StartIcon="@Icons.Material.Filled.AddShoppingCart"
-                                       Color="Color.Success"
-                                       Size="Size.Small"
-                                       Disabled="@string.IsNullOrWhiteSpace(customer.hes)">
-                                ثبت سفارش
-                            </MudButton> *@
                             <MudButton Variant="Variant.Filled" Color="Color.Success" Size="Size.Small"
-                                       StartIcon="@Icons.Material.Filled.ShoppingCartCheckout"
+                                       StartIcon="@Icons.Material.Filled.ShoppingCartCheckout" Disabled="@_isCheckingBlock"
                                        OnClick="@(() => StartOrderForCustomer(customer))">
-                                @* customer نام متغیر حلقه است *@
                                 ثبت سفارش
                             </MudButton>
-
+                            @if (_isCheckingBlock)
+                            {
+                                <MudProgressCircular Size="Size.Small" Indeterminate="true" Color="Color.Secondary" Class="ml-1" Style="vertical-align: middle;" />
+                            }
                         </MudStack>
                     </MudCardActions>
                 </MudCard>

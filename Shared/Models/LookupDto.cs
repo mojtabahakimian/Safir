@@ -1,10 +1,13 @@
 ﻿namespace Safir.Shared.Models
 {
     // مدل عمومی برای lookup های ساده (Id, Name)
-    public class LookupDto<TKey>
+    public class LookupDto<TValue>
     {
-        public TKey Id { get; set; }
+        public TValue Id { get; set; }
         public string Name { get; set; }
+        // سازنده بدون پارامتر برای deserialization
+        public LookupDto() { }
+        public LookupDto(TValue id, string name) { Id = id; Name = name; }
     }
 
     // مدل برای شهرها که شامل ParentId (کد استان) است

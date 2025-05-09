@@ -244,5 +244,80 @@ namespace Safir.Server.Controllers
                 return StatusCode(StatusCodes.Status500InternalServerError, "خطا در دریافت موجودی کالا.");
             }
         }
+
+
+        [HttpGet("{itemCode}/units")]
+        public async Task<ActionResult<List<UnitInfo>>> GetItemUnits(string itemCode)
+        {
+            if (string.IsNullOrEmpty(itemCode))
+            {
+                return BadRequest("کد کالا نمی‌تواند خالی باشد.");
+            }
+
+            try
+            {
+                // استفاده از پارامتر برای امنیت و جلوگیری از SQL Injection
+                var parameters = new { ItemCode = itemCode };
+
+                // کوئری برای واحد اصلی کالا از STUF_DEF
+                // نسبت واحد اصلی به خودش همیشه 1 است
+                string primaryUnitSql = @"
+                SELECT
+                    sd.VAHED AS VahedCode,
+                    tv.NAMES AS VahedName,
+                    1.0 AS Nesbat
+                FROM dbo.STUF_DEF sd
+                INNER JOIN dbo.TCOD_VAHEDS tv ON sd.VAHED = tv.CODE
+                WHERE sd.CODE = @ItemCode;";
+
+                // کوئری برای واحدهای فرعی از MODULE_D
+                string subUnitsSql = @"
+                SELECT
+                    md.VAHED AS VahedCode,
+                    tv.NAMES AS VahedName,
+                    md.NESBAT AS Nesbat
+                FROM dbo.MODULE_D md
+                INNER JOIN dbo.TCOD_VAHEDS tv ON md.VAHED = tv.CODE
+                WHERE md.CODE = @ItemCode;";
+
+                var primaryUnitList = (await _dbService.DoGetDataSQLAsync<UnitInfo>(primaryUnitSql, parameters)).ToList();
+                var subUnitsList = (await _dbService.DoGetDataSQLAsync<UnitInfo>(subUnitsSql, parameters)).ToList();
+
+                var combinedUnits = new List<UnitInfo>();
+                if (primaryUnitList.Any())
+                {
+                    combinedUnits.AddRange(primaryUnitList);
+                }
+                combinedUnits.AddRange(subUnitsList);
+
+                // حذف موارد تکراری بر اساس کد واحد و انتخاب اولین مورد (اولویت با واحد اصلی اگر تکراری بود)
+                // و مرتب‌سازی بر اساس نسبت (مثلاً از کوچکترین واحد)
+                var itemSpecificUnits = combinedUnits
+                    .GroupBy(u => u.VahedCode)
+                    .Select(g => new UnitInfo
+                    {
+                        VahedCode = g.Key,
+                        VahedName = g.First().VahedName, // فرض بر اینکه نام برای یک کد واحد یکسان است
+                        Nesbat = g.First().Nesbat
+                    })
+                    .OrderBy(u => u.Nesbat)
+                    .ToList();
+
+                if (!itemSpecificUnits.Any() && !primaryUnitList.Any()) // اگر واحد اصلی هم تعریف نشده بود
+                {
+                    // اگر هیچ واحدی برای کالا یافت نشد، می‌توان یک واحد پیش‌فرض عمومی (مثلا "عدد" با کد فرضی و نسبت 1) برگرداند
+                    // یا لیست خالی که در کلاینت مدیریت شود. فعلا لیست خالی برمیگردانیم.
+                    _logger.LogWarning("هیچ واحدی (اصلی یا فرعی) برای کالای {ItemCode} یافت نشد.", itemCode);
+                }
+
+
+                return Ok(itemSpecificUnits);
+            }
+            catch (System.Exception ex)
+            {
+                _logger.LogError(ex, "خطا در دریافت واحدهای کالا برای {ItemCode}", itemCode);
+                return StatusCode(500, "خطای سرور در هنگام دریافت واحدهای کالا.");
+            }
+        }
     }
 }

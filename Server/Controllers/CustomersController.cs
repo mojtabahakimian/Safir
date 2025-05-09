@@ -51,8 +51,17 @@ namespace Safir.Server.Controllers
         // --- GetAccountCodesForUserAsync remains the same ---
         private async Task<(int NKol, int Number)?> GetAccountCodesForUserAsync()
         {
-            // ... (Implementation from previous analysis - unchanged) ...
-            int? defaultKol = await _appSettingsService.GetDefaultBedehkarKolAsync();
+            int? defaultKol = null; //await _appSettingsService.GetDefaultBedehkarKolAsync();
+            var sazmanSettings = await _appSettingsService.GetSazmanSettingsAsync();
+            if (sazmanSettings?.BEDEHKAR != null)
+            {
+                defaultKol = (int?)sazmanSettings.BEDEHKAR;
+            }
+            else
+            {
+                _logger.LogWarning("Could not retrieve Default Bedehkar Kol from SAZMAN settings (SAZMAN object or BEDEHKAR field is null).");
+            }
+
             int defaultNumber = 1; // Default MOIN is 1 based on WPF
 
             var userIdString = User.FindFirstValue(ClaimTypes.NameIdentifier);
@@ -442,8 +451,7 @@ namespace Safir.Server.Controllers
             }
         }
 
-
-        #region MyRegion
+             
         // --- متد کمکی برای دریافت داده (برای جلوگیری از تکرار کد) ---
         private async Task<IEnumerable<QDAFTARTAFZIL2_H>?> FetchStatementDataAsync(string hesabCode, long? startDate, long? endDate)
         {
@@ -470,7 +478,6 @@ namespace Safir.Server.Controllers
             }
 
         }
-
 
         // --- Endpoint جدید برای دانلود PDF ---
         [HttpGet("{hesabCode}/statement/pdf")]
@@ -542,7 +549,60 @@ namespace Safir.Server.Controllers
             }
         }
 
+        // --- START: Code to Add ---
+        /// <summary>
+        /// بررسی می‌کند که آیا حساب مشتری مشخص شده مسدود است یا خیر.
+        /// </summary>
+        /// <param name="hesCode">کد حساب مشتری (HES)</param>
+        /// <returns>True اگر مسدود باشد، False در غیر این صورت.</returns>
+        [HttpGet("{hesCode}/is-blocked")] // آدرس API: GET api/customers/{hesCode}/is-blocked
+        [ProducesResponseType(typeof(bool), StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(StatusCodes.Status500InternalServerError)]
+        public async Task<ActionResult<bool>> IsCustomerBlocked(string hesCode)
+        {
+            // 1. بررسی ورودی
+            if (string.IsNullOrWhiteSpace(hesCode))
+            {
+                _logger.LogWarning("API: IsCustomerBlocked called with empty hesCode.");
+                return BadRequest("کد حساب مشتری (hesCode) الزامی است.");
+            }
 
-        #endregion
+            _logger.LogInformation("API: Checking block status for HES: {HesCode}", hesCode);
+
+            // 2. تعریف کوئری SQL بر اساس منطق WPF
+            // این کوئری چک می‌کند آیا رکوردی برای این HES در جدول BLOCK_CUSTOMER وجود دارد
+            // که ENDBLK آن 0 باشد (فرض بر این است که 0 به معنی فعال بودن مسدودی است).
+            // ISNULL(ENDBLK, 0) = 0 همچنین رکوردهایی که ENDBLK آن‌ها NULL است را به عنوان مسدود در نظر می‌گیرد.
+            const string sql = @"
+                SELECT CASE WHEN EXISTS (
+                    SELECT 1
+                    FROM dbo.BLOCK_CUSTOMER
+                    WHERE HES = @HesCode AND ISNULL(ENDBLK, 0) = 0
+                ) THEN CAST(1 AS BIT) ELSE CAST(0 AS BIT) END";
+
+            try
+            {
+                // 3. استفاده از پارامتر برای جلوگیری از SQL Injection
+                var parameters = new { HesCode = hesCode };
+
+                // 4. اجرای کوئری با استفاده از سرویس دیتابیس
+                // متد DoGetDataSQLAsyncSingle<bool> انتظار یک نتیجه boolean دارد
+                bool isBlocked = await _dbService.DoGetDataSQLAsyncSingle<bool>(sql, parameters);
+
+                _logger.LogInformation("API: Block status result for HES {HesCode}: {IsBlocked}", hesCode, isBlocked);
+
+                // 5. بازگرداندن نتیجه
+                return Ok(isBlocked); // True: مسدود است, False: مسدود نیست
+            }
+            catch (Exception ex)
+            {
+                // 6. ثبت خطا در صورت بروز مشکل
+                _logger.LogError(ex, "API: Error checking block status for HES: {HesCode}", hesCode);
+                // بازگرداندن خطای عمومی سرور
+                return StatusCode(StatusCodes.Status500InternalServerError, "خطای داخلی سرور هنگام بررسی وضعیت مسدودی مشتری رخ داد.");
+            }
+        }
+        // --- END: Code to Add ---
     }
 }

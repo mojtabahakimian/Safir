@@ -19,18 +19,21 @@ namespace Safir.Client.Services
         // Using Blazored.LocalStorage for easy local storage access
         private readonly ILocalStorageService _localStorage;
         private const string AuthTokenKey = "authToken"; // Key to store token in local storage
+        private readonly ShoppingCartService _shoppingCartService;
 
         private readonly AppState _appState;
 
         public AuthService(HttpClient httpClient,
                            AuthenticationStateProvider authenticationStateProvider,
                            ILocalStorageService localStorage,
-                           AppState appState)
+                           AppState appState,
+                           ShoppingCartService shoppingCartService)
         {
             _httpClient = httpClient;
             _authenticationStateProvider = authenticationStateProvider;
             _localStorage = localStorage;
             _appState = appState;
+            _shoppingCartService = shoppingCartService;
         }
 
         public async Task<LoginResult> Login(LoginRequest loginRequest)
@@ -99,15 +102,39 @@ namespace Safir.Client.Services
 
         public async Task Logout()
         {
-            // Remove token from local storage
+            // 1. پاک کردن توکن احراز هویت از localStorage
             await _localStorage.RemoveItemAsync(AuthTokenKey);
 
-            // Notify AuthenticationStateProvider
+            // 2. اطلاع به AuthenticationStateProvider
             ((ApiAuthenticationStateProvider)_authenticationStateProvider).MarkUserAsLoggedOut();
 
-            // Clear default authorization header
+            // 3. پاک کردن هدر پیش‌فرض Authorization از HttpClient
             _httpClient.DefaultRequestHeaders.Authorization = null;
+
+            // ********************************************************************
+            // ******** شروع تغییرات: پاک کردن اطلاعات سبد خرید و مشتری ********
+            // ********************************************************************
+            // 4. پاک کردن اطلاعات مشتری انتخاب شده از ShoppingCartService (و localStorage مربوط به آن)
+            await _shoppingCartService.SetCustomerAsync(null);
+            // این متد داخل خودش localStorage مربوط به مشتری را پاک می‌کند
+            // و اگر سبد آیتم داشت، ClearCartAsync را هم صدا می‌زند.
+
+            // 5. پاک کردن آیتم‌های سبد خرید از ShoppingCartService (و localStorage مربوط به آن)
+            // اگر SetCustomerAsync(null) به طور خودکار سبد را پاک نمی‌کند یا می‌خواهید صریح‌تر باشد:
+            await _shoppingCartService.ClearCartAsync();
+            // این متد آیتم‌ها را از حافظه و localStorage پاک می‌کند.
+
+            // 6. پاک کردن اطلاعات کاربر از AppState (اختیاری، بستگی به نیاز شما)
+            _appState.SetUUSER(string.Empty); // یا null
+            _appState.SetUSERCOD(0);
+            _appState.SetUGRP(0);
+            _appState.SetSettings(null); // اگر تنظیمات خاص کاربر دارید
+            // ********************************************************************
+            // ********* پایان تغییرات *********
+            // ********************************************************************
+
         }
+
 
         public async Task<string?> GetTokenAsync()
         {

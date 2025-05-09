@@ -17,22 +17,18 @@ using System.Text; // For JWT key encoding
 [ApiController]
 public class AuthController : ControllerBase
 {
-    private readonly IUserService _userService;
+
+    private readonly IUserService _userService; // رابط کاربری برای سرویس کاربر
+    private readonly IDatabaseService _dbService; // رابط کاربری برای سرویس دیتابیس
     private readonly IConfiguration _configuration;
 
-    //private readonly DatabaseService dbms;
-    //public AuthController(DatabaseService dbService, IUserService userService, IConfiguration configuration)
-    //{
-    //    dbms = dbService;
-    //    _userService = userService;
-    //    _configuration = configuration;
-    //}
-
-    public AuthController(IUserService userService, IConfiguration configuration)
+    public AuthController(IUserService userService, IDatabaseService dbService, IConfiguration configuration)
     {
         _userService = userService;
+        _dbService = dbService; // تزریق سرویس دیتابیس
         _configuration = configuration;
     }
+
 
     [HttpPost("login")]
     public async Task<ActionResult<LoginResult>> Login([FromBody] LoginRequest request)
@@ -72,15 +68,30 @@ public class AuthController : ControllerBase
             return Unauthorized(new LoginResult { Successful = false, Error = "نام کاربری یا رمز عبور صحیح نیست." });
         }
 
+        UserDefaultDep? defaultDep = null;
+        try
+        {
+            defaultDep = await _dbService.GetUserDefaultDepAsync(user.IDD);
+        }
+        catch (Exception ex)
+        {
+            // لاگ کردن خطا - اطلاعات واحد و شیفت حیاتی نیستند و لاگین می‌تواند ادامه یابد
+            Console.WriteLine($"Error fetching UserDefaultDep for UserID {user.IDD}: {ex.Message}");
+        }
+
+
+
         // --- Authentication Successful ---
         // Generate JWT Token
-        var token = GenerateJwtToken(user);
+        var token = GenerateJwtToken(user, defaultDep);
 
 
         return Ok(new LoginResult { Successful = true, Token = token });
     }
 
-    private string GenerateJwtToken(SALA_DTL user)
+
+
+    private string GenerateJwtToken(SALA_DTL user, UserDefaultDep? defaultDep)
     {
         var jwtSettings = _configuration.GetSection("Jwt");
         var securityKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSettings["Key"]
@@ -111,6 +122,19 @@ public class AuthController : ControllerBase
             new Claim(BaseknowClaimTypes.PORID, _PORID_ ?? string.Empty), // معین معادل یا همون کد حسابداری این کاربر در سیستم
             new Claim(BaseknowClaimTypes.erjabe, _erjabe_ ?? string.Empty), //توی اتوماسیون فاکتور برای چه کاربری ارسال بشه : کد اون کاربر
         };
+
+        // اضافه کردن Claim های جدید اگر مقادیر آنها موجود باشد
+        if (defaultDep != null)
+        {
+            if (defaultDep.TFSAZMAN.HasValue)
+            {
+                claims.Add(new Claim(BaseknowClaimTypes.TFSAZMAN, defaultDep.TFSAZMAN.Value.ToString()));
+            }
+            if (defaultDep.SHIFT.HasValue)
+            {
+                claims.Add(new Claim(BaseknowClaimTypes.SHIFT, defaultDep.SHIFT.Value.ToString()));
+            }
+        }
 
         var tokenDescriptor = new SecurityTokenDescriptor
         {

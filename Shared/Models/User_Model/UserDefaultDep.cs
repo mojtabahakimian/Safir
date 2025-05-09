@@ -10,6 +10,8 @@ namespace Safir.Shared.Models.User_Model
     {
         public int? TFSAZMAN { get; set; }
         public int? SHIFT { get; set; }
+        public int USERID { get; set; } // این فیلد برای کوئری و مدل مهم است
+
     }
 
 }
