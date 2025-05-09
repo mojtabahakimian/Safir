@@ -7,6 +7,8 @@ using System; // For Exception
 using Safir.Shared.Models.Kala;
 using Safir.Shared.Models.Kharid;
 using Safir.Shared.Models.Taarif;
+using Safir.Shared.Models.Automation;
+
 
 namespace Safir.Client.Services
 {
@@ -15,6 +17,9 @@ namespace Safir.Client.Services
         private readonly HttpClient _httpClient;
 
         private List<TCOD_ANBAR>? _cachedAnbarList; // برای کش کردن لیست انبارها
+
+        private readonly ILogger<LookupApiService> _logger;
+        // Optional: Inject ILogger if needed
 
         public LookupApiService(HttpClient httpClient)
         {
@@ -73,6 +78,7 @@ namespace Safir.Client.Services
                 return null;
             }
         }
+
         public async Task<List<TCOD_VAHEDS>?> GetUnitsAsync()
         {
             try
@@ -87,6 +93,7 @@ namespace Safir.Client.Services
                 return null;
             }
         }
+
         public async Task<List<TCOD_ANBAR>?> GetAnbarhaAsync(bool forceRefresh = false)
         {
             if (!forceRefresh && _cachedAnbarList != null && _cachedAnbarList.Any())
@@ -205,5 +212,30 @@ namespace Safir.Client.Services
             }
         }
         #endregion
+
+
+        public async Task<List<PersonelLookupModel>?> GetSubordinatesAsync()
+        {
+            string requestUri = "api/lookup/subordinates"; // آدرس EndPoint جدید
+            try
+            {
+                _logger?.LogInformation("API Call: Fetching subordinates lookup from {RequestUri}", requestUri); // استفاده از ILogger اگر تزریق شده باشد
+                var result = await _httpClient.GetFromJsonAsync<List<PersonelLookupModel>>(requestUri);
+                _logger?.LogInformation("API Call: Successfully fetched {Count} subordinates.", result?.Count ?? 0);
+                return result;
+            }
+            catch (HttpRequestException ex) when (ex.StatusCode == System.Net.HttpStatusCode.Unauthorized)
+            {
+                _logger?.LogWarning("API Call: Unauthorized fetching subordinates from {RequestUri}", requestUri);
+                return new List<PersonelLookupModel>(); // یا null برگردانید در صورت خطای دسترسی
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogError(ex, "Error fetching subordinates lookup from {RequestUri}", requestUri);
+                Console.WriteLine($"Error fetching Subordinates: {ex.Message}"); // یا استفاده از ILogger
+                return null; // یا لیست خالی یا throw ex
+            }
+        }
+
     }
 }

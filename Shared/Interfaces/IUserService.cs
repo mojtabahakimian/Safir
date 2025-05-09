@@ -13,5 +13,7 @@ namespace Safir.Shared.Interfaces
         Task<SALA_DTL?> GetUserByEncodedUsernameAsync(string encodedUsername);
         // Or find potentially by decoded name (requires decoding all usernames first)
         Task<SALA_DTL?> GetUserByDecodedUsernameAsync(string decodedUsername);
+
+        Task<bool> CanViewSubordinateTasksAsync();
     }
 }

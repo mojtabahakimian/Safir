@@ -9,6 +9,8 @@ using Microsoft.Extensions.Logging; // برای ILogger
 using Safir.Shared.Models.Automation;
 using Safir.Shared.Utility;
 using Safir.Shared.Models.Kala;
+using Microsoft.AspNetCore.Http; // اضافه کردن این using
+using System.Security.Claims;
 
 namespace Safir.Server.Controllers
 {
@@ -19,7 +21,7 @@ namespace Safir.Server.Controllers
     {
         private readonly IDatabaseService _dbService;
         private readonly ILogger<LookupController> _logger;
-
+        private readonly IHttpContextAccessor _httpContextAccessor; // <<< اضافه شد
 
         [HttpGet("personnel")] // آدرس: /api/lookup/personnel
         public async Task<ActionResult<IEnumerable<PersonelLookupModel>>> GetPersonnel()
@@ -34,7 +36,7 @@ namespace Safir.Server.Controllers
                 if (usersRaw == null) return Ok(Enumerable.Empty<PersonelLookupModel>());
 
                 // Decode کردن نام‌ها و ایجاد لیست نهایی
-                var personnelList = usersRaw.Select(u => new PersonelLookupModel
+                List<PersonelLookupModel> personnelList = usersRaw.Select(u => new PersonelLookupModel
                 {
                     USERCO = (int)u.USERCO,
                     // استفاده از متد Decode و اصلاح کاراکترها
@@ -53,10 +55,73 @@ namespace Safir.Server.Controllers
             }
         }
 
-        public LookupController(IDatabaseService dbService, ILogger<LookupController> logger)
+        [HttpGet("subordinates")] // آدرس: /api/lookup/subordinates
+        public async Task<ActionResult<IEnumerable<PersonelLookupModel>>> GetSubordinates()
+        {
+            // دریافت کد کاربر فعلی از Claims
+            var currentUserIdClaim = _httpContextAccessor.HttpContext?.User.FindFirstValue(ClaimTypes.NameIdentifier);
+            if (!int.TryParse(currentUserIdClaim, out int currentUserCod))
+            {
+                _logger.LogWarning("GetSubordinates: Could not parse User ID from claims.");
+                // return Unauthorized("اطلاعات کاربر نامعتبر است."); // یا می‌توانید لیست خالی برگردانید
+                return Ok(Enumerable.Empty<PersonelLookupModel>());
+            }
+
+            _logger.LogInformation("API: Fetching subordinates for User ID: {CurrentUserId}", currentUserCod);
+
+            // کوئری مشابه کد WPF شما (با پارامتر)
+            // SUBUSERCO به USERCO مپ می‌شود تا با PersonelLookupModel سازگار باشد
+            const string sql = @"
+            SELECT
+                SALA_DTL.SAL_NAME,
+                CHARTSAZMANI.SUBUSERCO AS USERCO
+            FROM dbo.CHARTSAZMANI
+            LEFT OUTER JOIN dbo.SALA_DTL ON CHARTSAZMANI.SUBUSERCO = SALA_DTL.IDD
+            WHERE CHARTSAZMANI.USERCO = @UserCode
+              AND (dbo.SALA_DTL.ENABL = 0)"; // فقط کاربران فعال
+
+            try
+            {
+                // استفاده از dynamic چون مدل COMBOPERSONEL در Shared نیست
+                var subordinatesRaw = await _dbService.DoGetDataSQLAsync<dynamic>(sql, new { UserCode = currentUserCod });
+
+                if (subordinatesRaw == null)
+                {
+                    _logger.LogInformation("API: No subordinates found for User ID: {CurrentUserId}", currentUserCod);
+                    return Ok(Enumerable.Empty<PersonelLookupModel>());
+                }
+
+                // Decode کردن نام‌ها و ایجاد لیست نهایی
+                var subordinatesList = subordinatesRaw
+                    .Where(u => u.SAL_NAME != null && u.USERCO != null) // اطمینان از null نبودن داده‌های ضروری
+                    .Select(u => new PersonelLookupModel
+                    {
+                        // USERCO در مدل ما از SUBUSERCO پر می‌شود طبق کوئری
+                        USERCO = (int)u.USERCO,
+                        // استفاده از متد Decode و اصلاح کاراکترها
+                        SAL_NAME = CL_METHODS.FixPersianChars(CL_METHODS.DECODEUN((string)u.SAL_NAME))
+                    })
+                    .OrderBy(p => p.SAL_NAME) // مرتب‌سازی بر اساس نام Decode شده
+                    .ToList();
+
+                _logger.LogInformation("API: Successfully fetched and decoded {Count} subordinates for User ID: {CurrentUserId}", subordinatesList.Count, currentUserCod);
+                return Ok(subordinatesList);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "API: Error fetching subordinates for User ID: {CurrentUserId}", currentUserCod);
+                return StatusCode(500, "Internal server error while fetching subordinates.");
+            }
+        }
+
+        public LookupController(
+            IDatabaseService dbService,
+            ILogger<LookupController> logger,
+            IHttpContextAccessor httpContextAccessor) // <<< اضافه شد
         {
             _dbService = dbService;
             _logger = logger;
+            _httpContextAccessor = httpContextAccessor; // <<< اضافه شد
         }
 
         // --- Endpoint for Ostans ---

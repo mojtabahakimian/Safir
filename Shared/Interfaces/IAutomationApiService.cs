@@ -37,6 +37,7 @@ namespace Safir.Shared.Interfaces
         Task<IEnumerable<StatusLookupModel>?> GetStatusLookupAsync();
         Task<IEnumerable<PriorityLookupModel>?> GetPriorityLookupAsync();
         Task<IEnumerable<DocumentTypeLookupModel>?> GetDocumentTypeLookupAsync();
+        Task<bool> CanViewSubordinateTasksAsync();
         // Note: Customer lookup might use existing LookupApiService or be added here
     }
 }
