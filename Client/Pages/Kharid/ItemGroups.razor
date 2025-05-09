@@ -500,6 +500,7 @@
         catch (Exception ex)
         {
             Logger.LogError(ex, "An error occurred during the initialization of ItemGroups page.");
+            _areHeadersValid = false;
             Snackbar.Add("خطا در بارگذاری اطلاعات صفحه.", Severity.Error);
         }
         finally
