@@ -21,6 +21,10 @@ namespace Safir.Server.Services
         private bool _isInitialized = false;
         private static readonly SemaphoreSlim _initLock = new SemaphoreSlim(1, 1);
 
+        // --- فیلد جدید برای ذخیره کل تنظیمات ---
+        private SAZMAN? _cachedSazmanSettings = null;
+
+
         // --- Modify Constructor ---
         public AppSettingsService(IServiceProvider serviceProvider, ILogger<AppSettingsService> logger)
         {
@@ -28,7 +32,6 @@ namespace Safir.Server.Services
             _logger = logger;
             // --- REMOVE: _dbService = dbService;
         }
-
         private async Task InitializeAsync()
         {
             if (_isInitialized) return;
@@ -38,33 +41,36 @@ namespace Safir.Server.Services
             {
                 if (_isInitialized) return;
 
-                _logger.LogInformation("Initializing AppSettingsService...");
+                _logger.LogInformation("Initializing AppSettingsService by reading SAZMAN table...");
                 try
                 {
-                    // <<< Create a scope to resolve Scoped services >>>
                     using (var scope = _serviceProvider.CreateScope())
                     {
-                        var dbService = scope.ServiceProvider.GetRequiredService<IDatabaseService>(); // <<< Resolve IDatabaseService here
+                        var dbService = scope.ServiceProvider.GetRequiredService<IDatabaseService>();
 
-                        const string sql = "SELECT TOP 1 BEDEHKAR FROM SAZMAN";
-                        var settings = await dbService.DoGetDataSQLAsyncSingle<SAZMAN>(sql);
-
-                        if (settings != null && settings.BEDEHKAR != null)
+                        // --- خواندن تمام ستون‌ها از اولین رکورد SAZMAN ---
+                        const string sql = "SELECT TOP (1) * FROM dbo.SAZMAN"; // Use * or list all needed columns
+                        // استفاده از QuerySingleOrDefaultAsync چون انتظار یک رکورد را داریم
+                        _cachedSazmanSettings = await dbService.DoGetDataSQLAsyncSingle<SAZMAN>(sql);
+                  
+                        if (_cachedSazmanSettings != null)
                         {
-                            _cachedBedehkarKol = settings.BEDEHKAR;
-                            _logger.LogInformation("Default Bedehkar KOL loaded: {BedehkarKol}", _cachedBedehkarKol);
+                            _cachedBedehkarKol = _cachedSazmanSettings.BEDEHKAR;
+
+                            _logger.LogInformation("SAZMAN settings loaded successfully.");
                         }
                         else
                         {
-                            _logger.LogWarning("Could not load BEDEHKAR from SAZMAN table or value is null.");
+                            _logger.LogWarning("Could not load settings from SAZMAN table (no records found?).");
                         }
-                    } // <<< Scope (and dbService instance) is disposed here
+                    }
 
                     _isInitialized = true;
                 }
                 catch (Exception ex)
                 {
                     _logger.LogError(ex, "Error loading settings from SAZMAN table during initialization.");
+                    _isInitialized = true; // Prevent continuous retries on error
                 }
             }
             finally
@@ -72,7 +78,15 @@ namespace Safir.Server.Services
                 _initLock.Release();
             }
         }
-
+        // --- پیاده‌سازی متد جدید اینترفیس ---
+        public async Task<SAZMAN?> GetSazmanSettingsAsync()
+        {
+            if (!_isInitialized)
+            {
+                await InitializeAsync();
+            }
+            return _cachedSazmanSettings;
+        }
         public async Task<int?> GetDefaultBedehkarKolAsync()
         {
             if (!_isInitialized)

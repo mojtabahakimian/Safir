@@ -8,6 +8,10 @@ using System.Threading.Tasks;
 using System.Collections.Generic; // For IEnumerable
 using System.Data.SqlClient;
 using Safir.Shared.Models.Kala;
+using Safir.Shared.Models.User_Model;
+using Safir.Shared.Models.Kharid;
+using Safir.Shared.Models.Taarif;
+using Safir.Shared.Models;
 
 namespace Safir.Server.Services
 {
@@ -278,5 +282,141 @@ namespace Safir.Server.Services
             // return mappedDto;
         }
 
+        public async Task<UserDefaultDep?> GetUserDefaultDepAsync(int userId)
+        {
+            using var connection = new SqlConnection(_connectionString);
+            // انتخاب USERID هم از جدول برای کامل بودن مدل مفید است گرچه اینجا ورودی است
+            var sql = "SELECT TFSAZMAN, SHIFT, USERID FROM dbo.DEFAULTDEP WHERE USERID = @UserId";
+            return await connection.QuerySingleOrDefaultAsync<UserDefaultDep>(sql, new { UserId = userId });
+        }
+
+        #region ELAMIEH_GHEYMAT
+        public async Task<IEnumerable<LookupDto<int>>> GetCustomerKindsAsync()
+        {
+            using var connection = new SqlConnection(_connectionString);
+            var sql = "SELECT CUST_COD AS Id, CUSTKNAME AS Name FROM CUSTKIND ORDER BY CUSTKNAME";
+            return await connection.QueryAsync<LookupDto<int>>(sql);
+        }
+
+        public async Task<CustomerHesabInfo?> GetCustomerHesabInfoByHesCodeAsync(string customerHesCode)
+        {
+            using var connection = new SqlConnection(_connectionString);
+            // فرض بر این است که customerHesCode همان HES در جدول CUST_HESAB است
+            var sql = "SELECT hes AS Hes, CUST_COD AS CustCod FROM dbo.CUST_HESAB WHERE hes = @CustomerHesCode";
+            return await connection.QuerySingleOrDefaultAsync<CustomerHesabInfo>(sql, new { CustomerHesCode = customerHesCode });
+        }
+
+        public async Task<IEnumerable<LookupDto<int>>> GetDepartmentsAsync()
+        {
+            using var connection = new SqlConnection(_connectionString);
+            var sql = "SELECT DEPATMAN AS Id, DEPNAME AS Name FROM DEPART ORDER BY DEPNAME"; // نام جدول DEPART بر اساس کد WPF
+            return await connection.QueryAsync<LookupDto<int>>(sql);
+        }
+
+        public async Task<IEnumerable<PaymentTermDto>> GetPaymentTermsAsync()
+        {
+            using var connection = new SqlConnection(_connectionString);
+            var sql = "SELECT PPID AS Id, PPAME AS Name, MODAT AS Modat FROM PRICE_PAYNO ORDER BY PPAME";
+            return await connection.QueryAsync<PaymentTermDto>(sql);
+        }
+
+        public async Task<int?> GetDefaultPaymentTermIdForUserAsync(int userId)
+        {
+            using var connection = new SqlConnection(_connectionString);
+            var sql = "SELECT DEFAULT_NAHVA FROM dbo.SALA_DTL WHERE IDD = @UserId";
+            // اطمینان حاصل کنید که DEFAULT_NAHVA از نوع سازگار با int? است یا تبدیل لازم را انجام دهید
+            var result = await connection.QuerySingleOrDefaultAsync<long?>(sql, new { UserId = userId });
+            return result.HasValue ? (int?)result.Value : null; // تبدیل از long? به int?
+        }
+
+        public async Task<IEnumerable<PriceListDto>> GetPriceListsAsync()
+        {
+            using var connection = new SqlConnection(_connectionString);
+            var sql = "SELECT PEPID AS Id, PEPNAME AS Name FROM PRICE_ELAMIE ORDER BY PEPNAME DESC";
+            return await connection.QueryAsync<PriceListDto>(sql);
+        }
+
+        public async Task<int?> GetDefaultPriceListIdAsync(long currentDate, int departmentId)
+        {
+            using var connection = new SqlConnection(_connectionString);
+            var sql = "SELECT TOP 1 PEPID FROM dbo.PRICE_ELAMIE WHERE (PEPDATE <= @CurrentDate) AND (PEPDEPART = @DepartmentId) ORDER BY PEPID DESC";
+            return await connection.QuerySingleOrDefaultAsync<int?>(sql, new { CurrentDate = currentDate, DepartmentId = departmentId });
+        }
+
+        public async Task<IEnumerable<DiscountListDto>> GetDiscountListsAsync()
+        {
+            using var connection = new SqlConnection(_connectionString);
+            var sql = "SELECT PEID AS Id, PENAME AS Name FROM PRICE_ELAMIETF ORDER BY PENAME DESC"; // نام جدول بر اساس کد WPF
+            return await connection.QueryAsync<DiscountListDto>(sql);
+        }
+
+        public async Task<int?> GetDefaultDiscountListIdAsync(long currentDate, int departmentId)
+        {
+            using var connection = new SqlConnection(_connectionString);
+            var sql = "SELECT TOP 1 PEID FROM dbo.PRICE_ELAMIETF WHERE (PEDATE <= @CurrentDate) AND (PEPDEPART = @DepartmentId) ORDER BY PEID DESC";
+            return await connection.QuerySingleOrDefaultAsync<int?>(sql, new { CurrentDate = currentDate, DepartmentId = departmentId });
+        }
+
+        public async Task<int?> GetLatestDiscountListIdAsync(long currentDate, int departmentId)
+        {
+            // این کوئری مشابه منطق WPF برای پیدا کردن _PEID_ است
+            var sql = @"
+        SELECT TOP 1 PEID
+        FROM dbo.PRICE_ELAMIETF
+        WHERE (PEDATE <= @CurrentDate) AND (PEPDEPART = @DepartmentId)
+        ORDER BY PEID DESC"; // یا PEDATE DESC, PEID DESC اگر ترتیب تاریخ اولویت دارد
+            try
+            {
+                using var connection = new SqlConnection(_connectionString);
+                return await connection.QuerySingleOrDefaultAsync<int?>(sql, new { CurrentDate = currentDate, DepartmentId = departmentId });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error fetching latest discount list ID for Dept {DepartmentId}, Date {CurrentDate}", departmentId, currentDate);
+                return null;
+            }
+        }
+
+        public async Task<IEnumerable<PaymentTermDto>> GetDynamicPaymentTermsAsync(int? departmentId, int? selectedDiscountListId, long currentDate)
+        {
+            List<PaymentTermDto> paymentTerms = new List<PaymentTermDto>();
+            string sql;
+
+            int? targetPeid = selectedDiscountListId;
+
+            // اگر selectedDiscountListId داده نشده ولی departmentId داده شده، آخرین PEID را پیدا کن
+            if (!targetPeid.HasValue && departmentId.HasValue)
+            {
+                targetPeid = await GetLatestDiscountListIdAsync(currentDate, departmentId.Value);
+            }
+
+            using var connection = new SqlConnection(_connectionString);
+
+            if (targetPeid.HasValue)
+            {
+                sql = @"
+            SELECT DISTINCT p.PPID AS Id, p.PPAME AS Name, p.MODAT AS Modat
+            FROM dbo.PRICE_PAYNO p
+            INNER JOIN dbo.PRICE_ELAMIETF_DTL dtl ON p.PPID = dtl.PPID
+            WHERE dtl.PEID = @TargetPeid";
+                paymentTerms.AddRange(await connection.QueryAsync<PaymentTermDto>(sql, new { TargetPeid = targetPeid.Value }));
+            }
+            else
+            {
+                // اگر هیچ PEID مرتبطی پیدا نشد (یا داده نشد)، همه را برگردان یا یک لیست پیش‌فرض
+                // در کد WPF اگر _PEID_ و PEID.SelectedValue نبود، همه را برمی‌گرداند.
+                // اینجا می‌توانیم همین کار را بکنیم یا تصمیم دیگری بگیریم. فعلا همه را برمی‌گردانیم.
+                sql = "SELECT PPID AS Id, PPAME AS Name, MODAT AS Modat FROM dbo.PRICE_PAYNO ORDER BY PPAME";
+                paymentTerms.AddRange(await connection.QueryAsync<PaymentTermDto>(sql));
+            }
+
+            // اضافه کردن گزینه "آزاد" اگر قبلا وجود نداشته باشد
+            if (!paymentTerms.Any(pt => pt.Id == 0))
+            {
+                paymentTerms.Add(new PaymentTermDto { Id = 0, Name = "آزاد", Modat = 0 });
+            }
+            return paymentTerms.OrderBy(p => p.Name).ToList(); // مرتب سازی نهایی
+        }
+        #endregion
     }
 }

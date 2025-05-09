@@ -9,5 +9,6 @@ namespace Safir.Shared.Models
     public class SAZMAN
     {
         public int? BEDEHKAR { get; set; }
+        public short? GHAYM { get; set; }
     }
 }

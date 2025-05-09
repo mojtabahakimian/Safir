@@ -236,5 +236,113 @@ namespace Safir.Server.Controllers
             // Note: Blazor model uses int? but WPF uses int. Adjusted DTO to int.
             // Ensure consistency or handle nullability.
         }
+
+        [HttpGet("anbarha")] // مسیر: api/lookup/anbarha
+        public async Task<ActionResult<IEnumerable<TCOD_ANBAR>>> GetAnbarha()
+        {
+            const string sql = "SELECT CODE, NAMES FROM dbo.TCOD_ANBAR ORDER BY NAMES";
+            try
+            {
+                var data = await _dbService.DoGetDataSQLAsync<TCOD_ANBAR>(sql);
+                return Ok(data ?? new List<TCOD_ANBAR>());
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error fetching Anbarha (TCOD_ANBAR)");
+                return StatusCode(500, "Internal server error while fetching Anbarha.");
+            }
+        }
+
+        #region ELEMIEH_GHEYMAT
+        [HttpGet("customerkinds")] // نوع مشتری
+        public async Task<IActionResult> GetCustomerKinds()
+        {
+            try { return Ok(await _dbService.GetCustomerKindsAsync()); }
+            catch (Exception ex) { return StatusCode(500, $"Internal server error: {ex.Message}"); }
+        }
+
+        [HttpGet("customerhesabinfo/{customerHesCode}")] // اطلاعات نوع مشتری پیش‌فرض
+        public async Task<IActionResult> GetCustomerHesabInfo(string customerHesCode)
+        {
+            try { return Ok(await _dbService.GetCustomerHesabInfoByHesCodeAsync(customerHesCode)); }
+            catch (Exception ex) { return StatusCode(500, $"Internal server error: {ex.Message}"); }
+        }
+
+        [HttpGet("departments")] // واحدها (دپارتمان‌ها)
+        public async Task<IActionResult> GetDepartments()
+        {
+            try { return Ok(await _dbService.GetDepartmentsAsync()); }
+            catch (Exception ex) { return StatusCode(500, $"Internal server error: {ex.Message}"); }
+        }
+
+
+        [HttpGet("defaultpaymentterm/user/{userId}")] // نحوه پرداخت پیش‌فرض کاربر
+        public async Task<IActionResult> GetDefaultPaymentTermIdForUser(int userId)
+        {
+            try { return Ok(await _dbService.GetDefaultPaymentTermIdForUserAsync(userId)); }
+            catch (Exception ex) { return StatusCode(500, $"Internal server error: {ex.Message}"); }
+        }
+
+        [HttpGet("pricelists")] // اعلامیه‌های قیمت
+        public async Task<IActionResult> GetPriceLists()
+        {
+            try { return Ok(await _dbService.GetPriceListsAsync()); }
+            catch (Exception ex) { return StatusCode(500, $"Internal server error: {ex.Message}"); }
+        }
+
+        [HttpGet("defaultpricelist/department/{departmentId}")] // اعلامیه قیمت پیش‌فرض
+        public async Task<IActionResult> GetDefaultPriceListId(int departmentId)
+        {
+            try
+            {
+                var currentDate = CL_Tarikh.GetCurrentPersianDateAsLong();
+                return Ok(await _dbService.GetDefaultPriceListIdAsync(currentDate, departmentId));
+            }
+            catch (Exception ex) { return StatusCode(500, $"Internal server error: {ex.Message}"); }
+        }
+
+        [HttpGet("discountlists")] // اعلامیه‌های تخفیف
+        public async Task<IActionResult> GetDiscountLists()
+        {
+            try { return Ok(await _dbService.GetDiscountListsAsync()); }
+            catch (Exception ex) { return StatusCode(500, $"Internal server error: {ex.Message}"); }
+        }
+
+        [HttpGet("defaultdiscountlist/department/{departmentId}")] // اعلامیه تخفیف پیش‌فرض
+        public async Task<IActionResult> GetDefaultDiscountListId(int departmentId)
+        {
+            try
+            {
+                var currentDate = CL_Tarikh.GetCurrentPersianDateAsLong();
+                return Ok(await _dbService.GetDefaultDiscountListIdAsync(currentDate, departmentId));
+            }
+            catch (Exception ex) { return StatusCode(500, $"Internal server error: {ex.Message}"); }
+        }
+
+
+        [HttpGet("paymentterms")] // نحوه‌های پرداخت
+        public async Task<IActionResult> GetPaymentTerms()
+        {
+            try { return Ok(await _dbService.GetPaymentTermsAsync()); }
+            catch (Exception ex) { return StatusCode(500, $"Internal server error: {ex.Message}"); }
+        }
+
+
+        [HttpGet("paymentterms/dynamic")] // آدرس جدید
+        public async Task<IActionResult> GetDynamicPaymentTerms([FromQuery] int? departmentId, [FromQuery] int? selectedDiscountListId)
+        {
+            try
+            {
+                long currentDate = CL_Tarikh.GetCurrentPersianDateAsLong(); // دریافت تاریخ جاری در سرور
+                var paymentTerms = await _dbService.GetDynamicPaymentTermsAsync(departmentId, selectedDiscountListId, currentDate);
+                return Ok(paymentTerms);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error fetching dynamic payment terms.");
+                return StatusCode(500, "Internal server error fetching dynamic payment terms.");
+            }
+        }
+        #endregion
     }
 }

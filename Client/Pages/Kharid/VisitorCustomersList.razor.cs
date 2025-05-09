@@ -14,12 +14,17 @@ namespace Safir.Client.Pages.Kharid
         [Inject] private ILogger<VisitorCustomersList> Logger { get; set; } = default!;
         [Inject] private ShoppingCartService CartService { get; set; } = default!; // <<< تزریق سرویس سبد خرید
 
+        [Inject] private CustomerApi CustomerApi { get; set; } = default!;
+
         private List<VISITOR_CUSTOMERS>? _originalCustomers;
         private List<long>? availableDates;
         private bool isLoading = true;
         private string? errorMessage;
         private bool datesLoading = true;
         private string? datesErrorMessage;
+
+        private bool _isCheckingBlock = false; // <<< فلگ برای نمایش وضعیت بررسی مسدودی
+
 
         private string _searchTerm = "";
         private System.Timers.Timer? _debounceTimer;
@@ -127,29 +132,46 @@ namespace Safir.Client.Pages.Kharid
             _debounceTimer?.Dispose();
         }
 
-        // --- متد مربوط به دکمه "ثبت سفارش" ---
-        private void StartOrderForCustomer(VISITOR_CUSTOMERS? customer)
+
+        // --- متد ثبت سفارش (به‌روز شده با چک کردن مسدودی) ---
+        private async Task StartOrderForCustomer(VISITOR_CUSTOMERS? customer) // Changed to async Task
         {
             if (customer == null || string.IsNullOrEmpty(customer.hes))
             {
-                Snackbar.Add("اطلاعات مشتری برای شروع سفارش معتبر نیست.", Severity.Warning);
+                Snackbar.Add("اطلاعات مشتری نامعتبر است.", Severity.Warning);
                 return;
             }
 
+            _isCheckingBlock = true; // Start check
+            await InvokeAsync(StateHasChanged); // Update UI immediately
+
             try
             {
-                Logger.LogInformation("Starting order for customer: {CustomerName} ({CustomerHes})", customer.person, customer.hes);
-                // تنظیم مشتری فعلی در سرویس سبد خرید
-                CartService.SetCustomer(customer);
+                Logger.LogInformation("Checking block status for HES {HesCode} before starting order.", customer.hes);
+                bool isBlocked = await CustomerApi.CheckCustomerBlockedAsync(customer.hes);
 
-                // هدایت به صفحه انتخاب کالا (مثلا /item-groups)
-                // می‌توانید customer.hes را هم به عنوان پارامتر بفرستید اگر لازم است
+                if (isBlocked)
+                {
+                    Snackbar.Add($"امکان ثبت سفارش برای مشتری '{customer.person}' وجود ندارد (حساب مسدود است).", Severity.Error);
+                    Logger.LogWarning("Order blocked for HES: {HesCode} - Account is blocked.", customer.hes);
+                    return; // Stop execution
+                }
+
+                // --- اگر مسدود نبود، ادامه بده ---
+                Logger.LogInformation("Starting order for customer: {CustomerName} ({CustomerHes})", customer.person, customer.hes);
+                await CartService.SetCustomerAsync(customer);
                 NavManager.NavigateTo("/item-groups");
+                // --- پایان منطق اصلی ---
             }
-            catch (Exception ex)
+            catch (Exception ex) // Catch potential errors during the check or navigation
             {
-                Logger.LogError(ex, "Error starting order for customer {CustomerHes}", customer.hes);
-                Snackbar.Add("خطا در شروع فرآیند سفارش.", Severity.Error);
+                Logger.LogError(ex, "Error during StartOrderForCustomer for HES {CustomerHes}", customer.hes);
+                Snackbar.Add("خطا در بررسی وضعیت یا شروع فرآیند سفارش.", Severity.Error);
+            }
+            finally
+            {
+                _isCheckingBlock = false; // End check
+                await InvokeAsync(StateHasChanged); // Update UI
             }
         }
 
@@ -232,23 +254,49 @@ namespace Safir.Client.Pages.Kharid
             else { Snackbar.Add("کد مشتری نامعتبر است.", Severity.Warning); }
         }
 
-        private async Task ShowCustomerStatement(string? hesabCode) // اسم متد رو شاید لازم نباشه async کنیم دیگه، اما نگهش می‌داریم
+        private async Task ShowCustomerStatement(string? hesabCode) // Already async Task
         {
-            // 1. بررسی کد حساب
             if (string.IsNullOrWhiteSpace(hesabCode))
             {
-                Snackbar.Add("کد حساب مشتری (hes) برای این ردیف مشخص نشده است.", Severity.Warning);
+                Snackbar.Add("کد حساب مشتری نامعتبر است.", Severity.Warning);
                 return;
             }
 
-            // 2. ساخت URL صفحه صورت حساب
-            var url = $"/customer-statement/{Uri.EscapeDataString(hesabCode)}";
+            _isCheckingBlock = true; // Start check
+            await InvokeAsync(StateHasChanged); // Update UI immediately
 
-            // 3. استفاده از NavigationManager برای رفتن به آدرس جدید در همین تب
-            NavManager.NavigateTo(url);
+            try
+            {
+                // نام مشتری برای پیام بهتر (اختیاری)
+                var customer = _originalCustomers?.FirstOrDefault(c => c.hes == hesabCode);
+                string customerName = customer?.person ?? hesabCode; // Use name if available
 
-            // چون از JSRuntime استفاده نمی کنیم، بلاک try-catch مربوط به اون هم لازم نیست
-            // و نیازی به async Task هم نیست، می تواند private void باشد، اما async Task هم مشکلی ندارد
+                Logger.LogInformation("Checking block status for HES {HesCode} before showing statement.", hesabCode);
+                bool isBlocked = await CustomerApi.CheckCustomerBlockedAsync(hesabCode);
+
+                if (isBlocked)
+                {
+                    Snackbar.Add($"امکان مشاهده صورت حساب برای مشتری '{customerName}' وجود ندارد (حساب مسدود است).", Severity.Error);
+                    Logger.LogWarning("Statement view blocked for HES: {HesCode} - Account is blocked.", hesabCode);
+                    return; // Stop execution
+                }
+
+                // --- اگر مسدود نبود، ادامه بده ---
+                var url = $"/customer-statement/{Uri.EscapeDataString(hesabCode)}";
+                Logger.LogInformation("Navigating to customer statement: {Url}", url);
+                NavManager.NavigateTo(url);
+                // --- پایان منطق اصلی ---
+            }
+            catch (Exception ex) // Catch potential errors during the check or navigation
+            {
+                Logger.LogError(ex, "Error during ShowCustomerStatement for HES {HesCode}", hesabCode);
+                Snackbar.Add("خطا در بررسی وضعیت یا نمایش صورت حساب.", Severity.Error);
+            }
+            finally
+            {
+                _isCheckingBlock = false; // End check
+                await InvokeAsync(StateHasChanged); // Update UI
+            }
         }
 
         private static string FormatCurrency(double? value) => value?.ToString("N0", CultureInfo.GetCultureInfo("fa-IR")) ?? "0";

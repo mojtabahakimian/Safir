@@ -1,5 +1,4 @@
-﻿@* Safir/Client/Shared/MainLayout.razor *@
-@inherits LayoutComponentBase
+﻿@inherits LayoutComponentBase
 @implements IDisposable
 @using MudBlazor
 @using Safir.Shared.Constants
@@ -153,11 +152,15 @@
             DisplayName = user.FindFirst(BaseknowClaimTypes.UUSER)?.Value ?? "کاربر";
         }
 
+        await CartService.InitializeCartFromLocalStorageAsync(); // <--- بارگذاری سبد خرید از localStorage
+
         // اشتراک در رویداد تغییر سبد خرید
         CartService.CartChanged += OnCartChanged;
+
         // دریافت وضعیت اولیه سبد
         UpdateCartState();
     }
+
 
     // متد برای بروزرسانی اطلاعات مشتری و تعداد آیتم‌ها
     private void UpdateCartState()

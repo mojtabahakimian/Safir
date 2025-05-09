@@ -15,6 +15,7 @@
 @inject NavigationManager NavManager
 @inject ISnackbar Snackbar
 @inject IDialogService DialogService
+@inject LookupApiService LookupService
 
 <MudContainer MaxWidth="MaxWidth.Medium" Class="mt-6">
     <MudPaper Class="pa-4" Elevation="3">
@@ -53,8 +54,8 @@
                                 <td>@item.Quantity.ToString("N0")</td>
                                 <td>@FormatCurrency(item.PricePerUnit)</td>
                                 <td>@FormatPercentage(item.DiscountPercent)</td>
-                                <td>@FormatCurrency(item.LineDiscountAmount)</td>
-                                <td>@FormatCurrency(item.TotalPriceAfterDiscount)</td>
+                                <td>@FormatCurrency(item.LineDiscountAmountCalculatedOnFullPrice)</td> @* <--- نمایش مبلغ تخفیف جدید *@
+                                <td>@FormatCurrency(item.FinalRowPriceAfterLineDiscount)</td> @* <--- نمایش قیمت کل جدید *@
                                 <td>
                                     <MudIconButton Icon="@Icons.Material.Filled.Delete"
                                                    Color="Color.Error"
@@ -65,31 +66,23 @@
                             </tr>
                         }
                     </tbody>
-                    @* --- Updated Footer --- *@
                     <tfoot>
-                        @* --- NEW: Total Before Discount Row --- *@
                         <tr>
-                            <td colspan="7" style="text-align: left; font-weight: bold;">جمع مبلغ قبل از تخفیف:</td> @* Colspan = 7 *@
-                            <td style="font-weight: bold;">@FormatCurrency(CartService.GetTotalAmountBeforeDiscount())</td> @* Call new service method *@
-                            <td></td> @* Delete button spacer *@
+                            <td colspan="7" style="text-align: left; font-weight: bold;">جمع مبلغ قبل از تخفیف:</td>
+                            <td style="font-weight: bold;">@FormatCurrency(CartService.GetTotalAmountBeforeDiscountConsideringNesbat())</td>
+                            <td></td>
                         </tr>
-
-                        @* --- Total Discount Row --- *@
                         <tr>
-                            <td colspan="6" style="text-align: left; font-weight: bold;">جمع کل تخفیف:</td> @* Colspan = 6 *@
-                            <td style="font-weight: bold;">@FormatCurrency(CartService.GetTotalDiscountAmount())</td>
-                            <td></td> @* Price column spacer *@
-                            <td></td> @* Delete button spacer *@
+                            <td colspan="7" style="text-align: left; font-weight: bold;">جمع کل تخفیف :</td>
+                            <td style="font-weight: bold;">@FormatCurrency(CartService.GetTotalLineDiscountAmount())</td>
+                            <td></td>
                         </tr>
-
-                        @* --- Grand Total Row (After Discount) --- *@
                         <tr>
-                            <td colspan="7" style="text-align: left; font-weight: bold;">جمع کل (پس از تخفیف):</td> @* Colspan = 7 *@
-                            <td style="font-weight: bold;">@FormatCurrency(CartService.GetTotal())</td>
-                            <td></td> @* Delete button spacer *@
+                            <td colspan="7" style="text-align: left; font-weight: bold; color: green;">جمع کل نهایی (پس از تخفیف):</td>
+                            <td style="font-weight: bold; color: green;">@FormatCurrency(CartService.GetFinalTotal())</td>
+                            <td></td>
                         </tr>
                     </tfoot>
-                    @* --- End Updated Footer --- *@
                 </MudSimpleTable>
 
                 @* Header Input Fields (Unchanged) *@
@@ -153,8 +146,10 @@
     private string? headerNotes;
     private string? headerConditions;
     private decimal? headerShippingCost;
-    private decimal? headerTotalDiscount;
+    private decimal? headerTotalDiscount; // این فیلد برای تخفیف کلی سربرگ است و جدا از تخفیف ردیف‌هاست
     private bool headerApplyVat = false;
+    private List<TCOD_ANBAR>? _anbarList;
+
     private void ToggleApplyVat()
     {
         headerApplyVat = !headerApplyVat;
@@ -164,9 +159,40 @@
 
 
     // Lifecycle methods
-    protected override void OnInitialized()
+    private bool _isAnbarListLoading = true; // <--- فلگ جدید
+
+    protected override async Task OnInitializedAsync()
     {
         CartService.CartChanged += OnCartChanged;
+        _isAnbarListLoading = true; // <--- شروع بارگذاری
+        await LoadAnbarListAsync();
+        _isAnbarListLoading = false; // <--- پایان بارگذاری
+        StateHasChanged(); // <--- اطمینان از رندر مجدد پس از بارگذاری انبارها
+    }
+
+    private async Task LoadAnbarListAsync()
+    {
+        // این متد بدون تغییر باقی می‌ماند
+        _anbarList = await LookupService.GetAnbarhaAsync();
+        if (_anbarList == null)
+        {
+            Snackbar.Add("خطا در بارگذاری لیست انبارها برای نمایش نام.", Severity.Warning);
+            _anbarList = new List<TCOD_ANBAR>();
+        }
+    }
+
+    private string GetAnbarName(int anbarCode)
+    {
+        if (_isAnbarListLoading)
+        {
+            return "..."; // <--- نمایش متن موقت هنگام بارگذاری
+        }
+        if (_anbarList == null || !_anbarList.Any())
+        {
+            return $"انبار {anbarCode}";
+        }
+        var anbar = _anbarList.FirstOrDefault(a => a.CODE == anbarCode);
+        return anbar?.NAMES ?? $"کد: {anbarCode}";
     }
 
     public void Dispose()
@@ -180,16 +206,16 @@
     }
 
     // UI Interaction methods
-    private void RemoveItemFromCart(CartItem item)
+    private async void RemoveItemFromCart(CartItem item)
     {
         if (item == null) return;
-        CartService.RemoveItem(item.ItemCode, item.SelectedUnitCode);
+        await CartService.RemoveItemAsync(item.ItemCode, item.SelectedUnitCode);
         Snackbar.Add($"'{item.ItemName}' از سبد حذف شد.", Severity.Warning);
     }
 
-    private void ClearCart()
+    private async void ClearCart()
     {
-        CartService.ClearCart();
+        await CartService.ClearCartAsync();
         headerNotes = null;
         headerConditions = null;
         headerShippingCost = null;
@@ -230,9 +256,9 @@
                         PriceListId = null,
                         DiscountListId = null,
                         ApplyVat = headerApplyVat,
-                        CalculateAward = false,
+                        CalculateAward = false, // این فیلد در هدر پیش‌فاکتور شما وجود دارد، مقداردهی شود
                         ShippingCost = headerShippingCost,
-                        TotalDiscount = headerTotalDiscount
+                        TotalDiscount = headerTotalDiscount // این تخفیف کلی سربرگ است
                     },
                     Lines = CartService.Items.Select(cartItem => new ProformaLineDto
                     {
@@ -240,10 +266,10 @@
                         ItemCode = cartItem.ItemCode,
                         SelectedUnitCode = cartItem.SelectedUnitCode,
                         Quantity = cartItem.Quantity,
-                        PricePerUnit = cartItem.PricePerUnit,
-                        DiscountPercent = cartItem.DiscountPercent,
-                        CashDiscountPercent = 0,
-                        Notes = null
+                        PricePerUnit = cartItem.PricePerUnit, // قیمت واحد انتخابی
+                        DiscountPercent = cartItem.DiscountPercent, // درصد تخفیف خطی
+                        CashDiscountPercent = 0, // تخفیف نقدی (اگر دارید)
+                        Notes = null // ملاحظات سطر (اگر دارید)
                     }).ToList(),
                     OverrideInventoryCheck = false
                 };
@@ -264,7 +290,7 @@
                         var successMsg = finalResponse.Message ?? $"پیش فاکتور {finalResponse.ProformaNumber} ثبت شد.";
                         // <<< --- MODIFIED: Show custom dialog instead of MessageBox --- >>>
                         ShowSuccessDialog(successMsg, finalResponse.ProformaNumber);
-                        CartService.ClearCart();
+                      await  CartService.ClearCartAsync();
                     }
                     else { Snackbar.Add(finalResponse.Message ?? "...", Severity.Error); }
                 }
@@ -275,7 +301,7 @@
                 var successMsg = initialResponse.Message ?? $"پیش فاکتور {initialResponse.ProformaNumber} ثبت شد.";
                 // <<< --- MODIFIED: Show custom dialog instead of MessageBox --- >>>
                 ShowSuccessDialog(successMsg, initialResponse.ProformaNumber);
-                CartService.ClearCart();
+               await CartService.ClearCartAsync();
             }
             else { Snackbar.Add(initialResponse.Message ?? "...", Severity.Error); }
         }
@@ -287,19 +313,16 @@
         finally { isSaving = false; StateHasChanged(); }
     }
     // Helper methods
-    private string GetAnbarName(int anbarCode)
-    {
-        // Placeholder - Implement if needed
-        return anbarCode.ToString();
-    }
+  
 
-    private async Task ShowSuccessMsg(string msg) // Changed to Task for await
-    {
-        await DialogService.ShowMessageBox(
-          "ثبت موفق", // Title
-          msg,
-          yesText: "متوجه شدم"); // OK button text
-    }
+    // این متد دیگر لازم نیست چون ShowSuccessDialog جایگزین شده است
+    // private async Task ShowSuccessMsg(string msg)
+    // {
+    //     await DialogService.ShowMessageBox(
+    //         "ثبت موفق", // Title
+    //         msg,
+    //         yesText: "متوجه شدم"); // OK button text
+    // }
 
     private string FormatCurrency(decimal? value)
     {
@@ -312,6 +335,7 @@
         return value?.ToString("0.#", CultureInfo.InvariantCulture) ?? "0"; // "N1" for one decimal place
     }
 
+    // این متد برای نمایش دیالوگ موفقیت و دکمه چاپ است
     private void ShowSuccessDialog(string message, double? proformaNumber)
     {
         var parameters = new DialogParameters
@@ -319,7 +343,7 @@
                 ["ContentText"] = message,
                 ["ProformaNumber"] = proformaNumber
             };
-
+        // فرض بر اینکه ProformaSuccessDialog از قبل ایجاد شده و قابلیت دریافت ProformaNumber را دارد
         DialogService.Show<ProformaSuccessDialog>("ثبت موفق", parameters);
     }
 }
