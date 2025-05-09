@@ -33,7 +33,7 @@
             @* Only Show in Mobile Blue Box => Class="mx-1 customer-icon-display" *@
             <MudHidden Breakpoint="Breakpoint.SmAndDown">
                 <MudTooltip Text="@($"سفارش برای: {CurrentCustomer.person} ({CurrentCustomer.hes})")" Arrow="true">
-                    <MudChip Color="Color.Info" Size="Size.Small"  Class="mx-1 customer-icon-display">
+                    <MudChip Color="Color.Info" Size="Size.Small" Class="mx-1 customer-icon-display">
                         @($"سفارش برای: {Truncate(CurrentCustomer.person, 30)}")
                     </MudChip>
                 </MudTooltip>
@@ -56,17 +56,50 @@
                            OnClick="ToggleTheme" />
         </MudTooltip>
 
-        @* منوی کاربر *@
-        <MudMenu Icon="@Icons.Material.Filled.Person" Color="Color.Inherit"
-                 AnchorOrigin="Origin.BottomRight"
-                 TransformOrigin="Origin.TopCenter">
-            <MudMenuItem Disabled="true">
-                @DisplayName
-            </MudMenuItem>
-             <MudMenuItem Link="/profile" Disabled="true">پروفایل</MudMenuItem>
-             <MudDivider />
-             <MudMenuItem OnClick="LogoutUser">خروج</MudMenuItem>
-        </MudMenu>
+
+        <AuthorizeView>
+            <Authorized>
+                <MudMenu AnchorOrigin="Origin.BottomRight" TransformOrigin="Origin.TopCenter">
+                    <ActivatorContent>
+                        <MudButton Variant="Variant.Text"
+                                   Color="Color.Inherit"
+                                   DisableRipple="true"
+                                   Style="text-transform: none; padding: 0; min-width: 0;"
+                                   Class="pa-1">
+                            <MudIcon Icon="@Icons.Material.Filled.Person" Color="Color.Inherit" Class="me-2" />
+                        </MudButton>
+                    </ActivatorContent>
+                    <ChildContent>
+                        @* --- آیتم نام کاربر با متن وسط‌چین --- *@
+                        <MudButton Variant="Variant.Text"
+                                   FullWidth="true"
+                                   Disabled="true"
+                                   Style="text-transform: none; padding: 6px 16px; font-weight: normal; color: inherit; opacity: 1;"
+                                   Class="mud-menu-item">
+                            @* استایل وسط‌چین و truncation به MudText اضافه شد *@
+                            <MudText Style="width: 100%; text-align: left; overflow: hidden; white-space: nowrap; text-overflow: ellipsis;">@TruncatedDisplayName</MudText>
+                        </MudButton>
+
+                        <MudDivider /> @* <<< جداکننده اختیاری >>> *@
+                        <MudButton Variant="Variant.Text"
+                                   OnClick="LogoutUser"
+                                   OnClickStopPropagation="true"
+                                   FullWidth="true"
+                                   Style="justify-content: start; text-transform: none; padding: 6px 16px; font-weight: normal; color: inherit;"
+                                   Class="mud-menu-item">
+                            <MudIcon Icon="@Icons.Material.Filled.Logout" Class="me-3" />
+                            خروج
+                        </MudButton>
+                    </ChildContent>
+                </MudMenu>
+            </Authorized>
+            <NotAuthorized>
+                <MudButton Variant="Variant.Text" Href="login" Color="Color.Inherit">
+                    <MudIcon Icon="@Icons.Material.Filled.Login" Class="me-3" />
+                    ورود
+                </MudButton>
+            </NotAuthorized>
+        </AuthorizeView>
 
     </MudAppBar>
 
@@ -99,6 +132,16 @@
     private string? DisplayName;
     private VISITOR_CUSTOMERS? CurrentCustomer;
     private int CartItemCount = 0;
+
+    private string TruncatedDisplayName
+    {
+        get
+        {
+            const int MaxLength = 15; // حداکثر طول نام برای نمایش کامل
+            if (string.IsNullOrEmpty(DisplayName)) return string.Empty;
+            return DisplayName.Length <= MaxLength ? DisplayName : DisplayName.Substring(0, MaxLength) + "...";
+        }
+    }
 
     protected override async Task OnInitializedAsync()
     {
