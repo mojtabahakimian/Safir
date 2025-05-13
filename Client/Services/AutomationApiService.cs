@@ -212,12 +212,27 @@ namespace Safir.Client.Services
         {
             try
             {
+                // لاگ کردن درخواست ارسالی
+                _logger?.LogInformation("AutomationApiService: Sending message request: RecipientUserIds Count = {Count}, First Recipient (if any) = {FirstRecipient}, MessageText = {Text}",
+                                      request?.RecipientUserIds?.Count ?? 0,
+                                      request?.RecipientUserIds?.FirstOrDefault(),
+                                      request?.MessageText);
+
                 var response = await _httpClient.PostAsJsonAsync("api/messages", request);
+                if (!response.IsSuccessStatusCode)
+                {
+                    // لاگ کردن جزئیات بیشتر در صورت عدم موفقیت
+                    var errorContent = await response.Content.ReadAsStringAsync();
+                    string logMessage = $"API call to send message failed with status code {response.StatusCode}. Response: {errorContent}";
+                    _logger.LogError(logMessage); // اگر از _logger استفاده می‌کنید
+                    Console.WriteLine(logMessage); // چاپ پیام به صورت یک رشته کامل
+                }
                 return response.IsSuccessStatusCode; // Or check for 207 Multi-Status if API returns it
             }
             catch (Exception ex)
             {
                 _logger?.LogError(ex, "Exception sending message.");
+                Console.WriteLine($"Exception ex Error {ex}");
                 return false;
             }
         }
