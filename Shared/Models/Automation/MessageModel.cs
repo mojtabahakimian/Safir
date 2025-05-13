@@ -30,6 +30,7 @@ namespace Safir.Shared.Models.Automation
         [Required(ErrorMessage = "متن پیام الزامی است.")]
         [MaxLength(2047, ErrorMessage = "متن پیام بیش از حد طولانی است.")]
         public string? MessageText { get; set; }
+        [Required(ErrorMessage = "تماس گیرنده باید انتخاب بشود!.")]
         public string? CompCod { get; set; } // کد حساب مرتبط (اختیاری)
     }
 }

@@ -134,8 +134,11 @@ namespace Safir.Server.Controllers
                     catch (Exception insertEx) { _logger.LogError(insertEx, "API: SendMessage - Error inserting message for Recipient: {RecipientId}", recipientId); failedRecipients.Add(recipientId); }
                 }
 
-                if (successCount == request.RecipientUserIds.Count) return Ok(new { Message = "پیام(ها) با موفقیت ارسال شد." });
-                else return StatusCode(207, new { Message = $"پیام برای {successCount} نفر از {request.RecipientUserIds.Count} نفر ارسال شد.", FailedRecipients = failedRecipients });
+                if (failedRecipients.Any())
+                {
+                    return BadRequest(new { Message = $"خطا در ارسال پیام برای برخی یا همه گیرندگان.", FailedRecipients = failedRecipients });
+                }
+                return Ok(new { Message = "پیام(ها) با موفقیت ارسال شد." });
             }
             catch (Exception ex)
             {

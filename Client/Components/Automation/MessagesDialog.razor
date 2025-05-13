@@ -1,4 +1,5 @@
 ﻿@using Safir.Shared.Constants
+@using Safir.Shared.Models
 @using Safir.Shared.Models.Automation
 @using Safir.Shared.Interfaces
 @using MudBlazor
@@ -7,6 +8,7 @@
 @inject IAutomationApiService AutomationService
 @inject ISnackbar Snackbar
 @inject AuthenticationStateProvider AuthenticationStateProvider
+@inject ILogger<MessagesDialog> Logger
 @inject AppState AppState
 
 <MudDialog>
@@ -27,7 +29,7 @@
                     <RowTemplate>
                         <MudTd DataLabel="فرستنده">@context.USERNAME</MudTd>
                         <MudTd DataLabel="متن پیام" Style="white-space: pre-wrap;">@context.PAYAM</MudTd>
-                        <MudTd DataLabel="تاریخ ارسال">@context.STDATE?.ToString("yyyy/MM/dd") @context.STTIME?.ToString("hh:mm")</MudTd>
+                        @*<MudTd DataLabel="تاریخ ارسال">@context.STDATE?.ToString("yyyy/MM/dd") @context.STTIME?.ToString("hh:mm")</MudTd>*@
                         <MudTd DataLabel="وضعیت">
                             @if (context.STATUS == 1)
                             {
@@ -71,6 +73,17 @@
                             </NoItemsTemplate>
                         </MudAutocomplete>
 
+                        <MudSelect T="string" Label="مربوط به (مشتری)" @bind-Value="_newMessageRequest.CompCod"
+                                   Variant="Variant.Outlined" Dense="true" Clearable="true" Required="true" RequiredError="انتخاب مشتری الزامی است.">
+                            @if (_customerLookup != null) // فرض کنید _customerLookup لیست مشتریان است
+                            {
+                                foreach (var customer in _customerLookup)
+                                {
+                                    <MudSelectItem T="string" Value="@customer.Id">@customer.Name</MudSelectItem>
+                                }
+                            }
+                        </MudSelect>
+
                         @if (_selectedRecipientsList.Any())
                         {
                             <MudPaper Elevation="0" Class="d-flex flex-wrap gap-1 mt-2 pa-1">
@@ -106,7 +119,8 @@
     private List<PersonelLookupModel> _selectedRecipientsList = new List<PersonelLookupModel>();
     private MessageSendRequest _newMessageRequest = new MessageSendRequest();
     private PersonelLookupModel? _selectedRecipient;
-    private readonly ILogger<MudDialogInstance> _logger;
+    private List<LookupDto<string>>? _customerLookup;
+    //private readonly ILogger<MudDialogInstance> Logger;
 
     private bool _isLoadingMessages = false;
     private bool _isLoadingLookups = false;
@@ -122,7 +136,13 @@
         if (currentUserPrincipal?.Identity?.IsAuthenticated == true)
         {
             UserID = currentUserPrincipal.FindFirst(BaseknowClaimTypes.IDD)?.Value ?? string.Empty;
-        }     
+        }
+
+        _customerLookup = new List<LookupDto<string>>() {
+                new LookupDto<string>{ Id = "1001-1-1", Name = "مشتری نمونه یک" },
+                new LookupDto<string>{ Id = "1001-1-2", Name = "مشتری نمونه دو" },
+                new LookupDto<string>{ Id = "1002-1-1", Name = "شرکت نمونه آلفا" }
+            };
 
         _currentUserId = Convert.ToInt32(UserID);
         _isLoadingMessages = true;
@@ -234,8 +254,8 @@
     //}
     private void HandleRecipientSelection(PersonelLookupModel? selected)
     {
-        // از _logger که در کلاس تزریق شده استفاده کنید. اگر تزریق نشده، ابتدا آن را تزریق کنید.
-        // مثال: _logger.LogInformation("...");
+        // از Logger که در کلاس تزریق شده استفاده کنید. اگر تزریق نشده، ابتدا آن را تزریق کنید.
+        // مثال: Logger.LogInformation("...");
 
         Console.WriteLine($"HandleRecipientSelection CALLED - Selected: {selected?.SAL_NAME ?? "null"} (USERCO: {selected?.USERCO})");
         Console.WriteLine($"_currentUserId: {_currentUserId}");
@@ -281,17 +301,23 @@
             Snackbar.Add("لطفاً حداقل یک گیرنده انتخاب کنید.", Severity.Warning);
             return;
         }
+
+        _newMessageRequest.RecipientUserIds = _selectedRecipientsList.Select(p => p.USERCO).ToList();
+
         await (_newMessageForm?.Validate() ?? Task.CompletedTask);
         if (_newMessageForm?.IsValid != true) return;
 
         _isSending = true; StateHasChanged();
+
         bool success = false;
+
+        success = await AutomationService.SendMessageAsync(_newMessageRequest);
         try
         {
             _newMessageRequest.RecipientUserIds = _selectedRecipientsList.Select(p => p.USERCO).ToList();
-            _logger.LogInformation("Client: Attempting to send message. Request: {@Request}", _newMessageRequest); // <-- لاگ قبل از ارسال
-                                                                                                                   //bool success = await AutomationService.SendMessageAsync(_newMessageRequest);
-            _logger.LogInformation("Client: SendMessageAsync returned: {Success}", success); // <-- لاگ بعد از ارسال
+            Logger.LogInformation("Client: Attempting to send message. Request: {@Request}", _newMessageRequest); // <-- لاگ قبل از ارسال
+                                                                                                                  //bool success = await AutomationService.SendMessageAsync(_newMessageRequest);
+            Logger.LogInformation("Client: SendMessageAsync returned: {Success}", success); // <-- لاگ بعد از ارسال
             if (success)
             {
                 Snackbar.Add("پیام با موفقیت ارسال شد.", Severity.Success);
@@ -302,7 +328,7 @@
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Client: Exception during SendNewMessageAsync."); // <-- لاگ خطا
+            Logger.LogError(ex, "Client: Exception during SendNewMessageAsync."); // <-- لاگ خطا
             Snackbar.Add($"خطا در زمان ارسال پیام: {ex.Message}", Severity.Error);
         }
         finally { _isSending = false; StateHasChanged(); }
