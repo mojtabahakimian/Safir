@@ -1,0 +1,247 @@
+﻿@page "/submit-complaint"
+@using Safir.Shared.Models.Complaints
+@using System.Globalization
+@inject HttpClient Http
+@inject ISnackbar Snackbar
+
+<PageTitle>فرم رسیدگی به شکایات مشتریان</PageTitle>
+
+<MudText Typo="Typo.h4" Align="Align.Center" GutterBottom="true">فرم رسیدگی به شکایات مشتریان یزدسپار</MudText>
+<MudText Typo="Typo.body1" Align="Align.Center" GutterBottom="true">
+    مشتری گرامی، از اینکه ما را از مشکل خود مطلع می‌سازید سپاسگزاریم. 
+    اطمینان داشته باشید که به شکایات شما رسیدگی خواهد شد و ما تمام تلاشمان را برای جلب رضایت شما به کار خواهیم بست. 
+</MudText>
+<MudText Typo="Typo.body2" Align="Align.Right" GutterBottom="true">لطفاً این فرم را با دقت تکمیل نمایید: </MudText>
+
+<EditForm Model="@model" OnValidSubmit="HandleValidSubmit">
+    <DataAnnotationsValidator />
+    <MudGrid Spacing="2">
+        <MudItem xs="12">
+            <MudText Typo="Typo.h6" GutterBottom="true">1 - اطلاعات مشتری:</MudText>
+        </MudItem>
+        <MudItem xs="12" sm="6" md="4">
+            <MudTextField @bind-Value="model.CustomerFirstName" Label="نام" For="@(() => model.CustomerFirstName)" Variant="Variant.Outlined" Margin="Margin.Dense" />
+        </MudItem>
+        <MudItem xs="12" sm="6" md="4">
+            <MudTextField @bind-Value="model.CustomerLastName" Label="نام خانوادگی" For="@(() => model.CustomerLastName)" Variant="Variant.Outlined" Margin="Margin.Dense" />
+        </MudItem>
+        <MudItem xs="12" sm="6" md="4">
+            <MudTextField @bind-Value="model.CustomerMobile" Label="تلفن همراه" For="@(() => model.CustomerMobile)" InputType="InputType.Telephone" Variant="Variant.Outlined" Margin="Margin.Dense" />
+        </MudItem>
+        <MudItem xs="12" sm="6" md="4">
+            <MudTextField @bind-Value="model.CustomerEmail" Label="ایمیل (اختیاری)" For="@(() => model.CustomerEmail)" InputType="InputType.Email" Variant="Variant.Outlined" Margin="Margin.Dense" />
+        </MudItem>
+        <MudItem xs="12" md="8">
+            <MudTextField @bind-Value="model.CustomerAddress" Label="آدرس" For="@(() => model.CustomerAddress)" Lines="2" Variant="Variant.Outlined" Margin="Margin.Dense" />
+        </MudItem>
+
+        <MudItem xs="12">
+            <MudDivider Class="my-4" />
+            <MudText Typo="Typo.h6" GutterBottom="true">2 - اطلاعات مربوط به شکایت:</MudText> 
+        </MudItem>
+        <MudItem xs="12" sm="6" md="4">
+            <MudTextField @bind-Value="model.ProductTypeComplaint" Label="نوع محصول مورد شکایت (مثلاً پنیر پیتزا)" Variant="Variant.Outlined" Margin="Margin.Dense" />
+        </MudItem>
+        <MudItem xs="12" sm="6" md="4">
+            <MudTextField @bind-Value="model.PizzaType" Label="نوع پنیر پیتزا (موزارلا، پروسس و ...)" Variant="Variant.Outlined" Margin="Margin.Dense" />
+        </MudItem>
+        <MudItem xs="12" sm="6" md="4">
+            <MudTextField @bind-Value="model.ProductWeight" Label="وزن محصول" Variant="Variant.Outlined" Margin="Margin.Dense" />
+        </MudItem>
+        <MudItem xs="12" sm="6" md="4">
+            <MudDatePicker @bind-Date="model.ProductionDate" 
+                           Label="تاریخ تولید" 
+                           Editable="true" 
+                           Variant="Variant.Outlined" 
+                           Margin="Margin.Dense"
+                           Culture="faCulture" 
+                           DateFormat="yyyy/MM/dd" />
+        </MudItem>
+        <MudItem xs="12" sm="6" md="4">
+            <MudDatePicker @bind-Date="model.ExpiryDate" 
+                           Label="تاریخ انقضاء" 
+                           Editable="true" 
+                           Variant="Variant.Outlined" 
+                           Margin="Margin.Dense"
+                           Culture="faCulture"
+                           DateFormat="yyyy/MM/dd" />
+        </MudItem>
+        <MudItem xs="12" sm="6" md="4">
+            <MudTextField @bind-Value="model.ProductCode" Label="کد محصول (در صورت وجود)" Variant="Variant.Outlined" Margin="Margin.Dense" />
+        </MudItem>
+
+        <MudItem xs="12">
+             <MudText Typo="Typo.body2">سایر لبنیات (مثلاً ماست، شیر، خامه، پنیر لاکتیکی و ...):</MudText>
+        </MudItem>
+        <MudItem xs="12" sm="6" md="4">
+            <MudTextField @bind-Value="model.OtherDairyProductName" Label="نام محصول (سایر لبنیات)" Variant="Variant.Outlined" Margin="Margin.Dense" />
+        </MudItem>
+         <MudItem xs="12" sm="6" md="4">
+            <MudTextField @bind-Value="model.ProductWeight" Label="وزن محصول (سایر لبنیات)" Variant="Variant.Outlined" Margin="Margin.Dense" HelperText="اگر مربوط به سایر لبنیات است، وزن را اینجا وارد کنید" />
+        </MudItem>
+        <MudItem xs="12" sm="6" md="4">
+            <MudTextField @bind-Value="model.ProductCode" Label="کد محصول (سایر لبنیات)" Variant="Variant.Outlined" Margin="Margin.Dense" HelperText="اگر مربوط به سایر لبنیات است، کد را اینجا وارد کنید" />
+        </MudItem>
+
+        <MudItem xs="12" sm="6" md="4">
+            <MudTextField @bind-Value="model.PurchaseLocation" Label="محل خرید (فروشگاه/پخش)" Variant="Variant.Outlined" Margin="Margin.Dense" />
+        </MudItem>
+        <MudItem xs="12" sm="6" md="4">
+            <MudDatePicker @bind-Date="model.PurchaseDate" 
+                           Label="تاریخ خرید" 
+                           Editable="true" 
+                           Variant="Variant.Outlined" 
+                           Margin="Margin.Dense"
+                           Culture="faCulture"
+                           DateFormat="yyyy/MM/dd" />
+        </MudItem>
+        <MudItem xs="12" sm="6" md="4">
+            <MudTextField @bind-Value="model.BatchNumber" Label="شماره سری ساخت (بچ نامبر)" Variant="Variant.Outlined" Margin="Margin.Dense" />
+        </MudItem>
+        <MudItem xs="12" sm="6" md="4">
+            <MudDatePicker @bind-Date="model.ComplaintRegisteredDate" 
+                           Label="تاریخ ثبت شکایت" 
+                           Editable="true" 
+                           Variant="Variant.Outlined" 
+                           Margin="Margin.Dense"
+                           Culture="faCulture"
+                           DateFormat="yyyy/MM/dd" />
+        </MudItem>
+
+
+        <MudItem xs="12">
+            <MudDivider Class="my-4" />
+            <MudText Typo="Typo.h6" GutterBottom="true">3 - نوع شکایت:</MudText> 
+        </MudItem>
+        <MudItem xs="12" sm="6" md="4"><MudCheckBox @bind-Checked="model.IsComplaintType_TasteSmell" Label="طعم یا بوی نامطبوع" Color="Color.Primary" /></MudItem>
+        <MudItem xs="12" sm="6" md="4"><MudCheckBox @bind-Checked="model.IsComplaintType_Packaging" Label="خرابی بسته‌بندی" Color="Color.Primary" /></MudItem>
+        <MudItem xs="12" sm="6" md="4"><MudCheckBox @bind-Checked="model.IsComplaintType_WrongExpiryDate" Label="تاریخ انقضاء اشتباه" Color="Color.Primary" /></MudItem>
+        <MudItem xs="12" sm="6" md="4"><MudCheckBox @bind-Checked="model.IsComplaintType_NonConformity" Label="عدم تطبیق محصول با مشخصات" Color="Color.Primary" /></MudItem>
+        <MudItem xs="12" sm="6" md="4"><MudCheckBox @bind-Checked="model.IsComplaintType_ForeignObject" Label="وجود اجسام خارجی" Color="Color.Primary" /></MudItem>
+        <MudItem xs="12" sm="6" md="4"><MudCheckBox @bind-Checked="model.IsComplaintType_AbnormalTexture" Label="بافت غیر عادی" Color="Color.Primary" /></MudItem>
+        <MudItem xs="12" sm="6" md="4"><MudCheckBox @bind-Checked="model.IsComplaintType_Mold" Label="کپک زدگی" Color="Color.Primary" /></MudItem>
+        <MudItem xs="12" sm="6" md="4"><MudCheckBox @bind-Checked="model.IsComplaintType_Other" Label="سایر موارد" Color="Color.Primary" /></MudItem>
+        @if (model.IsComplaintType_Other)
+        {
+                <MudItem xs="12">
+                    <MudTextField @bind-Value="model.ComplaintType_OtherDescription" Label="توضیح سایر موارد شکایت" Variant="Variant.Outlined" Lines="2" Margin="Margin.Dense" />
+                </MudItem>
+        }
+
+        <MudItem xs="12">
+            <MudDivider Class="my-4" />
+            <MudText Typo="Typo.h6" GutterBottom="true">4 - توضیحات شکایت:</MudText> 
+            <MudTextField @bind-Value="model.ComplaintDescription" Label="لطفاً شرح کاملی از مشکلی که با محصول داشته‌اید ارائه دهید." For="@(() => model.ComplaintDescription)" Variant="Variant.Outlined" Lines="5" Margin="Margin.Dense" />
+        </MudItem>
+
+        <MudItem xs="12">
+            <MudDivider Class="my-4" />
+            <MudText Typo="Typo.h6" GutterBottom="true">5 - اقدامات صورت گرفته از سوی مشتری:</MudText> 
+            <MudCheckBox @bind-Checked="model.CustomerActionTaken" Label="آیا اقدامی از سوی شما صورت گرفته است؟" Color="Color.Primary" />
+            @if (model.CustomerActionTaken)
+            {
+                    <MudTextField @bind-Value="model.CustomerActionDescription" Label="در صورت بله لطفا توضیح دهید" Variant="Variant.Outlined" Lines="3" Margin="Margin.Dense" />
+            }
+        </MudItem>
+
+        <MudItem xs="12">
+            <MudDivider Class="my-4" />
+            <MudText Typo="Typo.h6" GutterBottom="true">6 - درخواست شما:</MudText> 
+             <MudText Typo="Typo.body2">لطفا درخواست خود را از شرکت بنویسید:</MudText>
+        </MudItem>
+        <MudItem xs="12" sm="6" md="3"><MudCheckBox @bind-Checked="model.RequestedResolution_Refund" Label="بازپرداخت وجه" Color="Color.Primary" /></MudItem>
+        <MudItem xs="12" sm="6" md="3"><MudCheckBox @bind-Checked="model.RequestedResolution_Replacement" Label="تعویض محصول" Color="Color.Primary" /></MudItem>
+        <MudItem xs="12" sm="6" md="3"><MudCheckBox @bind-Checked="model.RequestedResolution_FurtherInvestigation" Label="بررسی بیشتر" Color="Color.Primary" /></MudItem>
+        <MudItem xs="12" md="9">
+            <MudTextField @bind-Value="model.RequestedResolution_Explanation" Label="توضیحات درخواست (اختیاری)" Variant="Variant.Outlined" Lines="2" Margin="Margin.Dense" />
+        </MudItem>
+
+        <MudItem xs="12">
+            <MudDivider Class="my-4" />
+            <MudText Typo="Typo.h6" GutterBottom="true">7 - تأیید اطلاعات:</MudText> 
+            <MudCheckBox @bind-Checked="model.InformationConfirmed" For="@(() => model.InformationConfirmed)" Required="true" RequiredError="تأیید صحت اطلاعات الزامی است." Label="تأیید می‌کنم تمام اطلاعات وارد شده صحیح است." Color="Color.Primary" />
+            <ValidationMessage For="@(() => model.InformationConfirmed)" />
+        </MudItem>
+
+        <MudItem xs="12" Class="d-flex justify-center mt-4">
+            <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Filled" Color="Color.Primary" Disabled="@isSubmitting" Class="px-10">
+                @if (isSubmitting)
+                {
+                        <MudProgressCircular Class="ms-n1" Size="Size.Small" Indeterminate="true" />
+                        <MudText Class="ms-2">در حال ارسال...</MudText>
+                }
+                else
+                {
+                        <MudText>ثبت شکایت</MudText>
+                }
+            </MudButton>
+        </MudItem>
+    </MudGrid>
+</EditForm>
+
+@code {
+    private ComplaintFormDto model = new ComplaintFormDto();
+    private bool isSubmitting = false;
+    private CultureInfo faCulture = new CultureInfo("fa-IR"); // تعریف فرهنگ فارسی
+
+    protected override void OnInitialized()
+    {
+        // Pre-fill complaint registration date with current date
+        model.ComplaintRegisteredDate = DateTime.Now.Date; // این تاریخ میلادی است، MudDatePicker آن را شمسی نشان می‌دهد
+    }
+
+    private async Task HandleValidSubmit()
+    {
+        isSubmitting = true;
+        try
+        {
+            // قبل از ارسال، تاریخ‌های مدل که توسط MudDatePicker (با فرهنگ فارسی) مقداردهی شده‌اند،
+            // همچنان DateTime میلادی هستند و نیازی به تبدیل دستی در اینجا نیست.
+            // MudDatePicker به طور داخلی با DateTime میلادی کار می‌کند و فقط نمایش را شمسی می‌کند.
+            var response = await Http.PostAsJsonAsync("api/complaints/submit", model);
+            if (response.IsSuccessStatusCode)
+            {
+                var result = await response.Content.ReadFromJsonAsync<SubmitResponse>();
+                Snackbar.Add(result?.Message ?? "شکایت شما با موفقیت ثبت شد.", Severity.Success);
+                model = new ComplaintFormDto(); // Reset form
+                model.ComplaintRegisteredDate = DateTime.Now.Date; // Reset date
+                StateHasChanged(); // Refresh UI
+            }
+            else
+            {
+                var errorResult = await response.Content.ReadFromJsonAsync<SubmitResponse>();
+                Snackbar.Add(errorResult?.Message ?? "خطا در ثبت شکایت. لطفاً اطلاعات فرم را بررسی کنید.", Severity.Error);
+                if (response.StatusCode == System.Net.HttpStatusCode.BadRequest)
+                {
+                    var validationErrors = await response.Content.ReadFromJsonAsync<Dictionary<string, List<string>>>();
+                    if (validationErrors != null)
+                    {
+                        foreach (var fieldErrors in validationErrors.Values)
+                        {
+                            foreach (var error in fieldErrors)
+                            {
+                                Snackbar.Add($"خطای اعتبارسنجی: {error}", Severity.Warning);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"خطای سیستمی: {ex.Message}", Severity.Error);
+            _logger.LogError(ex, "Exception during complaint submission");
+        }
+        finally
+        {
+            isSubmitting = false;
+        }
+    }
+
+    public class SubmitResponse
+    {
+        public string Message { get; set; }
+    }
+
+    [Inject] private ILogger<PublicComplaintForm> _logger { get; set; }
+}
