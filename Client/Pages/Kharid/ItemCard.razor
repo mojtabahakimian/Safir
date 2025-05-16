@@ -65,14 +65,20 @@
         <MudGrid Spacing="0" Justify="Justify.SpaceBetween" Class="mt-2 price-section-grid">
             <MudItem xs="7" Class="d-flex align-center justify-start pa-1">
                 <MudText Typo="Typo.caption">مبلغ:</MudText>
+                @if (!IsAzadPaymentSelected && !HasPriceInCurrentPriceList)
+                {
+                    <MudText Typo="Typo.caption" Style="color: #FF6D00; margin-right: 8px;">(فاقد مبلغ در اعلامیه قیمت انتخاب شده)</MudText>
+                }
             </MudItem>
             <MudItem xs="5" Class="d-flex align-center justify-end pa-1">
                 <MudNumericField @bind-Value="EditableMablF" Label="" Placeholder="0"
                                  Variant="Variant.Text" Format="N0" Culture='_faCulture' HideSpinButtons="true"
                                  Immediate="true" DebounceInterval="500" OnDebounceIntervalElapsed="PriceOrDiscountChanged"
-                                 Disabled="@(AnbarCode <= 0 || (_cartQuantity > 0 && Item != null && CartService.GetCartItem(Item.CODE, SelectedVahedCode)?.Quantity > 0) )"
+                                 Disabled="@(AnbarCode <= 0 || (_cartQuantity > 0 && Item != null && CartService.GetCartItem(Item.CODE, SelectedVahedCode)?.Quantity > 0) || (!IsAzadPaymentSelected && HasPriceInCurrentPriceList) || (!IsAzadPaymentSelected && !HasPriceInCurrentPriceList))"
+                                 ReadOnly="@(!IsAzadPaymentSelected)"
                                  Style="direction:ltr; width: 100%;" InputStyle="text-align: left;" Margin="Margin.Dense" Class="dense-numeric" />
             </MudItem>
+
             <MudItem xs="7" Class="d-flex align-center justify-start pa-1">
                 <MudText Typo="Typo.caption">مصرف کننده:</MudText>
             </MudItem>
@@ -85,7 +91,7 @@
                 <MudText Typo="Typo.caption">تخفیف (%):</MudText>
             </MudItem>
             <MudItem xs="5" Class="d-flex align-center justify-end pa-1">
-                <MudNumericField @bind-Value="EditableNKOL" ReadOnly="!CanEditDiscount"
+                <MudNumericField @bind-Value="EditableNKOL" ReadOnly="@(!CanEditDiscount || !IsAzadPaymentSelected)"
                                  Label="" Placeholder="0"
                                  Variant="Variant.Text" Format="0.#" Culture='_faCulture' HideSpinButtons="true"
                                  Immediate="true" DebounceInterval="500" OnDebounceIntervalElapsed="PriceOrDiscountChanged"
@@ -155,6 +161,8 @@
 
     [Parameter] public bool HeadersValid { get; set; } = true; // پیش‌فرض true است تا اگر پاس داده نشد، فعال باشد
 
+    [Parameter] public bool IsAzadPaymentSelected { get; set; } = false; // مقدار پیش‌فرض می‌تواند false باشد
+
     /// <summary>
     /// !! مهم: این پارامتر برای رفع خطای والد اضافه شده است !!
     /// کامپوننت ItemGroups.razor در حال ارسال این پارامتر است.
@@ -167,6 +175,8 @@
 
     [Parameter] public bool CanEditDiscount { get; set; } = true; // پیش‌فرض: قابل ویرایش
 
+    [Parameter] public decimal? PriceFromPriceList { get; set; }
+    [Parameter] public bool HasPriceInCurrentPriceList { get; set; }
 
     private List<UnitInfo> _itemSpecificUnits = new List<UnitInfo>();
     private int _selectedVahedCodeField;
@@ -358,8 +368,12 @@
     {
         if (Item == null) { EditableMablF = null; EditableBSEF = null; EditableNKOL = null; InvokeAsync(StateHasChanged); return; }
 
+
         var cartItem = CartService.GetCartItem(Item.CODE, SelectedVahedCode);
         var unitInfo = SelectedUnitInfo; // Use the property which finds the current UnitInfo
+
+        decimal baseWholesalePriceForSelectedUnit = (Item.MABL_F * (decimal)(unitInfo?.Nesbat ?? 1.0)); // قیمت پایه کالا برای واحد انتخابی
+
 
         if (cartItem != null && cartItem.Quantity > 0)
         {
@@ -367,26 +381,33 @@
             // Load price *before* discount and the discount itself from the cart item
             EditableMablF = cartItem.PricePerUnit; // Assumes CartItem.PricePerUnit IS the price before discount
             EditableNKOL = cartItem.DiscountPercent ?? 0;
-
-            // Calculate retail price based on item's base retail and selected unit's nesbat
-            if (unitInfo != null && unitInfo.Nesbat > 0) EditableBSEF = Item.B_SEF * (decimal)unitInfo.Nesbat;
-            else if (Item.VahedCode == SelectedVahedCode) EditableBSEF = Item.B_SEF; // Main unit
-            else EditableBSEF = Item.B_SEF; // Fallback if unit info is missing
         }
-        else
+        else // آیتم در سبد خرید نیست
         {
-            // Item is not in the cart (for this unit), calculate prices from ItemDisplayDto and selected unit
-            if (unitInfo != null && unitInfo.Nesbat > 0)
+            if (IsAzadPaymentSelected) // اگر پرداخت آزاد است
             {
-                EditableMablF = Item.MABL_F * (decimal)unitInfo.Nesbat;
-                EditableBSEF = Item.B_SEF * (decimal)unitInfo.Nesbat;
+                // قیمت اولیه از قیمت پایه کالا برای واحد انتخابی می‌آید (قابل ویرایش)
+                EditableMablF = baseWholesalePriceForSelectedUnit;
+                EditableNKOL = 0; // تخفیف پیش‌فرض صفر
             }
-            else // Fallback if unit info is missing or invalid
+            else // پرداخت آزاد نیست، باید از اعلامیه قیمت استفاده شود
             {
-                EditableMablF = Item.MABL_F; // Base wholesale price
-                EditableBSEF = Item.B_SEF;   // Base retail price
+                if (HasPriceInCurrentPriceList && PriceFromPriceList.HasValue)
+                {
+                    // قیمت از اعلامیه برای واحد پایه کالا آمده، باید به واحد انتخابی تبدیل شود
+                    // فرض: PriceFromPriceList برای واحد اصلی کالا (نسبت 1) است.
+                    // اگر PriceFromPriceList خودش برای واحدهای مختلف متفاوت است، منطق پیچیده‌تر می‌شود.
+                    // برای سادگی فرض می‌کنیم PriceFromPriceList برای واحد اصلی است.
+                    EditableMablF = PriceFromPriceList.Value * (decimal)(unitInfo?.Nesbat ?? 1.0);
+                    EditableNKOL = Item.TotalCalculatedDiscountPercent ?? 0;
+                }
+                else
+                {
+                    // در اعلامیه قیمت ندارد، از قیمت پایه کالا استفاده کن
+                    EditableMablF = baseWholesalePriceForSelectedUnit;
+                    EditableNKOL = 0; // تخفیف پیش‌فرض صفر (تخفیف از اعلامیه تخفیف جداگانه می‌آید)
+                }
             }
-            EditableNKOL = 0; // Default discount is 0 when not in cart
         }
         // Ensure UI update after price calculation
         InvokeAsync(StateHasChanged);
@@ -462,15 +483,15 @@
                 // ********************************************************************
                 // ******** شروع تغییرات در فراخوانی AddItem ********
                 // ********************************************************************
-               await CartService.AddItemAsync(
-                    Item,
-                    requestedQuantityInSelectedUnit,
-                    SelectedUnitInfo.VahedCode,    // آرگومان سوم: کد واحد انتخابی (int)
-                    _itemSpecificUnits,            // آرگومان چهارم: لیست واحدهای کالا (List<UnitInfo>)
-                    AnbarCode,                     // آرگومان پنجم: کد انبار (int)
-                    priceForSelectedUnitBeforeDiscount,
-                    currentDiscountPercent
-                );
+                await CartService.AddItemAsync(
+                     Item,
+                     requestedQuantityInSelectedUnit,
+                     SelectedUnitInfo.VahedCode,    // آرگومان سوم: کد واحد انتخابی (int)
+                     _itemSpecificUnits,            // آرگومان چهارم: لیست واحدهای کالا (List<UnitInfo>)
+                     AnbarCode,                     // آرگومان پنجم: کد انبار (int)
+                     priceForSelectedUnitBeforeDiscount,
+                     currentDiscountPercent
+                 );
                 // ********************************************************************
                 // ********* پایان تغییرات *********
                 // ********************************************************************
@@ -509,7 +530,7 @@
             double currentDiscountPercent = EditableNKOL ?? 0;
 
             // Call UpdateQuantity to save the new price/discount to the existing cart item
-          await  CartService.UpdateQuantityAsync(Item.CODE, SelectedVahedCode, cartItem.Quantity, priceForSelectedUnitBeforeDiscount, currentDiscountPercent);
+            await CartService.UpdateQuantityAsync(Item.CODE, SelectedVahedCode, cartItem.Quantity, priceForSelectedUnitBeforeDiscount, currentDiscountPercent);
         }
         // No need to await here as it's called by OnDebounceIntervalElapsed
     }
@@ -517,7 +538,7 @@
     private async void RemoveFromCartAsync()
     {
         if (Item == null) return;
-       await CartService.RemoveItemAsync(Item.CODE, SelectedVahedCode);
+        await CartService.RemoveItemAsync(Item.CODE, SelectedVahedCode);
         // HandleCartChanged will update the UI state (_cartQuantity, prices)
     }
 

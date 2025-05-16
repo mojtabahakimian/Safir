@@ -311,34 +311,40 @@ namespace Safir.Client.Pages.Taarif
 
             try
             {
-                // Call the API service and get the result tuple
-                var (generatedTnumber, errorMessage) = await CustomerApiService.SaveCustomerAsync(customerModel);
+                // فراخوانی سرویس و دریافت CustomerSaveResponseDto
+                var apiResponse = await CustomerApiService.SaveCustomerAsync(customerModel);
 
-                if (generatedTnumber > 0) // Success case (TNUMBER generated)
+                if (apiResponse != null)
                 {
-                    Snackbar.Add($"مشتری با شماره {generatedTnumber} با موفقیت ذخیره شد.", Severity.Success);
-                    await PrepareNewCustomer(); // Prepare for the next entry
-                                                // isLoading is set to false inside PrepareNewCustomer
+                    if (apiResponse.Tnumber > 0 && !string.IsNullOrEmpty(apiResponse.Message)) // فرض می‌کنیم Tnumber > 0 نشان دهنده موفقیت است
+                    {
+                        // نمایش پیام موفقیت دریافت شده از سرور
+                        Snackbar.Add(apiResponse.Message, Severity.Success);
+                        await PrepareNewCustomer(); // آماده‌سازی برای مشتری بعدی
+                    }
+                    else // Tnumber == 0 یا پیام خالی، به معنی خطا یا پاسخ ناموفق از سرویس
+                    {
+                        // نمایش پیام خطای دریافت شده از سرویس یا پیام پیش‌فرض
+                        Snackbar.Add(apiResponse.Message ?? "خطا در ذخیره مشتری در سرور.", Severity.Error);
+                        isLoading = false; // حفظ وضعیت بارگذاری تا کاربر خطا را اصلاح کند
+                        StateHasChanged();
+                    }
                 }
-                else if (generatedTnumber == -1) // Success but unexpected response format
+                else // اگر پاسخ سرویس null باشد (بسیار بعید با پیاده‌سازی فعلی سرویس)
                 {
-                    Snackbar.Add(errorMessage ?? "مشتری ذخیره شد، اما پاسخ سرور نامشخص بود.", Severity.Warning);
-                    await PrepareNewCustomer();
-                }
-                else // Failure case (generatedTnumber is 0)
-                {
-                    // Display the specific error message returned from the API
-                    Snackbar.Add(errorMessage ?? "خطا در ذخیره مشتری در سرور.", Severity.Error);
-                    isLoading = false; // Keep loading indicator until user corrects
+                    Snackbar.Add("پاسخ نامعتبر از سرور دریافت شد.", Severity.Error);
+                    isLoading = false;
                     StateHasChanged();
                 }
             }
-            catch (Exception ex) // Catch exceptions from the service call itself (less likely now)
+            catch (Exception ex) // خطاهای کلی (مثلاً قطع شبکه قبل از فراخوانی سرویس)
             {
                 Snackbar.Add($"خطای غیرمنتظره هنگام ذخیره: {ex.Message}", Severity.Error);
                 isLoading = false;
                 StateHasChanged();
             }
+            // isLoading در PrepareNewCustomer یا در صورت خطا false می‌شود.
         }
+
     }
 }

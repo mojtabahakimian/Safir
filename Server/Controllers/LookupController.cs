@@ -11,6 +11,7 @@ using Safir.Shared.Utility;
 using Safir.Shared.Models.Kala;
 using Microsoft.AspNetCore.Http; // اضافه کردن این using
 using System.Security.Claims;
+using Safir.Shared.Models.Kharid;
 
 namespace Safir.Server.Controllers
 {
@@ -341,6 +342,43 @@ namespace Safir.Server.Controllers
             {
                 _logger.LogError(ex, "Error fetching dynamic payment terms.");
                 return StatusCode(500, "Internal server error fetching dynamic payment terms.");
+            }
+        }
+
+        [HttpGet("GetPriceElamieTfDetails")]
+        public async Task<ActionResult<PriceElamieTfDtlDto>> GetPriceElamieTfDetails(
+        [FromQuery] int elamiehTakhfifId,
+        [FromQuery] int custTypeCode,
+        [FromQuery] int paymentTermId)
+        {
+            try
+            {
+                // توجه: کوئری زیر باید با DatabaseService شما و به صورت پارامتری اجرا شود تا از SQL Injection جلوگیری شود.
+                // این فقط یک مثال برای نمایش ساختار است.
+                string query = @"
+                SELECT TOP 1 PEID, CUSTCODE, PPID, TF1, TF2
+                FROM dbo.PRICE_ELAMIETF_DTL
+                WHERE (PEID = @ElamiehTakhfifId_Param) AND (CUSTCODE = @CustKindCode_Param) AND (PPID = @NahvahPayment_Param)";
+
+                // Example with Dapper using your DatabaseService (adapt as needed)
+                var parameters = new { ElamiehTakhfifId_Param = elamiehTakhfifId, CustKindCode_Param = custTypeCode, NahvahPayment_Param = paymentTermId };
+                var result = await _dbService.DoGetDataSQLAsyncSingle<PriceElamieTfDtlDto>(query, parameters);
+
+                if (result == null)
+                {
+                    // It's better to return an empty object or specific DTO if that's expected by client on no data
+                    // rather than NotFound, if the client code doesn't specifically handle 404 for this.
+                    // Or, if client handles 404, then NotFound() is appropriate.
+                    _logger.LogInformation("No PriceElamieTfDetails found for PEID: {PEID}, CustCode: {CustCode}, PPID: {PPID}", elamiehTakhfifId, custTypeCode, paymentTermId);
+                    return Ok(new PriceElamieTfDtlDto()); // Return an empty DTO to avoid null issues if client expects an object
+                                                          // Or return NotFound(); if your client handles it
+                }
+                return Ok(result);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error fetching PriceElamieTfDetails for PEID: {PEID}, CustCode: {CustCode}, PPID: {PPID}", elamiehTakhfifId, custTypeCode, paymentTermId);
+                return StatusCode(500, "Internal server error while fetching price elamie TF details.");
             }
         }
         #endregion

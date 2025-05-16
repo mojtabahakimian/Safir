@@ -10,6 +10,7 @@ using Microsoft.Extensions.Logging;
 using System.Linq;
 using System.Net;
 using System.Web; // For HttpUtility
+using Safir.Shared.Models.Kharid;
 
 namespace Safir.Client.Services
 {
@@ -175,6 +176,57 @@ namespace Safir.Client.Services
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Exception fetching inventory details from {RequestUri}", requestUri);
+                return null;
+            }
+        }
+
+        public async Task<List<VisitorItemPriceDto>?> GetVisitorPricesAsync(int priceListId)
+        {
+            if (priceListId <= 0) return null;
+            try
+            {
+                // اطمینان از اینکه HttpClient به درستی BaseAddress و هدرهای لازم (مانند توکن احراز هویت) را دارد
+                var response = await _httpClient.GetAsync($"api/items/visitor-prices?priceListId={priceListId}");
+                if (response.IsSuccessStatusCode)
+                {
+                    var result = await response.Content.ReadFromJsonAsync<List<VisitorItemPriceDto>>();
+                    return result;
+                }
+                else
+                {
+                    _logger.LogError("Error fetching visitor prices from API. Status: {StatusCode}, PriceListId: {PriceListId}", response.StatusCode, priceListId);
+                    // می‌توانید جزئیات خطا را نیز لاگ کنید: await response.Content.ReadAsStringAsync();
+                    return null;
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Exception in GetVisitorPricesAsync for PriceListId: {PriceListId}", priceListId);
+                return null;
+            }
+        }
+
+        public async Task<PriceElamieTfDtlDto?> GetPriceElamieTfDetailsAsync(int? elamiehTakhfifId, int? custTypeCode, int? paymentTermId)
+        {
+            if (!elamiehTakhfifId.HasValue || !custTypeCode.HasValue || !paymentTermId.HasValue)
+                return null;
+
+            // The actual API endpoint might differ
+            var apiUrl = $"api/lookup/GetPriceElamieTfDetails?elamiehTakhfifId={elamiehTakhfifId.Value}&custTypeCode={custTypeCode.Value}&paymentTermId={paymentTermId.Value}";
+            try
+            {
+                var result = await _httpClient.GetFromJsonAsync<PriceElamieTfDtlDto>(apiUrl);
+                return result;
+            }
+            catch (HttpRequestException ex) when (ex.StatusCode == System.Net.HttpStatusCode.NotFound)
+            {
+                _logger.LogWarning(ex, "PriceElamieTfDetails not found for PEID: {PEID}, CustCode: {CustCode}, PPID: {PPID}", elamiehTakhfifId, custTypeCode, paymentTermId);
+                return null; // Or return new PriceElamieTfDtlDto();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error fetching PriceElamieTfDetails for PEID: {PEID}, CustCode: {CustCode}, PPID: {PPID}", elamiehTakhfifId, custTypeCode, paymentTermId);
+                // Depending on desired behavior, either return null or re-throw
                 return null;
             }
         }

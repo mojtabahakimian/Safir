@@ -45,11 +45,7 @@ namespace Safir.Server.Controllers
         }
 
         [HttpGet("bygroup/{groupCode}")]
-        public async Task<ActionResult<PagedResult<ItemDisplayDto>>> GetItemsByGroup(
-                     double groupCode,
-                     [FromQuery] int pageNumber = 1,
-                     [FromQuery] int pageSize = 10,
-                     [FromQuery] string? searchTerm = null)
+        public async Task<ActionResult<PagedResult<ItemDisplayDto>>> GetItemsByGroup(double groupCode, [FromQuery] int pageNumber = 1, [FromQuery] int pageSize = 10, [FromQuery] string? searchTerm = null)
         {
             // --- Get User HES claim ---
             var userHes = User.FindFirstValue(BaseknowClaimTypes.USER_HES);
@@ -317,6 +313,55 @@ namespace Safir.Server.Controllers
             {
                 _logger.LogError(ex, "خطا در دریافت واحدهای کالا برای {ItemCode}", itemCode);
                 return StatusCode(500, "خطای سرور در هنگام دریافت واحدهای کالا.");
+            }
+        }
+
+
+        [HttpGet("visitor-prices")]
+        public async Task<ActionResult<IEnumerable<VisitorItemPriceDto>>> GetVisitorItemPrices([FromQuery] int priceListId)
+        {
+            var userHes = User.FindFirstValue(BaseknowClaimTypes.USER_HES);
+            if (string.IsNullOrEmpty(userHes))
+            {
+                _logger.LogWarning("User HES claim ('{UserHesClaim}') is missing.", BaseknowClaimTypes.USER_HES);
+                return Unauthorized("اطلاعات کاربر برای دریافت قیمت‌ها معتبر نیست.");
+            }
+
+            if (priceListId <= 0)
+            {
+                return BadRequest("شناسه اعلامیه قیمت معتبر نیست.");
+            }
+
+            _logger.LogInformation("Fetching visitor item prices for UserHES: {UserHes} and PriceListID: {PriceListId}", userHes, priceListId);
+
+            string sql = @"
+                     SELECT DISTINCT 
+                         vpk.CODE,      -- کد کالا از VISITORS_PORSANT_KALA
+                         ped.PRICE1,    -- قیمت از PRICE_ELAMIE_DTL
+                         ped.PEPID      -- شناسه اعلامیه قیمت از PRICE_ELAMIE_DTL
+                         -- سایر فیلدهای مورد نیاز مانند vp.HES, vp.PORID, vpk.PORSANT, sd.PGID
+                         -- , vp.HES, vp.PORID, vpk.PORSANT, sd.PGID 
+                     FROM dbo.VISITORS_PORSANT vp
+                     INNER JOIN dbo.VISITORS_PORSANT_KALA vpk ON vp.PORID = vpk.PORID
+                     INNER JOIN dbo.STUF_DEF sd ON vpk.CODE = sd.CODE
+                     -- جوین به PRICE_ELAMIE_DTL باید با احتیاط انجام شود، ممکن است همه کالاها در هر اعلامیه قیمت نداشته باشند
+                     -- استفاده از LEFT JOIN اگر می‌خواهید همه کالاهای ویزیتور را برگردانید و قیمت را اگر موجود بود
+                     -- اما کوئری شما INNER JOIN است، پس فقط کالاهایی که در آن اعلامیه قیمت دارند برمی‌گردند.
+                     INNER JOIN dbo.PRICE_ELAMIE_DTL ped ON sd.PGID = ped.PGID AND ped.PEPID = @PriceListIdParam
+                     WHERE vp.HES = @UserHesParam;";
+            // نکته: جوین شما در کوئری اصلی کمی متفاوت بود (دو بار به STUF_DEF). من آن را بر اساس ارتباط منطقی اصلاح کردم.
+            // ارتباط اصلی باید از کالای ویزیتور (VISITORS_PORSANT_KALA) به STUF_DEF و سپس از STUF_DEF.PGID به PRICE_ELAMIE_DTL.PGID باشد.
+
+            try
+            {
+                var parameters = new { UserHesParam = userHes, PriceListIdParam = priceListId };
+                var prices = await _dbService.DoGetDataSQLAsync<VisitorItemPriceDto>(sql, parameters);
+                return Ok(prices ?? Enumerable.Empty<VisitorItemPriceDto>());
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error fetching visitor item prices for UserHES {UserHes} and PriceListID {PriceListId}.", userHes, priceListId);
+                return StatusCode(StatusCodes.Status500InternalServerError, "خطا در دریافت لیست قیمت کالاها از سرور.");
             }
         }
     }
