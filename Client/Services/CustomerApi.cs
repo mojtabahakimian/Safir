@@ -22,55 +22,49 @@ public class CustomerApi
         _logger = logger;
     }
 
-    public async Task<(int GeneratedTnumber, string? ErrorMessage)> SaveCustomerAsync(CustomerModel model)
+    public async Task<CustomerSaveResponseDto?> SaveCustomerAsync(CustomerModel customer)
     {
         try
         {
-            var response = await _httpClient.PostAsJsonAsync("api/customers", model);
+            var response = await _httpClient.PostAsJsonAsync("api/customers", customer);
 
-            if (response.IsSuccessStatusCode) // HTTP 2xx
+            if (response.IsSuccessStatusCode)
             {
-                var result = await response.Content.ReadFromJsonAsync<SaveCustomerResponse>();
-                if (result != null && result.Tnumber > 0)
-                {
-                    _logger?.LogInformation("Customer saved via API. New TNUMBER: {TNUMBER}", result.Tnumber);
-                    return (result.Tnumber, null); // Success, return TNUMBER, no error message
-                }
-                else
-                {
-                    _logger?.LogWarning("Customer save API call succeeded but response format was unexpected.");
-                    return (-1, "پاسخ موفقیت آمیز بود، اما فرمت پاسخ سرور نامعتبر است."); // Indicate success but weird response
-                }
+                // خواندن پاسخ به عنوان CustomerSaveResponseDto
+                var result = await response.Content.ReadFromJsonAsync<CustomerSaveResponseDto>();
+                _logger.LogInformation("Customer saved successfully via API. Message: {Message}, TNUMBER: {Tnumber}, HES: {Hes}",
+                    result?.Message, result?.Tnumber, result?.Hes);
+                return result; // برگرداندن آبجکت کامل پاسخ
             }
-            else // HTTP 4xx or 5xx
+            else
             {
-                string errorContent = "خطای نامشخص از سرور.";
+                // خواندن جزئیات خطا از بدنه پاسخ
+                var errorContent = await response.Content.ReadAsStringAsync();
+                ProblemDetails? problemDetails = null;
                 try
                 {
-                    // Attempt to read standard ProblemDetails structure
-                    var problemDetails = await response.Content.ReadFromJsonAsync<ProblemDetails>();
-                    if (!string.IsNullOrEmpty(problemDetails?.Detail))
-                    {
-                        errorContent = problemDetails.Detail; // Use the detail from server
-                    }
-                    else
-                    {
-                        // Fallback to reading raw content if ProblemDetails fails
-                        errorContent = await response.Content.ReadAsStringAsync();
-                    }
+                    problemDetails = await response.Content.ReadFromJsonAsync<ProblemDetails>();
                 }
-                catch { /* Ignore potential exceptions during error content reading */ }
+                catch { /* Ignore if not ProblemDetails */ }
 
-                _logger?.LogError("Failed to save customer via API. Status: {StatusCode}, Content: {ErrorContent}", response.StatusCode, errorContent);
-                // Return 0 for failure and the specific error message
-                return (0, errorContent);
+                string errorMessage = problemDetails?.Detail ?? problemDetails?.Title ?? $"خطا در ذخیره مشتری: {response.StatusCode}";
+                if (response.StatusCode == System.Net.HttpStatusCode.Conflict && problemDetails?.Detail != null)
+                {
+                    // پیام تکراری بودن از سرور خوانده شده
+                    errorMessage = problemDetails.Detail;
+                }
+
+                _logger.LogError("Error saving customer. Status: {StatusCode}, Content: {ErrorContent}", response.StatusCode, errorContent);
+                // برای سازگاری با ساختار قبلی که انتظار پیام خطا داشت، یک DTO با پیام خطا برمی‌گردانیم
+                // یا می‌توانید null برگردانید و در CustomerDefine.razor.cs مدیریت کنید.
+                // در اینجا، یک DTO با پیام خطا می‌سازیم:
+                return new CustomerSaveResponseDto { Message = errorMessage, Tnumber = 0 }; // Tnumber = 0 نشان دهنده خطا
             }
         }
         catch (Exception ex)
         {
-            _logger?.LogError(ex, "Exception occurred while saving customer via API.");
-            // Return 0 for failure and a generic exception message
-            return (0, $"خطای کلاینت هنگام ذخیره: {ex.Message}");
+            _logger.LogError(ex, "Exception during SaveCustomerAsync.");
+            return new CustomerSaveResponseDto { Message = $"خطای پیش‌بینی نشده: {ex.Message}", Tnumber = 0 };
         }
     }
 
@@ -79,6 +73,7 @@ public class CustomerApi
     {
         public string Message { get; set; }
         public int Tnumber { get; set; }
+        public string? Hes { get; set; }
     }
     // Helper class to deserialize ProblemDetails from server error responses
     private class ProblemDetails

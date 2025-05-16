@@ -93,275 +93,368 @@ namespace Safir.Server.Controllers
         {
             if (!ModelState.IsValid) return BadRequest(ModelState);
 
-            var accountCodes = await GetAccountCodesForUserAsync();
-            if (accountCodes == null) return StatusCode(500, new ProblemDetails { Title = "Server Configuration Error", Detail = "امکان تعیین کدهای حسابداری برای کاربر وجود ندارد.", Status = StatusCodes.Status500InternalServerError });
-
-            int determinedNKol = accountCodes.Value.NKol;
-            int determinedNumber = accountCodes.Value.Number; // MOIN is assumed to be 1 from GetAccountCodesForUserAsync logic
-
-            // --- Get Current User Info needed for VISITORS_DAY tables ---
-            var visitorHes = User.FindFirstValue(BaseknowClaimTypes.USER_HES);
-            var visitorUsername = User.Identity?.Name ?? "UnknownUser"; // Get username
-            var visitorUidString = User.FindFirstValue(ClaimTypes.NameIdentifier);
-            int? visitorUid = int.TryParse(visitorUidString, out int parsedUid) ? parsedUid : (int?)null;
-
-            // --- Check Parent (can stay outside transaction or move inside) ---
-            try
+            var userIdString = User.FindFirstValue(ClaimTypes.NameIdentifier);
+            if (!int.TryParse(userIdString, out int userCod))
             {
-                string checkSql = "SELECT COUNT(*) FROM DETA_HES WHERE N_KOL = @NKol AND NUMBER = @Number";
-                int parentExists = await _dbService.DoGetDataSQLAsyncSingle<int>(checkSql, new { NKol = determinedNKol, Number = determinedNumber });
-                if (parentExists == 0)
+                _logger.LogError("CreateCustomer: Could not parse User ID from claims.");
+                return StatusCode(500, new ProblemDetails { Title = "Authentication Error", Detail = "اطلاعات کاربر معتبر نیست.", Status = StatusCodes.Status500InternalServerError });
+            }
+
+            string ThePhone = model?.MOBILE;
+            if (string.IsNullOrEmpty(ThePhone)) { ThePhone = model?.TEL; }
+            // ******** شروع بررسی شماره موبایل تکراری ********
+
+            if (!string.IsNullOrWhiteSpace(ThePhone) || !string.IsNullOrWhiteSpace(model?.NAME))
+            {
+                try
                 {
-                    _logger.LogWarning("Parent account {NKol}-{Number} does not exist.", determinedNKol, determinedNumber);
-                    return BadRequest(new ProblemDetails { Title = "Invalid Account Structure", Detail = $"حساب والد {determinedNKol}-{determinedNumber} وجود ندارد.", Status = StatusCodes.Status400BadRequest });
+                    string checkDuplicatesSql = @"
+                                    SELECT 
+                                         CASE 
+                                             WHEN TEL = @MobileParam OR MOBILE = @MobileParam THEN 'Mobile'
+                                             WHEN NAME = @CustomerName THEN 'Name'
+                                         END AS DuplicateType,
+                                         HES, NAME
+                                     FROM dbo.CUST_HESAB
+                                     WHERE (TEL = @MobileParam OR MOBILE = @MobileParam OR NAME = @CustomerName)";
+
+                    var duplicates = await _dbService.DoGetDataSQLAsync<ExistingCustomerInfo>(
+                        checkDuplicatesSql,
+                        new { MobileParam = ThePhone, CustomerName = model?.NAME?.FixPersianChars() }
+                    );
+
+                    bool mobileExists = duplicates.Any(d => d.DuplicateType == "Mobile");
+                    bool nameExists = duplicates.Any(d => d.DuplicateType == "Name");
+
+                    if (mobileExists || nameExists)
+                    {
+                        string details = "";
+                        if (mobileExists)
+                        {
+                            var dupe = duplicates.First(d => d.DuplicateType == "Mobile");
+                            details += $"شماره موبایل '{model.MOBILE}' قبلاً برای مشتری '{dupe.Name}' با کد حساب '{dupe.Hes}' ثبت شده است. ";
+                        }
+                        if (nameExists)
+                        {
+                            var dupe = duplicates.First(d => d.DuplicateType == "Name");
+                            details += $"نام '{model.NAME}' قبلاً برای مشتری با کد حساب '{dupe.Hes}' ثبت شده است.";
+                        }
+
+                        _logger.LogWarning("CreateCustomer: Duplicate data detected. Details: {Details}", details);
+
+                        return Conflict(new ProblemDetails
+                        {
+                            Title = "Duplicate Customer Info",
+                            Detail = details,
+                            Status = StatusCodes.Status409Conflict
+                        });
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "CreateCustomer: Error checking for duplicate customer info.");
+                    return StatusCode(500, new ProblemDetails
+                    {
+                        Title = "Validation Error",
+                        Detail = "خطا در بررسی تکراری بودن اطلاعات مشتری.",
+                        Status = StatusCodes.Status500InternalServerError
+                    });
                 }
             }
-            catch (Exception ex)
+
+            AccountingLevelInfo? levelInfo = await DetermineAccountingLevelAndParentsAsync(userCod);
+            if (levelInfo == null)
             {
-                _logger.LogError(ex, "Error checking parent account {NKol}-{Number}.", determinedNKol, determinedNumber);
-                return StatusCode(500, new ProblemDetails { Title = "Database Error", Detail = "خطا در بررسی حساب والد.", Status = StatusCodes.Status500InternalServerError });
+                _logger.LogError("CreateCustomer: Could not determine accounting level for UserCO: {UserCod}", userCod);
+                return StatusCode(500, new ProblemDetails { Title = "Configuration Error", Detail = "امکان تعیین سطح حسابداری برای ایجاد مشتری وجود ندارد. لطفاً تنظیمات کاربر (BLOCK_HES) را بررسی کنید.", Status = StatusCodes.Status500InternalServerError });
             }
-            // --- End Check Parent ---
+
+            _logger.LogInformation("Creating customer at Level: {Level}, Table: {Table}, Base HES Path: N_KOL={NKol}, NUMBER={Number}, TNUMBER_Parent={Taf1}, TNUMBER2_Parent={Taf2}, TNUMBER3_Parent={Taf3}",
+                levelInfo.Level, levelInfo.TargetTable, levelInfo.NKol, levelInfo.Number, levelInfo.TnumberParent, levelInfo.Tnumber2Parent, levelInfo.Tnumber3Parent);
+
+            // --- Check if Parent Account Exists (up to the level before the target table) ---
+            // Example: If creating in TDETA_HES3, check TDETA_HES2 (or DETA_HES for TDETA_HES)
+            // This needs to be adapted based on your exact parent table structure if levels are strict.
+            // For simplicity here, we assume the parent path from BLOCK_HES implies parent existence or direct creation under it.
+            // The original WPF code checks `DETA_HES` for level 1. We can adapt this if needed.
+            // For now, we'll trust the BLOCK_HES path implies a valid insertion point.
+
+            string blazorIndicator = " (ثبت شده از طریق Blazor) ";
+            if (!string.IsNullOrWhiteSpace(model.TOZIH))
+            {
+                model.TOZIH = $"{model.TOZIH} {blazorIndicator}";
+            }
+            else
+            {
+                model.TOZIH = blazorIndicator;
+            }
+            // اطمینان از اینکه طول توضیحات از حد مجاز بیشتر نشود
+            if (model.TOZIH.Length > 250) // 250 بر اساس MaxLength در CustomerModel.cs
+            {
+                model.TOZIH = model.TOZIH.Substring(0, 250);
+            }
+
+            string fullHesCodeForNewCustomer = ""; // Will be constructed after getting the new ID.
+            int nextSequentialId = 0;
 
             try
             {
-                // Use the transaction method, returning the generated TNUMBER (int)
-                int generatedTnumber = await _dbService.ExecuteInTransactionAsync<int>(async (connection, transaction) =>
+                nextSequentialId = await _dbService.ExecuteInTransactionAsync<int>(async (connection, transaction) =>
                 {
-                    // 1. Get MAX TNUMBER + 1 within the transaction with locking
-                    string getMaxSql = @"SELECT ISNULL(MAX(TNUMBER), 0) + 1
-                                         FROM TDETA_HES WITH (UPDLOCK, HOLDLOCK)
-                                         WHERE N_KOL = @NKol AND NUMBER = @Number";
-                    int nextTnumber = await connection.QuerySingleAsync<int>(
-                        getMaxSql,
-                        new { NKol = determinedNKol, Number = determinedNumber },
-                        transaction: transaction);
+                    // 1. Get MAX ID + 1 for the determined level and parent
+                    var getMaxSqlParams = new DynamicParameters();
+                    string whereClauseForMax = $"N_KOL = @NKol AND NUMBER = @Number";
+                    getMaxSqlParams.Add("NKol", levelInfo.NKol);
+                    getMaxSqlParams.Add("Number", levelInfo.Number);
 
-                    // 2. INSERT the new customer record within the same transaction
-                    string insertCustomerSql = @"
-                        INSERT INTO TDETA_HES
-                            (TNUMBER, NAME, TEL, MOBILE, ADDRESS, TOZIH, CODE_E, ECODE, PCODE, MCODEM, CUST_COD, OSTANID, SHAHRID, ROUTE_NAME, Longitude, Latitude, tob, N_KOL, NUMBER)
-                        VALUES
-                            (@TNUMBER, @NAME, @TEL, @MOBILE, @ADDRESS, @TOZIH, @CODE_E, @ECODE, @PCODE, @MCODEM, @CUST_COD, @OSTANID, @SHAHRID, @ROUTE_NAME_IN_CUSTOMER, @Longitude, @Latitude, @TOB, @NKol, @Number)"; // Renamed ROUTE_NAME parameter
-
-                    var customerParameters = new
+                    if (levelInfo.Level > 1 && levelInfo.TnumberParent.HasValue)
                     {
-                        TNUMBER = nextTnumber,
-                        model.NAME,
-                        model.TEL,
-                        model.MOBILE,
-                        model.ADDRESS,
-                        model.TOZIH,
-                        model.CODE_E,
-                        model.ECODE,
-                        model.PCODE,
-                        model.MCODEM,
-                        model.CUST_COD,
-                        model.OSTANID,
-                        model.SHAHRID,
-                        ROUTE_NAME_IN_CUSTOMER = model.ROUTE_NAME, // Pass route name, but parameter name changed to avoid clash
-                        model.Longitude,
-                        model.Latitude,
-                        model.TOB,
-                        NKol = determinedNKol,
-                        Number = determinedNumber
-                    };
+                        whereClauseForMax += " AND TNUMBER = @TnumberParent";
+                        getMaxSqlParams.Add("TnumberParent", levelInfo.TnumberParent.Value);
+                    }
+                    if (levelInfo.Level > 2 && levelInfo.Tnumber2Parent.HasValue)
+                    {
+                        whereClauseForMax += " AND TNUMBER2 = @Tnumber2Parent"; // Note: In TDETA_HES3, parent is TNUMBER2 from TDETA_HES2
+                        getMaxSqlParams.Add("Tnumber2Parent", levelInfo.Tnumber2Parent.Value);
+                    }
+                    if (levelInfo.Level > 3 && levelInfo.Tnumber3Parent.HasValue)
+                    {
+                        whereClauseForMax += " AND TNUMBER3 = @Tnumber3Parent"; // Note: In TDETA_HES4, parent is TNUMBER3 from TDETA_HES3
+                        getMaxSqlParams.Add("Tnumber3Parent", levelInfo.Tnumber3Parent.Value);
+                    }
 
-                    int customerRowsAffected = await connection.ExecuteAsync(
-                        insertCustomerSql,
-                        customerParameters,
-                        transaction: transaction);
+                    string getMaxSql = $@"SELECT ISNULL(MAX({levelInfo.IdFieldNameInTable}), 0) + 1
+                                          FROM {levelInfo.TargetTable} WITH (UPDLOCK, HOLDLOCK)
+                                          WHERE {whereClauseForMax}";
+
+                    int currentNextId = await connection.QuerySingleAsync<int>(getMaxSql, getMaxSqlParams, transaction: transaction);
+                    _logger.LogInformation("Transaction: Next sequential ID for Level {Level} ({IdField}) at path is {NextId}", levelInfo.Level, levelInfo.IdFieldNameInTable, currentNextId);
+
+
+                    // 2. INSERT the new customer record
+                    var insertParams = new DynamicParameters(model); // Add all properties from CustomerModel
+
+                    // Add accounting level specific parent keys and the new ID
+                    insertParams.Add("NKol", levelInfo.NKol);
+                    insertParams.Add("Number", levelInfo.Number); // This is MOIN
+
+                    string parentColumns = "N_KOL, NUMBER";
+                    string parentValues = "@NKol, @Number";
+
+                    if (levelInfo.Level > 1 && levelInfo.TnumberParent.HasValue)
+                    {
+                        insertParams.Add("TNUMBER_Parent", levelInfo.TnumberParent.Value); // Used as TNUMBER in TDETA_HES2+
+                        parentColumns += ", TNUMBER";
+                        parentValues += ", @TNUMBER_Parent";
+                    }
+                    if (levelInfo.Level > 2 && levelInfo.Tnumber2Parent.HasValue)
+                    {
+                        insertParams.Add("TNUMBER2_Parent", levelInfo.Tnumber2Parent.Value); // Used as TNUMBER2 in TDETA_HES3+
+                        parentColumns += ", TNUMBER2";
+                        parentValues += ", @TNUMBER2_Parent";
+                    }
+                    if (levelInfo.Level > 3 && levelInfo.Tnumber3Parent.HasValue)
+                    {
+                        insertParams.Add("TNUMBER3_Parent", levelInfo.Tnumber3Parent.Value); // Used as TNUMBER3 in TDETA_HES4+
+                        parentColumns += ", TNUMBER3";
+                        parentValues += ", @TNUMBER3_Parent";
+                    }
+
+                    // Add the new sequential ID for the current level
+                    insertParams.Add(levelInfo.IdFieldNameInTable, currentNextId);
+
+                    // Construct HES code for logging and potentially for route/visit updates
+                    string tempHes = $"{levelInfo.NKol}-{levelInfo.Number}";
+                    if (levelInfo.Level > 1 && levelInfo.TnumberParent.HasValue) tempHes += $"-{levelInfo.TnumberParent.Value}";
+                    if (levelInfo.Level > 2 && levelInfo.Tnumber2Parent.HasValue) tempHes += $"-{levelInfo.Tnumber2Parent.Value}";
+                    if (levelInfo.Level > 3 && levelInfo.Tnumber3Parent.HasValue) tempHes += $"-{levelInfo.Tnumber3Parent.Value}";
+                    tempHes += $"-{currentNextId}"; // Add the new ID itself
+                    fullHesCodeForNewCustomer = tempHes;
+
+
+                    string insertCustomerSql = $@"
+                        INSERT INTO {levelInfo.TargetTable}
+                            ({levelInfo.IdFieldNameInTable}, NAME, TEL, MOBILE, ADDRESS, TOZIH, CODE_E, ECODE, PCODE, MCODEM, CUST_COD, OSTANID, SHAHRID, ROUTE_NAME, Longitude, Latitude, tob, {parentColumns})
+                        VALUES
+                            (@{levelInfo.IdFieldNameInTable}, @NAME, @TEL, @MOBILE, @ADDRESS, @TOZIH, @CODE_E, @ECODE, @PCODE, @MCODEM, @CUST_COD, @OSTANID, @SHAHRID, @ROUTE_NAME, @Longitude, @Latitude, @TOB, {parentValues})";
+
+
+                    // Remove TNUMBER from model if we are inserting at level 1, because it's calculated as currentNextId
+                    // For other levels, TNUMBER from model might be irrelevant or used differently.
+                    // The `insertParams` already has the correct calculated ID field for the level.
+                    // The CustomerModel's TNUMBER is just a placeholder if sent from client.
+                    if (insertParams.ParameterNames.Contains("TNUMBER") && levelInfo.IdFieldNameInTable.Equals("TNUMBER", StringComparison.OrdinalIgnoreCase))
+                    {
+                        // This means we are at level 1. The @TNUMBER in insertParams is already set to currentNextId.
+                        // If CustomerModel.TNUMBER was bound to something in Dapper by name, it could conflict.
+                        // But since we add specific parameters like @NKol, @Number, @TNUMBER (as currentNextId), it should be fine.
+                    }
+
+
+                    int customerRowsAffected = await connection.ExecuteAsync(insertCustomerSql, insertParams, transaction: transaction);
 
                     if (customerRowsAffected <= 0)
                     {
-                        _logger.LogError("Transaction: Customer insert failed, 0 rows affected for TNUMBER {TNUMBER}, Account {NKol}-{Number}", nextTnumber, determinedNKol, determinedNumber);
-                        // Throw an exception to trigger rollback by ExecuteInTransactionAsync
-                        throw new InvalidOperationException("Database insert for customer failed, 0 rows affected.");
+                        _logger.LogError("Transaction: Customer insert failed into {TargetTable}, 0 rows affected. HES Path: {HESPath}, New ID: {NewId}",
+                            levelInfo.TargetTable, fullHesCodeForNewCustomer, currentNextId);
+                        throw new InvalidOperationException($"Database insert for customer into {levelInfo.TargetTable} failed, 0 rows affected.");
                     }
-                    _logger.LogInformation("Transaction: Customer inserted successfully. TNUMBER: {TNUMBER}", nextTnumber);
+                    _logger.LogInformation("Transaction: Customer inserted into {TargetTable}. Full HES: {FullHES}, New ID for level ({IdField}): {NewId}",
+                        levelInfo.TargetTable, fullHesCodeForNewCustomer, levelInfo.IdFieldNameInTable, currentNextId);
 
-                    var custNo = $"{determinedNKol}-{determinedNumber}-{nextTnumber}";
 
-                    // 3. <<< START: Route Update Logic (Based on WPF Code) >>>
+                    // --- Route and Daily Visit Update Logic (using fullHesCodeForNewCustomer) ---
+                    var visitorHes = User.FindFirstValue(BaseknowClaimTypes.USER_HES);
+                    int? visitorUid = int.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out int pUid) ? pUid : (int?)null;
+
                     if (!string.IsNullOrWhiteSpace(model.ROUTE_NAME))
                     {
-                        // Construct the customer account string (COUST_NO)
-                        _logger.LogInformation("Transaction: Updating route mapping for new CustNo: {CustNo} to Route: {RouteName}", custNo, model.ROUTE_NAME);
-
-                        // 3a. Deactivate all other routes for this customer (if any exist)
-                        //     This matches the logic inside the `if (RST2.Count > 0)` block in WPF
+                        _logger.LogInformation("Transaction: Updating route mapping for new CustNo: {CustNo} to Route: {RouteName}", fullHesCodeForNewCustomer, model.ROUTE_NAME);
                         const string updateInactiveSql = "UPDATE dbo.Visit_route_dtl SET RACTIVE = 0 WHERE COUST_NO = @CustomerNumber AND ROUTE_NAME <> @RouteName";
-                        int deactivatedCount = await connection.ExecuteAsync(
-                            updateInactiveSql,
-                            new { CustomerNumber = custNo, RouteName = model.ROUTE_NAME }, // Use parameterized query
-                            transaction: transaction);
-                        _logger.LogInformation("Transaction: Deactivated {Count} other route mappings for CustNo: {CustNo}", deactivatedCount, custNo);
+                        await connection.ExecuteAsync(updateInactiveSql, new { CustomerNumber = fullHesCodeForNewCustomer, RouteName = model.ROUTE_NAME }, transaction: transaction);
 
-                        // 3b. Check if the *selected* route mapping already exists for this customer
                         const string selectSpecificSql = "SELECT IDR FROM dbo.Visit_route_dtl WHERE COUST_NO = @CustomerNumber AND ROUTE_NAME = @RouteName";
-                        var specificRoute = await connection.QuerySingleOrDefaultAsync<VISITOUR_SQL2>( // Use VISITOUR_SQL2 or just int? if only IDR is needed
-                            selectSpecificSql,
-                            new { CustomerNumber = custNo, RouteName = model.ROUTE_NAME }, // Use parameterized query
-                            transaction: transaction);
+                        var specificRouteIdr = await connection.QuerySingleOrDefaultAsync<int?>(selectSpecificSql, new { CustomerNumber = fullHesCodeForNewCustomer, RouteName = model.ROUTE_NAME }, transaction: transaction);
 
-                        if (specificRoute != null && specificRoute.IDR.HasValue) // Route already exists for this customer
+                        if (specificRouteIdr.HasValue)
                         {
-                            // 3c. Activate the existing record (equivalent to inner `if (rst.Count > 0)` in WPF)
                             const string updateActiveSql = "UPDATE dbo.Visit_route_dtl SET RACTIVE = 1 WHERE IDR = @Id";
-                            int activatedCount = await connection.ExecuteAsync(
-                                updateActiveSql,
-                                new { Id = specificRoute.IDR.Value }, // Use parameterized query
-                                transaction: transaction);
-
-                            if (activatedCount > 0)
-                            {
-                                _logger.LogInformation("Transaction: Activated existing route mapping IDR {Idr} for CustNo: {CustNo}", specificRoute.IDR.Value, custNo);
-                            }
-                            else
-                            {
-                                _logger.LogWarning("Transaction: Failed to activate existing route mapping IDR {Idr} for CustNo: {CustNo} (Rows Affected: 0)", specificRoute.IDR.Value, custNo);
-                                // Decide if this should cause a rollback - maybe not critical if customer was inserted?
-                                // throw new InvalidOperationException("Failed to activate existing route mapping.");
-                            }
+                            await connection.ExecuteAsync(updateActiveSql, new { Id = specificRouteIdr.Value }, transaction: transaction);
                         }
-                        else // Route does not exist for this customer, need to insert
+                        else
                         {
-                            // 3d. Insert a new active route mapping (equivalent to the two `else` blocks in WPF)
                             const string insertRouteSql = "INSERT INTO dbo.Visit_route_dtl (ROUTE_NAME, COUST_NO, RACTIVE) VALUES (@RouteName, @CustomerNumber, 1)";
-                            int insertedCount = await connection.ExecuteAsync(
-                                insertRouteSql,
-                                new { RouteName = model.ROUTE_NAME, CustomerNumber = custNo }, // Use parameterized query
-                                transaction: transaction);
-
-                            if (insertedCount <= 0)
-                            {
-                                _logger.LogError("Transaction: Failed to insert new route mapping for CustNo: {CustNo}, Route: {RouteName}", custNo, model.ROUTE_NAME);
-                                throw new InvalidOperationException("Database insert for route mapping failed."); // Rollback transaction
-                            }
-                            _logger.LogInformation("Transaction: Inserted new active route mapping for CustNo: {CustNo}, Route: {RouteName}", custNo, model.ROUTE_NAME);
+                            await connection.ExecuteAsync(insertRouteSql, new { RouteName = model.ROUTE_NAME, CustomerNumber = fullHesCodeForNewCustomer }, transaction: transaction);
                         }
-                        _logger.LogInformation("Transaction: Route mapping update completed for CustNo: {CustNo}", custNo);
                     }
-                    else
-                    {
-                        _logger.LogInformation("Transaction: No ROUTE_NAME provided for new customer TNUMBER {TNUMBER}, skipping route update.", nextTnumber);
-                    }
-                    // <<< END: Route Update Logic >>>
 
-
-                    // 4. <<< START: Add Customer to LAST EXISTING Daily Visit >>>
                     if (!string.IsNullOrEmpty(visitorHes))
                     {
-                        _logger.LogInformation("Transaction: Attempting to add customer {CustNo} to last daily visit for Visitor HES {VisitorHES}", custNo, visitorHes);
-
-                        // 4a. Find the LATEST VDATE for this visitor from VISITORS_DAY
+                        _logger.LogInformation("Transaction: Attempting to add customer {CustNo} to last daily visit for Visitor HES {VisitorHES}", fullHesCodeForNewCustomer, visitorHes);
                         const string findLastVDateSql = "SELECT MAX(VDATE) FROM dbo.VISITORS_DAY WHERE HES = @HES";
                         long? lastVDate = await connection.QuerySingleOrDefaultAsync<long?>(findLastVDateSql, new { HES = visitorHes }, transaction: transaction);
 
-                        // 4b. If a VDATE exists, add the detail using THAT VDATE
                         if (lastVDate.HasValue)
                         {
-                            long targetVDate = lastVDate.Value; // Use the existing VDATE
-                            DateTime now = DateTime.Now; // Still need current time for CDATE/CRT in detail
-                            _logger.LogInformation("Transaction: Found last VDATE {TargetVDate} for HES {VisitorHES}. Adding detail for customer {CustNo}.", targetVDate, visitorHes, custNo);
-
-                            // 4c. Check if detail already exists for this customer on the LAST visit date
+                            long targetVDate = lastVDate.Value;
+                            _logger.LogInformation("Transaction: Found last VDATE {TargetVDate} for HES {VisitorHES}. Adding detail for customer {CustNo}.", targetVDate, visitorHes, fullHesCodeForNewCustomer);
                             const string checkDetailSql = "SELECT COUNT(*) FROM dbo.VISITORS_DAY_DTL WHERE HES = @HES AND VDATE = @VDATE AND COUST_NO = @CustomerNumber";
-                            int detailCount = await connection.QuerySingleOrDefaultAsync<int>(checkDetailSql, new { HES = visitorHes, VDATE = targetVDate, CustomerNumber = custNo }, transaction: transaction);
+                            int detailCount = await connection.QuerySingleOrDefaultAsync<int>(checkDetailSql, new { HES = visitorHes, VDATE = targetVDate, CustomerNumber = fullHesCodeForNewCustomer }, transaction: transaction);
 
-                            // 4d. If detail doesn't exist, insert it using the found VDATE
                             if (detailCount == 0)
                             {
-                                _logger.LogInformation("Transaction: Detail for customer {CustNo} NOT found in VISITORS_DAY_DTL for HES {VisitorHES}, VDATE {TargetVDate}. Inserting detail.", custNo, visitorHes, targetVDate);
                                 const string insertDetailSql = @"
                                     INSERT INTO dbo.VISITORS_DAY_DTL (HES, VDATE, COUST_NO, CDATE, RACTIVE, CLASS, TOPLACE, CRT, UID)
                                     VALUES (@HES, @VDATE, @CustomerNumber, @CurrentDateTime, 1, NULL, NULL, @CurrentDateTime, @UserId);";
                                 int detailInserted = await connection.ExecuteAsync(insertDetailSql, new
                                 {
                                     HES = visitorHes,
-                                    VDATE = targetVDate, // <<< Use the found lastVDate
-                                    CustomerNumber = custNo,
-                                    CurrentDateTime = now,
+                                    VDATE = targetVDate,
+                                    CustomerNumber = fullHesCodeForNewCustomer,
+                                    CurrentDateTime = DateTime.Now,
                                     UserId = visitorUid
                                 }, transaction: transaction);
-
-                                if (detailInserted <= 0)
-                                {
-                                    _logger.LogError("Transaction: Failed to insert VISITORS_DAY_DTL detail for HES {VisitorHES}, VDATE {TargetVDate}, COUST_NO {CustNo}. Rows Affected: {Rows}", visitorHes, targetVDate, custNo, detailInserted);
-                                    throw new InvalidOperationException("Database insert for VISITORS_DAY_DTL detail failed."); // Rollback
-                                }
-                                _logger.LogInformation("Transaction: VISITORS_DAY_DTL detail inserted successfully for customer {CustNo}, HES {VisitorHES}, VDATE {TargetVDate}.", custNo, visitorHes, targetVDate);
-                            }
-                            else
-                            {
-                                _logger.LogInformation("Transaction: Detail for customer {CustNo} already exists in VISITORS_DAY_DTL for HES {VisitorHES}, VDATE {TargetVDate}. Skipping insert.", custNo, visitorHes, targetVDate);
+                                if (detailInserted <= 0) throw new InvalidOperationException("Database insert for VISITORS_DAY_DTL detail failed.");
                             }
                         }
                         else
                         {
-                            // 4e. No existing VDATE found for this visitor
-                            _logger.LogWarning("Transaction: No existing VDATE found in VISITORS_DAY for HES {VisitorHES}. Customer {CustNo} was NOT added to any daily visit.", visitorHes, custNo);
-                            // Decide action:
-                            // - Do nothing (as implemented here)
-                            // - OR: Create a visit for today and add the customer (revert to previous logic)
-                            // - OR: Throw an error? throw new InvalidOperationException("No existing visit found for visitor.");
+                            _logger.LogWarning("Transaction: No existing VDATE found in VISITORS_DAY for HES {VisitorHES}. Customer {CustNo} was NOT added to any daily visit.", visitorHes, fullHesCodeForNewCustomer);
                         }
                     }
                     else
                     {
                         _logger.LogWarning("Transaction: Visitor HES claim not found. Skipping daily visit update.");
-                        // Consider if this should be an error that rolls back the transaction
                     }
 
+                    return currentNextId; // Return the generated sequential ID for that level
+                }, IsolationLevel.RepeatableRead);
 
-                    // Return the generated customer number from the lambda
-                    return nextTnumber;
 
-                }, IsolationLevel.RepeatableRead); // Or IsolationLevel.ReadCommitted depending on needs
+                _logger.LogInformation("Customer created successfully with multi-level logic. Level: {Level}, Table: {Table}, Sequential ID: {SeqId}, Full HES: {FullHES}",
+                    levelInfo.Level, levelInfo.TargetTable, nextSequentialId, fullHesCodeForNewCustomer);
 
-                _logger.LogInformation("Customer and Route Mapping (if applicable) created successfully via transaction. TNUMBER: {TNUMBER}", generatedTnumber);
-                // Return success with the generated TNUMBER
-                return Ok(new { Message = "مشتری با موفقیت ذخیره شد.", Tnumber = generatedTnumber });
-
+                return Ok(new { Message = $"مشتری با موفقیت در سطح {levelInfo.Level} با کد حساب {fullHesCodeForNewCustomer} (شناسه: {nextSequentialId}) ذخیره شد.", Tnumber = nextSequentialId, Hes = fullHesCodeForNewCustomer });
             }
             catch (Exception ex)
             {
-                // Check specifically for Primary Key / Unique Constraint violation (more likely on customer insert)
-                if (ex is SqlException sqlEx && (sqlEx.Number == 2627 || sqlEx.Number == 2601))
+                if (ex is SqlException sqlEx && (sqlEx.Number == 2627 || sqlEx.Number == 2601)) // Unique constraint violation
                 {
-                    _logger.LogWarning(sqlEx, "Duplicate Key violation during customer/route transaction for account {NKol}-{Number}. TNUMBER conflict likely.", determinedNKol, determinedNumber);
-                    return Conflict(new ProblemDetails
-                    {
-                        Title = "Conflict",
-                        // Detail = $"مشتری با کد {generatedTnumber} برای این نوع حساب از قبل وجود دارد یا خطای یکتایی دیگری رخ داده است.", // generatedTnumber is not available here
-                        Detail = $"مشتری با اطلاعات وارد شده از قبل وجود دارد یا خطای یکتایی دیگری رخ داده است. لطفاً بررسی کنید.",
-                        Status = StatusCodes.Status409Conflict
-                    });
+                    _logger.LogWarning(sqlEx, "CreateCustomer: Duplicate Key violation. HES: {FullHES}, NextID: {NextId}", fullHesCodeForNewCustomer, nextSequentialId);
+                    return Conflict(new ProblemDetails { Title = "Conflict", Detail = $"مشتری با کد {fullHesCodeForNewCustomer} یا شناسه {nextSequentialId} از قبل در این سطح وجود دارد.", Status = StatusCodes.Status409Conflict });
                 }
-                else if (ex is InvalidOperationException dbEx && dbEx.Message.Contains("Database insert")) // Catch specific exceptions thrown within transaction
+                else if (ex is InvalidOperationException dbEx && dbEx.Message.Contains("Database insert"))
                 {
-                    _logger.LogError(ex, "Database insert failed within transaction for Account {NKol}-{Number}.", determinedNKol, determinedNumber);
-                    return StatusCode(500, new ProblemDetails
-                    {
-                        Title = "Database Error",
-                        Detail = "خطا در درج اطلاعات در دیتابیس.",
-                        Status = StatusCodes.Status500InternalServerError
-                    });
+                    _logger.LogError(dbEx, "CreateCustomer: Database insert failed within transaction. HES: {FullHES}", fullHesCodeForNewCustomer);
+                    return StatusCode(500, new ProblemDetails { Title = "Database Error", Detail = "خطا در درج اطلاعات در پایگاه داده.", Status = StatusCodes.Status500InternalServerError });
                 }
-                else
-                {
-                    // Log other unexpected errors
-                    _logger.LogError(ex, "Error executing customer creation transaction for Account {NKol}-{Number}.", determinedNKol, determinedNumber);
-                    return StatusCode(500, new ProblemDetails
-                    {
-                        Title = "Internal Server Error",
-                        Detail = "خطای پیش‌بینی نشده‌ای هنگام پردازش درخواست رخ داد.",
-                        Status = StatusCodes.Status500InternalServerError
-                    });
-                }
+                _logger.LogError(ex, "CreateCustomer: Error during multi-level customer creation. UserCO: {UserCod}, HES Attempted: {FullHES}", userCod, fullHesCodeForNewCustomer);
+                return StatusCode(500, new ProblemDetails { Title = "Internal Server Error", Detail = "خطای پیش‌بینی نشده‌ای هنگام ایجاد مشتری رخ داد.", Status = StatusCodes.Status500InternalServerError });
             }
         }
 
+        private async Task<AccountingLevelInfo?> DetermineAccountingLevelAndParentsAsync(int userCod)
+        {
+            string? blockHesSettingRaw = null;
+            try
+            {
+                string blockHesSql = "SELECT HES FROM BLOCK_HES WHERE HES LIKE '#%' AND USERCO = @UserCode";
+                blockHesSettingRaw = await _dbService.DoGetDataSQLAsyncSingle<string>(blockHesSql, new { UserCode = userCod });
+
+                if (string.IsNullOrEmpty(blockHesSettingRaw) || !blockHesSettingRaw.StartsWith("#"))
+                {
+                    _logger.LogWarning("BLOCK_HES setting not found or invalid for UserCO: {UserCod}. Falling back to default SAZMAN BEDEHKAR if available.", userCod);
+                    // Fallback: try to use default Bedehkar from SAZMAN for level 1
+                    var sazmanSettings = await _appSettingsService.GetSazmanSettingsAsync();
+                    if (sazmanSettings?.BEDEHKAR != null)
+                    {
+                        return new AccountingLevelInfo
+                        {
+                            Level = 1,
+                            TargetTable = "TDETA_HES",
+                            IdFieldNameInTable = "TNUMBER",
+                            NKol = sazmanSettings.BEDEHKAR,
+                            Number = 1 // Default MOIN for level 1
+                        };
+                    }
+                    _logger.LogError("BLOCK_HES not found for UserCO {UserCod} and SAZMAN.BEDEHKAR is not configured.", userCod);
+                    return null;
+                }
+
+                string hesPath = blockHesSettingRaw.Substring(1); // Remove '#'
+
+                double? kol = null, moin = null, taf1 = null, taf2 = null, taf3 = null, taf4 = null;
+                CL_HESABDARI.GETTAF3(hesPath, ref kol, ref moin, ref taf1, ref taf2, ref taf3, ref taf4);
+
+                if (!kol.HasValue || !moin.HasValue) // KOL and MOIN are mandatory
+                {
+                    _logger.LogError("Failed to parse KOL or MOIN from BLOCK_HES setting '{HesPath}' for UserCO: {UserCod}", hesPath, userCod);
+                    return null;
+                }
+
+                if (!taf1.HasValue) // Level 1
+                {
+                    return new AccountingLevelInfo { Level = 1, TargetTable = "TDETA_HES", IdFieldNameInTable = "TNUMBER", NKol = kol, Number = moin };
+                }
+                if (!taf2.HasValue) // Level 2
+                {
+                    return new AccountingLevelInfo { Level = 2, TargetTable = "TDETA_HES2", IdFieldNameInTable = "TNUMBER2", NKol = kol, Number = moin, TnumberParent = taf1 };
+                }
+                if (!taf3.HasValue) // Level 3
+                {
+                    return new AccountingLevelInfo { Level = 3, TargetTable = "TDETA_HES3", IdFieldNameInTable = "TNUMBER3", NKol = kol, Number = moin, TnumberParent = taf1, Tnumber2Parent = taf2 };
+                }
+                // if (!taf4.HasValue) // Level 4 - taf4 would be the ID itself if the path was for a level 5 parent
+                // For creating at level 4, taf3 is the last parent.
+                return new AccountingLevelInfo { Level = 4, TargetTable = "TDETA_HES4", IdFieldNameInTable = "TNUMBER4", NKol = kol, Number = moin, TnumberParent = taf1, Tnumber2Parent = taf2, Tnumber3Parent = taf3 };
+                // If logic for level 5+ existed, taf4 would be Tnumber4Parent etc. Current logic from WPF implies creating up to level 4.
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error determining accounting level from BLOCK_HES UserCO: {UserCod}, Setting: '{BlockHesRaw}'", userCod, blockHesSettingRaw ?? "N/A");
+                return null;
+            }
+        }
 
         [HttpGet("{hesabCode}/statement")] // روت API: api/customers/{کد حساب}/statement
         public async Task<ActionResult<IEnumerable<QDAFTARTAFZIL2_H>>> GetCustomerStatement(string hesabCode, [FromQuery] long? startDate = DefaultStartDate, [FromQuery] long? endDate = DefaultEndDate)
@@ -451,7 +544,7 @@ namespace Safir.Server.Controllers
             }
         }
 
-             
+
         // --- متد کمکی برای دریافت داده (برای جلوگیری از تکرار کد) ---
         private async Task<IEnumerable<QDAFTARTAFZIL2_H>?> FetchStatementDataAsync(string hesabCode, long? startDate, long? endDate)
         {
