@@ -7,6 +7,7 @@ using Blazored.LocalStorage; // Added for Local Storage
 using Microsoft.AspNetCore.Components.Web;
 using Safir.Shared.Interfaces;
 using MudBlazor.Services;
+using System.Globalization;
 
 var builder = WebAssemblyHostBuilder.CreateDefault(args);
 builder.RootComponents.Add<App>("#app"); // Check if App.razor exists, or use HeadOutlet/Routes
