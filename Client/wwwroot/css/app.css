@@ -21,4 +21,23 @@
 }
 
 
+.mobile-friendly-tabs .mud-tabs-toolbar-wrapper {
+    overflow-x: auto !important; /* اجازه اسکرول افقی برای نوار تب ها */
+    -webkit-overflow-scrolling: touch; /* اسکرول نرم تر در iOS */
+}
 
+.mobile-friendly-tabs .mud-tabs-toolbar {
+    flex-wrap: nowrap !important; /* جلوگیری از شکستن تب ها به خط جدید */
+    min-width: min-content; /* اجازه به toolbar تا به اندازه محتوای تب ها کوچک شود */
+}
+
+.mobile-friendly-tabs .mud-tab {
+    min-width: 100px !important; /* یک حداقل عرض برای هر تب، می‌توانید تنظیم کنید */
+    padding: 8px 12px !important; /* کمی پدینگ کمتر برای تب ها */
+    font-size: 0.875rem !important; /* کمی فونت کوچکتر */
+}
+
+    /* در صورت نیاز، برای تب فعال هم می‌توانید استایل خاصی تعریف کنید */
+    .mobile-friendly-tabs .mud-tab.mud-tab-active {
+        /* background-color: var(--mud-palette-primary-lighter); */
+    }

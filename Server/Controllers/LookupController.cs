@@ -12,6 +12,7 @@ using Safir.Shared.Models.Kala;
 using Microsoft.AspNetCore.Http; // اضافه کردن این using
 using System.Security.Claims;
 using Safir.Shared.Models.Kharid;
+using Safir.Shared.Models;
 
 namespace Safir.Server.Controllers
 {
@@ -379,6 +380,49 @@ namespace Safir.Server.Controllers
             {
                 _logger.LogError(ex, "Error fetching PriceElamieTfDetails for PEID: {PEID}, CustCode: {CustCode}, PPID: {PPID}", elamiehTakhfifId, custTypeCode, paymentTermId);
                 return StatusCode(500, "Internal server error while fetching price elamie TF details.");
+            }
+        }
+
+        [HttpGet("customerlookup")] // مسیر: api/lookup/customerlookup
+        public async Task<ActionResult<IEnumerable<LookupDto<string>>>> GetCustomerLookup([FromQuery] string? searchTerm = null)
+        {
+            string sql;
+            object? parameters = null;
+
+            if (!string.IsNullOrWhiteSpace(searchTerm))
+            {
+                // جستجو بر اساس نام یا کد مشتری از جدول CUST_HESAB
+                // شما می‌توانید این کوئری را برای جستجو در TDETA_HES و سطوح دیگر نیز گسترش دهید اگر لازم است.
+                sql = @"SELECT DISTINCT TOP 50
+                    CH.hes AS Id,
+                    CH.NAME AS Name
+                FROM dbo.CUST_HESAB CH
+                WHERE CH.NAME LIKE @SearchPattern OR CH.hes LIKE @SearchPattern
+                ORDER BY CH.NAME";
+                parameters = new { SearchPattern = $"%{searchTerm}%" };
+                _logger.LogInformation("API: Fetching customer lookup with searchTerm: {SearchTerm}", searchTerm);
+            }
+            else
+            {
+                // در صورت عدم وجود searchTerm، یک لیست اولیه (مثلاً TOP 50 یا 100) را برگردانید.
+                // اگر لیست مشتریان بسیار بزرگ است، برگرداندن همه آن‌ها بدون فیلتر اولیه توصیه نمی‌شود.
+                sql = @"SELECT DISTINCT TOP 50
+                    CH.hes AS Id,
+                    CH.NAME AS Name
+                FROM dbo.CUST_HESAB CH
+                ORDER BY CH.NAME";
+                _logger.LogInformation("API: Fetching initial customer lookup (TOP 50).");
+            }
+
+            try
+            {
+                var data = await _dbService.DoGetDataSQLAsync<LookupDto<string>>(sql, parameters);
+                return Ok(data ?? Enumerable.Empty<LookupDto<string>>());
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "API: Error fetching customer lookup. SearchTerm: {SearchTerm}", searchTerm);
+                return StatusCode(500, "Internal server error while fetching customer lookup.");
             }
         }
         #endregion
