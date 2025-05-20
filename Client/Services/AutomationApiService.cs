@@ -7,6 +7,7 @@ using System.Net.Http;
 using System.Net.Http.Json; // Important: Add this using
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging; // Optional for logging
+using System.Net.Http.Headers;
 
 namespace Safir.Client.Services
 {
@@ -158,23 +159,57 @@ namespace Safir.Client.Services
             }
         }
 
-        public async Task<EventModel?> CreateEventAsync(long taskId, EventModel newEvent)
+        public async Task<EventModel?> CreateEventAsync(long taskId, EventModel newEvent, Stream? fileStream = null, string? fileName = null)
         {
             try
             {
-                var response = await _httpClient.PostAsJsonAsync($"api/tasks/{taskId}/events", newEvent);
+                var requestUri = $"api/tasks/{taskId}/events";
+
+                // Use MultipartFormDataContent to send both JSON data and file
+                using var content = new MultipartFormDataContent();
+
+                // Add JSON part (EventModel properties as form fields)
+                // You might need a more robust way to serialize EventModel to form data
+                // For simplicity, let's manually add critical fields for the DTO (CreateEventRequestDto) on server
+                content.Add(new StringContent(newEvent.EVENTS ?? string.Empty), "EVENTS");
+                if (newEvent.STDATE.HasValue) content.Add(new StringContent(newEvent.STDATE.Value.ToString("yyyy-MM-dd")), "STDATE");
+                if (newEvent.STTIME.HasValue) content.Add(new StringContent(newEvent.STTIME.Value.ToString(@"hh\:mm")), "STTIME"); // HH:mm format
+                if (newEvent.SUMTIME.HasValue) content.Add(new StringContent(newEvent.SUMTIME.Value.TotalMinutes.ToString()), "SUMTIME"); // Example: send total minutes
+                if (newEvent.skid.HasValue) content.Add(new StringContent(newEvent.skid.Value.ToString()), "skid");
+                if (newEvent.num.HasValue) content.Add(new StringContent(newEvent.num.Value.ToString()), "num");
+
+                // Add the file part if a fileStream is provided
+                if (fileStream != null && fileName != null)
+                {
+                    var fileContent = new StreamContent(fileStream);
+                    // Determine content type dynamically if possible, or set a default
+                    string contentType;
+                    if (fileName.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase)) contentType = "application/pdf";
+                    else if (fileName.EndsWith(".jpg", StringComparison.OrdinalIgnoreCase) || fileName.EndsWith(".jpeg", StringComparison.OrdinalIgnoreCase)) contentType = "image/jpeg";
+                    else if (fileName.EndsWith(".png", StringComparison.OrdinalIgnoreCase)) contentType = "image/png";
+                    else contentType = "application/octet-stream";
+
+                    fileContent.Headers.ContentType = new MediaTypeHeaderValue(contentType);
+                    content.Add(fileContent, "file", fileName); // "file" matches IFormFile parameter name on server
+                    _logger.LogInformation("Attaching file '{FileName}' to event creation request.", fileName);
+                }
+
+                var response = await _httpClient.PostAsync(requestUri, content);
+
                 if (response.IsSuccessStatusCode)
                 {
-                    // Might return the created event or just a success status/ID
-                    // Adjust based on API design
                     return await response.Content.ReadFromJsonAsync<EventModel>();
                 }
-                _logger?.LogError("Error creating event for task {TaskId}. Status: {StatusCode}", taskId, response.StatusCode);
-                return null;
+                else
+                {
+                    var errorContent = await response.Content.ReadAsStringAsync();
+                    _logger.LogError("Error creating event for task {TaskId}. Status: {StatusCode}. Response: {ErrorContent}", taskId, response.StatusCode, errorContent);
+                    return null;
+                }
             }
             catch (Exception ex)
             {
-                _logger?.LogError(ex, "Exception creating event for task {TaskId}.", taskId);
+                _logger.LogError(ex, "Exception creating event for task {TaskId}.", taskId);
                 return null;
             }
         }
@@ -406,6 +441,32 @@ namespace Safir.Client.Services
             {
                 _logger.LogError(ex, "Exception fetching permission 'CanViewSubordinateTasks' from {RequestUri}", requestUri);
                 return false; // پیش‌فرض عدم دسترسی در صورت خطا
+            }
+        }
+
+        public async Task<(byte[]? FileBytes, string? ContentType)> DownloadEventAttachmentAsync(long taskId, int eventId)
+        {
+            _logger.LogInformation("Requesting event attachment for Task {TaskId}, Event {EventId}", taskId, eventId);
+            string requestUri = $"api/tasks/{taskId}/events/{eventId}/file";
+            try
+            {
+                var response = await _httpClient.GetAsync(requestUri);
+                response.EnsureSuccessStatusCode(); // Throws if not 2xx
+
+                byte[] bytes = await response.Content.ReadAsByteArrayAsync();
+                string contentType = response.Content.Headers.ContentType?.MediaType ?? "application/octet-stream";
+                _logger.LogInformation("Successfully downloaded attachment for Task {TaskId}, Event {EventId}. Size: {FileSize} bytes, ContentType: {ContentType}", taskId, eventId, bytes.Length, contentType);
+                return (bytes, contentType);
+            }
+            catch (HttpRequestException httpEx)
+            {
+                _logger.LogError(httpEx, "HTTP error downloading attachment for Task {TaskId}, Event {EventId}. Status: {StatusCode}", taskId, eventId, httpEx.StatusCode);
+                return (null, null);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error downloading attachment for Task {TaskId}, Event {EventId}", taskId, eventId);
+                return (null, null);
             }
         }
 

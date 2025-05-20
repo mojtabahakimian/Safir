@@ -4,6 +4,7 @@
 @using System.ComponentModel.DataAnnotations
 @using System.Globalization // برای PersianCalendar
 
+
 @inject IAutomationApiService AutomationService
 @inject ISnackbar Snackbar
 
@@ -18,17 +19,33 @@
                 <MudTh>#</MudTh>
                 <MudTh>شرح رویداد</MudTh>
                 <MudTh>کاربر</MudTh>
-                <MudTh>تاریخ ثبت</MudTh> @* <<< فقط تاریخ *@
+                <MudTh>تاریخ ثبت</MudTh>
+                <MudTh>ضمیمه</MudTh> @* NEW: Header for attachment column *@
             </HeaderContent>
             <RowTemplate>
                 <MudTd DataLabel="#">@context.IDD</MudTd>
                 <MudTd DataLabel="شرح رویداد" Style="white-space: pre-wrap;">@context.EVENTS</MudTd>
                 <MudTd DataLabel="کاربر">@context.USERNAME</MudTd>
-                @* --- **اصلاح شده:** حذف کامل نمایش زمان --- *@
                 <MudTd DataLabel="تاریخ ثبت">
                     @FormatShamsiDateFromDateTime(context.STDATE)
                 </MudTd>
-                @* --------------------------------------- *@
+                @* NEW: Display attachment info and download button *@
+                <MudTd DataLabel="ضمیمه">
+                    @if (!string.IsNullOrEmpty(context.AttachedFileType))
+                    {
+                        <MudButton Size="Size.Small" Variant="Variant.Outlined" Color="Color.Info"
+                               OnClick="@(() => DownloadAttachment(context.IDNUM, context.IDD, context.AttachedFileName))"
+                               EndIcon="@Icons.Material.Filled.Attachment"
+                               Title="@context.AttachedFileName">
+                            مشاهده
+                        </MudButton>
+                    }
+                    else
+                    {
+                        <MudText>-</MudText>
+                    }
+                </MudTd>
+                @* ------------------------------------------------ *@
             </RowTemplate>
             <NoRecordsContent>
                 <MudText>رویدادی برای این وظیفه ثبت نشده است.</MudText>
@@ -53,15 +70,38 @@
                               Required="true"
                               RequiredError="شرح رویداد الزامی است." />
 
+                @* NEW: Input for file attachment *@
+                <MudItem Class="my-4">
+                    <MudText Typo="Typo.body2" Class="mb-2">فایل ضمیمه (عکس/PDF):</MudText>
+                    <InputFile OnChange="HandleFileSelection" />
+                    @if (_selectedFile != null)
+                    {
+                        <MudText Typo="Typo.body2" Class="mt-2">فایل انتخاب شده: @_selectedFile.Name (@((_selectedFile.Size / 1024).ToString("N0")) KB)</MudText>
+                        <MudButton OnClick="ClearFileSelection" Color="Color.Error" Variant="Variant.Text" Size="Size.Small" Class="mt-1">
+                            <MudIcon Icon="@Icons.Material.Filled.Close" Size="Size.Small" /> حذف فایل
+                        </MudButton>
+                    }
+                    @if (!string.IsNullOrEmpty(_fileUploadError))
+                    {
+                        <MudText Color="Color.Error" Typo="Typo.caption">@_fileUploadError</MudText>
+                    }
+                </MudItem>
+                @* ---------------------------------------------------- *@
+
                 <ValidationSummary Class="mt-2" />
-                @* --- دکمه ثبت باید الان نمایش داده شود --- *@
                 <MudButton ButtonType="ButtonType.Submit"
                            type="submit"
                            Variant="Variant.Filled"
                            Color="Color.Primary"
                            @onclick="SaveNewEventAsync"
                            Disabled="@_isSavingEvent"
-                           Class="mt-4">ثبت رویداد</MudButton>
+                           Class="mt-4">
+                    @if (_isSavingEvent)
+                    {
+                        <MudProgressCircular Indeterminate Color="Color.Info" Size="Size.Small" Class="mr-2" />
+                    }
+                    ثبت رویداد
+                </MudButton>
             </MudForm>
         </EditForm>
 
@@ -72,12 +112,20 @@
 </MudDialog>
 
 @code {
+
     [CascadingParameter] MudDialogInstance MudDialog { get; set; } = default!;
     [Parameter] public long TaskId { get; set; }
+    [Inject] private IJSRuntime JSRuntime { get; set; } = default!; // NEW: Inject IJSRuntime
 
     private MudForm? _newEventForm;
     private List<EventModel> _events = new List<EventModel>();
     private EventModel _newEvent = new EventModel();
+
+    private IBrowserFile? _selectedFile;
+    private string? _fileUploadError;
+    private const long MaxFileSize = 10 * 1024 * 1024; // 10 MB in bytes
+    private string[] AllowedFileExtensions = { ".jpg", ".jpeg", ".png", ".pdf" };
+
 
     private bool _isLoadingEvents = false;
     private bool _isSavingEvent = false;
@@ -85,6 +133,70 @@
     protected override async Task OnInitializedAsync()
     {
         await LoadEventsAsync();
+    }
+
+    // برای ضمیمه فایل
+
+    private void HandleFileSelection(InputFileChangeEventArgs e)
+    {
+        _fileUploadError = null;
+        _selectedFile = null;
+
+        var file = e.File;
+        if (file == null) return;
+
+        // Validate file size
+        if (file.Size > MaxFileSize)
+        {
+            _fileUploadError = $"اندازه فایل نباید بیشتر از {MaxFileSize / (1024 * 1024)} مگابایت باشد.";
+            return;
+        }
+
+        // Validate file extension
+        var fileExtension = Path.GetExtension(file.Name)?.ToLowerInvariant();
+        if (fileExtension == null || !AllowedFileExtensions.Contains(fileExtension))
+        {
+            _fileUploadError = $"پسوند فایل '{fileExtension}' مجاز نیست. پسوندهای مجاز: {string.Join(", ", AllowedFileExtensions)}";
+            return;
+        }
+
+        _selectedFile = file;
+    }
+
+    private void ClearFileSelection()
+    {
+        _selectedFile = null;
+        _fileUploadError = null;
+    }
+
+    private async Task DownloadAttachment(long taskId, int eventId, string? fileName)
+    {
+        if (string.IsNullOrEmpty(fileName))
+        {
+            Snackbar.Add("نام فایل ضمیمه مشخص نیست.", Severity.Warning);
+            return;
+        }
+
+        try
+        {
+            var (fileBytes, contentType) = await AutomationService.DownloadEventAttachmentAsync(taskId, eventId);
+
+            if (fileBytes != null && fileBytes.Length > 0 && contentType != null)
+            {
+                // Use the downloadFileFromBytes JS helper from wwwroot/js/downloadHelper.js
+                // This JS function expects fileName, and byteArray.
+                await JSRuntime.InvokeVoidAsync("downloadFileFromBytes", fileName, fileBytes);
+                Snackbar.Add("دانلود فایل آغاز شد.", Severity.Success);
+            }
+            else
+            {
+                Snackbar.Add("فایل ضمیمه یافت نشد یا مشکلی در دریافت آن وجود داشت.", Severity.Error);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"خطای غیرمنتظره در دانلود فایل: {ex.Message}", Severity.Error);
+        }
     }
 
     // تابع کمکی برای فرمت تاریخ شمسی
@@ -133,21 +245,43 @@
             Snackbar.Add("لطفا شرح رویداد را وارد کنید.", Severity.Warning);
             return;
         }
+        if (_selectedFile != null && !string.IsNullOrEmpty(_fileUploadError))
+        {
+            Snackbar.Add("فایل انتخابی دارای خطا است. لطفاً فایل معتبری انتخاب کنید یا آن را حذف کنید.", Severity.Warning);
+            return;
+        }
 
         _isSavingEvent = true;
         StateHasChanged();
         try
         {
             _newEvent.IDNUM = TaskId;
-            var createdEvent = await AutomationService.CreateEventAsync(TaskId, _newEvent);
+            EventModel? createdEvent = null;
+
+            if (_selectedFile != null)
+            {
+                // Open the file stream and pass it to the service
+                // Ensure you handle the stream properly (e.g., wrap in a using statement if it's not disposed by the HttpClient)
+                // HttpClient.PostAsync with StreamContent handles disposal of the stream internally after sending.
+                using (var stream = _selectedFile.OpenReadStream(MaxFileSize)) // MaxFileSize is important here too for client-side stream reading limit
+                {
+                    createdEvent = await AutomationService.CreateEventAsync(TaskId, _newEvent, stream, _selectedFile.Name);
+                }
+            }
+            else
+            {
+                createdEvent = await AutomationService.CreateEventAsync(TaskId, _newEvent);
+            }
 
             if (createdEvent != null && createdEvent.IDD > 0)
             {
                 Snackbar.Add("رویداد با موفقیت ثبت شد.", Severity.Success);
-                _newEvent = new EventModel();
+                _newEvent = new EventModel(); // Reset form model
                 _newEventForm?.Reset();
                 _newEventForm?.ResetValidation();
-                await LoadEventsAsync();
+                _selectedFile = null; // Clear selected file after successful upload
+                _fileUploadError = null;
+                await LoadEventsAsync(); // Reload events to show the new one
             }
             else
             {
