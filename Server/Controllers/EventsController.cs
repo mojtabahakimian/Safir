@@ -40,19 +40,19 @@ namespace Safir.Server.Controllers
             }
         }
 
-        public class CreateEventRequestDto
-        {
-            public long IDNUM { get; set; } // Task ID
-            [Required(ErrorMessage = "شرح رویداد الزامی است.")]
-            [MaxLength(4000)]
-            public string? EVENTS { get; set; } // شرح رویداد
-            public DateTime? STDATE { get; set; }
-            public TimeSpan? STTIME { get; set; }
-            public TimeSpan? SUMTIME { get; set; }
-            public int? skid { get; set; }
-            public long? num { get; set; }
-            // No direct file property here, will be handled via IFormFile parameter
-        }
+        //public class CreateEventRequestDto
+        //{
+        //    public long IDNUM { get; set; } // Task ID
+        //    [Required(ErrorMessage = "شرح رویداد الزامی است.")]
+        //    [MaxLength(4000)]
+        //    public string? EVENTS { get; set; } // شرح رویداد
+        //    public DateTime? STDATE { get; set; }
+        //    public TimeSpan? STTIME { get; set; }
+        //    public TimeSpan? SUMTIME { get; set; }
+        //    public int? skid { get; set; }
+        //    public long? num { get; set; }
+        //    // No direct file property here, will be handled via IFormFile parameter
+        //}
 
         [HttpGet]
         public async Task<ActionResult<IEnumerable<EventModel>>> GetEventsForTask(long taskId)
