@@ -1,4 +1,4 @@
-﻿@using Safir.Shared.Constants
+@using Safir.Shared.Constants
 @using Safir.Shared.Models
 @using Safir.Shared.Models.Automation
 @using Safir.Shared.Interfaces
@@ -10,15 +10,24 @@
 @inject AuthenticationStateProvider AuthenticationStateProvider
 @inject ILogger<MessagesDialog> Logger
 @inject AppState AppState
+@inject LookupApiService LookupService
 
 <MudDialog>
     <TitleContent>
         <MudText Typo="Typo.h6">پیام‌های داخلی</MudText>
     </TitleContent>
     <DialogContent>
-        <MudTabs Elevation="2" Rounded="true" PanelClass="pa-4">
-            @* --- تب صندوق ورودی --- *@
-            <MudTabPanel Text="صندوق ورودی">
+        @* 1. AlwaysShowScrollButtons برای نمایش دکمه های اسکرول در صورت نیاز.
+        2. یک کلاس سفارشی 'mobile-friendly-tabs' اضافه می کنیم تا بتوانیم در CSS هدف قرار دهیم.
+        *@
+        <MudTabs Elevation="2" Rounded="true" PanelClass="pa-4"
+                 AlwaysShowScrollButtons="true"
+                 Class="mobile-friendly-tabs"
+                 HideSlider="false">
+            @* اطمینان از نمایش اسلایدر زیر تب فعال *@
+
+            <MudTabPanel Text="صندوق ورودی" Class="custom-tab-panel-header">
+                @* کلاس برای سربرگ تب *@
                 <MudTable Items="@_receivedMessages" Dense="true" Hover="true" Striped="true" Style="max-height: 400px; overflow-y: auto;" Loading="@_isLoadingMessages" LoadingProgressColor="Color.Info">
                     <HeaderContent>
                         <MudTh>فرستنده</MudTh>
@@ -29,8 +38,8 @@
                     <RowTemplate>
                         <MudTd DataLabel="فرستنده">@context.USERNAME</MudTd>
                         <MudTd DataLabel="متن پیام" Style="white-space: pre-wrap;">@context.PAYAM</MudTd>
-                        @*<MudTd DataLabel="تاریخ ارسال">@context.STDATE?.ToString("yyyy/MM/dd") @context.STTIME?.ToString("hh:mm")</MudTd>*@
-                        <MudTd DataLabel="وضعیت">
+                        <MudTd DataLabel="تاریخ ارسال">@($"{context.STDATE?.ToString("yyyy/MM/dd")} {context.STTIME?.ToString(@"hh\:mm")}")</MudTd>
+                            <MudTd DataLabel="وضعیت">
                             @if (context.STATUS == 1)
                             {
                                 <MudChip Label="true" Color="Color.Warning" Size="Size.Small" OnClick="@(() => MarkAsRead(context))">خوانده نشده</MudChip>
@@ -50,21 +59,19 @@
                 </MudTable>
             </MudTabPanel>
 
-            @* --- تب ارسال پیام جدید --- *@
-            <MudTabPanel Text="ارسال پیام جدید">
+            <MudTabPanel Text="ارسال پیام جدید" Class="custom-tab-panel-header">
+                @* کلاس برای سربرگ تب *@
                 <EditForm Model="@_newMessageRequest">
                     <DataAnnotationsValidator />
                     <MudForm @ref="_newMessageForm">
                         <MudAutocomplete T="PersonelLookupModel" Label="گیرندگان پیام" @bind-Value="SelectedRecipient"
                                          SearchFunc="@SearchPersonel" ResetValueOnEmptyText="true" CoerceText="false"
                                          ToStringFunc="@(p => p?.SAL_NAME ?? string.Empty)" Variant="Variant.Outlined"
-                                         AdornmentIcon="@Icons.Material.Filled.Search" AdornmentColor="Color.Primary">
+                                         AdornmentIcon="@Icons.Material.Filled.Search" AdornmentColor="Color.Primary"
+                                         Dense="true">
                             <ItemTemplate Context="personCtx">
                                 <MudText>@personCtx.SAL_NAME (@personCtx.USERCO)</MudText>
                             </ItemTemplate>
-                            <ItemSelectedTemplate Context="personCtx">
-                                <MudChip Variant="Variant.Text" OnClose="@(() => RemoveRecipient(personCtx))">@personCtx.SAL_NAME</MudChip>
-                            </ItemSelectedTemplate>
                             <MoreItemsTemplate>
                                 <MudText>نتایج بیشتر موجود است...</MudText>
                             </MoreItemsTemplate>
@@ -73,30 +80,40 @@
                             </NoItemsTemplate>
                         </MudAutocomplete>
 
-                        <MudSelect T="string" Label="مربوط به (مشتری)" @bind-Value="_newMessageRequest.CompCod"
-                                   Variant="Variant.Outlined" Dense="true" Clearable="true" Required="true" RequiredError="انتخاب مشتری الزامی است.">
-                            @if (_customerLookup != null) // فرض کنید _customerLookup لیست مشتریان است
-                            {
-                                foreach (var customer in _customerLookup)
-                                {
-                                    <MudSelectItem T="string" Value="@customer.Id">@customer.Name</MudSelectItem>
-                                }
-                            }
-                        </MudSelect>
+                        <MudAutocomplete T="LookupDto<string>" Label="مربوط به (مشتری)*" Class="mt-3"
+                                         @bind-Value="SelectedCustomerForMessage"
+                                         SearchFunc="SearchCustomersForMessageAsync"
+                                         ToStringFunc="@(c => c?.Name ?? string.Empty)"
+                                         ResetValueOnEmptyText="true"
+                                         CoerceText="false"
+                                         Variant="Variant.Outlined" Dense="true" Clearable="true"
+                                         Required="true"
+                                         RequiredError="انتخاب مشتری الزامی است."
+                                         AdornmentIcon="@Icons.Material.Filled.Search" AdornmentColor="Color.Primary">
+                            <ItemTemplate Context="customerCtx">
+                                <MudText>@customerCtx.Name (@customerCtx.Id)</MudText>
+                            </ItemTemplate>
+                            <NoItemsTemplate>
+                                <MudText>مشتری یافت نشد.</MudText>
+                            </NoItemsTemplate>
+                            <MoreItemsTemplate>
+                                <MudText>نتایج بیشتر موجود است...</MudText>
+                            </MoreItemsTemplate>
+                        </MudAutocomplete>
 
                         @if (_selectedRecipientsList.Any())
                         {
                             <MudPaper Elevation="0" Class="d-flex flex-wrap gap-1 mt-2 pa-1">
                                 @foreach (var recipient in _selectedRecipientsList)
                                 {
-                                    <MudChip Color="Color.Primary" OnClose="@(() => RemoveRecipient(recipient))">@recipient.SAL_NAME</MudChip>
+                                    <MudChip Color="Color.Primary" OnClose="@(() => RemoveRecipient(recipient))" Size="Size.Small">@recipient.SAL_NAME</MudChip>
                                 }
                             </MudPaper>
                         }
 
                         <MudTextField Label="متن پیام" Class="mt-3"
                                       @bind-Value="_newMessageRequest.MessageText" For="@(() => _newMessageRequest.MessageText)"
-                                      Lines="4" Variant="Variant.Outlined" Required="true" RequiredError="متن پیام الزامی است." />
+                                      Lines="3" Variant="Variant.Outlined" Required="true" RequiredError="متن پیام الزامی است." />
 
                         <ValidationSummary Class="mt-2" />
                         <MudButton @onclick="SendNewMessageAsync" Variant="Variant.Filled" Color="Color.Primary" Disabled="@_isSending" Class="mt-4">ارسال پیام</MudButton>
@@ -110,6 +127,7 @@
     </DialogActions>
 </MudDialog>
 
+@* بخش @code بدون تغییر باقی می‌ماند، مگر اینکه بخواهید منطق تشخیص موبایل اضافه کنید *@
 @code {
     [CascadingParameter] MudDialogInstance MudDialog { get; set; } = default!;
 
@@ -120,13 +138,15 @@
     private MessageSendRequest _newMessageRequest = new MessageSendRequest();
     private PersonelLookupModel? _selectedRecipient;
     private List<LookupDto<string>>? _customerLookup;
-    //private readonly ILogger<MudDialogInstance> Logger;
 
     private bool _isLoadingMessages = false;
     private bool _isLoadingLookups = false;
     private bool _isSending = false;
     private int _currentUserId = 0;
-    private string UserID = string.Empty;
+
+    private PersonelLookupModel? _selectedRecipientForMessageDialog;
+    private List<LookupDto<string>>? _customerLookupForMessage; // لیست مشتریان برای این دیالوگ
+    private LookupDto<string>? _selectedCustomerForMessage;
 
     protected override async Task OnInitializedAsync()
     {
@@ -135,31 +155,61 @@
 
         if (currentUserPrincipal?.Identity?.IsAuthenticated == true)
         {
-            UserID = currentUserPrincipal.FindFirst(BaseknowClaimTypes.IDD)?.Value ?? string.Empty;
+            var userIdClaim = currentUserPrincipal.FindFirst(BaseknowClaimTypes.IDD)?.Value;
+            if (int.TryParse(userIdClaim, out int id))
+            {
+                _currentUserId = id;
+            }
+            else
+            {
+                Logger.LogError("MessagesDialog: Could not parse User ID from claims.");
+                Snackbar.Add("خطا در دریافت اطلاعات کاربر.", Severity.Error);
+                MudDialog.Cancel();
+                return;
+            }
+        }
+        else
+        {
+            Logger.LogWarning("MessagesDialog: User is not authenticated.");
+            Snackbar.Add("برای دسترسی به پیام‌ها، لطفاً ابتدا وارد شوید.", Severity.Warning);
+            MudDialog.Cancel();
+            return;
         }
 
-        _customerLookup = new List<LookupDto<string>>() {
-                new LookupDto<string>{ Id = "1001-1-1", Name = "مشتری نمونه یک" },
-                new LookupDto<string>{ Id = "1001-1-2", Name = "مشتری نمونه دو" },
-                new LookupDto<string>{ Id = "1002-1-1", Name = "شرکت نمونه آلفا" }
-            };
-
-        _currentUserId = Convert.ToInt32(UserID);
         _isLoadingMessages = true;
-        _isLoadingLookups = true;
+        _isLoadingLookups = true; // برای بارگذاری پرسنل و مشتریان
         var messagesTask = LoadMessagesAsync();
-        var lookupsTask = LoadLookupsAsync();
+        var lookupsTask = LoadLookupsForMessageDialogAsync(); // <--- متد جدید یا آپدیت شده
         await Task.WhenAll(messagesTask, lookupsTask);
         _isLoadingMessages = false;
         _isLoadingLookups = false;
-        StateHasChanged(); // برای اطمینان از بروزرسانی UI بعد از بارگذاری
+        StateHasChanged();
     }
 
-    private void TestSendClick()
+    private PersonelLookupModel? SelectedRecipientForMessageDialog
     {
-        Snackbar.Add("دکمه تست کلیک شد!");
-        Console.WriteLine("Client: TestSendClick executed.");
-        // در اینجا هیچ کار دیگری انجام نمی‌دهیم
+        get => _selectedRecipientForMessageDialog;
+        set
+        {
+            _selectedRecipientForMessageDialog = value;
+            if (value != null)
+            {
+                HandleRecipientSelection(value); // متد موجود شما برای افزودن به _selectedRecipientsList
+                _selectedRecipientForMessageDialog = null; // ریست کردن برای انتخاب بعدی
+                InvokeAsync(StateHasChanged);
+            }
+        }
+    }
+
+    private LookupDto<string>? SelectedCustomerForMessage
+    {
+        get => _selectedCustomerForMessage;
+        set
+        {
+            _selectedCustomerForMessage = value;
+            // وقتی یک مشتری از Autocomplete انتخاب می‌شود، CompCod در _newMessageRequest را آپدیت کن
+            _newMessageRequest.CompCod = value?.Id;
+        }
     }
 
     private async Task LoadMessagesAsync()
@@ -171,8 +221,48 @@
         }
         catch (Exception ex)
         {
+            Logger.LogError(ex, "MessagesDialog: Error loading received messages.");
             Snackbar.Add($"خطا در بارگذاری پیام‌های دریافتی: {ex.Message}", Severity.Error);
-            _receivedMessages = new List<MessageModel>();
+        }
+    }
+
+    private async Task LoadLookupsForMessageDialogAsync()
+    {
+        try
+        {
+            var personelTask = AutomationService.GetPersonelLookupAsync();
+            var customerTask = LookupService.GetCustomerLookupAsync(); // استفاده از سرویس
+
+            await Task.WhenAll(personelTask, customerTask);
+
+            _personelLookup = (await personelTask)?.ToList();
+            _customerLookupForMessage = (await customerTask)?.ToList(); // پر کردن لیست مشتریان
+
+            // اگر UserHES کاربر فعلی در لیست مشتریان نبود، آن را اضافه کن (اختیاری)
+            var userHesClaim = (await AuthenticationStateProvider.GetAuthenticationStateAsync()).User.FindFirst(BaseknowClaimTypes.USER_HES)?.Value;
+            if (!string.IsNullOrWhiteSpace(userHesClaim) && _customerLookupForMessage != null && _customerLookupForMessage.All(c => c.Id != userHesClaim))
+            {
+                var specificCustomer = await LookupService.GetCustomerLookupAsync(userHesClaim);
+                if (specificCustomer != null && specificCustomer.Any())
+                {
+                    _customerLookupForMessage.Insert(0, specificCustomer.First());
+                }
+                else
+                {
+                    _customerLookupForMessage.Insert(0, new LookupDto<string> { Id = userHesClaim, Name = $"مشتری پیشفرض شما ({userHesClaim})" });
+                }
+                // به صورت پیش‌فرض مشتری کاربر را برای پیام جدید انتخاب کن
+                SelectedCustomerForMessage = _customerLookupForMessage.First(c => c.Id == userHesClaim);
+            }
+
+
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "MessagesDialog: Error loading lookups.");
+            Snackbar.Add($"خطا در بارگذاری لیست‌های پایه: {ex.Message}", Severity.Error);
+            _personelLookup ??= new List<PersonelLookupModel>();
+            _customerLookupForMessage ??= new List<LookupDto<string>>();
         }
     }
 
@@ -184,6 +274,7 @@
         }
         catch (Exception ex)
         {
+            Logger.LogError(ex, "Error loading personnel lookup.");
             Snackbar.Add($"خطا در بارگذاری لیست کاربران: {ex.Message}", Severity.Error);
             _personelLookup = new List<PersonelLookupModel>();
         }
@@ -208,26 +299,64 @@
         }
     }
 
-    private async Task<IEnumerable<PersonelLookupModel>> SearchPersonel(string value)
+    private async Task<IEnumerable<PersonelLookupModel>> SearchPersonelInMessageDialog(string value)
     {
-        // اگر _personelLookup هنوز بارگذاری نشده، لیست خالی برگردان
         if (_personelLookup == null)
             return Enumerable.Empty<PersonelLookupModel>();
 
-        // فیلتر کردن کاربر جاری و گیرندگان انتخاب شده
         var availablePersonnel = _personelLookup
             .Where(p => p.USERCO != _currentUserId && !_selectedRecipientsList.Any(sr => sr.USERCO == p.USERCO));
 
-        // اگر ورودی جستجو خالی است، کل لیست موجود را برگردان (یا تعداد محدودی برای کارایی بهتر)
         if (string.IsNullOrEmpty(value))
-            return await Task.FromResult(availablePersonnel.Take(20)); // نمایش 20 کاربر اول
+            return await Task.FromResult(availablePersonnel.Take(10));
 
-        // اگر ورودی وجود دارد، بر اساس آن فیلتر کن
-        availablePersonnel = availablePersonnel
+        return await Task.FromResult(availablePersonnel
             .Where(p => p.SAL_NAME != null && p.SAL_NAME.Contains(value, StringComparison.OrdinalIgnoreCase))
-            .Take(10); // محدود کردن نتایج جستجو
+            .Take(10));
+    }
 
-        return await Task.FromResult(availablePersonnel);
+    private async Task<IEnumerable<LookupDto<string>>> SearchCustomersForMessageAsync(string value)
+    {
+        if (_customerLookupForMessage == null)
+        {
+            // اگر لیست مشتریان هنوز بارگذاری نشده، می‌توانیم دوباره آن را بارگذاری کنیم یا لیست خالی برگردانیم
+            // اما بهتر است اطمینان حاصل کنیم که LoadLookupsForMessageDialogAsync در OnInitializedAsync کامل شده
+            return Enumerable.Empty<LookupDto<string>>();
+        }
+
+        if (string.IsNullOrEmpty(value))
+            // اگر جستجوی سرور ساید پیاده سازی شده باشد:
+            // return await LookupService.GetCustomerLookupAsync() ?? Enumerable.Empty<LookupDto<string>>();
+            // برای جستجوی کلاینت ساید:
+            return await Task.FromResult(_customerLookupForMessage.Take(10));
+
+
+        // جستجوی سمت کلاینت:
+        var filtered = _customerLookupForMessage
+            .Where(c => (c.Name != null && c.Name.Contains(value, StringComparison.OrdinalIgnoreCase)) ||
+                        (c.Id != null && c.Id.Contains(value, StringComparison.OrdinalIgnoreCase)))
+            .Take(15)
+            .ToList();
+        return await Task.FromResult(filtered);
+
+        // برای جستجوی سمت سرور (اگر لیست مشتریان بسیار بزرگ است):
+        // return await LookupService.GetCustomerLookupAsync(value) ?? Enumerable.Empty<LookupDto<string>>();
+    }
+
+    private async Task<IEnumerable<PersonelLookupModel>> SearchPersonel(string value)
+    {
+        if (_personelLookup == null)
+            return Enumerable.Empty<PersonelLookupModel>();
+
+        var availablePersonnel = _personelLookup
+            .Where(p => p.USERCO != _currentUserId && !_selectedRecipientsList.Any(sr => sr.USERCO == p.USERCO));
+
+        if (string.IsNullOrEmpty(value))
+            return await Task.FromResult(availablePersonnel.Take(10));
+
+        return await Task.FromResult(availablePersonnel
+            .Where(p => p.SAL_NAME != null && p.SAL_NAME.Contains(value, StringComparison.OrdinalIgnoreCase))
+            .Take(10));
     }
 
     private PersonelLookupModel? SelectedRecipient
@@ -239,59 +368,22 @@
             if (value != null)
             {
                 HandleRecipientSelection(value);
+                _selectedRecipient = null; // ریست کردن برای انتخاب بعدی
+                InvokeAsync(StateHasChanged); // آپدیت UI برای نمایش چیپ جدید
             }
         }
     }
 
-    //private void HandleRecipientSelection(PersonelLookupModel? selected)
-    //{
-    //    if (selected != null && !_selectedRecipientsList.Any(p => p.USERCO == selected.USERCO) && selected.USERCO != _currentUserId)
-    //    {
-    //        _selectedRecipientsList.Add(selected);
-    //    }
-    //    _selectedRecipient = null;
-    //    InvokeAsync(StateHasChanged); // Ensure UI updates for chip list
-    //}
-    private void HandleRecipientSelection(PersonelLookupModel? selected)
+    private void HandleRecipientSelection(PersonelLookupModel selected)
     {
-        // از Logger که در کلاس تزریق شده استفاده کنید. اگر تزریق نشده، ابتدا آن را تزریق کنید.
-        // مثال: Logger.LogInformation("...");
-
-        Console.WriteLine($"HandleRecipientSelection CALLED - Selected: {selected?.SAL_NAME ?? "null"} (USERCO: {selected?.USERCO})");
-        Console.WriteLine($"_currentUserId: {_currentUserId}");
-        Console.WriteLine($"_selectedRecipientsList current count: {_selectedRecipientsList.Count}");
-        if (_selectedRecipientsList.Any())
+        if (selected != null && !_selectedRecipientsList.Any(p => p.USERCO == selected.USERCO) && selected.USERCO != _currentUserId)
         {
-            Console.WriteLine($"Current _selectedRecipientsList USERCOs: {string.Join(", ", _selectedRecipientsList.Select(x => x.USERCO))}");
-        }
-
-        bool isAlreadySelected = selected != null && _selectedRecipientsList.Any(p => p.USERCO == selected.USERCO);
-        bool isCurrentUser = selected != null && selected.USERCO == _currentUserId;
-
-        Console.WriteLine($"Condition: selected != null : {selected != null}");
-        Console.WriteLine($"Condition: !isAlreadySelected : {!isAlreadySelected} (isAlreadySelected: {isAlreadySelected})");
-        Console.WriteLine($"Condition: !isCurrentUser : {!isCurrentUser} (isCurrentUser: {isCurrentUser})");
-
-        if (selected != null && !isAlreadySelected && !isCurrentUser)
-        {
-            Console.WriteLine($"ADDING to _selectedRecipientsList: {selected.SAL_NAME}");
             _selectedRecipientsList.Add(selected);
-            Console.WriteLine($"_selectedRecipientsList new count: {_selectedRecipientsList.Count}");
         }
-        else if (selected != null)
-        {
-            Console.WriteLine($"NOT ADDING {selected.SAL_NAME}. Reason: AlreadySelected={isAlreadySelected}, IsCurrentUser={isCurrentUser}");
-        }
-
-        _selectedRecipient = null;
-        Console.WriteLine("Cleared _selectedRecipient to null.");
-        InvokeAsync(StateHasChanged);
     }
-
     private void RemoveRecipient(PersonelLookupModel recipient)
     {
         _selectedRecipientsList.Remove(recipient);
-        StateHasChanged();
     }
 
     private async Task SendNewMessageAsync()
@@ -302,33 +394,49 @@
             return;
         }
 
+        // CompCod از SelectedCustomerForMessage مقدار گرفته است
+        if (string.IsNullOrWhiteSpace(_newMessageRequest.CompCod))
+        {
+            Snackbar.Add("انتخاب مشتری الزامی است.", Severity.Warning);
+            // اگر می‌خواهید مطمئن شوید که اعتبارسنجی Required فرم هم اجرا شده:
+            await (_newMessageForm?.Validate() ?? Task.CompletedTask);
+            return;
+        }
+
+
         _newMessageRequest.RecipientUserIds = _selectedRecipientsList.Select(p => p.USERCO).ToList();
 
         await (_newMessageForm?.Validate() ?? Task.CompletedTask);
-        if (_newMessageForm?.IsValid != true) return;
+        if (_newMessageForm?.IsValid != true)
+        {
+            Snackbar.Add("لطفاً اطلاعات فرم ارسال پیام را به درستی تکمیل کنید.", Severity.Warning);
+            return;
+        }
+
 
         _isSending = true; StateHasChanged();
-
         bool success = false;
-
-        success = await AutomationService.SendMessageAsync(_newMessageRequest);
         try
         {
-            _newMessageRequest.RecipientUserIds = _selectedRecipientsList.Select(p => p.USERCO).ToList();
-            Logger.LogInformation("Client: Attempting to send message. Request: {@Request}", _newMessageRequest); // <-- لاگ قبل از ارسال
-                                                                                                                  //bool success = await AutomationService.SendMessageAsync(_newMessageRequest);
-            Logger.LogInformation("Client: SendMessageAsync returned: {Success}", success); // <-- لاگ بعد از ارسال
+            Logger.LogInformation("MessagesDialog: Attempting to send message. Recipients: {RecipientCount}, CompCod: {CompCod}, MessageLength: {MessageLength}",
+                                 _newMessageRequest.RecipientUserIds.Count, _newMessageRequest.CompCod, _newMessageRequest.MessageText?.Length);
+            success = await AutomationService.SendMessageAsync(_newMessageRequest);
+            Logger.LogInformation("MessagesDialog: SendMessageAsync returned: {Success}", success);
+
             if (success)
             {
                 Snackbar.Add("پیام با موفقیت ارسال شد.", Severity.Success);
-                _newMessageRequest = new MessageSendRequest(); _selectedRecipientsList.Clear(); _selectedRecipient = null;
-                _newMessageForm?.Reset(); _newMessageForm?.ResetValidation();
+                _newMessageRequest = new MessageSendRequest(); // ایجاد یک نمونه جدید برای پاک کردن فرم
+                _selectedRecipientsList.Clear();
+                SelectedCustomerForMessage = null; // ریست کردن مشتری انتخاب شده
+                                                   // SelectedRecipientForMessageDialog خودکار null می‌شود
+                await (_newMessageForm?.ResetAsync() ?? Task.CompletedTask);
             }
             else { Snackbar.Add("خطا در ارسال پیام.", Severity.Error); }
         }
         catch (Exception ex)
         {
-            Logger.LogError(ex, "Client: Exception during SendNewMessageAsync."); // <-- لاگ خطا
+            Logger.LogError(ex, "MessagesDialog: Exception during SendNewMessageAsync.");
             Snackbar.Add($"خطا در زمان ارسال پیام: {ex.Message}", Severity.Error);
         }
         finally { _isSending = false; StateHasChanged(); }

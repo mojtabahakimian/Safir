@@ -1,4 +1,4 @@
-﻿@page "/automation/tasks"
+@page "/automation/tasks"
 @using Microsoft.AspNetCore.Authorization
 @using Safir.Shared.Constants
 @using Safir.Shared.Models.Automation
@@ -9,7 +9,9 @@
 @using Safir.Shared.Models
 @using Safir.Shared.Utility
 @using System.Globalization
+@using Safir.Shared.Models
 
+@inject LookupApiService LookupService
 @inject IAutomationApiService AutomationService
 @inject ISnackbar Snackbar
 @inject IDialogService DialogService
@@ -120,20 +122,26 @@
                                 </MudSelect>
                             </MudItem>
                             <MudItem xs="12" sm="8" md="2">
-                                <MudSelect T="string" Label="گیرنده*" @bind-Value="_currentTask.COMP_COD" For="@(() => _currentTask.COMP_COD)"
-                                           Variant="Variant.Outlined" Dense="true" Clearable="true" AnchorOrigin="Origin.BottomCenter" EnableFilter="true" Required="true">
-                                    @if (_customerLookup != null)
-                                    {
-                                        foreach (var c in _customerLookup)
-                                        {
-                                            <MudSelectItem T="string" Value="@c.Id">@c.Name (@c.Id)</MudSelectItem>
-                                        }
-                                    }
-                                    else
-                                    {
-                                        <MudSelectItem T="string" Value="null" Disabled="true">...</MudSelectItem>
-                                    }
-                                </MudSelect>
+                                <MudAutocomplete T="LookupDto<string>" Label="گیرنده (مشتری)*"
+                                                 @bind-Value="SelectedCustomerForTask"
+                                                 SearchFunc="SearchCustomersAsync"
+                                                 ToStringFunc="@(c => c?.Name ?? string.Empty)"
+                                                 ResetValueOnEmptyText="true"
+                                                 CoerceText="false"
+                                                 Variant="Variant.Outlined" Dense="true" Clearable="true"
+                                                 Required="true"
+                                                 RequiredError="انتخاب گیرنده الزامی است."
+                                                 AdornmentIcon="@Icons.Material.Filled.Search" AdornmentColor="Color.Primary">
+                                    <ItemTemplate Context="customerCtx">
+                                        <MudText>@customerCtx.Name (@customerCtx.Id)</MudText>
+                                    </ItemTemplate>
+                                    <NoItemsTemplate>
+                                        <MudText>مشتری یافت نشد.</MudText>
+                                    </NoItemsTemplate>
+                                    <MoreItemsTemplate>
+                                        <MudText>نتایج بیشتر موجود است...</MudText>
+                                    </MoreItemsTemplate>
+                                </MudAutocomplete>
                             </MudItem>
                             <MudItem xs="12" sm="4" md="3" Class="d-flex justify-end align-self-center">
                                 <MudStack Row="true" Spacing="2">
@@ -199,124 +207,101 @@
     </MudGrid>
 </MudContainer>
 
+@inject IAutomationApiService AutomationService
+@inject ISnackbar Snackbar
+@inject IDialogService DialogService
+@inject NavigationManager NavManager
+@inject LookupApiService LookupService // <-- تزریق مستقیم کلاس سرویس
+@inject AuthenticationStateProvider AuthenticationStateProvider
+                                              // ...
 @code {
     private MudTable<TaskModel>? _table;
     private MudForm? _form;
-    // private EditForm? _editContextForm; // این فیلد استفاده نشده بود، می‌توانید حذفش کنید اگر لازم نیست
     private IEnumerable<TaskModel> _tasks = new List<TaskModel>();
     private TaskModel _currentTask = new TaskModel { PERIORITY = 2, STATUS = 1 };
     private HashSet<TaskModel> _selectedTasks = new HashSet<TaskModel>();
-
-    private int _filterStatus = 1; // پیش‌فرض: انجام نشده
-    private int? _filterAssignedUserId; // این توسط Userid مقداردهی اولیه خواهد شد
-    private string? _filterTaskTypes = "1000"; // مقدار پیش‌فرض شما
-    private string _searchString = ""; // اگر از جستجوی MudTable استفاده می‌کنید
-
+    private int _filterStatus = 1;
+    private int? _filterAssignedUserId;
+    private string? _filterTaskTypes = "1000";
+    // private string _searchString = ""; // حذف شد اگر استفاده نمی‌شود
     private List<PersonelLookupModel>? _personelLookup;
     private List<PersonelLookupModel>? _subordinatePersonnelLookup;
-    private List<LookupDto<string>>? _customerLookup;
-
-    private bool _isLoading = false; // توسط ServerReload مدیریت می‌شود
+    private bool _isLoading = false;
     private bool _isSaving = false;
     private int _totalItems = 0;
-    private bool _canFilterByUser = true; // مقدار پیش‌فرض تا از API نتیجه بگیرد
+    private bool _canFilterByUser = true;
     private int _unreadMessageCount = 0;
     private int _activeReminderCount = 0;
-
     private int _countStatus0 = 0;
     private int _countStatus1 = 0;
     private int _countStatus2 = 0;
     private int _countStatus3 = 0;
-
     private System.Threading.Timer? _notificationTimer;
     private System.Timers.Timer? _debounceTimer;
+    private int Userid = 0;
+    private string UserNameDisplay = string.Empty;
+    private string UserHES = string.Empty;
+    private bool _isInitialized = false;
 
-    // اطلاعات کاربر
-    private int Userid = 0; // شناسه عددی کاربر
-    private string UserID = string.Empty; // شناسه رشته‌ای کاربر (از Claim)
-    private string UserNameDisplay = string.Empty; // نام نمایشی کاربر
-    private string UserHES = string.Empty; // کد مشتری پیش‌فرض کاربر
-
-    private bool _isInitialized = false; // <-- فلگ جدید برای کنترل بارگذاری اولیه
+    private List<LookupDto<string>>? _customerLookup; // این لیست با داده‌های واقعی پر خواهد شد
+    private LookupDto<string>? _selectedCustomerForTask;
 
     protected override async Task OnInitializedAsync()
     {
         var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
         var currentUserPrincipal = authState.User;
-
         if (currentUserPrincipal?.Identity?.IsAuthenticated == true)
         {
-            UserID = currentUserPrincipal.FindFirst(BaseknowClaimTypes.IDD)?.Value ?? string.Empty;
+            var userIdClaim = currentUserPrincipal.FindFirst(BaseknowClaimTypes.IDD)?.Value;
             UserNameDisplay = currentUserPrincipal.FindFirst(BaseknowClaimTypes.UUSER)?.Value ?? string.Empty;
             UserHES = currentUserPrincipal.FindFirst(BaseknowClaimTypes.USER_HES)?.Value ?? string.Empty;
-
-            if (string.IsNullOrEmpty(UserID) || !int.TryParse(UserID, out Userid) || Userid == 0)
+            if (string.IsNullOrEmpty(userIdClaim) || !int.TryParse(userIdClaim, out Userid) || Userid == 0)
             {
-                Snackbar.Add("اطلاعات کاربر برای بارگذاری کارتابل ناقص یا نامعتبر است. لطفاً مجدداً وارد شوید.", Severity.Error, config => { config.RequireInteraction = true; });
-                // در صورت نیاز کاربر را به صفحه خروج/ورود هدایت کنید
-                // NavManager.NavigateTo("/logout", forceLoad: true);
-                _isInitialized = false; // اطمینان از عدم بارگذاری جدول
-                return; // متوقف کردن ادامه اجرای متد
+                Snackbar.Add("اطلاعات کاربر برای بارگذاری کارتابل ناقص یا نامعتبر است.", Severity.Error, config => { config.RequireInteraction = true; });
+                _isInitialized = false;
+                return;
             }
-
-            // مقداردهی اولیه فیلتر کاربر و کاربر مجری در فرم وظیفه جدید
-            _filterAssignedUserId = Userid; // کاربر فعلی به عنوان پیش‌فرض فیلتر
-            _currentTask.PERSONEL = Userid; // کاربر فعلی به عنوان پیش‌فرض مجری وظیفه جدید
-
+            _filterAssignedUserId = Userid;
+            _currentTask.PERSONEL = Userid;
             if (!string.IsNullOrWhiteSpace(UserHES))
             {
-                _currentTask.COMP_COD = UserHES; // مشتری پیش‌فرض برای وظیفه جدید
+                _currentTask.COMP_COD = UserHES;
             }
         }
         else
         {
-            // این حالت معمولاً توسط [Authorize] مدیریت می‌شود، اما برای اطمینان
-            Snackbar.Add("کاربر احراز هویت نشده است. در حال انتقال به صفحه ورود...", Severity.Warning);
-            // NavManager.NavigateTo("/Identity/Account/Login", forceLoad: true); // مسیر صفحه لاگین خودتان
+            Snackbar.Add("کاربر احراز هویت نشده است.", Severity.Warning);
             _isInitialized = false;
+            // NavManager.NavigateTo("/login"); // یا مسیر لاگین شما
             return;
         }
-
-        // در این نقطه، Userid معتبر است
-        // _isLoading را برای بارگذاری‌های بعدی true می‌کنیم
-        _isLoading = true;
+        _isLoading = true; // برای بارگذاری اولیه کل صفحه
         try
         {
-            // بارگذاری سطح دسترسی برای فیلتر کاربران زیرمجموعه
             _canFilterByUser = await AutomationService.CanViewSubordinateTasksAsync();
-
-            // بارگذاری لیست‌های کشویی (Lookups) و تعداد اعلان‌ها به صورت موازی
-            var lookupTask = LoadLookupsAsync(); // UserHES در اینجا در صورت نیاز استفاده خواهد شد
-            var countsTask = LoadNotificationCountsAsync();
-            await Task.WhenAll(lookupTask, countsTask);
-
+            // حالا LoadLookupsAsync را فراخوانی می‌کنیم که شامل بارگذاری مشتریان هم می‌شود
+            await LoadLookupsAsync(); // این متد شامل بارگذاری مشتریان خواهد بود
+            await LoadNotificationCountsAsync(); // این را هم می‌توان همزمان یا بعد از lookups انجام داد
             SetupNotificationTimer();
             _debounceTimer = new System.Timers.Timer(500);
             _debounceTimer.Elapsed += HandleDebounceTimerElapsed;
             _debounceTimer.AutoReset = false;
-
-            _isInitialized = true; // <-- نشان می‌دهد که مقداردهی اولیه کامل شده است
-                                   // نیازی به فراخوانی دستی LoadTasksAsync یا _table.ReloadServerData() نیست،
-                                   // چون MudTable به طور خودکار ServerReload را پس از مقداردهی اولیه کامپوننت
-                                   // و true شدن _isInitialized (در چک ServerReload) فراخوانی می‌کند.
+            _isInitialized = true;
         }
         catch (Exception ex)
         {
             Snackbar.Add($"خطا در مقداردهی اولیه صفحه: {ex.Message}", Severity.Error);
-            _isInitialized = false; // در صورت بروز خطا، از بارگذاری جدول جلوگیری شود
+            _isInitialized = false;
         }
         finally
         {
-            _isLoading = false; // در نهایت، وضعیت بارگذاری را false کنید (مگر اینکه ServerReload خودش مدیریت کند)
-                                // اما بهتر است _isLoading توسط خود ServerReload مدیریت شود.
-                                // پس این خط را می‌توان حذف کرد اگر ServerReload در ابتدا _isLoading = true و در انتها false می‌کند.
-            await InvokeAsync(StateHasChanged); // برای اطمینان از اعمال تغییرات در UI
+            // _isLoading توسط ServerReload مدیریت خواهد شد.
+            // اما برای بارگذاری اولیه، می‌توانیم اینجا false کنیم اگر ServerReload بلافاصله اجرا نشود.
+            // اگر MudTable بلافاصله ServerReload را صدا می‌زند، این خط می‌تواند حذف شود.
+            _isLoading = false;
+            await InvokeAsync(StateHasChanged);
         }
-
-        LoadLookupsAsync();
-        LoadNotificationCountsAsync();
     }
-
     private string FormatShamsiDateFromDateTime(DateTime? dt)
     {
         if (!dt.HasValue) return string.Empty;
@@ -327,34 +312,49 @@
         }
         catch { return dt.Value.ToString("yyyy/MM/dd"); }
     }
-
     private async Task LoadLookupsAsync()
     {
+        //_isLoadingLookups = true; // برای نمایش وضعیت لودینگ (اگر UI جداگانه‌ای برایش دارید)
+                                  // await InvokeAsync(StateHasChanged); // اگر می‌خواهید وضعیت لودینگ فوراً نمایش داده شود
         try
         {
-            _personelLookup = (await AutomationService.GetPersonelLookupAsync())?.ToList() ?? new List<PersonelLookupModel>();
-
-            if (_canFilterByUser)
+            var personelTask = AutomationService.GetPersonelLookupAsync();
+            // --- فراخوانی متد جدید برای دریافت لیست مشتریان ---
+            var customerTask = LookupService.GetCustomerLookupAsync();
+            // اگر می‌خواهید در ابتدا جستجوی خالی ارسال شود، می‌توانید searchTerm را null بگذارید
+            // یا اگر می‌خواهید با یک مقدار پیش‌فرض (مثل UserHES) شروع شود، آن را ارسال کنید.
+            var subordinateTask = _canFilterByUser ? LookupService.GetSubordinatesAsync() : Task.FromResult<List<PersonelLookupModel>?>(new List<PersonelLookupModel>());
+            await Task.WhenAll(personelTask, customerTask, subordinateTask);
+            _personelLookup = (await personelTask)?.ToList() ?? new List<PersonelLookupModel>();
+            // --- ذخیره لیست مشتریان واقعی ---
+            _customerLookup = (await customerTask)?.ToList() ?? new List<LookupDto<string>>();
+            _subordinatePersonnelLookup = (await subordinateTask)?.ToList() ?? new List<PersonelLookupModel>();
+            // اضافه کردن مشتری پیش‌فرض کاربر (UserHES) به لیست اگر وجود نداشت و لیست مشتریان خالی نیست
+            if (!string.IsNullOrWhiteSpace(UserHES) && _customerLookup != null && _customerLookup.All(c => c.Id != UserHES))
             {
-                _subordinatePersonnelLookup = (await LookupService.GetSubordinatesAsync())?.ToList() ?? new List<PersonelLookupModel>();
+                // تلاش برای یافتن نام واقعی مشتری از لیست بارگذاری شده
+                var foundUserHesCustomer = _customerLookup.FirstOrDefault(c => c.Id == UserHES);
+                if (foundUserHesCustomer != null)
+                {
+                    // اگر از قبل در لیست بود (که با All چک کردیم نیست)، این بخش اجرا نمی‌شود
+                    // اما اگر به نحوی فقط نامش فرق داشت و خواستیم آپدیت کنیم، اینجا می‌آمد
+                }
+                else
+                {
+                    // اگر در لیست اولیه نبود، جداگانه با کدش از سرور درخواست بده (برای دریافت نام صحیح)
+                    var specificCustomerList = await LookupService.GetCustomerLookupAsync(UserHES);
+                    if (specificCustomerList != null && specificCustomerList.Any())
+                    {
+                        _customerLookup.Insert(0, specificCustomerList.First());
+                    }
+                    else
+                    {
+                        // اگر باز هم پیدا نشد، با نام پیش‌فرض اضافه کن
+                        _customerLookup.Insert(0, new LookupDto<string> { Id = UserHES, Name = $"مشتری پیشفرض ({UserHES})" });
+                    }
+                }
             }
-            else
-            {
-                _subordinatePersonnelLookup = new List<PersonelLookupModel>();
-            }
-
-            // TODO: این بخش را با سرویس واقعی خود برای دریافت لیست مشتریان جایگزین کنید
-            _customerLookup = new List<LookupDto<string>>() {
-                new LookupDto<string>{ Id = "1001-1-1", Name = "مشتری نمونه یک" },
-                new LookupDto<string>{ Id = "1001-1-2", Name = "مشتری نمونه دو" },
-                new LookupDto<string>{ Id = "1002-1-1", Name = "شرکت نمونه آلفا" }
-            };
-
-            if (!string.IsNullOrWhiteSpace(UserHES) && _customerLookup.All(c => c.Id != UserHES))
-            {
-                // TODO: نام واقعی مشتری را برای UserHES از سرویس دریافت کنید
-                _customerLookup.Insert(0, new LookupDto<string> { Id = UserHES, Name = $"مشتری پیشفرض ({UserHES})" });
-            }
+            // اگر _currentTask.COMP_COD از قبل UserHES بود و UserHES در لیست نبود، حالا اضافه شده است.
         }
         catch (Exception ex)
         {
@@ -363,81 +363,58 @@
             _subordinatePersonnelLookup ??= new List<PersonelLookupModel>();
             _customerLookup ??= new List<LookupDto<string>>();
         }
+        finally
+        {
+            //_isLoadingLookups = false;
+            // await InvokeAsync(StateHasChanged); // ServerReload این کار را انجام می‌دهد
+        }
     }
-
     private async Task LoadNotificationCountsAsync()
     {
         try
         {
             _unreadMessageCount = await AutomationService.GetUnreadMessageCountAsync();
             _activeReminderCount = await AutomationService.GetActiveReminderCountAsync();
-            // StateHasChanged در اینجا ممکن است لازم نباشد اگر از بیرون فراخوانی می‌شود و StateHasChanged کلی وجود دارد.
-            // اما اگر مستقل است، نگهش دارید.
-            // await InvokeAsync(StateHasChanged); // اگر نیاز به بروزرسانی فوری UI دارید
         }
         catch (Exception ex) { Snackbar.Add($"خطا در دریافت تعداد اعلان‌ها: {ex.Message}", Severity.Warning); }
+        // StateHasChanged در اینجا معمولا توسط OnInitializedAsync یا ServerReload مدیریت می‌شود.
     }
-
     private void SetupNotificationTimer()
     {
-        _notificationTimer = new System.Threading.Timer(async _ => await HandleTimerCallback(), null, TimeSpan.FromMinutes(1), TimeSpan.FromMinutes(1));
+        _notificationTimer = new System.Threading.Timer(async _ =>
+        {
+            await InvokeAsync(LoadNotificationCountsAsync);
+            await InvokeAsync(StateHasChanged);
+        }, null, TimeSpan.FromMinutes(1), TimeSpan.FromMinutes(1));
     }
-
-    private async Task HandleTimerCallback()
+    private async Task HandleTimerCallback() // این متد دیگر مستقیماً توسط تایمر فراخوانی نمی‌شود
     {
-        await InvokeAsync(LoadNotificationCountsAsync);
-        await InvokeAsync(StateHasChanged); // بعد از بروزرسانی تعداد، UI را آپدیت کنید
+        // منطق این متد به داخل لامبدای SetupNotificationTimer منتقل شد
     }
-
     private async Task<TableData<TaskModel>> ServerReload(TableState state)
     {
-        if (!_isInitialized) // <-- گارد اصلی
+        if (!_isInitialized)
         {
             return new TableData<TaskModel>() { TotalItems = 0, Items = Enumerable.Empty<TaskModel>() };
         }
-
         _isLoading = true;
-        await InvokeAsync(StateHasChanged); // برای نمایش نشانگر لودینگ
-
+        await InvokeAsync(StateHasChanged);
         IEnumerable<TaskModel> pagedData = Enumerable.Empty<TaskModel>();
         _totalItems = 0;
-
         try
         {
-            // اگر فیلتر کاربر انتخاب نشده یا روی "شما" (یعنی Userid) تنظیم شده، از Userid استفاده کن
-            // در غیر این صورت از مقدار انتخاب شده در فیلتر استفاده کن
-            int? userIdForApi = (_filterAssignedUserId == null || _filterAssignedUserId == Userid || _filterAssignedUserId == 0)
-                                ? Userid
-                                : _filterAssignedUserId;
-
-            if (userIdForApi == 0 && Userid != 0)
-            { // اگر فیلتر به نحوی 0 شده ولی کاربر لاگین کرده معتبر است
-                userIdForApi = Userid;
-            }
-            else if (userIdForApi == 0 && Userid == 0)
-            { // اگر کاربر لاگین کرده هم معتبر نیست (نباید اینجا برسیم اگر OnInitialized درست کار کرده)
-                Snackbar.Add("شناسه کاربر برای فیلتر وظایف نامعتبر است.", Severity.Error);
-                _tasks = Enumerable.Empty<TaskModel>(); // یا _pagedData
-                                                        // _totalItems = 0; // بالاتر مقداردهی شده
-                return new TableData<TaskModel>() { TotalItems = 0, Items = Enumerable.Empty<TaskModel>() };
-            }
-
-
-            // فرض: GetTasksAsync تمام وظایف را برمی‌گرداند و مرتب‌سازی/صفحه‌بندی در کلاینت انجام می‌شود.
-            // اگر API شما از صفحه‌بندی و مرتب‌سازی سرور-ساید پشتیبانی می‌کند، پارامترهای state را به آن ارسال کنید.
+            int? userIdForApi = (_filterAssignedUserId == null || _filterAssignedUserId == 0) ? Userid : _filterAssignedUserId;
             var allTasks = await AutomationService.GetTasksAsync(
-                statusFilter: _filterStatus,
-                assignedUserId: userIdForApi, // این باید Userid (int) کاربر مورد نظر باشد
-                taskTypes: string.IsNullOrWhiteSpace(_filterTaskTypes) || _filterTaskTypes.Trim() == "1000" ? "1000" : _filterTaskTypes);
-
-            _tasks = allTasks ?? Enumerable.Empty<TaskModel>();
+            statusFilter: _filterStatus,
+            assignedUserId: userIdForApi,
+            taskTypes: string.IsNullOrWhiteSpace(_filterTaskTypes) || _filterTaskTypes.Trim() == "1000" ? "1000" : _filterTaskTypes);
+            _tasks = allTasks?.ToList() ?? new List<TaskModel>(); // تبدیل به لیست برای شمارش و مرتب سازی
             _totalItems = _tasks.Count();
-
-            UpdateStatusCounts(); // بروزرسانی تعداد وضعیت‌ها بر اساس کل وظایف بارگذاری شده
-
-            var sortedData = _tasks;
+            UpdateStatusCounts();
+            var sortedData = _tasks.AsEnumerable(); // برای استفاده از OrderByDirection
             if (!string.IsNullOrEmpty(state.SortLabel))
             {
+                // ... (بخش مرتب‌سازی بدون تغییر) ...
                 switch (state.SortLabel)
                 {
                     case "idnum_field": sortedData = sortedData.OrderByDirection(state.SortDirection, t => t.IDNUM); break;
@@ -452,19 +429,18 @@
         catch (Exception ex)
         {
             Snackbar.Add($"خطا در بارگذاری وظایف: {ex.Message}", Severity.Error);
-            _tasks = Enumerable.Empty<TaskModel>(); // اطمینان از خالی بودن لیست در صورت خطا
+            _tasks = Enumerable.Empty<TaskModel>();
             pagedData = Enumerable.Empty<TaskModel>();
             _totalItems = 0;
-            UpdateStatusCounts(); // بروزرسانی تعداد با لیست خالی
+            UpdateStatusCounts();
         }
         finally
         {
             _isLoading = false;
-            await InvokeAsync(StateHasChanged); // برای پنهان کردن نشانگر لودینگ و نمایش داده‌ها
+            await InvokeAsync(StateHasChanged);
         }
         return new TableData<TaskModel>() { TotalItems = _totalItems, Items = pagedData };
     }
-
     private async Task LoadTasksAsync()
     {
         if (_table != null)
@@ -472,51 +448,46 @@
             await _table.ReloadServerData();
         }
     }
-
     private void UpdateStatusCounts()
     {
         // این متد باید از _tasks که کل وظایف (قبل از صفحه‌بندی) است، استفاده کند.
-        _countStatus1 = _tasks.Count(t => t.STATUS == 1);
-        _countStatus2 = _tasks.Count(t => t.STATUS == 2);
-        _countStatus3 = _tasks.Count(t => t.STATUS == 3);
-        _countStatus0 = _totalItems; // _totalItems باید تعداد کل وظایف فیلتر شده باشد
+        var tasksForCount = _tasks ?? Enumerable.Empty<TaskModel>(); // اطمینان از null نبودن
+        _countStatus1 = tasksForCount.Count(t => t.STATUS == 1);
+        _countStatus2 = tasksForCount.Count(t => t.STATUS == 2);
+        _countStatus3 = tasksForCount.Count(t => t.STATUS == 3);
+        _countStatus0 = _totalItems;
     }
-
     private async Task SaveTaskAsync()
     {
         if (_form == null) return;
         await _form.Validate();
         if (!_form.IsValid) { Snackbar.Add("لطفاً اطلاعات الزامی فرم را تکمیل کنید.", Severity.Warning); return; }
-
         _isSaving = true;
-        // StateHasChanged(); // InvokeAsync در پایین استفاده شده
-
+        await InvokeAsync(StateHasChanged); // نمایش وضعیت ذخیره‌سازی
         bool success = false;
         string successMessage = string.Empty;
         try
         {
-            if (_currentTask.IDNUM > 0) // ویرایش وظیفه موجود
+            if (_currentTask.IDNUM > 0)
             {
                 success = await AutomationService.UpdateTaskAsync(_currentTask.IDNUM, _currentTask);
                 successMessage = "وظیفه با موفقیت بروزرسانی شد.";
             }
-            else // ایجاد وظیفه جدید
+            else
             {
-                // اطمینان از اینکه PERSONEL و COMP_COD مقدار دارند اگر از فرم مقدار نگرفته‌اند
                 if (_currentTask.PERSONEL == 0 && Userid != 0) _currentTask.PERSONEL = Userid;
-                if (string.IsNullOrEmpty(_currentTask.COMP_COD) && !string.IsNullOrEmpty(UserHES)) _currentTask.COMP_COD = UserHES;
-
+                // COMP_COD باید از MudSelect مقدار گرفته باشد
+                // if (string.IsNullOrEmpty(_currentTask.COMP_COD) && !string.IsNullOrEmpty(UserHES)) _currentTask.COMP_COD = UserHES; // این خط دیگر لازم نیست
                 var createdTask = await AutomationService.CreateTaskAsync(_currentTask);
                 success = createdTask != null;
-                if (success && createdTask != null) _currentTask.IDNUM = createdTask.IDNUM; // برای اطمینان از بروز بودن آبجکت
+                if (success && createdTask != null) _currentTask.IDNUM = createdTask.IDNUM;
                 successMessage = "وظیفه با موفقیت ایجاد شد.";
             }
-
             if (success)
             {
                 Snackbar.Add(successMessage, Severity.Success);
-                await ClearFormAsync(); // فرم را پاک کرده و به مقادیر پیش‌فرض برمی‌گرداند
-                await LoadTasksAsync(); // جدول را مجدداً بارگذاری می‌کند
+                await ClearFormAsync();
+                await LoadTasksAsync();
             }
             else
             {
@@ -533,30 +504,34 @@
             await InvokeAsync(StateHasChanged);
         }
     }
-
     private async Task ClearFormAsync()
     {
-        _currentTask = new TaskModel { PERIORITY = 2, STATUS = 1 }; // مقادیر پیش‌فرض عمومی
-
-        // مقادیر پیش‌فرض وابسته به کاربر
+        _currentTask = new TaskModel { PERIORITY = 2, STATUS = 1 };
         if (Userid != 0)
         {
             _currentTask.PERSONEL = Userid;
         }
-        if (!string.IsNullOrWhiteSpace(UserHES))
+        // مقداردهی اولیه مشتری پیش‌فرض برای وظیفه جدید
+        if (!string.IsNullOrWhiteSpace(UserHES) && _customerLookup != null)
         {
-            _currentTask.COMP_COD = UserHES;
+            SelectedCustomerForTask = _customerLookup.FirstOrDefault(c => c.Id == UserHES);
+            // اگر SelectedCustomerForTask مقدار گرفت، COMP_COD هم در setter آن آپدیت می‌شود.
+            if (SelectedCustomerForTask == null) // اگر UserHES در لیست نبود (بعید است با منطق LoadLookupsAsync)
+            {
+                _currentTask.COMP_COD = UserHES; // مستقیماً کد را قرار بده
+            }
         }
-
+        else
+        {
+            SelectedCustomerForTask = null; // پاک کردن انتخاب قبلی
+            _currentTask.COMP_COD = null;
+        }
         if (_form != null)
         {
-            _form.Reset();
-            _form.ResetValidation(); // این خط مهم است تا خطاهای قبلی پاک شوند
+            await _form.ResetAsync();
         }
-        // StateHasChanged(); // InvokeAsync در انتهای SaveTaskAsync یا به طور مستقل فراخوانی می‌شود
-        await InvokeAsync(StateHasChanged); // اطمینان از بروزرسانی UI فرم
+        await InvokeAsync(StateHasChanged);
     }
-
     private void SelectTaskForEdit(TaskModel task)
     {
         _currentTask = new TaskModel // ایجاد یک نمونه جدید برای جلوگیری از تغییر ناخواسته آیتم در جدول
@@ -570,46 +545,52 @@
                 STTIME = task.STTIME,
                 ENDATE = task.ENDATE,
                 ENTIME = task.ENTIME,
-                COMP_COD = task.COMP_COD,
-                NAME = task.NAME, // اگر از این فیلد در فرم استفاده می‌کنید
-                skid = task.skid, // اگر از این فیلد در فرم استفاده می‌کنید
-                num = task.num   // اگر از این فیلد در فرم استفاده می‌کنید
+                COMP_COD = task.COMP_COD, // این مقدار مهم است
+                NAME = task.NAME,
+                skid = task.skid,
+                num = task.num
             };
+        // --- مقداردهی اولیه SelectedCustomerForTask بر اساس COMP_COD وظیفه انتخاب شده ---
+        if (!string.IsNullOrWhiteSpace(_currentTask.COMP_COD) && _customerLookup != null)
+        {
+            SelectedCustomerForTask = _customerLookup.FirstOrDefault(c => c.Id == _currentTask.COMP_COD);
+        }
+        else
+        {
+            SelectedCustomerForTask = null;
+        }
+        // --- پایان مقداردهی اولیه ---
         _form?.ResetValidation(); // پاک کردن وضعیت ولیدیشن فرم قبلی
         StateHasChanged(); // بروزرسانی UI برای نمایش داده‌های تسک انتخاب شده در فرم
     }
-
     private async Task OnStatusFilterChanged(int newValue)
     {
         _filterStatus = newValue;
         await LoadTasksAsync();
     }
-
     private async Task OnUserFilterChanged(int? newValue)
     {
         _filterAssignedUserId = newValue;
-        // اگر newValue null بود (یعنی کاربر گزینه "Clear" را انتخاب کرده)،
-        // می‌توانیم به وظایف کاربر فعلی برگردیم یا منطق دیگری پیاده کنیم.
-        // در ServerReload، اگر _filterAssignedUserId null یا Userid باشد، وظایف Userid نمایش داده می‌شود.
         await LoadTasksAsync();
     }
-
-    private void OnFilterChangedDebounced(string? value) // value همان _filterTaskTypes است که bind شده
+    private void OnFilterChangedDebounced(string? value) // 'value' is the bound _filterTaskTypes
     {
+        // _filterTaskTypes = value; // No need to set it again, it's already bound
         _debounceTimer?.Stop();
         _debounceTimer?.Start();
     }
-
     private async void HandleDebounceTimerElapsed(object? sender, ElapsedEventArgs e)
     {
-        // چون این متد توسط تایمر در یک ترد دیگر اجرا می‌شود، برای تغییرات UI باید از InvokeAsync استفاده کنیم.
         await InvokeAsync(LoadTasksAsync);
     }
-
     private string GetPersonelName(int personelId) => _personelLookup?.FirstOrDefault(p => p.USERCO == personelId)?.SAL_NAME ?? personelId.ToString();
     private string GetStatusName(int statusId) => statusId switch { 1 => "انجام نشده", 2 => "انجام شده", 3 => "لغو شده", _ => "نامشخص" };
-    private string GetCustomerName(string? customerCode) => _customerLookup?.FirstOrDefault(c => c.Id == customerCode)?.Name ?? customerCode ?? string.Empty;
-
+    // --- متد GetCustomerName به‌روز شده برای استفاده از _customerLookup ---
+    private string GetCustomerName(string? customerCode)
+    {
+        if (string.IsNullOrEmpty(customerCode)) return string.Empty;
+        return _customerLookup?.FirstOrDefault(c => c.Id == customerCode)?.Name ?? customerCode;
+    }
     private async Task ShowBulkUpdateDialog()
     {
         if (!_selectedTasks.Any()) { Snackbar.Add("لطفاً ابتدا وظایف مورد نظر را از جدول انتخاب کنید.", Severity.Warning); return; }
@@ -617,14 +598,13 @@
         var options = new DialogOptions { CloseOnEscapeKey = true, MaxWidth = MaxWidth.Small, FullWidth = true };
         var dialog = await DialogService.ShowAsync<BulkUpdateTasksDialog>("ویرایش گروهی وظایف", parameters, options);
         var result = await dialog.Result;
-        if (result != null && !result.Cancelled && result.Data is bool updated && updated) // بررسی Data از نوع bool و مقدار true
+        if (result != null && !result.Cancelled && result.Data is bool updated && updated)
         {
             _selectedTasks.Clear();
             await LoadTasksAsync();
             Snackbar.Add("تغییرات گروهی اعمال شد.", Severity.Success);
         }
     }
-
     private async Task ShowEventsDialog(long taskId)
     {
         if (taskId <= 0) return;
@@ -632,23 +612,60 @@
         var options = new DialogOptions { CloseOnEscapeKey = true, MaxWidth = MaxWidth.Medium, FullWidth = true };
         await DialogService.ShowAsync<TaskEventsDialog>($"رویدادهای وظیفه {taskId}", parameters, options);
     }
-
     private async Task ShowMessagesDialog()
     {
         var options = new DialogOptions { CloseOnEscapeKey = true, MaxWidth = MaxWidth.Medium, FullWidth = true };
-        // فرض بر این است که MessagesDialog خودش اعلان‌ها را مدیریت می‌کند یا نتیجه‌ای برمی‌گرداند
         var dialog = await DialogService.ShowAsync<MessagesDialog>("پیام‌های داخلی", options);
-        // var result = await dialog.Result;
-        // if (result != null && !result.Cancelled) { ... }
-        await LoadNotificationCountsAsync(); // پس از بستن دیالوگ، تعداد پیام‌ها را بروز کنید
+        await LoadNotificationCountsAsync();
         await InvokeAsync(StateHasChanged);
     }
-
     private void ShowRemindersDialog() { Snackbar.Add("نمایش یادآوری‌ها هنوز پیاده‌سازی نشده است.", Severity.Info); }
-
     public void Dispose()
     {
         _notificationTimer?.Dispose();
         _debounceTimer?.Dispose();
+    }
+
+    private LookupDto<string>? SelectedCustomerForTask
+    {
+        get => _selectedCustomerForTask;
+        set
+        {
+            _selectedCustomerForTask = value;
+            // وقتی یک مشتری از Autocomplete انتخاب می‌شود، COMP_COD در _currentTask را آپدیت کن
+            if (value != null)
+            {
+                _currentTask.COMP_COD = value.Id;
+            }
+            else
+            {
+                // اگر مقدار Autocomplete پاک شد، COMP_COD را هم پاک کن
+                // یا بر اساس منطق خودتان رفتار دیگری تعریف کنید (مثلاً مقدار پیش‌فرض)
+                _currentTask.COMP_COD = null;
+            }
+            // StateHasChanged(); // معمولاً لازم نیست چون بایندینگ خودکار انجام می‌شود
+        }
+    }
+
+        // --- متد جدید برای جستجوی مشتریان در MudAutocomplete ---
+    private async Task<IEnumerable<LookupDto<string>>> SearchCustomersAsync(string value)
+    {
+        // اگر _customerLookup هنوز بارگذاری نشده یا خالی است، لیست خالی برگردان
+        if (_customerLookup == null || !_customerLookup.Any())
+            return Enumerable.Empty<LookupDto<string>>();
+
+        // اگر ورودی جستجو خالی است، می‌توانیم یک تعداد محدود از ابتدای لیست را برگردانیم
+        // یا لیست خالی (بستگی به تجربه کاربری مورد نظر دارد)
+        if (string.IsNullOrEmpty(value))
+            return await Task.FromResult(_customerLookup.Take(10)); // نمایش ۱۰ مشتری اول یا همه اگر کمتر است
+
+        // فیلتر کردن لیست مشتریان بر اساس نام یا کد (Id)
+        // StringComparison.OrdinalIgnoreCase برای جستجوی غیر حساس به حروف بزرگ و کوچک
+        var filteredCustomers = _customerLookup
+            .Where(c => (c.Name != null && c.Name.Contains(value, StringComparison.OrdinalIgnoreCase)) ||
+                        (c.Id != null && c.Id.Contains(value, StringComparison.OrdinalIgnoreCase)))
+            .Take(15); // محدود کردن تعداد نتایج نمایش داده شده برای کارایی بهتر
+
+        return await Task.FromResult(filteredCustomers);
     }
 }

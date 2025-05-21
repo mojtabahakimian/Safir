@@ -100,10 +100,10 @@ namespace Safir.Client.Services
             {
                 return _cachedAnbarList;
             }
-            try        
+            try
 
             {
-            _cachedAnbarList = await _httpClient.GetFromJsonAsync<List<TCOD_ANBAR>>("api/lookup/anbarha");
+                _cachedAnbarList = await _httpClient.GetFromJsonAsync<List<TCOD_ANBAR>>("api/lookup/anbarha");
                 return _cachedAnbarList ?? new List<TCOD_ANBAR>();
             }
             catch (Exception ex)
@@ -237,5 +237,27 @@ namespace Safir.Client.Services
             }
         }
 
+        public async Task<List<LookupDto<string>>?> GetCustomerLookupAsync(string? searchTerm = null)
+        {
+            try
+            {
+                var endpoint = "api/lookup/customerlookup";
+                if (!string.IsNullOrWhiteSpace(searchTerm))
+                {
+                    // افزودن searchTerm به query string اگر وجود داشته باشد
+                    endpoint += $"?searchTerm={Uri.EscapeDataString(searchTerm)}";
+                }
+                // اگر ILogger در این سرویس تزریق کرده‌اید، می‌توانید از آن استفاده کنید:
+                // _logger?.LogInformation("Client: Calling API for customer lookup: {Endpoint}", endpoint);
+                Console.WriteLine($"Client: Calling API for customer lookup: {endpoint}"); // برای تست موقت
+                return await _httpClient.GetFromJsonAsync<List<LookupDto<string>>>(endpoint);
+            }
+            catch (Exception ex)
+            {
+                // _logger?.LogError(ex, "Error fetching Customer Lookup. SearchTerm: {SearchTerm}", searchTerm);
+                Console.WriteLine($"Error fetching Customer Lookup (SearchTerm: {searchTerm}): {ex.Message}");
+                return null; // یا یک لیست خالی برگردانید: new List<LookupDto<string>>()
+            }
+        }
     }
 }

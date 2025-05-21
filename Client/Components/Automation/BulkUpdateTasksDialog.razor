@@ -1,4 +1,5 @@
-﻿@using Safir.Shared.Models.Automation
+﻿// Safir/Client/Components/Automation/BulkUpdateTasksDialog.razor.cs
+@using Safir.Shared.Models.Automation
 @using Safir.Shared.Interfaces
 @using MudBlazor
 @using System.ComponentModel.DataAnnotations
@@ -82,15 +83,15 @@
     [CascadingParameter] MudDialogInstance MudDialog { get; set; } = default!;
     [Parameter] public List<long> SelectedTaskIds { get; set; } = new List<long>();
 
+
+
     private MudForm? _form;
     private List<PersonelLookupModel>? _personelLookup;
 
-    // وضعیت CheckBox ها
     private bool _updatePersonel = false;
     private bool _updateStatus = false;
     private bool _updatePriority = false;
 
-    // مقادیر جدید انتخاب شده
     private int? _newPersonelId = null;
     private int? _newStatusId = null;
     private int? _newPriorityId = null;
@@ -145,16 +146,8 @@
             if (_updateStatus) updateValues.STATUS = _newStatusId!.Value;
             if (_updatePriority) updateValues.PERIORITY = _newPriorityId!.Value;
 
-            // فراخوانی سرویس برای آپدیت گروهی
-            // نکته: سرویس UpdateTasksBulkAsync هنوز در AutomationApiService پیاده سازی نشده است
-            // bool success = await AutomationService.UpdateTasksBulkAsync(SelectedTaskIds, updateValues);
-
-            // ------------ شروع بخش موقت تا پیاده سازی سرویس --------------
-            // شبیه سازی آپدیت - این بخش باید با فراخوانی واقعی سرویس جایگزین شود
-            await Task.Delay(500); // شبیه سازی تاخیر شبکه
-            bool success = true; // فرض موفقیت آمیز بودن
-            Snackbar.Add($"شبیه سازی: {SelectedTaskIds.Count} وظیفه آپدیت شد (سرویس واقعی باید پیاده‌سازی شود).", Severity.Info);
-            // ------------ پایان بخش موقت --------------------------------
+            // FIX: فراخوانی واقعی سرویس برای آپدیت گروهی
+            bool success = await AutomationService.UpdateTasksBulkAsync(SelectedTaskIds, updateValues);
 
             if (success)
             {
