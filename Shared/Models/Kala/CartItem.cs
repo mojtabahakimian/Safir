@@ -1,4 +1,5 @@
-﻿using System;
+﻿using Safir.Shared.Models.Kharid;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -64,7 +65,6 @@ namespace Safir.Shared.Models.Kala
 
         // قیمت کل نهایی ردیف *بعد* از اعمال تخفیف خطی روی قیمت کل واقعی
         public decimal FinalRowPriceAfterLineDiscount => CalculatedRowTotalPriceBeforeLineDiscount - LineDiscountAmountCalculatedOnFullPrice;
-
 
         // سازنده پیش‌فرض
         public CartItem()

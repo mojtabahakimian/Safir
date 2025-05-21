@@ -158,15 +158,22 @@ namespace Safir.Server.Controllers
                     const string getDefaultDepSql = "SELECT TFSAZMAN, SHIFT FROM dbo.DEFAULTDEP WHERE USERID = @UserId";
                     try
                     {
-                        var defaultDepData = await connection.QuerySingleOrDefaultAsync<UserDefaultDep>(getDefaultDepSql, new { UserId = userId }, transaction: transaction);
-                        if (defaultDepData != null)
+                        if (request?.Header?.DepartmentCode != null)
                         {
-                            userDefaultDep = defaultDepData.TFSAZMAN ?? DefaultDepatmanOnError;
-                            userDefaultShift = defaultDepData.SHIFT ?? DefaultShiftOnError;
+                            userDefaultDep = (int)(request?.Header?.DepartmentCode);
                         }
                         else
                         {
-                            _logger.LogWarning("Transaction: No entry found in DEFAULTDEP for UserID {UserId}. Using defaults (Dep={Dep}, Shift={Shift}).", userId, DefaultDepatmanOnError, DefaultShiftOnError);
+                            var defaultDepData = await connection.QuerySingleOrDefaultAsync<UserDefaultDep>(getDefaultDepSql, new { UserId = userId }, transaction: transaction);
+                            if (defaultDepData != null)
+                            {
+                                userDefaultDep = defaultDepData.TFSAZMAN ?? DefaultDepatmanOnError;
+                                userDefaultShift = defaultDepData.SHIFT ?? DefaultShiftOnError;
+                            }
+                            else
+                            {
+                                _logger.LogWarning("Transaction: No entry found in DEFAULTDEP for UserID {UserId}. Using defaults (Dep={Dep}, Shift={Shift}).", userId, DefaultDepatmanOnError, DefaultShiftOnError);
+                            }
                         }
                     }
                     catch (Exception depEx)
@@ -176,25 +183,32 @@ namespace Safir.Server.Controllers
 
                     // 0.5 Get Customer Kind (Unchanged)
                     int customerKindCodeToInsert = 1;
-                    const string getCustomerKindSql = "SELECT CUST_COD FROM dbo.CUST_HESAB WHERE hes = @CustomerHesCode";
-                    int? customerSpecificKind = await connection.QuerySingleOrDefaultAsync<int?>(getCustomerKindSql, new { CustomerHesCode = request.Header.CustomerHesCode }, transaction: transaction);
-                    if (customerSpecificKind.HasValue)
+                    if (request?.Header?.CustomerKindCode != null)
                     {
-                        customerKindCodeToInsert = customerSpecificKind.Value;
+                        customerKindCodeToInsert = (int)(request?.Header?.CustomerKindCode);
                     }
                     else
                     {
-                        _logger.LogWarning("Transaction: CUST_COD not found for Customer {CustomerHes} in CUST_HESAB. Falling back to first CUSTKIND.", request.Header.CustomerHesCode);
-                        const string getFirstKindSql = "SELECT TOP 1 CUST_COD FROM dbo.CUSTKIND ORDER BY CUST_COD";
-                        int? fallbackKind = await connection.QuerySingleOrDefaultAsync<int?>(getFirstKindSql, transaction: transaction);
-                        if (fallbackKind.HasValue)
+                        const string getCustomerKindSql = "SELECT CUST_COD FROM dbo.CUST_HESAB WHERE hes = @CustomerHesCode";
+                        int? customerSpecificKind = await connection.QuerySingleOrDefaultAsync<int?>(getCustomerKindSql, new { CustomerHesCode = request.Header.CustomerHesCode }, transaction: transaction);
+                        if (customerSpecificKind.HasValue)
                         {
-                            customerKindCodeToInsert = fallbackKind.Value;
+                            customerKindCodeToInsert = customerSpecificKind.Value;
                         }
                         else
                         {
-                            _logger.LogError("Transaction: Could not determine CUST_KIND for Customer {CustomerHes} and no fallback found in CUSTKIND. Rolling back.", request.Header.CustomerHesCode);
-                            throw new InvalidOperationException("امکان تعیین نوع مشتری وجود ندارد. جدول CUSTKIND خالی است؟");
+                            _logger.LogWarning("Transaction: CUST_COD not found for Customer {CustomerHes} in CUST_HESAB. Falling back to first CUSTKIND.", request.Header.CustomerHesCode);
+                            const string getFirstKindSql = "SELECT TOP 1 CUST_COD FROM dbo.CUSTKIND ORDER BY CUST_COD";
+                            int? fallbackKind = await connection.QuerySingleOrDefaultAsync<int?>(getFirstKindSql, transaction: transaction);
+                            if (fallbackKind.HasValue)
+                            {
+                                customerKindCodeToInsert = fallbackKind.Value;
+                            }
+                            else
+                            {
+                                _logger.LogError("Transaction: Could not determine CUST_KIND for Customer {CustomerHes} and no fallback found in CUSTKIND. Rolling back.", request.Header.CustomerHesCode);
+                                throw new InvalidOperationException("امکان تعیین نوع مشتری وجود ندارد. جدول CUSTKIND خالی است؟");
+                            }
                         }
                     }
 
@@ -204,17 +218,17 @@ namespace Safir.Server.Controllers
 
                     // 2. Insert HEAD_LST (Unchanged parameters)
                     string insertHeadSql = @"
-            INSERT INTO dbo.HEAD_LST(
-              NUMBER, TAG, DATE_N, MAS, CUST_NO, MOLAH, MABL_HAZ, TAKHFIF,
-              DEPATMAN, SHIFT, CUST_KIND, USER_NAME, SHARAYET, MBAA, HMBAA, TAMIR, TICMBAA,
-              OKF, SADER, ARZD, ARZKIND, CDDATE, CDTIME, OKDATE, OKTIME, JAY,
-              MODAT_PPID, PEPID, PEID, VAS, CRT, UID
-            ) VALUES (
-              @NUMBER, @TAG, @DATE_N, @MAS, @CUST_NO, @MOLAH, @MABL_HAZ, @TAKHFIF,
-              @DEPATMAN, @SHIFT, @CUST_KIND, @USER_NAME, @SHARAYET, 0, NULL, 0, @TICMBAA,
-              0, 0, 0, 0, @CurrentDate, @CurrentTime, 0, 0, @JAY,
-              @MODAT_PPID, @PEPID, @PEID, 1, GETDATE(), @UserId
-            )";
+                         INSERT INTO dbo.HEAD_LST(
+                           NUMBER, TAG, DATE_N, MAS, CUST_NO, MOLAH, MABL_HAZ, TAKHFIF,
+                           DEPATMAN, SHIFT, CUST_KIND, USER_NAME, SHARAYET, MBAA, HMBAA, TAMIR, TICMBAA,
+                           OKF, SADER, ARZD, ARZKIND, CDDATE, CDTIME, OKDATE, OKTIME, JAY,
+                           MODAT_PPID, PEPID, PEID, VAS, CRT, UID
+                         ) VALUES (
+                           @NUMBER, @TAG, @DATE_N, @MAS, @CUST_NO, @MOLAH, @MABL_HAZ, @TAKHFIF,
+                           @DEPATMAN, @SHIFT, @CUST_KIND, @USER_NAME, @SHARAYET, 0, NULL, 0, @TICMBAA,
+                           0, 0, 0, 0, @CurrentDate, @CurrentTime, 0, 0, @JAY,
+                           @MODAT_PPID, @PEPID, @PEID, 1, GETDATE(), @UserId
+                         )";
                     var headParams = new
                     {
                         NUMBER = nextNumber,
@@ -275,7 +289,7 @@ namespace Safir.Server.Controllers
                                                                          // MABL_K is Total Price in Base Unit: QtyInBaseUnit * PricePerBaseUnit
                                                                          // We have PricePerUnit (which is price for the SELECTED unit from client)
                                                                          // Let's calculate MABL_K = Quantity * PricePerUnit (Total price for selected unit)
-                        
+
                         decimal mablK = line.PricePerUnit * meghK; // <--- کد جدید: قیمت واحد انتخابی * مقدار کل با واحد پایه
 
 

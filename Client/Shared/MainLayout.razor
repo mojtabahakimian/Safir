@@ -12,6 +12,8 @@
 @inject NavigationManager NavManager
 @inject IAuthService AuthService
 @inject ISnackbar Snackbar
+@inject ISnackbar Snackbar
+@inject ConnectivityService Connectivity
 
 <MudLayout>
     <MudAppBar Elevation="1" Color="Color.Primary">
@@ -120,6 +122,13 @@
     </MudDrawer>
 
     <MudMainContent>
+        @if (showConnectivityWarning)
+        {
+            <MudAlert Severity="Severity.Warning" Variant="Variant.Filled" Class="mb-4" Style="position: sticky; top: 64px; z-index: 100;">
+                <MudText Typo="Typo.body2" Style="color: white;">@connectivityWarningMessage</MudText>
+                <MudIconButton Icon="@Icons.Material.Filled.Refresh" Size="Size.Small" OnClick="RetryConnectivityCheck" Class="ms-auto" Title="تلاش مجدد" Style="color: white;" />
+            </MudAlert>
+        }
         <MudContainer MaxWidth="MaxWidth.Large" Class="my-4 pt-4">
             @Body
         </MudContainer>
@@ -142,8 +151,17 @@
         }
     }
 
+    private bool showConnectivityWarning = false;
+    private string connectivityWarningMessage = "";
+    private Timer? _connectivityCheckTimer;
+
     protected override async Task OnInitializedAsync()
     {
+        await InitialConnectivityCheck();
+        // تنظیم تایمر برای بررسی دوره‌ای وضعیت اتصال (مثلاً هر ۱ دقیقه)
+        _connectivityCheckTimer = new Timer(async _ => await PeriodicConnectivityCheck(), null, TimeSpan.FromMinutes(1), TimeSpan.FromMinutes(1));
+
+
         var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
         var user = authState.User;
 
@@ -161,6 +179,98 @@
         UpdateCartState();
     }
 
+    private async Task CheckConnectivityAndNotifyAsync(string contextMessage)
+    {
+        var (status, userMsg, techMsg) = await Connectivity.CheckConnectivityAsync();
+
+        if (status != ConnectivityStatus.Healthy)
+        {
+            Snackbar.Add(userMsg, Severity.Error, config =>
+            {
+                config.RequireInteraction = true;
+                config.VisibleStateDuration = int.MaxValue;
+                config.DuplicatesBehavior = SnackbarDuplicatesBehavior.Prevent;
+                config.SnackbarVariant = Variant.Filled;
+            });
+            Console.WriteLine($"Login Attempt Connectivity Error - Technical Details: {techMsg}");
+            StateHasChanged();
+            return;
+        }
+    }
+    private async Task InitialConnectivityCheck()
+    {
+        var (status, userMsg, techMsg) = await Connectivity.CheckConnectivityAsync();
+        HandleConnectivityResult(status, userMsg, techMsg, "هنگام بارگذاری برنامه");
+    }
+
+    private async Task PeriodicConnectivityCheck()
+    {
+        // فقط اگر هشدار قبلاً نمایش داده نشده یا وضعیت قبلی سالم بوده است، بررسی کنید
+        // تا از نمایش مکرر هشدار برای یک مشکل پایدار جلوگیری شود.
+        // یا اینکه همیشه بررسی کنید و فقط در صورت تغییر وضعیت، Snackbar جدید نشان دهید.
+        // در اینجا، اگر هشدار فعال است، بررسی مجدد نمی‌کنیم تا کاربر دستی Retry کند.
+        if (!showConnectivityWarning)
+        {
+            var (status, userMsg, techMsg) = await Connectivity.CheckConnectivityAsync();
+            // فقط اگر وضعیت بد است و قبلا خوب بوده، هشدار را نشان بده
+            if (status != ConnectivityStatus.Healthy)
+            {
+                HandleConnectivityResult(status, userMsg, techMsg, "بررسی دوره‌ای");
+            }
+        }
+    }
+
+    private async Task RetryConnectivityCheck()
+    {
+        // بستن هشدار فعلی
+        showConnectivityWarning = false;
+        connectivityWarningMessage = "";
+        StateHasChanged(); // UI را برای بستن هشدار به‌روز کن
+
+        // نمایش یک Snackbar موقت برای اطلاع از تلاش مجدد
+        Snackbar.Add("در حال تلاش مجدد برای برقراری ارتباط...", Severity.Info, config =>
+        {
+            config.ShowCloseIcon = false;
+            config.VisibleStateDuration = 3000; // 3 ثانیه
+        });
+
+        var (status, userMsg, techMsg) = await Connectivity.CheckConnectivityAsync();
+        HandleConnectivityResult(status, userMsg, techMsg, "پس از تلاش مجدد");
+    }
+
+    private void HandleConnectivityResult(ConnectivityStatus status, string userMessage, string? technicalMessage, string context)
+    {
+        if (status != ConnectivityStatus.Healthy)
+        {
+            showConnectivityWarning = true;
+            connectivityWarningMessage = $"هشدار ({context}): {userMessage}";
+
+            // یک اسنک‌بار برای جلب توجه، اما هشدار اصلی در MudAlert خواهد بود
+            Snackbar.Add(connectivityWarningMessage, Severity.Warning, config =>
+            {
+                config.RequireInteraction = false; // این فقط یک نوتیفیکیشن است
+                config.VisibleStateDuration = 7000; // 7 ثانیه
+                config.DuplicatesBehavior = SnackbarDuplicatesBehavior.Prevent; // از اسنک‌بارهای تکراری جلوگیری کن
+                config.SnackbarVariant = Variant.Filled;
+            });
+            Console.WriteLine($"MainLayout Connectivity - Context: {context}, UserMsg: {userMessage}, TechMsg: {technicalMessage}");
+        }
+        else
+        {
+            // اگر قبلا هشداری بوده و الان اتصال برقرار شده، آن را ببند
+            if (showConnectivityWarning)
+            {
+                Snackbar.Add("ارتباط با سرور مجدداً برقرار شد.", Severity.Success, config =>
+                {
+                    config.VisibleStateDuration = 5000;
+                    config.SnackbarVariant = Variant.Filled;
+                });
+            }
+            showConnectivityWarning = false;
+            connectivityWarningMessage = "";
+        }
+        InvokeAsync(StateHasChanged); // اطمینان از به‌روزرسانی UI
+    }
 
     // متد برای بروزرسانی اطلاعات مشتری و تعداد آیتم‌ها
     private void UpdateCartState()
@@ -201,6 +311,9 @@
             //Console.WriteLine("MainLayout first render complete. Signaling JS to remove splash screen.");
             try
             {
+                // یا می‌توانید بررسی اتصال را اینجا هم قرار دهید اگر OnInitializedAsync مناسب نیست
+                //await CheckConnectivityAndNotifyAsync("پس از اولین رندر");
+
                 await JSRuntime.InvokeVoidAsync("loading.complete");
                 //Console.WriteLine("JS function 'loading.complete' invoked successfully.");
             }
@@ -214,6 +327,7 @@
     {
         // لغو اشتراک رویداد
         CartService.CartChanged -= OnCartChanged;
+        _connectivityCheckTimer?.Dispose();
         GC.SuppressFinalize(this); // جلوگیری از فراخوانی دوباره Finalizer
     }
 

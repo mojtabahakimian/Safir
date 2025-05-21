@@ -3,12 +3,13 @@
 @using Safir.Shared
 @using Safir.Shared.Interfaces;
 @using Safir.Shared.Models.User_Model;
-@using Microsoft.AspNetCore.Components.Web  @* <-- اضافه کردن این using *@
+@using Microsoft.AspNetCore.Components.Web
 @attribute [Microsoft.AspNetCore.Authorization.AllowAnonymous]
 
 @inject IAuthService AuthService
 @inject NavigationManager NavigationManager
 @inject ISnackbar Snackbar
+@inject ConnectivityService Connectivity
 
 <PageTitle>ورود | سفیر</PageTitle>
 
@@ -24,13 +25,26 @@
         </MudStack>
         <MudStack AlignItems="AlignItems.Center" Spacing="1" Class="mb-6 text-center">
             <MudText Typo="Typo.h6" GutterBottom="true">خوش آمدید!</MudText>
-            <MudText Typo="Typo.body2" Color="Color.Dark" Style="color: var(--mud-palette-text-secondary);">لطفا اطلاعات کاربری خود را وارد کنید</MudText>
+            @* <MudText Typo="Typo.body2" Color="Color.Dark" Style="color: var(--mud-palette-text-secondary);">لطفا اطلاعات کاربری خود را وارد کنید</MudText> *@
         </MudStack>
 
         @if (!string.IsNullOrEmpty(errorMessage))
         {
-            <MudAlert Severity="Severity.Error" Variant="Variant.Outlined" Class="mb-4" Icon="@Icons.Material.Outlined.ReportProblem">@errorMessage</MudAlert>
+            <MudAlert Severity="Severity.Error" Class="mb-3" Dense="true">@errorMessage</MudAlert>
         }
+        @if (isCheckingConnectivity)
+        {
+            <div class="d-flex flex-column align-center my-4">
+                <MudProgressCircular Color="Color.Primary" Indeterminate="true" Size="Size.Small" />
+                <MudText Class="mt-2" Typo="Typo.caption">در حال بررسی وضعیت ارتباط با سرور...</MudText>
+            </div>
+        }
+        else if (loginDisabledByConnectivity) // اگر اتصال مشکل دارد و می‌خواهیم فرم غیرفعال بماند
+        {
+            <MudAlert Severity="Severity.Warning" Class="mb-3" Dense="true">@connectivityMessage</MudAlert>
+        }
+
+
 
         <MudForm @ref="form" @bind-IsValid="isValid" ValidationDelay="0">
             @* Username Field - اضافه کردن onkeyup و style *@
@@ -113,6 +127,46 @@
     private bool isShowPassword = false;
     private InputType passwordInputType = InputType.Password;
 
+    private bool isCheckingConnectivity = true; // در ابتدا true است
+    private bool loginDisabledByConnectivity = false;
+    private string connectivityMessage = "";
+    private bool formDisabled => isProcessing || isCheckingConnectivity || loginDisabledByConnectivity;
+
+
+    protected override async Task OnInitializedAsync()
+    {
+        await CheckInitialConnectivity();
+
+    }
+    private async Task CheckInitialConnectivity()
+    {
+        isCheckingConnectivity = true;
+        loginDisabledByConnectivity = false; // ریست کردن وضعیت
+        connectivityMessage = "";
+        StateHasChanged();
+
+        var (status, userMsg, techMsg) = await Connectivity.CheckConnectivityAsync();
+
+        isCheckingConnectivity = false;
+
+        if (status != ConnectivityStatus.Healthy)
+        {
+            loginDisabledByConnectivity = true; // فرم لاگین غیرفعال شود
+            connectivityMessage = userMsg; // پیام برای نمایش در MudAlert
+            Snackbar.Add(userMsg, Severity.Error, config => // نمایش خطا به صورت اسنک‌بار دائمی
+            {
+                config.RequireInteraction = true;
+                config.VisibleStateDuration = int.MaxValue;
+                config.DuplicatesBehavior = SnackbarDuplicatesBehavior.Prevent;
+                config.SnackbarVariant = Variant.Filled;
+            });
+            // لاگ کردن پیام فنی برای اشکال‌زدایی
+            Console.WriteLine($"Login Page Connectivity Error - Technical Details: {techMsg}");
+        }
+        StateHasChanged();
+    }
+
+
     private void TogglePasswordVisibility()
     {
         isShowPassword = !isShowPassword;
@@ -140,6 +194,7 @@
         if (!isValid) return;
 
         isProcessing = true;
+        StateHasChanged();
         errorMessage = null;
         var request = new LoginRequest
             {
@@ -170,4 +225,6 @@
             await InvokeAsync(StateHasChanged);
         }
     }
+
+
 }

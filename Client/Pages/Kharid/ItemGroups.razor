@@ -20,6 +20,7 @@
 @using Safir.Shared.Models.Taarif
 
 @using Microsoft.AspNetCore.Components.Authorization
+@using System.Text.Json;
 @inject AuthenticationStateProvider AuthenticationStateProvider
 
 @inject LookupApiService LookupService
@@ -30,11 +31,12 @@
 @inject NavigationManager NavManager
 @inject PermissionApiService PermissionService
 @inject ClientAppSettingsService AppSettingsService
+@inject IJSRuntime jsRuntime // برای localStorage
 
 <MudContainer MaxWidth="MaxWidth.False" Class="mt-4 px-md-4 px-2">
 
     <MudPaper Elevation="2" Class="mb-4 pa-3">
-        @if (_isLoadingLookups || _isLoadingElamieTfDetails) // Added _isLoadingElamieTfDetails
+        @if (_isLoadingLookups || _isLoadingElamieTfDetails)
         {
             <MudProgressLinear Color="Color.Primary" Indeterminate="true" Class="my-2" />
         }
@@ -48,7 +50,7 @@
                                    ValueChanged="HandleCustomerTypeChanged"
                                    ToStringFunc="@(c => c?.Name ?? string.Empty)"
                                    Variant="Variant.Outlined"
-                                   ReadOnly="!_canChangeCustomerType || _isLoadingLookups"
+                                   ReadOnly="!_canChangeCustomerType || _isLoadingLookups ||_pricingLocked"
                                    Margin="Margin.Dense"
                                    Placeholder="انتخاب کنید..." Dense="true">
                             @if (_customerTypeList != null)
@@ -63,7 +65,7 @@
 
                     <MudItem xs="12" sm="6" md="4" lg="3">
                         <MudAutocomplete T="LookupDto<int?>" Label="واحد (دپارتمان)" Disabled="@_isLoadingLookups"
-                                         ReadOnly="!_canChangeDepartment || _isLoadingLookups" Clearable="true" ClearIcon="@Icons.Material.Filled.ClearAll"
+                                         ReadOnly="!_canChangeDepartment || _isLoadingLookups ||_pricingLocked" Clearable="true" ClearIcon="@Icons.Material.Filled.ClearAll"
                                          SearchFunc="@SearchDepartments"
                                          Value="_selectedDepartment"
                                          ValueChanged="OnSelectedDepartmentChangedAsync"
@@ -73,7 +75,7 @@
 
                     <MudItem xs="12" sm="8" md="6" lg="4">
                         <MudSelect T="PaymentTermDto" Label="نحوه پرداخت" Disabled="@_isLoadingLookups"
-                                   ReadOnly="_isLoadingLookups"
+                                   ReadOnly="_isLoadingLookups ||_pricingLocked"
                                    Value="_selectedPaymentTerm"
                                    ValueChanged="OnSelectedPaymentTermChanged"
                                    ToStringFunc="@(p => p?.Name ?? string.Empty)"
@@ -95,8 +97,9 @@
                                          ReadOnly="_isDurationReadOnly" Variant="Variant.Outlined" Margin="Margin.Dense" Min="0" />
                     </MudItem>
 
-                    <MudItem xs="12" md="6" lg="3"> @* Adjusted lg span *@
-                        <MudSelect T="PriceListDto" Label="اعلامیه قیمت" ReadOnly="!_canChangePriceLists || _isLoadingLookups"
+
+                    <MudItem xs="12" md="6" lg="3">
+                        <MudSelect T="PriceListDto" Label="اعلامیه قیمت" ReadOnly="!_canChangePriceLists || _isLoadingLookups ||_pricingLocked"
                                    Value="_selectedPriceList" Disabled="@_isLoadingLookups"
                                    ValueChanged="HandlePriceListChanged"
                                    ToStringFunc="@(p => p?.Name ?? string.Empty)"
@@ -111,8 +114,8 @@
                         </MudSelect>
                     </MudItem>
 
-                    <MudItem xs="12" md="6" lg="3"> @* Adjusted lg span *@
-                        <MudSelect T="DiscountListDto" Label="اعلامیه تخفیف" Disabled="@_isLoadingLookups"
+                    <MudItem xs="12" md="6" lg="3">
+                        <MudSelect T="DiscountListDto" Label="اعلامیه تخفیف" Disabled="@(_isLoadingLookups ||_pricingLocked)"
                                    ReadOnly="!_canChangePriceLists || _isLoadingLookups"
                                    Value="_selectedDiscountList"
                                    ValueChanged="OnSelectedDiscountListChangedAsync"
@@ -127,16 +130,15 @@
                             }
                         </MudSelect>
                     </MudItem>
-                    
-                    @* New Fields for TF1 and TF2 *@
+
                     <MudItem xs="12" sm="6" md="3" lg="3">
                         <MudNumericField T="double?" Label="تخفیف اول (%)" ReadOnly="true"
-                                         Value="_tf1DiscountPercentage" Format="N2" Placeholder="---" HideSpinButtons="false"
+                                         Value="_tf1DiscountPercentage" Format="N2" Placeholder="---" HideSpinButtons="true"
                                          Variant="Variant.Outlined" Margin="Margin.Dense" Dense="true" />
                     </MudItem>
                     <MudItem xs="12" sm="6" md="3" lg="3">
                         <MudNumericField T="double?" Label="تخفیف دوم (%)" ReadOnly="true"
-                                         Value="_tf2DiscountPercentage" Format="N2" Placeholder="---" HideSpinButtons="false"
+                                         Value="_tf2DiscountPercentage" Format="N2" Placeholder="---" HideSpinButtons="true"
                                          Variant="Variant.Outlined" Margin="Margin.Dense" Dense="true" />
                     </MudItem>
 
@@ -281,8 +283,9 @@
                                 <MudListItemText>
                                     <MudText Typo="Typo.body1">@item.NAME</MudText>
                                     <MudText Typo="Typo.body2" Color="Color.Secondary">کد: @item.CODE | واحد: @item.VahedName</MudText>
-                                    <MudText Typo="Typo.body2">قیمت: @((item.PriceAfterHeaderDiscounts ?? item.MABL_F).ToString("N0")) ریال
-                                        @if(item.TotalCalculatedDiscountPercent.HasValue && item.TotalCalculatedDiscountPercent > 0)
+                                    <MudText Typo="Typo.body2">
+                                        قیمت: @((item.PriceAfterHeaderDiscounts ?? item.MABL_F).ToString("N0")) ریال
+                                        @if (item.TotalCalculatedDiscountPercent.HasValue && item.TotalCalculatedDiscountPercent > 0)
                                         {
                                             <span style="color: var(--mud-palette-success);">(با %@item.TotalCalculatedDiscountPercent.Value.ToString("N2") تخفیف سربرگ)</span>
                                         }
@@ -306,7 +309,7 @@
                                           AnbarCode="@(_selectedGroup.ANBAR)"
                                           IsAzadPaymentSelected="_isAzadPaymentSelected"
                                           CanEditDiscount="_canEditItemDiscount"
-                                          PriceFromPriceList="@itemDto.PriceFromPriceList" 
+                                          PriceFromPriceList="@itemDto.PriceFromPriceList"
                                           HasPriceInCurrentPriceList="@itemDto.HasPriceInCurrentPriceList" />
                             </MudItem>
                         }
@@ -328,6 +331,7 @@
 </MudContainer>
 
 <style>
+    /* Style section remains the same as provided by the user */
     .group-card {
         cursor: pointer;
         width: 110px;
@@ -375,6 +379,16 @@
 
 @code
 {
+    // کلیدهای ذخیره در localStorage
+    const string KEY_CT = "Safir_SelCustomerType";
+    const string KEY_DEP = "Safir_SelDepartment";
+    const string KEY_PT = "Safir_SelPaymentTerm";
+    const string KEY_DUR = "Safir_SelDuration";
+    const string KEY_PL = "Safir_SelPriceList";
+    const string KEY_DL = "Safir_SelDiscountList";
+
+    private bool _pricingLocked;
+
     private List<TCODE_MENUITEM>? _itemGroups;
     private TCODE_MENUITEM? _selectedGroup;
     private bool _isLoadingGroups = false;
@@ -435,11 +449,13 @@
     private List<VisitorItemPriceDto>? _visitorItemPrices;
     private bool _isLoadingVisitorPrices = false;
 
-    // New fields for ElamiehTakhfif TF1 & TF2
     private double? _tf1DiscountPercentage = 0;
     private double? _tf2DiscountPercentage = 0;
     private PriceElamieTfDtlDto? _currentElamieTfDetails;
     private bool _isLoadingElamieTfDetails = false;
+
+    // Field that was missing in the original error list, used in ItemCard call
+    private bool _isAzadPaymentSelected = false;
 
 
     protected override async Task OnInitializedAsync()
@@ -466,21 +482,38 @@
         }
         Logger.LogInformation($"Customer HES code from CartService: {CartService.CurrentCustomer?.hes}");
 
+        CartService.CartChanged += OnCartChanged;
+        _pricingLocked = CartService.Items.Any();
+
         _isLoadingLookups = true;
         await InvokeAsync(StateHasChanged);
 
         try
         {
-            await LoadSazmanSettingsAsync();
-            await CheckPagePermissionsAsync();
-            await LoadHeaderDataAndSetDefaultsAsync(); // Sets customer type, department, price/discount lists
-            await LoadDynamicPaymentTermsAndSetDefaultAsync(); // Sets payment term
+            var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+            _currentUserPrincipal = authState.User;
+            if (_currentUserPrincipal?.Identity?.IsAuthenticated == true)
+            {
+                _currentUserId = int.TryParse(_currentUserPrincipal.FindFirst(BaseknowClaimTypes.IDD)?.Value, out var uid) ? uid : (int?)null;
+                _currentUserTfSazman = int.TryParse(_currentUserPrincipal.FindFirst(BaseknowClaimTypes.TFSAZMAN)?.Value, out var tf) ? tf : 20;
+            }
+            _currentCustomerHesCode = CartService.CurrentCustomer?.hes;
 
-            // After all header defaults are set, load ElamiehTakhfif details
+            _customerTypeList = await LookupService.GetCustomerTypesAsync() ?? new();
+            _departmentList = await LookupService.GetDepartmentsAsync() ?? new();
+
+            await LoadPersistedSettingsAsync();
+
+            await LoadSazmanSettingsAsync();
+            await CheckPagePermissionsAsync(); // This method is defined below
+
+            await LoadHeaderDataAndSetDefaultsAsync();
+            await LoadDynamicPaymentTermsAndSetDefaultAsync();
+
             await LoadAndApplyElamieTakhfifDetailsAsync();
 
-            var groupsTask = LoadGroupsAsync();
-            var unitsTask = LoadUnitsAsync();
+            var groupsTask = LoadGroupsAsync(); // This method is defined below
+            var unitsTask = LoadUnitsAsync();   // This method is defined below
             await Task.WhenAll(groupsTask, unitsTask);
         }
         catch (Exception ex)
@@ -497,16 +530,156 @@
         finally
         {
             _isLoadingLookups = false;
-            UpdateHeaderValidationState();
+            UpdateHeaderValidationState(); // This method is defined below
             await InvokeAsync(StateHasChanged);
         }
 
         if (_itemGroups != null && _itemGroups.Any() && _selectedGroup == null)
         {
-            await HandleGroupClick(_itemGroups.First());
+            await HandleGroupClick(_itemGroups.First()); // This method is defined below
         }
         Logger.LogInformation("ItemGroups.razor: OnInitializedAsync completed.");
     }
+
+    private void OnCartChanged()
+    {
+        _pricingLocked = CartService.Items.Any();
+        if (!_pricingLocked)
+        {
+            _ = ClearPersistedSettingsAsync();
+        }
+        InvokeAsync(StateHasChanged);
+    }
+
+    #region LocalStorage Management
+    private async Task ClearPersistedSettingsAsync()
+    {
+        await RemoveLocalStorageKeyAsync(KEY_CT);
+        await RemoveLocalStorageKeyAsync(KEY_DEP);
+        await RemoveLocalStorageKeyAsync(KEY_PT);
+        await RemoveLocalStorageKeyAsync(KEY_DUR);
+        await RemoveLocalStorageKeyAsync(KEY_PL);
+        await RemoveLocalStorageKeyAsync(KEY_DL);
+        Logger.LogInformation("Cleared persisted pricing settings from localStorage.");
+        // Optionally reset local fields and reload defaults
+        // _selectedCustomerType = null; // etc.
+        // await LoadHeaderDataAndSetDefaultsAsync();
+        // await LoadDynamicPaymentTermsAndSetDefaultAsync();
+        // await LoadAndApplyElamieTakhfifDetailsAsync();
+        // UpdateHeaderValidationState();
+        // StateHasChanged();
+    }
+
+    private async Task<int?> GetIntIdFromLocalStorageAsync(string key)
+    {
+        var json = await jsRuntime.InvokeAsync<string?>("localStorage.getItem", key);
+        if (string.IsNullOrEmpty(json) || json.Equals("null", StringComparison.OrdinalIgnoreCase))
+        {
+            return null;
+        }
+
+        if (int.TryParse(json, out int idValue))
+        {
+            return idValue;
+        }
+
+        try
+        {
+            using (JsonDocument doc = JsonDocument.Parse(json))
+            {
+                JsonElement root = doc.RootElement;
+                if (root.ValueKind == JsonValueKind.Object)
+                {
+                    if (root.TryGetProperty("id", out JsonElement idProp) && idProp.TryGetInt32(out int idFromObj))
+                    {
+                        Logger?.LogWarning("Recovered int? from object with 'id' property for key '{Key}'. Original value: {JsonValue}", key, json);
+                        return idFromObj;
+                    }
+                    if (root.TryGetProperty("Id", out JsonElement IdProp) && IdProp.TryGetInt32(out int IdFromObj))
+                    {
+                        Logger?.LogWarning("Recovered int? from object with 'Id' property for key '{Key}'. Original value: {JsonValue}", key, json);
+                        return IdFromObj;
+                    }
+                    if (root.TryGetProperty("ID", out JsonElement IDProp) && IDProp.TryGetInt32(out int IDFromObj))
+                    {
+                        Logger?.LogWarning("Recovered int? from object with 'ID' property for key '{Key}'. Original value: {JsonValue}", key, json);
+                        return IDFromObj;
+                    }
+                    if (root.TryGetProperty("Value", out JsonElement valueProp) && valueProp.ValueKind == JsonValueKind.Number && valueProp.TryGetInt32(out int valFromObj))
+                    {
+                        Logger?.LogWarning("Recovered int? from object with 'Value' property for key '{Key}'. Original value: {JsonValue}", key, json);
+                        return valFromObj;
+                    }
+                    if (root.TryGetProperty("value", out JsonElement valuePropL) && valuePropL.ValueKind == JsonValueKind.Number && valuePropL.TryGetInt32(out int valLFromObj))
+                    {
+                        Logger?.LogWarning("Recovered int? from object with 'value' property for key '{Key}'. Original value: {JsonValue}", key, json);
+                        return valLFromObj;
+                    }
+                }
+            }
+            Logger?.LogWarning("Could not deserialize or recover int? for key '{Key}'. Value was: {JsonValue}", key, json);
+        }
+        catch (JsonException ex)
+        {
+            Logger?.LogError(ex, "JSON Deserialization error for key '{Key}' while trying to recover int?. Value: '{JsonValue}'. Returning null.", key, json);
+        }
+        return null;
+    }
+
+    private async Task LoadPersistedSettingsAsync()
+    {
+        var _wasitlock_ = _pricingLocked;
+        _pricingLocked = false;
+        if (CartService.Items.Any())
+        {
+            Logger.LogInformation("Attempting to load persisted settings from localStorage.");
+            var ctId = await GetIntIdFromLocalStorageAsync(KEY_CT);
+            if (ctId.HasValue && _customerTypeList != null && _customerTypeList.Any())
+                _selectedCustomerType = _customerTypeList.FirstOrDefault(x => x.Id == ctId.Value) ?? _selectedCustomerType;
+            Logger.LogInformation("Loaded CustomerType ID from localStorage: {ctId}, Selected: {_selectedCustomerType?.Name}", ctId, _selectedCustomerType?.Name);
+
+            var depId = await GetIntIdFromLocalStorageAsync(KEY_DEP);
+            if (depId.HasValue && _departmentList != null && _departmentList.Any())
+                _selectedDepartment = _departmentList.FirstOrDefault(x => x.Id == depId.Value) ?? _selectedDepartment;
+            Logger.LogInformation("Loaded Department ID from localStorage: {depId}, Selected: {_selectedDepartment?.Name}", depId, _selectedDepartment?.Name);
+
+            _agreedDuration = await GetIntIdFromLocalStorageAsync(KEY_DUR) ?? _agreedDuration;
+            Logger.LogInformation("Loaded AgreedDuration from localStorage: {_agreedDuration}", _agreedDuration);
+
+            _persistedPaymentTermId = await GetIntIdFromLocalStorageAsync(KEY_PT);
+            _persistedPriceListId = await GetIntIdFromLocalStorageAsync(KEY_PL);
+            _persistedDiscountListId = await GetIntIdFromLocalStorageAsync(KEY_DL);
+        }
+        else
+        {
+            Logger.LogInformation("Pricing is not locked (cart is empty), skipping load of persisted settings.");
+        }
+        _pricingLocked = _wasitlock_;
+    }
+    private int? _persistedPaymentTermId;
+    private int? _persistedPriceListId;
+    private int? _persistedDiscountListId;
+
+    private async Task SetToLocalStorageAsync<T>(string key, T value)
+    {
+        try
+        {
+            await jsRuntime.InvokeVoidAsync("localStorage.setItem", key, JsonSerializer.Serialize(value));
+            Logger.LogInformation("Set localStorage key '{Key}' with value: {Value}", key, value);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error setting localStorage key '{Key}'.", key);
+        }
+        if (_pricingLocked)
+        {
+
+        }
+    }
+
+    private async Task RemoveLocalStorageKeyAsync(string key)
+        => await jsRuntime.InvokeVoidAsync("localStorage.removeItem", key);
+    #endregion
 
     private async Task LoadSazmanSettingsAsync()
     {
@@ -522,7 +695,7 @@
             Snackbar.Add("خطا در بارگذاری تنظیمات برنامه (SAZMAN).", Severity.Error);
         }
     }
-    
+
     private async Task LoadAndApplyElamieTakhfifDetailsAsync()
     {
         _isLoadingElamieTfDetails = true;
@@ -536,7 +709,6 @@
         {
             try
             {
-                // Ensure ItemGroupService or LookupService has GetPriceElamieTfDetailsAsync
                 _currentElamieTfDetails = await ItemGroupService.GetPriceElamieTfDetailsAsync(
                     _selectedDiscountList.Id,
                     _selectedCustomerType.Id,
@@ -561,11 +733,17 @@
         }
         else
         {
-             Logger.LogInformation("Skipping TF details load due to missing DiscountList, CustomerType, or PaymentTerm selection.");
+            Logger.LogInformation("Skipping TF details load due to missing DiscountList, CustomerType, or PaymentTerm selection.");
         }
 
-        // After loading TF1/TF2 (or if they remain null), re-apply discounts to all currently displayed items
-        ApplyHeaderDiscountsToDisplayedItems(); // This method will handle null TF values
+        CartService.CustomerType = _selectedCustomerType;
+        CartService.DepartmentValue = _selectedDepartment;
+        CartService.PaymentTerm = _selectedPaymentTerm;
+        CartService.AgreedDuration = _agreedDuration;
+        CartService.PriceList = _selectedPriceList;
+        CartService.DiscountList = _selectedDiscountList;
+
+        ApplyHeaderDiscountsToDisplayedItems(); // Defined below
         _isLoadingElamieTfDetails = false;
         await InvokeAsync(StateHasChanged);
     }
@@ -576,27 +754,26 @@
 
         foreach (var itemDto in _items)
         {
-            itemDto.HeaderDiscountTF1 = _tf1DiscountPercentage; // Store applied TF1
-            itemDto.HeaderDiscountTF2 = _tf2DiscountPercentage; // Store applied TF2
-            itemDto.TotalCalculatedDiscountPercent = null; // Reset
-            itemDto.PriceAfterHeaderDiscounts = null; // Reset
+            itemDto.HeaderDiscountTF1 = _tf1DiscountPercentage;
+            itemDto.HeaderDiscountTF2 = _tf2DiscountPercentage;
+            itemDto.TotalCalculatedDiscountPercent = null;
+            itemDto.PriceAfterHeaderDiscounts = null;
 
-            // Base price for discount calculation should be PriceFromPriceList IF available
-            // OR the item's original MABL_F if PriceFromPriceList is not set (e.g., not in current price list or Azad payment)
-            // ApplyPricesToDisplayedItems() already sets itemDto.MABL_F to PriceFromPriceList or original MABL_F.
-            // So, itemDto.MABL_F (before this method modifies it again) is the correct base.
             decimal? priceBeforeHeaderDiscounts = itemDto.PriceFromPriceList;
-
 
             if (itemDto.HasPriceInCurrentPriceList && itemDto.PriceFromPriceList.HasValue)
             {
-                 priceBeforeHeaderDiscounts = itemDto.PriceFromPriceList; // This is the price for the item's main unit from price list
+                priceBeforeHeaderDiscounts = itemDto.PriceFromPriceList;
             }
             else
             {
-                //priceBeforeHeaderDiscounts = itemDto.MABL_F;
+                // If not in price list, use the item's base MABL_F as the starting point.
+                // This assumes ItemDisplayDto has an original MABL_F if PriceFromPriceList is not applicable.
+                // For this example, if PriceFromPriceList is null, we might use itemDto.MABL_F (original price)
+                // but ensure this MABL_F is indeed the price *before* any header discounts.
+                // The logic in ApplyPricesToDisplayedItems should set MABL_F correctly.
+                priceBeforeHeaderDiscounts = itemDto.MABL_F; // Fallback to item's own price if not in list
             }
-
 
             if (priceBeforeHeaderDiscounts.HasValue && priceBeforeHeaderDiscounts.Value > 0)
             {
@@ -616,27 +793,22 @@
                 itemDto.PriceAfterHeaderDiscounts = finalPriceAfterTf2;
 
                 decimal totalDiscountAmount = priceBeforeHeaderDiscounts.Value - finalPriceAfterTf2;
-                if (priceBeforeHeaderDiscounts.Value > 0) // Avoid division by zero
+                if (priceBeforeHeaderDiscounts.Value > 0)
                 {
-                    itemDto.TotalCalculatedDiscountPercent = (double)(Convert.ToDouble(totalDiscountAmount) / Convert.ToDouble(priceBeforeHeaderDiscounts.Value) * 100.0);
+                    itemDto.TotalCalculatedDiscountPercent = (double)(totalDiscountAmount / priceBeforeHeaderDiscounts.Value * 100.0m);
                 }
                 else
                 {
                     itemDto.TotalCalculatedDiscountPercent = 0;
                 }
-
-                // Update the item's MABL_F to reflect the price AFTER these header discounts.
-                // This is the price ItemCard will see and use as its base.
             }
-            else // No base price to apply discounts
+            else
             {
                 itemDto.PriceAfterHeaderDiscounts = priceBeforeHeaderDiscounts;
                 itemDto.TotalCalculatedDiscountPercent = 0;
             }
         }
-        // StateHasChanged(); // Usually called by the orchestrating method
     }
-
 
     private bool AreHeaderFieldsValidForAddingItems()
     {
@@ -651,9 +823,10 @@
         if (_selectedPaymentTerm == null) _headerValidationMessages.Add("نحوه پرداخت انتخاب نشده است.");
         if (!_agreedDuration.HasValue || _agreedDuration.Value <= 0)
         {
-            if (_selectedPaymentTerm?.Id == 0) _headerValidationMessages.Add("مقدار 'مدت' برای نحوه پرداخت آزاد باید حداقل 1 باشد.");
+            if (_isAzadPaymentSelected)
+                _headerValidationMessages.Add("مقدار 'مدت' برای نحوه پرداخت آزاد باید حداقل 1 باشد.");
             else if (_selectedPaymentTerm != null && (!_agreedDuration.HasValue || _agreedDuration.Value < 0))
-                 _headerValidationMessages.Add($"مقدار 'مدت' ({_agreedDuration?.ToString() ?? "تعیین نشده"}) برای نحوه پرداخت انتخابی نامعتبر است).");
+                _headerValidationMessages.Add($"مقدار 'مدت' ({_agreedDuration?.ToString() ?? "تعیین نشده"}) برای نحوه پرداخت انتخابی نامعتبر است).");
         }
         bool isPaymentAzad = _selectedPaymentTerm?.Id == 0;
         if (!isPaymentAzad)
@@ -665,40 +838,427 @@
         return !_headerValidationMessages.Any();
     }
 
-    private async Task HandleCustomerTypeChanged(LookupDto<int?> newValue) // Made async
+    private void UpdateHeaderValidationState()
     {
+        _areHeadersValid = AreHeaderFieldsValidForAddingItems();
+    }
+
+    private async Task HandleCustomerTypeChanged(LookupDto<int?> newValue)
+    {
+        if (_pricingLocked) { Snackbar.Add("امکان تغییر نوع مشتری پس از افزودن کالا به سبد وجود ندارد.", Severity.Warning); return; }
         _selectedCustomerType = newValue;
+        CartService.CustomerType = newValue;
         UpdateHeaderValidationState();
-        await LoadAndApplyElamieTakhfifDetailsAsync(); // Load TF1/TF2 on change
+        await SetToLocalStorageAsync(KEY_CT, newValue?.Id);
+        await LoadAndApplyElamieTakhfifDetailsAsync();
     }
 
-    private void HandleDurationChanged(int? newValue)
+    private async Task OnSelectedDepartmentChangedAsync(LookupDto<int?> newDepartment)
     {
+        if (_pricingLocked) { Snackbar.Add("امکان تغییر دپارتمان پس از افزودن کالا به سبد وجود ندارد.", Severity.Warning); return; }
+        _selectedDepartment = newDepartment;
+        CartService.DepartmentValue = newDepartment;
+        await SetToLocalStorageAsync(KEY_DEP, newDepartment?.Id);
+
+        _isLoadingLookups = true;
+        await InvokeAsync(StateHasChanged);
+        try
+        {
+            if (_selectedDepartment?.Id.HasValue == true)
+            {
+                // Corrected parameter name to depId
+                _priceLists = await LookupService.GetPriceListsAsync() ?? new();
+                var defaultPriceListId = await LookupService.GetDefaultPriceListIdAsync(_selectedDepartment.Id.Value);
+                _selectedPriceList = defaultPriceListId.HasValue ? _priceLists.FirstOrDefault(p => p.Id == defaultPriceListId.Value) : _priceLists.FirstOrDefault();
+
+                _discountLists = await LookupService.GetDiscountListsAsync() ?? new();
+                var defaultDiscountListId = await LookupService.GetDefaultDiscountListIdAsync(_selectedDepartment.Id.Value);
+                _selectedDiscountList = defaultDiscountListId.HasValue ? _discountLists.FirstOrDefault(d => d.Id == defaultDiscountListId.Value) : _discountLists.FirstOrDefault();
+            }
+            else
+            {
+                _priceLists = await LookupService.GetPriceListsAsync() ?? new(); // Load all if no department
+                _selectedPriceList = _priceLists.FirstOrDefault();
+                _discountLists = await LookupService.GetDiscountListsAsync() ?? new(); // Load all
+                _selectedDiscountList = _discountLists.FirstOrDefault();
+            }
+            CartService.PriceList = _selectedPriceList;
+            CartService.DiscountList = _selectedDiscountList;
+            await SetToLocalStorageAsync(KEY_PL, _selectedPriceList?.Id);
+            await SetToLocalStorageAsync(KEY_DL, _selectedDiscountList?.Id);
+
+            await LoadDynamicPaymentTermsAndSetDefaultAsync();
+            await LoadAndApplyElamieTakhfifDetailsAsync();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error updating price/discount lists on department change.");
+            Snackbar.Add("خطا در به‌روزرسانی لیست‌های قیمت/تخفیف.", Severity.Warning);
+        }
+        finally
+        {
+            _isLoadingLookups = false;
+            UpdateHeaderValidationState();
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+    private async Task OnSelectedPaymentTermChanged(PaymentTermDto? newValue)
+    {
+        if (_pricingLocked) { Snackbar.Add("امکان تغییر نحوه پرداخت پس از افزودن کالا به سبد وجود ندارد.", Severity.Warning); return; }
+        bool isNewValueAzad = newValue?.Id == 0;
+
+        if (isNewValueAzad && !_canUseAzadPay)
+        {
+            Snackbar.Add("شما اجازه انتخاب نحوه پرداخت آزاد را ندارید.", Severity.Error);
+            if (_previousSelectedPaymentTerm != null) _selectedPaymentTerm = _previousSelectedPaymentTerm;
+            else _selectedPaymentTerm = _paymentTermList.FirstOrDefault(pt => pt.Id != 0) ?? _paymentTermList.FirstOrDefault();
+
+            _isAzadPaymentSelected = _selectedPaymentTerm?.Id == 0;
+            _agreedDuration = _selectedPaymentTerm?.Modat;
+            _isDurationReadOnly = (_selectedPaymentTerm?.Id != 0);
+
+            CartService.PaymentTerm = _selectedPaymentTerm;
+            CartService.AgreedDuration = _agreedDuration;
+
+            await InvokeAsync(StateHasChanged);
+            UpdateHeaderValidationState();
+
+            await SetToLocalStorageAsync(KEY_PT, _selectedPaymentTerm?.Id);
+            await SetToLocalStorageAsync(KEY_DUR, _agreedDuration);
+
+            await LoadAndApplyElamieTakhfifDetailsAsync();
+            return;
+        }
+
+        _previousSelectedPaymentTerm = _selectedPaymentTerm;
+        _selectedPaymentTerm = newValue;
+        _isAzadPaymentSelected = _selectedPaymentTerm?.Id == 0;
+        _agreedDuration = _selectedPaymentTerm?.Modat;
+        _isDurationReadOnly = (_selectedPaymentTerm?.Id != 0);
+
+        CartService.PaymentTerm = _selectedPaymentTerm;
+        CartService.AgreedDuration = _agreedDuration;
+
+        UpdateHeaderValidationState();
+
+        await SetToLocalStorageAsync(KEY_PT, _selectedPaymentTerm?.Id);
+        await SetToLocalStorageAsync(KEY_DUR, _agreedDuration);
+
+        await LoadAndApplyElamieTakhfifDetailsAsync();
+    }
+
+    private async void HandleDurationChanged(int? newValue)
+    {
+        if (_pricingLocked) { Snackbar.Add("امکان تغییر مدت پس از افزودن کالا به سبد وجود ندارد.", Severity.Warning); return; }
         _agreedDuration = newValue;
+        CartService.AgreedDuration = _agreedDuration;
         UpdateHeaderValidationState();
+        await SetToLocalStorageAsync(KEY_DUR, _agreedDuration);
     }
 
-    private async Task HandlePriceListChanged(PriceListDto? newValue) // Made async
+
+    private async Task HandlePriceListChanged(PriceListDto? newValue)
     {
+        if (_pricingLocked) { Snackbar.Add("امکان تغییر اعلامیه قیمت پس از افزودن کالا به سبد وجود ندارد.", Severity.Warning); return; }
         _selectedPriceList = newValue;
+        CartService.PriceList = _selectedPriceList;
         UpdateHeaderValidationState();
+        await SetToLocalStorageAsync(KEY_PL, newValue?.Id);
 
         if (newValue != null && newValue.Id > 0)
         {
-            // This will call ApplyPricesToDisplayedItems and then we need TF details
             await GetPriceAndDiscountAndHeaderDiscountsReloadAsync();
         }
         else
         {
             _visitorItemPrices?.Clear();
-            ApplyPricesToDisplayedItems(); // Apply default prices
-            await LoadAndApplyElamieTakhfifDetailsAsync(); // Apply TF discounts on default prices
+            ApplyPricesToDisplayedItems(); // Defined below
+            await LoadAndApplyElamieTakhfifDetailsAsync();
+        }
+    }
+
+    private void ApplyPricesToDisplayedItems()
+    {
+        if (_items == null || !_items.Any()) return;
+
+        foreach (var itemDto in _items)
+        {
+            var visitorPriceInfo = _visitorItemPrices?.FirstOrDefault(vp => vp.CODE == itemDto.CODE && vp.PEPID == _selectedPriceList?.Id);
+
+            if (visitorPriceInfo != null && visitorPriceInfo.PRICE1.HasValue)
+            {
+                itemDto.PriceFromPriceList = visitorPriceInfo.PRICE1.Value;
+                itemDto.HasPriceInCurrentPriceList = true;
+                itemDto.MABL_F = visitorPriceInfo.PRICE1.Value;
+            }
+            else
+            {
+                itemDto.PriceFromPriceList = null;
+                itemDto.HasPriceInCurrentPriceList = false;
+                // Fallback to item's original MABL_F if not in price list.
+                // Ensure ItemDisplayDto has a field for its original base price if MABL_F is mutable.
+                // For now, assuming itemDto.MABL_F should be reset to its database default if not found.
+                // This part needs careful review based on how ItemDisplayDto.MABL_F is managed.
+                // If ItemDisplayDto.MABL_F is always the "current display price", then we need an OriginalMablF.
+                // Let's assume for now, if not in price list, it should reflect its base price.
+                // This might need fetching the original STUF_DEF.MABL_F if not already on ItemDisplayDto.
+                // For simplicity, if not found, MABL_F might be set to 0 or a default from STUF_DEF.
+                itemDto.MABL_F = 0; // Assuming MABL_F holds the base price
+            }
+        }
+    }
+
+
+    private async Task OnSelectedDiscountListChangedAsync(DiscountListDto? newDiscountList)
+    {
+        if (_pricingLocked) { Snackbar.Add("امکان تغییر اعلامیه تخفیف پس از افزودن کالا به سبد وجود ندارد.", Severity.Warning); return; }
+        _selectedDiscountList = newDiscountList;
+        CartService.DiscountList = _selectedDiscountList;
+
+        _isLoadingLookups = true;
+        await InvokeAsync(StateHasChanged);
+        try
+        {
+            await LoadDynamicPaymentTermsAndSetDefaultAsync();
+            await LoadAndApplyElamieTakhfifDetailsAsync();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error processing discount list change.");
+            Snackbar.Add("خطا در پردازش تغییر اعلامیه تخفیف.", Severity.Warning);
+        }
+        finally
+        {
+            _isLoadingLookups = false;
+            UpdateHeaderValidationState();
+            await SetToLocalStorageAsync(KEY_DL, newDiscountList?.Id);
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private void HandlePaymentTermChangeLogic(PaymentTermDto? currentSelection)
+    {
+        if (currentSelection?.Id == 0) // Azad
+        {
+            _isAzadPaymentSelected = true;
+            if (currentSelection?.Modat > 0) _agreedDuration = currentSelection?.Modat;
+            // else _agreedDuration = 1; // Default duration for Azad if not specified
+            _isDurationReadOnly = false; // Duration is editable for Azad
+        }
+        else // Not Azad
+        {
+            _isAzadPaymentSelected = false;
+            _agreedDuration = currentSelection?.Modat;
+            _isDurationReadOnly = true; // Duration comes from payment term
+        }
+
+        if (currentSelection != null && (currentSelection.Id != 0 || _canUseAzadPay))
+        {
+            _previousSelectedPaymentTerm = currentSelection;
+        }
+    }
+
+    // Definition for SearchDepartments (CS0103 fix)
+    private async Task<IEnumerable<LookupDto<int?>>> SearchDepartments(string value)
+    {
+        await Task.Delay(5); // Simulate async for MudAutocomplete
+        if (string.IsNullOrEmpty(value))
+            return _departmentList ?? Enumerable.Empty<LookupDto<int?>>();
+        return _departmentList?.Where(d => d.Name != null && d.Name.Contains(value, StringComparison.OrdinalIgnoreCase))
+               ?? Enumerable.Empty<LookupDto<int?>>();
+    }
+
+    // Definition for GetFilteredGroups (CS0103 fix)
+    private IEnumerable<TCODE_MENUITEM> GetFilteredGroups()
+    {
+        if (_itemGroups == null) return Enumerable.Empty<TCODE_MENUITEM>();
+        if (string.IsNullOrWhiteSpace(_groupSearchTerm)) return _itemGroups;
+        try
+        {
+            return _itemGroups.Where(g => g.NAMES != null && g.NAMES.Contains(_groupSearchTerm, StringComparison.OrdinalIgnoreCase));
+        }
+        catch
+        {
+            return _itemGroups; // Fallback in case of unexpected error during filtering
+        }
+    }
+
+    // Definition for HandleGroupClick (CS0103 fix)
+    private async Task HandleGroupClick(TCODE_MENUITEM group)
+    {
+        if (group == null || _isItemsLoading) return;
+        _selectedGroup = group;
+        Logger.LogInformation("Selected Group: {GroupName}, Anbar: {AnbarCode}", group.NAMES, group.ANBAR);
+        _currentPage = 1;
+        _totalItemCount = 0;
+        _items = null;
+        _itemSearchTerm = string.Empty;
+        await LoadItemsForSelectedGroupAsync();
+    }
+
+    // Definition for HandleItemSearchDebounced (CS0103 fix)
+    private async Task HandleItemSearchDebounced()
+    {
+        await InvokeAsync(async () =>
+        {
+            if (_selectedGroup == null) return;
+            Logger.LogInformation("Debounced item search: {SearchTerm}", _itemSearchTerm);
+            _currentPage = 1;
+            _totalItemCount = 0;
+            await LoadItemsForSelectedGroupAsync();
+        });
+    }
+
+    // Definition for HandlePageChangedAsync (CS0103 fix)
+    private async Task HandlePageChangedAsync(int newPage)
+    {
+        if (_isItemsLoading) return;
+        _currentPage = newPage;
+        await LoadItemsForSelectedGroupAsync();
+    }
+
+    public void Dispose()
+    {
+        CartService.CartChanged -= OnCartChanged;
+    }
+
+    private async Task CheckPagePermissionsAsync()
+    {
+        var tasks = new List<Task>();
+        tasks.Add(Task.Run(async () => _canChangeDepartment = await PermissionService.CanRunFormAsync("DEFA")));
+        tasks.Add(Task.Run(async () => _canChangeCustomerType = await PermissionService.CanRunFormAsync("CUSTEN")));
+        tasks.Add(Task.Run(async () => _canEditItemDiscount = !(await PermissionService.CanRunFormAsync("TFTMLOCK"))));
+        tasks.Add(Task.Run(async () => _canUseAzadPay = await PermissionService.CanRunFormAsync("AZADPAY")));
+
+        if (_baseknowGhaym.HasValue && _baseknowGhaym.Value == 7) // Assuming 7 means "Price List Based"
+        {
+            tasks.Add(Task.Run(async () =>
+            {
+                bool canRunElamghe = await PermissionService.CanRunFormAsync("elamghe");
+                _canChangePriceLists = canRunElamghe;
+            }));
+        }
+        else
+        {
+            _canChangePriceLists = true; // Or some other logic if not price list based
+        }
+
+        try
+        {
+            await Task.WhenAll(tasks);
+            Logger.LogInformation($"Permissions checked: Dept={_canChangeDepartment}, CustType={_canChangeCustomerType}, PriceList={_canChangePriceLists}, ItemDiscount={_canEditItemDiscount}, AzadPay={_canUseAzadPay}");
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error during permission checks.");
+            Snackbar.Add("خطا در بررسی دسترسی‌های کاربر.", Severity.Warning);
+            // Set restrictive defaults on error
+            _canChangeDepartment = _canChangeCustomerType = _canChangePriceLists = _canEditItemDiscount = _canUseAzadPay = false;
+        }
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task LoadGroupsAsync()
+    {
+        if (_isLoadingGroups) return;
+        _isLoadingGroups = true;
+        _groupErrorMessage = null;
+        _selectedGroup = null; // Reset selected group when reloading groups
+        _items = null;         // Clear items as they belong to a group
+        _isItemsLoading = false;
+        _itemsErrorMessage = null;
+        _currentPage = 1;
+        _totalItemCount = 0;
+        _itemSearchTerm = string.Empty; // Reset item search term
+        await InvokeAsync(StateHasChanged);
+        try
+        {
+            _itemGroups = await ItemGroupService.GetItemGroupsAsync() ?? new List<TCODE_MENUITEM>();
+            if (!_itemGroups.Any())
+            {
+                _groupErrorMessage = "گروهی یافت نشد.";
+            }
+        }
+        catch (Exception ex)
+        {
+            _groupErrorMessage = "خطای پیش‌بینی نشده در بارگذاری گروه‌ها.";
+            Logger.LogError(ex, _groupErrorMessage);
+            _itemGroups = new List<TCODE_MENUITEM>(); // Ensure it's not null
+        }
+        finally
+        {
+            _isLoadingGroups = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private async Task LoadUnitsAsync()
+    {
+        try
+        {
+            _availableUnits = await LookupService.GetUnitsAsync() ?? new List<TCOD_VAHEDS>();
+            if (!_availableUnits.Any())
+            {
+                // Snackbar.Add("لیست واحدها خالی است.", Severity.Info); // Optional: inform user
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error loading units.");
+            Snackbar.Add("خطای پیش‌بینی نشده در بارگذاری واحدها.", Severity.Error);
+            _availableUnits = new List<TCOD_VAHEDS>(); // Ensure it's not null
+        }
+    }
+
+    private async Task LoadItemsForSelectedGroupAsync()
+    {
+        if (_selectedGroup == null || _isItemsLoading) return;
+        _isItemsLoading = true;
+        _itemsErrorMessage = null;
+        await InvokeAsync(StateHasChanged);
+        try
+        {
+            Logger.LogInformation("Loading items page {Page} for group {GroupCode}, Search: '{ItemSearch}'", _currentPage, _selectedGroup.CODE, _itemSearchTerm);
+            var pagedResult = await ItemGroupService.GetItemsByGroupAsync(_selectedGroup.CODE, _currentPage, _pageSize, _itemSearchTerm);
+            if (pagedResult != null)
+            {
+                _items = pagedResult.Items ?? new List<ItemDisplayDto>();
+                _totalItemCount = pagedResult.TotalCount;
+            }
+            else
+            {
+                _itemsErrorMessage = "خطا در بارگذاری کالاها.";
+                Snackbar.Add(_itemsErrorMessage, Severity.Warning);
+                _items = new List<ItemDisplayDto>();
+                _totalItemCount = 0;
+            }
+            await GetPriceAndDiscountAndHeaderDiscountsReloadAsync();
+        }
+        catch (Exception ex)
+        {
+            _itemsErrorMessage = "خطای پیش‌بینی نشده در بارگذاری کالاها.";
+            Logger.LogError(ex, "Error loading items for group {GroupCode}", _selectedGroup.CODE);
+            Snackbar.Add(_itemsErrorMessage, Severity.Error);
+            _items = new List<ItemDisplayDto>();
+            _totalItemCount = 0;
+        }
+        finally
+        {
+            _isItemsLoading = false;
+            await InvokeAsync(StateHasChanged);
         }
     }
 
     private async Task LoadVisitorPricesForCurrentPriceListAsync(int priceListId)
     {
-        if (priceListId <= 0) return;
+        if (priceListId <= 0)
+        {
+            _visitorItemPrices?.Clear(); // Clear if invalid price list ID
+            ApplyPricesToDisplayedItems(); // Apply defaults if no valid price list
+            await LoadAndApplyElamieTakhfifDetailsAsync(); // Re-apply TF if prices changed to default
+            return;
+        }
+
         _isLoadingVisitorPrices = true;
         await InvokeAsync(StateHasChanged);
         try
@@ -715,93 +1275,19 @@
         finally
         {
             _isLoadingVisitorPrices = false;
-            ApplyPricesToDisplayedItems(); // Sets base prices from visitor prices or defaults
-            // TF1/TF2 should be applied after this, typically by the calling method like GetPriceAndDiscountAndHeaderDiscountsReloadAsync
+            ApplyPricesToDisplayedItems();
+            // TF1/TF2 should be re-applied as base prices might have changed.
+            // This is usually handled by GetPriceAndDiscountAndHeaderDiscountsReloadAsync calling LoadAndApplyElamieTakhfifDetailsAsync after this.
+            // If called directly, ensure TF details are re-applied.
             await InvokeAsync(StateHasChanged);
         }
     }
 
-    private void ApplyPricesToDisplayedItems()
-    {
-        if (_items == null || !_items.Any()) return;
-
-        foreach (var itemDto in _items)
-        {
-            var visitorPriceInfo = _visitorItemPrices?.FirstOrDefault(vp => vp.CODE == itemDto.CODE && vp.PEPID == _selectedPriceList?.Id);
-
-            if (visitorPriceInfo != null && visitorPriceInfo.PRICE1.HasValue)
-            {
-                itemDto.PriceFromPriceList = visitorPriceInfo.PRICE1.Value;
-                itemDto.HasPriceInCurrentPriceList = true;
-                itemDto.MABL_F = visitorPriceInfo.PRICE1.Value; // This is the price BEFORE TF1/TF2
-            }
-            else
-            {
-                itemDto.PriceFromPriceList = null; // Or item's original default MABL_F
-                itemDto.HasPriceInCurrentPriceList = false;
-                itemDto.MABL_F = 0; // Requires OriginalMablF property
-                // For now, if not in price list, MABL_F remains its last known value or default from DB.
-                // This might need adjustment if ItemDisplayDto doesn't have an "OriginalDefaultPrice"
-            }
-        }
-        // Header discounts (TF1/TF2) will be applied on top of this MABL_F by ApplyHeaderDiscountsToDisplayedItems
-        // StateHasChanged(); // Usually called by orchestrating method
-    }
-
-    private void UpdateHeaderValidationState()
-    {
-        _areHeadersValid = AreHeaderFieldsValidForAddingItems();
-    }
-    
-    private async Task CheckPagePermissionsAsync()
-    {
-        var tasks = new List<Task>();
-        tasks.Add(Task.Run(async () => _canChangeDepartment = await PermissionService.CanRunFormAsync("DEFA")));
-        tasks.Add(Task.Run(async () => _canChangeCustomerType = await PermissionService.CanRunFormAsync("CUSTEN")));
-        tasks.Add(Task.Run(async () => _canEditItemDiscount = !(await PermissionService.CanRunFormAsync("TFTMLOCK"))));
-        tasks.Add(Task.Run(async () => _canUseAzadPay = await PermissionService.CanRunFormAsync("AZADPAY")));
-
-        if (_baseknowGhaym.HasValue && _baseknowGhaym.Value == 7)
-        {
-            tasks.Add(Task.Run(async () =>
-            {
-                bool canRunElamghe = await PermissionService.CanRunFormAsync("elamghe");
-                _canChangePriceLists = canRunElamghe;
-            }));
-        }
-        else
-        {
-            _canChangePriceLists = true;
-        }
-
-        try
-        {
-            await Task.WhenAll(tasks);
-            Logger.LogInformation($"Permissions checked: Dept={_canChangeDepartment}, CustType={_canChangeCustomerType}, PriceList={_canChangePriceLists}, ItemDiscount={_canEditItemDiscount}, AzadPay={_canUseAzadPay}");
-        }
-        catch (Exception ex)
-        {
-            Logger.LogError(ex, "Error during permission checks.");
-            Snackbar.Add("خطا در بررسی دسترسی‌های کاربر.", Severity.Warning);
-            _canChangeDepartment = _canChangeCustomerType = _canChangePriceLists = _canEditItemDiscount = _canUseAzadPay = false;
-        }
-        await InvokeAsync(StateHasChanged);
-    }
 
     private async Task LoadHeaderDataAndSetDefaultsAsync()
     {
-        try
+        if (_selectedCustomerType == null && _customerTypeList.Any())
         {
-            var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
-            _currentUserPrincipal = authState.User;
-            if (_currentUserPrincipal?.Identity?.IsAuthenticated == true)
-            {
-                _currentUserId = int.TryParse(_currentUserPrincipal.FindFirst(BaseknowClaimTypes.IDD)?.Value, out var uid) ? uid : (int?)null;
-                _currentUserTfSazman = int.TryParse(_currentUserPrincipal.FindFirst(BaseknowClaimTypes.TFSAZMAN)?.Value, out var tf) ? tf : 20;
-            }
-            _currentCustomerHesCode = CartService.CurrentCustomer?.hes;
-
-            _customerTypeList = await LookupService.GetCustomerTypesAsync() ?? new();
             if (!string.IsNullOrEmpty(_currentCustomerHesCode))
             {
                 var custHesInfo = await LookupService.GetCustomerHesabInfoByHesCodeAsync(_currentCustomerHesCode);
@@ -809,51 +1295,81 @@
                     _selectedCustomerType = _customerTypeList.FirstOrDefault(c => c.Id == custHesInfo.CustCod.Value);
             }
             _selectedCustomerType ??= _customerTypeList.FirstOrDefault();
+            if (!_pricingLocked) await SetToLocalStorageAsync(KEY_CT, _selectedCustomerType?.Id);
+        }
 
-            _departmentList = await LookupService.GetDepartmentsAsync() ?? new();
+        if (_selectedDepartment == null && _departmentList.Any())
+        {
             if (_currentUserTfSazman.HasValue)
                 _selectedDepartment = _departmentList.FirstOrDefault(d => d.Id == _currentUserTfSazman.Value);
             _selectedDepartment ??= _departmentList.FirstOrDefault();
+            if (!_pricingLocked) await SetToLocalStorageAsync(KEY_DEP, _selectedDepartment?.Id);
+        }
 
-            // Payment terms are loaded dynamically later
-            // _paymentTermList = await LookupService.GetPaymentTermsAsync() ?? new(); ...
-
+        if (_selectedDepartment?.Id.HasValue == true)
+        {
             _priceLists = await LookupService.GetPriceListsAsync() ?? new();
-            if (_selectedDepartment?.Id.HasValue == true)
+            if (_persistedPriceListId.HasValue && _priceLists.Any(p => p.Id == _persistedPriceListId.Value))
+                _selectedPriceList = _priceLists.First(p => p.Id == _persistedPriceListId.Value);
+            else if (_selectedPriceList == null)
             {
                 var defaultPriceListId = await LookupService.GetDefaultPriceListIdAsync(_selectedDepartment.Id.Value);
-                if (defaultPriceListId.HasValue)
-                    _selectedPriceList = _priceLists.FirstOrDefault(p => p.Id == defaultPriceListId.Value);
+                _selectedPriceList = defaultPriceListId.HasValue ? _priceLists.FirstOrDefault(p => p.Id == defaultPriceListId.Value) : _priceLists.FirstOrDefault();
             }
-            _selectedPriceList ??= _priceLists.FirstOrDefault();
+            if (!_pricingLocked) await SetToLocalStorageAsync(KEY_PL, _selectedPriceList?.Id);
 
             _discountLists = await LookupService.GetDiscountListsAsync() ?? new();
-            if (_selectedDepartment?.Id.HasValue == true)
+            if (_persistedDiscountListId.HasValue && _discountLists.Any(d => d.Id == _persistedDiscountListId.Value))
+                _selectedDiscountList = _discountLists.First(d => d.Id == _persistedDiscountListId.Value);
+            else if (_selectedDiscountList == null)
             {
                 var defaultDiscountListId = await LookupService.GetDefaultDiscountListIdAsync(_selectedDepartment.Id.Value);
-                if (defaultDiscountListId.HasValue)
-                    _selectedDiscountList = _discountLists.FirstOrDefault(d => d.Id == defaultDiscountListId.Value);
+                _selectedDiscountList = defaultDiscountListId.HasValue ? _discountLists.FirstOrDefault(d => d.Id == defaultDiscountListId.Value) : _discountLists.FirstOrDefault();
             }
-            _selectedDiscountList ??= _discountLists.FirstOrDefault();
+            if (!_pricingLocked) await SetToLocalStorageAsync(KEY_DL, _selectedDiscountList?.Id);
         }
-        catch (Exception ex)
+        else
         {
-            Logger.LogError(ex, "خطا در بارگذاری اطلاعات سربرگ سفارش در ItemGroups.");
-            Snackbar.Add("خطا در بارگذاری اطلاعات پایه سربرگ.", Severity.Error);
-        }
-    }
+            _priceLists = await LookupService.GetPriceListsAsync() ?? new();
+            if (_persistedPriceListId.HasValue && _priceLists.Any(p => p.Id == _persistedPriceListId.Value))
+                _selectedPriceList = _priceLists.First(p => p.Id == _persistedPriceListId.Value);
+            _selectedPriceList ??= _priceLists.FirstOrDefault();
+            if (!_pricingLocked) await SetToLocalStorageAsync(KEY_PL, _selectedPriceList?.Id);
 
+            _discountLists = await LookupService.GetDiscountListsAsync() ?? new();
+            if (_persistedDiscountListId.HasValue && _discountLists.Any(d => d.Id == _persistedDiscountListId.Value))
+                _selectedDiscountList = _discountLists.First(d => d.Id == _persistedDiscountListId.Value);
+            _selectedDiscountList ??= _discountLists.FirstOrDefault();
+            if (!_pricingLocked) await SetToLocalStorageAsync(KEY_DL, _selectedDiscountList?.Id);
+        }
+
+        CartService.CustomerType = _selectedCustomerType;
+        CartService.DepartmentValue = _selectedDepartment;
+        CartService.PriceList = _selectedPriceList;
+        CartService.DiscountList = _selectedDiscountList;
+
+        Logger.LogInformation("Defaults set: CustType='{0}', Dept='{1}', PriceList='{2}', DiscountList='{3}'",
+            _selectedCustomerType?.Name, _selectedDepartment?.Name, _selectedPriceList?.Name, _selectedDiscountList?.Name);
+    }
     private async Task LoadDynamicPaymentTermsAndSetDefaultAsync()
     {
-        PaymentTermDto? previouslySelected = _selectedPaymentTerm;
+        PaymentTermDto? previouslySelectedFromPersisted = null;
+        // _paymentTermList might be empty here if it's the first load.
+        // We load it first, then try to apply persisted ID.
+
         try
         {
             int? deptId = _selectedDepartment?.Id;
             int? discountId = _selectedDiscountList?.Id;
-            _paymentTermList = await LookupService.GetDynamicPaymentTermsAsync(deptId, discountId);
+            _paymentTermList = await LookupService.GetDynamicPaymentTermsAsync(deptId, discountId) ?? new List<PaymentTermDto>();
 
-            if (previouslySelected != null && _paymentTermList.Any(pt => pt.Id == previouslySelected.Id))
-                _selectedPaymentTerm = _paymentTermList.First(pt => pt.Id == previouslySelected.Id);
+            if (_persistedPaymentTermId.HasValue && _paymentTermList.Any(pt => pt.Id == _persistedPaymentTermId.Value))
+            {
+                previouslySelectedFromPersisted = _paymentTermList.First(pt => pt.Id == _persistedPaymentTermId.Value);
+            }
+
+            if (previouslySelectedFromPersisted != null)
+                _selectedPaymentTerm = previouslySelectedFromPersisted;
             else if (_currentUserId.HasValue)
             {
                 var userDefaultPpid = await LookupService.GetDefaultPaymentTermIdForUserAsync(_currentUserId.Value);
@@ -862,9 +1378,21 @@
                     : _paymentTermList.FirstOrDefault();
             }
             else _selectedPaymentTerm = _paymentTermList.FirstOrDefault();
-            
-            _previousSelectedPaymentTerm = _selectedPaymentTerm; // Store this before HandlePaymentTermChangeLogic modifies it
+
+            if (_selectedPaymentTerm == null && _paymentTermList.Any()) _selectedPaymentTerm = _paymentTermList.First();
+
+            _previousSelectedPaymentTerm = _selectedPaymentTerm;
             HandlePaymentTermChangeLogic(_selectedPaymentTerm);
+
+            CartService.PaymentTerm = _selectedPaymentTerm;
+            CartService.AgreedDuration = _agreedDuration;
+
+            if (!_pricingLocked)
+            {
+                await SetToLocalStorageAsync(KEY_PT, _selectedPaymentTerm?.Id);
+                await SetToLocalStorageAsync(KEY_DUR, _agreedDuration);
+            }
+            Logger.LogInformation("Payment terms loaded. Selected: '{0}', Duration: {1}", _selectedPaymentTerm?.Name, _agreedDuration);
         }
         catch (Exception ex)
         {
@@ -873,267 +1401,33 @@
             _paymentTermList = new List<PaymentTermDto> { new PaymentTermDto { Id = 0, Name = "آزاد", Modat = 0 } };
             _selectedPaymentTerm = _paymentTermList.First();
             HandlePaymentTermChangeLogic(_selectedPaymentTerm);
+            CartService.PaymentTerm = _selectedPaymentTerm;
+            CartService.AgreedDuration = _agreedDuration;
+            if (!_pricingLocked)
+            {
+                await SetToLocalStorageAsync(KEY_PT, _selectedPaymentTerm?.Id);
+                await SetToLocalStorageAsync(KEY_DUR, _agreedDuration);
+            }
         }
         finally
         {
-            UpdateHeaderValidationState(); // Update validation after payment terms might have changed
-            // TF1/TF2 should be reloaded after payment term change
-            // await LoadAndApplyElamieTakhfifDetailsAsync(); // This will be called by OnSelectedPaymentTermChanged
-            await InvokeAsync(StateHasChanged);
-        }
-    }
-
-    private async Task OnSelectedDepartmentChangedAsync(LookupDto<int?> newDepartment)
-    {
-        _selectedDepartment = newDepartment;
-        _isLoadingLookups = true;
-        await InvokeAsync(StateHasChanged);
-        try
-        {
-            if (_selectedDepartment?.Id.HasValue == true)
-            {
-                var defaultPriceListId = await LookupService.GetDefaultPriceListIdAsync(_selectedDepartment.Id.Value);
-                _selectedPriceList = defaultPriceListId.HasValue ? _priceLists.FirstOrDefault(p => p.Id == defaultPriceListId.Value) : _priceLists.FirstOrDefault();
-                var defaultDiscountListId = await LookupService.GetDefaultDiscountListIdAsync(_selectedDepartment.Id.Value);
-                _selectedDiscountList = defaultDiscountListId.HasValue ? _discountLists.FirstOrDefault(d => d.Id == defaultDiscountListId.Value) : _discountLists.FirstOrDefault();
-            }
-            else
-            {
-                _selectedPriceList = _priceLists.FirstOrDefault();
-                _selectedDiscountList = _discountLists.FirstOrDefault();
-            }
-            await LoadDynamicPaymentTermsAndSetDefaultAsync(); // This will also trigger TF1/TF2 load if its handler calls it
-            // No, LoadDynamicPaymentTermsAndSetDefaultAsync does not trigger TF1/TF2 reload directly.
-            // The change handlers (_OnSelectedDiscountListChangedAsync, _OnSelectedPaymentTermChanged) do.
-            // We need to explicitly call it here too or ensure other handlers cover it.
-            // Since DiscountList might change, call TF loader.
-            await LoadAndApplyElamieTakhfifDetailsAsync();
-        }
-        catch (Exception ex)
-        {
-            Logger.LogError(ex, "Error updating price/discount lists on department change.");
-            Snackbar.Add("خطا در به‌روزرسانی لیست‌های قیمت/تخفیف.", Severity.Warning);
-        }
-        finally
-        {
-            _isLoadingLookups = false;
             UpdateHeaderValidationState();
             await InvokeAsync(StateHasChanged);
         }
     }
 
-    private bool _isAzadPaymentSelected = false;
-
-    private async Task OnSelectedPaymentTermChanged(PaymentTermDto? newValue) // Made async
-    {
-        bool isNewValueAzad = newValue?.Id == 0;
-
-        if (isNewValueAzad && !_canUseAzadPay)
-        {
-            Snackbar.Add("شما اجازه انتخاب نحوه پرداخت آزاد را ندارید.", Severity.Error);
-            // Revert to previous valid selection
-             if (_previousSelectedPaymentTerm != null) // Check if there's a non-null previous term
-             {
-                _selectedPaymentTerm = _previousSelectedPaymentTerm;
-             }
-             else // Fallback if previous was null (e.g. initial load error)
-             {
-                _selectedPaymentTerm = _paymentTermList.FirstOrDefault(pt => pt.Id != 0) ?? _paymentTermList.FirstOrDefault();
-             }
-            
-            // Update dependent states based on the reverted selection
-            _isAzadPaymentSelected = _selectedPaymentTerm?.Id == 0;
-            _agreedDuration = _selectedPaymentTerm?.Modat;
-            _isDurationReadOnly = (_selectedPaymentTerm?.Id != 0);
-
-            await InvokeAsync(StateHasChanged);
-            UpdateHeaderValidationState();
-            await LoadAndApplyElamieTakhfifDetailsAsync(); // Reload TF details for reverted payment term
-            return;
-        }
-        
-        _previousSelectedPaymentTerm = _selectedPaymentTerm; // Store current before changing
-        _selectedPaymentTerm = newValue;
-        _isAzadPaymentSelected = _selectedPaymentTerm?.Id == 0; // Update based on new value
-        _agreedDuration = _selectedPaymentTerm?.Modat;
-        _isDurationReadOnly = (_selectedPaymentTerm?.Id != 0);
-
-        UpdateHeaderValidationState();
-        await LoadAndApplyElamieTakhfifDetailsAsync(); // Load TF1/TF2 for new payment term
-    }
-
-    private async Task OnSelectedDiscountListChangedAsync(DiscountListDto? newDiscountList)
-    {
-        _selectedDiscountList = newDiscountList;
-        _isLoadingLookups = true; // Indicate general header loading
-        await InvokeAsync(StateHasChanged);
-        try
-        {
-            // Reload dynamic payment terms as they might depend on discount list
-            await LoadDynamicPaymentTermsAndSetDefaultAsync(); 
-            // LoadAndApplyElamieTakhfifDetailsAsync will be called by OnSelectedPaymentTermChanged if payment term changes,
-            // or if it doesn't change, we need to call it here explicitly because discount list itself changed.
-            await LoadAndApplyElamieTakhfifDetailsAsync();
-        }
-        catch (Exception ex)
-        {
-            Logger.LogError(ex, "Error processing discount list change.");
-            Snackbar.Add("خطا در پردازش تغییر اعلامیه تخفیف.", Severity.Warning);
-        }
-        finally
-        {
-            _isLoadingLookups = false;
-            UpdateHeaderValidationState();
-            await InvokeAsync(StateHasChanged);
-        }
-    }
-
-    private void HandlePaymentTermChangeLogic(PaymentTermDto? currentSelection)
-    {
-        // This method's logic seems to be mostly covered by OnSelectedPaymentTermChanged now.
-        // Original logic for _isDurationReadOnly and _agreedDuration is in OnSelectedPaymentTermChanged.
-        // The permission check for AZADPAY is also there.
-        // This method might be simplified or removed if its core responsibilities are handled elsewhere.
-        // For now, ensure it doesn't conflict.
-        if (currentSelection?.Id == 0)
-        {
-            if (currentSelection?.Modat > 0) _agreedDuration = currentSelection?.Modat;
-            // else _agreedDuration = 1; // Default if Azad has no Modat
-        }
-        else _agreedDuration = currentSelection?.Modat;
-        _isDurationReadOnly = (currentSelection?.Id != 0);
-
-        // Store valid selection as previous for potential revert
-        if (currentSelection != null && (currentSelection.Id != 0 || _canUseAzadPay))
-        {
-            _previousSelectedPaymentTerm = currentSelection;
-        }
-    }
-
-    private async Task<IEnumerable<LookupDto<int?>>> SearchDepartments(string value)
-    {
-        await Task.Delay(5); // Simulate async
-        if (string.IsNullOrEmpty(value)) return _departmentList;
-        return _departmentList.Where(d => d.Name != null && d.Name.Contains(value, StringComparison.OrdinalIgnoreCase));
-    }
-    
-    private async Task LoadUnitsAsync()
-    {
-        try
-        {
-            _availableUnits = await LookupService.GetUnitsAsync() ?? new();
-            if (!_availableUnits.Any()) Snackbar.Add("لیست واحدها خالی است.", Severity.Info);
-        }
-        catch (Exception ex)
-        {
-            Logger.LogError(ex, "Error loading units.");
-            Snackbar.Add("خطای پیش‌بینی نشده در بارگذاری واحدها.", Severity.Error);
-            _availableUnits = new List<TCOD_VAHEDS>();
-        }
-    }
-
-    public void Dispose() { }
-
-    private async Task LoadGroupsAsync()
-    {
-        if (_isLoadingGroups) return;
-        _isLoadingGroups = true; _groupErrorMessage = null; _selectedGroup = null; _items = null;
-        _isItemsLoading = false; _itemsErrorMessage = null; _currentPage = 1; _totalItemCount = 0; _itemSearchTerm = string.Empty;
-        await InvokeAsync(StateHasChanged);
-        try
-        {
-            _itemGroups = await ItemGroupService.GetItemGroupsAsync() ?? new();
-            if (!_itemGroups.Any()) _groupErrorMessage = "گروهی یافت نشد.";
-        }
-        catch (Exception ex)
-        {
-            _groupErrorMessage = "خطای پیش‌بینی نشده در بارگذاری گروه‌ها.";
-            Logger.LogError(ex, _groupErrorMessage); _itemGroups ??= new();
-        }
-        finally { _isLoadingGroups = false; await InvokeAsync(StateHasChanged); }
-    }
-
-    private async Task LoadItemsForSelectedGroupAsync()
-    {
-        if (_selectedGroup == null || _isItemsLoading) return;
-        _isItemsLoading = true; _itemsErrorMessage = null;
-        await InvokeAsync(StateHasChanged);
-        try
-        {
-            Logger.LogInformation("Loading items page {Page} for group {GroupCode}, Search: '{ItemSearch}'", _currentPage, _selectedGroup.CODE, _itemSearchTerm);
-            var pagedResult = await ItemGroupService.GetItemsByGroupAsync(_selectedGroup.CODE, _currentPage, _pageSize, _itemSearchTerm);
-            if (pagedResult != null)
-            {
-                _items = pagedResult.Items; _totalItemCount = pagedResult.TotalCount;
-            }
-            else
-            {
-                _itemsErrorMessage = "خطا در بارگذاری کالاها."; Snackbar.Add(_itemsErrorMessage, Severity.Warning);
-                _items = new List<ItemDisplayDto>(); _totalItemCount = 0;
-            }
-            // This reloads prices from PriceList AND applies TF1/TF2 header discounts
-            await GetPriceAndDiscountAndHeaderDiscountsReloadAsync();
-        }
-        catch (Exception ex)
-        {
-            _itemsErrorMessage = "خطای پیش‌بینی نشده در بارگذاری کالاها.";
-            Logger.LogError(ex, "Error loading items for group {GroupCode}", _selectedGroup.CODE);
-            Snackbar.Add(_itemsErrorMessage, Severity.Error);
-            _items = new List<ItemDisplayDto>(); _totalItemCount = 0;
-        }
-        finally { _isItemsLoading = false; await InvokeAsync(StateHasChanged); }
-    }
-
-    // Renamed and refactored
     private async Task GetPriceAndDiscountAndHeaderDiscountsReloadAsync()
     {
         if (_selectedPriceList?.Id != null && _selectedPriceList.Id > 0)
         {
-            // This calls ApplyPricesToDisplayedItems internally to set base prices from visitor prices
             await LoadVisitorPricesForCurrentPriceListAsync(_selectedPriceList.Id);
         }
         else
         {
-             _visitorItemPrices?.Clear(); // No price list, clear visitor prices
-             ApplyPricesToDisplayedItems(); // Apply default item prices (MABL_F will be item's original or last known)
+            _visitorItemPrices?.Clear();
+            ApplyPricesToDisplayedItems();
         }
-        // Now, after base prices are set, load and apply header discounts (TF1/TF2)
         await LoadAndApplyElamieTakhfifDetailsAsync();
-    }
-
-    private async Task HandleGroupClick(TCODE_MENUITEM group)
-    {
-        if (group == null || _isItemsLoading) return;
-        _selectedGroup = group;
-        Logger.LogInformation("Selected Group: {N}, Anbar: {A}", group.NAMES, group.ANBAR);
-        _currentPage = 1; _totalItemCount = 0; _items = null; _itemSearchTerm = string.Empty;
-        await LoadItemsForSelectedGroupAsync(); // This will trigger price and discount reloads
-    }
-
-    private async Task HandleItemSearchDebounced()
-    {
-        await InvokeAsync(async () =>
-        {
-            if (_selectedGroup == null) return;
-            Logger.LogInformation("Debounced item search: {SearchTerm}", _itemSearchTerm);
-            _currentPage = 1; _totalItemCount = 0;
-            await LoadItemsForSelectedGroupAsync();
-        });
-    }
-
-    private async Task HandlePageChangedAsync(int newPage)
-    {
-        if (_isItemsLoading) return;
-        _currentPage = newPage;
-        await LoadItemsForSelectedGroupAsync();
-    }
-
-    private IEnumerable<TCODE_MENUITEM> GetFilteredGroups()
-    {
-        if (_itemGroups == null) return Enumerable.Empty<TCODE_MENUITEM>();
-        if (string.IsNullOrWhiteSpace(_groupSearchTerm)) return _itemGroups;
-        try { return _itemGroups.Where(g => g.NAMES != null && g.NAMES.Contains(_groupSearchTerm, StringComparison.OrdinalIgnoreCase)); }
-        catch { return _itemGroups; } // Fallback
     }
 
     private async void AddItemToCartFromList(ItemDisplayDto item, int quantity)
@@ -1149,12 +1443,15 @@
             Snackbar.Add("خطا: گروه یا کالا نامعتبر است.", Severity.Error); return;
         }
 
-        // Ensure UnitInfo is correctly prepared. Assuming item.VahedCode and item.VahedName are for the primary unit if no complex units.
         var unitInfoList = new List<UnitInfo> {
             new UnitInfo { VahedCode = item.VahedCode, VahedName = item.VahedName ?? "واحد اصلی", Nesbat = 1.0 }
-            // If item has a list of available units, this needs to be populated correctly based on a selection.
-            // For direct "Add from list", we assume the item's default unit.
         };
+
+        decimal priceForUnitAfterHeaderDiscounts = item.PriceAfterHeaderDiscounts ?? item.MABL_F;
+        double lineDiscountPercentFromCard = 0;
+        decimal finalPricePerUnitCalc = priceForUnitAfterHeaderDiscounts * (1 - (decimal)(lineDiscountPercentFromCard / 100.0));
+        double totalHeaderDiscountApplied = item.TotalCalculatedDiscountPercent ?? 0;
+        decimal originalBasePriceForUnitCalc = item.PriceFromPriceList ?? item.MABL_F;
 
         await CartService.AddItemAsync(
             item,

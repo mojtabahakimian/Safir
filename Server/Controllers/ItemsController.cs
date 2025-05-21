@@ -98,7 +98,7 @@ namespace Safir.Server.Controllers
             // Note: PORSANT is removed as it's not directly available in the new join structure
             string itemsSql = $@"
                 WITH BaseItems AS (
-                    SELECT -- Select columns needed for ItemDisplayDto and ROW_NUMBER
+                    SELECT DISTINCT -- Select columns needed for ItemDisplayDto and ROW_NUMBER
                         sd.CODE, sd.NAME, sd.MABL_F, sd.B_SEF, sd.MAX_M, sd.TOZIH,
                         sd.MENUIT, sd.VAHED AS VahedCode,
                         tv.NAMES AS VahedName,
