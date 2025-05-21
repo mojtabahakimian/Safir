@@ -54,6 +54,8 @@ builder.Services.AddScoped<ProformaApiService>();
 builder.Services.AddScoped<ClientAppSettingsService>(); // Scoped مناسب است
 
 builder.Services.AddScoped<PermissionApiService>();
+
+builder.Services.AddScoped<ConnectivityService>(); // <--- این خط را اضافه کنید
 #endregion
 
 

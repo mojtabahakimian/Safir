@@ -7,6 +7,8 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks; // اضافه شود برای متدهای آسنکرون LocalStorage
 using Microsoft.Extensions.Logging;
+using Safir.Shared.Models.Kharid;
+using Safir.Shared.Models;
 
 namespace Safir.Client.Services
 {
@@ -23,6 +25,14 @@ namespace Safir.Client.Services
         public int? CurrentAnbarCode { get; private set; } // این را نگه می‌داریم
         public event Action? CartChanged;
 
+        //تنظیمات قیمتی مثل اعلامیه قیمت
+        public LookupDto<int?> CustomerType { get; set; }
+        public LookupDto<int?>? DepartmentValue { get; set; }
+        public PaymentTermDto? PaymentTerm { get; set; }
+        public int? AgreedDuration { get; set; }
+        public PriceListDto? PriceList { get; set; }
+        public DiscountListDto? DiscountList { get; set; }
+
         private Task? _initializationTask; // <--- فیلد برای نگهداری تسک بارگذاری اولیه
         private bool _isInitialized = false; // <--- فلگ برای جلوگیری از اجرای مجدد منطق اصلی
 
@@ -37,7 +47,7 @@ namespace Safir.Client.Services
 
         // این متد باید یکبار هنگام شروع برنامه فراخوانی شود
         // بهترین جا برای فراخوانی آن، متد OnInitializedAsync در MainLayout.razor یا App.razor است
- 
+
         // این متد توسط MainLayout و سایر کامپوننت‌ها فراخوانی می‌شود
         public Task InitializeCartFromLocalStorageAsync()
         {

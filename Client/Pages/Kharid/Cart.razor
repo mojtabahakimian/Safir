@@ -242,19 +242,28 @@
         {
             var request = new ProformaSaveRequestDto { /* ... DTO creation ... */ };
             // (DTO creation logic remains the same as previous correct version)
+
+            var customerType = CartService.CustomerType;
+            var paymentTerm = CartService.PaymentTerm;
+            var agreedDuration = CartService.AgreedDuration;
+            var priceList = CartService.PriceList;
+            var discountList = CartService.DiscountList;
+            var departmanList = CartService.DepartmentValue;
+
             request = new ProformaSaveRequestDto
                 {
                     Header = new ProformaHeaderDto
                     {
                         CustomerHesCode = CartService.CurrentCustomer.hes,
                         Date = CL_Tarikh.GetCurrentPersianDateAsLong(),
+                        DepartmentCode = departmanList?.Id,
                         Notes = headerNotes,
                         Conditions = headerConditions,
-                        CustomerKindCode = null,
-                        PaymentTermId = null,
-                        AgreedDuration = null,
-                        PriceListId = null,
-                        DiscountListId = null,
+                        CustomerKindCode = customerType?.Id,
+                        PaymentTermId = paymentTerm?.Id,
+                        AgreedDuration = agreedDuration,
+                        PriceListId = priceList?.Id,
+                        DiscountListId = discountList?.Id,
                         ApplyVat = headerApplyVat,
                         CalculateAward = false, // این فیلد در هدر پیش‌فاکتور شما وجود دارد، مقداردهی شود
                         ShippingCost = headerShippingCost,
@@ -290,7 +299,7 @@
                         var successMsg = finalResponse.Message ?? $"پیش فاکتور {finalResponse.ProformaNumber} ثبت شد.";
                         // <<< --- MODIFIED: Show custom dialog instead of MessageBox --- >>>
                         ShowSuccessDialog(successMsg, finalResponse.ProformaNumber);
-                      await  CartService.ClearCartAsync();
+                        await CartService.ClearCartAsync();
                     }
                     else { Snackbar.Add(finalResponse.Message ?? "...", Severity.Error); }
                 }
@@ -301,7 +310,7 @@
                 var successMsg = initialResponse.Message ?? $"پیش فاکتور {initialResponse.ProformaNumber} ثبت شد.";
                 // <<< --- MODIFIED: Show custom dialog instead of MessageBox --- >>>
                 ShowSuccessDialog(successMsg, initialResponse.ProformaNumber);
-               await CartService.ClearCartAsync();
+                await CartService.ClearCartAsync();
             }
             else { Snackbar.Add(initialResponse.Message ?? "...", Severity.Error); }
         }
@@ -313,7 +322,7 @@
         finally { isSaving = false; StateHasChanged(); }
     }
     // Helper methods
-  
+
 
     // این متد دیگر لازم نیست چون ShowSuccessDialog جایگزین شده است
     // private async Task ShowSuccessMsg(string msg)
