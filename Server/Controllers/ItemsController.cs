@@ -96,36 +96,56 @@ namespace Safir.Server.Controllers
 
             // --- Items Query with Pagination using CTE and ROW_NUMBER ---
             // Note: PORSANT is removed as it's not directly available in the new join structure
+            /* 1) Raw : همهٔ رکوردهای واجد شرایط
+            2) Dedup: حذف سطرهای تکراری (فقط ردیف dup_rnk = 1 می‌ماند)
+            3) BaseItems: شماره‌گذاری برای صفحه‌بندی                                      */
+            // --- Items Query: حذف تکراری‌ها سپس صفحه‌بندی ---
             string itemsSql = $@"
-                WITH BaseItems AS (
-                    SELECT DISTINCT -- Select columns needed for ItemDisplayDto and ROW_NUMBER
-                        sd.CODE, sd.NAME, sd.MABL_F, sd.B_SEF, sd.MAX_M, sd.TOZIH,
-                        sd.MENUIT, sd.VAHED AS VahedCode,
-                        tv.NAMES AS VahedName,
-                        -- vp.HES, -- Already used in WHERE, not needed in DTO
-                        -- Select other STUF_DEF columns if needed by ItemDisplayDto or later logic
-                        ROW_NUMBER() OVER (ORDER BY sd.CODE) AS RowNum -- Order by a unique column for stable pagination
-                    FROM dbo.STUF_DEF sd
-                    INNER JOIN dbo.VISITORS_PORSANT_KALA vpk ON sd.CODE = vpk.CODE
-                    INNER JOIN dbo.VISITORS_PORSANT vp ON vpk.PORID = vp.PORID
-                    LEFT JOIN dbo.TCOD_VAHEDS tv ON sd.VAHED = tv.CODE -- Join to get unit name
-                    WHERE {commonWhereClause}
-                    -- Applying DISTINCT here before ROW_NUMBER is complex and often inefficient.
-                    -- DISTINCT is handled in the count query. Ensure base query + WHERE returns the desired logical items.
-                )
-                SELECT CODE, NAME, MABL_F, B_SEF, MAX_M, TOZIH, MENUIT, VahedCode, VahedName -- Select final columns for DTO
-                FROM BaseItems
-                WHERE RowNum > @RowStart AND RowNum <= @RowEnd;";
+                                WITH Raw AS
+                                (
+                                    SELECT
+                                        sd.CODE,
+                                        sd.NAME,
+                                        sd.MABL_F,
+                                        sd.B_SEF,
+                                        sd.MAX_M,
+                                        sd.TOZIH,
+                                        sd.MENUIT,
+                                        sd.VAHED AS VahedCode,
+                                        tv.NAMES AS VahedName,
+                                        ROW_NUMBER() OVER (PARTITION BY sd.CODE ORDER BY sd.CODE) AS dup_rnk
+                                    FROM dbo.STUF_DEF               sd
+                                    INNER JOIN dbo.VISITORS_PORSANT_KALA vpk ON vpk.CODE = sd.CODE
+                                    INNER JOIN dbo.VISITORS_PORSANT      vp  ON vp.PORID = vpk.PORID
+                                    LEFT  JOIN dbo.TCOD_VAHEDS           tv  ON tv.CODE  = sd.VAHED
+                                    WHERE {commonWhereClause}
+                                ),
+                                Dedup AS
+                                (
+                                    SELECT * FROM Raw WHERE dup_rnk = 1      -- حذف دوبلیکیت‌ها
+                                ),
+                                BaseItems AS
+                                (
+                                    SELECT
+                                        CODE, NAME, MABL_F, B_SEF, MAX_M,
+                                        TOZIH, MENUIT, VahedCode, VahedName,
+                                        ROW_NUMBER() OVER (ORDER BY CODE) AS RowNum   -- برای صفحه‌بندی
+                                    FROM Dedup
+                                )
+                                SELECT
+                                    CODE, NAME, MABL_F, B_SEF, MAX_M,
+                                    TOZIH, MENUIT, VahedCode, VahedName
+                                FROM BaseItems
+                                WHERE RowNum >  @RowStart
+                                  AND RowNum <= @RowEnd;";
 
-            // --- Count Query with DISTINCT ---
-            // Counts distinct items matching the criteria
+            // --- Count Query بدون تغییر خاص (همچنان DISTINCT روی CODE) ---
             string countSql = $@"
-                 SELECT COUNT(DISTINCT sd.CODE) -- Count distinct items based on CODE
-                 FROM dbo.STUF_DEF sd
-                 INNER JOIN dbo.VISITORS_PORSANT_KALA vpk ON sd.CODE = vpk.CODE
-                 INNER JOIN dbo.VISITORS_PORSANT vp ON vpk.PORID = vp.PORID
-                 -- No need to join TCOD_VAHEDS for count
-                 WHERE {commonWhereClause};";
+                                SELECT COUNT(DISTINCT sd.CODE)
+                                FROM dbo.STUF_DEF sd
+                                INNER JOIN dbo.VISITORS_PORSANT_KALA vpk ON sd.CODE = vpk.CODE
+                                INNER JOIN dbo.VISITORS_PORSANT      vp  ON vpk.PORID = vp.PORID
+                                WHERE {commonWhereClause};";
 
 
             parameters.Add("RowStart", offset);
