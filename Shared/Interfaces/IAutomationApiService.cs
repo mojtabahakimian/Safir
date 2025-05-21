@@ -9,16 +9,19 @@ namespace Safir.Shared.Interfaces
     {
         // --- Tasks ---
         Task<IEnumerable<TaskModel>?> GetTasksAsync(int statusFilter = 1, int? assignedUserId = null, string? taskTypes = "1000");
-        Task<TaskModel?> CreateTaskAsync(TaskModel task); // Returns the created task with IDNUM
+        Task<TaskModel?> CreateTaskAsync(TaskModel task);
+        // UPDATED: Added Stream? fileStream and string? fileName parameters to CreateEventAsync
+        Task<EventModel?> CreateEventAsync(long taskId, EventModel newEvent, Stream? fileStream = null, string? fileName = null);
         Task<bool> UpdateTaskAsync(long idnum, TaskModel task);
         Task<bool> UpdateTasksBulkAsync(List<long> idnums, TaskModel updateValues); // For bulk edit
-        Task<TaskModel?> GetTaskByIdAsync(long idnum); // Optional: if needed
+        Task<TaskModel?> GetTaskByIdAsync(long idnum);// Optional: if needed
 
         // --- Events ---
         Task<IEnumerable<EventModel>?> GetEventsAsync(long taskId);
-        Task<EventModel?> CreateEventAsync(long taskId, EventModel newEvent); // Returns created event with IDD
+        // EventModel? CreateEventAsync(long taskId, EventModel newEvent); // Old signature, now updated above
         Task<bool> UpdateEventAsync(long taskId, int eventId, EventModel eventData);
-        Task<bool> DeleteEventAsync(long taskId, int eventId); // Optional: if needed
+        Task<bool> DeleteEventAsync(long taskId, int eventId);
+        Task<(byte[]? FileBytes, string? ContentType)> DownloadEventAttachmentAsync(long taskId, int eventId);
 
         // --- Messages ---
         Task<IEnumerable<MessageModel>?> GetMessagesAsync(bool includeSent = true, bool includeReceived = true);
@@ -39,5 +42,8 @@ namespace Safir.Shared.Interfaces
         Task<IEnumerable<DocumentTypeLookupModel>?> GetDocumentTypeLookupAsync();
         Task<bool> CanViewSubordinateTasksAsync();
         // Note: Customer lookup might use existing LookupApiService or be added here
+
+
+
     }
 }
