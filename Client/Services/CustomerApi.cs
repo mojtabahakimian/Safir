@@ -7,6 +7,7 @@ using System.Threading.Tasks;
 using System; // For ArgumentNullException
 using Safir.Shared.Models.Hesabdari;
 using System.Web;
+using Safir.Shared.Models;
 
 namespace Safir.Client.Services;
 
@@ -250,6 +251,36 @@ public class CustomerApi
         {
             _logger.LogError(ex, "Client API Error: Generic error checking block status for {HesabCode}", hesabCode);
             return false;
+        }
+    }
+
+    public async Task<PagedResult<VISITOR_CUSTOMERS>?> GetActiveCustomersForUserAsync(int pageNumber, int pageSize, string? searchTerm)
+    {
+        try
+        {
+            // اطمینان از اینکه پارامترهای کوئری به درستی به URL اضافه می‌شوند
+            var queryParams = System.Web.HttpUtility.ParseQueryString(string.Empty);
+            queryParams["pageNumber"] = pageNumber.ToString();
+            queryParams["pageSize"] = pageSize.ToString();
+            if (!string.IsNullOrWhiteSpace(searchTerm))
+            {
+                queryParams["searchTerm"] = searchTerm;
+            }
+            var requestUri = $"api/customers/list-for-user?{queryParams}";
+
+            _logger.LogInformation("Client API Call: Fetching active customers from {RequestUri}", requestUri);
+            var result = await _httpClient.GetFromJsonAsync<PagedResult<VISITOR_CUSTOMERS>>(requestUri);
+            return result;
+        }
+        catch (HttpRequestException ex)
+        {
+            _logger.LogError(ex, "Client API Error: HTTP error fetching active customers. Status: {StatusCode}", ex.StatusCode);
+            return null;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Client API Error: Generic error fetching active customers.");
+            return null;
         }
     }
     // --- END: Code to Add ---

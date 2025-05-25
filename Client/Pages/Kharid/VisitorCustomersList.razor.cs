@@ -1,7 +1,10 @@
 ﻿using Microsoft.AspNetCore.Components;
+using Microsoft.AspNetCore.Components.Authorization;
 using MudBlazor;
 using Safir.Client.Services;
+using Safir.Shared.Constants;
 using Safir.Shared.Models.Visitory;
+using System;
 using System.Globalization;
 
 namespace Safir.Client.Pages.Kharid
@@ -14,6 +17,8 @@ namespace Safir.Client.Pages.Kharid
         [Inject] private ILogger<VisitorCustomersList> Logger { get; set; } = default!;
         [Inject] private ShoppingCartService CartService { get; set; } = default!; // <<< تزریق سرویس سبد خرید
 
+        [Inject] private AuthenticationStateProvider AuthenticationStateProvider { get; set; } = default!;
+
         [Inject] private CustomerApi CustomerApi { get; set; } = default!;
 
         private List<VISITOR_CUSTOMERS>? _originalCustomers;
@@ -23,8 +28,13 @@ namespace Safir.Client.Pages.Kharid
         private bool datesLoading = true;
         private string? datesErrorMessage;
 
+        private bool _userHasVisitPlan = true; // یک فلگ برای تشخیص حالت
+        private string? _userHesForCheck; // برای نگهداری User HES
+
         private bool _isCheckingBlock = false; // <<< فلگ برای نمایش وضعیت بررسی مسدودی
 
+        private string UserNameDisplay = string.Empty;
+        private string UserHES = string.Empty;
 
         private string _searchTerm = "";
         private System.Timers.Timer? _debounceTimer;
@@ -70,12 +80,20 @@ namespace Safir.Client.Pages.Kharid
                 {
                     _selectedVisitDate = value;
                     currentPage = 1;
-                    SearchTerm = "";
+                    SearchTerm = ""; // ریست کردن جستجو هنگام تغییر تاریخ
                     _debounceTimer?.Stop();
-                    _ = LoadCustomersForDateAsync(_selectedVisitDate);
+
+                    if (_userHasVisitPlan && _selectedVisitDate.HasValue)
+                    {
+                        // فقط اگر در حالت برنامه ویزیت هستیم و تاریخ انتخاب شده، مشتریان مربوط به تاریخ را بارگذاری کن
+                        _ = LoadCustomersForDateAsync(_selectedVisitDate); //
+                    }
+                    // اگر _userHasVisitPlan false باشد یا _selectedVisitDate null باشد، کاری انجام نمی‌دهیم
+                    // چون یا از ابتدا در حالت لیست عمومی بوده‌ایم یا با پاک شدن تاریخ به آن حالت رفته‌ایم (که توسط منطق دیگری مدیریت می‌شود)
                 }
             }
         }
+
 
         private List<VISITOR_CUSTOMERS>? FilteredCustomers
         {
@@ -116,15 +134,39 @@ namespace Safir.Client.Pages.Kharid
             _debounceTimer.Elapsed += async (s, e) => await HandleSearchDebounced();
             _debounceTimer.AutoReset = false;
 
-            await LoadVisitDatesAsync();
-            if (availableDates != null && availableDates.Any())
+            var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+            var currentUserPrincipal = authState.User;
+            UserNameDisplay = currentUserPrincipal.FindFirst(BaseknowClaimTypes.UUSER)?.Value ?? string.Empty;
+            UserHES = currentUserPrincipal.FindFirst(BaseknowClaimTypes.USER_HES)?.Value ?? string.Empty;
+            // ابتدا اطلاعات کاربر را از AppState بگیرید (فرض می‌کنیم USER_HES در AppState ذخیره شده)
+            _userHesForCheck = UserHES; //
+
+            if (string.IsNullOrEmpty(_userHesForCheck))
             {
-                SelectedVisitDate = availableDates.First();
+                // اگر کاربر USER_HES ندارد و قرار است مشتریان عمومی را ببیند
+                _userHasVisitPlan = false; // یا یک منطق دیگر برای تعیین این موضوع
+                Logger.LogInformation("User does not have a HES or not a typical visitor. Loading general customer list.");
+                // مستقیماً به بارگذاری لیست عمومی بروید
+                await LoadGeneralActiveCustomersAsync(searchTerm: SearchTerm, pageNumber: currentPage);
             }
             else
             {
-                isLoading = false;
+                // اگر کاربر USER_HES دارد، ابتدا تاریخ‌های ویزیت را بارگذاری کنید
+                await LoadVisitDatesAsync(); // این متد لیست availableDates را پر می‌کند
+                if (availableDates != null && availableDates.Any())
+                {
+                    _userHasVisitPlan = true;
+                    SelectedVisitDate = availableDates.First(); // این LoadCustomersForDateAsync را تریگر می‌کند
+                }
+                else
+                {
+                    // اگر تاریخ ویزیتی برای این USER_HES یافت نشد، به حالت لیست عمومی بروید
+                    _userHasVisitPlan = false;
+                    Logger.LogInformation("No visit dates found for User HES {UserHes}. Loading general customer list.", _userHesForCheck);
+                    await LoadGeneralActiveCustomersAsync(searchTerm: SearchTerm, pageNumber: currentPage);
+                }
             }
+            // isLoading در متدهای بارگذاری مدیریت می‌شود
         }
 
         public void Dispose()
@@ -240,8 +282,22 @@ namespace Safir.Client.Pages.Kharid
 
         private async Task HandleSearchDebounced()
         {
-            _currentPage = 1;
-            await InvokeAsync(StateHasChanged);
+            currentPage = 1; // بازگشت به صفحه اول هنگام جستجو
+            if (_userHasVisitPlan && SelectedVisitDate.HasValue)
+            {
+                // در حالت ویزیت با تاریخ، جستجو فقط در لیست فعلی انجام می‌شود (سمت کلاینت)
+                // یا می‌توانید LoadCustomersForDateAsync را با searchTerm فراخوانی کنید اگر سرور از آن پشتیبانی می‌کند
+                await InvokeAsync(StateHasChanged); // فقط UI را برای فیلتر جدید رفرش کن
+            }
+            else if (!_userHasVisitPlan)
+            {
+                // در حالت لیست عمومی، جستجو از سرور انجام می‌شود
+                await LoadGeneralActiveCustomersAsync(searchTerm: SearchTerm, pageNumber: currentPage);
+            }
+            else
+            {
+                await InvokeAsync(StateHasChanged);
+            }
         }
 
         private void NavigateToInvoice(string? customerHes)
@@ -298,6 +354,59 @@ namespace Safir.Client.Pages.Kharid
                 await InvokeAsync(StateHasChanged); // Update UI
             }
         }
+
+        private async Task LoadGeneralActiveCustomersAsync(string? searchTerm = null, int pageNumber = 1, int pageSize = 50)
+        {
+            isLoading = true;
+            errorMessage = null;
+            _originalCustomers = null; // پاک کردن داده‌های قبلی
+            await InvokeAsync(StateHasChanged);
+
+            try
+            {
+                Logger.LogInformation("Loading general active customers. Page: {Page}, Size: {Size}, Search: '{Search}'", pageNumber, pageSize, searchTerm);
+
+                // فراخوانی متد جدید از CustomerApi (یا سرویس مربوطه)
+                // توجه: اینجا CustomerApi استفاده شده، اگر سرویس دیگری ساختید، آن را جایگزین کنید.
+                var pagedResult = await CustomerApi.GetActiveCustomersForUserAsync(pageNumber, pageSize, searchTerm);
+
+                if (pagedResult != null)
+                {
+                    _originalCustomers = pagedResult.Items;
+                    // TotalCount و سایر اطلاعات صفحه‌بندی را هم برای UI ذخیره کنید اگر لازم است
+                    // مثلاً برای نمایش تعداد کل صفحات یا دکمه‌های قبلی/بعدی
+                    // _totalPages = pagedResult.TotalPages;
+                    // _totalItems = pagedResult.TotalCount;
+                    Logger.LogInformation("Successfully loaded {Count} general active customers.", _originalCustomers?.Count ?? 0);
+                    if (_originalCustomers == null || !_originalCustomers.Any())
+                    {
+                        Snackbar.Add("مشتری فعالی برای نمایش یافت نشد.", Severity.Info);
+                    }
+                }
+                else
+                {
+                    errorMessage = "خطا در دریافت لیست مشتریان فعال.";
+                    Logger.LogWarning("GetActiveCustomersForUserAsync returned null.");
+                    Snackbar.Add(errorMessage, Severity.Warning);
+                    _originalCustomers = new List<VISITOR_CUSTOMERS>(); // لیست خالی
+                }
+            }
+            catch (Exception ex)
+            {
+                errorMessage = "خطای پیش بینی نشده در بارگذاری لیست مشتریان فعال.";
+                Logger.LogError(ex, "Exception occurred loading general active customers. Search: '{Search}'", searchTerm);
+                Snackbar.Add($"{errorMessage}", Severity.Error);
+                _originalCustomers = new List<VISITOR_CUSTOMERS>(); // لیست خالی
+            }
+            finally
+            {
+                isLoading = false;
+                await InvokeAsync(StateHasChanged);
+            }
+        }
+
+
+
 
         private static string FormatCurrency(double? value) => value?.ToString("N0", CultureInfo.GetCultureInfo("fa-IR")) ?? "0";
         private static string FormatCurrency(long? value) => value?.ToString("N0", CultureInfo.GetCultureInfo("fa-IR")) ?? "0";

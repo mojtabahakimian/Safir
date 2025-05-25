@@ -17,6 +17,7 @@ using static MudBlazor.Icons;
 using static Safir.Shared.Utility.CL_Tarikh;
 using Safir.Shared.Models.Hesabdari;
 using QuestPDF.Fluent;
+using Safir.Shared.Models;
 
 namespace Safir.Server.Controllers
 {
@@ -694,6 +695,98 @@ namespace Safir.Server.Controllers
                 _logger.LogError(ex, "API: Error checking block status for HES: {HesCode}", hesCode);
                 // بازگرداندن خطای عمومی سرور
                 return StatusCode(StatusCodes.Status500InternalServerError, "خطای داخلی سرور هنگام بررسی وضعیت مسدودی مشتری رخ داد.");
+            }
+        }
+
+        [HttpGet("list-for-user")]
+        public async Task<ActionResult<PagedResult<VISITOR_CUSTOMERS>>> GetCustomersForUserWithoutVisitPlan(
+            [FromQuery] int pageNumber = 1,
+            [FromQuery] int pageSize = 50,
+            [FromQuery] string? searchTerm = null)
+        {
+            // چون UserHes از کلاینت برای این سناریو ارسال نمی‌شود و در کوئری هم استفاده نمی‌شود، لاگ آن را تغییر می‌دهیم.
+            _logger.LogInformation("API: Fetching general active customers (unfiltered by specific user HES). Page: {PageNumber}, Size: {PageSize}, Search: '{SearchTerm}' (No Visit Plan)",
+                pageNumber, pageSize, searchTerm);
+
+            if (pageNumber < 1) pageNumber = 1;
+            if (pageSize < 1) pageSize = 10; // یا هر مقدار مینیمم دیگر
+
+            int startRow = (pageNumber - 1) * pageSize + 1;
+            int endRow = pageNumber * pageSize;
+
+            var whereConditions = new List<string>();
+            var parameters = new DynamicParameters(); // یک DynamicParameters جدید ایجاد کنید
+
+            // 1. فیلتر مشتریان مسدود نشده (این باید همیشه اعمال شود)
+            // اطمینان حاصل کنید که منطق ISNULL(BC.ENDBLK, 1) <> 0 با دیتابیس شما همخوانی دارد
+            // (یعنی 0 به معنی مسدود و مقادیر دیگر یا NULL به معنی غیر مسدود است)
+            whereConditions.Add("(BC.HES IS NULL OR ISNULL(BC.ENDBLK, 1) <> 0)");
+
+            // 2. فیلتر جستجو (اگر searchTerm ارسال شده باشد)
+            if (!string.IsNullOrWhiteSpace(searchTerm))
+            {
+                string normalizedSearchTerm = searchTerm.Trim().FixPersianChars();
+                // جستجو در نام، کد حساب، تلفن و موبایل
+                whereConditions.Add("(CH.NAME LIKE @SearchPattern OR CH.HES LIKE @SearchPattern OR CH.TEL LIKE @SearchPattern OR CH.MOBILE LIKE @SearchPattern)");
+                parameters.Add("SearchPattern", $"%{normalizedSearchTerm}%"); // پارامتر جستجو اضافه می‌شود
+            }
+
+            // ساخت رشته WHERE نهایی
+            string whereClause = whereConditions.Any() ? $"WHERE {string.Join(" AND ", whereConditions)}" : "";
+
+            // کوئری برای دریافت مشتریان با استفاده از ROW_NUMBER() برای صفحه‌بندی
+            string customersSql = $@"
+        WITH FilteredCustomers AS (
+            SELECT
+                CH.HES AS hes,
+                CH.NAME AS person,
+                CH.ADDRESS + N' ' + ISNULL(CH.TEL, N'') + N' ' + ISNULL(CH.MOBILE, N'') AS addr,
+                CH.Latitude, CH.Longitude,
+                ROW_NUMBER() OVER (ORDER BY CH.NAME) AS RowNum
+                -- دیگر ستون‌های مورد نیاز از CUST_HESAB برای مدل VISITOR_CUSTOMERS
+                -- مانند کد اقتصادی (ECODE)، کد پستی (PCODE) و ... اگر در VISITOR_CUSTOMERS هستند
+            FROM dbo.CUST_HESAB CH
+            LEFT JOIN dbo.BLOCK_CUSTOMER BC ON CH.HES = BC.HES -- جوین برای بررسی مسدودی
+            {whereClause} -- شروط فیلتر اینجا اعمال می‌شوند
+        )
+        SELECT hes, person, addr, Latitude, Longitude -- ستون‌های دیگر را در اینجا هم لیست کنید
+        FROM FilteredCustomers
+        WHERE RowNum >= @StartRow AND RowNum <= @EndRow
+        ORDER BY RowNum;"; // ترتیب نمایش بر اساس RowNum برای حفظ ترتیب صفحه‌بندی
+
+            // کوئری برای شمارش کل مشتریان با همان فیلترها
+            string countSql = $@"
+        SELECT COUNT(DISTINCT CH.HES)
+        FROM dbo.CUST_HESAB CH
+        LEFT JOIN dbo.BLOCK_CUSTOMER BC ON CH.HES = BC.HES
+        {whereClause};"; // شروط فیلتر اینجا هم اعمال می‌شوند
+
+            // اضافه کردن پارامترهای صفحه‌بندی
+            parameters.Add("StartRow", startRow);
+            parameters.Add("EndRow", endRow);
+            // پارامتر UserHes دیگر نباید اینجا اضافه شود چون از کوئری حذف شده است.
+
+            try
+            {
+                // اجرای کوئری‌ها
+                IEnumerable<VISITOR_CUSTOMERS> customers = await _dbService.DoGetDataSQLAsync<VISITOR_CUSTOMERS>(customersSql, parameters);
+                int totalCount = await _dbService.DoGetDataSQLAsyncSingle<int>(countSql, parameters);
+
+                var pagedResult = new PagedResult<VISITOR_CUSTOMERS>
+                {
+                    Items = customers.ToList(),
+                    TotalCount = totalCount,
+                    PageNumber = pageNumber,
+                    PageSize = pageSize
+                };
+                return Ok(pagedResult);
+            }
+            catch (Exception ex)
+            {
+                // اینجا جزئیات پارامترها را هم لاگ کنید تا دیباگ راحت‌تر شود
+                _logger.LogError(ex, "API: Error fetching general active customers. Search: '{SearchTerm}'. Parameters for query: StartRow={StartRow}, EndRow={EndRow}, SearchPattern (if any)='{SearchPattern}'",
+                    searchTerm, startRow, endRow, parameters.ParameterNames.Contains("SearchPattern") ? parameters.Get<string>("SearchPattern") : "N/A");
+                return StatusCode(StatusCodes.Status500InternalServerError, "خطا در دریافت لیست مشتریان از سرور.");
             }
         }
         // --- END: Code to Add ---
