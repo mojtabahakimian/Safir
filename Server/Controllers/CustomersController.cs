@@ -34,7 +34,7 @@ namespace Safir.Server.Controllers
         // private class BlockHesModel { public string HES { get; set; } } // Assuming this is still needed
 
         private const long DefaultStartDate = 1;
-        private const long DefaultEndDate = 99991230;
+        private const long DefaultEndDate = 99991229;
 
         public CustomersController(
             IDatabaseService dbService,
@@ -473,8 +473,42 @@ namespace Safir.Server.Controllers
             {
                 _logger.LogInformation("Fetching statement for HesabCode: {HesabCode} from {StartDate} to {EndDate}", hesabCode, startDate, endDate);
 
-                string query = "SELECT HES_K, HES_M, TAFZILN, HES, SHARH, BED, BES, N_S, DATE_S, MAND " +
-                               "FROM dbo.QDAFTARTAFZIL2_H(@StartDate, @EndDate, @HesabCode);";
+                //string query = "SELECT HES_K, HES_M, TAFZILN, HES, SHARH, BED, BES, N_S, DATE_S, MAND " +
+                //               "FROM dbo.QDAFTARTAFZIL2_H(@StartDate, @EndDate, @HesabCode);";   
+                
+                string query = @"WITH CTE
+AS (SELECT HES_K, HES_M, TAFZILN, HES, SHARH, BED, BES, N_S, DATE_S, MAND,id, BED - BES AS DiffAmt
+    FROM dbo.QDAFTARTAFZIL2_H(@StartDate, @EndDate, @HesabCode) )
+SELECT HES_K,
+    DATE_S,
+       (
+           SELECT SUM(x.DiffAmt)
+           FROM CTE AS x
+           WHERE x.DATE_S < c1.DATE_S
+                 OR
+                 (
+                     x.DATE_S = c1.DATE_S
+                     AND
+                     (
+                         x.BED > c1.BED
+                         OR
+                         (
+                             x.BED = c1.BED
+                             AND x.id <= c1.id
+                         )
+                     )
+                 )
+       ) AS MAND,
+       HES_M,
+       TAFZILN,
+       HES,
+       SHARH,
+       BED,
+       BES,
+       N_S   
+FROM CTE AS c1
+ORDER BY DATE_S, BED DESC;
+";
 
                 var parameters = new Dictionary<string, object>
                 {

@@ -180,7 +180,7 @@
                             <MudPaper Class="pa-2 group-card"
                                       Elevation="@(_selectedGroup == group ? 8 : 2)"
                                       Style="@($"border: {(_selectedGroup == group ? "1px solid var(--mud-palette-primary)" : "1px solid transparent")};")"
-                            @onclick="() => HandleGroupClick(group)">
+                                    @onclick="() => HandleGroupClick(group)">
 
                                 @if (group.ImageExists)
                                 {
@@ -220,7 +220,7 @@
         <MudPaper Outlined="true" Class="pa-1">
             <MudToolBar Dense="true" Class="mb-2 px-2">
                 <MudTextField T="string"
-                @bind-Value="_itemSearchTerm"
+                              @bind-Value="_itemSearchTerm"
                               Placeholder="جستجو کالا..."
                               Variant="Variant.Outlined"
                               Margin="Margin.Dense"
@@ -767,12 +767,7 @@
             }
             else
             {
-                // If not in price list, use the item's base MABL_F as the starting point.
-                // This assumes ItemDisplayDto has an original MABL_F if PriceFromPriceList is not applicable.
-                // For this example, if PriceFromPriceList is null, we might use itemDto.MABL_F (original price)
-                // but ensure this MABL_F is indeed the price *before* any header discounts.
-                // The logic in ApplyPricesToDisplayedItems should set MABL_F correctly.
-                priceBeforeHeaderDiscounts = itemDto.MABL_F; // Fallback to item's own price if not in list
+                itemDto.MABL_F = 0; // Assuming MABL_F holds the base price
             }
 
             if (priceBeforeHeaderDiscounts.HasValue && priceBeforeHeaderDiscounts.Value > 0)
@@ -832,8 +827,6 @@
         if (!isPaymentAzad)
         {
             if (_selectedPriceList == null) _headerValidationMessages.Add("اعلامیه قیمت (در صورت عدم انتخاب نحوه پرداخت آزاد) الزامی است.");
-            // اعلامیه تخفیف اجباری نیست طبق درخواست جدید، فقط TF1/TF2 را پر می‌کند.
-            // if (_selectedDiscountList == null) _headerValidationMessages.Add("اعلامیه تخفیف (در صورت عدم انتخاب نحوه پرداخت آزاد) الزامی است.");
         }
         return !_headerValidationMessages.Any();
     }
@@ -866,7 +859,6 @@
         {
             if (_selectedDepartment?.Id.HasValue == true)
             {
-                // Corrected parameter name to depId
                 _priceLists = await LookupService.GetPriceListsAsync() ?? new();
                 var defaultPriceListId = await LookupService.GetDefaultPriceListIdAsync(_selectedDepartment.Id.Value);
                 _selectedPriceList = defaultPriceListId.HasValue ? _priceLists.FirstOrDefault(p => p.Id == defaultPriceListId.Value) : _priceLists.FirstOrDefault();
@@ -877,9 +869,9 @@
             }
             else
             {
-                _priceLists = await LookupService.GetPriceListsAsync() ?? new(); // Load all if no department
+                _priceLists = await LookupService.GetPriceListsAsync() ?? new();
                 _selectedPriceList = _priceLists.FirstOrDefault();
-                _discountLists = await LookupService.GetDiscountListsAsync() ?? new(); // Load all
+                _discountLists = await LookupService.GetDiscountListsAsync() ?? new();
                 _selectedDiscountList = _discountLists.FirstOrDefault();
             }
             CartService.PriceList = _selectedPriceList;
@@ -972,7 +964,7 @@
         else
         {
             _visitorItemPrices?.Clear();
-            ApplyPricesToDisplayedItems(); // Defined below
+            ApplyPricesToDisplayedItems();
             await LoadAndApplyElamieTakhfifDetailsAsync();
         }
     }
@@ -985,25 +977,54 @@
         {
             var visitorPriceInfo = _visitorItemPrices?.FirstOrDefault(vp => vp.CODE == itemDto.CODE && vp.PEPID == _selectedPriceList?.Id);
 
+            decimal? priceBeforeHeaderDiscounts; // Declare here
+
             if (visitorPriceInfo != null && visitorPriceInfo.PRICE1.HasValue)
             {
                 itemDto.PriceFromPriceList = visitorPriceInfo.PRICE1.Value;
                 itemDto.HasPriceInCurrentPriceList = true;
-                itemDto.MABL_F = visitorPriceInfo.PRICE1.Value;
+                itemDto.MABL_F = visitorPriceInfo.PRICE1.Value; // This looks like it sets MABL_F based on price list
+                priceBeforeHeaderDiscounts = visitorPriceInfo.PRICE1.Value; // Assign value
             }
             else
             {
                 itemDto.PriceFromPriceList = null;
                 itemDto.HasPriceInCurrentPriceList = false;
-                // Fallback to item's original MABL_F if not in price list.
-                // Ensure ItemDisplayDto has a field for its original base price if MABL_F is mutable.
-                // For now, assuming itemDto.MABL_F should be reset to its database default if not found.
-                // This part needs careful review based on how ItemDisplayDto.MABL_F is managed.
-                // If ItemDisplayDto.MABL_F is always the "current display price", then we need an OriginalMablF.
-                // Let's assume for now, if not in price list, it should reflect its base price.
-                // This might need fetching the original STUF_DEF.MABL_F if not already on ItemDisplayDto.
-                // For simplicity, if not found, MABL_F might be set to 0 or a default from STUF_DEF.
                 itemDto.MABL_F = 0; // Assuming MABL_F holds the base price
+                priceBeforeHeaderDiscounts = 0; // Assign default value
+            }
+
+            if (priceBeforeHeaderDiscounts.HasValue && priceBeforeHeaderDiscounts.Value > 0)
+            {
+                decimal currentPrice = priceBeforeHeaderDiscounts.Value;
+                decimal priceAfterTf1 = currentPrice;
+
+                if (_tf1DiscountPercentage.HasValue && _tf1DiscountPercentage.Value > 0)
+                {
+                    priceAfterTf1 = currentPrice * (1 - (decimal)(_tf1DiscountPercentage.Value / 100.0));
+                }
+
+                decimal finalPriceAfterTf2 = priceAfterTf1;
+                if (_tf2DiscountPercentage.HasValue && _tf2DiscountPercentage.Value > 0)
+                {
+                    finalPriceAfterTf2 = priceAfterTf1 * (1 - (decimal)(_tf2DiscountPercentage.Value / 100.0));
+                }
+                itemDto.PriceAfterHeaderDiscounts = finalPriceAfterTf2;
+
+                decimal totalDiscountAmount = priceBeforeHeaderDiscounts.Value - finalPriceAfterTf2;
+                if (priceBeforeHeaderDiscounts.Value > 0)
+                {
+                    itemDto.TotalCalculatedDiscountPercent = (double)(totalDiscountAmount / priceBeforeHeaderDiscounts.Value * 100.0m);
+                }
+                else
+                {
+                    itemDto.TotalCalculatedDiscountPercent = 0;
+                }
+            }
+            else
+            {
+                itemDto.PriceAfterHeaderDiscounts = priceBeforeHeaderDiscounts;
+                itemDto.TotalCalculatedDiscountPercent = 0;
             }
         }
     }
@@ -1042,7 +1063,6 @@
         {
             _isAzadPaymentSelected = true;
             if (currentSelection?.Modat > 0) _agreedDuration = currentSelection?.Modat;
-            // else _agreedDuration = 1; // Default duration for Azad if not specified
             _isDurationReadOnly = false; // Duration is editable for Azad
         }
         else // Not Azad
@@ -1152,7 +1172,6 @@
         {
             Logger.LogError(ex, "Error during permission checks.");
             Snackbar.Add("خطا در بررسی دسترسی‌های کاربر.", Severity.Warning);
-            // Set restrictive defaults on error
             _canChangeDepartment = _canChangeCustomerType = _canChangePriceLists = _canEditItemDiscount = _canUseAzadPay = false;
         }
         await InvokeAsync(StateHasChanged);
@@ -1164,12 +1183,12 @@
         _isLoadingGroups = true;
         _groupErrorMessage = null;
         _selectedGroup = null; // Reset selected group when reloading groups
-        _items = null;         // Clear items as they belong to a group
+        _items = null;
         _isItemsLoading = false;
         _itemsErrorMessage = null;
         _currentPage = 1;
         _totalItemCount = 0;
-        _itemSearchTerm = string.Empty; // Reset item search term
+        _itemSearchTerm = string.Empty;
         await InvokeAsync(StateHasChanged);
         try
         {
@@ -1183,7 +1202,7 @@
         {
             _groupErrorMessage = "خطای پیش‌بینی نشده در بارگذاری گروه‌ها.";
             Logger.LogError(ex, _groupErrorMessage);
-            _itemGroups = new List<TCODE_MENUITEM>(); // Ensure it's not null
+            _itemGroups = new List<TCODE_MENUITEM>();
         }
         finally
         {
@@ -1199,14 +1218,14 @@
             _availableUnits = await LookupService.GetUnitsAsync() ?? new List<TCOD_VAHEDS>();
             if (!_availableUnits.Any())
             {
-                // Snackbar.Add("لیست واحدها خالی است.", Severity.Info); // Optional: inform user
+                // Snackbar.Add("لیست واحدها خالی است.", Severity.Info);
             }
         }
         catch (Exception ex)
         {
             Logger.LogError(ex, "Error loading units.");
             Snackbar.Add("خطای پیش‌بینی نشده در بارگذاری واحدها.", Severity.Error);
-            _availableUnits = new List<TCOD_VAHEDS>(); // Ensure it's not null
+            _availableUnits = new List<TCOD_VAHEDS>();
         }
     }
 
@@ -1253,9 +1272,9 @@
     {
         if (priceListId <= 0)
         {
-            _visitorItemPrices?.Clear(); // Clear if invalid price list ID
-            ApplyPricesToDisplayedItems(); // Apply defaults if no valid price list
-            await LoadAndApplyElamieTakhfifDetailsAsync(); // Re-apply TF if prices changed to default
+            _visitorItemPrices?.Clear();
+            ApplyPricesToDisplayedItems();
+            await LoadAndApplyElamieTakhfifDetailsAsync();
             return;
         }
 
@@ -1263,8 +1282,17 @@
         await InvokeAsync(StateHasChanged);
         try
         {
-            _visitorItemPrices = await ItemGroupService.GetVisitorPricesAsync(priceListId);
-            Logger.LogInformation("Loaded {Count} visitor-specific prices for PriceListId: {PriceListId}", _visitorItemPrices?.Count ?? 0, priceListId);
+            // Only fetch prices for items currently displayed in the grid
+            var currentItemCodes = _items?.Select(i => i.CODE).ToList();
+            if (currentItemCodes == null || !currentItemCodes.Any())
+            {
+                Logger.LogInformation("No items displayed, skipping visitor price fetch.");
+                _visitorItemPrices?.Clear();
+                return;
+            }
+
+            _visitorItemPrices = await ItemGroupService.GetVisitorPricesAsync(priceListId, currentItemCodes); // Pass item codes
+            Logger.LogInformation("Loaded {Count} visitor-specific prices for PriceListId: {PriceListId}, for {ItemCodeCount} items.", _visitorItemPrices?.Count ?? 0, priceListId, currentItemCodes.Count);
         }
         catch (Exception ex)
         {
@@ -1276,9 +1304,6 @@
         {
             _isLoadingVisitorPrices = false;
             ApplyPricesToDisplayedItems();
-            // TF1/TF2 should be re-applied as base prices might have changed.
-            // This is usually handled by GetPriceAndDiscountAndHeaderDiscountsReloadAsync calling LoadAndApplyElamieTakhfifDetailsAsync after this.
-            // If called directly, ensure TF details are re-applied.
             await InvokeAsync(StateHasChanged);
         }
     }
@@ -1354,8 +1379,6 @@
     private async Task LoadDynamicPaymentTermsAndSetDefaultAsync()
     {
         PaymentTermDto? previouslySelectedFromPersisted = null;
-        // _paymentTermList might be empty here if it's the first load.
-        // We load it first, then try to apply persisted ID.
 
         try
         {

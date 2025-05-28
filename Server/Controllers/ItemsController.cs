@@ -1,4 +1,4 @@
-﻿// Safir.Server/Controllers/ItemsController.cs
+﻿// MyBlazor/Server/Controllers/ItemsController.cs
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Configuration;
@@ -16,8 +16,8 @@ using Dapper;
 using System.Text;
 using System.Text.RegularExpressions;
 using Safir.Shared.Utility;
-using System.Security.Claims; // <<< اضافه شد برای دسترسی به Claims
-using Safir.Shared.Constants; // <<< اضافه شد برای BaseknowClaimTypes
+using System.Security.Claims;
+using Safir.Shared.Constants;
 
 namespace Safir.Server.Controllers
 {
@@ -47,14 +47,11 @@ namespace Safir.Server.Controllers
         [HttpGet("bygroup/{groupCode}")]
         public async Task<ActionResult<PagedResult<ItemDisplayDto>>> GetItemsByGroup(double groupCode, [FromQuery] int pageNumber = 1, [FromQuery] int pageSize = 10, [FromQuery] string? searchTerm = null)
         {
-            // --- Get User HES claim ---
             var userHes = User.FindFirstValue(BaseknowClaimTypes.USER_HES);
             if (string.IsNullOrEmpty(userHes))
             {
                 _logger.LogWarning("User HES claim ('{UserHesClaim}') is missing or invalid for User: {Username}", BaseknowClaimTypes.USER_HES, User.Identity?.Name);
-                // Return empty result or Unauthorized based on requirements
                 return Ok(new PagedResult<ItemDisplayDto> { Items = new List<ItemDisplayDto>(), TotalCount = 0, PageNumber = pageNumber, PageSize = pageSize });
-                // return Unauthorized("User HES claim not found.");
             }
 
             _logger.LogInformation("Fetching items for Group: {GroupCode}, User HES: {UserHES}, Page: {PageNumber}, Size: {PageSize}, Search: '{SearchTerm}'",
@@ -62,46 +59,36 @@ namespace Safir.Server.Controllers
 
             if (pageNumber < 1) pageNumber = 1;
             if (pageSize < 1) pageSize = 10;
-            if (pageSize > 100) pageSize = 100; // Limit page size
+            if (pageSize > 100) pageSize = 100;
             int offset = (pageNumber - 1) * pageSize;
 
             var whereConditions = new List<string>();
             var parameters = new DynamicParameters();
 
-            // --- Base Filters ---
-            whereConditions.Add("sd.MENUIT = @GroupCode");       // Filter by Group Code
+            whereConditions.Add("sd.MENUIT = @GroupCode");
             parameters.Add("GroupCode", groupCode);
 
-            whereConditions.Add("vp.HES = @UserHes");            // Filter by User HES
+            whereConditions.Add("vp.HES = @UserHes");
             parameters.Add("UserHes", userHes);
 
-            whereConditions.Add("ISNULL(sd.OKF, 1) = 1");        // Filter by OKF status
+            whereConditions.Add("ISNULL(sd.OKF, 1) = 1");
 
-            // --- Search Term Handling ---
             string? normalizedSearchTerm = null;
             if (!string.IsNullOrWhiteSpace(searchTerm))
             {
                 normalizedSearchTerm = searchTerm.Trim();
-                normalizedSearchTerm = Regex.Replace(normalizedSearchTerm, @"\s+", " "); // Normalize spaces
-                normalizedSearchTerm = normalizedSearchTerm.FixPersianChars(); // Fix Persian characters
+                normalizedSearchTerm = Regex.Replace(normalizedSearchTerm, @"\s+", " ");
+                normalizedSearchTerm = normalizedSearchTerm.FixPersianChars();
 
-                // Apply search to relevant columns (Name and Code)
                 string normalizedNameSql = "REPLACE(REPLACE(REPLACE(REPLACE(sd.NAME, N'ي', N'ی'), N'ك', N'ک'), NCHAR(160), N' '), N'  ', N' ')";
                 whereConditions.Add($"(({normalizedNameSql} LIKE @SearchPattern) OR (sd.CODE LIKE @SearchPattern))");
                 parameters.Add("SearchPattern", $"%{normalizedSearchTerm}%");
             }
-            // --- End Search ---
 
             string commonWhereClause = string.Join(" AND ", whereConditions);
 
-            // --- Items Query with Pagination using CTE and ROW_NUMBER ---
-            // Note: PORSANT is removed as it's not directly available in the new join structure
-            /* 1) Raw : همهٔ رکوردهای واجد شرایط
-            2) Dedup: حذف سطرهای تکراری (فقط ردیف dup_rnk = 1 می‌ماند)
-            3) BaseItems: شماره‌گذاری برای صفحه‌بندی                                      */
-            // --- Items Query: حذف تکراری‌ها سپس صفحه‌بندی ---
             string itemsSql = $@"
-                                WITH Raw AS
+                       WITH Raw AS
                                 (
                                     SELECT
                                         sd.CODE,
@@ -122,14 +109,14 @@ namespace Safir.Server.Controllers
                                 ),
                                 Dedup AS
                                 (
-                                    SELECT * FROM Raw WHERE dup_rnk = 1      -- حذف دوبلیکیت‌ها
+                                    SELECT * FROM Raw WHERE dup_rnk = 1
                                 ),
                                 BaseItems AS
                                 (
                                     SELECT
                                         CODE, NAME, MABL_F, B_SEF, MAX_M,
                                         TOZIH, MENUIT, VahedCode, VahedName,
-                                        ROW_NUMBER() OVER (ORDER BY CODE) AS RowNum   -- برای صفحه‌بندی
+                                        ROW_NUMBER() OVER (ORDER BY CODE) AS RowNum
                                     FROM Dedup
                                 )
                                 SELECT
@@ -139,7 +126,6 @@ namespace Safir.Server.Controllers
                                 WHERE RowNum >  @RowStart
                                   AND RowNum <= @RowEnd;";
 
-            // --- Count Query بدون تغییر خاص (همچنان DISTINCT روی CODE) ---
             string countSql = $@"
                                 SELECT COUNT(DISTINCT sd.CODE)
                                 FROM dbo.STUF_DEF sd
@@ -153,13 +139,11 @@ namespace Safir.Server.Controllers
 
             try
             {
-                // Execute queries using Dapper via the service
                 IEnumerable<ItemDisplayDto> items = await _dbService.DoGetDataSQLAsync<ItemDisplayDto>(itemsSql, parameters);
                 int totalItemCount = await _dbService.DoGetDataSQLAsyncSingle<int>(countSql, parameters);
 
                 List<ItemDisplayDto> itemsList = items.ToList();
 
-                // --- Image Check Logic (Remains the same) ---
                 if (!string.IsNullOrEmpty(_imageBasePath))
                 {
                     foreach (var item in itemsList)
@@ -185,7 +169,6 @@ namespace Safir.Server.Controllers
                     }
                 }
                 else { _logger.LogWarning("ImageSharePath is not configured. Skipping image checks."); }
-                // --- End Image Check ---
 
                 var pagedResult = new PagedResult<ItemDisplayDto>
                 {
@@ -207,12 +190,10 @@ namespace Safir.Server.Controllers
             }
         }
 
-        // --- GetItemImage endpoint remains the same ---
         [HttpGet("image/{itemCode}")]
         [AllowAnonymous]
         public async Task<IActionResult> GetItemImage(string itemCode)
         {
-            // ... (Implementation unchanged from previous steps) ...
             if (string.IsNullOrEmpty(_imageBasePath)) return StatusCode(StatusCodes.Status500InternalServerError, "Path not configured.");
             if (string.IsNullOrWhiteSpace(itemCode) || itemCode.Contains("..") || itemCode.Contains('/') || itemCode.Contains('\\')) return BadRequest();
             string? foundFilePath = SupportedImageExtensions.Select(ext => Path.Combine(_imageBasePath, itemCode + ext)).FirstOrDefault(System.IO.File.Exists);
@@ -227,7 +208,6 @@ namespace Safir.Server.Controllers
             catch (Exception ex) { _logger.LogError(ex, "Error serving image {ItemCode}", itemCode); return StatusCode(StatusCodes.Status500InternalServerError, "Error serving image."); }
         }
 
-        // --- GetItemInventory endpoint remains the same ---
         [HttpGet("inventory/{itemCode}")]
         public async Task<ActionResult<decimal?>> GetItemInventory(string itemCode)
         {
@@ -251,7 +231,7 @@ namespace Safir.Server.Controllers
                 else
                 {
                     _logger.LogWarning("Inventory data not found for item {ItemCode}", itemCode);
-                    return Ok(0); // Or NotFound() if 0 is not appropriate for "not found"
+                    return Ok(0);
                 }
             }
             catch (Exception ex)
@@ -272,11 +252,8 @@ namespace Safir.Server.Controllers
 
             try
             {
-                // استفاده از پارامتر برای امنیت و جلوگیری از SQL Injection
                 var parameters = new { ItemCode = itemCode };
 
-                // کوئری برای واحد اصلی کالا از STUF_DEF
-                // نسبت واحد اصلی به خودش همیشه 1 است
                 string primaryUnitSql = @"
                 SELECT
                     sd.VAHED AS VahedCode,
@@ -286,7 +263,6 @@ namespace Safir.Server.Controllers
                 INNER JOIN dbo.TCOD_VAHEDS tv ON sd.VAHED = tv.CODE
                 WHERE sd.CODE = @ItemCode;";
 
-                // کوئری برای واحدهای فرعی از MODULE_D
                 string subUnitsSql = @"
                 SELECT
                     md.VAHED AS VahedCode,
@@ -306,23 +282,19 @@ namespace Safir.Server.Controllers
                 }
                 combinedUnits.AddRange(subUnitsList);
 
-                // حذف موارد تکراری بر اساس کد واحد و انتخاب اولین مورد (اولویت با واحد اصلی اگر تکراری بود)
-                // و مرتب‌سازی بر اساس نسبت (مثلاً از کوچکترین واحد)
                 var itemSpecificUnits = combinedUnits
                     .GroupBy(u => u.VahedCode)
                     .Select(g => new UnitInfo
                     {
                         VahedCode = g.Key,
-                        VahedName = g.First().VahedName, // فرض بر اینکه نام برای یک کد واحد یکسان است
+                        VahedName = g.First().VahedName,
                         Nesbat = g.First().Nesbat
                     })
                     .OrderBy(u => u.Nesbat)
                     .ToList();
 
-                if (!itemSpecificUnits.Any() && !primaryUnitList.Any()) // اگر واحد اصلی هم تعریف نشده بود
+                if (!itemSpecificUnits.Any() && !primaryUnitList.Any())
                 {
-                    // اگر هیچ واحدی برای کالا یافت نشد، می‌توان یک واحد پیش‌فرض عمومی (مثلا "عدد" با کد فرضی و نسبت 1) برگرداند
-                    // یا لیست خالی که در کلاینت مدیریت شود. فعلا لیست خالی برمیگردانیم.
                     _logger.LogWarning("هیچ واحدی (اصلی یا فرعی) برای کالای {ItemCode} یافت نشد.", itemCode);
                 }
 
@@ -338,7 +310,7 @@ namespace Safir.Server.Controllers
 
 
         [HttpGet("visitor-prices")]
-        public async Task<ActionResult<IEnumerable<VisitorItemPriceDto>>> GetVisitorItemPrices([FromQuery] int priceListId)
+        public async Task<ActionResult<IEnumerable<VisitorItemPriceDto>>> GetVisitorItemPrices([FromQuery] int priceListId, [FromQuery] List<string>? itemCodes = null) // Added itemCodes
         {
             var userHes = User.FindFirstValue(BaseknowClaimTypes.USER_HES);
             if (string.IsNullOrEmpty(userHes))
@@ -352,30 +324,38 @@ namespace Safir.Server.Controllers
                 return BadRequest("شناسه اعلامیه قیمت معتبر نیست.");
             }
 
-            _logger.LogInformation("Fetching visitor item prices for UserHES: {UserHes} and PriceListID: {PriceListId}", userHes, priceListId);
+            _logger.LogInformation("Fetching visitor item prices for UserHES: {UserHes}, PriceListID: {PriceListId}, ItemCodes count: {ItemCodeCount}", userHes, priceListId, itemCodes?.Count ?? 0);
 
-            string sql = @"
-                     SELECT DISTINCT 
+            var sql = new StringBuilder(@"
+                     SELECT DISTINCT
                          vpk.CODE,      -- کد کالا از VISITORS_PORSANT_KALA
                          ped.PRICE1,    -- قیمت از PRICE_ELAMIE_DTL
                          ped.PEPID      -- شناسه اعلامیه قیمت از PRICE_ELAMIE_DTL
-                         -- سایر فیلدهای مورد نیاز مانند vp.HES, vp.PORID, vpk.PORSANT, sd.PGID
-                         -- , vp.HES, vp.PORID, vpk.PORSANT, sd.PGID 
                      FROM dbo.VISITORS_PORSANT vp
                      INNER JOIN dbo.VISITORS_PORSANT_KALA vpk ON vp.PORID = vpk.PORID
                      INNER JOIN dbo.STUF_DEF sd ON vpk.CODE = sd.CODE
-                     -- جوین به PRICE_ELAMIE_DTL باید با احتیاط انجام شود، ممکن است همه کالاها در هر اعلامیه قیمت نداشته باشند
-                     -- استفاده از LEFT JOIN اگر می‌خواهید همه کالاهای ویزیتور را برگردانید و قیمت را اگر موجود بود
-                     -- اما کوئری شما INNER JOIN است، پس فقط کالاهایی که در آن اعلامیه قیمت دارند برمی‌گردند.
                      INNER JOIN dbo.PRICE_ELAMIE_DTL ped ON sd.PGID = ped.PGID AND ped.PEPID = @PriceListIdParam
-                     WHERE vp.HES = @UserHesParam;";
-            // نکته: جوین شما در کوئری اصلی کمی متفاوت بود (دو بار به STUF_DEF). من آن را بر اساس ارتباط منطقی اصلاح کردم.
-            // ارتباط اصلی باید از کالای ویزیتور (VISITORS_PORSANT_KALA) به STUF_DEF و سپس از STUF_DEF.PGID به PRICE_ELAMIE_DTL.PGID باشد.
+                     WHERE vp.HES = @UserHesParam");
+
+            var parameters = new DynamicParameters();
+            parameters.Add("UserHesParam", userHes);
+            parameters.Add("PriceListIdParam", priceListId);
+
+            if (itemCodes != null && itemCodes.Any())
+            {
+                sql.AppendLine(" AND vpk.CODE IN @ItemCodesParam");
+                parameters.Add("ItemCodesParam", itemCodes);
+                _logger.LogInformation("Filtering visitor prices by {Count} specific item codes.", itemCodes.Count);
+            }
+            else
+            {
+                _logger.LogInformation("Fetching all visitor prices for selected price list (no specific item filter).");
+            }
+
 
             try
             {
-                var parameters = new { UserHesParam = userHes, PriceListIdParam = priceListId };
-                var prices = await _dbService.DoGetDataSQLAsync<VisitorItemPriceDto>(sql, parameters);
+                var prices = await _dbService.DoGetDataSQLAsync<VisitorItemPriceDto>(sql.ToString(), parameters);
                 return Ok(prices ?? Enumerable.Empty<VisitorItemPriceDto>());
             }
             catch (Exception ex)
