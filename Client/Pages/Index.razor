@@ -15,7 +15,6 @@
         {
         private string? displayName;
         private string? userId;
-
         protected override async Task OnInitializedAsync()
         {
             var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
@@ -27,6 +26,7 @@
                 displayName = FULL_USER ?? ""; //This will not display (issue)
             }
         }
+
         }
 
         <MudText Typo="Typo.h4" Class="mb-4">@displayName خوش آمدید</MudText>
@@ -54,26 +54,26 @@
 <AuthorizeView>
     <Authorized>
         <MudGrid>
-    @*         <MudItem xs="12" sm="6" md="4">
-                <MudCard Elevation="3" Class="rounded-lg h-100">
-                    <MudCardHeader>
-                        <CardHeaderContent>
-                            <MudText Typo="Typo.h6">سفارش</MudText>
-                        </CardHeaderContent>
-                        <CardHeaderActions>
-                            <MudIconButton Icon="@Icons.Material.Filled.Add" Color="Color.Default" />
-                        </CardHeaderActions>
-                    </MudCardHeader>
-                    <MudCardContent>
-                        <MudText>ثبت سفارش مشتری</MudText>
-                        <MudText>صدور پیش فاکتور</MudText>
-                        <MudText>کالا ها</MudText>
-                        <MudText>موجودی کالا ها</MudText>
-                    </MudCardContent>
-                    <MudCardActions>
-                        <MudButton Variant="Variant.Text" Color="Color.Primary">ثبت سفارش</MudButton>
-                    </MudCardActions>
-                </MudCard>
+            @*         <MudItem xs="12" sm="6" md="4">
+            <MudCard Elevation="3" Class="rounded-lg h-100">
+            <MudCardHeader>
+            <CardHeaderContent>
+            <MudText Typo="Typo.h6">سفارش</MudText>
+            </CardHeaderContent>
+            <CardHeaderActions>
+            <MudIconButton Icon="@Icons.Material.Filled.Add" Color="Color.Default" />
+            </CardHeaderActions>
+            </MudCardHeader>
+            <MudCardContent>
+            <MudText>ثبت سفارش مشتری</MudText>
+            <MudText>صدور پیش فاکتور</MudText>
+            <MudText>کالا ها</MudText>
+            <MudText>موجودی کالا ها</MudText>
+            </MudCardContent>
+            <MudCardActions>
+            <MudButton Variant="Variant.Text" Color="Color.Primary">ثبت سفارش</MudButton>
+            </MudCardActions>
+            </MudCard>
             </MudItem> *@
 
             <MudItem xs="12" sm="6" md="4">
@@ -96,45 +96,45 @@
                 </MudCard>
             </MudItem>
 
-        @*     <MudItem xs="12" sm="6" md="4">
-                <MudCard Elevation="3" Class="rounded-lg h-100">
-                    <MudCardHeader>
-                        <CardHeaderContent>
-                            <MudText Typo="Typo.h6">بروز رسانی</MudText>
-                        </CardHeaderContent>
-                        <CardHeaderActions>
-                            <MudIconButton Icon="@Icons.Material.Filled.Update" Color="Color.Default" />
-                        </CardHeaderActions>
-                    </MudCardHeader>
-                    <MudCardContent>
-                        <MudText>دریافت و بروز رسانی اطلاعات از سرور</MudText>
-                        <MudText>مشخصات کالا</MudText>
-                        <MudText>تصاویر کالا ها</MudText>
-                        <MudText>لیست مشتریان جهت ویزیت</MudText>
-                    </MudCardContent>
-                    <MudCardActions>
-                        <MudButton Variant="Variant.Text" Color="Color.Primary">بروز رسانی اطلاعات</MudButton>
-                    </MudCardActions>
-                </MudCard>
+            @*     <MudItem xs="12" sm="6" md="4">
+            <MudCard Elevation="3" Class="rounded-lg h-100">
+            <MudCardHeader>
+            <CardHeaderContent>
+            <MudText Typo="Typo.h6">بروز رسانی</MudText>
+            </CardHeaderContent>
+            <CardHeaderActions>
+            <MudIconButton Icon="@Icons.Material.Filled.Update" Color="Color.Default" />
+            </CardHeaderActions>
+            </MudCardHeader>
+            <MudCardContent>
+            <MudText>دریافت و بروز رسانی اطلاعات از سرور</MudText>
+            <MudText>مشخصات کالا</MudText>
+            <MudText>تصاویر کالا ها</MudText>
+            <MudText>لیست مشتریان جهت ویزیت</MudText>
+            </MudCardContent>
+            <MudCardActions>
+            <MudButton Variant="Variant.Text" Color="Color.Primary">بروز رسانی اطلاعات</MudButton>
+            </MudCardActions>
+            </MudCard>
             </MudItem>
 
             <MudItem xs="12" sm="6" md="4">
-                <MudCard Elevation="3" Class="rounded-lg h-100">
-                    <MudCardHeader>
-                        <CardHeaderContent>
-                            <MudText Typo="Typo.h6">ارسال به سرور</MudText>
-                        </CardHeaderContent>
-                        <CardHeaderActions>
-                            <MudIconButton Icon="@Icons.Material.Filled.Send" Color="Color.Default" />
-                        </CardHeaderActions>
-                    </MudCardHeader>
-                    <MudCardContent>
-                        <MudText>ارسال آنی سفارشات ثبت شده به سرور</MudText>
-                    </MudCardContent>
-                    <MudCardActions>
-                        <MudButton Variant="Variant.Text" Color="Color.Primary">ارسال به سرور</MudButton>
-                    </MudCardActions>
-                </MudCard>
+            <MudCard Elevation="3" Class="rounded-lg h-100">
+            <MudCardHeader>
+            <CardHeaderContent>
+            <MudText Typo="Typo.h6">ارسال به سرور</MudText>
+            </CardHeaderContent>
+            <CardHeaderActions>
+            <MudIconButton Icon="@Icons.Material.Filled.Send" Color="Color.Default" />
+            </CardHeaderActions>
+            </MudCardHeader>
+            <MudCardContent>
+            <MudText>ارسال آنی سفارشات ثبت شده به سرور</MudText>
+            </MudCardContent>
+            <MudCardActions>
+            <MudButton Variant="Variant.Text" Color="Color.Primary">ارسال به سرور</MudButton>
+            </MudCardActions>
+            </MudCard>
             </MudItem> *@
 
             <MudItem xs="12" sm="6" md="4">
@@ -161,4 +161,6 @@
     <NotAuthorized>
     </NotAuthorized>
 </AuthorizeView>
+
+
 

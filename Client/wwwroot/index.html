@@ -574,6 +574,36 @@
 
     </script>
 
+
+    <script>
+        // Moved Cloudflare's service worker registration here
+        // To ensure it runs AFTER your app's JS and Blazor runtime.
+        // This is crucial for controlling caching behavior.
+        if ('serviceWorker' in navigator) {
+            // Check if we are in development mode (e.g., based on hostname)
+            // In development, we force unregistration to avoid caching issues
+            const isLocalhostOrDevelopment = window.location.hostname === "localhost" ||
+                window.location.hostname === "127.0.0.1" ||
+                window.location.hostname.includes("192.168."); // For local network IPs
+
+            if (isLocalhostOrDevelopment) {
+                console.warn("Service Worker: Running in development mode. Unregistering all service workers to prevent caching issues.");
+                navigator.serviceWorker.getRegistrations().then(function (registrations) {
+                    for (let registration of registrations) {
+                        registration.unregister();
+                    }
+                }).catch(function (err) {
+                    console.error('Service Worker unregistration failed: ', err);
+                });
+            } else {
+                // In production, register the service worker
+                navigator.serviceWorker.register('service-worker.js')
+                    .then(reg => console.log('Service Worker: Registration successful with scope: ', reg.scope))
+                    .catch(err => console.error('Service Worker: Registration failed: ', err));
+            }
+        }
+    </script>
+
     <div id="blazor-error-ui">
         خطایی رخ داده است.
         <a href="" class="reload">بارگذاری مجدد</a>
@@ -587,7 +617,8 @@
     <script src="js/theme-storage.js"></script>
     <script src="js/geolocation.js"></script>
     <script src="js/downloadHelper.js"></script>
-    
+    <script src="js/cleanup.js"></script>
+
     <script>navigator.serviceWorker.register('service-worker.js');</script>
 
 </body>

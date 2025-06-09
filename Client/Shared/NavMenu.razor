@@ -6,6 +6,8 @@
 @inject IAuthService AuthService
 @inject MudBlazor.IDialogService DialogService
 @inject ShoppingCartService CartService
+@inject ISnackbar Snackbar
+@inject IJSRuntime JSRuntime
 
 <MudNavMenu>
     <!-- صفحه اصلی -->
@@ -15,7 +17,7 @@
 
     <AuthorizeView>
         <Authorized>
-              <!-- ثبت سفارش -->
+            <!-- ثبت سفارش -->
             @if (_isCustomerSelected)
             {
                 <MudNavLink Href="item-groups" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.ShoppingCart">
@@ -35,9 +37,19 @@
                 تعریف مشتری جدید
             </MudNavLink>
 
+
+            <MudNavLink Disabled="true" Icon="@Icons.Material.Filled.Info">
+                نسخه: @appVersion
+            </MudNavLink>
+
             <!-- گروه تنظیمات -->
             <MudNavGroup Title="تنظیمات" Icon="@Icons.Material.Filled.Settings" Expanded="false">
                 <MudNavLink Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.Person">@context.User.FindFirst(Safir.Shared.Constants.BaseknowClaimTypes.UUSER)?.Value</MudNavLink>
+
+                <MudNavLink @onclick="BeginFullCleanup" Icon="@Icons.Material.Filled.CleaningServices">
+                    تازه سازی اطلاعات
+                </MudNavLink>
+
                 <MudNavLink Href="settings/security" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.Security">
                     امنیت
                 </MudNavLink>
@@ -53,6 +65,9 @@
             <MudNavLink Href="login" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.Login">
                 ورود کاربری
             </MudNavLink>
+            <MudNavLink @onclick="BeginFullCleanup" Icon="@Icons.Material.Filled.CleaningServices">
+                تازه سازی اطلاعات
+            </MudNavLink>
         </NotAuthorized>
     </AuthorizeView>
 </MudNavMenu>
@@ -60,6 +75,8 @@
 
 @code {
     private bool collapseNavMenu = true;
+
+    private string appVersion = "1.0.0"; // می‌توانید این مقدار را مطابق نسخه پروژه در csproj یا منبع دیگر تنظیم کنید
 
     private bool _isCustomerSelected = false;
 
@@ -70,6 +87,18 @@
         _isCustomerSelected = CartService.CurrentCustomer != null;
         // Subscribe to the CartChanged event
         CartService.CartChanged += OnCartChanged;
+
+        try
+        {
+            var version = System.Reflection.Assembly.GetExecutingAssembly().GetName().Version;
+            if (version != null)
+            {
+                // به‌عنوان مثال: "1.0.0.0"
+                appVersion = version.ToString();
+            }
+        }
+        catch { }
+
         base.OnInitialized();
     }
     private void OnCartChanged()
@@ -112,6 +141,47 @@
         {
             await AuthService.Logout();
             NavigationManager.NavigateTo("login", true);
+        }
+    }
+    private async Task BeginFullCleanup()
+    {
+        var options = new DialogOptions { CloseButton = false, MaxWidth = MaxWidth.Small };
+        var parameters = new DialogParameters
+            {
+                ["Title"] = "پاکسازی کامل اطلاعات مرورگر",
+                ["ContentText"] = "آیا مطمئن هستید که می‌خواهید تمامی اطلاعات ذخیره شده این سایت در مرورگر (شامل تنظیمات، کش و داده‌های آفلاین) را پاک کنید؟ این عملیات معادل باز کردن سایت برای اولین بار خواهد بود.",
+                ["ConfirmButtonText"] = "پاکسازی و شروع مجدد",
+                ["CancelButtonText"] = "منصرف شدم"
+            };
+        var dialog = DialogService.Show<ConfirmDialog>(parameters["Title"]?.ToString()!, parameters, options);
+        var result = await dialog.Result;
+
+        if (!result.Cancelled)
+        {
+            try
+            {
+                // فراخوانی تابع JavaScript برای پاکسازی کامل
+                // از BeforeInvoke/AfterInvoke برای اطمینان از آماده بودن JS استفاده می کنیم.
+                await JSRuntime.InvokeVoidAsync("console.log", "Attempting to invoke appCleanup.clearAllBrowserData...");
+                var success = await JSRuntime.InvokeAsync<bool>("appCleanup.clearAllBrowserData");
+
+                if (success)
+                {
+                    Snackbar.Add("پاکسازی اطلاعات مرورگر با موفقیت انجام شد. صفحه بارگذاری مجدد می‌شود.", MudBlazor.Severity.Success);
+                    // پس از پاکسازی، کاربر را به صفحه اصلی هدایت می‌کنیم تا سایت کاملاً از نو بارگذاری شود
+                    // forceLoad: true تضمین می‌کند که مرورگر تمام منابع را دوباره دانلود کند.
+                    NavigationManager.NavigateTo("/", forceLoad: true);
+                }
+                else
+                {
+                    Snackbar.Add("خطا در پاکسازی اطلاعات مرورگر.", MudBlazor.Severity.Error);
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine($"Error during full cleanup: {ex.Message}");
+                Snackbar.Add($"خطای غیرمنتظره در پاکسازی , صفحه را رفرش کنید و مجددا امتحان کنید", MudBlazor.Severity.Error); // Use ex.Message
+            }
         }
     }
 }
