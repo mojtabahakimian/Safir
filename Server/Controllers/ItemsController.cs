@@ -1,4 +1,4 @@
-﻿// Safir.Server/Controllers/ItemsController.cs
+﻿// MyBlazor/Server/Controllers/ItemsController.cs
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Configuration;
@@ -19,7 +19,6 @@ using Safir.Shared.Utility;
 using System.Security.Claims; // <<< اضافه شد برای دسترسی به Claims
 using Safir.Shared.Constants; // <<< اضافه شد برای BaseknowClaimTypes
 using Safir.Shared.Models.Kharid;
-
 namespace Safir.Server.Controllers
 {
     [Route("api/[controller]")]
@@ -138,12 +137,10 @@ namespace Safir.Server.Controllers
             }
         }
 
-        // --- GetItemImage endpoint remains the same ---
         [HttpGet("image/{itemCode}")]
         [AllowAnonymous]
         public async Task<IActionResult> GetItemImage(string itemCode)
         {
-            // ... (Implementation unchanged from previous steps) ...
             if (string.IsNullOrEmpty(_imageBasePath)) return StatusCode(StatusCodes.Status500InternalServerError, "Path not configured.");
             if (string.IsNullOrWhiteSpace(itemCode) || itemCode.Contains("..") || itemCode.Contains('/') || itemCode.Contains('\\')) return BadRequest();
             string? foundFilePath = SupportedImageExtensions.Select(ext => Path.Combine(_imageBasePath, itemCode + ext)).FirstOrDefault(System.IO.File.Exists);
@@ -158,7 +155,6 @@ namespace Safir.Server.Controllers
             catch (Exception ex) { _logger.LogError(ex, "Error serving image {ItemCode}", itemCode); return StatusCode(StatusCodes.Status500InternalServerError, "Error serving image."); }
         }
 
-        // --- GetItemInventory endpoint remains the same ---
         [HttpGet("inventory/{itemCode}")]
         public async Task<ActionResult<decimal?>> GetItemInventory(string itemCode)
         {
@@ -182,7 +178,7 @@ namespace Safir.Server.Controllers
                 else
                 {
                     _logger.LogWarning("Inventory data not found for item {ItemCode}", itemCode);
-                    return Ok(0); // Or NotFound() if 0 is not appropriate for "not found"
+                    return Ok(0);
                 }
             }
             catch (Exception ex)
@@ -203,11 +199,8 @@ namespace Safir.Server.Controllers
 
             try
             {
-                // استفاده از پارامتر برای امنیت و جلوگیری از SQL Injection
                 var parameters = new { ItemCode = itemCode };
 
-                // کوئری برای واحد اصلی کالا از STUF_DEF
-                // نسبت واحد اصلی به خودش همیشه 1 است
                 string primaryUnitSql = @"
                 SELECT
                     sd.VAHED AS VahedCode,
@@ -217,7 +210,6 @@ namespace Safir.Server.Controllers
                 INNER JOIN dbo.TCOD_VAHEDS tv ON sd.VAHED = tv.CODE
                 WHERE sd.CODE = @ItemCode;";
 
-                // کوئری برای واحدهای فرعی از MODULE_D
                 string subUnitsSql = @"
                 SELECT
                     md.VAHED AS VahedCode,
@@ -237,23 +229,19 @@ namespace Safir.Server.Controllers
                 }
                 combinedUnits.AddRange(subUnitsList);
 
-                // حذف موارد تکراری بر اساس کد واحد و انتخاب اولین مورد (اولویت با واحد اصلی اگر تکراری بود)
-                // و مرتب‌سازی بر اساس نسبت (مثلاً از کوچکترین واحد)
                 var itemSpecificUnits = combinedUnits
                     .GroupBy(u => u.VahedCode)
                     .Select(g => new UnitInfo
                     {
                         VahedCode = g.Key,
-                        VahedName = g.First().VahedName, // فرض بر اینکه نام برای یک کد واحد یکسان است
+                        VahedName = g.First().VahedName,
                         Nesbat = g.First().Nesbat
                     })
                     .OrderBy(u => u.Nesbat)
                     .ToList();
 
-                if (!itemSpecificUnits.Any() && !primaryUnitList.Any()) // اگر واحد اصلی هم تعریف نشده بود
+                if (!itemSpecificUnits.Any() && !primaryUnitList.Any())
                 {
-                    // اگر هیچ واحدی برای کالا یافت نشد، می‌توان یک واحد پیش‌فرض عمومی (مثلا "عدد" با کد فرضی و نسبت 1) برگرداند
-                    // یا لیست خالی که در کلاینت مدیریت شود. فعلا لیست خالی برمیگردانیم.
                     _logger.LogWarning("هیچ واحدی (اصلی یا فرعی) برای کالای {ItemCode} یافت نشد.", itemCode);
                 }
 
