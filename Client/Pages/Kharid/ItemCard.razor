@@ -10,19 +10,18 @@
 
 @attribute [Authorize]
 
-@inject ItemGroupApiService ItemService
 @inject ISnackbar Snackbar
 @inject IDialogService DialogService
 @inject ShoppingCartService CartService
 @inject ILogger<ItemCard> Logger
-@inject HttpClient Http // برای فراخوانی API واحدها
+@inject HttpClient Http
 
 <MudCard Outlined="true" Class="ma-1 item-card">
 
     <div class="image-container">
         @if (Item?.ImageExists == true)
         {
-            <img src="@($"api/items/image/{Item.CODE}")" alt="@Item.NAME" class="item-image" />
+            <img src="@($"api/items/image/{Item.CODE}")" alt="@Item.NAME" class="item-image" loading="lazy" />
         }
         else
         {
@@ -45,15 +44,15 @@
         @if (_itemSpecificUnits?.Any() == true)
         {
             <MudSelect T="int" Label="واحد" @bind-Value="SelectedVahedCode"
-                       Variant="Variant.Outlined" Margin="Margin.Dense" Dense="true"
-                       Disabled="@(_cartQuantity > 0 && Item != null && CartService.GetCartItem(Item.CODE, SelectedVahedCode)?.Quantity > 0)">
+                   Variant="Variant.Outlined" Margin="Margin.Dense" Dense="true"
+                   Disabled="@(_cartQuantity > 0 && Item != null && CartService.GetCartItem(Item.CODE, SelectedVahedCode)?.Quantity > 0)">
                 @foreach (var unit in _itemSpecificUnits)
                 {
                     <MudSelectItem Value="@unit.VahedCode">@unit.VahedName</MudSelectItem>
                 }
             </MudSelect>
         }
-        else if (Item != null && !string.IsNullOrEmpty(Item.VahedName)) // اگر واحد خاصی از API نیامد، واحد پیش‌فرض آیتم را نشان بده
+        else if (Item != null && !string.IsNullOrEmpty(Item.VahedName))
         {
             <MudText Typo="Typo.caption" Style="min-height: 48px; display:flex; align-items:center;">واحد: @Item.VahedName</MudText>
         }
@@ -67,14 +66,14 @@
                 <MudText Typo="Typo.caption">مبلغ:</MudText>
                 @if (!IsAzadPaymentSelected && !HasPriceInCurrentPriceList)
                 {
-                    <MudText Typo="Typo.caption" Style="color: #FF6D00; margin-right: 8px;">(فاقد مبلغ در اعلامیه قیمت انتخاب شده)</MudText>
+                    <MudText Typo="Typo.caption" Style="color: #FF6D00; margin-right: 8px;">(فاقد مبلغ در اعلامیه)</MudText>
                 }
             </MudItem>
             <MudItem xs="5" Class="d-flex align-center justify-end pa-1">
                 <MudNumericField @bind-Value="EditableMablF" Label="" Placeholder="0"
                                  Variant="Variant.Text" Format="N0" Culture='_faCulture' HideSpinButtons="true"
                                  Immediate="true" DebounceInterval="500" OnDebounceIntervalElapsed="PriceOrDiscountChanged"
-                                 Disabled="@(AnbarCode <= 0 || (_cartQuantity > 0 && Item != null && CartService.GetCartItem(Item.CODE, SelectedVahedCode)?.Quantity > 0) || (!IsAzadPaymentSelected && HasPriceInCurrentPriceList) || (!IsAzadPaymentSelected && !HasPriceInCurrentPriceList))"
+                                 Disabled="@(AnbarCode <= 0 || (_cartQuantity > 0 && Item != null && CartService.GetCartItem(Item.CODE, SelectedVahedCode)?.Quantity > 0))"
                                  ReadOnly="@(!IsAzadPaymentSelected)"
                                  Style="direction:ltr; width: 100%;" InputStyle="text-align: left;" Margin="Margin.Dense" Class="dense-numeric" />
             </MudItem>
@@ -87,11 +86,12 @@
                               Variant="Variant.Text" Margin="Margin.Dense" Class="dense-numeric"
                               Style="direction: ltr; width: 100%; " InputStyle="text-align: left;" />
             </MudItem>
+
             <MudItem xs="7" Class="d-flex align-center justify-start pa-1">
                 <MudText Typo="Typo.caption">تخفیف (%):</MudText>
             </MudItem>
             <MudItem xs="5" Class="d-flex align-center justify-end pa-1">
-                <MudNumericField @bind-Value="EditableNKOL" ReadOnly="@(!CanEditDiscount || !IsAzadPaymentSelected)"
+                <MudNumericField @bind-Value="EditableNKOL" ReadOnly="@(!CanEditDiscount)"
                                  Label="" Placeholder="0"
                                  Variant="Variant.Text" Format="0.#" Culture='_faCulture' HideSpinButtons="true"
                                  Immediate="true" DebounceInterval="500" OnDebounceIntervalElapsed="PriceOrDiscountChanged"
@@ -102,22 +102,20 @@
 
         <MudDivider Class="my-1" />
 
+        @* <<< بخش اصلاح شده برای نمایش موجودی >>> *@
         <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1">
             <MudText Typo="Typo.caption" Style="@GetInventoryStyle()">
-                موجودی انبار: @(_inventoryDetails?.CurrentInventory?.ToString("N0", _faCulture))
-                @if (SelectedUnitInfo?.Nesbat != 1.0 && _inventoryDetails?.CurrentInventory.HasValue == true && SelectedUnitInfo != null && SelectedUnitInfo.Nesbat != 0)
+                موجودی انبار: @(Item.CurrentInventory?.ToString("N0", _faCulture) ?? "N/A")
+                @if (SelectedUnitInfo?.Nesbat != 1.0 && Item.CurrentInventory.HasValue && SelectedUnitInfo?.Nesbat > 0)
                 {
-                    <span> (@((_inventoryDetails.CurrentInventory.Value / (decimal)SelectedUnitInfo.Nesbat).ToString("N1", _faCulture)) @SelectedUnitInfo.VahedName)</span>
+                    <span> (@((Item.CurrentInventory.Value / (decimal)SelectedUnitInfo.Nesbat).ToString("N1", _faCulture)) @SelectedUnitInfo.VahedName)</span>
                 }
-                @if (_inventoryDetails?.MinimumInventory > 0)
+                @if (Item.MinimumInventory > 0)
                 {
-                    <span style="font-size: smaller;"> (حد: @_inventoryDetails.MinimumInventory?.ToString("N0", _faCulture))</span>
+                    <span style="font-size: smaller;"> (حد: @Item.MinimumInventory?.ToString("N0", _faCulture))</span>
                 }
             </MudText>
-            <MudIconButton Icon="@Icons.Material.Filled.Refresh" Size="Size.Small"
-                           Disabled="@(_isFetchingInventory || AnbarCode <= 0)"
-                           Title="بروزرسانی موجودی"
-                           OnClick="FetchInventory" />
+            @* دکمه رفرش موجودی برای یک آیتم حذف شده است *@
         </MudStack>
     </MudCardContent>
 
@@ -125,10 +123,10 @@
         @if (_cartQuantity == 0)
         {
             <MudButton Style="width:100%;" Color="Color.Success"
-                       Variant="Variant.Filled"
-                       StartIcon="@Icons.Material.Filled.AddShoppingCart"
-                       OnClick="@(() => ProcessCartAction(1, true))"
-                       Disabled="@(_isFetchingInventory || AnbarCode <= 0 || _itemSpecificUnits?.Any() != true || SelectedUnitInfo == null || !HeadersValid)">
+                   Variant="Variant.Filled"
+                   StartIcon="@Icons.Material.Filled.AddShoppingCart"
+                   OnClick="@(() => ProcessCartAction(1, true))"
+                   Disabled="@(AnbarCode <= 0 || _itemSpecificUnits?.Any() != true || SelectedUnitInfo == null || !HeadersValid)">
                 افزودن به سبد
             </MudButton>
         }
@@ -138,17 +136,17 @@
                 <MudIconButton Icon="@Icons.Material.Filled.Delete" Color="Color.Error" Size="Size.Small" OnClick="RemoveFromCartAsync" Title="حذف از سبد" Class="cart-delete-btn" />
                 <MudPaper Class="cart-quantity-box" Elevation="3">
                     <MudIconButton Icon="@(Icons.Material.Filled.Remove)"
-                                   Color="@(_cartQuantity==1 ? Color.Error : Color.Primary)" Size="Size.Small" Class="qty-btn"
-                                   Title="@(_cartQuantity==1 ? "حذف از سبد" : "کاهش")"
-                    @onmousedown="@(e => StartLongPress(false))" @onmouseup="StopLongPress" @onmouseleave="StopLongPress"
-                                   OnClick="@(() => ProcessCartAction(_cartQuantity - 1, false))" />
+                               Color="@(_cartQuantity==1 ? Color.Error : Color.Primary)" Size="Size.Small" Class="qty-btn"
+                               Title="@(_cartQuantity==1 ? "حذف از سبد" : "کاهش")"
+                               @onmousedown="@(e => StartLongPress(false))" @onmouseup="StopLongPress" @onmouseleave="StopLongPress"
+                               OnClick="@(() => ProcessCartAction(_cartQuantity - 1, false))" />
                     <MudNumericField Class="quantity-input" T="decimal" HideSpinButtons="true" Variant="Variant.Outlined"
-                                     Value="_cartQuantity" ValueChanged="HandleNumericFieldChange"
-                                     Min="0" Max="9999" DebounceInterval="700" Disabled="@(_isFetchingInventory || AnbarCode <= 0)" />
+                                 Value="_cartQuantity" ValueChanged="HandleNumericFieldChange"
+                                 Min="0" Max="9999" DebounceInterval="700" Disabled="@(AnbarCode <= 0)" />
                     <MudIconButton Icon="@Icons.Material.Filled.Add" Color="Color.Success" Size="Size.Small" Class="qty-btn"
-                                   Title="افزایش"
-                    @onmousedown="@(e => StartLongPress(true))" @onmouseup="StopLongPress" @onmouseleave="StopLongPress"
-                                   OnClick="@(() => ProcessCartAction(_cartQuantity + 1, false))" />
+                               Title="افزایش"
+                               @onmousedown="@(e => StartLongPress(true))" @onmouseup="StopLongPress" @onmouseleave="StopLongPress"
+                               OnClick="@(() => ProcessCartAction(_cartQuantity + 1, false))" />
                 </MudPaper>
             </div>
         }
@@ -158,52 +156,29 @@
 @code {
     [Parameter, EditorRequired] public ItemDisplayDto Item { get; set; } = default!;
     [Parameter] public int AnbarCode { get; set; }
-
-    [Parameter] public bool HeadersValid { get; set; } = true; // پیش‌فرض true است تا اگر پاس داده نشد، فعال باشد
-
-    [Parameter] public bool IsAzadPaymentSelected { get; set; } = false; // مقدار پیش‌فرض می‌تواند false باشد
-
-    /// <summary>
-    /// !! مهم: این پارامتر برای رفع خطای والد اضافه شده است !!
-    /// کامپوننت ItemGroups.razor در حال ارسال این پارامتر است.
-    /// با اینکه این پارامتر اینجا تعریف شده، منطق اصلی نمایش واحدها و محاسبات
-    /// از _itemSpecificUnits که از API دریافت می‌شود، استفاده می‌کند.
-    /// در حالت ایده‌آل، والد نباید این پارامتر را ارسال کند و این تعریف می‌تواند حذف شود
-    /// (پس از اینکه مطمئن شدید کامپوننت والد دیگر آن را ارسال نمی‌کند).
-    /// </summary>
-    [Parameter] public List<TCOD_VAHEDS>? AvailableUnits { get; set; }
-
-    [Parameter] public bool CanEditDiscount { get; set; } = true; // پیش‌فرض: قابل ویرایش
-
+    [Parameter] public bool HeadersValid { get; set; }
+    [Parameter] public bool IsAzadPaymentSelected { get; set; }
+    [Parameter] public bool CanEditDiscount { get; set; } = true;
     [Parameter] public decimal? PriceFromPriceList { get; set; }
     [Parameter] public bool HasPriceInCurrentPriceList { get; set; }
 
-    private List<UnitInfo> _itemSpecificUnits = new List<UnitInfo>();
+    private List<UnitInfo> _itemSpecificUnits = new();
     private int _selectedVahedCodeField;
     private decimal _cartQuantity;
-    private InventoryDetailsDto? _inventoryDetails;
-    private bool _isFetchingInventory;
-    private bool _errorFetchingInventory;
     private Timer? _longPressTimer;
     private bool _increment;
 
     private decimal? EditableMablF { get; set; }
-    private decimal? EditableBSEF { get; set; }
     private double? EditableNKOL { get; set; }
 
-    private static readonly CultureInfo _faCulture = new CultureInfo("fa-IR");
+    private static readonly CultureInfo _faCulture = new("fa-IR");
     private string? _previousItemCode;
-    private int _previousAnbarCode;
 
-    // Helper property to safely get the selected unit info
     private UnitInfo? SelectedUnitInfo => _itemSpecificUnits.FirstOrDefault(u => u.VahedCode == _selectedVahedCodeField);
+    private decimal? CalculatedMaxM => Item?.MAX_M.HasValue == true && SelectedUnitInfo?.Nesbat > 0
+        ? Item.MAX_M.Value * (decimal)SelectedUnitInfo.Nesbat
+        : Item?.MAX_M;
 
-    // Helper property for calculated consumer price based on selected unit
-    private decimal? CalculatedMaxM => Item != null && SelectedUnitInfo != null && Item.MAX_M.HasValue && SelectedUnitInfo.Nesbat != 0
-                                        ? Item.MAX_M.Value * (decimal)SelectedUnitInfo.Nesbat
-                                        : Item?.MAX_M; // Fallback to base consumer price if unit info is missing or nesbat is zero
-
-    // Property for binding the unit selection
     private int SelectedVahedCode
     {
         get => _selectedVahedCodeField;
@@ -214,15 +189,13 @@
                 var currentCartItem = Item != null ? CartService.GetCartItem(Item.CODE, _selectedVahedCodeField) : null;
                 if (currentCartItem != null && currentCartItem.Quantity > 0)
                 {
-                    InvokeAsync(() => CartService.RemoveItemAsync(Item.CODE, _selectedVahedCodeField));
-                    Snackbar.Add("کالا با واحد قبلی از سبد حذف شد. با واحد جدید اضافه کنید.", Severity.Info, config => { config.DuplicatesBehavior = SnackbarDuplicatesBehavior.Allow; });
+                    InvokeAsync(() => CartService.RemoveItemAsync(Item!.CODE, _selectedVahedCodeField));
+                    Snackbar.Add("کالا با واحد قبلی از سبد حذف شد. با واحد جدید اضافه کنید.", Severity.Info);
                 }
-
                 _selectedVahedCodeField = value;
-                UpdateDisplayPricesAndDiscountBasedOnUnitOrCart(); // Update displayed prices/discount for the NEW unit
-                UpdateCartQuantity(); // Check quantity in cart for the NEW unit
-                Logger?.LogInformation("واحد برای کالای {ItemCode} به {UnitCode} تغییر کرد. قیمت عمده نمایش: {MablF}", Item?.CODE, value, EditableMablF);
-                InvokeAsync(StateHasChanged); // Ensure UI update after selection
+                UpdateDisplayPricesAndDiscountBasedOnUnitOrCart();
+                UpdateCartQuantity();
+                InvokeAsync(StateHasChanged);
             }
         }
     }
@@ -230,109 +203,52 @@
     protected override void OnInitialized()
     {
         CartService.CartChanged += HandleCartChanged;
-        base.OnInitialized();
     }
 
     protected override async Task OnParametersSetAsync()
     {
-        bool itemJustChanged = Item?.CODE != _previousItemCode || (Item == null && _previousItemCode != null);
-        bool anbarJustChanged = AnbarCode != _previousAnbarCode;
+        if (Item == null) return;
 
-        if (Item == null) // Handle case where Item becomes null
-        {
-            _itemSpecificUnits.Clear(); _previousItemCode = null; _previousAnbarCode = 0; _cartQuantity = 0;
-            EditableMablF = null; EditableBSEF = null; EditableNKOL = null;
-            _inventoryDetails = null; _selectedVahedCodeField = 0;
-            await InvokeAsync(StateHasChanged);
-            return;
-        }
+        bool itemJustChanged = Item.CODE != _previousItemCode;
 
         if (itemJustChanged)
         {
-            _selectedVahedCodeField = 0; _cartQuantity = 0; // Reset state for new item
-            await LoadItemSpecificUnitsAsync(); // Load units for the new item
-
-            // Select default unit after loading units
+            _selectedVahedCodeField = 0;
+            _cartQuantity = 0;
+            await LoadItemSpecificUnitsAsync();
             if (_itemSpecificUnits.Any())
             {
-                var unitToSelect = _itemSpecificUnits.FirstOrDefault(u => u.VahedCode == Item.VahedCode) ?? _itemSpecificUnits.First();
-                _selectedVahedCodeField = unitToSelect.VahedCode;
-                Logger?.LogInformation("واحد پیش‌فرض برای {ItemCode} به {UnitCode} تنظیم شد.", Item.CODE, _selectedVahedCodeField);
-            }
-            else
-            {
-                Logger?.LogError("بحرانی: واحدی برای {ItemCode} یافت نشد!", Item.CODE);
-                _selectedVahedCodeField = 0; // No valid unit to select
+                _selectedVahedCodeField = _itemSpecificUnits.FirstOrDefault(u => u.VahedCode == Item.VahedCode)?.VahedCode ?? _itemSpecificUnits.First().VahedCode;
             }
         }
 
-        // Ensure a valid unit is selected if possible, especially after an item change or if state was inconsistent
-        if ((SelectedUnitInfo == null || _selectedVahedCodeField == 0) && _itemSpecificUnits.Any())
-        {
-            _selectedVahedCodeField = _itemSpecificUnits.First().VahedCode;
-            Logger?.LogWarning("واحد انتخاب شده نامعتبر بود، به اولین واحد موجود برای {ItemCode} ریست شد: {UnitCode}", Item.CODE, _selectedVahedCodeField);
-        }
-
-        UpdateDisplayPricesAndDiscountBasedOnUnitOrCart(); // Update prices based on the potentially new/reset selected unit
-
-        // Fetch inventory if item/warehouse changed, or if never fetched, or if fetch previously failed
-        if (itemJustChanged || anbarJustChanged || _inventoryDetails == null || _errorFetchingInventory)
-        {
-            if (AnbarCode > 0) { await FetchInventory(); }
-            else
-            {
-                _inventoryDetails = new InventoryDetailsDto { CurrentInventory = null, MinimumInventory = 0 };
-                _errorFetchingInventory = true; // Error if AnbarCode is invalid
-            }
-        }
-
-        UpdateCartQuantity(); // Update cart quantity display based on current selection
-
+        UpdateDisplayPricesAndDiscountBasedOnUnitOrCart();
+        UpdateCartQuantity();
         _previousItemCode = Item.CODE;
-        _previousAnbarCode = AnbarCode;
-
-        // base.OnParametersSetAsync(); // Only needed if inheriting from a base class with logic here.
     }
 
     public void Dispose()
     {
         CartService.CartChanged -= HandleCartChanged;
-        StopLongPress(); // Ensure timer is disposed
+        StopLongPress();
         _longPressTimer?.Dispose();
     }
 
     private async Task LoadItemSpecificUnitsAsync()
     {
-        if (Item == null || string.IsNullOrEmpty(Item.CODE))
-        {
-            _itemSpecificUnits.Clear(); await InvokeAsync(StateHasChanged); return;
-        }
-        _itemSpecificUnits.Clear(); // Clear previous units
+        if (string.IsNullOrEmpty(Item?.CODE)) { _itemSpecificUnits.Clear(); return; }
         try
         {
             _itemSpecificUnits = await Http.GetFromJsonAsync<List<UnitInfo>>($"api/Items/{Item.CODE}/units") ?? new List<UnitInfo>();
-
-            if (!_itemSpecificUnits.Any())
+            if (!_itemSpecificUnits.Any() && Item.VahedCode > 0 && !string.IsNullOrEmpty(Item.VahedName))
             {
-                Logger?.LogWarning("API واحدی برای {ItemCode} برنگرداند.", Item.CODE);
-                if (Item.VahedCode > 0 && !string.IsNullOrEmpty(Item.VahedName))
-                {
-                    _itemSpecificUnits.Add(new UnitInfo { VahedCode = Item.VahedCode, VahedName = Item.VahedName, Nesbat = 1.0 });
-                }
+                _itemSpecificUnits.Add(new UnitInfo { VahedCode = Item.VahedCode, VahedName = Item.VahedName, Nesbat = 1.0 });
             }
-            // Ensure Nesbat is not zero, default to 1 if it is
-            foreach (var unit in _itemSpecificUnits)
-            {
-                if (unit.Nesbat <= 0) // Check for zero or negative
-                {
-                    Logger?.LogWarning("Unit {VahedCode} ({VahedName}) for item {ItemCode} has invalid Nesbat={Nesbat}. Setting to 1.", unit.VahedCode, unit.VahedName, Item.CODE, unit.Nesbat);
-                    unit.Nesbat = 1.0;
-                }
-            }
+            foreach (var unit in _itemSpecificUnits) { if (unit.Nesbat <= 0) unit.Nesbat = 1.0; }
         }
         catch (Exception ex)
         {
-            Logger?.LogError(ex, "خطا در بارگذاری واحد های خاص کالا برای {ItemCode}", Item.CODE);
+            Logger.LogError(ex, "Error loading units for item {ItemCode}", Item.CODE);
             _itemSpecificUnits.Clear();
             if (Item.VahedCode > 0 && !string.IsNullOrEmpty(Item.VahedName))
             {
@@ -340,239 +256,88 @@
             }
             Snackbar.Add("خطا در دریافت اطلاعات واحدها.", Severity.Error);
         }
-        await InvokeAsync(StateHasChanged);
     }
 
-    private async Task FetchInventory()
-    {
-        if (_isFetchingInventory || AnbarCode <= 0 || Item == null) return;
-        _isFetchingInventory = true; _errorFetchingInventory = false;
-        await InvokeAsync(StateHasChanged);
-        try
-        {
-            _inventoryDetails = await ItemService.GetItemInventoryDetailsAsync(Item.CODE, AnbarCode);
-            _errorFetchingInventory = (_inventoryDetails == null || _inventoryDetails.CurrentInventory == null);
-            if (_errorFetchingInventory && _inventoryDetails == null) _inventoryDetails = new InventoryDetailsDto { CurrentInventory = null, MinimumInventory = 0 };
-        }
-        catch (Exception ex)
-        {
-            _errorFetchingInventory = true; _inventoryDetails = new InventoryDetailsDto { CurrentInventory = null, MinimumInventory = 0 };
-            Logger?.LogError(ex, "خطا در دریافت موجودی برای {ItemCode}, انبار {AnbarCode}", Item?.CODE, AnbarCode);
-            Snackbar.Add("خطا در دریافت موجودی کالا.", Severity.Warning);
-        }
-        finally { _isFetchingInventory = false; await InvokeAsync(StateHasChanged); }
-    }
-
-    // Updates the EditableMablF, EditableBSEF, and EditableNKOL based on the selected unit and cart status.
     private void UpdateDisplayPricesAndDiscountBasedOnUnitOrCart()
     {
-        if (Item == null) { EditableMablF = null; EditableBSEF = null; EditableNKOL = null; InvokeAsync(StateHasChanged); return; }
-
-
+        if (Item == null) return;
         var cartItem = CartService.GetCartItem(Item.CODE, SelectedVahedCode);
-        var unitInfo = SelectedUnitInfo; // Use the property which finds the current UnitInfo
-
-        decimal baseWholesalePriceForSelectedUnit = (Item.MABL_F * (decimal)(unitInfo?.Nesbat ?? 1.0)); // قیمت پایه کالا برای واحد انتخابی
-
-
-        if (cartItem != null && cartItem.Quantity > 0)
+        if (cartItem != null)
         {
-            // Item is in the cart with the currently selected unit
-            // Load price *before* discount and the discount itself from the cart item
-            EditableMablF = cartItem.PricePerUnit; // Assumes CartItem.PricePerUnit IS the price before discount
+            EditableMablF = cartItem.PricePerUnit;
             EditableNKOL = cartItem.DiscountPercent ?? 0;
         }
-        else // آیتم در سبد خرید نیست
-        {
-            if (IsAzadPaymentSelected) // اگر پرداخت آزاد است
-            {
-                // قیمت اولیه از قیمت پایه کالا برای واحد انتخابی می‌آید (قابل ویرایش)
-                EditableMablF = baseWholesalePriceForSelectedUnit;
-                EditableNKOL = 0; // تخفیف پیش‌فرض صفر
-            }
-            else // پرداخت آزاد نیست، باید از اعلامیه قیمت استفاده شود
-            {
-                if (HasPriceInCurrentPriceList && PriceFromPriceList.HasValue)
-                {
-                    // قیمت از اعلامیه برای واحد پایه کالا آمده، باید به واحد انتخابی تبدیل شود
-                    // فرض: PriceFromPriceList برای واحد اصلی کالا (نسبت 1) است.
-                    // اگر PriceFromPriceList خودش برای واحدهای مختلف متفاوت است، منطق پیچیده‌تر می‌شود.
-                    // برای سادگی فرض می‌کنیم PriceFromPriceList برای واحد اصلی است.
-                    EditableMablF = PriceFromPriceList.Value * (decimal)(unitInfo?.Nesbat ?? 1.0);
-                    EditableNKOL = Item.TotalCalculatedDiscountPercent ?? 0;
-                }
-                else
-                {
-                    // در اعلامیه قیمت ندارد، از قیمت پایه کالا استفاده کن
-                    EditableMablF = baseWholesalePriceForSelectedUnit;
-                    EditableNKOL = 0; // تخفیف پیش‌فرض صفر (تخفیف از اعلامیه تخفیف جداگانه می‌آید)
-                }
-            }
-        }
-        // Ensure UI update after price calculation
-        InvokeAsync(StateHasChanged);
-    }
-
-    private async Task ProcessCartAction(decimal requestedQuantityInSelectedUnit, bool isInitialAddButton)
-    {
-        // --- Basic Validation ---
-        if (Item == null) { Logger?.LogError("ProcessCartAction called with null Item."); return; }
-        if (SelectedUnitInfo == null) { Snackbar.Add("لطفاً ابتدا یک واحد معتبر انتخاب کنید.", Severity.Warning); return; }
-        if (SelectedUnitInfo.Nesbat <= 0) { Snackbar.Add("نسبت واحد کالا نامعتبر (صفر یا منفی) است.", Severity.Error); return; }
-        if (AnbarCode <= 0) { Snackbar.Add("انبار نامعتبر است.", Severity.Error); return; }
-
-        // --- Handle Quantity <= 0 ---
-        if (requestedQuantityInSelectedUnit <= 0)
-        {
-            if (!isInitialAddButton)
-            { // Only remove if it wasn't the initial "Add" button click with 0 qty
-                RemoveFromCartAsync();
-            }
-            return; // Do nothing further if quantity is zero or less
-        }
-
-        // --- Prepare Data for Cart Service ---
-        // Get the price per selected unit *before* discount. Use EditableMablF if available, otherwise calculate.
-        decimal priceForSelectedUnitBeforeDiscount = EditableMablF ?? (Item.MABL_F * (decimal)SelectedUnitInfo.Nesbat);
-        double currentDiscountPercent = EditableNKOL ?? 0;
-
-        // --- Inventory Check ---
-        if (_inventoryDetails == null || _errorFetchingInventory) { await FetchInventory(); } // Try fetching if needed
-        if (_inventoryDetails == null || _errorFetchingInventory) { Snackbar.Add("خطا در بررسی موجودی.", Severity.Warning); return; } // Still error? Abort.
-
-        decimal requestedQuantityInBaseUnit = requestedQuantityInSelectedUnit * (decimal)SelectedUnitInfo.Nesbat;
-        var existingCartItem = CartService.GetCartItem(Item.CODE, SelectedVahedCode);
-
-        // Calculate delta based on what *would be* in the cart vs current inventory
-        decimal currentCartQuantityInSelectedUnitForDelta = existingCartItem?.Quantity ?? 0;
-        // We need the Nesbat of the *currently selected unit* for accurate delta calculation in base units
-        decimal currentCartQuantityInBaseUnitForDelta = currentCartQuantityInSelectedUnitForDelta * (decimal)SelectedUnitInfo.Nesbat;
-        decimal deltaQuantityInBaseUnit = requestedQuantityInBaseUnit - currentCartQuantityInBaseUnitForDelta;
-
-        decimal currentInventoryInBaseUnit = _inventoryDetails.CurrentInventory ?? 0;
-        decimal minInventoryInBaseUnit = _inventoryDetails.MinimumInventory ?? 0;
-        bool proceed = true;
-
-        if (deltaQuantityInBaseUnit > 0) // Only check if increasing quantity or adding new
-        {
-            if (currentInventoryInBaseUnit - deltaQuantityInBaseUnit < minInventoryInBaseUnit - 0.001m)
-            {
-                proceed = false;
-                var parameters = new DialogParameters
-                    {
-                        ["ContentText"] = $"فروش این مقدار ({requestedQuantityInBaseUnit:N0}) از کالا ({Item.NAME}) باعث کاهش موجودی به زیر حد مجاز ({minInventoryInBaseUnit:N0}) می‌شود. (موجودی فعلی: {currentInventoryInBaseUnit:N0}). آیا مایل به ادامه هستید؟",
-                        ["ConfirmButtonText"] = "بله، ادامه بده"
-                    };
-                var dialogReference = DialogService.Show<Shared.ConfirmDialog>("موجودی به حد مجاز می‌رسد", parameters);
-                var result = await dialogReference.Result;
-                proceed = !result.Cancelled && result.Data is bool confirmation && confirmation;
-            }
-        }
-
-        // --- Call Cart Service ---
-        if (proceed)
-        {
-            // Prepare the List<TCOD_VAHEDS> argument (can be simplified if CartService doesn't really need it)
-            var serviceUnitsArg = _itemSpecificUnits?
-                                  .Select(u => new TCOD_VAHEDS { CODE = u.VahedCode, NAMES = u.VahedName })
-                                  .ToList()
-                                  ?? new List<TCOD_VAHEDS>(); // Ensure not null
-
-            if (existingCartItem == null || existingCartItem.Quantity <= 0)
-            {
-                // ********************************************************************
-                // ******** شروع تغییرات در فراخوانی AddItem ********
-                // ********************************************************************
-                await CartService.AddItemAsync(
-                     Item,
-                     requestedQuantityInSelectedUnit,
-                     SelectedUnitInfo.VahedCode,    // آرگومان سوم: کد واحد انتخابی (int)
-                     _itemSpecificUnits,            // آرگومان چهارم: لیست واحدهای کالا (List<UnitInfo>)
-                     AnbarCode,                     // آرگومان پنجم: کد انبار (int)
-                     priceForSelectedUnitBeforeDiscount,
-                     currentDiscountPercent
-                 );
-                // ********************************************************************
-                // ********* پایان تغییرات *********
-                // ********************************************************************
-            }
-            else // Update existing item
-            {
-                // فراخوانی UpdateQuantity تغییری نکرده و باید درست باشد
-                await CartService.UpdateQuantityAsync(
-                    Item.CODE,
-                    SelectedUnitInfo.VahedCode,
-                    requestedQuantityInSelectedUnit,
-                    priceForSelectedUnitBeforeDiscount,
-                    currentDiscountPercent
-                );
-            }
-        }
         else
         {
-            Logger?.LogInformation("User cancelled inventory override for item {ItemCode}", Item.CODE);
-            // Revert UI? HandleCartChanged should update based on actual cart state.
-            await InvokeAsync(StateHasChanged);
+            var unitNesbat = (decimal)(SelectedUnitInfo?.Nesbat ?? 1.0);
+            EditableMablF = (Item.PriceAfterHeaderDiscounts ?? Item.MABL_F) * unitNesbat;
+            EditableNKOL = 0;
         }
     }
 
-    // Called when user manually changes Price (EditableMablF) or Discount (EditableNKOL)
+    private async Task ProcessCartAction(decimal requestedQuantity, bool isInitialAdd)
+    {
+        if (Item == null || SelectedUnitInfo == null || AnbarCode <= 0) return;
+        if (requestedQuantity <= 0) { if (!isInitialAdd) await RemoveFromCartAsync(); return; }
+
+        decimal requestedQtyInBase = requestedQuantity * (decimal)SelectedUnitInfo.Nesbat;
+        decimal currentInventory = Item.CurrentInventory ?? 0;
+        decimal minInventory = Item.MinimumInventory ?? 0;
+
+        if (currentInventory - requestedQtyInBase < minInventory)
+        {
+            var options = new DialogOptions { CloseButton = false, MaxWidth = MaxWidth.ExtraSmall };
+            var parameters = new DialogParameters
+                {
+                    ["Title"] = "کمبود موجودی",
+                    ["ContentText"] = $"موجودی برای فروش این تعداد کافی نیست. (موجودی: {currentInventory:N0}) آیا مایل به ادامه هستید؟",
+                    ["ConfirmButtonText"] = "اضافه کن",
+                    ["CancelButtonText"] = "منصرف شدم"
+                };
+            var dialog = DialogService.Show<ConfirmDialog>(parameters["Title"]?.ToString()!, parameters, options);
+            var result = await dialog.Result;
+            if (result.Cancelled || !(result.Data is bool confirmation && confirmation)) return;
+        }
+
+        await CartService.AddItemAsync(
+            Item,
+            requestedQuantity,
+            SelectedUnitInfo.VahedCode,
+            _itemSpecificUnits,
+            AnbarCode,
+            EditableMablF ?? 0,
+            EditableNKOL ?? 0
+        );
+    }
+
+    private void HandleCartChanged() => InvokeAsync(() =>
+    {
+        UpdateCartQuantity();
+        UpdateDisplayPricesAndDiscountBasedOnUnitOrCart();
+        StateHasChanged();
+    });
+
+    private void UpdateCartQuantity() => _cartQuantity = Item != null ? CartService.GetItemQuantity(Item.CODE, SelectedVahedCode) : 0;
+
+    private async Task RemoveFromCartAsync() => await CartService.RemoveItemAsync(Item.CODE, SelectedVahedCode);
+
     private async Task PriceOrDiscountChanged()
     {
-        var cartItem = Item != null ? CartService.GetCartItem(Item.CODE, SelectedVahedCode) : null;
-        // Only update cart if the item *is already in the cart* for the selected unit
-        if (cartItem != null && cartItem.Quantity > 0 && SelectedUnitInfo != null && SelectedUnitInfo.Nesbat > 0)
+        // فقط زمانی سبد خرید را آپدیت کن که آیتم از قبل در سبد بوده باشد
+        if (_cartQuantity > 0)
         {
-            Logger?.LogInformation("Price/Discount manually changed for item {ItemCode} in cart. Updating cart.", Item.CODE);
-
-            // Use the current EditableMablF as the new price *before* discount for the selected unit
-            decimal priceForSelectedUnitBeforeDiscount = EditableMablF ?? (Item.MABL_F * (decimal)SelectedUnitInfo.Nesbat);
-            double currentDiscountPercent = EditableNKOL ?? 0;
-
-            // Call UpdateQuantity to save the new price/discount to the existing cart item
-            await CartService.UpdateQuantityAsync(Item.CODE, SelectedVahedCode, cartItem.Quantity, priceForSelectedUnitBeforeDiscount, currentDiscountPercent);
+            await ProcessCartAction(_cartQuantity, false);
         }
-        // No need to await here as it's called by OnDebounceIntervalElapsed
-    }
-
-    private async void RemoveFromCartAsync()
-    {
-        if (Item == null) return;
-        await CartService.RemoveItemAsync(Item.CODE, SelectedVahedCode);
-        // HandleCartChanged will update the UI state (_cartQuantity, prices)
-    }
-
-    private void UpdateCartQuantity()
-    {
-        // Ensure Item and SelectedUnitInfo are valid before getting quantity
-        if (Item != null && SelectedUnitInfo != null)
-        {
-            _cartQuantity = CartService.GetItemQuantity(Item.CODE, SelectedUnitInfo.VahedCode);
-        }
-        else
-        {
-            _cartQuantity = 0;
-        }
-    }
-
-    // Event handler for when the cart changes (invoked by ShoppingCartService)
-    private void HandleCartChanged()
-    {
-        UpdateCartQuantity(); // Update the displayed quantity for this item/unit
-        UpdateDisplayPricesAndDiscountBasedOnUnitOrCart(); // Update displayed prices based on new cart state
-        InvokeAsync(StateHasChanged); // Ensure the UI reflects the changes
     }
 
     // Event handler for when the numeric quantity field changes (after debounce)
-    private async Task HandleNumericFieldChange(decimal newQuantity)
-    {
-        await ProcessCartAction(newQuantity, false); // Treat as update, not initial add
-    }
+    private async Task HandleNumericFieldChange(decimal newQuantity) => await ProcessCartAction(newQuantity, false);
+
 
     // --- Long Press Logic (Simplified and potentially safer) ---
     void StartLongPress(bool inc)
     {
-        if (AnbarCode <= 0 || Item == null || _isFetchingInventory) return;
+        if (AnbarCode <= 0 || Item == null) return;
         _increment = inc;
         _longPressTimer?.Dispose(); // Dispose previous timer if any
         _longPressTimer = new Timer(400); // Slightly shorter initial delay
@@ -635,14 +400,11 @@
     // --- Helper Methods ---
     private string GetInventoryStyle()
     {
-        if (AnbarCode <= 0) return "color: var(--mud-palette-text-disabled);";
-        if (_isFetchingInventory) return "color: var(--mud-palette-action-default); font-style: italic;";
-        if (_inventoryDetails?.CurrentInventory == null || _errorFetchingInventory) return "color: var(--mud-palette-error); font-weight: bold;";
-        decimal min = _inventoryDetails.MinimumInventory ?? 0;
-        decimal current = _inventoryDetails.CurrentInventory.Value;
-        if (current < min + 0.001m) return "color: var(--mud-palette-error); font-weight: bold;";
-        if (current < min + (min * 0.2m) + 1 && min > 0) return "color: var(--mud-palette-warning);";
-        if (current < 10 && min == 0) return "color: var(--mud-palette-warning);";
+        if (Item?.CurrentInventory == null) return "color: var(--mud-palette-error); font-weight: bold;";
+        decimal min = Item.MinimumInventory ?? 0;
+        decimal current = Item.CurrentInventory.Value;
+        if (current <= min) return "color: var(--mud-palette-error); font-weight: bold;";
+        if (current < min * 1.2m && min > 0) return "color: var(--mud-palette-warning);";
         return "color: var(--mud-palette-success);";
     }
 
@@ -806,3 +568,6 @@
         height: 30px;
     }
 </style>
+
+
+

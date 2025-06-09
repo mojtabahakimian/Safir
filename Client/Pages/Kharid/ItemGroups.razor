@@ -160,81 +160,87 @@
         </MudAlert>
     }
 
-    <MudPaper Outlined="true" Class="mb-4 pa-1">
-        @if (_isLoadingGroups)
-        {
-            <MudProgressLinear Color="Color.Primary" Indeterminate="true" Class="my-2" />
-        }
-        else if (!string.IsNullOrEmpty(_groupErrorMessage))
-        {
-            <MudAlert Severity="Severity.Error" Class="ma-2">@_groupErrorMessage</MudAlert>
-        }
-        else
-        {
-            <div style="display: flex; overflow-x: auto; white-space: nowrap; padding: 8px 4px; background-color: var(--mud-palette-background-grey); border-radius: var(--mud-default-borderradius);" class="mud-scrollbar-thin">
-                @if (GetFilteredGroups().Any())
-                {
-                    @foreach (var group in GetFilteredGroups())
+    @if (!_isHistoricalMode)
+    {
+        <MudPaper Outlined="true" Class="mb-4 pa-1">
+            @if (_isLoadingGroups)
+            {
+                <MudProgressLinear Color="Color.Primary" Indeterminate="true" Class="my-2" />
+            }
+            else if (!string.IsNullOrEmpty(_groupErrorMessage))
+            {
+                <MudAlert Severity="Severity.Error" Class="ma-2">@_groupErrorMessage</MudAlert>
+            }
+            else
+            {
+                <div style="display: flex; overflow-x: auto; white-space: nowrap; padding: 8px 4px; background-color: var(--mud-palette-background-grey); border-radius: var(--mud-default-borderradius);" class="mud-scrollbar-thin">
+                    @if (GetFilteredGroups().Any())
                     {
-                        <div style="display: inline-block; margin: 0 4px;" @key="group.CODE">
-                            <MudPaper Class="pa-2 group-card"
-                                      Elevation="@(_selectedGroup == group ? 8 : 2)"
-                                      Style="@($"border: {(_selectedGroup == group ? "1px solid var(--mud-palette-primary)" : "1px solid transparent")};")"
-                                    @onclick="() => HandleGroupClick(group)">
+                        @foreach (var group in GetFilteredGroups())
+                        {
+                            <div style="display: inline-block; margin: 0 4px;" @key="group.CODE">
+                                <MudPaper Class="pa-2 group-card"
+                          Elevation="@(_selectedGroup == group ? 8 : 2)"
+                          Style="@($"border: {(_selectedGroup == group ? "1px solid var(--mud-palette-primary)" : "1px solid transparent")};")"
+                          @onclick="() => HandleGroupClick(group)">
 
-                                @if (group.ImageExists)
-                                {
-                                    <img src="@($"api/itemgroups/image/{group.CODE}")" alt="@group.NAMES" class="group-image" loading="lazy" />
-                                }
-                                else
-                                {
-                                    <div class="group-image-placeholder">
-                                        <MudIcon Icon="@Icons.Material.Filled.Storefront" Title="بدون تصویر" Size="Size.Large" />
-                                    </div>
-                                }
-                                <MudText Typo="Typo.caption" Align="Align.Center" Class="group-name-text">@group.NAMES</MudText>
-                            </MudPaper>
-                        </div>
+                                    @if (group.ImageExists)
+                                    {
+                                        <img src="@($"api/itemgroups/image/{group.CODE}")" alt="@group.NAMES" class="group-image" loading="lazy" />
+                                    }
+                                    else
+                                    {
+                                        <div class="group-image-placeholder">
+                                            <MudIcon Icon="@Icons.Material.Filled.Storefront" Title="بدون تصویر" Size="Size.Large" />
+                                        </div>
+                                    }
+                                    <MudText Typo="Typo.caption" Align="Align.Center" Class="group-name-text">@group.NAMES</MudText>
+                                </MudPaper>
+                            </div>
+                        }
                     }
-                }
-                else
-                {
-                    <MudAlert Severity="Severity.Info" Dense="true" Style="width:100%;" Elevation="0" Square="true" Class="mx-auto">
-                        @if (string.IsNullOrWhiteSpace(_groupSearchTerm))
-                        {
-                            @("هیچ گروهی یافت نشد.")
-                        }
-                        else
-                        {
-                            @($"موردی با '{_groupSearchTerm}' یافت نشد.")
-                        }
-                    </MudAlert>
-                }
-            </div>
-        }
-    </MudPaper>
+                    else
+                    {
+                        <MudAlert Severity="Severity.Info" Dense="true" Style="width:100%;" Elevation="0" Square="true" Class="mx-auto">
+                            @if (string.IsNullOrWhiteSpace(_groupSearchTerm))
+                            {
+                                @("هیچ گروهی یافت نشد.")
+                            }
+                            else
+                            {
+                                @($"موردی با '{_groupSearchTerm}' یافت نشد.")
+                            }
+                        </MudAlert>
+                    }
+                </div>
+            }
+        </MudPaper>
 
-    @if (_selectedGroup != null)
+    }
+
+    @if ((_selectedGroup != null && !_isHistoricalMode) || _isHistoricalMode)
     {
         <MudDivider Class="my-4" />
         <MudPaper Outlined="true" Class="pa-1">
             <MudToolBar Dense="true" Class="mb-2 px-2">
                 <MudTextField T="string"
-                              @bind-Value="_itemSearchTerm"
-                              Placeholder="جستجو کالا..."
-                              Variant="Variant.Outlined"
-                              Margin="Margin.Dense"
-                              Adornment="Adornment.Start"
-                              AdornmentIcon="@Icons.Material.Filled.Search"
-                              IconSize="Size.Small"
-                              Immediate="true"
-                              Clearable="true"
-                              Style="max-width: 250px; margin-left: 8px;"
-                              DebounceInterval="500"
-                              OnDebounceIntervalElapsed="HandleItemSearchDebounced" />
+
+                          @bind-Value="_itemSearchTerm"
+                          Placeholder="جستجو کالا..."
+                          Variant="Variant.Outlined"
+                          Margin="Margin.Dense"
+                          Adornment="Adornment.Start"
+                          AdornmentIcon="@Icons.Material.Filled.Search"
+                          IconSize="Size.Small"
+                          Immediate="true"
+                          Clearable="true"
+                          Style="max-width: 250px; margin-left: 8px;"
+                          DebounceInterval="500"
+                          OnDebounceIntervalElapsed="HandleItemSearchDebounced" />
+
                 <MudToggleIconButton @bind-Toggled="_isListView"
-                                     Icon="@Icons.Material.Filled.ViewModule" Color="@( !_isListView ? Color.Primary : Color.Default)" Title="نمایش کارتی"
-                                     ToggledIcon="@Icons.Material.Filled.ViewList" ToggledColor="@( _isListView ? Color.Primary : Color.Default)" ToggledTitle="نمایش لیستی" />
+                                 Icon="@Icons.Material.Filled.ViewModule" Color="@( !_isListView ? Color.Primary : Color.Default)" Title="نمایش کارتی"
+                                 ToggledIcon="@Icons.Material.Filled.ViewList" ToggledColor="@( _isListView ? Color.Primary : Color.Default)" ToggledTitle="نمایش لیستی" />
             </MudToolBar>
 
             <MudText Typo="Typo.caption" Class="mb-2 px-2">تعداد کل کالاهای یافت شده: @_totalItemCount.ToString("N0")</MudText>
@@ -269,6 +275,40 @@
                     <MudList Clickable="false">
                         @foreach (var item in _items)
                         {
+
+                            @if (_isHistoricalMode || _isListView)
+                            {
+                                <div style="border: 2px solid blue; padding: 10px;">
+                                    <MudText Color="Color.Error">تست: داخل بلوک نمایش لیستی/تاریخی</MudText>
+                                    @if (_items != null && _items.Any())
+                                    {
+                                        <MudText>تعداد آیتم برای نمایش: @_items.Count</MudText>
+                                        <MudList Clickable="false">
+                                            @foreach (var item in _items)
+                                            {
+                                                <MudListItem @key="item.CODE">
+                                                    <MudListItemAvatar>
+                                                        <MudAvatar Color="Color.Primary">@item.CODE?.FirstOrDefault()</MudAvatar>
+                                                    </MudListItemAvatar>
+                                                    <MudListItemText>
+                                                        <MudText Typo="Typo.body1">@item.NAME</MudText>
+                                                        <MudText Typo="Typo.body2" Color="Color.Secondary">کد: @item.CODE</MudText>
+                                                    </MudListItemText>
+                                                    <MudListItemAction>
+                                                        <MudIcon Icon="@Icons.Material.Filled.Info" />
+                                                    </MudListItemAction>
+                                                </MudListItem>
+                                                <MudDivider />
+                                            }
+                                        </MudList>
+                                    }
+                                    else
+                                    {
+                                        <MudText>لیست آیتم‌ها خالی است یا null.</MudText>
+                                    }
+                                </div>
+                            }
+
                             <MudListItem @key="item.CODE">
                                 <MudListItemAvatar>
                                     @if (item.ImageExists)
@@ -305,12 +345,24 @@
                         @foreach (var itemDto in _items)
                         {
                             <MudItem xs="12" sm="6" md="6" lg="6" xl="4" @key="itemDto.CODE">
-                                <ItemCard Item="itemDto" HeadersValid="_areHeadersValid"
-                                          AnbarCode="@(_selectedGroup.ANBAR)"
-                                          IsAzadPaymentSelected="_isAzadPaymentSelected"
-                                          CanEditDiscount="_canEditItemDiscount"
-                                          PriceFromPriceList="@itemDto.PriceFromPriceList"
-                                          HasPriceInCurrentPriceList="@itemDto.HasPriceInCurrentPriceList" />
+                                @{
+                                    // <<<<< منطق کلیدی: تعیین کد انبار بر اساس حالت برنامه >>>>>
+                                    int? anbarCodeForCard = _isHistoricalMode ? _anbarCodeForHistoricalMode : _selectedGroup?.ANBAR;
+                                }
+
+                                @if (anbarCodeForCard.HasValue && anbarCodeForCard.Value > 0)
+                                {
+                                     <ItemCard Item="itemDto" HeadersValid="_areHeadersValid"
+                                              AnbarCode="@(anbarCodeForCard.Value)"
+                                              IsAzadPaymentSelected="_isAzadPaymentSelected"
+                                              CanEditDiscount="_canEditItemDiscount"
+                                              PriceFromPriceList="@itemDto.PriceFromPriceList"
+                                              HasPriceInCurrentPriceList="@itemDto.HasPriceInCurrentPriceList" />
+                                }
+                                else
+                                {
+                                    <MudText Color="Color.Error">انبار برای نمایش کارتی کالا مشخص نشده است.</MudText>
+                                }
                             </MudItem>
                         }
                     </MudGrid>
@@ -318,12 +370,12 @@
 
                 @if (_totalPages > 1)
                 {
-                    <MudPagination Count="_totalPages"
-                                   Selected="_currentPage" SelectedChanged="HandlePageChangedAsync" Class="mt-4 mb-2 d-flex justify-center"
-                                   ShowFirstButton="true"
-                                   ShowLastButton="true"
-                                   Color="Color.Primary"
-                                   BoundaryCount="1" MiddleCount="3" />
+                    <div class="d-flex justify-center mt-4">
+                        <MudPagination Count="_totalPages"
+                           Selected="_currentPage" SelectedChanged="HandlePageChangedAsync"
+                           ShowFirstButton="true" ShowLastButton="true"
+                           Color="Color.Primary" BoundaryCount="1" MiddleCount="3" />
+                    </div>
                 }
             }
         </MudPaper>
@@ -457,39 +509,38 @@
     // Field that was missing in the original error list, used in ItemCard call
     private bool _isAzadPaymentSelected = false;
 
+    [Parameter]
+    [SupplyParameterFromQuery] // برای خواندن پارامتر mode از query string
+    public string? Mode { get; set; }
+
+    private bool _isHistoricalMode = false;
+    private List<TCOD_ANBAR> _availableAnbarHa = new();
+    private int? _anbarCodeForHistoricalMode = null;
+    private bool _historicalItemsLoadedOnce = false; // <<< این فلگ بسیار مهم است
 
     protected override async Task OnInitializedAsync()
     {
-        Logger.LogInformation("ItemGroups.razor: OnInitializedAsync started.");
-        if (CartService != null)
-        {
-            await CartService.InitializeCartFromLocalStorageAsync();
-        }
-        else
-        {
-            Logger.LogError("ShoppingCartService is null!");
-            Snackbar.Add("خطای سرویس سبد خرید!", Severity.Error);
-            NavManager.NavigateTo("/");
-            return;
-        }
+        Logger.LogInformation("ItemGroups.razor: OnInitializedAsync STARTING.");
+        _isHistoricalMode = Mode?.ToLowerInvariant() == "historical";
+        Logger.LogInformation($"ItemGroups Mode: {(_isHistoricalMode ? "Historical" : "Standard Group")}");
 
-        if (CartService.CurrentCustomer == null)
-        {
-            Logger.LogWarning("No customer selected. Redirecting...");
-            Snackbar.Add("لطفا ابتدا مشتری را انتخاب کنید.", Severity.Info);
-            NavManager.NavigateTo("/visitor-customers");
-            return;
-        }
-        Logger.LogInformation($"Customer HES code from CartService: {CartService.CurrentCustomer?.hes}");
-
-        CartService.CartChanged += OnCartChanged;
-        _pricingLocked = CartService.Items.Any();
-
+        // 1. ست کردن اولیه فلگ‌های لودینگ
         _isLoadingLookups = true;
-        await InvokeAsync(StateHasChanged);
+        _isLoadingGroups = !_isHistoricalMode; // گروه‌ها فقط در حالت غیر تاریخی لود می‌شوند
+        _isItemsLoading = true;
 
         try
         {
+            // 2. مقداردهی اولیه سرویس‌های حیاتی
+            if (CartService == null) { /* ... مدیریت خطا ... */ return; }
+            await CartService.InitializeCartFromLocalStorageAsync();
+            CartService.CartChanged += OnCartChanged;
+            _pricingLocked = CartService.Items.Any();
+
+            if (CartService.CurrentCustomer == null && !_isHistoricalMode) { /* ... مدیریت خطا و ریدایرکت ... */ return; }
+            _currentCustomerHesCode = CartService.CurrentCustomer?.hes;
+
+            // 3. دریافت اطلاعات کاربر
             var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
             _currentUserPrincipal = authState.User;
             if (_currentUserPrincipal?.Identity?.IsAuthenticated == true)
@@ -497,48 +548,88 @@
                 _currentUserId = int.TryParse(_currentUserPrincipal.FindFirst(BaseknowClaimTypes.IDD)?.Value, out var uid) ? uid : (int?)null;
                 _currentUserTfSazman = int.TryParse(_currentUserPrincipal.FindFirst(BaseknowClaimTypes.TFSAZMAN)?.Value, out var tf) ? tf : 20;
             }
-            _currentCustomerHesCode = CartService.CurrentCustomer?.hes;
 
-            _customerTypeList = await LookupService.GetCustomerTypesAsync() ?? new();
-            _departmentList = await LookupService.GetDepartmentsAsync() ?? new();
+            // 4. بارگذاری موازی داده‌های Lookup پایه
+            var customerTypesTask = LookupService.GetCustomerTypesAsync();
+            var departmentsTask = LookupService.GetDepartmentsAsync();
+            var unitsTask = LoadUnitsAsync();
+            var anbarTask = LoadAnbarhaAsync(); // <-- این باید قبل از استفاده از انبارها اجرا شود
 
+            await Task.WhenAll(customerTypesTask, departmentsTask, unitsTask, anbarTask);
+
+            _customerTypeList = await customerTypesTask ?? new List<LookupDto<int?>>();
+            _departmentList = await departmentsTask ?? new List<LookupDto<int?>>();
+
+            // 5. بارگذاری تنظیمات
             await LoadPersistedSettingsAsync();
-
             await LoadSazmanSettingsAsync();
-            await CheckPagePermissionsAsync(); // This method is defined below
-
+            await CheckPagePermissionsAsync();
             await LoadHeaderDataAndSetDefaultsAsync();
             await LoadDynamicPaymentTermsAndSetDefaultAsync();
 
-            await LoadAndApplyElamieTakhfifDetailsAsync();
+            // 6. بارگذاری محتوای اصلی (گروه‌ها یا کالاهای تاریخی)
+            if (_isHistoricalMode)
+            {
+                _isLoadingGroups = false; // گروه‌ها در این حالت لود نمی‌شوند
 
-            var groupsTask = LoadGroupsAsync(); // This method is defined below
-            var unitsTask = LoadUnitsAsync();   // This method is defined below
-            await Task.WhenAll(groupsTask, unitsTask);
+                if (!_historicalItemsLoadedOnce)
+                {
+                    Logger.LogInformation("OnInitializedAsync: Entering LoadHistoricalItemsAsync block (first time).");
+
+                    // تنظیم انبار پیش‌فرض برای حالت تاریخی
+                    if (_availableAnbarHa != null && _availableAnbarHa.Any())
+                    {
+                        _anbarCodeForHistoricalMode = _availableAnbarHa.First().CODE;
+                        if (_anbarCodeForHistoricalMode.HasValue) CartService.SetCurrentAnbarCode(_anbarCodeForHistoricalMode.Value);
+                        Logger.LogInformation("Historical mode: Default anbar for display set to {AnbarCode}", _anbarCodeForHistoricalMode);
+                    }
+                    else
+                    {
+                        Logger.LogWarning("Historical mode: No available anbars to set a default anbar.");
+                        _itemsErrorMessage = "انبار معتبری برای نمایش کالاها در حالت تاریخی یافت نشد.";
+                    }
+
+                    await LoadHistoricalItemsAsync(); // این متد _isItemsLoading را در انتها false می‌کند
+                    _historicalItemsLoadedOnce = true;
+                }
+                else
+                {
+                    _isItemsLoading = false;
+                }
+            }
+            else // حالت عادی (گروهی)
+            {
+                await LoadGroupsAsync(); // این متد _isLoadingGroups را false می‌کند
+                if (_itemGroups != null && _itemGroups.Any() && _selectedGroup == null)
+                {
+                    await HandleGroupClick(_itemGroups.First());
+                }
+                else
+                {
+                    _isItemsLoading = false; // اگر گروهی برای انتخاب وجود ندارد
+                }
+            }
         }
         catch (Exception ex)
         {
-            Logger.LogError(ex, "An error occurred during the initialization of ItemGroups page.");
+            Logger.LogError(ex, "OnInitializedAsync: CRITICAL ERROR during initialization.");
             _initializationFailed = true;
             _areHeadersValid = false;
-            if (!_headerValidationMessages.Contains("خطا در بارگذاری اولیه صفحه. امکان افزودن کالا وجود ندارد."))
+            if (!_headerValidationMessages.Contains("خطا در بارگذاری اولیه صفحه."))
             {
-                _headerValidationMessages.Add("خطا در بارگذاری اولیه صفحه. امکان افزودن کالا وجود ندارد.");
+                _headerValidationMessages.Add("خطا در بارگذاری اولیه صفحه.");
             }
-            Snackbar.Add("خطا در بارگذاری اطلاعات صفحه.", Severity.Error);
+            Snackbar.Add("خطای بسیار جدی در بارگذاری اطلاعات صفحه. با راهبر سیستم تماس بگیرید", Severity.Error, config => config.VisibleStateDuration = 10000);
+            _isLoadingGroups = false;
+            _isItemsLoading = false;
         }
         finally
         {
             _isLoadingLookups = false;
-            UpdateHeaderValidationState(); // This method is defined below
+            UpdateHeaderValidationState();
             await InvokeAsync(StateHasChanged);
+            Logger.LogInformation("ItemGroups.razor: OnInitializedAsync COMPLETED.");
         }
-
-        if (_itemGroups != null && _itemGroups.Any() && _selectedGroup == null)
-        {
-            await HandleGroupClick(_itemGroups.First()); // This method is defined below
-        }
-        Logger.LogInformation("ItemGroups.razor: OnInitializedAsync completed.");
     }
 
     private void OnCartChanged()
@@ -680,6 +771,74 @@
     private async Task RemoveLocalStorageKeyAsync(string key)
         => await jsRuntime.InvokeVoidAsync("localStorage.removeItem", key);
     #endregion
+
+    private async Task LoadAnbarhaAsync()
+    {
+        try
+        {
+            _availableAnbarHa = await LookupService.GetAnbarhaAsync() ?? new List<TCOD_ANBAR>();
+            Logger.LogInformation("Loaded {Count} anbars.", _availableAnbarHa.Count);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error loading Anbar list.");
+            Snackbar.Add("خطا در بارگذاری لیست انبارها.", Severity.Error);
+        }
+    }
+
+    // داخل متد LoadHistoricalItemsAsync در ItemGroups.razor.cs
+    private async Task LoadHistoricalItemsAsync()
+    {
+        if (!_areHeadersValid || !_anbarCodeForHistoricalMode.HasValue)
+        {
+            _itemsErrorMessage = "لطفاً ابتدا تنظیمات و انبار را مشخص کنید.";
+            _isItemsLoading = false;
+            return;
+        }
+
+        _isItemsLoading = true;
+        _itemsErrorMessage = null;
+        await InvokeAsync(StateHasChanged);
+
+        try
+        {
+            var pagedResult = await ItemGroupService.GetHistoricalOrderItemsAsync(
+                _anbarCodeForHistoricalMode.Value,
+                _selectedPriceList?.Id,
+                _selectedCustomerType?.Id,
+                _selectedPaymentTerm?.Id,
+                _selectedDiscountList?.Id,
+                _itemSearchTerm,
+                _currentPage,
+                _pageSize
+            );
+
+            if (pagedResult != null)
+            {
+                _items = pagedResult.Items;
+                _totalItemCount = pagedResult.TotalCount;
+                // _totalPages توسط پراپرتی محاسباتی به صورت خودکار آپدیت می‌شود
+            }
+            else
+            {
+                _itemsErrorMessage = "خطا در دریافت لیست کالاها.";
+                _items = new List<ItemDisplayDto>();
+                _totalItemCount = 0;
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error in LoadHistoricalItemsAsync");
+            _itemsErrorMessage = "خطای پیش‌بینی نشده در بارگذاری کالاها.";
+            _items = new List<ItemDisplayDto>();
+            _totalItemCount = 0;
+        }
+        finally
+        {
+            _isItemsLoading = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
 
     private async Task LoadSazmanSettingsAsync()
     {
@@ -1106,6 +1265,8 @@
     // Definition for HandleGroupClick (CS0103 fix)
     private async Task HandleGroupClick(TCODE_MENUITEM group)
     {
+        if (_isHistoricalMode) return; // در حالت تاریخی، کلیک روی گروه معنا ندارد
+
         if (group == null || _isItemsLoading) return;
         _selectedGroup = group;
         Logger.LogInformation("Selected Group: {GroupName}, Anbar: {AnbarCode}", group.NAMES, group.ANBAR);
@@ -1113,20 +1274,21 @@
         _totalItemCount = 0;
         _items = null;
         _itemSearchTerm = string.Empty;
-        await LoadItemsForSelectedGroupAsync();
+        await LoadItemsForSelectedGroupAsync(); // فقط در حالت عادی کالاها بر اساس گروه لود می‌شوند
     }
 
     // Definition for HandleItemSearchDebounced (CS0103 fix)
     private async Task HandleItemSearchDebounced()
     {
-        await InvokeAsync(async () =>
+        _currentPage = 1; // با هر جستجوی جدید به صفحه اول برگرد
+        if (_isHistoricalMode)
         {
-            if (_selectedGroup == null) return;
-            Logger.LogInformation("Debounced item search: {SearchTerm}", _itemSearchTerm);
-            _currentPage = 1;
-            _totalItemCount = 0;
-            await LoadItemsForSelectedGroupAsync();
-        });
+            await LoadHistoricalItemsAsync(); // فراخوانی API با ترم جستجوی جدید
+        }
+        else
+        {
+            await LoadItemsForSelectedGroupAsync(); // منطق قبلی برای حالت گروهی
+        }
     }
 
     // Definition for HandlePageChangedAsync (CS0103 fix)
@@ -1134,7 +1296,15 @@
     {
         if (_isItemsLoading) return;
         _currentPage = newPage;
-        await LoadItemsForSelectedGroupAsync();
+
+        if (_isHistoricalMode)
+        {
+            await LoadHistoricalItemsAsync(); // دریافت صفحه جدید از سرور
+        }
+        else
+        {
+            await LoadItemsForSelectedGroupAsync();
+        }
     }
 
     public void Dispose()
@@ -1179,7 +1349,7 @@
 
     private async Task LoadGroupsAsync()
     {
-        if (_isLoadingGroups) return;
+        //if (_isLoadingGroups) return;
         _isLoadingGroups = true;
         _groupErrorMessage = null;
         _selectedGroup = null; // Reset selected group when reloading groups
@@ -1231,6 +1401,12 @@
 
     private async Task LoadItemsForSelectedGroupAsync()
     {
+        if (_isHistoricalMode) // اگر در حالت تاریخی هستیم، این متد نباید اجرا شود
+        {
+            _isItemsLoading = false; // چون آیتم‌ها از طریق LoadHistoricalItemsAsync بارگذاری شده‌اند
+            return;
+        }
+
         if (_selectedGroup == null || _isItemsLoading) return;
         _isItemsLoading = true;
         _itemsErrorMessage = null;
@@ -1453,7 +1629,7 @@
         await LoadAndApplyElamieTakhfifDetailsAsync();
     }
 
-    private async void AddItemToCartFromList(ItemDisplayDto item, int quantity)
+    private async void AddItemToCartFromList(ItemDisplayDto item, int quantity) // نام item از itemDto به item تغییر کرد
     {
         UpdateHeaderValidationState();
         if (!_areHeadersValid)
@@ -1461,31 +1637,56 @@
             Snackbar.Add($"لطفاً ابتدا موارد سربرگ سفارش را تکمیل کنید: {string.Join("، ", _headerValidationMessages)}", Severity.Error, config => { config.VisibleStateDuration = 7000; });
             return;
         }
-        if (_selectedGroup == null || item == null)
+        if (item == null) // در حالت تاریخی _selectedGroup می‌تواند null باشد
         {
-            Snackbar.Add("خطا: گروه یا کالا نامعتبر است.", Severity.Error); return;
+            Snackbar.Add("خطا: کالا نامعتبر است.", Severity.Error); return;
+        }
+
+        int anbarCodeToAdd;
+
+        if (_isHistoricalMode)
+        {
+            // در حالت تاریخی، باید یک انبار انتخاب یا پیش‌فرض در نظر گرفته شود
+            // اینجا از اولین انبار موجود به عنوان پیش‌فرض استفاده می‌کنیم
+            // بهتر است این انتخاب به کاربر داده شود یا از تنظیمات خوانده شود
+            if (_availableAnbarHa != null && _availableAnbarHa.Any())
+            {
+                anbarCodeToAdd = _availableAnbarHa.First().CODE;
+                CartService.SetCurrentAnbarCode(anbarCodeToAdd); // تنظیم انبار جاری در سرویس سبد خرید
+                Logger.LogInformation("Historical mode: Using default/first anbar {AnbarCode} for adding item {ItemCode}", anbarCodeToAdd, item.CODE);
+            }
+            else
+            {
+                Snackbar.Add("انبار معتبری برای افزودن کالا یافت نشد. لطفاً ابتدا انبارها را از تنظیمات بررسی کنید.", Severity.Error);
+                Logger.LogError("No available anbars found for historical mode item add.");
+                return;
+            }
+        }
+        else if (_selectedGroup != null)
+        {
+            anbarCodeToAdd = _selectedGroup.ANBAR;
+        }
+        else
+        {
+            Snackbar.Add("گروه یا انبار معتبری انتخاب نشده است.", Severity.Error);
+            Logger.LogError("Cannot add item to cart: Selected group is null and not in historical mode.");
+            return;
         }
 
         var unitInfoList = new List<UnitInfo> {
             new UnitInfo { VahedCode = item.VahedCode, VahedName = item.VahedName ?? "واحد اصلی", Nesbat = 1.0 }
+            // اگر واحدهای فرعی هم برای کالاهای تاریخی نیاز است، باید از API دریافت شوند یا منطق دیگری برایشان در نظر گرفت.
         };
 
-        decimal priceForUnitAfterHeaderDiscounts = item.PriceAfterHeaderDiscounts ?? item.MABL_F;
-        double lineDiscountPercentFromCard = 0;
-        decimal finalPricePerUnitCalc = priceForUnitAfterHeaderDiscounts * (1 - (decimal)(lineDiscountPercentFromCard / 100.0));
-        double totalHeaderDiscountApplied = item.TotalCalculatedDiscountPercent ?? 0;
-        decimal originalBasePriceForUnitCalc = item.PriceFromPriceList ?? item.MABL_F;
-
+        // ... (بقیه کد این متد مانند قبل با استفاده از anbarCodeToAdd)
         await CartService.AddItemAsync(
             item,
             Convert.ToDecimal(quantity),
-            item.VahedCode, // Assuming this is the code for the unit being added
-            unitInfoList,   // This should be the list of all available units for the item if CartService expects it.
-                            // Or just the selected unit info. The ItemCard has more complex unit handling.
-                            // For now, passing a list with just the primary unit.
-            _selectedGroup.ANBAR,
-            item.PriceAfterHeaderDiscounts ?? item.MABL_F, // Price AFTER TF1/TF2
-            item.TotalCalculatedDiscountPercent ?? 0  // Overall discount from TF1/TF2
+            item.VahedCode,
+            unitInfoList,
+            anbarCodeToAdd, // استفاده از انبار تعیین شده
+            item.PriceAfterHeaderDiscounts ?? item.MABL_F, // قیمت پس از تخفیفات سربرگ
+            item.TotalCalculatedDiscountPercent ?? 0  // درصد تخفیف کلی سربرگ
         );
         Snackbar.Add($"{quantity} عدد '{item.NAME}' ({item.VahedName ?? "واحد اصلی"}) به سبد اضافه شد.", Severity.Success);
     }

@@ -26,5 +26,8 @@ namespace Safir.Shared.Models.Kala
         public double? HeaderDiscountTF2 { get; set; } // TF2 اعمال شده از سربرگ
         public decimal? PriceAfterHeaderDiscounts { get; set; } // قیمت پس از اعمال تخفیفات TF1 و TF2
         public double? TotalCalculatedDiscountPercent { get; set; } // درصد تخفیف نهایی محاسبه شده از TF1 و TF2
+        public decimal? CurrentInventory { get; set; }
+        public decimal? MinimumInventory { get; set; }
+
     }
 }
