@@ -31,21 +31,14 @@ namespace Safir.Client.Services
             string requestUri = "api/itemgroups";
             try
             {
-                _logger.LogInformation("Calling API to get item groups: {RequestUri}", requestUri);
                 var response = await _httpClient.GetAsync(requestUri);
-
                 if (response.IsSuccessStatusCode)
                 {
-                    var groups = await response.Content.ReadFromJsonAsync<List<TCODE_MENUITEM>>();
-                    _logger.LogInformation("Successfully received {Count} item groups from API.", groups?.Count ?? 0);
-                    return groups ?? new List<TCODE_MENUITEM>();
+                    return await response.Content.ReadFromJsonAsync<List<TCODE_MENUITEM>>();
                 }
-                else
-                {
-                    var errorContent = await response.Content.ReadAsStringAsync();
-                    _logger.LogError("API Error fetching groups. Status: {StatusCode}, URI: {RequestUri}, Content: {ErrorContent}", response.StatusCode, requestUri, errorContent);
-                    return null;
-                }
+                var errorContent = await response.Content.ReadAsStringAsync();
+                _logger.LogError("API Error fetching groups. Status: {StatusCode}, Content: {ErrorContent}", response.StatusCode, errorContent);
+                return null;
             }
             catch (Exception ex)
             {
@@ -56,39 +49,24 @@ namespace Safir.Client.Services
 
         // --- Get Items By Group (Corrected Signature & Implementation) ---
         // <<< متد به‌روز شده برای دریافت کالاها >>>
-        public async Task<PagedResult<ItemDisplayDto>?> GetItemsByGroupAsync( // <<< نوع خروجی تغییر کرد
-            double groupCode,
-            int pageNumber = 1,
-            int pageSize = 10,
-            string? searchTerm = null)
+        public async Task<PagedResult<ItemDisplayDto>?> GetItemsByGroupAsync(double groupCode, int pageNumber = 1, int pageSize = 10, string? searchTerm = null)
         {
-            var query = HttpUtility.ParseQueryString(string.Empty);
-            query["pageNumber"] = pageNumber.ToString();
-            query["pageSize"] = pageSize.ToString();
+            var queryParams = new List<string>
+            {
+                $"pageNumber={pageNumber}",
+                $"pageSize={pageSize}"
+            };
             if (!string.IsNullOrWhiteSpace(searchTerm))
             {
-                query["searchTerm"] = searchTerm;
+                queryParams.Add($"searchTerm={HttpUtility.UrlEncode(searchTerm)}");
             }
 
-            string requestUri = $"api/items/bygroup/{groupCode}?{query}";
+            string requestUri = $"api/items/bygroup/{groupCode}?" + string.Join("&", queryParams);
+
             try
             {
-                _logger.LogInformation("Calling API: {RequestUri}", requestUri);
-                var response = await _httpClient.GetAsync(requestUri);
-
-                if (response.IsSuccessStatusCode)
-                {
-                    // <<< نوع ReadFromJsonAsync تغییر کرد >>>
-                    var pagedResult = await response.Content.ReadFromJsonAsync<PagedResult<ItemDisplayDto>>();
-                    _logger.LogInformation("Received paged items DTOs for group {GroupCode}, Search: '{SearchTerm}'", groupCode, searchTerm);
-                    return pagedResult;
-                }
-                else
-                {
-                    var errorContent = await response.Content.ReadAsStringAsync();
-                    _logger.LogError("API Error fetching items. Status: {StatusCode}, URI: {RequestUri}, Content: {ErrorContent}", response.StatusCode, requestUri, errorContent);
-                    return null;
-                }
+                var pagedResult = await _httpClient.GetFromJsonAsync<PagedResult<ItemDisplayDto>>(requestUri);
+                return pagedResult;
             }
             catch (Exception ex)
             {
@@ -227,6 +205,45 @@ namespace Safir.Client.Services
             {
                 _logger.LogError(ex, "Error fetching PriceElamieTfDetails for PEID: {PEID}, CustCode: {CustCode}, PPID: {PPID}", elamiehTakhfifId, custTypeCode, paymentTermId);
                 // Depending on desired behavior, either return null or re-throw
+                return null;
+            }
+        }
+
+        public async Task<PagedResult<ItemDisplayDto>?> GetHistoricalOrderItemsAsync(
+                    int anbarCode,
+                    int? priceListId,
+                    int? customerTypeCode,
+                    int? paymentTermId,
+                    int? discountListId,
+                    string? searchTerm,
+                    int pageNumber,
+                    int pageSize)
+        {
+            var queryParams = new List<string>
+            {
+                $"anbarCode={anbarCode}",
+                $"pageNumber={pageNumber}",
+                $"pageSize={pageSize}"
+            };
+
+            if (priceListId.HasValue) queryParams.Add($"priceListId={priceListId.Value}");
+            if (customerTypeCode.HasValue) queryParams.Add($"customerTypeCode={customerTypeCode.Value}");
+            if (paymentTermId.HasValue) queryParams.Add($"paymentTermId={paymentTermId.Value}");
+            if (discountListId.HasValue) queryParams.Add($"discountListId={discountListId.Value}");
+            if (!string.IsNullOrWhiteSpace(searchTerm)) queryParams.Add($"searchTerm={HttpUtility.UrlEncode(searchTerm)}");
+
+            string requestUri = "api/items/historical-order-items?" + string.Join("&", queryParams);
+
+            try
+            {
+                _logger.LogInformation("Client Service: Calling API to get historical paged items: {RequestUri}", requestUri);
+                var result = await _httpClient.GetFromJsonAsync<PagedResult<ItemDisplayDto>>(requestUri);
+                _logger.LogInformation("Client Service: Successfully received paged result for historical items.");
+                return result;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Client Service: Exception fetching historical paged items from {RequestUri}", requestUri);
                 return null;
             }
         }
