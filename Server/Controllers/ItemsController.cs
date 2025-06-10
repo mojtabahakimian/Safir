@@ -364,7 +364,7 @@ namespace Safir.Server.Controllers
 
                 if (string.IsNullOrWhiteSpace(request.SearchTerm))
                 {
-                    totalItemCount = items.Count;
+                    totalItemCount = items.Count; // در حالت اولیه، تعداد کل همان تعداد نمایش داده شده است
                 }
 
                 // ... بقیه منطق محاسبه قیمت و تخفیف بدون تغییر باقی می‌ماند ...
