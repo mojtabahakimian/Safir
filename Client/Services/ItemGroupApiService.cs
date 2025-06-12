@@ -216,40 +216,54 @@ namespace Safir.Client.Services
         }
 
         public async Task<PagedResult<ItemDisplayDto>?> GetHistoricalOrderItemsAsync(
-                    int anbarCode,
-                    int? priceListId,
-                    int? customerTypeCode,
-                    int? paymentTermId,
-                    int? discountListId,
-                    string? searchTerm,
-                    int pageNumber,
-                    int pageSize)
+            int anbarCode,
+            int? priceListId,
+            int? customerTypeCode,
+            int? paymentTermId,
+            int? discountListId,
+            string? searchTerm,
+            int pageNumber,
+            int pageSize)
         {
-            var queryParams = new List<string>
+            // ایجاد یک آبجکت از DTO جدید
+            var requestDto = new HistoricalSearchRequestDto
             {
-                $"anbarCode={anbarCode}",
-                $"pageNumber={pageNumber}",
-                $"pageSize={pageSize}"
+                AnbarCode = anbarCode,
+                SearchTerm = searchTerm,
+                PageNumber = pageNumber,
+                PageSize = pageSize,
+                PriceListId = priceListId,
+                CustomerTypeCode = customerTypeCode,
+                PaymentTermId = paymentTermId,
+                DiscountListId = discountListId
             };
 
-            if (priceListId.HasValue) queryParams.Add($"priceListId={priceListId.Value}");
-            if (customerTypeCode.HasValue) queryParams.Add($"customerTypeCode={customerTypeCode.Value}");
-            if (paymentTermId.HasValue) queryParams.Add($"paymentTermId={paymentTermId.Value}");
-            if (discountListId.HasValue) queryParams.Add($"discountListId={discountListId.Value}");
-            if (!string.IsNullOrWhiteSpace(searchTerm)) queryParams.Add($"searchTerm={HttpUtility.UrlEncode(searchTerm)}");
-
-            string requestUri = "api/items/historical-order-items?" + string.Join("&", queryParams);
+            string requestUri = "api/items/search-historical-items"; // << آدرس جدید
 
             try
             {
-                _logger.LogInformation("Client Service: Calling API to get historical paged items: {RequestUri}", requestUri);
-                var result = await _httpClient.GetFromJsonAsync<PagedResult<ItemDisplayDto>>(requestUri);
-                _logger.LogInformation("Client Service: Successfully received paged result for historical items.");
-                return result;
+                _logger.LogInformation("Client Service: Posting to {RequestUri} for historical items.", requestUri);
+
+                // ارسال درخواست به صورت POST
+                var response = await _httpClient.PostAsJsonAsync(requestUri, requestDto);
+
+                // بررسی پاسخ
+                if (response.IsSuccessStatusCode)
+                {
+                    var result = await response.Content.ReadFromJsonAsync<PagedResult<ItemDisplayDto>>();
+                    _logger.LogInformation("Client Service: Successfully received paged result for historical items.");
+                    return result;
+                }
+                else
+                {
+                    var errorContent = await response.Content.ReadAsStringAsync();
+                    _logger.LogError("Failed to get historical items. Status: {StatusCode}, Content: {ErrorContent}", response.StatusCode, errorContent);
+                    return null;
+                }
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Client Service: Exception fetching historical paged items from {RequestUri}", requestUri);
+                _logger.LogError(ex, "Client Service: Exception searching historical items from {RequestUri}", requestUri);
                 return null;
             }
         }
