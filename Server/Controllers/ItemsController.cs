@@ -119,7 +119,8 @@ namespace Safir.Server.Controllers
                 var items = (await _dbService.DoGetDataSQLAsync<ItemDisplayDto>(itemsSql, parameters)).ToList();
                 int totalItemCount = await _dbService.DoGetDataSQLAsyncSingle<int>(countSql, parameters);
 
-                items.ForEach(i => {
+                items.ForEach(i =>
+                {
                     i.MinimumInventory ??= 0;
                     if (!string.IsNullOrEmpty(_imageBasePath))
                     {
@@ -142,7 +143,6 @@ namespace Safir.Server.Controllers
                 return StatusCode(500, "خطا در دریافت لیست کالاها.");
             }
         }
-
         [HttpGet("image/{itemCode}")]
         [AllowAnonymous]
         public async Task<IActionResult> GetItemImage(string itemCode)
@@ -264,9 +264,6 @@ namespace Safir.Server.Controllers
         [HttpPost("search-historical-items")]
         public async Task<ActionResult<PagedResult<ItemDisplayDto>>> SearchHistoricalOrderItems([FromBody] HistoricalSearchRequestDto request)
         {
-            // این متغیر برای نگهداری نتیجه نهایی استفاده می‌شود
-            ActionResult<PagedResult<ItemDisplayDto>> finalResult;
-
             try
             {
                 if (request.AnbarCode <= 0)
@@ -274,7 +271,7 @@ namespace Safir.Server.Controllers
                     return BadRequest("کد انبار معتبر نیست.");
                 }
 
-                _logger.LogInformation("API: Searching historical items. Anbar: {AnbarCode}, Search: '{SearchTerm}', Page: {Page}", request.AnbarCode, request.SearchTerm, request.PageNumber);
+                _logger.LogInformation("API: Searching historical items (SQL 2008 R2 Compatible). Anbar: {AnbarCode}, Search: '{SearchTerm}', Page: {Page}", request.AnbarCode, request.SearchTerm, request.PageNumber);
 
                 var parameters = new DynamicParameters();
                 parameters.Add("AnbarCode", request.AnbarCode);
@@ -294,48 +291,74 @@ namespace Safir.Server.Controllers
 
                 string whereClause = string.Join(" AND ", whereConditions);
 
-                // کوئری برای شمارش کل آیتم‌ها (فقط برای حالت جستجو لازم است)
-                string countSql = $@"SELECT COUNT(DISTINCT i.CODE) FROM dbo.INVO_LST i INNER JOIN dbo.STUF_DEF sd ON i.CODE = sd.CODE WHERE {whereClause};";
+                // کوئری برای شمارش کل آیتم‌های منحصربه‌فرد
+                string countSql = $@"SELECT COUNT(DISTINCT i.CODE) 
+                             FROM dbo.INVO_LST i 
+                             INNER JOIN dbo.STUF_DEF sd ON i.CODE = sd.CODE 
+                             WHERE {whereClause};";
 
-                // ساختار پایه کوئری برای خواندن اطلاعات کامل
-                string queryBody = $@"
-            FROM dbo.INVO_LST i
-            INNER JOIN dbo.STUF_DEF sd ON i.CODE = sd.CODE
-            LEFT JOIN dbo.TCOD_VAHEDS tv ON sd.VAHED = tv.CODE
-            LEFT JOIN dbo.STUF_FSK FSK ON sd.CODE = FSK.CODE AND FSK.ANBAR = @AnbarCode
-            LEFT JOIN dbo.AK_MOGO_AVL_KOL(99999999, @AnbarCode) AK ON sd.CODE = AK.CODE AND AK.ANBAR = @AnbarCode
-            LEFT JOIN dbo.AK_MOGO_FR(99999999, @AnbarCode) FR ON fr.CODE = sd.CODE AND FR.ANBAR = @AnbarCode
-            WHERE {whereClause}
-        ";
-
+                // ******** شروع بخش اصلاح شده اصلی ********
+                // کوئری جدید با ساختار صحیح برای صفحه‌بندی و جلوگیری از تکرار
                 string finalItemsSql;
                 int totalItemCount = 0;
 
+                // بخش اصلی کوئری که ثابت است
+                string queryBody = $@"
+            FROM dbo.INVO_LST i
+            INNER JOIN dbo.STUF_DEF sd ON i.CODE = sd.CODE
+            WHERE {whereClause}
+        ";
+
                 if (string.IsNullOrWhiteSpace(request.SearchTerm))
                 {
-                    // حالت بارگذاری اولیه: 50 آیتم اول
-                    finalItemsSql = $@"SELECT DISTINCT TOP 50
-                                sd.CODE, sd.NAME, sd.MABL_F, sd.B_SEF, sd.MAX_M, sd.TOZIH, sd.MENUIT,
-                                sd.VAHED AS VahedCode, tv.NAMES AS VahedName, CAST(0 AS BIT) AS ImageExists,
-                                ROUND(ISNULL(AK.SMEGH, 0) - ISNULL(FR.MEG, 0), 2) AS CurrentInventory,
-                                ISNULL(FSK.MIN_M, 0) AS MinimumInventory
-                            {queryBody} ORDER BY sd.NAME;";
+                    // حالت بارگذاری اولیه: 50 آیتم اول (بدون صفحه‌بندی)
+                    finalItemsSql = $@"
+                SELECT DISTINCT TOP 50
+                    sd.CODE, sd.NAME, sd.MABL_F, sd.B_SEF, sd.MAX_M, sd.TOZIH, sd.MENUIT,
+                    sd.VAHED AS VahedCode, tv.NAMES AS VahedName, CAST(0 AS BIT) AS ImageExists,
+                    ROUND(ISNULL(AK.SMEGH, 0) - ISNULL(FR.MEG, 0), 2) AS CurrentInventory,
+                    ISNULL(FSK.MIN_M, 0) AS MinimumInventory
+                FROM dbo.INVO_LST i
+                INNER JOIN dbo.STUF_DEF sd ON i.CODE = sd.CODE
+                LEFT JOIN dbo.TCOD_VAHEDS tv ON sd.VAHED = tv.CODE
+                LEFT JOIN dbo.STUF_FSK FSK ON sd.CODE = FSK.CODE AND FSK.ANBAR = @AnbarCode
+                LEFT JOIN dbo.AK_MOGO_AVL_KOL(99999999, @AnbarCode) AK ON sd.CODE = AK.CODE AND AK.ANBAR = @AnbarCode
+                LEFT JOIN dbo.AK_MOGO_FR(99999999, @AnbarCode) FR ON fr.CODE = sd.CODE AND FR.ANBAR = @AnbarCode
+                WHERE {whereClause}
+                ORDER BY sd.NAME;";
                 }
                 else
                 {
-                    // حالت جستجو: با صفحه‌بندی
+                    // حالت جستجو: با صفحه‌بندی صحیح
                     totalItemCount = await _dbService.DoGetDataSQLAsyncSingle<int>(countSql, parameters);
-                    finalItemsSql = $@"SELECT DISTINCT 
-                                sd.CODE, sd.NAME, sd.MABL_F, sd.B_SEF, sd.MAX_M, sd.TOZIH, sd.MENUIT,
-                                sd.VAHED AS VahedCode, tv.NAMES AS VahedName, CAST(0 AS BIT) AS ImageExists,
-                                ROUND(ISNULL(AK.SMEGH, 0) - ISNULL(FR.MEG, 0), 2) AS CurrentInventory,
-                                ISNULL(FSK.MIN_M, 0) AS MinimumInventory
-                            {queryBody} 
-                            ORDER BY sd.NAME
-                            OFFSET @RowStart ROWS FETCH NEXT @PageSize ROWS ONLY;";
+
+                    finalItemsSql = $@"
+                WITH DistinctItemsCTE AS (
+                    SELECT DISTINCT sd.CODE, sd.NAME
+                    {queryBody}
+                ),
+                PagedItemsCTE AS (
+                    SELECT CODE, NAME, ROW_NUMBER() OVER (ORDER BY NAME) AS RowNum
+                    FROM DistinctItemsCTE
+                )
+                SELECT
+                    p.CODE, p.NAME, sd.MABL_F, sd.B_SEF, sd.MAX_M, sd.TOZIH, sd.MENUIT,
+                    sd.VAHED AS VahedCode, tv.NAMES AS VahedName, CAST(0 AS BIT) AS ImageExists,
+                    ROUND(ISNULL(AK.SMEGH, 0) - ISNULL(FR.MEG, 0), 2) AS CurrentInventory,
+                    ISNULL(FSK.MIN_M, 0) AS MinimumInventory
+                FROM PagedItemsCTE p
+                INNER JOIN dbo.STUF_DEF sd ON p.CODE = sd.CODE
+                LEFT JOIN dbo.TCOD_VAHEDS tv ON sd.VAHED = tv.CODE
+                LEFT JOIN dbo.STUF_FSK FSK ON p.CODE = FSK.CODE AND FSK.ANBAR = @AnbarCode
+                LEFT JOIN dbo.AK_MOGO_AVL_KOL(99999999, @AnbarCode) AK ON p.CODE = AK.CODE AND AK.ANBAR = @AnbarCode
+                LEFT JOIN dbo.AK_MOGO_FR(99999999, @AnbarCode) FR ON p.CODE = FR.CODE AND FR.ANBAR = @AnbarCode
+                WHERE p.RowNum > @RowStart AND p.RowNum <= (@RowStart + @PageSize)
+                ORDER BY p.NAME;";
+
                     parameters.Add("RowStart", (request.PageNumber - 1) * request.PageSize);
                     parameters.Add("PageSize", request.PageSize);
                 }
+                // ******** پایان بخش اصلاح شده ********
 
                 var items = (await _dbService.DoGetDataSQLAsync<ItemDisplayDto>(finalItemsSql, parameters)).ToList();
 
@@ -344,8 +367,7 @@ namespace Safir.Server.Controllers
                     totalItemCount = items.Count; // در حالت اولیه، تعداد کل همان تعداد نمایش داده شده است
                 }
 
-                // ... (منطق اعمال قیمت و تخفیف که قبلاً داشتیم، اینجا باید دوباره اعمال شود)
-                // این بخش را برای کامل بودن دوباره اضافه می‌کنم
+                // ... بقیه منطق محاسبه قیمت و تخفیف بدون تغییر باقی می‌ماند ...
                 var priceLogicParams = new DynamicParameters();
                 priceLogicParams.Add("PriceListId", request.PriceListId);
                 priceLogicParams.Add("DiscountListId", request.DiscountListId);
@@ -387,17 +409,19 @@ namespace Safir.Server.Controllers
                     PageSize = request.PageSize
                 };
 
-                finalResult = Ok(pagedResult);
+                return Ok(pagedResult);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "API: Error in SearchHistoricalOrderItems. Search: '{SearchTerm}'", request.SearchTerm);
-                finalResult = StatusCode(500, "خطای داخلی سرور در دریافت کالاها.");
+                _logger.LogError(ex, "API: Error in SearchHistoricalOrderItems (SQL 2008 R2 Compatible). Search: '{SearchTerm}'", request.SearchTerm);
+                return StatusCode(500, new ProblemDetails
+                {
+                    Title = "Internal Server Error",
+                    Detail = "خطای داخلی سرور در دریافت کالاها.",
+                    Status = 500
+                });
             }
-
-            return finalResult;
-        }
-
+        }  
 
         //    [HttpGet("historical-order-items")]
         //    public async Task<ActionResult<PagedResult<ItemDisplayDto>>> GetHistoricalOrderItems(
