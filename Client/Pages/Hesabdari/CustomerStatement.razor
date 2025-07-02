@@ -6,25 +6,40 @@
 @* اضافه کردن Using ها و Inject ها لازم برای فایل Razor *@
 @using Safir.Shared.Models.Hesabdari
 @* تنظیم عنوان صفحه در مرورگر *@
-<PageTitle>صورت حساب مشتری @HesabCode</PageTitle>
+<PageTitle>
+    صورت حساب مشتری @HesabCode @if (!string.IsNullOrWhiteSpace(CustomerName))
+    {
+        @("- " + CustomerName)
+    }
+</PageTitle>
 
 <MudPaper Class="pa-4" Elevation="3">
-
-
 
     <MudItem>
         <MudButton Variant="Variant.Outlined"
                    Color="Color.Secondary"
                    OnClick="DownloadPdf"
-                   Disabled="@(isLoading || statementItems == null || !statementItems.Any())"
-                   StartIcon="@Icons.Material.Filled.PictureAsPdf">
-            دانلود PDF
+                   Disabled="@(isLoading || isDownloading || statementItems == null || !statementItems.Any())"
+                   StartIcon="@Icons.Material.Filled.PictureAsPdf"
+                   Style="position: relative;">
+            @if (isDownloading)
+            {
+                <MudText>درحال آماده سازی...</MudText>
+                <MudProgressLinear Color="Color.Secondary" Indeterminate="true" Class="mt-1" Style="position: absolute; bottom: 0; left: 0; width: 100%;" />
+            }
+            else
+            {
+                <MudText>دانلود PDF</MudText>
+            }
         </MudButton>
     </MudItem>
 
 
     <MudText Typo="Typo.h5" GutterBottom="true">
-        صورت حساب <span dir="ltr">@HesabCode</span>
+        صورت حساب <span dir="ltr">@HesabCode</span> @if (!string.IsNullOrWhiteSpace(CustomerName))
+        {
+            <span>(@CustomerName)</span>
+        }
     </MudText>
     @* می‌توانید یک بخش برای انتخاب بازه تاریخ هم اینجا اضافه کنید *@
     @* <MudDatePicker Label="از تاریخ" @bind-Date="startDate" /> *@

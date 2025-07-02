@@ -9,6 +9,10 @@ using System.Threading.Tasks;
 using MudBlazor;                     // برای ISnackbar و کامپوننت ها
 using Microsoft.Extensions.Logging;  // برای ILogger
 using Microsoft.JSInterop;
+using Microsoft.AspNetCore.Components.Authorization;
+using Safir.Shared.Constants;
+using System.Globalization;
+using Safir.Shared.Utility;
 
 namespace Safir.Client.Pages.Hesabdari // مطمئن شوید namespace درست است
 {
@@ -19,6 +23,10 @@ namespace Safir.Client.Pages.Hesabdari // مطمئن شوید namespace درست
         [Parameter]
         public string? HesabCode { get; set; }
 
+        // نام مشتری که از کوئری استرینگ دریافت می‌شود
+        [Parameter]
+        [SupplyParameterFromQuery(Name = "name")]
+        public string? CustomerName { get; set; }
         // تزریق سرویس ها مورد نیاز
         [Inject] private CustomerApi CustomerApi { get; set; } = default!; // <-- به این شکل تغییر دهید
         [Inject] private ISnackbar Snackbar { get; set; } = default!;
@@ -26,6 +34,11 @@ namespace Safir.Client.Pages.Hesabdari // مطمئن شوید namespace درست
         [Inject] private IJSRuntime JSRuntime { get; set; } = default!; // <<< تزریق IJSRuntime
 
         [Inject] private NavigationManager NavManager { get; set; } = default!; // <-- این خط رو اضافه کنید
+
+        [Inject] private ReportApiService ReportApi { get; set; } = default!;
+        [Inject] private ClientAppSettingsService AppSettingsService { get; set; } = default!;
+        [Inject] private AuthenticationStateProvider AuthenticationStateProvider { get; set; } = default!;
+
 
         // لیستی برای نگهداری آیتم های صورت حساب دریافتی از سرور
         private List<QDAFTARTAFZIL2_H>? statementItems;
@@ -124,7 +137,7 @@ namespace Safir.Client.Pages.Hesabdari // مطمئن شوید namespace درست
             return docNumber.Value.ToString("N0");
         }
 
-        private async Task DownloadPdf()
+        private async Task DownloadPdf_Old()
         {
             if (string.IsNullOrWhiteSpace(HesabCode))
             {
@@ -174,6 +187,95 @@ namespace Safir.Client.Pages.Hesabdari // مطمئن شوید namespace درست
             {
                 isDownloading = false; // پایان وضعیت دانلود
                 StateHasChanged(); // بروزرسانی UI
+            }
+        }
+
+        private async Task DownloadPdf()
+        {
+            if (string.IsNullOrWhiteSpace(HesabCode))
+            {
+                Snackbar.Add("کد حساب مشتری نامعتبر است.", Severity.Warning);
+                return;
+            }
+
+            isDownloading = true;
+            StateHasChanged();
+
+            var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+            var _CurrentUser_ = authState.User;
+            if (_CurrentUser_?.Identity?.IsAuthenticated == false)
+            {
+                Snackbar.Add("ابتدا وارد حساب کاربری خود شوید.", Severity.Warning);
+                return;
+            }
+            var _SAZMAN_ = await AppSettingsService.GetSettingsAsync();
+
+            string UserNameDisplay = _CurrentUser_.FindFirst(Safir.Shared.Constants.BaseknowClaimTypes.UUSER)?.Value.ToString();
+            string CompanyName = _SAZMAN_.NAME.ToString();
+
+            string BaseTarikhSal = _SAZMAN_.YEA.ToString() + "0101";
+
+            var pc = new PersianCalendar();
+            var now = DateTime.Now;
+            string persianDate = string.Format("{0:0000}{1:00}{2:00}",
+                pc.GetYear(now),
+                pc.GetMonth(now),
+                pc.GetDayOfMonth(now));
+
+            string TaTarikh = CL_Tarikh.GetCurrentPersianDateAsLong().ToString();
+
+
+            //if (statementItems != null && statementItems.Any())
+            //{
+            //    var availableDates = statementItems
+            //        .Where(x => x.DATE_S.HasValue)
+            //        .Select(x => x.DATE_S!.Value)
+            //        .ToList();
+            //    if (availableDates.Any())
+            //    {
+            //        currentStartDate = availableDates.Min();
+            //        TaTarikh = availableDates.Max().ToString();
+            //    }
+            //}
+
+            try
+            {
+                var parameters = new Dictionary<string, object>
+                {
+                    ["DT1"] = currentStartDate?.ToString() ?? "",
+                    ["DT2"] = currentEndDate?.ToString() ?? "",
+                    ["HESAB"] = HesabCode,
+                    ["KARBAR"] = UserNameDisplay,
+                    ["COMPANY_NAME"] = CompanyName,
+                    ["HESABFULL"] = $"حساب : {HesabCode} | {CustomerName}",
+                    ["AZ_DT"] = $"از تاریخ : {FormatShamsiDateFromLong(Convert.ToInt64(BaseTarikhSal))}",
+                    ["TA_DT"] = $"تا تاریخ : {FormatShamsiDateFromLong(Convert.ToInt64(TaTarikh))}",
+                };
+
+                byte[]? pdf = await ReportApi.GeneratePdfAsync("R_DAFTAR_TAFZILY_2_2.mrt", parameters);
+
+                if (pdf?.Length > 0)
+                {
+                    var fn = $"Statement_{HesabCode}_{currentStartDate}_{currentEndDate}_{DateTime.Now}.pdf";
+                    await JSRuntime.InvokeVoidAsync("downloadFileFromBytes", fn, pdf);
+                    Snackbar.Add("دانلود PDF آغاز شد.", Severity.Success);
+                    Logger.LogInformation("Report download: {Report}", fn);
+                }
+                else
+                {
+                    Snackbar.Add("خطا در تولید گزارش.", Severity.Error);
+                    Logger.LogError("Empty PDF returned for report R_DAFTAR_TAFZILY_2_2");
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.LogError(ex, "Error downloading report");
+                Snackbar.Add($"خطا: {ex.Message}", Severity.Error);
+            }
+            finally
+            {
+                isDownloading = false;
+                StateHasChanged();
             }
         }
     }
