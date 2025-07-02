@@ -343,7 +343,7 @@ namespace Safir.Client.Pages.Kharid
                 }
 
                 // --- اگر مسدود نبود، ادامه بده ---
-                var url = $"/customer-statement/{Uri.EscapeDataString(hesabCode)}";
+                var url = $"/customer-statement/{Uri.EscapeDataString(hesabCode)}?name={Uri.EscapeDataString(customerName)}";
                 Logger.LogInformation("Navigating to customer statement: {Url}", url);
                 NavManager.NavigateTo(url);
                 // --- پایان منطق اصلی ---

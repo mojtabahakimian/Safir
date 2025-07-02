@@ -32,7 +32,7 @@
                 { @foreach (var date in availableDates!)
                     {
                         <MudSelectItem T="long?" Value="@date">@FormatPersianDate(date.ToString())</MudSelectItem>
-                    }                          }
+                    }           }
             </MudSelect>
             @if (!string.IsNullOrEmpty(datesErrorMessage))
             {
@@ -122,9 +122,8 @@
                             <MudButton Variant="Variant.Filled"
                                        StartIcon="@Icons.Material.Filled.ReceiptLong"
                                        Color="Color.Secondary"
-                                       Size="Size.Small"  Disabled="@_isCheckingBlock"
-                                       OnClick="@(() => ShowCustomerStatement(customer.hes))"
-                                      >
+                                       Size="Size.Small" Disabled="@_isCheckingBlock"
+                                       OnClick="@(() => ShowCustomerStatement(customer.hes))">
                                 صورت حساب
                             </MudButton>
                             <MudButton Variant="Variant.Filled" Color="Color.Success" Size="Size.Small"

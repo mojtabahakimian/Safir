@@ -17,10 +17,14 @@
   <ItemGroup>
     <None Remove="Fonts\2.png" />
     <None Remove="Fonts\IRANYekanFN.TTF" />
+    <None Remove="Rtps\R_DAFTAR_TAFZILY_2_2.mrt" />
   </ItemGroup>
 
   <ItemGroup>
     <Content Include="Fonts\IRANYekanFN.TTF">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </Content>
+    <Content Include="Rtps\R_DAFTAR_TAFZILY_2_2.mrt">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </Content>
   </ItemGroup>
@@ -34,6 +38,7 @@
     <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="6.0.36" />
     <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly.Server" Version="6.0.20" />
     <PackageReference Include="QuestPDF" Version="2025.4.0" />
+    <PackageReference Include="Stimulsoft.Reports.Web.NetCore" Version="2023.1.1" />
     <PackageReference Include="System.Data.SqlClient" Version="4.9.0" />
   </ItemGroup>
 
