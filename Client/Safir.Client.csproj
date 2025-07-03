@@ -6,7 +6,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <ServiceWorkerAssetsManifest>service-worker-assets.js</ServiceWorkerAssetsManifest>
     <UserSecretsId>f3df9012-da18-49e5-96d7-36887a962be9</UserSecretsId>
-	  <Version>1.0.0.1</Version>
+	  <Version>1.0.0.2</Version>
   </PropertyGroup>
 
   <ItemGroup>

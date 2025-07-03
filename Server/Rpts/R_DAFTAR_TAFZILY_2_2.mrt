@@ -698,7 +698,7 @@ PreviousBES = PreviousBES + cSum(DataBand2,DataSource1.BES);</BeforePrintEvent>
               <ClientRectangle>17.8,0,1.2,0.8</ClientRectangle>
               <Conditions isList="true" count="0" />
               <Expressions isList="true" count="0" />
-              <Font>IRANYekanFN,9</Font>
+              <Font>IRANYekanFN,8</Font>
               <HorAlignment>Center</HorAlignment>
               <Margins>0,0,0,0</Margins>
               <Name>Text1</Name>
@@ -716,7 +716,7 @@ PreviousBES = PreviousBES + cSum(DataBand2,DataSource1.BES);</BeforePrintEvent>
               <ClientRectangle>16.4,0,1.4,0.8</ClientRectangle>
               <Conditions isList="true" count="0" />
               <Expressions isList="true" count="0" />
-              <Font>IRANYekanFN,9</Font>
+              <Font>IRANYekanFN,8</Font>
               <HorAlignment>Center</HorAlignment>
               <Margins>0,0,0,0</Margins>
               <Name>Text8</Name>
@@ -740,7 +740,7 @@ PreviousBES = PreviousBES + cSum(DataBand2,DataSource1.BES);</BeforePrintEvent>
               <ClientRectangle>8.8,0,7.6,0.8</ClientRectangle>
               <Conditions isList="true" count="0" />
               <Expressions isList="true" count="0" />
-              <Font>IRANYekanFN,9</Font>
+              <Font>IRANYekanFN,8</Font>
               <HorAlignment>Right</HorAlignment>
               <Margins>1,1,1,1</Margins>
               <Name>Text2</Name>
@@ -1440,10 +1440,10 @@ SumRunning(DataBand2,DataSource1.MAND) &lt; 0, "بس")}</Text>
     <value>Stimulsoft.Report.Dll</value>
   </ReferencedAssemblies>
   <ReportAlias>Report</ReportAlias>
-  <ReportChanged>7/3/2025 2:59:13 AM</ReportChanged>
+  <ReportChanged>7/3/2025 3:29:01 AM</ReportChanged>
   <ReportCreated>9/5/2021 1:38:11 PM</ReportCreated>
-  <ReportFile>C:\Users\Administrator\Desktop\Safir\Server\Rpts\R_DAFTAR_TAFZILY_2_2.mrt</ReportFile>
-  <ReportGuid>6016733340044e8fb64a0a7ae8f54fcd</ReportGuid>
+  <ReportFile>E:\prg\Blazor WebAssembly\Safir\Server\Rpts\R_DAFTAR_TAFZILY_2_2.mrt</ReportFile>
+  <ReportGuid>3abd3ce149b04cd096eee2f6831e06c1</ReportGuid>
   <ReportName>Report</ReportName>
   <ReportUnit>Centimeters</ReportUnit>
   <ReportVersion>2023.1.1.0</ReportVersion>
