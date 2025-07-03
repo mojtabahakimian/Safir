@@ -202,12 +202,7 @@ namespace Safir.Client.Pages.Kharid
                 // --- اگر مسدود نبود، ادامه بده ---
                 Logger.LogInformation("Starting order for customer: {CustomerName} ({CustomerHes})", customer.person, customer.hes);
                 await CartService.SetCustomerAsync(customer);
-                string navigationUrl = "/item-groups";
-                if (!_userHasVisitPlan) // اگر کاربر برنامه ویزیت ندارد
-                {
-                    navigationUrl += "?mode=historical"; // پارامتر برای حالت نمایش کالاهای تاریخی
-                }
-                NavManager.NavigateTo(navigationUrl);
+                NavManager.NavigateTo("/item-groups");
                 // --- پایان منطق اصلی ---
             }
             catch (Exception ex) // Catch potential errors during the check or navigation

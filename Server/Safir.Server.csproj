@@ -17,14 +17,14 @@
   <ItemGroup>
     <None Remove="Fonts\2.png" />
     <None Remove="Fonts\IRANYekanFN.TTF" />
-    <None Remove="Rtps\R_DAFTAR_TAFZILY_2_2.mrt" />
+    <None Remove="Rpts\R_DAFTAR_TAFZILY_2_2.mrt" />
   </ItemGroup>
 
   <ItemGroup>
     <Content Include="Fonts\IRANYekanFN.TTF">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </Content>
-    <Content Include="Rtps\R_DAFTAR_TAFZILY_2_2.mrt">
+    <Content Include="Rpts\R_DAFTAR_TAFZILY_2_2.mrt">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </Content>
   </ItemGroup>
