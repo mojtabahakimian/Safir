@@ -185,13 +185,13 @@
 
         if (status != ConnectivityStatus.Healthy)
         {
-            Snackbar.Add(userMsg, Severity.Error, config =>
-            {
-                config.RequireInteraction = true;
-                config.VisibleStateDuration = int.MaxValue;
-                config.DuplicatesBehavior = SnackbarDuplicatesBehavior.Prevent;
-                config.SnackbarVariant = Variant.Filled;
-            });
+            // Snackbar.Add(userMsg, Severity.Error, config =>
+            // {
+            //     config.RequireInteraction = true;
+            //     config.VisibleStateDuration = int.MaxValue;
+            //     config.DuplicatesBehavior = SnackbarDuplicatesBehavior.Prevent;
+            //     config.SnackbarVariant = Variant.Filled;
+            // });
             Console.WriteLine($"Login Attempt Connectivity Error - Technical Details: {techMsg}");
             StateHasChanged();
             return;
@@ -246,13 +246,13 @@
             connectivityWarningMessage = $"هشدار ({context}): {userMessage}";
 
             // یک اسنک‌بار برای جلب توجه، اما هشدار اصلی در MudAlert خواهد بود
-            Snackbar.Add(connectivityWarningMessage, Severity.Warning, config =>
-            {
-                config.RequireInteraction = false; // این فقط یک نوتیفیکیشن است
-                config.VisibleStateDuration = 7000; // 7 ثانیه
-                config.DuplicatesBehavior = SnackbarDuplicatesBehavior.Prevent; // از اسنک‌بارهای تکراری جلوگیری کن
-                config.SnackbarVariant = Variant.Filled;
-            });
+            // Snackbar.Add(connectivityWarningMessage, Severity.Warning, config =>
+            // {
+            //     config.RequireInteraction = false; // این فقط یک نوتیفیکیشن است
+            //     config.VisibleStateDuration = 7000; // 7 ثانیه
+            //     config.DuplicatesBehavior = SnackbarDuplicatesBehavior.Prevent; // از اسنک‌بارهای تکراری جلوگیری کن
+            //     config.SnackbarVariant = Variant.Filled;
+            // });
             Console.WriteLine($"MainLayout Connectivity - Context: {context}, UserMsg: {userMessage}, TechMsg: {technicalMessage}");
         }
         else
@@ -260,11 +260,11 @@
             // اگر قبلا هشداری بوده و الان اتصال برقرار شده، آن را ببند
             if (showConnectivityWarning)
             {
-                Snackbar.Add("ارتباط با سرور مجدداً برقرار شد.", Severity.Success, config =>
-                {
-                    config.VisibleStateDuration = 5000;
-                    config.SnackbarVariant = Variant.Filled;
-                });
+                // Snackbar.Add("ارتباط با سرور مجدداً برقرار شد.", Severity.Success, config =>
+                // {
+                //     config.VisibleStateDuration = 5000;
+                //     config.SnackbarVariant = Variant.Filled;
+                // });
             }
             showConnectivityWarning = false;
             connectivityWarningMessage = "";

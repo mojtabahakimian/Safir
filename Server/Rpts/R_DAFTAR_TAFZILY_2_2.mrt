@@ -105,7 +105,7 @@ PreviousBES = PreviousBES + cSum(DataBand2,DataSource1.BES);</BeforePrintEvent>
             </COMPANY_NAME>
             <Text24 Ref="9" type="Text" isKey="true">
               <Brush>Transparent</Brush>
-              <ClientRectangle>2.6,1.6,1,0.6</ClientRectangle>
+              <ClientRectangle>3,1.6,1,0.6</ClientRectangle>
               <Conditions isList="true" count="0" />
               <Expressions isList="true" count="0" />
               <Font>IRANYekanFN,10</Font>
@@ -184,7 +184,7 @@ PreviousBES = PreviousBES + cSum(DataBand2,DataSource1.BES);</BeforePrintEvent>
             </TA_DT>
             <AZ_DT Ref="14" type="Text" isKey="true">
               <Brush>Transparent</Brush>
-              <ClientRectangle>3.6,2.4,2.8,0.6</ClientRectangle>
+              <ClientRectangle>3.6,2.4,3,0.6</ClientRectangle>
               <Conditions isList="true" count="0" />
               <Expressions isList="true" count="0" />
               <Font>IRANYekanFN,10</Font>
@@ -199,15 +199,20 @@ PreviousBES = PreviousBES + cSum(DataBand2,DataSource1.BES);</BeforePrintEvent>
             </AZ_DT>
             <HESABFULL Ref="15" type="Text" isKey="true">
               <Brush>Transparent</Brush>
-              <ClientRectangle>8.2,2.4,10.8,0.6</ClientRectangle>
+              <CanBreak>True</CanBreak>
+              <CanGrow>True</CanGrow>
+              <CanShrink>True</CanShrink>
+              <ClientRectangle>7,2.4,12,0.6</ClientRectangle>
               <Conditions isList="true" count="0" />
               <Expressions isList="true" count="0" />
               <Font>IRANYekanFN,10</Font>
+              <HorAlignment>Right</HorAlignment>
               <Margins>0,0,0,0</Margins>
               <Name>HESABFULL</Name>
               <Page isRef="5" />
               <Parent isRef="6" />
               <TextBrush>Black</TextBrush>
+              <TextOptions>,,,,WordWrap=True,A=0</TextOptions>
               <Type>Expression</Type>
             </HESABFULL>
             <Text14 Ref="16" type="Text" isKey="true">
@@ -1440,10 +1445,10 @@ SumRunning(DataBand2,DataSource1.MAND) &lt; 0, "بس")}</Text>
     <value>Stimulsoft.Report.Dll</value>
   </ReferencedAssemblies>
   <ReportAlias>Report</ReportAlias>
-  <ReportChanged>7/3/2025 3:29:01 AM</ReportChanged>
+  <ReportChanged>7/4/2025 3:46:49 AM</ReportChanged>
   <ReportCreated>9/5/2021 1:38:11 PM</ReportCreated>
   <ReportFile>E:\prg\Blazor WebAssembly\Safir\Server\Rpts\R_DAFTAR_TAFZILY_2_2.mrt</ReportFile>
-  <ReportGuid>3abd3ce149b04cd096eee2f6831e06c1</ReportGuid>
+  <ReportGuid>f6a49c44cda248468b721996ff419c14</ReportGuid>
   <ReportName>Report</ReportName>
   <ReportUnit>Centimeters</ReportUnit>
   <ReportVersion>2023.1.1.0</ReportVersion>

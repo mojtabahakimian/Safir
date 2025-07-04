@@ -1,10 +1,6 @@
-﻿using Safir.Shared.Interfaces;
-using Safir.Shared.Models.Taarif;
+﻿using Safir.Shared.Models.Taarif;
 using Safir.Shared.Models.Visitory;
-using System.Net.Http.Json; // Ensure this is included
-using System.Collections.Generic;
-using System.Threading.Tasks;
-using System; // For ArgumentNullException
+using System.Net.Http.Json;
 using Safir.Shared.Models.Hesabdari;
 using System.Web;
 using Safir.Shared.Models;

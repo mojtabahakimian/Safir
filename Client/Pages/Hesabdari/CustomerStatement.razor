@@ -3,7 +3,10 @@
 @* تعریف آدرس (Route) صفحه - HesabCode از URL خوانده می شود *@
 @page "/customer-statement/{HesabCode}"
 
+@attribute [Authorize]
+
 @* اضافه کردن Using ها و Inject ها لازم برای فایل Razor *@
+@using Microsoft.AspNetCore.Authorization;
 @using Safir.Shared.Models.Hesabdari
 @* تنظیم عنوان صفحه در مرورگر *@
 <PageTitle>
