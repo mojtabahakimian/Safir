@@ -4,6 +4,8 @@ using QuestPDF.Drawing;
 using QuestPDF.Infrastructure;
 using Safir.Server.Services;
 using Safir.Shared.Interfaces;
+using Stimulsoft.Base;
+using Stimulsoft.Report;
 using System.Text;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -70,6 +72,9 @@ try
         FontManager.RegisterFont(File.OpenRead(fontPath));
         app.Logger.LogInformation("فونت QuestPDF با موفقیت از مسیر {FontPath} رجیستر شد.", fontPath);
 
+
+        StiFontCollection.AddFontFile(fontPath);
+   
         // <<< --- حذف بررسی FontManager.FontFamilies --- >>>
     }
     else

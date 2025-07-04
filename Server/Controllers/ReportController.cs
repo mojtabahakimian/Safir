@@ -3,6 +3,7 @@ using Stimulsoft.Report.Dictionary;
 using Stimulsoft.Report;
 using Safir.Shared.Models;
 using Stimulsoft.Report.Components;
+using Stimulsoft.Report.Export;
 
 namespace Safir.Server.Controllers
 {
@@ -12,11 +13,13 @@ namespace Safir.Server.Controllers
     {
         private readonly IWebHostEnvironment _env;
         private readonly string _connString;
+        private readonly ILogger<ReportsController> _logger;
 
-        public ReportsController(IWebHostEnvironment env, IConfiguration config)
+        public ReportsController(IWebHostEnvironment env, IConfiguration config, ILogger<ReportsController> logger)
         {
             _env = env;
             _connString = config.GetConnectionString("DefaultConnection")!;
+            _logger = logger;
         }
 
         [HttpPost("Generate")]
@@ -80,17 +83,32 @@ namespace Safir.Server.Controllers
                     txt.Text = kv.Value?.ToString() ?? "";
             }
 
+
+
             // 4. Render & export
             return await Task.Run(() =>
             {
-                report.Render();
+                var pdfSettings = new StiPdfExportSettings
+                {
+                    EmbeddedFonts = true,
+                    UseUnicode = true,
+                    Compressed = true,
+                    ImageQuality = 0.75f, // Adjust image quality/compression
+                    ImageResolution = 150, // Adjust image resolution //or 300f
+
+                    ////StandardPdfFonts = false,
+                    //ExportRtfTextAsImage = false,
+                };
+
+                report.Render(false);
+
+                var exportService = new StiPdfExportService();
                 using var ms = new MemoryStream();
-                report.ExportDocument(StiExportFormat.Pdf, ms);
+                exportService.ExportTo(report, ms, pdfSettings);
                 ms.Position = 0;
+
                 var fileName = Path.GetFileNameWithoutExtension(req.ReportName) + ".pdf";
-                return File(ms.ToArray(),
-                            "application/pdf",
-                            fileName);
+                return File(ms.ToArray(), "application/pdf", fileName);
             });
         }
     }

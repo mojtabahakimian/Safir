@@ -1,20 +1,10 @@
-﻿// مسیر فایل: Safir.Server/Controllers/PdfGenerator.cs
-// -------------------------------
-// using های لازم را بررسی کنید و موارد زیر را اضافه یا جایگزین کنید:
-using Microsoft.Extensions.Logging;
-using QuestPDF.Drawing;
-using QuestPDF.Fluent;
+﻿using QuestPDF.Fluent;
 using QuestPDF.Helpers;
 using QuestPDF.Infrastructure;
 using Safir.Shared.Models.Hesabdari;
 using Safir.Shared.Utility;
-using System;
-using System.Collections.Generic;
-using System.IO; // <--- اضافه شود
-using System.Linq;
-using Microsoft.AspNetCore.Hosting; // <--- اضافه شود
 
-namespace Safir.Server.Controllers // یا namespace صحیح شما
+namespace Safir.Server.Controllers
 {
     /// <summary>
     /// کلاس تولید PDF صورت حساب مشتری

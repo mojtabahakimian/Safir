@@ -434,7 +434,24 @@ namespace Safir.Server.Controllers
 
                 }, IsolationLevel.Serializable); //ReadCommitted
 
-
+                // --- Award Calculation ---
+                try
+                {
+                    const string rewardSql = "EXEC dbo.sp_ManageInvoiceRewards @InvoiceNumber, @InvoiceTag, @IsRewardSystemActive, @PerformingUserID";
+                    await _dbService.DoExecuteSQLAsync(rewardSql, new
+                    {
+                        InvoiceNumber = generatedProformaNumber,
+                        InvoiceTag = ProformaTag,
+                        IsRewardSystemActive = request.Header.CalculateAward,
+                        PerformingUserID = userId
+                    });
+                    _logger.LogInformation("Reward calculation executed for Proforma {ProformaNumber}", generatedProformaNumber);
+                }
+                catch (Exception rewardEx)
+                {
+                    _logger.LogError(rewardEx, "Error executing reward calculation for Proforma {ProformaNumber}", generatedProformaNumber);
+                    // Reward calculation failure should not prevent proforma save
+                }
 
 
                 _logger.LogInformation("Proforma saved successfully with Number: {ProformaNumber}", generatedProformaNumber);

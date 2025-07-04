@@ -45,7 +45,7 @@
             <MudTextField T="string" Label="جستجوی مشتری"
             @bind-Value="SearchTerm"
                           Immediate="true"
-                          DebounceInterval="300"
+                          DebounceInterval="500"
                           Disabled="@(isLoading || datesLoading || !string.IsNullOrEmpty(errorMessage) || !string.IsNullOrEmpty(datesErrorMessage))"
                           Variant="Variant.Outlined" Margin="Margin.Dense"
                           Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search"
