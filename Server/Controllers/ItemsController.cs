@@ -261,6 +261,62 @@ namespace Safir.Server.Controllers
             }
         }
 
+
+        [HttpGet("visitor-prices")]
+        public async Task<ActionResult<List<VisitorItemPriceDto>>> GetVisitorPrices([FromQuery] int priceListId, [FromQuery] List<string>? itemCodes)
+        {
+            var userHes = User.FindFirstValue(BaseknowClaimTypes.USER_HES);
+            if (string.IsNullOrEmpty(userHes))
+            {
+                _logger.LogWarning("User HES claim ('{UserHesClaim}') is missing.", BaseknowClaimTypes.USER_HES);
+                return Unauthorized("اطلاعات کاربر برای دریافت قیمت‌ها معتبر نیست.");
+            }
+
+            if (priceListId <= 0)
+            {
+                return BadRequest("شناسه اعلامیه قیمت معتبر نیست.");
+            }
+
+            _logger.LogInformation("Fetching visitor item prices for UserHES: {UserHes}, PriceListID: {PriceListId}, ItemCodes count: {ItemCodeCount}", userHes, priceListId, itemCodes?.Count ?? 0);
+
+            var sql = new StringBuilder(@"
+                     SELECT DISTINCT
+                         vpk.CODE,      -- کد کالا از VISITORS_PORSANT_KALA
+                         ped.PRICE1,    -- قیمت از PRICE_ELAMIE_DTL
+                         ped.PEPID      -- شناسه اعلامیه قیمت از PRICE_ELAMIE_DTL
+                     FROM dbo.VISITORS_PORSANT vp
+                     INNER JOIN dbo.VISITORS_PORSANT_KALA vpk ON vp.PORID = vpk.PORID
+                     INNER JOIN dbo.STUF_DEF sd ON vpk.CODE = sd.CODE
+                     INNER JOIN dbo.PRICE_ELAMIE_DTL ped ON sd.PGID = ped.PGID AND ped.PEPID = @PriceListIdParam
+                     WHERE vp.HES = @UserHesParam");
+
+            var parameters = new DynamicParameters();
+            parameters.Add("UserHesParam", userHes);
+            parameters.Add("PriceListIdParam", priceListId);
+
+            if (itemCodes != null && itemCodes.Any())
+            {
+                sql.AppendLine(" AND vpk.CODE IN @ItemCodesParam");
+                parameters.Add("ItemCodesParam", itemCodes);
+                _logger.LogInformation("Filtering visitor prices by {Count} specific item codes.", itemCodes.Count);
+            }
+            else
+            {
+                _logger.LogInformation("Fetching all visitor prices for selected price list (no specific item filter).");
+            }
+
+            try
+            {
+                var prices = await _dbService.DoGetDataSQLAsync<VisitorItemPriceDto>(sql.ToString(), parameters);
+                return Ok(prices ?? Enumerable.Empty<VisitorItemPriceDto>());
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error fetching visitor item prices for UserHES {UserHes} and PriceListID {PriceListId}.", userHes, priceListId);
+                return StatusCode(StatusCodes.Status500InternalServerError, "خطا در دریافت لیست قیمت کالاها از سرور.");
+            }
+        }
+
         [HttpPost("search-historical-items")]
         public async Task<ActionResult<PagedResult<ItemDisplayDto>>> SearchHistoricalOrderItems([FromBody] HistoricalSearchRequestDto request)
         {

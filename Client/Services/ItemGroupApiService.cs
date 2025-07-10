@@ -169,6 +169,7 @@ namespace Safir.Client.Services
                 }
 
                 var requestUri = $"api/items/visitor-prices?{queryParams}";
+                //var requestUri = $"api/items/visitor-prices?{queryParams.ToString()}";
 
                 _logger.LogInformation("Calling API for visitor prices: {RequestUri}", requestUri);
                 var response = await _httpClient.GetAsync(requestUri);
