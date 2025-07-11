@@ -65,6 +65,11 @@
             <MudNavLink Href="login" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.Login">
                 ورود کاربری
             </MudNavLink>
+
+            <MudNavLink Disabled="true" Icon="@Icons.Material.Filled.Info">
+                نسخه: @appVersion
+            </MudNavLink>
+
             <MudNavLink @onclick="BeginFullCleanup" Icon="@Icons.Material.Filled.CleaningServices">
                 تازه سازی اطلاعات
             </MudNavLink>

@@ -103,6 +103,15 @@ namespace Safir.Server.Controllers
             long currentDate = CL_Tarikh.GetCurrentPersianDateAsLong();
             int currentTime = int.Parse(DateTime.Now.ToString("HHmmss"));
 
+            // Claims for visitor commission logic
+            var visitorHes = User.FindFirstValue(BaseknowClaimTypes.USER_HES);
+            var poridClaim = User.FindFirstValue(BaseknowClaimTypes.PORID);
+            int? porid = null;
+            if (!string.IsNullOrWhiteSpace(poridClaim) && int.TryParse(poridClaim, out int parsedPorid))
+            {
+                porid = parsedPorid;
+            }
+
             // --- Inventory Pre-Check (Unchanged) ---
             bool inventoryIssueFound = false;
             if (!request.OverrideInventoryCheck)
@@ -272,6 +281,10 @@ namespace Safir.Server.Controllers
                     int radifCounter = 0;
                     decimal totalCalculatedVat = 0;
 
+                    decimal jamf = 0;      // مجموع مبلغ پس از تخفیف و مالیات
+                    decimal jamTakhfif = 0; // مجموع تخفیف
+                    decimal pursantP = 0;   // جمع پورسانت محاسبه شده
+
                     foreach (var line in request.Lines)
                     {
                         radifCounter++;
@@ -313,6 +326,20 @@ namespace Safir.Server.Controllers
                                 totalCalculatedVat += imbaaLine;
                             }
                         }
+
+                        // جمع مبالغ برای پورسانت و آمار
+                        jamf += (mablK - nMoin + imbaaLine);
+                        jamTakhfif += nMoin;
+
+                        if (porid.HasValue)
+                        {
+                            const string porsantSql = "SELECT PORSANT FROM dbo.VISITORS_PORSANT_KALA WHERE PORID = @PorId AND code = @ItemCode";
+                            decimal? porsantPercent = await connection.QuerySingleOrDefaultAsync<decimal?>(porsantSql, new { PorId = porid.Value, ItemCode = line.ItemCode }, transaction: transaction);
+                            if (porsantPercent.HasValue)
+                            {
+                                pursantP += Math.Round(((mablK - nMoin + imbaaLine) * porsantPercent.Value) / 100m);
+                            }
+                        }
                         // --- End Calculations ---
 
                         var lineParams = new
@@ -352,6 +379,42 @@ namespace Safir.Server.Controllers
                     {
                         _logger.LogWarning("Proforma {Number} saved with inventory/STUF_FSK override. Customer: {CustomerHes}.", nextNumber, request.Header.CustomerHesCode);
                     }
+
+                    // --- Visitor commission calculation and insert ---
+                    decimal darsadP = 0;
+                    if (!porid.HasValue)
+                    {
+                        const string custTozihSql = "SELECT TOZIH FROM dbo.CUST_HESAB WHERE hes = @Hes";
+                        string? tozihStr = await connection.QuerySingleOrDefaultAsync<string?>(custTozihSql, new { Hes = visitorHes }, transaction: transaction);
+                        if (!string.IsNullOrWhiteSpace(tozihStr) && decimal.TryParse(tozihStr, out decimal parsedPercent))
+                        {
+                            darsadP = parsedPercent;
+                            pursantP = Math.Round((jamf * darsadP) / 100m);
+                        }
+                    }
+                    else
+                    {
+                        if (jamf != 0)
+                        {
+                            darsadP = Math.Round((pursantP / jamf) * 100m, 2);
+                        }
+                    }
+
+                    const string insertVisitorDtlSql = @"INSERT INTO dbo.VISITOR_DTL (NUMBER, TAG, CUST_NO, DARSAD, PURSANT, TOZIH, STAT, PORID)
+                                                           VALUES (@NUMBER, @TAG, @CUST_NO, @DARSAD, @PURSANT, @TOZIH, @STAT, @PORID)";
+
+                    var visitorParams = new
+                    {
+                        NUMBER = nextNumber,
+                        TAG = ProformaTag,
+                        CUST_NO = visitorHes,
+                        DARSAD = darsadP,
+                        PURSANT = pursantP,
+                        TOZIH = " ",
+                        STAT = 0,
+                        PORID = (object?)porid
+                    };
+                    await connection.ExecuteAsync(insertVisitorDtlSql, visitorParams, transaction);
 
                     // 5. Get necessary claims for the task
                     var erjabeUserIdString = User.FindFirstValue(BaseknowClaimTypes.erjabe); // کد کاربری که تسک به او ارجاع می‌شود
@@ -429,6 +492,14 @@ namespace Safir.Server.Controllers
                         // To make task creation mandatory, uncomment the line below:
                         // throw new InvalidOperationException("Failed to create automation task due to missing user claims.");
                     }
+
+                    // --- Copy visitor commission rows from the generated pre-invoice ---
+                    const string copyVisitorDtlSql = @"INSERT INTO dbo.VISITOR_DTL (NUMBER, TAG, CUST_NO, DARSAD, PURSANT, TOZIH, PORID)
+                                                                  SELECT @NewNum, 2, CUST_NO, DARSAD, PURSANT, TOZIH, PORID
+                                                                  FROM dbo.VISITOR_DTL
+                                                                  WHERE NUMBER = @OldNum AND TAG = 20";
+                    await connection.ExecuteAsync(copyVisitorDtlSql, new { NewNum = nextNumber, OldNum = nextNumber }, transaction: transaction);
+                    _logger.LogInformation("Transaction: VISITOR_DTL rows copied for Proforma {ProformaNumber}", nextNumber);
 
                     return nextNumber; // Return generated proforma number
 

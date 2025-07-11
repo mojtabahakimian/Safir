@@ -44,7 +44,7 @@
         <MudExpansionPanels>
             <MudExpansionPanel Text="تنظیمات قیمتی">
                 <MudGrid Spacing="2">
-                    <MudItem xs="12" sm="6" md="4" lg="3">
+                    <MudItem xs="12" sm="6" md="4">
                         <MudSelect T="LookupDto<int?>" Label="نوع مشتری" Disabled="@_isLoadingLookups"
                                    Value="_selectedCustomerType"
                                    ValueChanged="HandleCustomerTypeChanged"
@@ -63,7 +63,7 @@
                         </MudSelect>
                     </MudItem>
 
-                    <MudItem xs="12" sm="6" md="4" lg="3">
+                    <MudItem xs="12" sm="6" md="4">
                         <MudAutocomplete T="LookupDto<int?>" Label="واحد (دپارتمان)" Disabled="@_isLoadingLookups"
                                          ReadOnly="!_canChangeDepartment || _isLoadingLookups ||_pricingLocked" Clearable="true" ClearIcon="@Icons.Material.Filled.ClearAll"
                                          SearchFunc="@SearchDepartments"
@@ -73,7 +73,7 @@
                                          Variant="Variant.Outlined" Margin="Margin.Dense" Placeholder="جستجو یا انتخاب..." />
                     </MudItem>
 
-                    <MudItem xs="12" sm="8" md="6" lg="4">
+                    <MudItem xs="12" sm="12" md="4">
                         <MudSelect T="PaymentTermDto" Label="نحوه پرداخت" Disabled="@_isLoadingLookups"
                                    ReadOnly="_isLoadingLookups ||_pricingLocked"
                                    Value="_selectedPaymentTerm"
@@ -90,15 +90,7 @@
                         </MudSelect>
                     </MudItem>
 
-                    <MudItem xs="12" sm="4" md="2" lg="2">
-                        <MudNumericField T="int?" Label="مدت" Disabled="@_isLoadingLookups"
-                                         Value="_agreedDuration"
-                                         ValueChanged="(int? newValue) => HandleDurationChanged(newValue)"
-                                         ReadOnly="_isDurationReadOnly" Variant="Variant.Outlined" Margin="Margin.Dense" Min="0" />
-                    </MudItem>
-
-
-                    <MudItem xs="12" md="6" lg="3">
+                    <MudItem xs="9" sm="10" md="10">
                         <MudSelect T="PriceListDto" Label="اعلامیه قیمت" ReadOnly="!_canChangePriceLists || _isLoadingLookups ||_pricingLocked"
                                    Value="_selectedPriceList" Disabled="@_isLoadingLookups"
                                    ValueChanged="HandlePriceListChanged"
@@ -114,7 +106,15 @@
                         </MudSelect>
                     </MudItem>
 
-                    <MudItem xs="12" md="6" lg="3">
+                    <MudItem xs="3" sm="2" md="2">
+                        <MudNumericField T="int?" Label="مدت" Disabled="@_isLoadingLookups"
+                                         Value="_agreedDuration"
+                                         ValueChanged="(int? newValue) => HandleDurationChanged(newValue)"
+                                         ReadOnly="_isDurationReadOnly" Variant="Variant.Outlined" Margin="Margin.Dense" Min="0" />
+                    </MudItem>
+
+
+                    <MudItem xs="12" sm="6" md="6">
                         <MudSelect T="DiscountListDto" Label="اعلامیه تخفیف" Disabled="@(_isLoadingLookups ||_pricingLocked)"
                                    ReadOnly="!_canChangePriceLists || _isLoadingLookups"
                                    Value="_selectedDiscountList"
@@ -131,12 +131,12 @@
                         </MudSelect>
                     </MudItem>
 
-                    <MudItem xs="12" sm="6" md="3" lg="3">
+                    <MudItem xs="12" sm="3" md="3">
                         <MudNumericField T="double?" Label="تخفیف اول (%)" ReadOnly="true"
                                          Value="_tf1DiscountPercentage" Format="N2" Placeholder="---" HideSpinButtons="true"
                                          Variant="Variant.Outlined" Margin="Margin.Dense" Dense="true" />
                     </MudItem>
-                    <MudItem xs="12" sm="6" md="3" lg="3">
+                    <MudItem xs="12" sm="3" md="3">
                         <MudNumericField T="double?" Label="تخفیف دوم (%)" ReadOnly="true"
                                          Value="_tf2DiscountPercentage" Format="N2" Placeholder="---" HideSpinButtons="true"
                                          Variant="Variant.Outlined" Margin="Margin.Dense" Dense="true" />
