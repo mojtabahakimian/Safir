@@ -46,7 +46,7 @@
             @bind-Value="SearchTerm"
                           Immediate="true"
                           DebounceInterval="600"
-                          Disabled="@(isLoading || datesLoading || !string.IsNullOrEmpty(errorMessage) || !string.IsNullOrEmpty(datesErrorMessage))"
+                          Disabled="@(datesLoading || !string.IsNullOrEmpty(errorMessage) || !string.IsNullOrEmpty(datesErrorMessage))"
                           Variant="Variant.Outlined" Margin="Margin.Dense"
                           Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search"
                           Clearable="true" />

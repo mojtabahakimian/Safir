@@ -61,6 +61,10 @@ namespace Safir.Shared.Interfaces
         Task<IEnumerable<PaymentTermDto>> GetDynamicPaymentTermsAsync(int? departmentId, int? selectedDiscountListId, long currentDate);
         Task<int?> GetLatestDiscountListIdAsync(long currentDate, int departmentId); // برای کمک به یافتن PEID مناسب
 
+        // --- User state persistence ---
+        Task<string?> GetUserStateJsonAsync(int userId);
+        Task SaveUserStateJsonAsync(int userId, string stateJson);
+        Task ClearUserStateAsync(int userId);
 
     }
 }

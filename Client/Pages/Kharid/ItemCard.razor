@@ -178,6 +178,14 @@
     [Parameter] public decimal? PriceFromPriceList { get; set; }
     [Parameter] public bool HasPriceInCurrentPriceList { get; set; }
 
+    /// <summary>
+    /// When true, if the item lacks a price in the selected price list
+    /// the base price from <c>STUF_DEF.MABL_F</c> will be used as a fallback.
+    /// Default is <c>false</c> so items without a price list entry show no price.
+    /// </summary>
+    [Parameter] public bool UseBasePriceIfNoPriceList { get; set; } = false;
+
+
     private List<UnitInfo> _itemSpecificUnits = new List<UnitInfo>();
     private int _selectedVahedCodeField;
     private decimal _cartQuantity;
@@ -409,7 +417,17 @@
                 else
                 {
                     // در اعلامیه قیمت ندارد، از قیمت پایه کالا استفاده کن
-                    EditableMablF = baseWholesalePriceForSelectedUnit;
+                    if (UseBasePriceIfNoPriceList)
+                    {
+                        // در صورت فعال بودن، در نبود قیمت در اعلامیه از قیمت پایه کالا استفاده می‌شود
+                        EditableMablF = baseWholesalePriceForSelectedUnit;
+                    }
+                    else
+                    {
+                        // در اعلامیه قیمت وجود ندارد و fallback غیر فعال است
+                        EditableMablF = 0;
+                    }
+
                     EditableNKOL = 0; // تخفیف پیش‌فرض صفر (تخفیف از اعلامیه تخفیف جداگانه می‌آید)
                 }
             }
@@ -440,7 +458,23 @@
 
         // --- Prepare Data for Cart Service ---
         // Get the price per selected unit *before* discount. Use EditableMablF if available, otherwise calculate.
-        decimal priceForSelectedUnitBeforeDiscount = EditableMablF ?? (Item.MABL_F * (decimal)SelectedUnitInfo.Nesbat);
+        //decimal priceForSelectedUnitBeforeDiscount = EditableMablF ?? (Item.MABL_F * (decimal)SelectedUnitInfo.Nesbat);
+
+        // Determine price before discount based on selected configuration
+        decimal? priceForSelectedUnitBeforeDiscount = EditableMablF;
+        if (!priceForSelectedUnitBeforeDiscount.HasValue)
+        {
+            if (UseBasePriceIfNoPriceList)
+            {
+                priceForSelectedUnitBeforeDiscount = Item.MABL_F * (decimal)SelectedUnitInfo.Nesbat;
+            }
+            else
+            {
+                Snackbar.Add("قیمت برای این کالا در اعلامیه قیمت موجود نیست.", Severity.Error);
+                return;
+            }
+        }
+
         double currentDiscountPercent = EditableNKOL ?? 0;
 
         // --- Inventory Check ---
@@ -467,8 +501,11 @@
                 proceed = false;
                 var parameters = new DialogParameters
                     {
-                        ["ContentText"] = $"فروش این مقدار ({requestedQuantityInBaseUnit:N0}) از کالا ({Item.NAME}) باعث کاهش موجودی به زیر حد مجاز ({minInventoryInBaseUnit:N0}) می‌شود. (موجودی فعلی: {currentInventoryInBaseUnit:N0}). آیا مایل به ادامه هستید؟",
-                        ["ConfirmButtonText"] = "بله، ادامه بده"
+                        ["Title"] = "کمبود موجودی",
+                        ["ContentText"] = $"موجودی برای فروش این تعداد کافی نیست. (موجودی: {currentInventoryInBaseUnit:N0}) آیا مایل به ادامه هستید؟",
+                        //["ContentText"] = $"فروش این مقدار ({requestedQuantityInBaseUnit:N0}) از کالا ({Item.NAME}) باعث کاهش موجودی به زیر حد مجاز ({minInventoryInBaseUnit:N0}) می‌شود. (موجودی فعلی: {currentInventoryInBaseUnit:N0}). آیا مایل به ادامه هستید؟",
+                        ["ConfirmButtonText"] = "اضافه کن",
+                        ["CancelButtonText"] = "منصرف شدم"
                     };
                 var dialogReference = DialogService.Show<Shared.ConfirmDialog>("موجودی به حد مجاز می‌رسد", parameters);
                 var result = await dialogReference.Result;
@@ -496,7 +533,7 @@
                      SelectedUnitInfo.VahedCode,    // آرگومان سوم: کد واحد انتخابی (int)
                      _itemSpecificUnits,            // آرگومان چهارم: لیست واحدهای کالا (List<UnitInfo>)
                      AnbarCode,                     // آرگومان پنجم: کد انبار (int)
-                     priceForSelectedUnitBeforeDiscount,
+                     priceForSelectedUnitBeforeDiscount.Value,
                      currentDiscountPercent
                  );
                 // ********************************************************************
@@ -533,11 +570,24 @@
             Logger?.LogInformation("Price/Discount manually changed for item {ItemCode} in cart. Updating cart.", Item.CODE);
 
             // Use the current EditableMablF as the new price *before* discount for the selected unit
-            decimal priceForSelectedUnitBeforeDiscount = EditableMablF ?? (Item.MABL_F * (decimal)SelectedUnitInfo.Nesbat);
+            //decimal priceForSelectedUnitBeforeDiscount = EditableMablF ?? (Item.MABL_F * (decimal)SelectedUnitInfo.Nesbat);
+            decimal? priceForSelectedUnitBeforeDiscount = EditableMablF;
+            if (!priceForSelectedUnitBeforeDiscount.HasValue && UseBasePriceIfNoPriceList)
+            {
+                priceForSelectedUnitBeforeDiscount = Item.MABL_F * (decimal)SelectedUnitInfo.Nesbat;
+            }
+            if (!priceForSelectedUnitBeforeDiscount.HasValue)
+            {
+                Logger?.LogWarning("Attempted to update cart item without a price for {ItemCode}", Item.CODE);
+                return;
+            }
+
             double currentDiscountPercent = EditableNKOL ?? 0;
 
             // Call UpdateQuantity to save the new price/discount to the existing cart item
-            await CartService.UpdateQuantityAsync(Item.CODE, SelectedVahedCode, cartItem.Quantity, priceForSelectedUnitBeforeDiscount, currentDiscountPercent);
+            //await CartService.UpdateQuantityAsync(Item.CODE, SelectedVahedCode, cartItem.Quantity, priceForSelectedUnitBeforeDiscount, currentDiscountPercent);
+            await CartService.UpdateQuantityAsync(Item.CODE, SelectedVahedCode, cartItem.Quantity, priceForSelectedUnitBeforeDiscount.Value, currentDiscountPercent);
+
         }
         // No need to await here as it's called by OnDebounceIntervalElapsed
     }
