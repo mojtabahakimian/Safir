@@ -28,6 +28,35 @@ namespace Safir.Server.Services
             _logger = logger;
         }
 
+        private void LogDbErrorToFile(string sql, Exception ex)
+        {
+            try
+            {
+                var logPath = @"C:\CORRECT\Blazor_ErDbms_Log.txt";
+                var builder = new SqlConnectionStringBuilder(_connectionString);
+                var version = System.Reflection.Assembly.GetExecutingAssembly().GetName().Version?.ToString() ?? "N/A";
+
+                var logEntry = $"[{DateTime.Now}]\n" +
+                               $"Server: {Environment.MachineName}\n" +
+                               $"Database: {builder.InitialCatalog}\n" +
+                               $"App Version: {version}\n" +
+                               $"SQL: {sql}\n" +
+                               $"Error: {ex}\n" +
+                               "------------------------------\n";
+
+                var dir = Path.GetDirectoryName(logPath);
+                if (!string.IsNullOrEmpty(dir))
+                {
+                    Directory.CreateDirectory(dir);
+                }
+                File.AppendAllText(logPath, logEntry);
+            }
+            catch (Exception fileEx)
+            {
+                _logger.LogError(fileEx, "Failed to write database error log to file.");
+            }
+        }
+
         // --- Existing Methods (DoGetDataSQLAsync, etc.) ---
         // ... (Keep existing method implementations) ...
         public async Task<IEnumerable<TEntity>> DoGetDataSQLAsync<TEntity>(string sql, object? parameters = null)
@@ -42,6 +71,7 @@ namespace Safir.Server.Services
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error in DoGetDataSQLAsync running SQL: {Sql}", sql);
+                LogDbErrorToFile(sql, ex);
                 throw; // Re-throw to allow caller to handle
             }
         }
@@ -69,6 +99,7 @@ namespace Safir.Server.Services
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error in DoGetDataSQLAsyncSingle running SQL: {Sql}", sql);
+                LogDbErrorToFile(sql, ex);
                 throw;
             }
         }
@@ -85,6 +116,7 @@ namespace Safir.Server.Services
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error in DoExecuteSQLAsync running SQL: {Sql}", sql);
+                LogDbErrorToFile(sql, ex);
                 throw;
             }
         }
@@ -104,6 +136,7 @@ namespace Safir.Server.Services
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error executing stored procedure: {Sp}", storedProcedureName);
+                LogDbErrorToFile(storedProcedureName, ex);
                 throw;
             }
         }
@@ -123,6 +156,7 @@ namespace Safir.Server.Services
             }
             catch (Exception ex)
             {
+                LogDbErrorToFile("Transaction", ex);
                 _logger.LogError(ex, "Error occurred within transaction. Rolling back.");
                 try
                 {
@@ -130,6 +164,7 @@ namespace Safir.Server.Services
                 }
                 catch (Exception rbEx)
                 {
+                    LogDbErrorToFile("Rollback", rbEx);
                     _logger.LogError(rbEx, "Error rolling back transaction.");
                 }
                 throw; // Re-throw the original exception so the caller knows it failed
@@ -154,6 +189,7 @@ namespace Safir.Server.Services
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error occurred within transaction. Rolling back.");
+                LogDbErrorToFile("Transaction", ex);
                 try
                 {
                     await transaction.RollbackAsync();
@@ -161,6 +197,7 @@ namespace Safir.Server.Services
                 catch (Exception rbEx)
                 {
                     _logger.LogError(rbEx, "Error rolling back transaction.");
+                    LogDbErrorToFile("Rollback", rbEx);
                 }
                 throw; // Re-throw the original exception
             }
@@ -191,6 +228,7 @@ namespace Safir.Server.Services
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error getting inventory for {ItemCode}", itemCode);
+                LogDbErrorToFile(sql, ex);
                 throw;
             }
         }
@@ -224,6 +262,7 @@ namespace Safir.Server.Services
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error getting inventory details for Item: {ItemCode}, Anbar: {AnbarCode}", itemCode, anbarCode);
+                LogDbErrorToFile(sql, ex);
                 return null; // Return null on error
             }
         }
@@ -276,6 +315,7 @@ namespace Safir.Server.Services
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error in DoGetDataSQLAsyncMultiple running SQL: {Sql}", sql);
+                LogDbErrorToFile(sql, ex);
                 throw;
             }
             // If Option 2 was used, map results here and return the DTO.
@@ -373,6 +413,7 @@ namespace Safir.Server.Services
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error fetching latest discount list ID for Dept {DepartmentId}, Date {CurrentDate}", departmentId, currentDate);
+                LogDbErrorToFile(sql, ex);
                 return null;
             }
         }
@@ -416,6 +457,32 @@ namespace Safir.Server.Services
                 paymentTerms.Add(new PaymentTermDto { Id = 0, Name = "آزاد", Modat = 0 });
             }
             return paymentTerms.OrderBy(p => p.Name).ToList(); // مرتب سازی نهایی
+        }
+
+        // --- User state persistence ---
+        public async Task<string?> GetUserStateJsonAsync(int userId)
+        {
+            const string sql = "SELECT StateJson FROM dbo.UserState WHERE UserId = @UserId";
+            using var connection = new SqlConnection(_connectionString);
+            return await connection.QuerySingleOrDefaultAsync<string?>(sql, new { UserId = userId });
+        }
+
+        public async Task SaveUserStateJsonAsync(int userId, string stateJson)
+        {
+            const string sql = @"MERGE dbo.UserState AS target
+                                 USING (SELECT @UserId AS UserId, @StateJson AS StateJson) AS src
+                                 ON target.UserId = src.UserId
+                                 WHEN MATCHED THEN UPDATE SET StateJson = src.StateJson
+                                 WHEN NOT MATCHED THEN INSERT (UserId, StateJson) VALUES (src.UserId, src.StateJson);";
+            using var connection = new SqlConnection(_connectionString);
+            await connection.ExecuteAsync(sql, new { UserId = userId, StateJson = stateJson });
+        }
+
+        public async Task ClearUserStateAsync(int userId)
+        {
+            const string sql = "DELETE FROM dbo.UserState WHERE UserId = @UserId";
+            using var connection = new SqlConnection(_connectionString);
+            await connection.ExecuteAsync(sql, new { UserId = userId });
         }
         #endregion
     }

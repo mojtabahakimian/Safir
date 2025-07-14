@@ -31,7 +31,6 @@
 @inject NavigationManager NavManager
 @inject PermissionApiService PermissionService
 @inject ClientAppSettingsService AppSettingsService
-@inject IJSRuntime jsRuntime // برای localStorage
 
 <MudContainer MaxWidth="MaxWidth.False" Class="mt-4 px-md-4 px-2">
 
@@ -180,9 +179,9 @@
                         {
                             <div style="display: inline-block; margin: 0 4px;" @key="group.CODE">
                                 <MudPaper Class="pa-2 group-card"
-                          Elevation="@(_selectedGroup == group ? 8 : 2)"
-                          Style="@($"border: {(_selectedGroup == group ? "1px solid var(--mud-palette-primary)" : "1px solid transparent")};")"
-                          @onclick="() => HandleGroupClick(group)">
+                                          Elevation="@(_selectedGroup == group ? 8 : 2)"
+                                          Style="@($"border: {(_selectedGroup == group ? "1px solid var(--mud-palette-primary)" : "1px solid transparent")};")"
+                                @onclick="() => HandleGroupClick(group)">
 
                                     @if (group.ImageExists)
                                     {
@@ -224,23 +223,22 @@
         <MudPaper Outlined="true" Class="pa-1">
             <MudToolBar Dense="true" Class="mb-2 px-2">
                 <MudTextField T="string"
-
-                          @bind-Value="_itemSearchTerm"
-                          Placeholder="جستجو کالا..."
-                          Variant="Variant.Outlined"
-                          Margin="Margin.Dense"
-                          Adornment="Adornment.Start"
-                          AdornmentIcon="@Icons.Material.Filled.Search"
-                          IconSize="Size.Small"
-                          Immediate="true"
-                          Clearable="true"
-                          Style="max-width: 250px; margin-left: 8px;"
-                          DebounceInterval="500"
-                          OnDebounceIntervalElapsed="HandleItemSearchDebounced" />
+                @bind-Value="_itemSearchTerm"
+                              Placeholder="جستجو کالا..."
+                              Variant="Variant.Outlined"
+                              Margin="Margin.Dense"
+                              Adornment="Adornment.Start"
+                              AdornmentIcon="@Icons.Material.Filled.Search"
+                              IconSize="Size.Small"
+                              Immediate="true"
+                              Clearable="true"
+                              Style="max-width: 250px; margin-left: 8px;"
+                              DebounceInterval="500"
+                              OnDebounceIntervalElapsed="HandleItemSearchDebounced" />
 
                 <MudToggleIconButton @bind-Toggled="_isListView"
-                                 Icon="@Icons.Material.Filled.ViewModule" Color="@( !_isListView ? Color.Primary : Color.Default)" Title="نمایش کارتی"
-                                 ToggledIcon="@Icons.Material.Filled.ViewList" ToggledColor="@( _isListView ? Color.Primary : Color.Default)" ToggledTitle="نمایش لیستی" />
+                                     Icon="@Icons.Material.Filled.ViewModule" Color="@( !_isListView ? Color.Primary : Color.Default)" Title="نمایش کارتی"
+                                     ToggledIcon="@Icons.Material.Filled.ViewList" ToggledColor="@( _isListView ? Color.Primary : Color.Default)" ToggledTitle="نمایش لیستی" />
             </MudToolBar>
 
             <MudText Typo="Typo.caption" Class="mb-2 px-2">تعداد کل کالاهای یافت شده: @_totalItemCount.ToString("N0")</MudText>
@@ -352,7 +350,7 @@
 
                                 @if (anbarCodeForCard.HasValue && anbarCodeForCard.Value > 0)
                                 {
-                                     <ItemCard Item="itemDto" HeadersValid="_areHeadersValid"
+                                    <ItemCard Item="itemDto" HeadersValid="_areHeadersValid"
                                               AnbarCode="@(anbarCodeForCard.Value)"
                                               IsAzadPaymentSelected="_isAzadPaymentSelected"
                                               CanEditDiscount="_canEditItemDiscount"
@@ -372,9 +370,9 @@
                 {
                     <div class="d-flex justify-center mt-4">
                         <MudPagination Count="_totalPages"
-                           Selected="_currentPage" SelectedChanged="HandlePageChangedAsync"
-                           ShowFirstButton="true" ShowLastButton="true"
-                           Color="Color.Primary" BoundaryCount="1" MiddleCount="3" />
+                                       Selected="_currentPage" SelectedChanged="HandlePageChangedAsync"
+                                       ShowFirstButton="true" ShowLastButton="true"
+                                       Color="Color.Primary" BoundaryCount="1" MiddleCount="3" />
                     </div>
                 }
             }
@@ -431,14 +429,6 @@
 
 @code
 {
-    // کلیدهای ذخیره در localStorage
-    const string KEY_CT = "Safir_SelCustomerType";
-    const string KEY_DEP = "Safir_SelDepartment";
-    const string KEY_PT = "Safir_SelPaymentTerm";
-    const string KEY_DUR = "Safir_SelDuration";
-    const string KEY_PL = "Safir_SelPriceList";
-    const string KEY_DL = "Safir_SelDiscountList";
-
     private bool _pricingLocked;
 
     private List<TCODE_MENUITEM>? _itemGroups;
@@ -533,7 +523,7 @@
         {
             // 2. مقداردهی اولیه سرویس‌های حیاتی
             if (CartService == null) { /* ... مدیریت خطا ... */ return; }
-            await CartService.InitializeCartFromLocalStorageAsync();
+            await CartService.InitializeCartFromServerAsync();
             CartService.CartChanged += OnCartChanged;
             _pricingLocked = CartService.Items.Any();
 
@@ -642,134 +632,37 @@
         InvokeAsync(StateHasChanged);
     }
 
-    #region LocalStorage Management
-    private async Task ClearPersistedSettingsAsync()
-    {
-        await RemoveLocalStorageKeyAsync(KEY_CT);
-        await RemoveLocalStorageKeyAsync(KEY_DEP);
-        await RemoveLocalStorageKeyAsync(KEY_PT);
-        await RemoveLocalStorageKeyAsync(KEY_DUR);
-        await RemoveLocalStorageKeyAsync(KEY_PL);
-        await RemoveLocalStorageKeyAsync(KEY_DL);
-        Logger.LogInformation("Cleared persisted pricing settings from localStorage.");
-        // Optionally reset local fields and reload defaults
-        // _selectedCustomerType = null; // etc.
-        // await LoadHeaderDataAndSetDefaultsAsync();
-        // await LoadDynamicPaymentTermsAndSetDefaultAsync();
-        // await LoadAndApplyElamieTakhfifDetailsAsync();
-        // UpdateHeaderValidationState();
-        // StateHasChanged();
-    }
+    #region StatePersistence
+    private Task ClearPersistedSettingsAsync() => CartService.PersistStateAsync();
 
-    private async Task<int?> GetIntIdFromLocalStorageAsync(string key)
-    {
-        var json = await jsRuntime.InvokeAsync<string?>("localStorage.getItem", key);
-        if (string.IsNullOrEmpty(json) || json.Equals("null", StringComparison.OrdinalIgnoreCase))
-        {
-            return null;
-        }
-
-        if (int.TryParse(json, out int idValue))
-        {
-            return idValue;
-        }
-
-        try
-        {
-            using (JsonDocument doc = JsonDocument.Parse(json))
-            {
-                JsonElement root = doc.RootElement;
-                if (root.ValueKind == JsonValueKind.Object)
-                {
-                    if (root.TryGetProperty("id", out JsonElement idProp) && idProp.TryGetInt32(out int idFromObj))
-                    {
-                        Logger?.LogWarning("Recovered int? from object with 'id' property for key '{Key}'. Original value: {JsonValue}", key, json);
-                        return idFromObj;
-                    }
-                    if (root.TryGetProperty("Id", out JsonElement IdProp) && IdProp.TryGetInt32(out int IdFromObj))
-                    {
-                        Logger?.LogWarning("Recovered int? from object with 'Id' property for key '{Key}'. Original value: {JsonValue}", key, json);
-                        return IdFromObj;
-                    }
-                    if (root.TryGetProperty("ID", out JsonElement IDProp) && IDProp.TryGetInt32(out int IDFromObj))
-                    {
-                        Logger?.LogWarning("Recovered int? from object with 'ID' property for key '{Key}'. Original value: {JsonValue}", key, json);
-                        return IDFromObj;
-                    }
-                    if (root.TryGetProperty("Value", out JsonElement valueProp) && valueProp.ValueKind == JsonValueKind.Number && valueProp.TryGetInt32(out int valFromObj))
-                    {
-                        Logger?.LogWarning("Recovered int? from object with 'Value' property for key '{Key}'. Original value: {JsonValue}", key, json);
-                        return valFromObj;
-                    }
-                    if (root.TryGetProperty("value", out JsonElement valuePropL) && valuePropL.ValueKind == JsonValueKind.Number && valuePropL.TryGetInt32(out int valLFromObj))
-                    {
-                        Logger?.LogWarning("Recovered int? from object with 'value' property for key '{Key}'. Original value: {JsonValue}", key, json);
-                        return valLFromObj;
-                    }
-                }
-            }
-            Logger?.LogWarning("Could not deserialize or recover int? for key '{Key}'. Value was: {JsonValue}", key, json);
-        }
-        catch (JsonException ex)
-        {
-            Logger?.LogError(ex, "JSON Deserialization error for key '{Key}' while trying to recover int?. Value: '{JsonValue}'. Returning null.", key, json);
-        }
-        return null;
-    }
-
-    private async Task LoadPersistedSettingsAsync()
+    private Task LoadPersistedSettingsAsync()
     {
         var _wasitlock_ = _pricingLocked;
         _pricingLocked = false;
         if (CartService.Items.Any())
         {
-            Logger.LogInformation("Attempting to load persisted settings from localStorage.");
-            var ctId = await GetIntIdFromLocalStorageAsync(KEY_CT);
-            if (ctId.HasValue && _customerTypeList != null && _customerTypeList.Any())
-                _selectedCustomerType = _customerTypeList.FirstOrDefault(x => x.Id == ctId.Value) ?? _selectedCustomerType;
-            Logger.LogInformation("Loaded CustomerType ID from localStorage: {ctId}, Selected: {_selectedCustomerType?.Name}", ctId, _selectedCustomerType?.Name);
-
-            var depId = await GetIntIdFromLocalStorageAsync(KEY_DEP);
-            if (depId.HasValue && _departmentList != null && _departmentList.Any())
-                _selectedDepartment = _departmentList.FirstOrDefault(x => x.Id == depId.Value) ?? _selectedDepartment;
-            Logger.LogInformation("Loaded Department ID from localStorage: {depId}, Selected: {_selectedDepartment?.Name}", depId, _selectedDepartment?.Name);
-
-            _agreedDuration = await GetIntIdFromLocalStorageAsync(KEY_DUR) ?? _agreedDuration;
-            Logger.LogInformation("Loaded AgreedDuration from localStorage: {_agreedDuration}", _agreedDuration);
-
-            _persistedPaymentTermId = await GetIntIdFromLocalStorageAsync(KEY_PT);
-            _persistedPriceListId = await GetIntIdFromLocalStorageAsync(KEY_PL);
-            _persistedDiscountListId = await GetIntIdFromLocalStorageAsync(KEY_DL);
+            Logger.LogInformation("Loading persisted settings from server state.");
+            if (CartService.CustomerType != null && _customerTypeList.Any())
+                _selectedCustomerType = _customerTypeList.FirstOrDefault(x => x.Id == CartService.CustomerType.Id) ?? _selectedCustomerType;
+            if (CartService.DepartmentValue != null && _departmentList.Any())
+                _selectedDepartment = _departmentList.FirstOrDefault(x => x.Id == CartService.DepartmentValue.Id) ?? _selectedDepartment;
+            _agreedDuration = CartService.AgreedDuration ?? _agreedDuration;
+            _persistedPaymentTermId = CartService.PaymentTerm?.Id;
+            _persistedPriceListId = CartService.PriceList?.Id;
+            _persistedDiscountListId = CartService.DiscountList?.Id;
+            _persistedSelectedGroupId = CartService.SelectedGroupId;
         }
         else
         {
             Logger.LogInformation("Pricing is not locked (cart is empty), skipping load of persisted settings.");
         }
         _pricingLocked = _wasitlock_;
+        return Task.CompletedTask;
     }
     private int? _persistedPaymentTermId;
     private int? _persistedPriceListId;
     private int? _persistedDiscountListId;
-
-    private async Task SetToLocalStorageAsync<T>(string key, T value)
-    {
-        try
-        {
-            await jsRuntime.InvokeVoidAsync("localStorage.setItem", key, JsonSerializer.Serialize(value));
-            Logger.LogInformation("Set localStorage key '{Key}' with value: {Value}", key, value);
-        }
-        catch (Exception ex)
-        {
-            Logger.LogError(ex, "Error setting localStorage key '{Key}'.", key);
-        }
-        if (_pricingLocked)
-        {
-
-        }
-    }
-
-    private async Task RemoveLocalStorageKeyAsync(string key)
-        => await jsRuntime.InvokeVoidAsync("localStorage.removeItem", key);
+    private double? _persistedSelectedGroupId;
     #endregion
 
     private async Task LoadAnbarhaAsync()
@@ -1001,7 +894,7 @@
         _selectedCustomerType = newValue;
         CartService.CustomerType = newValue;
         UpdateHeaderValidationState();
-        await SetToLocalStorageAsync(KEY_CT, newValue?.Id);
+        await CartService.PersistStateAsync();
         await LoadAndApplyElamieTakhfifDetailsAsync();
     }
 
@@ -1010,7 +903,7 @@
         if (_pricingLocked) { Snackbar.Add("امکان تغییر دپارتمان پس از افزودن کالا به سبد وجود ندارد.", Severity.Warning); return; }
         _selectedDepartment = newDepartment;
         CartService.DepartmentValue = newDepartment;
-        await SetToLocalStorageAsync(KEY_DEP, newDepartment?.Id);
+        await CartService.PersistStateAsync();
 
         _isLoadingLookups = true;
         await InvokeAsync(StateHasChanged);
@@ -1035,8 +928,7 @@
             }
             CartService.PriceList = _selectedPriceList;
             CartService.DiscountList = _selectedDiscountList;
-            await SetToLocalStorageAsync(KEY_PL, _selectedPriceList?.Id);
-            await SetToLocalStorageAsync(KEY_DL, _selectedDiscountList?.Id);
+            await CartService.PersistStateAsync();
 
             await LoadDynamicPaymentTermsAndSetDefaultAsync();
             await LoadAndApplyElamieTakhfifDetailsAsync();
@@ -1074,8 +966,7 @@
             await InvokeAsync(StateHasChanged);
             UpdateHeaderValidationState();
 
-            await SetToLocalStorageAsync(KEY_PT, _selectedPaymentTerm?.Id);
-            await SetToLocalStorageAsync(KEY_DUR, _agreedDuration);
+            await CartService.PersistStateAsync();
 
             await LoadAndApplyElamieTakhfifDetailsAsync();
             return;
@@ -1092,8 +983,7 @@
 
         UpdateHeaderValidationState();
 
-        await SetToLocalStorageAsync(KEY_PT, _selectedPaymentTerm?.Id);
-        await SetToLocalStorageAsync(KEY_DUR, _agreedDuration);
+        await CartService.PersistStateAsync();
 
         await LoadAndApplyElamieTakhfifDetailsAsync();
     }
@@ -1104,7 +994,7 @@
         _agreedDuration = newValue;
         CartService.AgreedDuration = _agreedDuration;
         UpdateHeaderValidationState();
-        await SetToLocalStorageAsync(KEY_DUR, _agreedDuration);
+        await CartService.PersistStateAsync();
     }
 
 
@@ -1114,7 +1004,7 @@
         _selectedPriceList = newValue;
         CartService.PriceList = _selectedPriceList;
         UpdateHeaderValidationState();
-        await SetToLocalStorageAsync(KEY_PL, newValue?.Id);
+        await CartService.PersistStateAsync();
 
         if (newValue != null && newValue.Id > 0)
         {
@@ -1211,7 +1101,7 @@
         {
             _isLoadingLookups = false;
             UpdateHeaderValidationState();
-            await SetToLocalStorageAsync(KEY_DL, newDiscountList?.Id);
+            await CartService.PersistStateAsync();
             await InvokeAsync(StateHasChanged);
         }
     }
@@ -1270,6 +1160,8 @@
         if (group == null || _isItemsLoading) return;
         _selectedGroup = group;
         Logger.LogInformation("Selected Group: {GroupName}, Anbar: {AnbarCode}", group.NAMES, group.ANBAR);
+        CartService.SelectedGroupId = group.CODE;
+        await CartService.PersistStateAsync();
         _currentPage = 1;
         _totalItemCount = 0;
         _items = null;
@@ -1366,6 +1258,20 @@
             if (!_itemGroups.Any())
             {
                 _groupErrorMessage = "گروهی یافت نشد.";
+            }
+            else if (!_isHistoricalMode)
+            {
+                if (_persistedSelectedGroupId.HasValue)
+                {
+                    _selectedGroup = _itemGroups.FirstOrDefault(g => g.CODE == _persistedSelectedGroupId.Value) ?? _itemGroups.First();
+                }
+                else
+                {
+                    _selectedGroup = _itemGroups.First();
+                }
+                await LoadItemsForSelectedGroupAsync();
+                CartService.SelectedGroupId = _selectedGroup.CODE;
+                await CartService.PersistStateAsync();
             }
         }
         catch (Exception ex)
@@ -1496,7 +1402,7 @@
                     _selectedCustomerType = _customerTypeList.FirstOrDefault(c => c.Id == custHesInfo.CustCod.Value);
             }
             _selectedCustomerType ??= _customerTypeList.FirstOrDefault();
-            if (!_pricingLocked) await SetToLocalStorageAsync(KEY_CT, _selectedCustomerType?.Id);
+            if (!_pricingLocked) await CartService.PersistStateAsync();
         }
 
         if (_selectedDepartment == null && _departmentList.Any())
@@ -1504,7 +1410,7 @@
             if (_currentUserTfSazman.HasValue)
                 _selectedDepartment = _departmentList.FirstOrDefault(d => d.Id == _currentUserTfSazman.Value);
             _selectedDepartment ??= _departmentList.FirstOrDefault();
-            if (!_pricingLocked) await SetToLocalStorageAsync(KEY_DEP, _selectedDepartment?.Id);
+            if (!_pricingLocked) await CartService.PersistStateAsync();
         }
 
         if (_selectedDepartment?.Id.HasValue == true)
@@ -1517,7 +1423,7 @@
                 var defaultPriceListId = await LookupService.GetDefaultPriceListIdAsync(_selectedDepartment.Id.Value);
                 _selectedPriceList = defaultPriceListId.HasValue ? _priceLists.FirstOrDefault(p => p.Id == defaultPriceListId.Value) : _priceLists.FirstOrDefault();
             }
-            if (!_pricingLocked) await SetToLocalStorageAsync(KEY_PL, _selectedPriceList?.Id);
+            if (!_pricingLocked) await CartService.PersistStateAsync();
 
             _discountLists = await LookupService.GetDiscountListsAsync() ?? new();
             if (_persistedDiscountListId.HasValue && _discountLists.Any(d => d.Id == _persistedDiscountListId.Value))
@@ -1527,7 +1433,7 @@
                 var defaultDiscountListId = await LookupService.GetDefaultDiscountListIdAsync(_selectedDepartment.Id.Value);
                 _selectedDiscountList = defaultDiscountListId.HasValue ? _discountLists.FirstOrDefault(d => d.Id == defaultDiscountListId.Value) : _discountLists.FirstOrDefault();
             }
-            if (!_pricingLocked) await SetToLocalStorageAsync(KEY_DL, _selectedDiscountList?.Id);
+            if (!_pricingLocked) await CartService.PersistStateAsync();
         }
         else
         {
@@ -1535,13 +1441,13 @@
             if (_persistedPriceListId.HasValue && _priceLists.Any(p => p.Id == _persistedPriceListId.Value))
                 _selectedPriceList = _priceLists.First(p => p.Id == _persistedPriceListId.Value);
             _selectedPriceList ??= _priceLists.FirstOrDefault();
-            if (!_pricingLocked) await SetToLocalStorageAsync(KEY_PL, _selectedPriceList?.Id);
+            if (!_pricingLocked) await CartService.PersistStateAsync();
 
             _discountLists = await LookupService.GetDiscountListsAsync() ?? new();
             if (_persistedDiscountListId.HasValue && _discountLists.Any(d => d.Id == _persistedDiscountListId.Value))
                 _selectedDiscountList = _discountLists.First(d => d.Id == _persistedDiscountListId.Value);
             _selectedDiscountList ??= _discountLists.FirstOrDefault();
-            if (!_pricingLocked) await SetToLocalStorageAsync(KEY_DL, _selectedDiscountList?.Id);
+            if (!_pricingLocked) await CartService.PersistStateAsync(); ;
         }
 
         CartService.CustomerType = _selectedCustomerType;
@@ -1588,8 +1494,7 @@
 
             if (!_pricingLocked)
             {
-                await SetToLocalStorageAsync(KEY_PT, _selectedPaymentTerm?.Id);
-                await SetToLocalStorageAsync(KEY_DUR, _agreedDuration);
+                await CartService.PersistStateAsync();
             }
             Logger.LogInformation("Payment terms loaded. Selected: '{0}', Duration: {1}", _selectedPaymentTerm?.Name, _agreedDuration);
         }
@@ -1604,8 +1509,7 @@
             CartService.AgreedDuration = _agreedDuration;
             if (!_pricingLocked)
             {
-                await SetToLocalStorageAsync(KEY_PT, _selectedPaymentTerm?.Id);
-                await SetToLocalStorageAsync(KEY_DUR, _agreedDuration);
+                await CartService.PersistStateAsync();
             }
         }
         finally

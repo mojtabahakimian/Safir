@@ -21,6 +21,8 @@ builder.Services.AddScoped<IDatabaseService, DatabaseService>();
 // Register IUserService and its implementation UserService
 // Use Scoped lifetime: a new instance per HTTP request
 builder.Services.AddScoped<IUserService, UserService>();
+builder.Services.AddScoped<IUserStateService, UserStateService>();
+
 // --- End Custom Services ---
 builder.Services.AddSingleton<IAppSettingsService, AppSettingsService>();
 

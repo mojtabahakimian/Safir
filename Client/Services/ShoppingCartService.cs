@@ -1,24 +1,21 @@
-﻿// File: MyBlazor/Client/Services/ShoppingCartService.cs
-using Blazored.LocalStorage; // اضافه شود
+﻿using System.Text.Json;
 using Safir.Shared.Models.Kala;
 using Safir.Shared.Models.Visitory;
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Threading.Tasks; // اضافه شود برای متدهای آسنکرون LocalStorage
+using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using Safir.Shared.Models.Kharid;
 using Safir.Shared.Models;
+using Safir.Shared.Models.User_Model;
 
 namespace Safir.Client.Services
 {
     public class ShoppingCartService
     {
-        private readonly ILocalStorageService _localStorage; // <--- تزریق LocalStorage
+        private readonly UserStateApiService _stateApi;
         private readonly ILogger<ShoppingCartService> _logger;
-
-        private const string CustomerStorageKey = "current_cart_customer"; // کلید برای ذخیره مشتری
-        private const string CartItemsStorageKey = "current_cart_items";   // کلید برای ذخیره آیتم‌های سبد
 
         public VISITOR_CUSTOMERS? CurrentCustomer { get; private set; }
         public List<CartItem> Items { get; private set; } = new List<CartItem>();
@@ -32,15 +29,16 @@ namespace Safir.Client.Services
         public int? AgreedDuration { get; set; }
         public PriceListDto? PriceList { get; set; }
         public DiscountListDto? DiscountList { get; set; }
+        public double? SelectedGroupId { get; set; }
 
         private Task? _initializationTask; // <--- فیلد برای نگهداری تسک بارگذاری اولیه
         private bool _isInitialized = false; // <--- فلگ برای جلوگیری از اجرای مجدد منطق اصلی
 
 
         // سازنده به‌روز شده
-        public ShoppingCartService(ILocalStorageService localStorage, ILogger<ShoppingCartService> logger)
+        public ShoppingCartService(UserStateApiService stateApi, ILogger<ShoppingCartService> logger)
         {
-            _localStorage = localStorage;
+            _stateApi = stateApi;
             _logger = logger;
             // InitializeCartFromLocalStorage(); // در OnInitializedAsync کامپوننت اصلی یا MainLayout فراخوانی شود
         }
@@ -49,7 +47,7 @@ namespace Safir.Client.Services
         // بهترین جا برای فراخوانی آن، متد OnInitializedAsync در MainLayout.razor یا App.razor است
 
         // این متد توسط MainLayout و سایر کامپوننت‌ها فراخوانی می‌شود
-        public Task InitializeCartFromLocalStorageAsync()
+        public Task InitializeCartFromServerAsync()
         {
             // اگر تسک بارگذاری اولیه قبلاً ایجاد نشده، آن را ایجاد کن
             if (_initializationTask == null)
@@ -75,14 +73,24 @@ namespace Safir.Client.Services
             _logger.LogInformation("InitializeInternalAsync started for ShoppingCartService.");
             try
             {
-                CurrentCustomer = await _localStorage.GetItemAsync<VISITOR_CUSTOMERS>(CustomerStorageKey);
-                var storedItems = await _localStorage.GetItemAsync<List<CartItem>>(CartItemsStorageKey);
-                Items = storedItems ?? new List<CartItem>();
-                _logger.LogInformation("Cart successfully initialized from local storage. Customer: {CustomerName}, Items: {ItemCount}", CurrentCustomer?.person ?? "None", Items.Count);
+                var state = await _stateApi.GetStateAsync();
+                if (state != null)
+                {
+                    CurrentCustomer = state.CurrentCustomer;
+                    Items = state.CartItems ?? new List<CartItem>();
+                    CustomerType = state.CustomerType ?? CustomerType;
+                    DepartmentValue = state.DepartmentValue ?? DepartmentValue;
+                    PaymentTerm = state.PaymentTerm ?? PaymentTerm;
+                    AgreedDuration = state.AgreedDuration;
+                    PriceList = state.PriceList;
+                    DiscountList = state.DiscountList;
+                    SelectedGroupId = state.SelectedGroupId;
+                }
+                _logger.LogInformation("Cart successfully initialized from server state. Items: {ItemCount}", Items.Count);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error initializing cart from local storage.");
+                _logger.LogError(ex, "Error initializing cart from server.");
                 CurrentCustomer = null;
                 Items = new List<CartItem>();
             }
@@ -103,17 +111,8 @@ namespace Safir.Client.Services
                     await ClearCartAsync();
                 }
                 CurrentCustomer = customer;
-                if (customer != null)
-                {
-                    await _localStorage.SetItemAsync(CustomerStorageKey, customer);
-                    _logger.LogInformation("Customer {CustomerHes} set and saved to local storage.", customer.hes);
-                }
-                else
-                {
-                    await _localStorage.RemoveItemAsync(CustomerStorageKey);
-                    _logger.LogInformation("Current customer removed from local storage.");
-                }
                 NotifyCartChanged();
+                await PersistStateAsync();
             }
         }
 
@@ -166,7 +165,7 @@ namespace Safir.Client.Services
                 };
                 Items.Add(newItem);
             }
-            await SaveCartItemsToLocalStorageAsync(); // <--- ذخیره پس از تغییر
+            await PersistStateAsync();
             NotifyCartChanged();
         }
 
@@ -194,7 +193,8 @@ namespace Safir.Client.Services
                 {
                     Items.Remove(itemToUpdate);
                 }
-                await SaveCartItemsToLocalStorageAsync(); // <--- ذخیره پس از تغییر
+                await PersistStateAsync();
+
                 NotifyCartChanged();
             }
         }
@@ -208,7 +208,8 @@ namespace Safir.Client.Services
                 {
                     Items.Remove(item);
                 }
-                await SaveCartItemsToLocalStorageAsync(); // <--- ذخیره پس از تغییر
+                await PersistStateAsync();
+
                 NotifyCartChanged();
             }
         }
@@ -218,18 +219,30 @@ namespace Safir.Client.Services
             Items.Clear();
             // CurrentCustomer را اینجا null نکنید، SetCustomerAsync مسئول آن است
             // CurrentCustomer = null; 
-            await _localStorage.RemoveItemAsync(CartItemsStorageKey);
-            // await _localStorage.RemoveItemAsync(CustomerStorageKey); // مشتری را هم جداگانه مدیریت می‌کنیم
-            _logger.LogInformation("Cart items cleared from local storage.");
+            _logger.LogInformation("Cart items cleared.");
+            NotifyCartChanged();
+            await PersistStateAsync();
             NotifyCartChanged();
         }
 
         // متد خصوصی برای ذخیره آیتم‌های سبد
-        private async Task SaveCartItemsToLocalStorageAsync()
+        public async Task PersistStateAsync()
         {
             try
             {
-                await _localStorage.SetItemAsync(CartItemsStorageKey, Items);
+                var state = new UserStateDto
+                {
+                    CurrentCustomer = this.CurrentCustomer,
+                    CartItems = this.Items,
+                    CustomerType = this.CustomerType,
+                    DepartmentValue = this.DepartmentValue,
+                    PaymentTerm = this.PaymentTerm,
+                    AgreedDuration = this.AgreedDuration,
+                    PriceList = this.PriceList,
+                    DiscountList = this.DiscountList,
+                    SelectedGroupId = this.SelectedGroupId
+                };
+                await _stateApi.SaveStateAsync(state);
                 _logger.LogInformation("{ItemCount} cart items saved to local storage.", Items.Count);
             }
             catch (Exception ex)

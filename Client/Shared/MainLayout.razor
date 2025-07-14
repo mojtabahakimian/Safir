@@ -170,8 +170,7 @@
             DisplayName = user.FindFirst(BaseknowClaimTypes.UUSER)?.Value ?? "کاربر";
         }
 
-        await CartService.InitializeCartFromLocalStorageAsync(); // <--- بارگذاری سبد خرید از localStorage
-
+        await CartService.InitializeCartFromServerAsync();
         // اشتراک در رویداد تغییر سبد خرید
         CartService.CartChanged += OnCartChanged;
 

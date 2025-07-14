@@ -8,6 +8,7 @@
 @inject ShoppingCartService CartService
 @inject ISnackbar Snackbar
 @inject IJSRuntime JSRuntime
+@inject UserStateApiService UserStateApiService
 
 <MudNavMenu>
     <!-- صفحه اصلی -->
@@ -48,6 +49,10 @@
 
                 <MudNavLink @onclick="BeginFullCleanup" Icon="@Icons.Material.Filled.CleaningServices">
                     تازه سازی اطلاعات
+                </MudNavLink>
+
+                <MudNavLink @onclick="BeginServerStateReset" Icon="@Icons.Material.Filled.DeleteForever">
+                    ریست ذخیره وضعیت
                 </MudNavLink>
 
                 <MudNavLink Href="settings/security" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.Security">
@@ -119,7 +124,34 @@
         CartService.CartChanged -= OnCartChanged;
     }
 
+    private async Task BeginServerStateReset()
+    {
+        var options = new DialogOptions { CloseButton = false, MaxWidth = MaxWidth.Small };
+        var parameters = new DialogParameters
+            {
+                ["Title"] = "حذف وضعیت ذخیره شده",
+                ["ContentText"] = "آیا از پاک شدن وضعیت کاربری مثل سبد خرید و مشتری انتخاب شده و .... اطمینان دارید؟",
+                ["ConfirmButtonText"] = "بله، پاک کن",
+                ["CancelButtonText"] = "خیر"
+            };
+        var dialog = DialogService.Show<ConfirmDialog>(parameters["Title"]?.ToString()!, parameters, options);
+        var result = await dialog.Result;
 
+        if (!result.Cancelled)
+        {
+            try
+            {
+                await UserStateApiService.ClearStateAsync();
+                Snackbar.Add("اطلاعات ذخیره شده با موفقیت حذف شد.", MudBlazor.Severity.Success);
+                NavigationManager.NavigateTo("/", forceLoad: true);
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine($"Error clearing server state: {ex.Message}");
+                Snackbar.Add("خطا در حذف اطلاعات ذخیره شده.", MudBlazor.Severity.Error);
+            }
+        }
+    }
     // Computes the CSS class for the main navigation div to make it collapsible
     private string? NavMenuCssClass => collapseNavMenu ? "collapse" : null;
 

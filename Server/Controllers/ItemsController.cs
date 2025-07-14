@@ -444,10 +444,12 @@ namespace Safir.Server.Controllers
                         item.HasPriceInCurrentPriceList = true;
                     }
 
-                    decimal priceBeforeHeaderDiscounts = item.PriceFromPriceList ?? item.MABL_F;
-                    if (priceBeforeHeaderDiscounts > 0)
+                    //decimal priceBeforeHeaderDiscounts = item.PriceFromPriceList ?? item.MABL_F;
+                    //if (priceBeforeHeaderDiscounts > 0)
+                    decimal? priceBeforeHeaderDiscounts = item.PriceFromPriceList;
+                    if (priceBeforeHeaderDiscounts.HasValue && priceBeforeHeaderDiscounts.Value > 0)
                     {
-                        decimal priceAfterTf1 = priceBeforeHeaderDiscounts * (1 - (decimal)((item.HeaderDiscountTF1 ?? 0) / 100.0));
+                        decimal priceAfterTf1 = priceBeforeHeaderDiscounts.Value * (1 - (decimal)((item.HeaderDiscountTF1 ?? 0) / 100.0));
                         decimal finalPrice = priceAfterTf1 * (1 - (decimal)((item.HeaderDiscountTF2 ?? 0) / 100.0));
                         item.PriceAfterHeaderDiscounts = finalPrice;
                         if (priceBeforeHeaderDiscounts != 0)
