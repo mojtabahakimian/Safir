@@ -30,6 +30,7 @@ namespace Safir.Client.Services
         public PriceListDto? PriceList { get; set; }
         public DiscountListDto? DiscountList { get; set; }
         public double? SelectedGroupId { get; set; }
+        public bool IsHistoricalMode { get; set; }
 
         private Task? _initializationTask; // <--- فیلد برای نگهداری تسک بارگذاری اولیه
         private bool _isInitialized = false; // <--- فلگ برای جلوگیری از اجرای مجدد منطق اصلی
@@ -85,6 +86,8 @@ namespace Safir.Client.Services
                     PriceList = state.PriceList;
                     DiscountList = state.DiscountList;
                     SelectedGroupId = state.SelectedGroupId;
+                    CurrentAnbarCode = state.CurrentAnbarCode;
+                    IsHistoricalMode = state.IsHistoricalMode;
                 }
                 _logger.LogInformation("Cart successfully initialized from server state. Items: {ItemCount}", Items.Count);
             }
@@ -240,7 +243,9 @@ namespace Safir.Client.Services
                     AgreedDuration = this.AgreedDuration,
                     PriceList = this.PriceList,
                     DiscountList = this.DiscountList,
-                    SelectedGroupId = this.SelectedGroupId
+                    SelectedGroupId = this.SelectedGroupId,
+                    CurrentAnbarCode = this.CurrentAnbarCode,
+                    IsHistoricalMode = this.IsHistoricalMode
                 };
                 await _stateApi.SaveStateAsync(state);
                 _logger.LogInformation("{ItemCount} cart items saved to local storage.", Items.Count);

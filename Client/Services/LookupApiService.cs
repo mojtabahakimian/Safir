@@ -113,6 +113,19 @@ namespace Safir.Client.Services
             }
         }
 
+        public async Task<List<TCOD_ANBAR>?> GetUserAnbarhaAsync()
+        {
+            try
+            {
+                return await _httpClient.GetFromJsonAsync<List<TCOD_ANBAR>>("api/lookup/useranbarha");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error fetching user Anbarha: {ex.Message}");
+                return null;
+            }
+        }
+
         #region ELEMIYEH_GHEYMAT
         // متد GetCustomerTypesAsync قبلا برای نوع مشتری استفاده شده، نام آن را حفظ می‌کنیم
         // اما آدرس API را به "customerkinds" تغییر می‌دهیم اگر با Controller هماهنگ باشد

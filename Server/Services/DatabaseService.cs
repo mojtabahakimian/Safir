@@ -418,6 +418,18 @@ namespace Safir.Server.Services
             }
         }
 
+        public async Task<IEnumerable<TCOD_ANBAR>> GetUserAnbarhaAsync(int userId)
+        {
+            const string sql = @"SELECT A.CODE, A.NAMES
+                                 FROM dbo.TCOD_ANBAR A
+                                 INNER JOIN dbo.OPANBACCESS O ON A.CODE = O.ANBCO
+                                 WHERE O.USERCO = @UserId
+                                 ORDER BY A.CODE";
+
+            using var connection = new SqlConnection(_connectionString);
+            return await connection.QueryAsync<TCOD_ANBAR>(sql, new { UserId = userId });
+        }
+
         public async Task<IEnumerable<PaymentTermDto>> GetDynamicPaymentTermsAsync(int? departmentId, int? selectedDiscountListId, long currentDate)
         {
             List<PaymentTermDto> paymentTerms = new List<PaymentTermDto>();

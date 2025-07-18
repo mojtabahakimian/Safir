@@ -217,6 +217,19 @@
 
     }
 
+    @if (_availableAnbarHa?.Any() == true)
+    {
+        <MudPaper Outlined="true" Class="mb-4 pa-3">
+            <MudSelect T="int?" Label="انبار" Value="_selectedAnbarCode" ValueChanged="OnSelectedAnbarChangedAsync"
+                       Dense="true" Variant="Variant.Outlined" Placeholder="انتخاب کنید...">
+                @foreach (var anb in _availableAnbarHa)
+                {
+                    <MudSelectItem T="int?" Value="@anb.CODE">@anb.NAMES</MudSelectItem>
+                }
+            </MudSelect>
+        </MudPaper>
+    }
+
     @if ((_selectedGroup != null && !_isHistoricalMode) || _isHistoricalMode)
     {
         <MudDivider Class="my-4" />
@@ -345,7 +358,7 @@
                             <MudItem xs="12" sm="6" md="6" lg="6" xl="4" @key="itemDto.CODE">
                                 @{
                                     // <<<<< منطق کلیدی: تعیین کد انبار بر اساس حالت برنامه >>>>>
-                                    int? anbarCodeForCard = _isHistoricalMode ? _anbarCodeForHistoricalMode : _selectedGroup?.ANBAR;
+                                    int? anbarCodeForCard = _isHistoricalMode ? _anbarCodeForHistoricalMode : _selectedAnbarCode ?? _selectedGroup?.ANBAR;
                                 }
 
                                 @if (anbarCodeForCard.HasValue && anbarCodeForCard.Value > 0)
@@ -505,6 +518,7 @@
 
     private bool _isHistoricalMode = false;
     private List<TCOD_ANBAR> _availableAnbarHa = new();
+    private int? _selectedAnbarCode = null;
     private int? _anbarCodeForHistoricalMode = null;
     private bool _historicalItemsLoadedOnce = false; // <<< این فلگ بسیار مهم است
 
@@ -525,6 +539,17 @@
             if (CartService == null) { /* ... مدیریت خطا ... */ return; }
             await CartService.InitializeCartFromServerAsync();
             CartService.CartChanged += OnCartChanged;
+
+            if (string.IsNullOrWhiteSpace(Mode))
+            {
+                _isHistoricalMode = CartService.IsHistoricalMode;
+            }
+            else
+            {
+                CartService.IsHistoricalMode = _isHistoricalMode;
+                await CartService.PersistStateAsync();
+            }
+
             _pricingLocked = CartService.Items.Any();
 
             if (CartService.CurrentCustomer == null && !_isHistoricalMode) { /* ... مدیریت خطا و ریدایرکت ... */ return; }
@@ -557,6 +582,9 @@
             await LoadHeaderDataAndSetDefaultsAsync();
             await LoadDynamicPaymentTermsAndSetDefaultAsync();
 
+            CartService.IsHistoricalMode = _isHistoricalMode;
+            await CartService.PersistStateAsync();
+
             // 6. بارگذاری محتوای اصلی (گروه‌ها یا کالاهای تاریخی)
             if (_isHistoricalMode)
             {
@@ -569,8 +597,17 @@
                     // تنظیم انبار پیش‌فرض برای حالت تاریخی
                     if (_availableAnbarHa != null && _availableAnbarHa.Any())
                     {
-                        _anbarCodeForHistoricalMode = _availableAnbarHa.First().CODE;
-                        if (_anbarCodeForHistoricalMode.HasValue) CartService.SetCurrentAnbarCode(_anbarCodeForHistoricalMode.Value);
+                        var firstValid = _availableAnbarHa.FirstOrDefault(a => a.CODE > 0);
+                        _anbarCodeForHistoricalMode = CartService.GetCurrentAnbarCode();
+                        if (!_anbarCodeForHistoricalMode.HasValue || _anbarCodeForHistoricalMode <= 0)
+                        {
+                            _anbarCodeForHistoricalMode = firstValid?.CODE;
+                        }
+                        if (_anbarCodeForHistoricalMode.HasValue)
+                        {
+                            CartService.SetCurrentAnbarCode(_anbarCodeForHistoricalMode.Value);
+                            await CartService.PersistStateAsync();
+                        }
                         Logger.LogInformation("Historical mode: Default anbar for display set to {AnbarCode}", _anbarCodeForHistoricalMode);
                     }
                     else
@@ -651,10 +688,15 @@
             _persistedPriceListId = CartService.PriceList?.Id;
             _persistedDiscountListId = CartService.DiscountList?.Id;
             _persistedSelectedGroupId = CartService.SelectedGroupId;
+            _selectedAnbarCode = CartService.GetCurrentAnbarCode();
+            _isHistoricalMode = CartService.IsHistoricalMode;
+
         }
         else
         {
             Logger.LogInformation("Pricing is not locked (cart is empty), skipping load of persisted settings.");
+            _selectedAnbarCode = CartService.GetCurrentAnbarCode();
+            _isHistoricalMode = CartService.IsHistoricalMode;
         }
         _pricingLocked = _wasitlock_;
         return Task.CompletedTask;
@@ -669,8 +711,31 @@
     {
         try
         {
-            _availableAnbarHa = await LookupService.GetAnbarhaAsync() ?? new List<TCOD_ANBAR>();
-            Logger.LogInformation("Loaded {Count} anbars.", _availableAnbarHa.Count);
+            _availableAnbarHa = await LookupService.GetUserAnbarhaAsync() ?? new List<TCOD_ANBAR>();
+            Logger.LogInformation("Loaded {Count} user anbars.", _availableAnbarHa.Count);
+
+            if (_availableAnbarHa.Any())
+            {
+                var firstValid = _availableAnbarHa.FirstOrDefault(a => a.CODE > 0);
+                var persisted = CartService.GetCurrentAnbarCode();
+                if (persisted.HasValue && persisted.Value > 0)
+                {
+                    _selectedAnbarCode = persisted.Value;
+                }
+                else if (firstValid != null)
+                {
+                    _selectedAnbarCode = firstValid.CODE;
+                }
+
+                if (_selectedAnbarCode.HasValue && _selectedAnbarCode.Value > 0)
+                {
+                    CartService.SetCurrentAnbarCode(_selectedAnbarCode.Value);
+                }
+                else
+                {
+                    Logger.LogWarning("No valid anbar code found to set as default.");
+                }
+            }
         }
         catch (Exception ex)
         {
@@ -997,6 +1062,33 @@
         await CartService.PersistStateAsync();
     }
 
+    private async Task OnSelectedAnbarChangedAsync(int? newValue)
+    {
+        if (_pricingLocked)
+        {
+            Snackbar.Add("امکان تغییر انبار پس از افزودن کالا به سبد وجود ندارد.", Severity.Warning);
+            _selectedAnbarCode = CartService.GetCurrentAnbarCode();
+            return;
+        }
+
+        _selectedAnbarCode = newValue;
+        if (newValue.HasValue)
+        {
+            CartService.SetCurrentAnbarCode(newValue.Value);
+        }
+
+        await CartService.PersistStateAsync();
+
+        if (_isHistoricalMode)
+        {
+            _anbarCodeForHistoricalMode = _selectedAnbarCode;
+            await LoadHistoricalItemsAsync();
+        }
+        else
+        {
+            await InvokeAsync(StateHasChanged);
+        }
+    }
 
     private async Task HandlePriceListChanged(PriceListDto? newValue)
     {
@@ -1160,6 +1252,13 @@
         if (group == null || _isItemsLoading) return;
         _selectedGroup = group;
         Logger.LogInformation("Selected Group: {GroupName}, Anbar: {AnbarCode}", group.NAMES, group.ANBAR);
+
+        _selectedAnbarCode = group.ANBAR;
+        if (_selectedAnbarCode.HasValue)
+        {
+            CartService.SetCurrentAnbarCode(_selectedAnbarCode.Value);
+        }
+
         CartService.SelectedGroupId = group.CODE;
         await CartService.PersistStateAsync();
         _currentPage = 1;
@@ -1566,9 +1665,10 @@
                 return;
             }
         }
-        else if (_selectedGroup != null)
+        else if (_selectedAnbarCode.HasValue)
         {
-            anbarCodeToAdd = _selectedGroup.ANBAR;
+            anbarCodeToAdd = _selectedAnbarCode.Value;
+            CartService.SetCurrentAnbarCode(anbarCodeToAdd);
         }
         else
         {

@@ -284,19 +284,19 @@
 
         UpdateDisplayPricesAndDiscountBasedOnUnitOrCart(); // Update prices based on the potentially new/reset selected unit
 
-        // Fetch inventory if item/warehouse changed, or if never fetched, or if fetch previously failed
-        // if (itemJustChanged || anbarJustChanged || _inventoryDetails == null || _errorFetchingInventory)
-        // {
-        //     if (AnbarCode > 0)
-        //     {
-        //         await FetchInventory();
-        //     }
-        //     else
-        //     {
-        //         _inventoryDetails = new InventoryDetailsDto { CurrentInventory = null, MinimumInventory = 0 };
-        //         _errorFetchingInventory = true; // Error if AnbarCode is invalid
-        //     }
-        // }
+        // Fetch inventory if item or warehouse changed or if previous fetch failed
+        if (itemJustChanged || anbarJustChanged || _inventoryDetails == null || _errorFetchingInventory)
+        {
+            if (AnbarCode > 0)
+            {
+                //await FetchInventory();
+            }
+            else
+            {
+                _inventoryDetails = new InventoryDetailsDto { CurrentInventory = 0, MinimumInventory = 0 };
+                _errorFetchingInventory = true;
+            }
+        }
 
         UpdateCartQuantity(); // Update cart quantity display based on current selection
 
