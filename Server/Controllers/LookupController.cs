@@ -255,6 +255,27 @@ namespace Safir.Server.Controllers
             }
         }
 
+        [HttpGet("useranbarha")] // مسیر: api/lookup/useranbarha
+        public async Task<ActionResult<IEnumerable<TCOD_ANBAR>>> GetUserAnbarha()
+        {
+            var userIdStr = User.FindFirstValue(ClaimTypes.NameIdentifier);
+            if (string.IsNullOrEmpty(userIdStr) || !int.TryParse(userIdStr, out var userId))
+            {
+                return Unauthorized();
+            }
+
+            try
+            {
+                var data = await _dbService.GetUserAnbarhaAsync(userId);
+                return Ok(data ?? new List<TCOD_ANBAR>());
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error fetching user anbar list for {UserId}", userId);
+                return StatusCode(500, "Internal server error while fetching user anbarha.");
+            }
+        }
+
         #region ELEMIEH_GHEYMAT
         [HttpGet("customerkinds")] // نوع مشتری
         public async Task<IActionResult> GetCustomerKinds()

@@ -23,6 +23,8 @@ namespace Safir.Shared.Models.User_Model
         public DiscountListDto? DiscountList { get; set; }
         //public int? SelectedGroupId { get; set; }
         public double? SelectedGroupId { get; set; }
+        public int? CurrentAnbarCode { get; set; }
 
+        public bool IsHistoricalMode { get; set; }
     }
 }
