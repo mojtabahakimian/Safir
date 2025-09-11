@@ -1,22 +1,13 @@
-﻿// File: Server/Controllers/ProformasController.cs
-using Microsoft.AspNetCore.Authorization;
+﻿using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Safir.Shared.Interfaces;
 using Safir.Shared.Models.Kharid; // For DTOs
-using System.Threading.Tasks;
-using System;
-using Microsoft.Extensions.Logging;
 using System.Security.Claims;
 using Safir.Shared.Utility;
-using Safir.Shared.Models.User_Model; // For SALA_DTL
 using System.Data; // For IsolationLevel
 using Dapper;     // For QuerySingleAsync etc.
-using System.Collections.Generic;
-using System.Linq;
 using Safir.Shared.Constants; // For BaseknowClaimTypes
-using Microsoft.Extensions.Configuration; // For reading configuration
 using System.Data.SqlClient;
-using static MudBlazor.CategoryTypes;
 using QuestPDF.Fluent;
 
 namespace Safir.Server.Controllers
@@ -75,6 +66,38 @@ namespace Safir.Server.Controllers
             var rate = await connection.QuerySingleOrDefaultAsync<double?>(sql, new { Code = itemCode }, transaction: transaction);
             return rate ?? 0;
         }
+        private List<string> RunCalculateVisitorPorsant(long number, short tag, string? visitorId = null)
+        {
+            List<string> messages = new();
+            var connStr = _configuration.GetConnectionString("DefaultConnection");
+            using (var conn = new SqlConnection(connStr))
+            using (var cmd = new SqlCommand("dbo.CalculateVisitorPorsant", conn))
+            {
+                conn.InfoMessage += (s, e) =>
+                {
+                    if (!string.IsNullOrWhiteSpace(e.Message))
+                        messages.Add(e.Message);
+                };
+                conn.FireInfoMessageEventOnUserErrors = true;
+
+                cmd.CommandType = CommandType.StoredProcedure;
+                cmd.Parameters.AddWithValue("@NUMBER", number);
+                cmd.Parameters.AddWithValue("@TAG", tag);
+                var paramVisitor = cmd.Parameters.Add("@VisitorID", SqlDbType.NVarChar, 40);
+                if (string.IsNullOrWhiteSpace(visitorId))
+                    paramVisitor.Value = DBNull.Value;
+                else
+                    paramVisitor.Value = visitorId;
+
+                //var paramLog = cmd.Parameters.Add("@LOG", SqlDbType.NVarChar, -1);
+                //paramLog.Value = DBNull.Value;
+
+                conn.Open();
+                cmd.ExecuteNonQuery();
+            }
+
+            return messages;
+        }
         // --- End Helpers ---
 
         [HttpPost]
@@ -105,12 +128,12 @@ namespace Safir.Server.Controllers
 
             // Claims for visitor commission logic
             var visitorHes = User.FindFirstValue(BaseknowClaimTypes.USER_HES);
-            var poridClaim = User.FindFirstValue(BaseknowClaimTypes.PORID);
-            int? porid = null;
-            if (!string.IsNullOrWhiteSpace(poridClaim) && int.TryParse(poridClaim, out int parsedPorid))
-            {
-                porid = parsedPorid;
-            }
+            //var poridClaim = User.FindFirstValue(BaseknowClaimTypes.PORID);
+            //int? porid = null;
+            //if (!string.IsNullOrWhiteSpace(poridClaim) && int.TryParse(poridClaim, out int parsedPorid))
+            //{
+            //    porid = parsedPorid;
+            //}
 
             // --- Inventory Pre-Check (Unchanged) ---
             bool inventoryIssueFound = false;
@@ -267,23 +290,23 @@ namespace Safir.Server.Controllers
 
                     // 3. Insert INVO_LST Lines (Discount calculation logic updated)
                     string insertLineSql = @"
-            INSERT INTO dbo.INVO_LST (
-              NUMBER, TAG, ANBAR, CODE, MEGH, MEGHk, MABL, MABL_K,
-              VAHED_K, N_KOL, TKHN, N_MOIN, IMBAA, MANDAH, RADIF,
-              FROM_A, JAY, CRT, UID
-            ) VALUES (
-              @NUMBER, @TAG, @ANBAR, @CODE, @MEGH, @MEGHk, @MABL, @MABL_K,
-              @VAHED_K, @N_KOL, @TKHN, @N_MOIN, @IMBAA, @MANDAH, @RADIF,
-              0, 0, GETDATE(), @UserId
-            )";
+                        INSERT INTO dbo.INVO_LST (
+                          NUMBER, TAG, ANBAR, CODE, MEGH, MEGHk, MABL, MABL_K,
+                          VAHED_K, N_KOL, TKHN, N_MOIN, IMBAA, MANDAH, RADIF,
+                          FROM_A, JAY, CRT, UID
+                        ) VALUES (
+                          @NUMBER, @TAG, @ANBAR, @CODE, @MEGH, @MEGHk, @MABL, @MABL_K,
+                          @VAHED_K, @N_KOL, @TKHN, @N_MOIN, @IMBAA, @MANDAH, @RADIF,
+                          0, 0, GETDATE(), @UserId
+                        )";
                     const string checkStufFskSql = "SELECT 1 FROM dbo.STUF_FSK WHERE CODE = @CODE AND ANBAR = @ANBAR";
                     const string insertStufFskSql = @"INSERT INTO dbo.STUF_FSK (CODE, ANBAR, MOGODI_A, FI_A, MABL_A, MANDAH_A, MIN_M, MAX_M, CRT, UID) VALUES (@CODE, @ANBAR, 0, 0, 0, 0, 0, 0, GETDATE(), @UserId)";
                     int radifCounter = 0;
                     decimal totalCalculatedVat = 0;
 
-                    decimal jamf = 0;      // مجموع مبلغ پس از تخفیف و مالیات
-                    decimal jamTakhfif = 0; // مجموع تخفیف
-                    decimal pursantP = 0;   // جمع پورسانت محاسبه شده
+                    //decimal jamf = 0;      // مجموع مبلغ پس از تخفیف و مالیات
+                    //decimal jamTakhfif = 0; // مجموع تخفیف
+                    //decimal pursantP = 0;   // جمع پورسانت محاسبه شده
 
                     foreach (var line in request.Lines)
                     {
@@ -327,19 +350,19 @@ namespace Safir.Server.Controllers
                             }
                         }
 
-                        // جمع مبالغ برای پورسانت و آمار
-                        jamf += (mablK - nMoin + imbaaLine);
-                        jamTakhfif += nMoin;
+                        //// جمع مبالغ برای پورسانت و آمار
+                        //jamf += (mablK - nMoin + imbaaLine);
+                        //jamTakhfif += nMoin;
 
-                        if (porid.HasValue)
-                        {
-                            const string porsantSql = "SELECT PORSANT FROM dbo.VISITORS_PORSANT_KALA WHERE PORID = @PorId AND code = @ItemCode";
-                            decimal? porsantPercent = await connection.QuerySingleOrDefaultAsync<decimal?>(porsantSql, new { PorId = porid.Value, ItemCode = line.ItemCode }, transaction: transaction);
-                            if (porsantPercent.HasValue)
-                            {
-                                pursantP += Math.Round(((mablK - nMoin + imbaaLine) * porsantPercent.Value) / 100m);
-                            }
-                        }
+                        //if (porid.HasValue)
+                        //{
+                        //    const string porsantSql = "SELECT PORSANT FROM dbo.VISITORS_PORSANT_KALA WHERE PORID = @PorId AND code = @ItemCode";
+                        //    decimal? porsantPercent = await connection.QuerySingleOrDefaultAsync<decimal?>(porsantSql, new { PorId = porid.Value, ItemCode = line.ItemCode }, transaction: transaction);
+                        //    if (porsantPercent.HasValue)
+                        //    {
+                        //        pursantP += Math.Round(((mablK - nMoin + imbaaLine) * porsantPercent.Value) / 100m);
+                        //    }
+                        //}
                         // --- End Calculations ---
 
                         var lineParams = new
@@ -380,41 +403,40 @@ namespace Safir.Server.Controllers
                         _logger.LogWarning("Proforma {Number} saved with inventory/STUF_FSK override. Customer: {CustomerHes}.", nextNumber, request.Header.CustomerHesCode);
                     }
 
-                    // --- Visitor commission calculation and insert ---
-                    decimal darsadP = 0;
-                    if (!porid.HasValue)
-                    {
-                        const string custTozihSql = "SELECT TOZIH FROM dbo.CUST_HESAB WHERE hes = @Hes";
-                        string? tozihStr = await connection.QuerySingleOrDefaultAsync<string?>(custTozihSql, new { Hes = visitorHes }, transaction: transaction);
-                        if (!string.IsNullOrWhiteSpace(tozihStr) && decimal.TryParse(tozihStr, out decimal parsedPercent))
-                        {
-                            darsadP = parsedPercent;
-                            pursantP = Math.Round((jamf * darsadP) / 100m);
-                        }
-                    }
-                    else
-                    {
-                        if (jamf != 0)
-                        {
-                            darsadP = Math.Round((pursantP / jamf) * 100m, 2);
-                        }
-                    }
-
-                    const string insertVisitorDtlSql = @"INSERT INTO dbo.VISITOR_DTL (NUMBER, TAG, CUST_NO, DARSAD, PURSANT, TOZIH, STAT, PORID)
-                                                           VALUES (@NUMBER, @TAG, @CUST_NO, @DARSAD, @PURSANT, @TOZIH, @STAT, @PORID)";
-
-                    var visitorParams = new
-                    {
-                        NUMBER = nextNumber,
-                        TAG = ProformaTag,
-                        CUST_NO = visitorHes,
-                        DARSAD = darsadP,
-                        PURSANT = pursantP,
-                        TOZIH = " ",
-                        STAT = 0,
-                        PORID = (object?)porid
-                    };
-                    await connection.ExecuteAsync(insertVisitorDtlSql, visitorParams, transaction);
+                    ////--- discontinued replaced with SP
+                    //decimal darsadP = 0;
+                    //if (!porid.HasValue)
+                    //{
+                    //    const string custTozihSql = "SELECT TOZIH FROM dbo.CUST_HESAB WHERE hes = @Hes";
+                    //    string? tozihStr = await connection.QuerySingleOrDefaultAsync<string?>(custTozihSql, new { Hes = visitorHes }, transaction: transaction);
+                    //    if (!string.IsNullOrWhiteSpace(tozihStr) && decimal.TryParse(tozihStr, out decimal parsedPercent))
+                    //    {
+                    //        darsadP = parsedPercent;
+                    //        pursantP = Math.Round((jamf * darsadP) / 100m);
+                    //    }
+                    //}
+                    //else
+                    //{
+                    //    if (jamf != 0)
+                    //    {
+                    //        darsadP = Math.Round((pursantP / jamf) * 100m, 2);
+                    //    }
+                    //}
+                    //const string insertVisitorDtlSql = @"INSERT INTO dbo.VISITOR_DTL (NUMBER, TAG, CUST_NO, DARSAD, PURSANT, TOZIH, STAT, PORID)
+                    //                                       VALUES (@NUMBER, @TAG, @CUST_NO, @DARSAD, @PURSANT, @TOZIH, @STAT, @PORID)";
+                    //var visitorParams = new
+                    //{
+                    //    NUMBER = nextNumber,
+                    //    TAG = ProformaTag,
+                    //    CUST_NO = visitorHes,
+                    //    DARSAD = darsadP,
+                    //    PURSANT = pursantP,
+                    //    TOZIH = " ",
+                    //    STAT = 0,
+                    //    PORID = (object?)porid
+                    //};
+                    //await connection.ExecuteAsync(insertVisitorDtlSql, visitorParams, transaction);
+                    // Visitor commission is now calculated by a stored procedure, which will be called after the transaction commits.
 
                     // 5. Get necessary claims for the task
                     var erjabeUserIdString = User.FindFirstValue(BaseknowClaimTypes.erjabe); // کد کاربری که تسک به او ارجاع می‌شود
@@ -452,11 +474,11 @@ namespace Safir.Server.Controllers
 
                         // Prepare SQL Insert for tasks table
                         const string insertTaskSql = @"
-                    INSERT INTO tasks (
-                        PERSONEL, USERNAME, TASK, COMP_COD, STDATE, STTIME, SKID, NUM, TG, CTIM, USERCO
-                    ) VALUES (
-                        @Personel, @Username, @TaskDesc, @CompCod, @StDate, @StTime, 20, @Num, 20, CURRENT_TIMESTAMP, @UserCo
-                    )";
+                            INSERT INTO tasks (
+                                PERSONEL, USERNAME, TASK, COMP_COD, STDATE, STTIME, SKID, NUM, TG, CTIM, USERCO
+                            ) VALUES (
+                                @Personel, @Username, @TaskDesc, @CompCod, @StDate, @StTime, 20, @Num, 20, CURRENT_TIMESTAMP, @UserCo
+                            )";
                         // SKID = 20 (Hardcoded based on PHP)
                         // TG = 20 (Hardcoded based on PHP)
                         // CTIM = CURRENT_TIMESTAMP
@@ -493,17 +515,23 @@ namespace Safir.Server.Controllers
                         // throw new InvalidOperationException("Failed to create automation task due to missing user claims.");
                     }
 
-                    // --- Copy visitor commission rows from the generated pre-invoice ---
-                    const string copyVisitorDtlSql = @"INSERT INTO dbo.VISITOR_DTL (NUMBER, TAG, CUST_NO, DARSAD, PURSANT, TOZIH, PORID)
-                                                                  SELECT @NewNum, 2, CUST_NO, DARSAD, PURSANT, TOZIH, PORID
-                                                                  FROM dbo.VISITOR_DTL
-                                                                  WHERE NUMBER = @OldNum AND TAG = 20";
-                    await connection.ExecuteAsync(copyVisitorDtlSql, new { NewNum = nextNumber, OldNum = nextNumber }, transaction: transaction);
-                    _logger.LogInformation("Transaction: VISITOR_DTL rows copied for Proforma {ProformaNumber}", nextNumber);
-
                     return nextNumber; // Return generated proforma number
 
                 }, IsolationLevel.Serializable); //ReadCommitted
+
+                // Calculate visitor commission via stored procedure
+                try
+                {
+                    var visitorMessages = RunCalculateVisitorPorsant((long)generatedProformaNumber, ProformaTag, visitorHes);
+                    if (visitorMessages.Any())
+                    {
+                        _logger.LogInformation("Visitor commission calculation messages for Proforma {ProformaNumber}: {Messages}", generatedProformaNumber, string.Join(" | ", visitorMessages));
+                    }
+                }
+                catch (Exception vpEx)
+                {
+                    _logger.LogError(vpEx, "Error executing CalculateVisitorPorsant for Proforma {ProformaNumber}", generatedProformaNumber);
+                }
 
                 // --- Award Calculation ---
                 try
