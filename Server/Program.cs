@@ -7,6 +7,7 @@ using Safir.Shared.Interfaces;
 using Stimulsoft.Base;
 using Stimulsoft.Report;
 using System.Text;
+using System.Text.RegularExpressions;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -89,6 +90,63 @@ catch (Exception ex)
     app.Logger.LogError(ex, "خطا در رجیستر کردن فونت QuestPDF هنگام شروع برنامه.");
 }
 #endregion
+
+// =================================================================
+#region Database Migration (Run Startup Scripts)
+
+// ما یک "scope" جدید می‌سازیم تا بتوانیم به سرویس‌های Scoped مانند IDatabaseService دسترسی پیدا کنیم
+using (var scope = app.Services.CreateScope())
+{
+    var services = scope.ServiceProvider;
+    try
+    {
+        var logger = services.GetRequiredService<ILogger<Program>>();
+        var dbService = services.GetRequiredService<IDatabaseService>();
+        var env = services.GetRequiredService<IWebHostEnvironment>();
+
+        // 1. آدرس فایل اسکریپت را پیدا کنید
+        string scriptPath = Path.Combine(env.ContentRootPath, "Scripts", "001_CreateEvaporationReportsTable.sql");
+
+        if (File.Exists(scriptPath))
+        {
+            logger.LogInformation("Migration Script found: {ScriptPath}", scriptPath);
+
+            // 2. محتوای اسکریپت را بخوانید
+            string sqlScript = await File.ReadAllTextAsync(scriptPath);
+
+            // 3. مهم: اسکریپت را بر اساس دستور "GO" جدا کنید
+            // دستور "GO" یک دستور T-SQL نیست و توسط Dapper یا SqlClient اجرا نمی‌شود.
+            // باید اسکریپت را به بچ‌های (batches) جداگانه تقسیم کنیم.
+            var scriptBatches = Regex.Split(sqlScript, @"^\s*GO\s*$",
+                                        RegexOptions.Multiline | RegexOptions.IgnoreCase | RegexOptions.IgnorePatternWhitespace);
+
+            // 4. هر بخش (batch) را جداگانه اجرا کنید
+            foreach (var batch in scriptBatches)
+            {
+                if (string.IsNullOrWhiteSpace(batch)) continue;
+
+                await dbService.DoExecuteSQLAsync(batch);
+                logger.LogInformation("Successfully executed migration batch.");
+            }
+
+            logger.LogInformation("Database migration script '001_CreateEvaporationReportsTable.sql' executed successfully.");
+        }
+        else
+        {
+            logger.LogWarning("Database migration script not found at: {ScriptPath}", scriptPath);
+        }
+    }
+    catch (Exception ex)
+    {
+        //var logger = services.GetRequiredService<ILogger<Program>>();
+        //logger.LogCritical(ex, "Failed to execute database migration script at startup. The application will stop.");
+        //// اگر اسکریپت دیتابیس اجرا نشود، برنامه نباید بالا بیاید
+        //throw;
+    }
+}
+#endregion
+// =================================================================
+
 
 // Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())

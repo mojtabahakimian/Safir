@@ -1,0 +1,173 @@
+﻿@page "/evaporation-report"
+@using Safir.Shared.Models
+@using System.Globalization
+@using MudBlazor.Utilities
+
+@inject HttpClient Http
+@inject ISnackbar Snackbar
+@inject IDialogService DialogService
+
+<MudForm Class="mt-4">
+    <MudCard>
+        <MudCardHeader>
+            <CardHeaderContent>
+                <MudText Typo="Typo.h6">فرم گزارش اواپراتور</MudText>
+            </CardHeaderContent>
+        </MudCardHeader>
+        <MudCardContent>
+            <MudGrid Spacing="3">
+                <MudItem xs="12" sm="6">
+                    
+                    <MudTextField Label="تاریخ شمسی"
+                                  @ref="_dateField" 
+                                  @bind-Value="persianDateString"
+                                  Mask="@(new PatternMask("0000/00/00"))"
+                                  Placeholder="1404/08/14"
+                                  Variant="Variant.Text"
+                                  Style="direction:ltr;" />
+
+                    <MudSelect T="string" Label="شیفت" @bind-Value="evaporationReport.Shift" Variant="Variant.Text">
+    <MudSelectItem Value="@("صبح")">صبح</MudSelectItem>
+    <MudSelectItem Value="@("عصر")">عصر</MudSelectItem>
+    <MudSelectItem Value="@("شب")">شب</MudSelectItem>
+</MudSelect>
+                    <MudTextField Label="اپراتور" @bind-Value="evaporationReport.OperatorName" />
+                    <MudTimePicker Label="ساعت شروع" @bind-Time="evaporationReport.StartTime" style="direction: ltr;" />
+                    <MudTimePicker Label="ساعت پایان" @bind-Time="evaporationReport.EndTime" style="direction: ltr;" />
+                    <MudNumericField Label="مدت (دقیقه)" @bind-Value="evaporationReport.DurationInMinutes" style="direction: ltr;" />
+                    <MudNumericField Label="درصد مواد خشک خروجی" @bind-Value="evaporationReport.OutletDryMatterPercentage" style="direction: ltr;" />
+                    <MudNumericField Label="زمان پر شدن دبه ۲۰ لیتری (ثانیه)" @bind-Value="evaporationReport.FillTime20LitreContainerInSeconds" style="direction: ltr;" />
+                    <MudNumericField Label="فشار بخار دیگ (bar)" @bind-Value="evaporationReport.BoilerSteamPressure" style="direction: ltr;" />
+                    <MudNumericField Label="فشار بخار محرک TVR (bar)" @bind-Value="evaporationReport.TvrSteamPressure" style="direction: ltr;" />
+                </MudItem>
+                <MudItem xs="12" sm="6">
+                    <MudNumericField Label="خلأ (bar abs)" @bind-Value="evaporationReport.VacuumPressure" style="direction: ltr;" />
+                    <MudNumericField Label="دمای برج ۱ (°C)" @bind-Value="evaporationReport.Tower1Temperature" style="direction: ltr;" />
+                    <MudNumericField Label="دمای برج ۲ (°C)" @bind-Value="evaporationReport.Tower2Temperature" style="direction: ltr;" />
+                    <MudNumericField Label="دمای برج ۳ (°C)" @bind-Value="evaporationReport.Tower3Temperature" style="direction: ltr;" />
+                    <MudNumericField Label="دمای ورودی کندانسور (°C)" @bind-Value="evaporationReport.CondenserInletTemperature" style="direction: ltr;" />
+                    <MudNumericField Label="دمای خروجی کندانسور (°C)" @bind-Value="evaporationReport.CondenserOutletTemperature" style="direction: ltr;" />
+                    <MudCheckBox @bind-Checked="evaporationReport.IsTower1PumpOn" Label="پمپ ۱ برج روشن" />
+                    <MudCheckBox @bind-Checked="evaporationReport.IsTower2PumpOn" Label="پمپ ۲ برج روشن" />
+                    <MudNumericField Label="دمای آب مقطر (°C)" @bind-Value="evaporationReport.DistilledWaterTemperature" style="direction: ltr;" />
+                    <MudSelect @bind-Value="evaporationReport.CipStatus" Label="وضعیت CIP (قبل/بعد)">
+                        <MudSelectItem Value="@("قبل")">قبل</MudSelectItem>
+                        <MudSelectItem Value="@("بعد")">بعد</MudSelectItem>
+                    </MudSelect>
+                    <MudNumericField Label="ساعت از آخرین CIP" @bind-Value="evaporationReport.HoursSinceLastCip" style="direction: ltr;" />
+                </MudItem>
+            </MudGrid>
+        </MudCardContent>
+        <MudCardActions>
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="Submit" Disabled="@_isSubmitting">
+                @if (_isSubmitting)
+                {
+                    <MudProgressCircular Class="ms-n1" Size="Size.Small" Indeterminate="true" />
+                    <MudText Class="ms-2">در حال ثبت...</MudText>
+                }
+                else
+                {
+                    <MudText>ثبت</MudText>
+                }
+            </MudButton>
+        </MudCardActions>
+    </MudCard>
+</MudForm>
+
+@code {
+    // مرجع برای فیلد تاریخ (برای فوکوس)
+    private MudTextField<string> _dateField; 
+
+    private EvaporationReport evaporationReport = new EvaporationReport();
+    private string persianDateString;
+    private bool _isSubmitting = false;
+
+    protected override void OnInitialized()
+    {
+        // تنظیم تاریخ پیش‌فرض امروز به شمسی
+        var pc = new System.Globalization.PersianCalendar();
+        var now = DateTime.Now;
+        persianDateString = $"{pc.GetYear(now)}/{pc.GetMonth(now):D2}/{pc.GetDayOfMonth(now):D2}";
+    }
+    
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        // تنظیم فوکوس روی فیلد تاریخ در اولین رندر
+        if (firstRender && _dateField != null)
+        {
+            await _dateField.FocusAsync();
+        }
+    }
+
+    private async Task Submit()
+    {
+        if (_isSubmitting) return; 
+        _isSubmitting = true;
+
+        // ۱. تبدیل رشته شمسی به DateTime
+        try
+        {
+            var parts = persianDateString.Split('/');
+            if (parts.Length == 3 && !string.IsNullOrWhiteSpace(parts[0]) && !string.IsNullOrWhiteSpace(parts[1]) && !string.IsNullOrWhiteSpace(parts[2]))
+            {
+                int year = int.Parse(parts[0]);
+                int month = int.Parse(parts[1]);
+                int day = int.Parse(parts[2]);
+                
+                if (year < 1300 || year > 1500) 
+                    throw new FormatException("سال وارد شده معتبر نیست.");
+                
+                var pc = new System.Globalization.PersianCalendar();
+                evaporationReport.ReportDate = pc.ToDateTime(year, month, day, 0, 0, 0, 0);
+            }
+            else
+            {
+                throw new FormatException("فرمت تاریخ شمسی صحیح نیست. لطفاً آن را کامل وارد کنید.");
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"خطا در فرمت تاریخ شمسی: (مثال: 1404/08/14)", Severity.Error);
+            _isSubmitting = false;
+            StateHasChanged();
+            return; 
+        }
+
+        // ۲. ارسال مدل به API
+        try
+        {
+            var response = await Http.PostAsJsonAsync("api/EvaporationReports", evaporationReport);
+
+            if (response.IsSuccessStatusCode)
+            {
+                // ۳. نمایش پنجره موفقیت (به جای Snackbar)
+                await DialogService.ShowMessageBox(
+                    "ثبت موفق", // عنوان پنجره
+                    "گزارش با موفقیت ثبت شد.", // متن پیام
+                    "باشه" // متن دکمه تأیید
+                );
+
+                // ۴. ریست کردن فرم
+                evaporationReport = new EvaporationReport();
+                OnInitialized(); // فراخوانی مجدد برای تنظیم تاریخ امروز
+                await _dateField.FocusAsync(); // فوکوس مجدد روی فیلد تاریخ
+            }
+            else
+            {
+                // نمایش خطای سرور
+                var errorContent = await response.Content.ReadAsStringAsync();
+                Snackbar.Add($"خطا در ثبت گزارش. (کد: {response.StatusCode}) - {errorContent}", Severity.Error);
+            }
+        }
+        catch (Exception ex)
+        {
+            // نمایش خطای کلی شبکه
+            Snackbar.Add($"خطای شبکه یا ارتباط با سرور: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _isSubmitting = false; // فعال کردن مجدد دکمه
+            StateHasChanged(); 
+        }
+    }
+}
