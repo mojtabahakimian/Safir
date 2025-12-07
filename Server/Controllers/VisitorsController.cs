@@ -1,10 +1,12 @@
-﻿// مسیر فایل: Safir.Server/Controllers/VisitorsController.cs
-using Microsoft.AspNetCore.Authorization;
+﻿using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Safir.Shared.Interfaces;
 using Safir.Shared.Models.Visitory;
 using System.Security.Claims;
 using Safir.Shared.Constants;
+using Safir.Shared.Models; // For PagedResult
+using Dapper;
+using Safir.Shared.Utility;
 
 namespace Safir.Server.Controllers
 {
@@ -22,7 +24,6 @@ namespace Safir.Server.Controllers
             _logger = logger;
         }
 
-        // اندپوینت دریافت تاریخ ها (بدون تغییر)
         [HttpGet("my-visit-dates")]
         public async Task<ActionResult<IEnumerable<long>>> GetMyVisitDates()
         {
@@ -38,9 +39,12 @@ namespace Safir.Server.Controllers
         }
 
 
-        // --- اندپوینت بازگردانی شده برای دریافت *همه* مشتریان بر اساس تاریخ ---
         [HttpGet("my-customers")]
-        public async Task<ActionResult<IEnumerable<VISITOR_CUSTOMERS>>> GetMyVisitorCustomers([FromQuery] long? visitDate)
+        public async Task<ActionResult<PagedResult<VISITOR_CUSTOMERS>>> GetMyVisitorCustomers(
+            [FromQuery] long? visitDate,
+            [FromQuery] int pageNumber = 1,
+            [FromQuery] int pageSize = 50,
+            [FromQuery] string? searchTerm = null)
         {
             var userHes = User.FindFirstValue(BaseknowClaimTypes.USER_HES);
             if (string.IsNullOrEmpty(userHes)) { return BadRequest("HES یافت نشد."); }
@@ -52,37 +56,82 @@ namespace Safir.Server.Controllers
                 const string latestDateSql = "SELECT MAX(VDATE) FROM dbo.VISITORS_DAY WHERE HES = @UserHes AND OKF = 1";
                 var latestDateResult = await _dbService.DoGetDataSQLAsyncSingle<long?>(latestDateSql, new { UserHes = userHes });
                 if (latestDateResult.HasValue) { dateToQuery = latestDateResult.Value; }
-                else { return Ok(new List<VISITOR_CUSTOMERS>()); } // نتیجه خالی اگر تاریخی نیست
+                else { return Ok(new PagedResult<VISITOR_CUSTOMERS>()); }
             }
 
-            // کوئری اصلی بدون صفحه بندی و جستجوی سروری
-            const string sql = @"
+            var parameters = new DynamicParameters();
+            parameters.Add("UserHes", userHes);
+            parameters.Add("VisitDateToQuery", dateToQuery);
+            parameters.Add("Offset", (pageNumber - 1) * pageSize);
+            parameters.Add("PageSize", pageSize);
+
+            var whereConditions = new List<string>
+            {
+                "(vd.OKF = 1)",
+                "(dtl.HES = @UserHes)",
+                "(dtl.VDATE = @VisitDateToQuery)"
+            };
+
+            if (!string.IsNullOrWhiteSpace(searchTerm))
+            {
+                string normalizedSearchTerm = searchTerm.Trim().FixPersianChars();
+                whereConditions.Add("(ch.NAME LIKE @SearchPattern OR ch.HES LIKE @SearchPattern OR ch.TEL LIKE @SearchPattern OR ch.MOBILE LIKE @SearchPattern)");
+                parameters.Add("SearchPattern", $"%{normalizedSearchTerm}%");
+            }
+
+            string whereClause = string.Join(" AND ", whereConditions);
+
+            // Optimized Query: Paging first, then heavy joins
+            string sql = $@"
+                WITH PagedVisitorCustomers AS (
+                    SELECT 
+                        dtl.HES, dtl.VDATE, dtl.COUST_NO, dtl.TOPLACE, 
+                        ch.NAME, ch.ADDRESS, ch.TEL, ch.MOBILE, ch.Latitude, ch.Longitude
+                    FROM dbo.VISITORS_DAY_DTL dtl
+                    INNER JOIN dbo.CUST_HESAB ch ON dtl.COUST_NO = ch.hes
+                    INNER JOIN dbo.VISITORS_DAY vd ON dtl.HES = vd.HES AND dtl.VDATE = vd.VDATE
+                    WHERE {whereClause}
+                    ORDER BY ch.NAME
+                    OFFSET @Offset ROWS FETCH NEXT @PageSize ROWS ONLY
+                )
                 SELECT
-                    dtl.HES AS userid, dtl.VDATE, dtl.COUST_NO AS hes,
-                    qbm.BEDM - qbm.BESM AS mandahh, ch.NAME AS person,
-                    ch.ADDRESS + N' ' + ISNULL(ch.TEL, N'') + N' ' + ISNULL(ch.MOBILE, N'') AS addr,
-                    0 AS mandahas, az.TOPETEB AS etebar, RIGHT(ISNULL(lg.lastdt, N''), 8) AS lkharid,
-                    ch.Latitude, ch.Longitude, dtl.TOPLACE, vd.OKF
+                    pvc.HES AS userid, pvc.VDATE, pvc.COUST_NO AS hes,
+                    ISNULL(qbm.BEDM, 0) - ISNULL(qbm.BESM, 0) AS mandahh,
+                    pvc.NAME AS person,
+                    pvc.ADDRESS + N' ' + ISNULL(pvc.TEL, N'') + N' ' + ISNULL(pvc.MOBILE, N'') AS addr,
+                    0 AS mandahas,
+                    ISNULL(az.TOPETEB, 0) AS etebar,
+                    RIGHT(ISNULL(lg.lastdt, N''), 8) AS lkharid,
+                    pvc.Latitude, pvc.Longitude, pvc.TOPLACE, 1 AS OKF
+                FROM PagedVisitorCustomers pvc
+                LEFT OUTER JOIN dbo.last_generate lg ON pvc.COUST_NO = lg.hes
+                LEFT OUTER JOIN dbo.AZAE az ON pvc.COUST_NO = az.HES
+                LEFT OUTER JOIN dbo.Q_BEDEHBESTANH_MAIN qbm ON pvc.COUST_NO = qbm.HES
+                ORDER BY pvc.NAME";
+
+            string countSql = $@"
+                SELECT COUNT(dtl.COUST_NO)
                 FROM dbo.VISITORS_DAY_DTL dtl
                 INNER JOIN dbo.CUST_HESAB ch ON dtl.COUST_NO = ch.hes
                 INNER JOIN dbo.VISITORS_DAY vd ON dtl.HES = vd.HES AND dtl.VDATE = vd.VDATE
-                LEFT OUTER JOIN dbo.last_generate lg ON dtl.COUST_NO = lg.hes
-                LEFT OUTER JOIN dbo.AZAE az ON dtl.COUST_NO = az.HES
-                LEFT OUTER JOIN dbo.Q_BEDEHBESTANH_MAIN qbm ON dtl.COUST_NO = qbm.HES
-                WHERE (vd.OKF = 1)
-                  AND (dtl.HES = @UserHes)
-                  AND (dtl.VDATE = @VisitDateToQuery)
-                ORDER BY ch.NAME"; // مرتب سازی همچنان خوب است
+                WHERE {whereClause}";
 
             try
             {
-                var parameters = new { UserHes = userHes, VisitDateToQuery = dateToQuery };
                 var customers = await _dbService.DoGetDataSQLAsync<VISITOR_CUSTOMERS>(sql, parameters);
-                return Ok(customers ?? new List<VISITOR_CUSTOMERS>());
+                int totalCount = await _dbService.DoGetDataSQLAsyncSingle<int>(countSql, parameters);
+
+                return Ok(new PagedResult<VISITOR_CUSTOMERS>
+                {
+                    Items = customers.ToList(),
+                    TotalCount = totalCount,
+                    PageNumber = pageNumber,
+                    PageSize = pageSize
+                });
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error fetching all visitor customers for UserHes: {UserHes}, Date: {VisitDate}", userHes, dateToQuery);
+                _logger.LogError(ex, "Error fetching visitor customers for UserHes: {UserHes}, Date: {VisitDate}", userHes, dateToQuery);
                 return StatusCode(500, "خطای داخلی سرور.");
             }
         }

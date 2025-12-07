@@ -14,6 +14,11 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddControllersWithViews();
 builder.Services.AddRazorPages();
+builder.Services.AddResponseCompression(opts =>
+{
+    opts.MimeTypes = Microsoft.AspNetCore.ResponseCompression.ResponseCompressionDefaults.MimeTypes.Concat(
+        new[] { "application/octet-stream" });
+});
 
 #region MineServer
 // --- Add Custom Services ---
@@ -161,6 +166,8 @@ else
 }
 
 app.UseHttpsRedirection();
+
+app.UseResponseCompression();
 
 app.UseBlazorFrameworkFiles();
 app.UseStaticFiles();

@@ -78,7 +78,7 @@ namespace Safir.Client.Services
         /// <returns>Byte array of the PDF file or null if an error occurs.</returns>
         public async Task<(byte[]? PdfBytes, string? ErrorMessage, HttpStatusCode? StatusCode)> GetProformaPdfBytesAsync(double proformaNumber)
         {
-            string requestUri = $"api/proformas/{proformaNumber}/pdf";
+            string requestUri = $"api/proformas/{proformaNumber.ToString(System.Globalization.CultureInfo.InvariantCulture)}/pdf";
             _logger.LogInformation("Requesting Proforma PDF from: {RequestUri}", requestUri);
 
             try

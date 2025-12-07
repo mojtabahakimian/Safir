@@ -452,122 +452,33 @@ namespace Safir.Server.Controllers
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error determining accounting level from BLOCK_HES UserCO: {UserCod}, Setting: '{BlockHesRaw}'", userCod, blockHesSettingRaw ?? "N/A");
+                _logger.LogError(ex, "Error determining accounting level and parents for UserCO: {UserCod}", userCod);
                 return null;
             }
         }
 
-        [HttpGet("{hesabCode}/statement")] // روت API: api/customers/{کد حساب}/statement
+        [HttpGet("{hesabCode}/statement")]
         public async Task<ActionResult<IEnumerable<QDAFTARTAFZIL2_H>>> GetCustomerStatement(string hesabCode, [FromQuery] long? startDate = DefaultStartDate, [FromQuery] long? endDate = DefaultEndDate)
         {
-            if (string.IsNullOrWhiteSpace(hesabCode))
-            {
-                return BadRequest("Customer account code (hesabCode) is required.");
-            }
-            if (!startDate.HasValue || !endDate.HasValue)
-            {
-                return BadRequest("Start date and end date are required.");
-            }
+            if (string.IsNullOrWhiteSpace(hesabCode)) return BadRequest("Customer account code (hesabCode) is required.");
+            if (!startDate.HasValue || !endDate.HasValue) return BadRequest("Start date and end date are required.");
 
-            try
-            {
-                _logger.LogInformation("Fetching statement for HesabCode: {HesabCode} from {StartDate} to {EndDate}", hesabCode, startDate, endDate);
+            var statementItems = await FetchStatementDataAsync(hesabCode, startDate, endDate);
+            if (statementItems == null) return StatusCode(500, "خطای داخلی سرور هنگام دریافت صورت حساب رخ داد.");
 
-                //string query = "SELECT HES_K, HES_M, TAFZILN, HES, SHARH, BED, BES, N_S, DATE_S, MAND " +
-                //               "FROM dbo.QDAFTARTAFZIL2_H(@StartDate, @EndDate, @HesabCode);";   
-                
-                string query = @"WITH CTE
-AS (SELECT HES_K, HES_M, TAFZILN, HES, SHARH, BED, BES, N_S, DATE_S, MAND,id, BED - BES AS DiffAmt
-    FROM dbo.QDAFTARTAFZIL2_H(@StartDate, @EndDate, @HesabCode) )
-SELECT HES_K,
-    DATE_S,
-       (
-           SELECT SUM(x.DiffAmt)
-           FROM CTE AS x
-           WHERE x.DATE_S < c1.DATE_S
-                 OR
-                 (
-                     x.DATE_S = c1.DATE_S
-                     AND
-                     (
-                         x.BED > c1.BED
-                         OR
-                         (
-                             x.BED = c1.BED
-                             AND x.id <= c1.id
-                         )
-                     )
-                 )
-       ) AS MAND,
-       HES_M,
-       TAFZILN,
-       HES,
-       SHARH,
-       BED,
-       BES,
-       N_S   
-FROM CTE AS c1
-ORDER BY DATE_S, BED DESC;
-";
-
-                var parameters = new Dictionary<string, object>
-                {
-                    { "@StartDate", startDate.Value },
-                    { "@EndDate", endDate.Value },
-                    { "@HesabCode", hesabCode }
-                };
-
-                // --- اجرای کوئری و دریافت مستقیم لیست QDAFTARTAFZIL2_H ---
-                // نوع TEntity را به صورت <QDAFTARTAFZIL2_H> مشخص می کنیم
-                // نتیجه مستقیماً یک IEnumerable<QDAFTARTAFZIL2_H> خواهد بود
-                IEnumerable<QDAFTARTAFZIL2_H> statementItems = await _dbService.DoGetDataSQLAsync<QDAFTARTAFZIL2_H>(query, parameters);
-
-                // حلقه foreach و تبدیل دستی DataRow حذف شد چون Dapper این کار را انجام داده است!
-
-                // بررسی کنیم که null نباشد (گرچه QueryAsync معمولا لیست خالی برمی‌گرداند)
-                if (statementItems == null)
-                {
-                    _logger.LogWarning("DoGetDataSQLAsync returned null for HesabCode: {HesabCode}", hesabCode);
-                    statementItems = new List<QDAFTARTAFZIL2_H>(); // برگرداندن لیست خالی
-                }
-
-                // می‌توانید نتیجه را به لیست تبدیل کنید اگر لازم است
-                var statementList = statementItems.ToList();
-
-                _logger.LogInformation("Found {Count} statement items for HesabCode: {HesabCode}", statementList.Count, hesabCode);
-                return Ok(statementList); // بازگرداندن لیست QDAFTARTAFZIL2_H
-            }
-            catch (SqlException sqlEx)
-            {
-                _logger.LogError(sqlEx, "SQL Error fetching statement for HesabCode: {HesabCode}", hesabCode);
-                return StatusCode(500, "خطا در ارتباط با پایگاه داده رخ داد.");
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error fetching statement for HesabCode: {HesabCode}", hesabCode);
-                return StatusCode(500, "خطای داخلی سرور هنگام دریافت صورت حساب رخ داد.");
-            }
+            return Ok(statementItems);
         }
 
         private async Task<string> GetCustomerNameAsync(string hesabCode)
         {
             try
             {
-
                 var _kol = CL_HESABDARI.GETKOL(hesabCode);
                 var _moin = CL_HESABDARI.GETMOIN(hesabCode);
                 var _taf = CL_HESABDARI.GETTAF(hesabCode);
 
-                string sql = @"SELECT TOP (1) NAME
-                       FROM TDETA_HES
-                       WHERE N_KOL = @KOL AND NUMBER = @NUMBER AND TNUMBER = @TNUMBER";          // ستون HES در جدول شما قرار دارد
-
-                var param = new Dictionary<string, object>
-            {
-                { "@KOL",      _kol  },
-                { "@NUMBER",   _moin },
-                { "@TNUMBER",   _taf }
-            };
+                string sql = @"SELECT TOP (1) NAME FROM TDETA_HES WHERE N_KOL = @KOL AND NUMBER = @NUMBER AND TNUMBER = @TNUMBER";
+                var param = new Dictionary<string, object> { { "@KOL", _kol }, { "@NUMBER", _moin }, { "@TNUMBER", _taf } };
 
                 var name = await _dbService.DoGetDataSQLAsyncSingle<string>(sql, param);
                 return name ?? string.Empty;
@@ -579,49 +490,55 @@ ORDER BY DATE_S, BED DESC;
             }
         }
 
-
-        // --- متد کمکی برای دریافت داده (برای جلوگیری از تکرار کد) ---
         private async Task<IEnumerable<QDAFTARTAFZIL2_H>?> FetchStatementDataAsync(string hesabCode, long? startDate, long? endDate)
         {
-            // همان منطق دریافت داده از متد GetCustomerStatement
             _logger.LogInformation("Fetching statement data for HesabCode: {HesabCode} from {StartDate} to {EndDate}", hesabCode, startDate, endDate);
-            string query = "SELECT HES_K, HES_M, TAFZILN, HES, SHARH, BED, BES, N_S, DATE_S, MAND " +
-                           "FROM dbo.QDAFTARTAFZIL2_H(@StartDate, @EndDate, @HesabCode);";
+            
+            string query = @"WITH CTE AS (
+                    SELECT HES_K, HES_M, TAFZILN, HES, SHARH, BED, BES, N_S, DATE_S, MAND, id, (BED - BES) AS DiffAmt
+                    FROM dbo.QDAFTARTAFZIL2_H(@StartDate, @EndDate, @HesabCode)
+                )
+                SELECT 
+                    HES_K,
+                    DATE_S,
+                    SUM(DiffAmt) OVER (ORDER BY DATE_S, BED DESC, id ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) AS MAND,
+                    HES_M,
+                    TAFZILN,
+                    HES,
+                    SHARH,
+                    BED,
+                    BES,
+                    N_S   
+                FROM CTE
+                ORDER BY DATE_S, BED DESC, id;";
 
             var parameters = new Dictionary<string, object>
-        {
-            { "@StartDate", startDate ?? DefaultStartDate }, // استفاده از مقادیر پیش فرض اگر null باشند
-            { "@EndDate", endDate ?? DefaultEndDate },
-            { "@HesabCode", hesabCode }
-        };
+            {
+                { "@StartDate", startDate ?? DefaultStartDate },
+                { "@EndDate", endDate ?? DefaultEndDate },
+                { "@HesabCode", hesabCode }
+            };
             try
             {
-                IEnumerable<QDAFTARTAFZIL2_H> statementItems = await _dbService.DoGetDataSQLAsync<QDAFTARTAFZIL2_H>(query, parameters);
-                return statementItems;
+                return await _dbService.DoGetDataSQLAsync<QDAFTARTAFZIL2_H>(query, parameters);
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error in FetchStatementDataAsync for HesabCode: {HesabCode}", hesabCode);
-                return null; // یا throw کنید
+                return null;
             }
-
         }
 
-        // --- Endpoint جدید برای دانلود PDF ---
         [HttpGet("{hesabCode}/statement/pdf")]
         public async Task<IActionResult> GetCustomerStatementPdf(string hesabCode, [FromQuery] long? startDate = DefaultStartDate, [FromQuery] long? endDate = DefaultEndDate)
         {
-            if (string.IsNullOrWhiteSpace(hesabCode))
-                return BadRequest("Customer account code (hesabCode) is required.");
+            if (string.IsNullOrWhiteSpace(hesabCode)) return BadRequest("Customer account code (hesabCode) is required.");
 
             _logger.LogInformation("Request received for PDF statement. HesabCode: {HesabCode}, Start: {StartDate}, End: {EndDate}", hesabCode, startDate, endDate);
 
-
             try
             {
-                // 1. دریافت داده‌های صورت حساب با استفاده از متد کمکی
                 var statementItems = await FetchStatementDataAsync(hesabCode, startDate, endDate);
-
                 if (statementItems == null)
                 {
                     _logger.LogError("Failed to fetch statement data for PDF generation. HesabCode: {HesabCode}", hesabCode);
@@ -633,41 +550,20 @@ ORDER BY DATE_S, BED DESC;
                     return NotFound("داده‌ای برای تولید گزارش PDF در این بازه زمانی یافت نشد.");
                 }
 
-
                 _logger.LogInformation("Generating PDF for {Count} items. HesabCode: {HesabCode}", statementItems.Count(), hesabCode);
 
-                //استخراج نام مشتری از اولین ردیف یا متد کمکی
                 string customerName = statementItems.FirstOrDefault()?.TAFZILN;
+                if (string.IsNullOrWhiteSpace(customerName)) customerName = await GetCustomerNameAsync(hesabCode);
 
-                if (string.IsNullOrWhiteSpace(customerName))
-                {
-                    customerName = await GetCustomerNameAsync(hesabCode);   //‌ fallback
-                }
-
-                // 2. ایجاد نمونه از کلاس سند PDF
-                // ارسال ILogger به کلاس سند برای لاگ‌گیری داخلی آن
-                var document = new CustomerStatementDocument(
-                                    statementItems,
-                                    hesabCode,
-                                    customerName,
-                                    startDate,
-                                    endDate,
-                                    _logger,
-                                    _webHostEnvironment);
-
-                // 3. تولید PDF به صورت بایت (byte array)
-                // GeneratePdf() یک آرایه بایت از PDF تولید شده برمی‌گرداند.
+                var document = new CustomerStatementDocument(statementItems, hesabCode, customerName, startDate, endDate, _logger, _webHostEnvironment);
                 byte[] pdfBytes = document.GeneratePdf();
 
                 _logger.LogInformation("PDF generated successfully. Size: {Size} bytes. HesabCode: {HesabCode}", pdfBytes.Length, hesabCode);
 
-
-                // 4. ساخت نام فایل مناسب
                 string startDateStr = startDate?.ToString() ?? "all";
                 string endDateStr = endDate?.ToString() ?? "all";
                 string fileName = $"Statement_{hesabCode}_{startDateStr}_{endDateStr}.pdf";
 
-                // 5. بازگرداندن فایل PDF به کلاینت برای دانلود
                 return File(pdfBytes, "application/pdf", fileName);
             }
             catch (Exception ex)
@@ -677,19 +573,12 @@ ORDER BY DATE_S, BED DESC;
             }
         }
 
-        // --- START: Code to Add ---
-        /// <summary>
-        /// بررسی می‌کند که آیا حساب مشتری مشخص شده مسدود است یا خیر.
-        /// </summary>
-        /// <param name="hesCode">کد حساب مشتری (HES)</param>
-        /// <returns>True اگر مسدود باشد، False در غیر این صورت.</returns>
-        [HttpGet("{hesCode}/is-blocked")] // آدرس API: GET api/customers/{hesCode}/is-blocked
+        [HttpGet("{hesCode}/is-blocked")]
         [ProducesResponseType(typeof(bool), StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
         [ProducesResponseType(StatusCodes.Status500InternalServerError)]
         public async Task<ActionResult<bool>> IsCustomerBlocked(string hesCode)
         {
-            // 1. بررسی ورودی
             if (string.IsNullOrWhiteSpace(hesCode))
             {
                 _logger.LogWarning("API: IsCustomerBlocked called with empty hesCode.");
@@ -698,10 +587,6 @@ ORDER BY DATE_S, BED DESC;
 
             _logger.LogInformation("API: Checking block status for HES: {HesCode}", hesCode);
 
-            // 2. تعریف کوئری SQL بر اساس منطق WPF
-            // این کوئری چک می‌کند آیا رکوردی برای این HES در جدول BLOCK_CUSTOMER وجود دارد
-            // که ENDBLK آن 0 باشد (فرض بر این است که 0 به معنی فعال بودن مسدودی است).
-            // ISNULL(ENDBLK, 0) = 0 همچنین رکوردهایی که ENDBLK آن‌ها NULL است را به عنوان مسدود در نظر می‌گیرد.
             const string sql = @"
                 SELECT CASE WHEN EXISTS (
                     SELECT 1
@@ -711,23 +596,14 @@ ORDER BY DATE_S, BED DESC;
 
             try
             {
-                // 3. استفاده از پارامتر برای جلوگیری از SQL Injection
                 var parameters = new { HesCode = hesCode };
-
-                // 4. اجرای کوئری با استفاده از سرویس دیتابیس
-                // متد DoGetDataSQLAsyncSingle<bool> انتظار یک نتیجه boolean دارد
                 bool isBlocked = await _dbService.DoGetDataSQLAsyncSingle<bool>(sql, parameters);
-
                 _logger.LogInformation("API: Block status result for HES {HesCode}: {IsBlocked}", hesCode, isBlocked);
-
-                // 5. بازگرداندن نتیجه
-                return Ok(isBlocked); // True: مسدود است, False: مسدود نیست
+                return Ok(isBlocked);
             }
             catch (Exception ex)
             {
-                // 6. ثبت خطا در صورت بروز مشکل
                 _logger.LogError(ex, "API: Error checking block status for HES: {HesCode}", hesCode);
-                // بازگرداندن خطای عمومی سرور
                 return StatusCode(StatusCodes.Status500InternalServerError, "خطای داخلی سرور هنگام بررسی وضعیت مسدودی مشتری رخ داد.");
             }
         }
@@ -738,72 +614,51 @@ ORDER BY DATE_S, BED DESC;
             [FromQuery] int pageSize = 50,
             [FromQuery] string? searchTerm = null)
         {
-            // چون UserHes از کلاینت برای این سناریو ارسال نمی‌شود و در کوئری هم استفاده نمی‌شود، لاگ آن را تغییر می‌دهیم.
-            _logger.LogInformation("API: Fetching general active customers (unfiltered by specific user HES). Page: {PageNumber}, Size: {PageSize}, Search: '{SearchTerm}' (No Visit Plan)",
+            _logger.LogInformation("API: Fetching general active customers. Page: {PageNumber}, Size: {PageSize}, Search: '{SearchTerm}'",
                 pageNumber, pageSize, searchTerm);
 
             if (pageNumber < 1) pageNumber = 1;
-            if (pageSize < 1) pageSize = 10; // یا هر مقدار مینیمم دیگر
+            if (pageSize < 1) pageSize = 10;
 
-            int startRow = (pageNumber - 1) * pageSize + 1;
-            int endRow = pageNumber * pageSize;
-
+            var parameters = new DynamicParameters();
             var whereConditions = new List<string>();
-            var parameters = new DynamicParameters(); // یک DynamicParameters جدید ایجاد کنید
 
-            // 1. فیلتر مشتریان مسدود نشده (این باید همیشه اعمال شود)
-            // اطمینان حاصل کنید که منطق ISNULL(BC.ENDBLK, 1) <> 0 با دیتابیس شما همخوانی دارد
-            // (یعنی 0 به معنی مسدود و مقادیر دیگر یا NULL به معنی غیر مسدود است)
             whereConditions.Add("(BC.HES IS NULL OR ISNULL(BC.ENDBLK, 1) <> 0)");
 
-            // 2. فیلتر جستجو (اگر searchTerm ارسال شده باشد)
             if (!string.IsNullOrWhiteSpace(searchTerm))
             {
                 string normalizedSearchTerm = searchTerm.Trim().FixPersianChars();
-                // جستجو در نام، کد حساب، تلفن و موبایل
                 whereConditions.Add("(CH.NAME LIKE @SearchPattern OR CH.HES LIKE @SearchPattern OR CH.TEL LIKE @SearchPattern OR CH.MOBILE LIKE @SearchPattern)");
-                parameters.Add("SearchPattern", $"%{normalizedSearchTerm}%"); // پارامتر جستجو اضافه می‌شود
+                parameters.Add("SearchPattern", $"%{normalizedSearchTerm}%");
             }
 
-            // ساخت رشته WHERE نهایی
             string whereClause = whereConditions.Any() ? $"WHERE {string.Join(" AND ", whereConditions)}" : "";
 
-            // کوئری برای دریافت مشتریان با استفاده از ROW_NUMBER() برای صفحه‌بندی
+            // Optimized Query using OFFSET-FETCH
             string customersSql = $@"
-        WITH FilteredCustomers AS (
-            SELECT
-                CH.HES AS hes,
-                CH.NAME AS person,
-                CH.ADDRESS + N' ' + ISNULL(CH.TEL, N'') + N' ' + ISNULL(CH.MOBILE, N'') AS addr,
-                CH.Latitude, CH.Longitude,
-                ROW_NUMBER() OVER (ORDER BY CH.NAME) AS RowNum
-                -- دیگر ستون‌های مورد نیاز از CUST_HESAB برای مدل VISITOR_CUSTOMERS
-                -- مانند کد اقتصادی (ECODE)، کد پستی (PCODE) و ... اگر در VISITOR_CUSTOMERS هستند
-            FROM dbo.CUST_HESAB CH
-            LEFT JOIN dbo.BLOCK_CUSTOMER BC ON CH.HES = BC.HES -- جوین برای بررسی مسدودی
-            {whereClause} -- شروط فیلتر اینجا اعمال می‌شوند
-        )
-        SELECT hes, person, addr, Latitude, Longitude -- ستون‌های دیگر را در اینجا هم لیست کنید
-        FROM FilteredCustomers
-        WHERE RowNum >= @StartRow AND RowNum <= @EndRow
-        ORDER BY RowNum;"; // ترتیب نمایش بر اساس RowNum برای حفظ ترتیب صفحه‌بندی
+                SELECT
+                    CH.HES AS hes,
+                    CH.NAME AS person,
+                    CH.ADDRESS + N' ' + ISNULL(CH.TEL, N'') + N' ' + ISNULL(CH.MOBILE, N'') AS addr,
+                    CH.Latitude, CH.Longitude
+                FROM dbo.CUST_HESAB CH
+                LEFT JOIN dbo.BLOCK_CUSTOMER BC ON CH.HES = BC.HES
+                {whereClause}
+                ORDER BY CH.NAME
+                OFFSET @Offset ROWS FETCH NEXT @PageSize ROWS ONLY;";
 
-            // کوئری برای شمارش کل مشتریان با همان فیلترها
             string countSql = $@"
-        SELECT COUNT(DISTINCT CH.HES)
-        FROM dbo.CUST_HESAB CH
-        LEFT JOIN dbo.BLOCK_CUSTOMER BC ON CH.HES = BC.HES
-        {whereClause};"; // شروط فیلتر اینجا هم اعمال می‌شوند
+                SELECT COUNT(CH.HES)
+                FROM dbo.CUST_HESAB CH
+                LEFT JOIN dbo.BLOCK_CUSTOMER BC ON CH.HES = BC.HES
+                {whereClause};";
 
-            // اضافه کردن پارامترهای صفحه‌بندی
-            parameters.Add("StartRow", startRow);
-            parameters.Add("EndRow", endRow);
-            // پارامتر UserHes دیگر نباید اینجا اضافه شود چون از کوئری حذف شده است.
+            parameters.Add("Offset", (pageNumber - 1) * pageSize);
+            parameters.Add("PageSize", pageSize);
 
             try
             {
-                // اجرای کوئری‌ها
-                IEnumerable<VISITOR_CUSTOMERS> customers = await _dbService.DoGetDataSQLAsync<VISITOR_CUSTOMERS>(customersSql, parameters);
+                var customers = await _dbService.DoGetDataSQLAsync<VISITOR_CUSTOMERS>(customersSql, parameters);
                 int totalCount = await _dbService.DoGetDataSQLAsyncSingle<int>(countSql, parameters);
 
                 var pagedResult = new PagedResult<VISITOR_CUSTOMERS>
@@ -817,12 +672,9 @@ ORDER BY DATE_S, BED DESC;
             }
             catch (Exception ex)
             {
-                // اینجا جزئیات پارامترها را هم لاگ کنید تا دیباگ راحت‌تر شود
-                _logger.LogError(ex, "API: Error fetching general active customers. Search: '{SearchTerm}'. Parameters for query: StartRow={StartRow}, EndRow={EndRow}, SearchPattern (if any)='{SearchPattern}'",
-                    searchTerm, startRow, endRow, parameters.ParameterNames.Contains("SearchPattern") ? parameters.Get<string>("SearchPattern") : "N/A");
-                return StatusCode(StatusCodes.Status500InternalServerError, "خطا در دریافت لیست مشتریان از سرور.");
+                _logger.LogError(ex, "API: Error fetching customers. Search: '{SearchTerm}'", searchTerm);
+                return StatusCode(StatusCodes.Status500InternalServerError, "خطا در دریافت لیست مشتریان.");
             }
         }
-        // --- END: Code to Add ---
     }
 }

@@ -22,126 +22,10 @@ namespace Safir.Server.Services
 
         public DatabaseService(IConfiguration configuration, ILogger<DatabaseService> logger)
         {
-            // Ensure connection string is not null or empty
-            _connectionString = configuration.GetConnectionString("DefaultConnection")
-                                ?? throw new InvalidOperationException("Database connection string 'DefaultConnection' not found.");
+            _connectionString = configuration.GetConnectionString("DefaultConnection");
             _logger = logger;
         }
 
-        private void LogDbErrorToFile(string sql, Exception ex)
-        {
-            try
-            {
-                var logPath = @"C:\CORRECT\Blazor_ErDbms_Log.txt";
-                var builder = new SqlConnectionStringBuilder(_connectionString);
-                var version = System.Reflection.Assembly.GetExecutingAssembly().GetName().Version?.ToString() ?? "N/A";
-
-                var logEntry = $"[{DateTime.Now}]\n" +
-                               $"Server: {Environment.MachineName}\n" +
-                               $"Database: {builder.InitialCatalog}\n" +
-                               $"App Version: {version}\n" +
-                               $"SQL: {sql}\n" +
-                               $"Error: {ex}\n" +
-                               "------------------------------\n";
-
-                var dir = Path.GetDirectoryName(logPath);
-                if (!string.IsNullOrEmpty(dir))
-                {
-                    Directory.CreateDirectory(dir);
-                }
-                File.AppendAllText(logPath, logEntry);
-            }
-            catch (Exception fileEx)
-            {
-                _logger.LogError(fileEx, "Failed to write database error log to file.");
-            }
-        }
-
-        // --- Existing Methods (DoGetDataSQLAsync, etc.) ---
-        // ... (Keep existing method implementations) ...
-        public async Task<IEnumerable<TEntity>> DoGetDataSQLAsync<TEntity>(string sql, object? parameters = null)
-        {
-            try
-            {
-                using IDbConnection db = new SqlConnection(_connectionString);
-                // No need to manually open Dapper does it
-                var result = await db.QueryAsync<TEntity>(sql, parameters);
-                return result;
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error in DoGetDataSQLAsync running SQL: {Sql}", sql);
-                LogDbErrorToFile(sql, ex);
-                throw; // Re-throw to allow caller to handle
-            }
-        }
-
-        public async Task<TEntity> DoGetDataSQLAsyncSingle<TEntity>(string sql, object? parameters = null)
-        {
-            try
-            {
-                using IDbConnection db = new SqlConnection(_connectionString);
-                // No need to manually open Dapper does it
-                // Use QuerySingleOrDefaultAsync which returns default(TEntity) if no rows or >1 row error is not desired
-                var result = await db.QuerySingleOrDefaultAsync<TEntity>(sql, parameters);
-                return result;
-            }
-            catch (InvalidOperationException ex) when (ex.Message.Contains("Sequence contains no elements"))
-            {
-                _logger.LogWarning("DoGetDataSQLAsyncSingle expected a single result but found none for SQL: {Sql}", sql);
-                return default; // Return default value (e.g., null for reference types, 0 for int)
-            }
-            catch (InvalidOperationException ex) when (ex.Message.Contains("Sequence contains more than one element"))
-            {
-                _logger.LogError(ex, "DoGetDataSQLAsyncSingle expected a single result but found multiple for SQL: {Sql}", sql);
-                throw; // Re-throw as this indicates unexpected data
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error in DoGetDataSQLAsyncSingle running SQL: {Sql}", sql);
-                LogDbErrorToFile(sql, ex);
-                throw;
-            }
-        }
-
-        public async Task<int> DoExecuteSQLAsync(string sql, object? parameters = null)
-        {
-            try
-            {
-                using IDbConnection db = new SqlConnection(_connectionString);
-                // No need to manually open Dapper does it
-                int rowsAffected = await db.ExecuteAsync(sql, parameters);
-                return rowsAffected;
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error in DoExecuteSQLAsync running SQL: {Sql}", sql);
-                LogDbErrorToFile(sql, ex);
-                throw;
-            }
-        }
-
-        public async Task<IEnumerable<TEntity>> DoGetStoreProcedureSQLAsync<TEntity>(string storedProcedureName, object? parameters = null, int commandTimeout = 30)
-        {
-            try
-            {
-                using IDbConnection db = new SqlConnection(_connectionString);
-                // No need to manually open Dapper does it
-                return await db.QueryAsync<TEntity>(
-                       storedProcedureName,
-                       parameters,
-                       commandType: CommandType.StoredProcedure,
-                       commandTimeout: commandTimeout);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error executing stored procedure: {Sp}", storedProcedureName);
-                LogDbErrorToFile(storedProcedureName, ex);
-                throw;
-            }
-        }
-
-        // --- ADDED Transaction Method Implementation ---
         public async Task ExecuteInTransactionAsync(Func<IDbConnection, IDbTransaction, Task> actions, IsolationLevel isolationLevel = IsolationLevel.RepeatableRead)
         {
             using var connection = new SqlConnection(_connectionString);
@@ -156,7 +40,7 @@ namespace Safir.Server.Services
             }
             catch (Exception ex)
             {
-                LogDbErrorToFile("Transaction", ex);
+
                 _logger.LogError(ex, "Error occurred within transaction. Rolling back.");
                 try
                 {
@@ -164,7 +48,7 @@ namespace Safir.Server.Services
                 }
                 catch (Exception rbEx)
                 {
-                    LogDbErrorToFile("Rollback", rbEx);
+
                     _logger.LogError(rbEx, "Error rolling back transaction.");
                 }
                 throw; // Re-throw the original exception so the caller knows it failed
@@ -189,7 +73,7 @@ namespace Safir.Server.Services
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error occurred within transaction. Rolling back.");
-                LogDbErrorToFile("Transaction", ex);
+
                 try
                 {
                     await transaction.RollbackAsync();
@@ -197,7 +81,7 @@ namespace Safir.Server.Services
                 catch (Exception rbEx)
                 {
                     _logger.LogError(rbEx, "Error rolling back transaction.");
-                    LogDbErrorToFile("Rollback", rbEx);
+
                 }
                 throw; // Re-throw the original exception
             }
@@ -228,7 +112,7 @@ namespace Safir.Server.Services
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error getting inventory for {ItemCode}", itemCode);
-                LogDbErrorToFile(sql, ex);
+
                 throw;
             }
         }
@@ -262,9 +146,33 @@ namespace Safir.Server.Services
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error getting inventory details for Item: {ItemCode}, Anbar: {AnbarCode}", itemCode, anbarCode);
-                LogDbErrorToFile(sql, ex);
+
                 return null; // Return null on error
             }
+        }
+
+        public async Task<IEnumerable<TEntity>> DoGetDataSQLAsync<TEntity>(string sql, object parameters = null)
+        {
+            using var connection = new SqlConnection(_connectionString);
+            return await connection.QueryAsync<TEntity>(sql, parameters);
+        }
+
+        public async Task<int> DoExecuteSQLAsync(string sql, object parameters = null)
+        {
+            using var connection = new SqlConnection(_connectionString);
+            return await connection.ExecuteAsync(sql, parameters);
+        }
+
+        public async Task<TEntity> DoGetDataSQLAsyncSingle<TEntity>(string sql, object parameters = null)
+        {
+            using var connection = new SqlConnection(_connectionString);
+            return await connection.QuerySingleOrDefaultAsync<TEntity>(sql, parameters);
+        }
+
+        public async Task<IEnumerable<TEntity>> DoGetStoreProcedureSQLAsync<TEntity>(string storedProcedureName, object parameters = null, int commandTimeout = 30)
+        {
+            using var connection = new SqlConnection(_connectionString);
+            return await connection.QueryAsync<TEntity>(storedProcedureName, parameters, commandType: CommandType.StoredProcedure, commandTimeout: commandTimeout);
         }
 
 
@@ -315,7 +223,7 @@ namespace Safir.Server.Services
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error in DoGetDataSQLAsyncMultiple running SQL: {Sql}", sql);
-                LogDbErrorToFile(sql, ex);
+
                 throw;
             }
             // If Option 2 was used, map results here and return the DTO.
@@ -413,7 +321,7 @@ namespace Safir.Server.Services
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error fetching latest discount list ID for Dept {DepartmentId}, Date {CurrentDate}", departmentId, currentDate);
-                LogDbErrorToFile(sql, ex);
+
                 return null;
             }
         }

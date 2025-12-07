@@ -55,6 +55,8 @@
             return;
         }
 
+        if (isDownloading) return; // Prevent double clicks
+
         isDownloading = true;
         StateHasChanged();
 
@@ -66,11 +68,19 @@
             if (pdfBytes != null && pdfBytes.Length > 0)
             {
                 string fileName = $"Proforma_{ProformaNumber.Value.ToString("F0")}.pdf";
-                await JSRuntime.InvokeVoidAsync("downloadFileFromBytes", fileName, pdfBytes);
-                Snackbar.Add("دانلود PDF آغاز شد.", Severity.Success);
-                Logger.LogInformation("PDF download initiated for Proforma: {ProformaNumber}", ProformaNumber.Value);
-                // Optionally close the dialog after successful download start
-                // MudDialog.Close(DialogResult.Ok(true));
+                
+                try 
+                {
+                    await JSRuntime.InvokeVoidAsync("downloadFileFromBytes", fileName, pdfBytes);
+                    Snackbar.Add("دانلود PDF آغاز شد.", Severity.Success);
+                    Logger.LogInformation("PDF download initiated for Proforma: {ProformaNumber}", ProformaNumber.Value);
+                }
+                catch (Exception jsEx)
+                {
+                    Logger.LogError(jsEx, "Error triggering JS download for Proforma {ProformaNumber}", ProformaNumber.Value);
+                    // Don't show a snackbar here if the bytes were fetched successfully, 
+                    // as it might be a minor JS issue or the user cancelled the save dialog.
+                }
             }
             else
             {
@@ -83,6 +93,8 @@
                 {
                     displayError = $"خطا در دریافت PDF: {errorMessage}";
                 }
+                
+                // Only show error if we really didn't get the bytes
                 Snackbar.Add(displayError, Severity.Error);
                 Logger.LogError("Failed to download Proforma PDF {ProformaNumber}. Status: {StatusCode}, Message: {ErrorMessage}", ProformaNumber.Value, statusCode, errorMessage);
             }
@@ -94,8 +106,9 @@
         }
         finally
         {
+            await Task.Delay(500); // Small delay to prevent rapid re-clicking
             isDownloading = false;
-            StateHasChanged();
+            await InvokeAsync(StateHasChanged);
         }
     }
 }

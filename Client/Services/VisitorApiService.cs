@@ -1,6 +1,5 @@
-﻿// Safir.Client/Services/VisitorApiService.cs
-using Safir.Shared.Models.Visitory;
-// using Safir.Shared.Models; // PagedResult دیگر لازم نیست
+﻿using Safir.Shared.Models.Visitory;
+using Safir.Shared.Models; // For PagedResult
 using System.Collections.Generic;
 using System.Net.Http;
 using System.Net.Http.Json;
@@ -24,7 +23,6 @@ namespace Safir.Client.Services
             _logger = logger;
         }
 
-        // متد دریافت تاریخ ها (بدون تغییر)
         public async Task<IEnumerable<long>?> GetMyVisitDatesAsync()
         {
             try
@@ -34,20 +32,21 @@ namespace Safir.Client.Services
                 {
                     return await response.Content.ReadFromJsonAsync<List<long>>();
                 }
-                // ... Error Handling ...
                 _logger.LogError("Error fetching visit dates..."); return null;
             }
             catch (Exception ex) { /* ... Log ... */ return null; }
         }
 
-
-        // --- متد بازگردانی شده برای دریافت *همه* مشتریان ---
-        public async Task<IEnumerable<VISITOR_CUSTOMERS>?> GetMyCustomersAsync(long? visitDate = null)
+        public async Task<PagedResult<VISITOR_CUSTOMERS>?> GetMyCustomersAsync(long? visitDate = null, int pageNumber = 1, int pageSize = 50, string? searchTerm = null)
         {
-            string requestUri = "api/visitors/my-customers";
+            string requestUri = $"api/visitors/my-customers?pageNumber={pageNumber}&pageSize={pageSize}";
             if (visitDate.HasValue)
             {
-                requestUri += $"?visitDate={visitDate.Value}";
+                requestUri += $"&visitDate={visitDate.Value}";
+            }
+            if (!string.IsNullOrWhiteSpace(searchTerm))
+            {
+                requestUri += $"&searchTerm={Uri.EscapeDataString(searchTerm)}";
             }
 
             try
@@ -56,19 +55,17 @@ namespace Safir.Client.Services
 
                 if (response.IsSuccessStatusCode)
                 {
-                    var customers = await response.Content.ReadFromJsonAsync<List<VISITOR_CUSTOMERS>>();
-                    return customers;
+                    var result = await response.Content.ReadFromJsonAsync<PagedResult<VISITOR_CUSTOMERS>>();
+                    return result;
                 }
                 else
                 {
-                    // ... Error Handling ...
                     _logger.LogError("Error fetching customers for date {VisitDate}...", visitDate);
                     return null;
                 }
             }
             catch (Exception ex)
             {
-                // ... Log ...
                 _logger.LogError(ex, "Exception fetching customers for date {VisitDate}...", visitDate);
                 return null;
             }
