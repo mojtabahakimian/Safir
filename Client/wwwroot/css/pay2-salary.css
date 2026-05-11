@@ -771,16 +771,44 @@
         box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.08);
     }
 
+/* ═══════════════════════════════════════════════
+   Arrow نازک، نرم و مطمئن (شبیه WPF)
+   ═══════════════════════════════════════════════ */
+
 .pay2-dd-arrow {
-    color: var(--p2-text-muted);
-    font-size: 17px;
-    line-height: 1;
-    transition: transform 0.2s;
+    display: inline-block;
+    width: 11px;
+    height: 11px;
     flex-shrink: 0;
+    margin-right: 8px;
+    position: relative;
+    top: 1px;
 }
 
-.pay2-dd-button.open .pay2-dd-arrow {
-    transform: rotate(180deg);
+    .pay2-dd-arrow::before {
+        content: '';
+        position: absolute;
+        width: 7px;
+        height: 7px;
+        border-right: 2px solid var(--p2-text-muted);
+        border-bottom: 2px solid var(--p2-text-muted);
+        transform: rotate(45deg);
+        top: 2px;
+        right: 2px;
+        transition: all 0.25s ease;
+    }
+
+.pay2-dd-button:hover .pay2-dd-arrow::before {
+    border-color: var(--p2-text-main);
+}
+
+.pay2-dd-button.open .pay2-dd-arrow::before {
+    transform: rotate(225deg);
+    border-color: var(--p2-primary);
+}
+
+.pay2-dd-button:focus .pay2-dd-arrow::before {
+    border-color: var(--p2-primary);
 }
 
 .pay2-dd-menu {

@@ -192,7 +192,7 @@
                     </div>
                 </div>
 
-                @* ── Dropdown نوع بیمه — wrapper داخل form-field ── *@
+                <!-- ── Dropdown نوع بیمه ── -->
                 <div class="form-field">
                     <label>نوع محاسبه بیمه</label>
                     <div class="pay2-dd">
@@ -200,9 +200,12 @@
                                 class="pay2-dd-button @(IsInsModeDropdownOpen ? "open" : "")"
                                 @onclick="ToggleInsModeDropdown"
                                 @onclick:stopPropagation="true">
+
                             <span>@GetInsModeText(CurrentWorkshop.INS_MODE)</span>
-                            <span class="pay2-dd-arrow">⌄</span>
+
+                            <span class="pay2-dd-arrow"></span>
                         </button>
+
                         @if (IsInsModeDropdownOpen)
                         {
                             <div class="pay2-dd-menu" @onclick:stopPropagation="true">
