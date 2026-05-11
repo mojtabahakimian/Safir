@@ -772,13 +772,13 @@
     }
 
 /* ═══════════════════════════════════════════════
-   Arrow نازک، نرم و مطمئن (شبیه WPF)
+   Arrow نرم، گرد و دوستانه (بدون لبه تیز)
    ═══════════════════════════════════════════════ */
 
 .pay2-dd-arrow {
     display: inline-block;
-    width: 11px;
-    height: 11px;
+    width: 13px;
+    height: 13px;
     flex-shrink: 0;
     margin-right: 8px;
     position: relative;
@@ -788,14 +788,15 @@
     .pay2-dd-arrow::before {
         content: '';
         position: absolute;
-        width: 7px;
-        height: 7px;
-        border-right: 2px solid var(--p2-text-muted);
-        border-bottom: 2px solid var(--p2-text-muted);
+        width: 9px;
+        height: 9px;
+        border-right: 2.5px solid var(--p2-text-muted);
+        border-bottom: 2.5px solid var(--p2-text-muted);
+        border-radius: 1.7px; /* ← این باعث نرم شدن گوشه می‌شود */
         transform: rotate(45deg);
-        top: 2px;
-        right: 2px;
-        transition: all 0.25s ease;
+        top: 0px;
+        right: 1px;
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
     }
 
 .pay2-dd-button:hover .pay2-dd-arrow::before {
