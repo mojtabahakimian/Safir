@@ -23,7 +23,11 @@ public class Pay2WorkshopApiService
     public async Task<int> SaveAsync(Pay2WorkshopSaveRequest request)
     {
         var response = await _http.PostAsJsonAsync("api/pay2/workshops/save", request);
-        response.EnsureSuccessStatusCode();
+        if (!response.IsSuccessStatusCode)
+        {
+            var msg = await response.Content.ReadAsStringAsync();
+            throw new Exception(string.IsNullOrWhiteSpace(msg) ? "خطای ناشناخته" : msg);
+        }
         return await response.Content.ReadFromJsonAsync<int>();
     }
 }

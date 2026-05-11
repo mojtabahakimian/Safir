@@ -3,13 +3,48 @@
 
 
 
-<div class="tab-content-animated">
+<div class="pay2-tab-container">
+    <div class="pay2-workshop-layout">
 
+        <!-- سمت چپ: لیست کارگاه‌ها -->
+        <div class="card-custom pay2-workshop-list">
+            <div class="pay2-card-header" style="display:flex; justify-content:space-between; align-items:center;">
+                <h5>لیست کارگاه‌ها</h5>
+                <button class="btn-outline-pay2" @onclick="NewWorkshop">جدید</button>
+            </div>
 
-    <div class="workshops-grid workshop-layout-fixed">
+            @if (IsLoadingWorkshops)
+            {
+                <div>در حال بارگذاری...</div>
+            }
+            else
+            {
+                <table class="workshop-table">
+                    <thead>
+                        <tr>
+                            <th>کد</th>
+                            <th>نام کارگاه</th>
+                            <th>فعال</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var item in Workshops)
+                        {
+                            <tr class="workshop-row @(CurrentWorkshop.WS_ID == item.WS_ID ? "active" : "")" @onclick="() => SelectWorkshop(item)">
+
+                                <td>@item.WS_CODE</td>
+                                <td>@item.WS_NAME</td>
+                                <td>@(item.IS_ACTIVE ? "بله" : "خیر")</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            }
+
+        </div>
 
         <!-- سمت راست: فرم ورود اطلاعات -->
-        <div class="card-custom workshop-form-panel">
+        <div class="card-custom pay2-workshop-form">
             <h5>اطلاعات کارگاه</h5>
 
             <div class="form-grid-2">
@@ -70,18 +105,37 @@
             </div>
 
             <div class="form-grid-2">
-                <label>
-                    <input type="checkbox" @bind="CurrentWorkshop.IS_ACTIVE" />
-                    فعال
-                </label>
-
                 <div class="form-field">
-                    <label>نوع بیمه</label>
-                    <select class="pay2-input" @bind="CurrentWorkshop.INS_MODE">
-                        <option value="1">عادی</option>
-                        <option value="2">ده‌درصدی</option>
-                    </select>
+                    <label>وضعیت کارگاه</label>
+
+                    <div class="pay2-wpf-checkbox-box">
+                        <label class="pay2-wpf-checkbox-label">
+                            <input type="checkbox" @bind="CurrentWorkshop.IS_ACTIVE" />
+                            کارگاه فعال است
+                        </label>
+                    </div>
                 </div>
+
+                <div class="pay2-dd">
+                    <button type="button" class="pay2-dd-button" @onclick="ToggleInsModeDropdown">
+                        <span>@GetInsModeText(CurrentWorkshop.INS_MODE)</span>
+                        <span class="pay2-dd-arrow">⌄</span>
+                    </button>
+
+                    @if (IsInsModeDropdownOpen)
+                    {
+                        <div class="pay2-dd-menu">
+                            <button type="button" class="pay2-dd-item" @onclick="() => SelectInsMode(1)">
+                                عادی
+                            </button>
+
+                            <button type="button" class="pay2-dd-item" @onclick="() => SelectInsMode(2)">
+                                ده درصدی
+                            </button>
+                        </div>
+                    }
+                </div>
+
             </div>
 
             <hr />
@@ -136,42 +190,6 @@
             </div>
         </div>
 
-        <!-- سمت چپ: لیست کارگاه‌ها -->
-        <div class="card-custom workshop-list-panel">
-            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
-                <h5>لیست کارگاه‌ها</h5>
-                <button class="btn-outline-pay2" @onclick="NewWorkshop">جدید</button>
-            </div>
-
-            @if (IsLoadingWorkshops)
-            {
-                <div>در حال بارگذاری...</div>
-            }
-            else
-            {
-                <table class="table table-sm table-hover">
-                    <thead>
-                        <tr>
-                            <th>کد</th>
-                            <th>نام کارگاه</th>
-                            <th>فعال</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        @foreach (var item in Workshops)
-                        {
-                            <tr @onclick="() => SelectWorkshop(item)" style="cursor:pointer;">
-                                <td>@item.WS_CODE</td>
-                                <td>@item.WS_NAME</td>
-                                <td>@(item.IS_ACTIVE ? "بله" : "خیر")</td>
-                            </tr>
-                        }
-                    </tbody>
-                </table>
-            }
-
-        </div>
-
     </div>
 </div>
 
@@ -209,6 +227,29 @@
         {
             IsLoadingWorkshops = false;
         }
+    }
+
+    private bool IsInsModeDropdownOpen;
+
+    private void ToggleInsModeDropdown()
+    {
+        IsInsModeDropdownOpen = !IsInsModeDropdownOpen;
+    }
+
+    private void SelectInsMode(int value)
+    {
+        CurrentWorkshop.INS_MODE = value;
+        IsInsModeDropdownOpen = false;
+    }
+
+    private static string GetInsModeText(int value)
+    {
+        return value switch
+        {
+            1 => "عادی",
+            2 => "ده درصدی",
+            _ => "عادی"
+        };
     }
 
     private async Task SelectWorkshop(Pay2WorkshopDto selected)

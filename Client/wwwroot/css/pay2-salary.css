@@ -1,0 +1,509 @@
+﻿:root {
+    --primary: #2563eb;
+    --primary-hover: #1d4ed8;
+    --primary-light: #eff6ff;
+    --bg-main: #f8fafc;
+    --bg-white: #ffffff;
+    --text-main: #1e293b;
+    --text-muted: #64748b;
+    --text-light: #94a3b8;
+    --border-color: #e2e8f0;
+    --border-light: #f1f5f9;
+    --success-bg: #ecfdf5;
+    --success-text: #059669;
+    --warning-bg: #fffbeb;
+    --warning-text: #d97706;
+    --error-bg: #fef2f2;
+    --error-text: #ef4444;
+}
+
+/* =========================
+   Global PAY2 Layout
+========================= */
+
+.pay2-app,
+.pay2-content,
+.tab-content-animated,
+.pay2-tab-container {
+    background: var(--bg-main);
+    color: var(--text-main);
+    width: 100%;
+    font-family: 'Vazirmatn', sans-serif;
+}
+
+/* =========================
+   Cards
+========================= */
+
+.card-custom {
+    background: var(--bg-white);
+    border: 1px solid var(--border-light);
+    border-radius: 16px;
+    padding: 24px;
+    box-shadow: 0 2px 15px rgba(15, 23, 42, 0.03);
+}
+
+/* =========================
+   Section Titles
+========================= */
+
+.pay2-section-title {
+    font-size: 18px;
+    font-weight: 800;
+    color: var(--text-main);
+    margin-bottom: 4px;
+}
+
+.pay2-section-subtitle {
+    color: var(--text-muted);
+    font-size: 13px;
+    margin-bottom: 20px;
+}
+
+/* =========================
+   Inputs
+========================= */
+
+.pay2-input,
+.pay2-select,
+.pay2-textarea {
+    width: 100%;
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    background: var(--bg-main);
+    color: var(--text-main);
+    outline: none;
+    font-size: 13px;
+    font-family: 'Vazirmatn', sans-serif;
+    transition: all 0.15s ease;
+}
+
+.pay2-input,
+.pay2-select {
+    height: 42px;
+    padding: 8px 12px;
+}
+
+.pay2-textarea {
+    min-height: 76px;
+    padding: 10px 12px;
+    resize: vertical;
+}
+
+    .pay2-input:focus,
+    .pay2-select:focus,
+    .pay2-textarea:focus {
+        background: white;
+        border-color: #93c5fd;
+        box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.08);
+    }
+
+/* =========================
+   Forms
+========================= */
+
+.form-field {
+    margin-bottom: 16px;
+}
+
+    .form-field label {
+        display: block;
+        font-size: 13px;
+        font-weight: 700;
+        color: var(--text-main);
+        margin-bottom: 6px;
+    }
+
+.form-grid-2 {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 16px 14px;
+}
+
+/* =========================
+   Buttons
+========================= */
+
+.btn-primary-pay2 {
+    background: var(--primary);
+    color: white;
+    border: none;
+    border-radius: 12px;
+    padding: 9px 18px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: background 0.15s ease;
+    font-family: 'Vazirmatn', sans-serif;
+}
+
+    .btn-primary-pay2:hover {
+        background: var(--primary-hover);
+    }
+
+    .btn-primary-pay2:disabled {
+        opacity: 0.55;
+        cursor: not-allowed;
+    }
+
+.btn-outline-pay2 {
+    background: transparent;
+    color: var(--text-main);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    padding: 9px 18px;
+    font-weight: 700;
+    cursor: pointer;
+    font-family: 'Vazirmatn', sans-serif;
+}
+
+    .btn-outline-pay2:hover {
+        background: var(--primary-light);
+        border-color: #93c5fd;
+        color: var(--primary);
+    }
+
+/* =========================
+   Workshop Two Panel Layout
+========================= */
+
+.pay2-workshop-layout {
+    display: grid;
+    grid-template-columns: 420px minmax(0, 1fr);
+    gap: 18px;
+    align-items: start;
+    width: 100%;
+    direction: ltr;
+}
+
+.pay2-workshop-list {
+    direction: rtl;
+    padding: 0;
+    overflow: hidden;
+    border-radius: 16px;
+    border: 1px solid var(--border-light);
+    background: var(--bg-white);
+}
+
+.pay2-workshop-form {
+    direction: rtl;
+}
+
+/* Compatibility with old class names */
+.workshops-grid.workshop-layout-fixed {
+    display: grid;
+    grid-template-columns: 420px minmax(0, 1fr);
+    grid-template-areas: "list form";
+    gap: 18px;
+    align-items: start;
+    width: 100%;
+    direction: ltr;
+}
+
+.workshop-form-panel {
+    grid-area: form;
+    direction: rtl;
+}
+
+.workshop-list-panel {
+    grid-area: list;
+    direction: rtl;
+    padding: 0;
+    overflow: hidden;
+    border-radius: 16px;
+    border: 1px solid var(--border-light);
+    background: var(--bg-white);
+}
+
+/* =========================
+   Workshop Table
+========================= */
+
+.pay2-card-header {
+    padding: 16px;
+    background: var(--bg-main);
+    border-bottom: 1px solid var(--border-light);
+    font-weight: 800;
+    border-radius: 16px 16px 0 0;
+}
+
+.workshop-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+    background: white;
+}
+
+    .workshop-table th {
+        color: var(--text-muted);
+        font-weight: 700;
+        background: var(--bg-main);
+        border-bottom: 1px solid var(--border-color);
+        padding: 12px 14px;
+    }
+
+    .workshop-table td {
+        border-bottom: 1px solid var(--border-light);
+        padding: 12px 14px;
+    }
+
+.workshop-row {
+    cursor: pointer;
+}
+
+    .workshop-row:hover,
+    .workshop-row.active {
+        background: var(--primary-light);
+    }
+
+/* =========================
+   Status Badges
+========================= */
+
+.badge-success {
+    background: var(--success-bg);
+    color: var(--success-text);
+    padding: 4px 12px;
+    border-radius: 10px;
+    font-size: 11px;
+    font-weight: 700;
+}
+
+.badge-error {
+    background: var(--error-bg);
+    color: var(--error-text);
+    padding: 4px 12px;
+    border-radius: 10px;
+    font-size: 11px;
+    font-weight: 700;
+}
+
+/* =========================
+   Sub Cards
+========================= */
+
+.pay2-sub-card {
+    background: #f8fafc;
+    border: 1px solid var(--border-light);
+    border-radius: 14px;
+    padding: 16px;
+    margin-top: 16px;
+}
+
+.pay2-sub-card-title {
+    font-weight: 800;
+    color: var(--primary);
+    margin-bottom: 14px;
+}
+
+/* =========================
+   WPF-like Checkbox
+========================= */
+
+.pay2-wpf-checkbox-box {
+    width: 100%;
+    height: 42px;
+    min-height: 42px;
+    background: var(--bg-main);
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    padding: 0 12px;
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+}
+
+.pay2-wpf-checkbox-label {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    flex-direction: row-reverse;
+    gap: 8px;
+    margin: 0;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-main);
+    cursor: pointer;
+    font-family: 'Vazirmatn', sans-serif;
+}
+
+    .pay2-wpf-checkbox-label input[type="checkbox"] {
+        appearance: none;
+        -webkit-appearance: none;
+        width: 17px;
+        height: 17px;
+        margin: 0;
+        cursor: pointer;
+        border: 1px solid #94a3b8;
+        border-radius: 5px;
+        background: #ffffff;
+        display: inline-grid;
+        place-content: center;
+    }
+
+        .pay2-wpf-checkbox-label input[type="checkbox"]:checked {
+            background: var(--primary);
+            border-color: var(--primary);
+        }
+
+            .pay2-wpf-checkbox-label input[type="checkbox"]:checked::before {
+                content: "✓";
+                color: white;
+                font-size: 13px;
+                font-weight: 800;
+                line-height: 1;
+            }
+
+/* =========================
+   PAY2 Custom Dropdown - WPF Like
+========================= */
+
+.pay2-dd {
+    position: relative;
+    width: 100%;
+}
+
+.pay2-dd-button {
+    width: 100%;
+    height: 42px;
+    background: var(--bg-main);
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    padding: 0 12px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-main);
+    cursor: pointer;
+    outline: none;
+    font-family: 'Vazirmatn', sans-serif;
+}
+
+    .pay2-dd-button:hover,
+    .pay2-dd-button:focus {
+        background: #ffffff;
+        border-color: #93c5fd;
+        box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.08);
+    }
+
+.pay2-dd-arrow {
+    color: var(--text-muted);
+    font-size: 18px;
+    line-height: 1;
+}
+
+.pay2-dd-menu {
+    position: absolute;
+    top: calc(100% + 4px);
+    right: 0;
+    left: 0;
+    background: #ffffff;
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    padding: 6px;
+    z-index: 1000;
+    box-shadow: 0 8px 24px rgba(15, 23, 42, 0.10);
+    overflow: hidden;
+}
+
+.pay2-dd-item {
+    width: 100%;
+    height: 36px;
+    border: none;
+    background: transparent;
+    border-radius: 8px;
+    padding: 0 10px;
+    text-align: right;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-main);
+    cursor: pointer;
+    font-family: 'Vazirmatn', sans-serif;
+}
+
+    .pay2-dd-item:hover {
+        background: var(--primary-light);
+        color: var(--primary);
+    }
+
+    .pay2-dd-item.active {
+        background: var(--primary-light);
+        color: var(--primary);
+        font-weight: 800;
+    }
+
+/* =========================
+   Old Native Select Safety
+   اگر جایی هنوز select مانده باشد
+========================= */
+
+.pay2-wpf-select {
+    width: 100%;
+    height: 42px;
+    min-height: 42px;
+    background: var(--bg-main);
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    padding: 0 12px;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-main);
+    outline: none;
+    cursor: pointer;
+    font-family: 'Vazirmatn', sans-serif;
+}
+
+    .pay2-wpf-select:hover {
+        border-color: #cbd5e1;
+    }
+
+    .pay2-wpf-select:focus {
+        background: #ffffff;
+        border-color: #93c5fd;
+        box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.08);
+    }
+
+/* =========================
+   Mobile Responsive
+========================= */
+
+@media (max-width: 1100px) {
+    .pay2-workshop-layout {
+        grid-template-columns: 1fr;
+    }
+
+    .pay2-workshop-form {
+        order: 1;
+    }
+
+    .pay2-workshop-list {
+        order: 2;
+    }
+
+    .workshops-grid.workshop-layout-fixed {
+        grid-template-columns: 1fr;
+        grid-template-areas:
+            "form"
+            "list";
+    }
+
+    .form-grid-2 {
+        grid-template-columns: 1fr;
+    }
+}
+
+@media (max-width: 768px) {
+    .pay2-wpf-checkbox-box,
+    .pay2-dd-button,
+    .pay2-wpf-select {
+        height: 40px;
+        min-height: 40px;
+    }
+
+    .card-custom {
+        padding: 16px;
+    }
+}
