@@ -1,4 +1,4 @@
-﻿@* @page "/" *@
+﻿@page "/"
 
 @using System.Security.Claims
 @using Microsoft.AspNetCore.Components.Authorization
@@ -12,19 +12,19 @@
     <Authorized Context="authContext">
         @code
         {
-        private string? displayName;
-        private string? userId;
-        protected override async Task OnInitializedAsync()
-        {
-            var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
-            var user = authState.User;
-
-            if (user.Identity != null && user.Identity.IsAuthenticated)
+            private string? displayName;
+            private string? userId;
+            protected override async Task OnInitializedAsync()
             {
-                string? FULL_USER = user.FindFirst(BaseknowClaimTypes.UUSER)?.Value;
-                displayName = FULL_USER ?? ""; //This will not display (issue)
+                var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+                var user = authState.User;
+
+                if (user.Identity != null && user.Identity.IsAuthenticated)
+                {
+                    string? FULL_USER = user.FindFirst(BaseknowClaimTypes.UUSER)?.Value;
+                    displayName = FULL_USER ?? ""; //This will not display (issue)
+                }
             }
-        }
 
         }
 
@@ -53,6 +53,25 @@
 <AuthorizeView>
     <Authorized>
         <MudGrid>
+
+            <MudItem xs="12" sm="6" md="4">
+                <MudCard Elevation="3" Class="rounded-lg h-100">
+                    <MudCardHeader>
+                        <CardHeaderContent>
+                            <MudText Typo="Typo.h6">Salary</MudText>
+                        </CardHeaderContent>
+                        <CardHeaderActions>
+                            <MudIconButton Icon="@Icons.Material.Filled.List" Color="Color.Default" />
+                        </CardHeaderActions>
+                    </MudCardHeader>
+                    <MudCardContent>
+                        <MudText>حقوق و دستمزد</MudText>
+                    </MudCardContent>
+                    <MudCardActions>
+                        <MudButton Href="salary/manage" Variant="Variant.Text" Color="Color.Primary">حقوق و دستمزد</MudButton>
+                    </MudCardActions>
+                </MudCard>
+            </MudItem>
 
             <MudItem xs="12" sm="6" md="4">
                 <MudCard Elevation="3" Class="rounded-lg h-100">

@@ -1,10 +1,9 @@
-﻿@page "/"
-@page "/salary/manage"
-@attribute [Microsoft.AspNetCore.Authorization.AllowAnonymous]
+﻿@page "/salary/manage"
 @layout EmptyLayout
 
 @using Safir.Shared.Models.Salary
 @inject Pay2WorkshopApiService WorkshopApi
+@using Safir.Client.Pages.Salary.Tabs
 
 <style>
     :root {
@@ -570,195 +569,7 @@
 
             @if (ActiveTab == "workshops")
             {
-                <div class="tab-content-animated">
-                    <div class="d-flex justify-content-between align-items-center" style="margin-bottom: 24px;">
-                        <div>
-                            <div style="font-size: 24px; font-weight: bold;">مدیریت کارگاه‌ها و تنظیمات حسابداری</div>
-                            <div style="color: var(--text-muted); margin-top: 6px;">
-                                تعریف کارگاه‌ها و انتساب کدهای کل/معین اختصاصی، مخصوصاً حساب‌های مساعده.
-                            </div>
-                        </div>
-
-                        <button class="btn-primary-pay2" @onclick="NewWorkshop">
-                            + کارگاه جدید
-                        </button>
-                    </div>
-
-                    <div class="workshop-layout">
-                        <div class="card-custom" style="padding: 0; overflow: hidden;">
-                            <div style="padding: 16px; background: var(--bg-main); border-bottom: 1px solid var(--border-light); font-weight: bold;">
-                                لیست کارگاه‌های تعریف‌شده
-                            </div>
-
-                            @if (IsLoadingWorkshops)
-                            {
-                                <div style="padding: 24px; color: var(--text-muted);">در حال بارگذاری...</div>
-                            }
-                            else if (!Workshops.Any())
-                            {
-                                <div style="padding: 24px; color: var(--text-muted);">هیچ کارگاهی ثبت نشده است.</div>
-                            }
-                            else
-                            {
-                                <table class="workshop-table">
-                                    <thead>
-                                        <tr>
-                                            <th>کد</th>
-                                            <th>نام کارگاه</th>
-                                            <th>نوع بیمه</th>
-                                            <th>وضعیت</th>
-                                        </tr>
-                                    </thead>
-
-                                    <tbody>
-                                        @foreach (var ws in Workshops)
-                                        {
-                                            <tr class="workshop-row @(CurrentWorkshop.WS_ID == ws.WS_ID ? "active" : "")"
-                                                @onclick="() => SelectWorkshop(ws)">
-                                                <td style="font-family: monospace; color: var(--text-muted);">@ws.WS_CODE</td>
-                                                <td style="font-weight: 600;">@ws.WS_NAME</td>
-                                                <td>@ws.InsModeText</td>
-                                                <td>
-                                                    @if (ws.IS_ACTIVE)
-                                                    {
-                                                        <span class="badge-success">فعال</span>
-                                                    }
-                                                    else
-                                                    {
-                                                        <span style="background:#fef2f2;color:#ef4444;padding:4px 12px;border-radius:10px;font-size:11px;font-weight:600;">
-                                                            غیرفعال
-                                                        </span>
-                                                    }
-                                                </td>
-                                            </tr>
-                                        }
-                                    </tbody>
-                                </table>
-                            }
-                        </div>
-
-                        <div class="card-custom">
-                            <div style="font-size: 18px; font-weight: bold; margin-bottom: 20px;">
-                                @(CurrentWorkshop.WS_ID == 0 ? "افزودن کارگاه جدید" : $"ویرایش کارگاه: {CurrentWorkshop.WS_NAME}")
-                            </div>
-
-                            <div class="form-grid-2">
-                                <div class="form-field">
-                                    <label>کد کارگاه *</label>
-                                    <input class="pay2-input" @bind="CurrentWorkshop.WS_CODE" />
-                                </div>
-
-                                <div class="form-field">
-                                    <label>نام کارگاه *</label>
-                                    <input class="pay2-input" @bind="CurrentWorkshop.WS_NAME" />
-                                </div>
-
-                                <div class="form-field">
-                                    <label>شناسه ملی</label>
-                                    <input class="pay2-input"
-                                           maxlength="11"
-                                           inputmode="numeric"
-                                           pattern="[0-9]*"
-                                           value="@CurrentWorkshop.NATIONAL_ID"
-                                           @oninput="e => CurrentWorkshop.NATIONAL_ID = OnlyDigits(e.Value?.ToString(), 11)" />
-                                </div>
-
-                                <div class="form-field">
-                                    <label>کد کارگاه تأمین اجتماعی</label>
-                                    <input class="pay2-input"
-                                           maxlength="20"
-                                           inputmode="numeric"
-                                           pattern="[0-9]*"
-                                           value="@CurrentWorkshop.SOCIAL_INS_CODE"
-                                           @oninput="e => CurrentWorkshop.SOCIAL_INS_CODE = OnlyDigits(e.Value?.ToString(), 20)" />
-                                </div>
-
-                                <div class="form-field">
-                                    <label>شناسه مالیاتی</label>
-                                    <input class="pay2-input" @bind="CurrentWorkshop.TAX_CODE" />
-                                </div>
-
-                                <div class="form-field">
-                                    <label>تلفن</label>
-                                    <input class="pay2-input" @bind="CurrentWorkshop.PHONE" />
-                                </div>
-
-                                <div class="form-field">
-                                    <label>نوع بیمه کارگاه</label>
-                                    <select class="pay2-select" @bind="CurrentWorkshop.INS_MODE">
-                                        <option value="1">۱ — کارگاه معمولی</option>
-                                        <option value="2">۲ — ده‌درصدی</option>
-                                    </select>
-                                </div>
-
-                                <div class="form-field" style="display:flex; align-items:end;">
-                                    <label style="display:flex; gap:8px; align-items:center; margin-bottom:10px;">
-                                        <input type="checkbox" @bind="CurrentWorkshop.IS_ACTIVE" />
-                                        کارگاه فعال است
-                                    </label>
-                                </div>
-                            </div>
-
-                            <div class="form-field" style="margin-top:14px;">
-                                <label>آدرس</label>
-                                <textarea class="pay2-textarea" @bind="CurrentWorkshop.ADDRESS"></textarea>
-                            </div>
-
-                            <hr style="border: none; border-top: 1px solid var(--border-light); margin: 24px 0;" />
-
-                            <div style="font-size: 16px; font-weight: bold; margin-bottom: 14px;">
-                                سرفصل‌های حسابداری کارگاه
-                            </div>
-
-                            <div class="form-grid-2">
-                                <div class="form-field">
-                                    <label>کل مساعده — ADV_HES_K</label>
-                                    <input class="pay2-input" @bind="CurrentWorkshopAcc.ADV_HES_K" />
-                                </div>
-
-                                <div class="form-field">
-                                    <label>معین مساعده — ADV_HES_M</label>
-                                    <input class="pay2-input" @bind="CurrentWorkshopAcc.ADV_HES_M" />
-                                </div>
-
-                                <div class="form-field">
-                                    <label>هزینه حقوق — SALARY_EXP</label>
-                                    <input class="pay2-input" @bind="CurrentWorkshopAcc.SALARY_EXP" />
-                                </div>
-
-                                <div class="form-field">
-                                    <label>پرداختنی حقوق — SALARY_PAYABLE</label>
-                                    <input class="pay2-input" @bind="CurrentWorkshopAcc.SALARY_PAYABLE" />
-                                </div>
-
-                                <div class="form-field">
-                                    <label>هزینه بیمه کارفرما — INS_EXP</label>
-                                    <input class="pay2-input" @bind="CurrentWorkshopAcc.INS_EXP" />
-                                </div>
-
-                                <div class="form-field">
-                                    <label>پرداختنی بیمه — INS_PAYABLE</label>
-                                    <input class="pay2-input" @bind="CurrentWorkshopAcc.INS_PAYABLE" />
-                                </div>
-
-                                <div class="form-field">
-                                    <label>پرداختنی مالیات — TAX_PAYABLE</label>
-                                    <input class="pay2-input" @bind="CurrentWorkshopAcc.TAX_PAYABLE" />
-                                </div>
-                            </div>
-
-                            <div style="display:flex; gap:10px; margin-top:24px;">
-                                <button class="btn-primary-pay2" @onclick="SaveWorkshopAsync" disabled="@IsSavingWorkshop">
-                                    @(IsSavingWorkshop ? "در حال ذخیره..." : "ذخیره اطلاعات کارگاه")
-                                </button>
-
-                                <button class="btn-outline-pay2" @onclick="NewWorkshop">
-                                    انصراف / جدید
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
+                <WorkshopTab OnToast="ShowToastAsync" />
             }
 
             @if (ActiveTab != "dashboard" && ActiveTab != "workshops")
@@ -777,19 +588,12 @@
 @code {
     private string ActiveTab = "dashboard";
 
-    private List<Pay2WorkshopDto> Workshops = new();
-    private Pay2WorkshopDto CurrentWorkshop = new();
-    private Pay2WorkshopAccDto CurrentWorkshopAcc = new();
-
-    private bool IsLoadingWorkshops;
-    private bool IsSavingWorkshop;
-
     private bool IsToastVisible;
     private string ToastMessage = "";
 
-    protected override async Task OnInitializedAsync()
+    protected override Task OnInitializedAsync()
     {
-        await LoadWorkshopsAsync();
+        return Task.CompletedTask;
     }
 
     private void SetActiveTab(string tabName)
@@ -824,137 +628,6 @@
 
         var digits = new string(value.Where(char.IsDigit).Take(maxLength).ToArray());
         return string.IsNullOrWhiteSpace(digits) ? null : digits;
-    }
-
-    private async Task LoadWorkshopsAsync()
-    {
-        IsLoadingWorkshops = true;
-
-        try
-        {
-            Workshops = await WorkshopApi.GetWorkshopsAsync();
-
-            if (CurrentWorkshop.WS_ID == 0)
-                NewWorkshop();
-        }
-        catch (Exception ex)
-        {
-            await ShowToastAsync("خطا در واکشی لیست کارگاه‌ها: " + ex.Message);
-        }
-        finally
-        {
-            IsLoadingWorkshops = false;
-        }
-    }
-
-    private async Task SelectWorkshop(Pay2WorkshopDto selected)
-    {
-        CurrentWorkshop = new Pay2WorkshopDto
-        {
-            WS_ID = selected.WS_ID,
-            WS_CODE = selected.WS_CODE,
-            WS_NAME = selected.WS_NAME,
-            NATIONAL_ID = selected.NATIONAL_ID,
-            SOCIAL_INS_CODE = selected.SOCIAL_INS_CODE,
-            TAX_CODE = selected.TAX_CODE,
-            ADDRESS = selected.ADDRESS,
-            PHONE = selected.PHONE,
-            IS_ACTIVE = selected.IS_ACTIVE,
-            INS_MODE = selected.INS_MODE
-        };
-
-        try
-        {
-            CurrentWorkshopAcc = await WorkshopApi.GetAccountsAsync(selected.WS_ID);
-        }
-        catch (Exception ex)
-        {
-            CurrentWorkshopAcc = new Pay2WorkshopAccDto { WS_ID = selected.WS_ID };
-            await ShowToastAsync("خطا در واکشی تنظیمات حسابداری کارگاه: " + ex.Message);
-        }
-    }
-
-    private void NewWorkshop()
-    {
-        CurrentWorkshop = new Pay2WorkshopDto
-        {
-            IS_ACTIVE = true,
-            INS_MODE = 1
-        };
-
-        CurrentWorkshopAcc = new Pay2WorkshopAccDto();
-    }
-
-    private async Task SaveWorkshopAsync()
-    {
-        CurrentWorkshop.WS_CODE = CleanText(CurrentWorkshop.WS_CODE);
-        CurrentWorkshop.WS_NAME = CleanText(CurrentWorkshop.WS_NAME);
-        CurrentWorkshop.NATIONAL_ID = OnlyDigits(CurrentWorkshop.NATIONAL_ID, 11);
-        CurrentWorkshop.SOCIAL_INS_CODE = OnlyDigits(CurrentWorkshop.SOCIAL_INS_CODE, 20);
-        CurrentWorkshop.TAX_CODE = CleanText(CurrentWorkshop.TAX_CODE);
-        CurrentWorkshop.ADDRESS = CleanText(CurrentWorkshop.ADDRESS);
-        CurrentWorkshop.PHONE = CleanText(CurrentWorkshop.PHONE);
-
-        CurrentWorkshopAcc.ADV_HES_K = CleanText(CurrentWorkshopAcc.ADV_HES_K);
-        CurrentWorkshopAcc.ADV_HES_M = CleanText(CurrentWorkshopAcc.ADV_HES_M);
-        CurrentWorkshopAcc.SALARY_EXP = CleanText(CurrentWorkshopAcc.SALARY_EXP);
-        CurrentWorkshopAcc.SALARY_PAYABLE = CleanText(CurrentWorkshopAcc.SALARY_PAYABLE);
-        CurrentWorkshopAcc.INS_EXP = CleanText(CurrentWorkshopAcc.INS_EXP);
-        CurrentWorkshopAcc.INS_PAYABLE = CleanText(CurrentWorkshopAcc.INS_PAYABLE);
-        CurrentWorkshopAcc.TAX_PAYABLE = CleanText(CurrentWorkshopAcc.TAX_PAYABLE);
-
-        if (string.IsNullOrWhiteSpace(CurrentWorkshop.WS_CODE))
-        {
-            await ShowToastAsync("کد کارگاه نمی‌تواند خالی باشد.");
-            return;
-        }
-
-        if (string.IsNullOrWhiteSpace(CurrentWorkshop.WS_NAME))
-        {
-            await ShowToastAsync("نام کارگاه نمی‌تواند خالی باشد.");
-            return;
-        }
-
-        if (!string.IsNullOrWhiteSpace(CurrentWorkshop.NATIONAL_ID) && CurrentWorkshop.NATIONAL_ID.Length != 11)
-        {
-            await ShowToastAsync("شناسه ملی باید دقیقاً ۱۱ رقم باشد.");
-            return;
-        }
-
-        if (CurrentWorkshop.INS_MODE != 1 && CurrentWorkshop.INS_MODE != 2)
-        {
-            await ShowToastAsync("نوع بیمه کارگاه نامعتبر است.");
-            return;
-        }
-
-        IsSavingWorkshop = true;
-
-        try
-        {
-            var request = new Pay2WorkshopSaveRequest
-            {
-                Workshop = CurrentWorkshop,
-                Accounts = CurrentWorkshopAcc
-            };
-
-            var savedId = await WorkshopApi.SaveAsync(request);
-
-            await LoadWorkshopsAsync();
-
-            var saved = Workshops.FirstOrDefault(x => x.WS_ID == savedId);
-            if (saved != null)
-                await SelectWorkshop(saved);
-
-            await ShowToastAsync("اطلاعات کارگاه و تنظیمات حسابداری با موفقیت ذخیره شد.");
-        }
-        catch (Exception ex)
-        {
-            await ShowToastAsync("خطا در ذخیره اطلاعات کارگاه: " + ex.Message);
-        }
-        finally
-        {
-            IsSavingWorkshop = false;
-        }
     }
 
     private async Task ShowToastAsync(string message)
