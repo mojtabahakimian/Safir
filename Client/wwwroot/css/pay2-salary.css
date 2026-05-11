@@ -238,8 +238,8 @@
 .pay2-nav-item {
     display: flex;
     align-items: center;
-    padding: 11px 14px;
-    margin: 2px 0;
+    padding: 13px 16px; 
+    margin: 3px 0; 
     border-radius: var(--p2-radius-md);
     color: var(--p2-text-muted);
     cursor: pointer;
@@ -649,11 +649,9 @@
 /* ════════════════════════════════════════════════════════════
    ۱۰. چک‌باکس سفارشی (Custom Checkbox)
    ════════════════════════════════════════════════════════════ */
-
 .pay2-wpf-checkbox-box {
     width: 100%;
     height: var(--p2-input-h);
-    min-height: var(--p2-input-h);
     background: var(--p2-bg-main);
     border: 1px solid var(--p2-border);
     border-radius: 10px;
@@ -662,6 +660,7 @@
     align-items: center;
     cursor: pointer;
     transition: border-color 0.15s, background 0.15s;
+    box-sizing: border-box;
 }
 
     .pay2-wpf-checkbox-box:hover {
@@ -670,51 +669,31 @@
     }
 
 .pay2-wpf-checkbox-label {
-    width: 100%;
-    height: 100%;
     display: flex;
     align-items: center;
-    flex-direction: row-reverse;
-    justify-content: flex-end;
     gap: 9px;
     margin: 0;
+    padding: 0;
+    width: 100%;
     font-size: 13px;
     font-weight: 600;
     color: var(--p2-text-main);
     cursor: pointer;
     user-select: none;
     font-family: var(--p2-font);
+    line-height: 1;
 }
 
     .pay2-wpf-checkbox-label input[type="checkbox"] {
-        appearance: none;
-        -webkit-appearance: none;
         width: 17px;
         height: 17px;
         min-width: 17px;
+        flex-shrink: 0;
         margin: 0;
+        padding: 0;
         cursor: pointer;
-        border: 1.5px solid #94a3b8;
-        border-radius: 5px;
-        background: #ffffff;
-        display: inline-grid;
-        place-content: center;
-        transition: all 0.15s;
+        accent-color: var(--p2-primary); /* ← مرورگر خودش رندر می‌کنه، بدون ::before */
     }
-
-        .pay2-wpf-checkbox-label input[type="checkbox"]:checked {
-            background: var(--p2-primary);
-            border-color: var(--p2-primary);
-        }
-
-            .pay2-wpf-checkbox-label input[type="checkbox"]:checked::before {
-                content: "✓";
-                color: white;
-                font-size: 12px;
-                font-weight: 900;
-                line-height: 1;
-            }
-
 
 /* ════════════════════════════════════════════════════════════
    ۱۱. دراپ‌داون سفارشی (Custom Dropdown)
@@ -778,7 +757,7 @@
 }
 
 .pay2-dd-menu {
-    position: absolute; /* ← float روی محتوا، push نمی‌کند */
+    position: absolute;
     top: calc(100% + 5px);
     right: 0;
     left: 0;
@@ -794,12 +773,13 @@
 .pay2-dd-item {
     display: flex;
     align-items: center;
+    justify-content: flex-start;
     width: 100%;
     height: 36px;
     border: none;
     background: transparent;
     border-radius: var(--p2-radius-sm);
-    padding: 0 10px;
+    padding: 0 12px;
     text-align: right;
     font-size: 13px;
     font-weight: 600;
@@ -855,6 +835,8 @@
     transition: all 0.15s ease;
     white-space: nowrap;
     user-select: none;
+    line-height: 1;
+    vertical-align: middle;
 }
 
 /* ─── Primary ─── */
