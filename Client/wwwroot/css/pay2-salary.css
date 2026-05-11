@@ -685,15 +685,41 @@
 }
 
     .pay2-wpf-checkbox-label input[type="checkbox"] {
+        appearance: none;
+        -webkit-appearance: none;
+        position: relative; /* ← base برای ::after */
         width: 17px;
         height: 17px;
         min-width: 17px;
         flex-shrink: 0;
         margin: 0;
+        margin-top: 1px; /* ← تراز با متن */
         padding: 0;
         cursor: pointer;
-        accent-color: var(--p2-primary); /* ← مرورگر خودش رندر می‌کنه، بدون ::before */
+        border: 1.5px solid #94a3b8;
+        border-radius: 5px; /* ← گرد شد */
+        background: #ffffff;
+        transition: all 0.15s;
     }
+
+        .pay2-wpf-checkbox-label input[type="checkbox"]:checked {
+            background: var(--p2-primary);
+            border-color: var(--p2-primary);
+        }
+
+            /* تیک با border trick — نه content:"✓" که RTL مشکل داشت */
+            .pay2-wpf-checkbox-label input[type="checkbox"]:checked::after {
+                content: "";
+                position: absolute;
+                left: 4px;
+                top: 1px;
+                width: 6px;
+                height: 10px;
+                border: 2px solid white;
+                border-top: none;
+                border-left: none;
+                transform: rotate(45deg);
+            }
 
 /* ════════════════════════════════════════════════════════════
    ۱۱. دراپ‌داون سفارشی (Custom Dropdown)
