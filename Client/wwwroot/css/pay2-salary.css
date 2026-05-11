@@ -688,6 +688,7 @@
         appearance: none;
         -webkit-appearance: none;
         position: relative; /* ← base برای ::after */
+        top: 4px;
         width: 17px;
         height: 17px;
         min-width: 17px;
