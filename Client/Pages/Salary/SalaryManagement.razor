@@ -1,583 +1,245 @@
 ﻿@page "/salary/manage"
 @layout EmptyLayout
-
-@using Safir.Shared.Models.Salary
-@inject Pay2WorkshopApiService WorkshopApi
 @using Safir.Client.Pages.Salary.Tabs
+@using Safir.Shared.Models.Salary
 
-<style>
-    :root {
-        --primary: #2563eb;
-        --primary-hover: #1d4ed8;
-        --primary-light: #eff6ff;
-        --bg-main: #f8fafc;
-        --bg-white: #ffffff;
-        --text-main: #1e293b;
-        --text-muted: #64748b;
-        --text-light: #94a3b8;
-        --border-color: #e2e8f0;
-        --border-light: #f1f5f9;
-        --success-bg: #ecfdf5;
-        --success-text: #059669;
-        --warning-bg: #fffbeb;
-        --warning-text: #d97706;
-        --error-text: #ef4444;
-    }
-
-    .pay2-app {
-        font-family: 'IRANYekan', 'IRANSans', Tahoma, Arial, sans-serif;
-        background-color: var(--bg-main);
-        height: 100vh;
-        display: flex;
-        overflow: hidden;
-        color: var(--text-main);
-    }
-
-    @("@") keyframes fadeInSlideUp {
-        from
-
-    {
-        opacity: 0;
-        transform: translateY(15px);
-    }
-
-    to {
-        opacity: 1;
-        transform: translateY(0);
-    }
-
-    }
-
-    .tab-content-animated {
-        animation: fadeInSlideUp 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
-    }
-
-    .pay2-sidebar {
-        width: 260px;
-        min-width: 260px;
-        background-color: var(--bg-white);
-        border-left: 1px solid var(--border-color);
-        display: flex;
-        flex-direction: column;
-        z-index: 10;
-    }
-
-    .pay2-brand {
-        padding: 24px;
-        display: flex;
-        align-items: center;
-        gap: 12px;
-    }
-
-    .brand-icon {
-        width: 40px;
-        height: 40px;
-        background-color: var(--primary);
-        color: white;
-        border-radius: 12px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        font-weight: bold;
-        font-size: 20px;
-    }
-
-    .active-period-card {
-        background-color: var(--bg-main);
-        border-radius: 12px;
-        margin: 0 16px 16px 16px;
-        padding: 12px;
-        border: 1px solid var(--border-light);
-    }
-
-    .pay2-menu {
-        flex: 1;
-        overflow-y: auto;
-        padding: 0 12px;
-        list-style: none;
-        margin: 0;
-    }
-
-        .pay2-menu::-webkit-scrollbar {
-            display: none;
-        }
-
-    .nav-item-radio {
-        display: flex;
-        align-items: center;
-        padding: 12px 16px;
-        margin: 2px 0;
-        border-radius: 12px;
-        color: var(--text-muted);
-        cursor: pointer;
-        transition: all 0.2s ease;
-        font-weight: 500;
-        gap: 12px;
-    }
-
-        .nav-item-radio:hover {
-            background-color: var(--bg-main);
-            color: var(--text-main);
-        }
-
-        .nav-item-radio.active {
-            background-color: var(--primary-light);
-            color: var(--primary);
-            font-weight: 600;
-        }
-
-        .nav-item-radio i {
-            font-size: 1.1rem;
-        }
-
-    .sidebar-footer {
-        padding: 16px;
-        border-top: 1px solid var(--border-light);
-        display: flex;
-        align-items: center;
-        gap: 12px;
-    }
-
-    .user-avatar {
-        width: 36px;
-        height: 36px;
-        border-radius: 18px;
-        background-color: var(--border-color);
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        color: var(--text-muted);
-        font-weight: bold;
-    }
-
-    .pay2-main {
-        flex: 1;
-        display: flex;
-        flex-direction: column;
-        overflow: hidden;
-    }
-
-    .pay2-header {
-        height: 64px;
-        min-height: 64px;
-        background-color: var(--bg-white);
-        border-bottom: 1px solid var(--border-color);
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        padding: 0 24px;
-        z-index: 5;
-    }
-
-    .search-box {
-        background-color: var(--bg-main);
-        border: 1px solid var(--border-color);
-        border-radius: 10px;
-        padding: 8px 35px 8px 12px;
-        width: 250px;
-        outline: none;
-        transition: all 0.2s;
-        color: var(--text-main);
-    }
-
-        .search-box:focus {
-            border-color: #93c5fd;
-            background-color: white;
-        }
-
-    .search-wrapper {
-        position: relative;
-        display: flex;
-        align-items: center;
-    }
-
-        .search-wrapper i {
-            position: absolute;
-            right: 12px;
-            color: var(--text-muted);
-        }
-
-    .pay2-content {
-        flex: 1;
-        padding: 32px;
-        overflow-y: auto;
-    }
-
-    .card-custom {
-        background-color: var(--bg-white);
-        border-radius: 16px;
-        border: 1px solid var(--border-light);
-        padding: 24px;
-        box-shadow: 0 2px 15px rgba(0, 0, 0, 0.03);
-    }
-
-    .dashboard-top-grid {
-        display: grid;
-        grid-template-columns: repeat(4, 1fr);
-        gap: 16px;
-        margin-bottom: 24px;
-    }
-
-    .stat-icon-box {
-        width: 48px;
-        height: 48px;
-        border-radius: 10px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        margin-bottom: 16px;
-        font-size: 1.5rem;
-    }
-
-    .btn-outline-white {
-        background: transparent;
-        border: 1px solid rgba(255,255,255,0.3);
-        color: white;
-        padding: 8px 16px;
-        border-radius: 12px;
-        cursor: pointer;
-        transition: all 0.2s;
-        background-color: #1d4ed8;
-    }
-
-        .btn-outline-white:hover {
-            background-color: #1e3a8a;
-        }
-
-    .dashboard-bottom-grid {
-        display: grid;
-        grid-template-columns: 2fr 1fr;
-        gap: 16px;
-    }
-
-    .advance-list-item {
-        display: grid;
-        grid-template-columns: 1.5fr 2fr 1.5fr 1fr;
-        align-items: center;
-        padding: 16px 20px;
-        border-bottom: 1px solid var(--bg-main);
-    }
-
-        .advance-list-item:last-child {
-            border-bottom: none;
-        }
-
-    .badge-success {
-        background-color: var(--success-bg);
-        color: var(--success-text);
-        padding: 4px 12px;
-        border-radius: 10px;
-        font-size: 11px;
-        font-weight: 600;
-        text-align: center;
-    }
-
-    .workshop-layout {
-        display: grid;
-        grid-template-columns: 1.3fr 2fr;
-        gap: 16px;
-        height: 100%;
-    }
-
-    .workshop-table {
-        width: 100%;
-        border-collapse: collapse;
-    }
-
-        .workshop-table th {
-            background: var(--bg-main);
-            color: var(--text-muted);
-            font-size: 12px;
-            padding: 12px;
-            text-align: right;
-            border-bottom: 1px solid var(--border-light);
-        }
-
-        .workshop-table td {
-            padding: 12px;
-            border-bottom: 1px solid var(--border-light);
-            font-size: 13px;
-        }
-
-    .workshop-row {
-        cursor: pointer;
-    }
-
-        .workshop-row:hover {
-            background: var(--bg-main);
-        }
-
-        .workshop-row.active {
-            background: var(--primary-light);
-        }
-
-    .form-grid-2 {
-        display: grid;
-        grid-template-columns: repeat(2, 1fr);
-        gap: 14px;
-    }
-
-    .form-field label {
-        display: block;
-        font-size: 12px;
-        font-weight: 600;
-        margin-bottom: 6px;
-        color: var(--text-main);
-    }
-
-    .pay2-input,
-    .pay2-select {
-        width: 100%;
-        height: 42px;
-        border: 1px solid var(--border-color);
-        border-radius: 10px;
-        background: var(--bg-main);
-        padding: 8px 12px;
-        outline: none;
-        color: var(--text-main);
-    }
-
-        .pay2-input:focus,
-        .pay2-select:focus {
-            border-color: #93c5fd;
-            background: white;
-        }
-
-    .pay2-textarea {
-        width: 100%;
-        min-height: 76px;
-        border: 1px solid var(--border-color);
-        border-radius: 10px;
-        background: var(--bg-main);
-        padding: 8px 12px;
-        outline: none;
-    }
-
-    .btn-primary-pay2 {
-        background: var(--primary);
-        color: white;
-        border: none;
-        border-radius: 12px;
-        padding: 9px 18px;
-        font-weight: 600;
-        cursor: pointer;
-    }
-
-        .btn-primary-pay2:hover {
-            background: var(--primary-hover);
-        }
-
-        .btn-primary-pay2:disabled {
-            opacity: .6;
-            cursor: not-allowed;
-        }
-
-    .btn-outline-pay2 {
-        background: transparent;
-        color: var(--text-main);
-        border: 1px solid var(--border-color);
-        border-radius: 12px;
-        padding: 9px 18px;
-        font-weight: 600;
-        cursor: pointer;
-    }
-
-    .toast-pay2 {
-        position: fixed;
-        top: 20px;
-        left: 50%;
-        transform: translateX(-50%);
-        background: #1e293b;
-        color: white;
-        padding: 12px 20px;
-        border-radius: 16px;
-        z-index: 9999;
-        box-shadow: 0 8px 24px rgba(0,0,0,.18);
-    }
-</style>
-
+@* ══════════════════════════════════════════════════════════
+   Toast — نمایش پیام‌های عملیاتی
+   ══════════════════════════════════════════════════════════ *@
 @if (IsToastVisible)
 {
-    <div class="toast-pay2">@ToastMessage</div>
+    <div class="pay2-toast">@ToastMessage</div>
 }
 
-<div class="pay2-app" dir="rtl">
+@* ══════════════════════════════════════════════════════════
+   پوسته اصلی اپلیکیشن
+   ══════════════════════════════════════════════════════════ *@
+<div class="pay2-app">
 
+    @* ─────────────────────────────────────────
+     سایدبار
+     ───────────────────────────────────────── *@
     <aside class="pay2-sidebar">
+
+        @* برند / لوگو *@
         <div class="pay2-brand">
-            <div class="brand-icon">P2</div>
+            <div class="pay2-brand-icon">P2</div>
             <div>
-                <div style="font-weight: bold; font-size: 15px;">مستر کارکت</div>
-                <div style="font-size: 11px; color: var(--text-muted);">نسخه PAY2 v6.0</div>
+                <div class="pay2-brand-name">مستر کارکت</div>
+                <div class="pay2-brand-version">نسخه PAY2 v6.0</div>
             </div>
         </div>
 
-        <div class="active-period-card">
-            <div style="font-size: 11px; color: var(--text-muted); margin-bottom: 4px;">دوره فعال</div>
-            <div class="d-flex justify-content-between align-items-center">
-                <div style="font-weight: bold; color: var(--primary); padding-right: 8px;">۱۴۰۴/۰۱</div>
-                <div style="background-color: var(--primary-light); color: var(--primary); padding: 2px 10px; border-radius: 10px; font-size: 11px; font-weight: 600;">باز</div>
+        @* کارت دوره فعال *@
+        <div class="pay2-period-card">
+            <div class="pay2-period-label">دوره فعال</div>
+            <div class="pay2-period-row">
+                <div class="pay2-period-value">۱۴۰۴/۰۱</div>
+                <div class="pay2-period-badge">باز</div>
             </div>
         </div>
 
+        @* منوی ناوبری *@
         <ul class="pay2-menu">
-            <li class="nav-item-radio @(ActiveTab == "dashboard" ? "active" : "")" @onclick='() => SetActiveTab("dashboard")'>
-                <i class="bi bi-grid-1x2"></i> داشبورد
+
+            <li class="pay2-nav-item @(ActiveTab == "dashboard" ? "active" : "")"
+                @onclick='() => SetActiveTab("dashboard")'>
+                <i class="bi bi-grid-1x2"></i>
+                داشبورد
             </li>
 
-            <li class="nav-item-radio @(ActiveTab == "workshops" ? "active" : "")" @onclick='() => SetActiveTab("workshops")'>
-                <i class="bi bi-building"></i> مدیریت کارگاه‌ها
+            <li class="pay2-nav-item @(ActiveTab == "workshops" ? "active" : "")"
+                @onclick='() => SetActiveTab("workshops")'>
+                <i class="bi bi-building"></i>
+                مدیریت کارگاه‌ها
             </li>
 
-            <li class="nav-item-radio @(ActiveTab == "employees" ? "active" : "")" @onclick='() => SetActiveTab("employees")'>
-                <i class="bi bi-people"></i> پرسنل و احکام
+            <li class="pay2-nav-item @(ActiveTab == "employees" ? "active" : "")"
+                @onclick='() => SetActiveTab("employees")'>
+                <i class="bi bi-people"></i>
+                پرسنل و احکام
             </li>
 
-            <li class="nav-item-radio @(ActiveTab == "attendance" ? "active" : "")" @onclick='() => SetActiveTab("attendance")'>
-                <i class="bi bi-calendar-check"></i> کارکرد و مرخصی
+            <li class="pay2-nav-item @(ActiveTab == "attendance" ? "active" : "")"
+                @onclick='() => SetActiveTab("attendance")'>
+                <i class="bi bi-calendar-check"></i>
+                کارکرد و مرخصی
             </li>
 
-            <li class="nav-item-radio @(ActiveTab == "advances" ? "active" : "")" @onclick='() => SetActiveTab("advances")'>
-                <i class="bi bi-cash-coin"></i> مساعده هوشمند
+            <li class="pay2-nav-item @(ActiveTab == "advances" ? "active" : "")"
+                @onclick='() => SetActiveTab("advances")'>
+                <i class="bi bi-cash-coin"></i>
+                مساعده هوشمند
             </li>
 
-            <li class="nav-item-radio @(ActiveTab == "payroll" ? "active" : "")" @onclick='() => SetActiveTab("payroll")'>
-                <i class="bi bi-calculator"></i> محاسبه حقوق
+            <li class="pay2-nav-item @(ActiveTab == "payroll" ? "active" : "")"
+                @onclick='() => SetActiveTab("payroll")'>
+                <i class="bi bi-calculator"></i>
+                محاسبه حقوق
             </li>
 
-            <li class="nav-item-radio @(ActiveTab == "settings" ? "active" : "")" @onclick='() => SetActiveTab("settings")'>
-                <i class="bi bi-gear"></i> تنظیمات سیستم
+            <li class="pay2-nav-item @(ActiveTab == "settings" ? "active" : "")"
+                @onclick='() => SetActiveTab("settings")'>
+                <i class="bi bi-gear"></i>
+                تنظیمات سیستم
             </li>
 
-            <li class="nav-item-radio @(ActiveTab == "itemdefs" ? "active" : "")" @onclick='() => SetActiveTab("itemdefs")'>
-                <i class="bi bi-list-check"></i> آیتم‌های حقوقی
+            <li class="pay2-nav-item @(ActiveTab == "itemdefs" ? "active" : "")"
+                @onclick='() => SetActiveTab("itemdefs")'>
+                <i class="bi bi-list-check"></i>
+                آیتم‌های حقوقی
             </li>
+
         </ul>
 
-        <div class="sidebar-footer">
-            <div class="user-avatar">مد</div>
+        @* فوتر سایدبار *@
+        <div class="pay2-sidebar-footer">
+            <div class="pay2-user-avatar">مد</div>
             <div>
-                <div style="font-weight: 600; font-size: 13px;">مدیر سیستم</div>
-                <div style="font-size: 11px; color: var(--text-muted);">کارگاه مرکزی</div>
+                <div class="pay2-user-name">مدیر سیستم</div>
+                <div class="pay2-user-role">کارگاه مرکزی</div>
             </div>
         </div>
+
     </aside>
 
+    @* ─────────────────────────────────────────
+     ناحیه اصلی
+     ───────────────────────────────────────── *@
     <main class="pay2-main">
 
+        @* هدر بالای صفحه *@
         <header class="pay2-header">
-            <div style="font-size: 20px; font-weight: bold; color: var(--text-main);">
-                @GetTabTitle(ActiveTab)
-            </div>
+            <div class="pay2-header-title">@GetTabTitle(ActiveTab)</div>
 
-            <div class="d-flex align-items-center gap-3">
-                <div class="search-wrapper">
+            <div style="display:flex; align-items:center; gap:12px;">
+                <div class="pay2-search-wrapper">
                     <i class="bi bi-search"></i>
-                    <input type="text" class="search-box" placeholder="جستجوی سریع..." />
+                    <input type="text"
+                           class="pay2-search-input"
+                           placeholder="جستجوی سریع..." />
                 </div>
-
-                <button class="btn btn-light" style="width: 40px; height: 40px; border-radius: 12px; border: 1px solid var(--border-color); background: transparent;">
-                    <i class="bi bi-box-arrow-right" style="color: var(--text-muted);"></i>
+                <button class="btn-ghost-pay2"
+                        style="width:40px; height:40px; border-radius:var(--p2-radius-md);"
+                        title="خروج">
+                    <i class="bi bi-box-arrow-right"></i>
                 </button>
             </div>
         </header>
 
+        @* محتوای تب‌ها *@
         <div class="pay2-content">
 
+            @* ══ داشبورد ══ *@
             @if (ActiveTab == "dashboard")
             {
-                <div class="tab-content-animated">
+                <div class="pay2-tab-container">
+
+                    @* ردیف بالا: کارت‌های آمار *@
                     <div class="dashboard-top-grid">
+
                         <div class="card-custom">
-                            <div class="stat-icon-box" style="background-color: var(--primary-light); color: var(--primary); float: left;">
+                            <div class="stat-icon-box"
+                                 style="background:var(--p2-primary-light); color:var(--p2-primary);">
                                 <i class="bi bi-people-fill"></i>
                             </div>
-                            <div style="clear: both;"></div>
-                            <div style="color: var(--text-muted); font-size: 13px; margin-bottom: 4px;">پرسنل فعال</div>
-                            <div style="font-weight: bold; font-size: 26px;">۱۲۴ نفر</div>
+                            <div class="p2-stat-label">پرسنل فعال</div>
+                            <div class="p2-stat-value">۱۲۴ نفر</div>
                         </div>
 
                         <div class="card-custom">
-                            <div class="stat-icon-box" style="background-color: var(--success-bg); color: var(--success-text); float: left;">
+                            <div class="stat-icon-box"
+                                 style="background:var(--p2-success-bg); color:var(--p2-success-text);">
                                 <i class="bi bi-wallet2"></i>
                             </div>
-                            <div style="clear: both;"></div>
-                            <div style="color: var(--text-muted); font-size: 13px; margin-bottom: 4px;">تخمین حقوق خالص</div>
-                            <div style="font-weight: bold; font-size: 26px;">۲.۴ میلیارد</div>
+                            <div class="p2-stat-label">تخمین حقوق خالص</div>
+                            <div class="p2-stat-value">۲.۴ میلیارد</div>
                         </div>
 
                         <div class="card-custom">
-                            <div class="stat-icon-box" style="background-color: var(--warning-bg); color: var(--warning-text); float: left;">
+                            <div class="stat-icon-box"
+                                 style="background:var(--p2-warning-bg); color:var(--p2-warning-text);">
                                 <i class="bi bi-cash-stack"></i>
                             </div>
-                            <div style="clear: both;"></div>
-                            <div style="color: var(--text-muted); font-size: 13px; margin-bottom: 4px;">مساعده کسر شده</div>
-                            <div style="font-weight: bold; font-size: 26px;">۱۸۵ میلیون</div>
+                            <div class="p2-stat-label">مساعده کسر شده</div>
+                            <div class="p2-stat-value">۱۸۵ میلیون</div>
                         </div>
 
-                        <div class="card-custom d-flex flex-column justify-content-center align-items-center" style="background-color: var(--primary); border: none;">
-                            <div style="color: white; font-weight: 600; font-size: 16px; margin-bottom: 16px; text-align: center;">دوره آماده محاسبه است</div>
-                            <button class="btn-outline-white">اجرای موتور حقوق</button>
+                        @* کارت CTA — اجرای موتور حقوق *@
+                        <div class="card-custom"
+                             style="background:var(--p2-primary); border:none; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:16px;">
+                            <div style="color:white; font-weight:700; font-size:15px; text-align:center;">
+                                دوره آماده محاسبه است
+                            </div>
+                            <button class="btn-outline-white">
+                                <i class="bi bi-play-circle"></i>
+                                اجرای موتور حقوق
+                            </button>
                         </div>
+
                     </div>
 
+                    @* ردیف پایین: لیست مساعده + منطق مرخصی *@
                     <div class="dashboard-bottom-grid">
-                        <div class="card-custom" style="padding: 0;">
-                            <div style="padding: 20px; border-bottom: 1px solid var(--border-light);">
-                                <span style="font-weight: bold; font-size: 15px;">آخرین اسناد حسابداری (مساعده)</span>
-                            </div>
 
+                        @* لیست آخرین اسناد مساعده *@
+                        <div class="card-custom" style="padding:0;">
+                            <div style="padding:18px 20px; border-bottom:1px solid var(--p2-border-light);">
+                                <span style="font-weight:800; font-size:15px;">
+                                    آخرین اسناد حسابداری (مساعده)
+                                </span>
+                            </div>
                             <div>
-                                <div class="advance-list-item">
-                                    <div style="font-weight: 600;">علی احمدی</div>
-                                    <div style="font-family: monospace; color: var(--text-muted); font-size: 12px;">ADV_HES / T-1050</div>
-                                    <div style="font-family: monospace;">۷۵,۰۰۰,۰۰۰</div>
-                                    <div class="d-flex justify-content-end"><span class="badge-success">آماده کسر</span></div>
-                                </div>
-
-                                <div class="advance-list-item">
-                                    <div style="font-weight: 600;">سارا رضایی</div>
-                                    <div style="font-family: monospace; color: var(--text-muted); font-size: 12px;">ADV_HES / T-1050</div>
-                                    <div style="font-family: monospace;">۲۰,۰۰۰,۰۰۰</div>
-                                    <div class="d-flex justify-content-end"><span class="badge-success">آماده کسر</span></div>
-                                </div>
-
-                                <div class="advance-list-item">
-                                    <div style="font-weight: 600;">محمد کریمی</div>
-                                    <div style="font-family: monospace; color: var(--text-muted); font-size: 12px;">ADV_HES / T-1050</div>
-                                    <div style="font-family: monospace;">۵,۰۰۰,۰۰۰</div>
-                                    <div class="d-flex justify-content-end"><span class="badge-success">آماده کسر</span></div>
-                                </div>
+                                @foreach (var row in DashboardAdvanceRows)
+                                {
+                                    <div class="advance-list-item">
+                                        <div style="font-weight:700;">@row.Name</div>
+                                        <div class="p2-text-mono p2-text-muted">@row.DocRef</div>
+                                        <div class="p2-text-mono">@row.Amount</div>
+                                        <div style="display:flex; justify-content:flex-end;">
+                                            <span class="p2-badge-success">آماده کسر</span>
+                                        </div>
+                                    </div>
+                                }
                             </div>
                         </div>
 
-                        <div class="card-custom" style="background-color: #fefeff;">
-                            <div style="font-weight: bold; font-size: 15px; margin-bottom: 20px;">منطق مرخصی (نسخه v6)</div>
-
-                            <div style="background-color: white; border: 1px solid var(--border-color); border-radius: 12px; padding: 16px; margin-bottom: 16px; display: flex; justify-content: space-between; align-items: center;">
-                                <div style="color: var(--text-muted); font-size: 13px;">مبنای هر روز مرخصی</div>
-                                <div style="background-color: var(--primary-light); color: var(--primary); padding: 4px 10px; border-radius: 8px; font-weight: bold; font-size: 14px;">۴۴۰ دقیقه</div>
+                        @* کارت منطق مرخصی v6 *@
+                        <div class="card-custom">
+                            <div style="font-weight:800; font-size:15px; margin-bottom:18px;">
+                                منطق مرخصی (نسخه v6)
                             </div>
-
-                            <div style="color: var(--text-muted); line-height: 1.8; text-align: justify; font-size: 13px;">
-                                طبق معماری جدید، تمام محاسبات استحقاق و مانده مرخصی (PAY2_LEAVE_BAL) به منظور یکپارچگی کامل با سیستم تسویه حساب، بر اساس دقیقه‌های واقعی انجام می‌شود.
+                            <div style="background:white; border:1px solid var(--p2-border); border-radius:var(--p2-radius-md); padding:14px; margin-bottom:14px; display:flex; justify-content:space-between; align-items:center;">
+                                <div class="p2-text-muted" style="font-size:13px;">مبنای هر روز مرخصی</div>
+                                <span class="p2-badge-primary" style="font-size:14px; padding:4px 12px;">۴۴۰ دقیقه</span>
+                            </div>
+                            <div class="p2-text-muted" style="line-height:1.9; text-align:justify; font-size:13px;">
+                                طبق معماری جدید، تمام محاسبات استحقاق و مانده مرخصی
+                                (PAY2_LEAVE_BAL) به منظور یکپارچگی کامل با سیستم تسویه‌حساب،
+                                بر اساس دقیقه‌های واقعی انجام می‌شود.
                             </div>
                         </div>
+
                     </div>
                 </div>
             }
 
+            @* ══ مدیریت کارگاه‌ها ══ *@
             @if (ActiveTab == "workshops")
             {
                 <WorkshopTab OnToast="ShowToastAsync" />
             }
 
+            @* ══ تب‌های در دست توسعه ══ *@
             @if (ActiveTab != "dashboard" && ActiveTab != "workshops")
             {
-                <div class="tab-content-animated h-100 d-flex flex-column align-items-center justify-content-center text-muted">
-                    <i class="bi bi-tools" style="font-size: 4rem; opacity: 0.2; margin-bottom: 1rem;"></i>
-                    <h4>محتوای بخش "@GetTabTitle(ActiveTab)"</h4>
-                    <p>طراحی ظاهر این بخش در قدم بعدی انجام خواهد شد.</p>
+                <div class="pay2-tab-container"
+                     style="display:flex; flex-direction:column; align-items:center; justify-content:center; height:100%;">
+                    <div class="p2-empty-state">
+                        <i class="bi bi-tools"></i>
+                        <h4>«@GetTabTitle(ActiveTab)»</h4>
+                        <p>این بخش در حال توسعه است و به‌زودی اضافه می‌شود.</p>
+                    </div>
                 </div>
             }
 
@@ -586,22 +248,40 @@
 </div>
 
 @code {
+
+    // ══════════════════════════════════════════
+    // State
+    // ══════════════════════════════════════════
+
     private string ActiveTab = "dashboard";
+    private bool IsToastVisible = false;
+    private string ToastMessage = string.Empty;
+    private int _toastVersion = 0;
 
-    private bool IsToastVisible;
-    private string ToastMessage = "";
+    // ──────────────────────────────────────────
+    // داده‌های placeholder داشبورد
+    // (بعداً از API واقعی جایگزین می‌شود)
+    // ──────────────────────────────────────────
+    private record AdvanceRow(string Name, string DocRef, string Amount);
 
-    protected override Task OnInitializedAsync()
-    {
-        return Task.CompletedTask;
-    }
+    private static readonly List<AdvanceRow> DashboardAdvanceRows = new()
+  {
+    new("علی احمدی",   "ADV_HES / T-1050", "۷۵,۰۰۰,۰۰۰"),
+    new("سارا رضایی",  "ADV_HES / T-1050", "۲۰,۰۰۰,۰۰۰"),
+    new("محمد کریمی",  "ADV_HES / T-1050", "۵,۰۰۰,۰۰۰"),
+  };
+
+    // ══════════════════════════════════════════
+    // ناوبری تب‌ها
+    // ══════════════════════════════════════════
 
     private void SetActiveTab(string tabName)
     {
+        if (ActiveTab == tabName) return;
         ActiveTab = tabName;
     }
 
-    private string GetTabTitle(string tabName) => tabName switch
+    private static string GetTabTitle(string tabName) => tabName switch
     {
         "dashboard" => "داشبورد",
         "workshops" => "مدیریت کارگاه‌ها",
@@ -614,31 +294,19 @@
         _ => "سیستم حقوق و دستمزد"
     };
 
-    private int _toastVersion = 0;
-
-    private static string? CleanText(string? value)
-    {
-        return string.IsNullOrWhiteSpace(value) ? null : value.Trim();
-    }
-
-    private static string? OnlyDigits(string? value, int maxLength)
-    {
-        if (string.IsNullOrWhiteSpace(value))
-            return null;
-
-        var digits = new string(value.Where(char.IsDigit).Take(maxLength).ToArray());
-        return string.IsNullOrWhiteSpace(digits) ? null : digits;
-    }
+    // ══════════════════════════════════════════
+    // Toast — با versioning برای جلوگیری از
+    // بسته شدن زودهنگام در صورت چند پیام پشت سر هم
+    // ══════════════════════════════════════════
 
     private async Task ShowToastAsync(string message)
     {
         var version = ++_toastVersion;
-
         ToastMessage = message;
         IsToastVisible = true;
         StateHasChanged();
 
-        await Task.Delay(3000);
+        await Task.Delay(3200);
 
         if (version == _toastVersion)
         {

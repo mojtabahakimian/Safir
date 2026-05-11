@@ -1,21 +1,35 @@
 ﻿@using Safir.Shared.Models.Salary
 @inject Pay2WorkshopApiService WorkshopApi
 
-
-
 <div class="pay2-tab-container">
     <div class="pay2-workshop-layout">
 
-        <!-- سمت چپ: لیست کارگاه‌ها -->
-        <div class="card-custom pay2-workshop-list">
-            <div class="pay2-card-header" style="display:flex; justify-content:space-between; align-items:center;">
+        @* ══════════════════════════════════════════
+       پنل چپ: لیست کارگاه‌ها
+       ══════════════════════════════════════════ *@
+        <div class="pay2-workshop-list">
+
+            <div class="pay2-card-header">
                 <h5>لیست کارگاه‌ها</h5>
-                <button class="btn-outline-pay2" @onclick="NewWorkshop">جدید</button>
+                <button class="btn-outline-pay2" @onclick="NewWorkshop">
+                    <i class="bi bi-plus-lg"></i> جدید
+                </button>
             </div>
 
             @if (IsLoadingWorkshops)
             {
-                <div>در حال بارگذاری...</div>
+                <div class="p2-loading">
+                    <div class="p2-spinner"></div>
+                    در حال بارگذاری...
+                </div>
+            }
+            else if (!Workshops.Any())
+            {
+                <div class="p2-empty-state">
+                    <i class="bi bi-building"></i>
+                    <h4>کارگاهی ثبت نشده</h4>
+                    <p>برای شروع، دکمه «جدید» را بزنید.</p>
+                </div>
             }
             else
             {
@@ -24,43 +38,90 @@
                         <tr>
                             <th>کد</th>
                             <th>نام کارگاه</th>
-                            <th>فعال</th>
+                            <th>وضعیت</th>
                         </tr>
                     </thead>
                     <tbody>
                         @foreach (var item in Workshops)
                         {
-                            <tr class="workshop-row @(CurrentWorkshop.WS_ID == item.WS_ID ? "active" : "")" @onclick="() => SelectWorkshop(item)">
-
-                                <td>@item.WS_CODE</td>
+                            <tr class="workshop-row @(CurrentWorkshop.WS_ID == item.WS_ID ? "active" : "")"
+                                @onclick="() => SelectWorkshop(item)">
+                                <td class="p2-text-mono">@item.WS_CODE</td>
                                 <td>@item.WS_NAME</td>
-                                <td>@(item.IS_ACTIVE ? "بله" : "خیر")</td>
+                                <td>
+                                    @if (item.IS_ACTIVE)
+                                    {
+                                        <span class="p2-badge-success">فعال</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="p2-badge-neutral">غیرفعال</span>
+                                    }
+                                </td>
                             </tr>
                         }
                     </tbody>
                 </table>
             }
-
         </div>
 
-        <!-- سمت راست: فرم ورود اطلاعات -->
+        @* ══════════════════════════════════════════
+       پنل راست: فرم اطلاعات کارگاه
+       ══════════════════════════════════════════ *@
         <div class="card-custom pay2-workshop-form">
-            <h5>اطلاعات کارگاه</h5>
+
+            @* ─── عنوان فرم ─── *@
+            <div class="pay2-card-header">
+                <h5>
+                    @if (CurrentWorkshop.WS_ID == 0)
+                    {
+                        <span>کارگاه جدید</span>
+                    }
+                    else
+                    {
+                        <span>ویرایش: @CurrentWorkshop.WS_NAME</span>
+                    }
+                </h5>
+                @if (CurrentWorkshop.WS_ID != 0)
+                {
+                    <span class="p2-badge-primary">WS_ID: @CurrentWorkshop.WS_ID</span>
+                }
+            </div>
+
+            @* ─── بخش ۱: اطلاعات پایه ─── *@
+            <div class="p2-sub-card-title">
+                <i class="bi bi-info-circle"></i> اطلاعات پایه
+            </div>
 
             <div class="form-grid-2">
+
                 <div class="form-field">
                     <label>کد کارگاه *</label>
-                    <input class="pay2-input"
+                    <input class="pay2-input @(HasError(nameof(CurrentWorkshop.WS_CODE)) ? "error" : "")"
                            maxlength="10"
                            inputmode="numeric"
-                           pattern="[0-9]*"
-                           @bind="CurrentWorkshop.WS_CODE"
-                           oninput="this.value=this.value.replace(/[^0-9]/g,'')" />
+                           placeholder="مثال: 1050"
+                           value="@CurrentWorkshop.WS_CODE"
+                           @oninput="e => CurrentWorkshop.WS_CODE = OnlyDigitsLive(e.Value?.ToString(), 10)"
+                           @onblur="() => ClearError(nameof(CurrentWorkshop.WS_CODE))" />
+                    @if (HasError(nameof(CurrentWorkshop.WS_CODE)))
+                    {
+                        <span class="field-error">@GetError(nameof(CurrentWorkshop.WS_CODE))</span>
+                    }
                 </div>
 
                 <div class="form-field">
                     <label>نام کارگاه *</label>
-                    <input class="pay2-input" @bind="CurrentWorkshop.WS_NAME" />
+                    <input class="pay2-input @(HasError(nameof(CurrentWorkshop.WS_NAME)) ? "error" : "")"
+                           maxlength="100"
+                           placeholder="مثال: کارگاه مرکزی"
+                           @bind="CurrentWorkshop.WS_NAME"
+                           @bind:event="onchange"
+                           @onfocus="() => ClearError(nameof(CurrentWorkshop.WS_NAME))" />
+                    @if (HasError(nameof(CurrentWorkshop.WS_NAME)))
+                    {
+                        <span class="field-error">@GetError(nameof(CurrentWorkshop.WS_NAME))</span>
+                    }
                 </div>
 
                 <div class="form-field">
@@ -68,24 +129,33 @@
                     <input class="pay2-input"
                            maxlength="20"
                            inputmode="numeric"
-                           pattern="[0-9]*"
-                           @bind="CurrentWorkshop.SOCIAL_INS_CODE"
-                           oninput="this.value=this.value.replace(/[^0-9]/g,'')" />
+                           placeholder="کد تأمین اجتماعی"
+                           value="@CurrentWorkshop.SOCIAL_INS_CODE"
+                           @oninput="e => CurrentWorkshop.SOCIAL_INS_CODE = OnlyDigitsLive(e.Value?.ToString(), 20)" />
                 </div>
 
                 <div class="form-field">
                     <label>شناسه مالیاتی</label>
-                    <input class="pay2-input" @bind="CurrentWorkshop.TAX_CODE" />
+                    <input class="pay2-input"
+                           maxlength="20"
+                           placeholder="شناسه مالیاتی"
+                           @bind="CurrentWorkshop.TAX_CODE"
+                           @bind:event="onchange" />
                 </div>
 
                 <div class="form-field">
                     <label>شناسه ملی</label>
-                    <input class="pay2-input"
+                    <input class="pay2-input @(HasError(nameof(CurrentWorkshop.NATIONAL_ID)) ? "error" : "")"
                            maxlength="11"
                            inputmode="numeric"
-                           pattern="[0-9]*"
-                           @bind="CurrentWorkshop.NATIONAL_ID"
-                           oninput="this.value=this.value.replace(/[^0-9]/g,'')" />
+                           placeholder="۱۱ رقم"
+                           value="@CurrentWorkshop.NATIONAL_ID"
+                           @oninput="e => CurrentWorkshop.NATIONAL_ID = OnlyDigitsLive(e.Value?.ToString(), 11)"
+                           @onblur="ValidateNationalId" />
+                    @if (HasError(nameof(CurrentWorkshop.NATIONAL_ID)))
+                    {
+                        <span class="field-error">@GetError(nameof(CurrentWorkshop.NATIONAL_ID))</span>
+                    }
                 </div>
 
                 <div class="form-field">
@@ -93,21 +163,27 @@
                     <input class="pay2-input"
                            maxlength="20"
                            inputmode="numeric"
-                           pattern="[0-9]*"
-                           @bind="CurrentWorkshop.PHONE"
-                           oninput="this.value=this.value.replace(/[^0-9]/g,'')" />
+                           placeholder="شماره تماس"
+                           value="@CurrentWorkshop.PHONE"
+                           @oninput="e => CurrentWorkshop.PHONE = OnlyDigitsLive(e.Value?.ToString(), 20)" />
                 </div>
+
             </div>
 
-            <div class="form-field">
+            <div class="form-field p2-mt-8">
                 <label>آدرس</label>
-                <input class="pay2-input" @bind="CurrentWorkshop.ADDRESS" />
+                <input class="pay2-input"
+                       maxlength="200"
+                       placeholder="آدرس کامل کارگاه"
+                       @bind="CurrentWorkshop.ADDRESS"
+                       @bind:event="onchange" />
             </div>
 
-            <div class="form-grid-2">
+            @* ─── ردیف وضعیت + نوع بیمه ─── *@
+            <div class="form-grid-2 p2-mt-8">
+
                 <div class="form-field">
                     <label>وضعیت کارگاه</label>
-
                     <div class="pay2-wpf-checkbox-box">
                         <label class="pay2-wpf-checkbox-label">
                             <input type="checkbox" @bind="CurrentWorkshop.IS_ACTIVE" />
@@ -116,84 +192,135 @@
                     </div>
                 </div>
 
-                <div class="pay2-dd">
-                    <button type="button" class="pay2-dd-button" @onclick="ToggleInsModeDropdown">
-                        <span>@GetInsModeText(CurrentWorkshop.INS_MODE)</span>
-                        <span class="pay2-dd-arrow">⌄</span>
-                    </button>
-
-                    @if (IsInsModeDropdownOpen)
-                    {
-                        <div class="pay2-dd-menu">
-                            <button type="button" class="pay2-dd-item" @onclick="() => SelectInsMode(1)">
-                                عادی
-                            </button>
-
-                            <button type="button" class="pay2-dd-item" @onclick="() => SelectInsMode(2)">
-                                ده درصدی
-                            </button>
-                        </div>
-                    }
+                @* ── Dropdown نوع بیمه — wrapper داخل form-field ── *@
+                <div class="form-field">
+                    <label>نوع محاسبه بیمه</label>
+                    <div class="pay2-dd">
+                        <button type="button"
+                                class="pay2-dd-button @(IsInsModeDropdownOpen ? "open" : "")"
+                                @onclick="ToggleInsModeDropdown"
+                                @onclick:stopPropagation="true">
+                            <span>@GetInsModeText(CurrentWorkshop.INS_MODE)</span>
+                            <span class="pay2-dd-arrow">⌄</span>
+                        </button>
+                        @if (IsInsModeDropdownOpen)
+                        {
+                            <div class="pay2-dd-menu" @onclick:stopPropagation="true">
+                                <button type="button"
+                                        class="pay2-dd-item @(CurrentWorkshop.INS_MODE == 1 ? "selected" : "")"
+                                        @onclick="() => SelectInsMode(1)">
+                                    عادی
+                                </button>
+                                <button type="button"
+                                        class="pay2-dd-item @(CurrentWorkshop.INS_MODE == 2 ? "selected" : "")"
+                                        @onclick="() => SelectInsMode(2)">
+                                    ده درصدی
+                                </button>
+                            </div>
+                        }
+                    </div>
                 </div>
 
             </div>
 
-            <hr />
+            @* ─── بخش ۲: سرفصل‌های حسابداری ─── *@
+            <hr class="p2-divider" />
 
-            <h5>سرفصل‌های حسابداری</h5>
+            <div class="p2-sub-card-title">
+                <i class="bi bi-journal-bookmark"></i> سرفصل‌های حسابداری
+            </div>
 
             <div class="form-grid-2">
+
                 <div class="form-field">
-                    <label>کل مساعده — ADV_HES_K</label>
-                    <input class="pay2-input" @bind="CurrentWorkshopAcc.ADV_HES_K" />
+                    <label>کل مساعده</label>
+                    <input class="pay2-input"
+                           placeholder="ADV_HES_K"
+                           @bind="CurrentWorkshopAcc.ADV_HES_K"
+                           @bind:event="onchange" />
                 </div>
 
                 <div class="form-field">
-                    <label>معین مساعده — ADV_HES_M</label>
-                    <input class="pay2-input" @bind="CurrentWorkshopAcc.ADV_HES_M" />
+                    <label>معین مساعده</label>
+                    <input class="pay2-input"
+                           placeholder="ADV_HES_M"
+                           @bind="CurrentWorkshopAcc.ADV_HES_M"
+                           @bind:event="onchange" />
                 </div>
 
                 <div class="form-field">
-                    <label>هزینه حقوق — SALARY_EXP</label>
-                    <input class="pay2-input" @bind="CurrentWorkshopAcc.SALARY_EXP" />
+                    <label>هزینه حقوق</label>
+                    <input class="pay2-input"
+                           placeholder="SALARY_EXP"
+                           @bind="CurrentWorkshopAcc.SALARY_EXP"
+                           @bind:event="onchange" />
                 </div>
 
                 <div class="form-field">
-                    <label>پرداختنی حقوق — SALARY_PAYABLE</label>
-                    <input class="pay2-input" @bind="CurrentWorkshopAcc.SALARY_PAYABLE" />
+                    <label>پرداختنی حقوق</label>
+                    <input class="pay2-input"
+                           placeholder="SALARY_PAYABLE"
+                           @bind="CurrentWorkshopAcc.SALARY_PAYABLE"
+                           @bind:event="onchange" />
                 </div>
 
                 <div class="form-field">
-                    <label>هزینه بیمه — INS_EXP</label>
-                    <input class="pay2-input" @bind="CurrentWorkshopAcc.INS_EXP" />
+                    <label>هزینه بیمه</label>
+                    <input class="pay2-input"
+                           placeholder="INS_EXP"
+                           @bind="CurrentWorkshopAcc.INS_EXP"
+                           @bind:event="onchange" />
                 </div>
 
                 <div class="form-field">
-                    <label>پرداختنی بیمه — INS_PAYABLE</label>
-                    <input class="pay2-input" @bind="CurrentWorkshopAcc.INS_PAYABLE" />
+                    <label>پرداختنی بیمه</label>
+                    <input class="pay2-input"
+                           placeholder="INS_PAYABLE"
+                           @bind="CurrentWorkshopAcc.INS_PAYABLE"
+                           @bind:event="onchange" />
                 </div>
 
                 <div class="form-field">
-                    <label>پرداختنی مالیات — TAX_PAYABLE</label>
-                    <input class="pay2-input" @bind="CurrentWorkshopAcc.TAX_PAYABLE" />
+                    <label>پرداختنی مالیات</label>
+                    <input class="pay2-input"
+                           placeholder="TAX_PAYABLE"
+                           @bind="CurrentWorkshopAcc.TAX_PAYABLE"
+                           @bind:event="onchange" />
                 </div>
+
             </div>
 
-            <div style="display:flex; gap:10px; margin-top:24px;">
-                <button class="btn-primary-pay2" @onclick="SaveWorkshopAsync" disabled="@IsSavingWorkshop">
-                    @(IsSavingWorkshop ? "در حال ذخیره..." : "ذخیره اطلاعات کارگاه")
+            @* ─── دکمه‌های عملیات ─── *@
+            <div style="display:flex; gap:10px; margin-top:28px; flex-wrap:wrap;">
+                <button class="btn-primary-pay2"
+                        @onclick="SaveWorkshopAsync"
+                        disabled="@IsSavingWorkshop">
+                    @if (IsSavingWorkshop)
+                    {
+                        <span class="p2-spinner" style="width:14px;height:14px;border-width:2px;"></span>
+                        <span>در حال ذخیره...</span>
+                    }
+                    else
+                    {
+                        <i class="bi bi-floppy"></i>
+                        <span>ذخیره اطلاعات کارگاه</span>
+                    }
                 </button>
-
-                <button class="btn-outline-pay2" @onclick="NewWorkshop">
-                    انصراف / جدید
+                <button class="btn-outline-pay2" @onclick="NewWorkshop" disabled="@IsSavingWorkshop">
+                    <i class="bi bi-x-lg"></i> انصراف / جدید
                 </button>
             </div>
+
         </div>
-
     </div>
 </div>
 
 @code {
+
+    // ══════════════════════════════════════════
+    // پارامترها و state اصلی
+    // ══════════════════════════════════════════
+
     [Parameter] public EventCallback<string> OnToast { get; set; }
 
     private List<Pay2WorkshopDto> Workshops = new();
@@ -202,22 +329,30 @@
 
     private bool IsLoadingWorkshops;
     private bool IsSavingWorkshop;
+    private bool IsInsModeDropdownOpen;
+
+    // خطاهای اعتبارسنجی inline هر فیلد
+    private readonly Dictionary<string, string> _fieldErrors = new();
+
+    // ══════════════════════════════════════════
+    // چرخه حیات کامپوننت
+    // ══════════════════════════════════════════
 
     protected override async Task OnInitializedAsync()
     {
         await LoadWorkshopsAsync();
     }
 
+    // ══════════════════════════════════════════
+    // بارگذاری لیست کارگاه‌ها
+    // ══════════════════════════════════════════
+
     private async Task LoadWorkshopsAsync()
     {
         IsLoadingWorkshops = true;
-
         try
         {
             Workshops = await WorkshopApi.GetWorkshopsAsync();
-
-            if (CurrentWorkshop.WS_ID == 0)
-                NewWorkshop();
         }
         catch (Exception ex)
         {
@@ -229,31 +364,13 @@
         }
     }
 
-    private bool IsInsModeDropdownOpen;
-
-    private void ToggleInsModeDropdown()
-    {
-        IsInsModeDropdownOpen = !IsInsModeDropdownOpen;
-    }
-
-    private void SelectInsMode(int value)
-    {
-        CurrentWorkshop.INS_MODE = value;
-        IsInsModeDropdownOpen = false;
-    }
-
-    private static string GetInsModeText(int value)
-    {
-        return value switch
-        {
-            1 => "عادی",
-            2 => "ده درصدی",
-            _ => "عادی"
-        };
-    }
+    // ══════════════════════════════════════════
+    // انتخاب کارگاه از لیست
+    // ══════════════════════════════════════════
 
     private async Task SelectWorkshop(Pay2WorkshopDto selected)
     {
+        // کپی کامل — از تغییر مستقیم آیتم لیست جلوگیری می‌کند
         CurrentWorkshop = new Pay2WorkshopDto
         {
             WS_ID = selected.WS_ID,
@@ -268,6 +385,9 @@
             INS_MODE = selected.INS_MODE
         };
 
+        _fieldErrors.Clear();
+        IsInsModeDropdownOpen = false;
+
         try
         {
             CurrentWorkshopAcc = await WorkshopApi.GetAccountsAsync(selected.WS_ID);
@@ -275,9 +395,13 @@
         catch (Exception ex)
         {
             CurrentWorkshopAcc = new Pay2WorkshopAccDto { WS_ID = selected.WS_ID };
-            await Toast("خطا در واکشی تنظیمات حسابداری کارگاه: " + ex.Message);
+            await Toast("خطا در واکشی سرفصل‌های حسابداری: " + ex.Message);
         }
     }
+
+    // ══════════════════════════════════════════
+    // فرم جدید / انصراف
+    // ══════════════════════════════════════════
 
     private void NewWorkshop()
     {
@@ -286,12 +410,20 @@
             IS_ACTIVE = true,
             INS_MODE = 1
         };
-
         CurrentWorkshopAcc = new Pay2WorkshopAccDto();
+        _fieldErrors.Clear();
+        IsInsModeDropdownOpen = false;
     }
+
+    // ══════════════════════════════════════════
+    // ذخیره کارگاه
+    // ══════════════════════════════════════════
 
     private async Task SaveWorkshopAsync()
     {
+        IsInsModeDropdownOpen = false;
+
+        // ─── پاک‌سازی مقادیر ───
         CurrentWorkshop.WS_CODE = OnlyDigits(CurrentWorkshop.WS_CODE, 10);
         CurrentWorkshop.WS_NAME = CleanText(CurrentWorkshop.WS_NAME);
         CurrentWorkshop.NATIONAL_ID = OnlyDigits(CurrentWorkshop.NATIONAL_ID, 11);
@@ -308,26 +440,27 @@
         CurrentWorkshopAcc.INS_PAYABLE = CleanText(CurrentWorkshopAcc.INS_PAYABLE);
         CurrentWorkshopAcc.TAX_PAYABLE = CleanText(CurrentWorkshopAcc.TAX_PAYABLE);
 
+        // ─── اعتبارسنجی client-side ───
+        _fieldErrors.Clear();
+
         if (string.IsNullOrWhiteSpace(CurrentWorkshop.WS_CODE))
-        {
-            await Toast("کد کارگاه نمی‌تواند خالی باشد.");
-            return;
-        }
+            _fieldErrors[nameof(CurrentWorkshop.WS_CODE)] = "کد کارگاه نمی‌تواند خالی باشد.";
 
         if (string.IsNullOrWhiteSpace(CurrentWorkshop.WS_NAME))
+            _fieldErrors[nameof(CurrentWorkshop.WS_NAME)] = "نام کارگاه نمی‌تواند خالی باشد.";
+
+        if (!string.IsNullOrWhiteSpace(CurrentWorkshop.NATIONAL_ID)
+            && CurrentWorkshop.NATIONAL_ID.Length != 11)
+            _fieldErrors[nameof(CurrentWorkshop.NATIONAL_ID)] = "شناسه ملی باید دقیقاً ۱۱ رقم باشد.";
+
+        if (_fieldErrors.Any())
         {
-            await Toast("نام کارگاه نمی‌تواند خالی باشد.");
+            await Toast(_fieldErrors.First().Value);
             return;
         }
 
-        if (!string.IsNullOrWhiteSpace(CurrentWorkshop.NATIONAL_ID) && CurrentWorkshop.NATIONAL_ID.Length != 11)
-        {
-            await Toast("شناسه ملی باید دقیقاً ۱۱ رقم باشد.");
-            return;
-        }
-
+        // ─── ارسال به سرور ───
         IsSavingWorkshop = true;
-
         try
         {
             var request = new Pay2WorkshopSaveRequest
@@ -338,17 +471,18 @@
 
             var savedId = await WorkshopApi.SaveAsync(request);
 
+            // رفرش لیست و انتخاب رکورد ذخیره‌شده
             await LoadWorkshopsAsync();
-
             var saved = Workshops.FirstOrDefault(x => x.WS_ID == savedId);
             if (saved != null)
                 await SelectWorkshop(saved);
 
-            await Toast("اطلاعات کارگاه و تنظیمات حسابداری با موفقیت ذخیره شد.");
+            await Toast("اطلاعات کارگاه با موفقیت ذخیره شد.");
         }
         catch (Exception ex)
         {
-            await Toast("خطا در ذخیره اطلاعات کارگاه: " + ex.Message);
+            // پیام خوانا از سرور (BadRequest body) یا exception message
+            await Toast("خطا: " + ex.Message);
         }
         finally
         {
@@ -356,23 +490,73 @@
         }
     }
 
+    // ══════════════════════════════════════════
+    // Dropdown نوع بیمه
+    // ══════════════════════════════════════════
+
+    private void ToggleInsModeDropdown()
+      => IsInsModeDropdownOpen = !IsInsModeDropdownOpen;
+
+    private void SelectInsMode(int value)
+    {
+        CurrentWorkshop.INS_MODE = value;
+        IsInsModeDropdownOpen = false;
+    }
+
+    private static string GetInsModeText(int value) => value switch
+    {
+        1 => "عادی",
+        2 => "ده درصدی",
+        _ => "عادی"
+    };
+
+    // ══════════════════════════════════════════
+    // اعتبارسنجی inline
+    // ══════════════════════════════════════════
+
+    private void ValidateNationalId()
+    {
+        var v = CurrentWorkshop.NATIONAL_ID;
+        if (!string.IsNullOrWhiteSpace(v) && v.Length != 11)
+            _fieldErrors[nameof(CurrentWorkshop.NATIONAL_ID)] = "شناسه ملی باید دقیقاً ۱۱ رقم باشد.";
+        else
+            _fieldErrors.Remove(nameof(CurrentWorkshop.NATIONAL_ID));
+    }
+
+    private bool HasError(string field) => _fieldErrors.ContainsKey(field);
+    private string GetError(string field) => _fieldErrors.TryGetValue(field, out var m) ? m : "";
+    private void ClearError(string field) => _fieldErrors.Remove(field);
+
+    // ══════════════════════════════════════════
+    // Toast
+    // ══════════════════════════════════════════
+
     private async Task Toast(string message)
     {
         if (OnToast.HasDelegate)
             await OnToast.InvokeAsync(message);
     }
 
-    private static string? CleanText(string? value)
+    // ══════════════════════════════════════════
+    // متدهای کمکی پاک‌سازی رشته
+    // ══════════════════════════════════════════
+
+    // فیلترینگ real-time داخل oninput — بدون enforce حداکثر طول
+    // (maxlength روی input خودش این کار را می‌کند)
+    private static string? OnlyDigitsLive(string? value, int maxLength)
     {
-        return string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+        if (string.IsNullOrEmpty(value)) return null;
+        return new string(value.Where(char.IsDigit).Take(maxLength).ToArray());
     }
 
+    // پاک‌سازی نهایی قبل از ذخیره
     private static string? OnlyDigits(string? value, int maxLength)
     {
-        if (string.IsNullOrWhiteSpace(value))
-            return null;
-
+        if (string.IsNullOrWhiteSpace(value)) return null;
         var digits = new string(value.Where(char.IsDigit).Take(maxLength).ToArray());
         return string.IsNullOrWhiteSpace(digits) ? null : digits;
     }
+
+    private static string? CleanText(string? value)
+      => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 }

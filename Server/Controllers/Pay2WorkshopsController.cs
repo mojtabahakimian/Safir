@@ -75,41 +75,32 @@ WHERE WS_ID = @wsId";
         if (!int.TryParse(userIdString, out int userCod))
             return Unauthorized();
 
-        var duplicate = await _db.DoGetDataSQLAsync<int>(@"
-SELECT TOP 1 WS_ID
-FROM PAY2_WORKSHOP
-WHERE WS_CODE = @WS_CODE
-  AND WS_ID <> @WS_ID",
-new
-{
-    WS_CODE = w.WS_CODE.Trim(),
-    WS_ID = w.WS_ID
-});
-
-        if (duplicate.Any())
-            return BadRequest("این کد کارگاه قبلاً برای کارگاه دیگری ثبت شده است.");
 
         var wsId = await _db.ExecuteInTransactionAsync(async (conn, tran) =>
         {
             int newOrUpdatedWsId = w.WS_ID;
 
+            // ── بررسی تکراری بودن WS_CODE — داخل transaction با UPDLOCK ──
+            // UPDLOCK: رکورد رو Lock می‌کنه تا transaction تموم بشه → race condition نداریم
+            var duplicateId = await conn.QueryFirstOrDefaultAsync<int?>(@"
+    SELECT TOP 1 WS_ID
+    FROM PAY2_WORKSHOP WITH (UPDLOCK, ROWLOCK)
+    WHERE WS_CODE = @WS_CODE
+      AND WS_ID <> @WS_ID",
+                new { WS_CODE = w.WS_CODE!.Trim(), WS_ID = w.WS_ID },
+                tran);
+
+            if (duplicateId.HasValue)
+                throw new InvalidOperationException("این کد کارگاه قبلاً برای کارگاه دیگری ثبت شده است.");
+
             if (w.WS_ID == 0)
             {
-                var exists = await conn.QueryFirstOrDefaultAsync<int>(
-                    "SELECT COUNT(1) FROM PAY2_WORKSHOP WHERE WS_CODE = @WS_CODE",
-                    new { w.WS_CODE },
-                    tran);
-
-                if (exists > 0)
-                    throw new InvalidOperationException("این کد کارگاه قبلاً ثبت شده است.");
-
                 const string insertSql = @"
 INSERT INTO PAY2_WORKSHOP
 (WS_CODE, WS_NAME, NATIONAL_ID, SOCIAL_INS_CODE, TAX_CODE, ADDRESS, PHONE, IS_ACTIVE, INS_MODE, CREATED_BY)
 OUTPUT INSERTED.WS_ID
 VALUES
 (@WS_CODE, @WS_NAME, @NATIONAL_ID, @SOCIAL_INS_CODE, @TAX_CODE, @ADDRESS, @PHONE, @IS_ACTIVE, @INS_MODE, @CREATED_BY)";
-
                 newOrUpdatedWsId = await conn.QueryFirstAsync<int>(insertSql, new
                 {
                     w.WS_CODE,
@@ -128,17 +119,16 @@ VALUES
             {
                 const string updateSql = @"
 UPDATE PAY2_WORKSHOP SET
-    WS_CODE = @WS_CODE,
-    WS_NAME = @WS_NAME,
-    NATIONAL_ID = @NATIONAL_ID,
-    SOCIAL_INS_CODE = @SOCIAL_INS_CODE,
-    TAX_CODE = @TAX_CODE,
-    ADDRESS = @ADDRESS,
-    PHONE = @PHONE,
-    IS_ACTIVE = @IS_ACTIVE,
-    INS_MODE = @INS_MODE
+  WS_CODE          = @WS_CODE,
+  WS_NAME          = @WS_NAME,
+  NATIONAL_ID      = @NATIONAL_ID,
+  SOCIAL_INS_CODE  = @SOCIAL_INS_CODE,
+  TAX_CODE         = @TAX_CODE,
+  ADDRESS          = @ADDRESS,
+  PHONE            = @PHONE,
+  IS_ACTIVE        = @IS_ACTIVE,
+  INS_MODE         = @INS_MODE
 WHERE WS_ID = @WS_ID";
-
                 await conn.ExecuteAsync(updateSql, w, tran);
             }
 
