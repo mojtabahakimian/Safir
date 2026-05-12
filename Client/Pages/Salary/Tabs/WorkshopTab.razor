@@ -174,8 +174,9 @@
 
             <div class="form-field p2-mt-8">
                 <label>آدرس</label>
+                @* NVARCHAR(300) در DDL — maxlength=300 *@
                 <input class="pay2-input"
-                       maxlength="200"
+                       maxlength="300"
                        placeholder="آدرس کامل کارگاه"
                        @bind="CurrentWorkshop.ADDRESS"
                        @bind:event="onchange" />
@@ -199,8 +200,10 @@
                     <label>نوع محاسبه بیمه</label>
                     <div class="pay2-dd">
 
+                        @* FIX: disabled حین ذخیره — هماهنگ با سایر دکمه‌ها *@
                         <button type="button"
                                 class="pay2-dd-button @(IsInsModeDropdownOpen ? "open" : "")"
+                                disabled="@IsSavingWorkshop"
                                 @onclick="ToggleInsModeDropdown"
                                 @onclick:stopPropagation="true">
                             <span>@GetInsModeText(CurrentWorkshop.INS_MODE)</span>
@@ -209,6 +212,7 @@
 
                         @if (IsInsModeDropdownOpen)
                         {
+                            @* overlay بی‌رنگ — کلیک خارج dropdown آن را می‌بندد *@
                             <div style="position:fixed; inset:0; z-index:99;"
                                  @onclick="CloseInsModeDropdown"></div>
 
@@ -240,15 +244,16 @@
 
             <div class="form-grid-2">
 
+                @* ADV_HES: ACC_CODE در DDL = NVARCHAR(20) → maxlength=20 *@
                 <div class="form-field" style="grid-column: span 2;">
                     <label>
                         حساب مساعده هوشمند
                         <span class="p2-text-muted" style="font-size:11px; font-weight:400;">
-                            (فرمت: کل-معین یا کل-معین-تفصیلی)
+                            (ADV_HES — فرمت: کل-معین یا کل-معین-تفصیلی)
                         </span>
                     </label>
                     <input class="pay2-input @(HasError(nameof(CurrentWorkshopAcc.ADV_HES)) ? "error" : "")"
-                           maxlength="100"
+                           maxlength="20"
                            placeholder="مثال: 112-1  یا  213-1-5"
                            @bind="CurrentWorkshopAcc.ADV_HES"
                            @bind:event="onchange"
@@ -259,9 +264,11 @@
                     }
                 </div>
 
+                @* سایر سرفصل‌ها: ACC_CODE در DDL = NVARCHAR(20) → maxlength=20 *@
                 <div class="form-field">
                     <label>هزینه حقوق</label>
                     <input class="pay2-input"
+                           maxlength="20"
                            placeholder="SALARY_EXP"
                            @bind="CurrentWorkshopAcc.SALARY_EXP"
                            @bind:event="onchange" />
@@ -270,6 +277,7 @@
                 <div class="form-field">
                     <label>پرداختنی حقوق</label>
                     <input class="pay2-input"
+                           maxlength="20"
                            placeholder="SALARY_PAYABLE"
                            @bind="CurrentWorkshopAcc.SALARY_PAYABLE"
                            @bind:event="onchange" />
@@ -278,6 +286,7 @@
                 <div class="form-field">
                     <label>هزینه بیمه</label>
                     <input class="pay2-input"
+                           maxlength="20"
                            placeholder="INS_EXP"
                            @bind="CurrentWorkshopAcc.INS_EXP"
                            @bind:event="onchange" />
@@ -286,6 +295,7 @@
                 <div class="form-field">
                     <label>پرداختنی بیمه</label>
                     <input class="pay2-input"
+                           maxlength="20"
                            placeholder="INS_PAYABLE"
                            @bind="CurrentWorkshopAcc.INS_PAYABLE"
                            @bind:event="onchange" />
@@ -294,6 +304,7 @@
                 <div class="form-field">
                     <label>پرداختنی مالیات</label>
                     <input class="pay2-input"
+                           maxlength="20"
                            placeholder="TAX_PAYABLE"
                            @bind="CurrentWorkshopAcc.TAX_PAYABLE"
                            @bind:event="onchange" />
@@ -476,7 +487,6 @@
     private void ToggleInsModeDropdown()
         => IsInsModeDropdownOpen = !IsInsModeDropdownOpen;
 
-    // FIX #3: بستن dropdown با کلیک خارج از آن (فراخوانی از overlay)
     private void CloseInsModeDropdown()
         => IsInsModeDropdownOpen = false;
 
@@ -486,7 +496,7 @@
         IsInsModeDropdownOpen = false;
     }
 
-    // FIX #2: هماهنگ با Pay2WorkshopDto.InsModeText — معمولی / ده‌درصدی
+    // هماهنگ با Pay2WorkshopDto.InsModeText — معمولی / ده‌درصدی
     private static string GetInsModeText(int value) => value switch
     {
         1 => "معمولی",
@@ -507,7 +517,7 @@
     /// <summary>
     /// اعتبارسنجی فرمت ADV_HES:
     /// باید حداقل دو بخش عددی با خط‌فاصله داشته باشد (کل-معین).
-    /// مثال معتبر: "112-1"  یا  "213-1-5"  یا  "112-1-3-4-1-6"
+    /// مثال معتبر: "112-1"  یا  "213-1-5"
     /// </summary>
     private void ValidateAdvHes()
     {
