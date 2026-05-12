@@ -5,8 +5,8 @@
     <div class="pay2-workshop-layout">
 
         @* ══════════════════════════════════════════
-       پنل چپ: لیست کارگاه‌ها
-       ══════════════════════════════════════════ *@
+           پنل چپ: لیست کارگاه‌ها
+           ══════════════════════════════════════════ *@
         <div class="pay2-workshop-list">
 
             <div class="pay2-card-header">
@@ -38,6 +38,7 @@
                         <tr>
                             <th>کد</th>
                             <th>نام کارگاه</th>
+                            <th>نوع بیمه</th>
                             <th>وضعیت</th>
                         </tr>
                     </thead>
@@ -48,6 +49,7 @@
                                 @onclick="() => SelectWorkshop(item)">
                                 <td class="p2-text-mono">@item.WS_CODE</td>
                                 <td>@item.WS_NAME</td>
+                                <td class="p2-text-muted" style="font-size:12px;">@item.InsModeText</td>
                                 <td>
                                     @if (item.IS_ACTIVE)
                                     {
@@ -66,8 +68,8 @@
         </div>
 
         @* ══════════════════════════════════════════
-       پنل راست: فرم اطلاعات کارگاه
-       ══════════════════════════════════════════ *@
+           پنل راست: فرم اطلاعات کارگاه
+           ══════════════════════════════════════════ *@
         <div class="card-custom pay2-workshop-form">
 
             @* ─── عنوان فرم ─── *@
@@ -192,35 +194,38 @@
                     </div>
                 </div>
 
-                <!-- ── Dropdown نوع بیمه ── -->
+                @* ── Dropdown نوع بیمه ── *@
                 <div class="form-field">
                     <label>نوع محاسبه بیمه</label>
                     <div class="pay2-dd">
+
                         <button type="button"
                                 class="pay2-dd-button @(IsInsModeDropdownOpen ? "open" : "")"
                                 @onclick="ToggleInsModeDropdown"
                                 @onclick:stopPropagation="true">
-
                             <span>@GetInsModeText(CurrentWorkshop.INS_MODE)</span>
-
                             <span class="pay2-dd-arrow"></span>
                         </button>
 
                         @if (IsInsModeDropdownOpen)
                         {
-                            <div class="pay2-dd-menu" @onclick:stopPropagation="true">
+                            <div style="position:fixed; inset:0; z-index:99;"
+                                 @onclick="CloseInsModeDropdown"></div>
+
+                            <div class="pay2-dd-menu" style="z-index:100;" @onclick:stopPropagation="true">
                                 <button type="button"
                                         class="pay2-dd-item @(CurrentWorkshop.INS_MODE == 1 ? "selected" : "")"
                                         @onclick="() => SelectInsMode(1)">
-                                    عادی
+                                    معمولی
                                 </button>
                                 <button type="button"
                                         class="pay2-dd-item @(CurrentWorkshop.INS_MODE == 2 ? "selected" : "")"
                                         @onclick="() => SelectInsMode(2)">
-                                    ده درصدی
+                                    ده‌درصدی
                                 </button>
                             </div>
                         }
+
                     </div>
                 </div>
 
@@ -239,7 +244,7 @@
                     <label>
                         حساب مساعده هوشمند
                         <span class="p2-text-muted" style="font-size:11px; font-weight:400;">
-                            (ADV_HES — فرمت: کل-معین یا کل-معین-تفصیلی)
+                            (فرمت: کل-معین یا کل-معین-تفصیلی)
                         </span>
                     </label>
                     <input class="pay2-input @(HasError(nameof(CurrentWorkshopAcc.ADV_HES)) ? "error" : "")"
@@ -434,7 +439,6 @@
             && CurrentWorkshop.NATIONAL_ID.Length != 11)
             _fieldErrors[nameof(CurrentWorkshop.NATIONAL_ID)] = "شناسه ملی باید دقیقاً ۱۱ رقم باشد.";
 
-        // validation فرمت ADV_HES (اگر وارد شده باشد)
         ValidateAdvHes();
 
         if (_fieldErrors.Any())
@@ -470,7 +474,11 @@
 
     // ── Dropdown Helpers ───────────────────────────────────────────────────────
     private void ToggleInsModeDropdown()
-      => IsInsModeDropdownOpen = !IsInsModeDropdownOpen;
+        => IsInsModeDropdownOpen = !IsInsModeDropdownOpen;
+
+    // FIX #3: بستن dropdown با کلیک خارج از آن (فراخوانی از overlay)
+    private void CloseInsModeDropdown()
+        => IsInsModeDropdownOpen = false;
 
     private void SelectInsMode(int value)
     {
@@ -478,11 +486,12 @@
         IsInsModeDropdownOpen = false;
     }
 
+    // FIX #2: هماهنگ با Pay2WorkshopDto.InsModeText — معمولی / ده‌درصدی
     private static string GetInsModeText(int value) => value switch
     {
-        1 => "عادی",
-        2 => "ده درصدی",
-        _ => "عادی"
+        1 => "معمولی",
+        2 => "ده‌درصدی",
+        _ => "معمولی"
     };
 
     // ── Validation Helpers ─────────────────────────────────────────────────────
@@ -505,7 +514,6 @@
         var v = CurrentWorkshopAcc.ADV_HES;
         if (string.IsNullOrWhiteSpace(v))
         {
-            // خالی بودن مجاز است (اگر مساعده هوشمند غیرفعال باشد)
             _fieldErrors.Remove(nameof(CurrentWorkshopAcc.ADV_HES));
             return;
         }
@@ -516,7 +524,7 @@
 
         if (!valid)
             _fieldErrors[nameof(CurrentWorkshopAcc.ADV_HES)] =
-              "فرمت نادرست. حداقل دو عدد با خط‌فاصله وارد کنید. مثال: 112-1 یا 213-1-5";
+                "فرمت نادرست. حداقل دو عدد با خط‌فاصله وارد کنید. مثال: 112-1 یا 213-1-5";
         else
             _fieldErrors.Remove(nameof(CurrentWorkshopAcc.ADV_HES));
     }
@@ -547,5 +555,5 @@
     }
 
     private static string? CleanText(string? value)
-      => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+        => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 }
