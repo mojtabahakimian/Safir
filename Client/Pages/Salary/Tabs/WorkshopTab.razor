@@ -235,20 +235,23 @@
 
             <div class="form-grid-2">
 
-                <div class="form-field">
-                    <label>کل مساعده</label>
-                    <input class="pay2-input"
-                           placeholder="ADV_HES_K"
-                           @bind="CurrentWorkshopAcc.ADV_HES_K"
-                           @bind:event="onchange" />
-                </div>
-
-                <div class="form-field">
-                    <label>معین مساعده</label>
-                    <input class="pay2-input"
-                           placeholder="ADV_HES_M"
-                           @bind="CurrentWorkshopAcc.ADV_HES_M"
-                           @bind:event="onchange" />
+                <div class="form-field" style="grid-column: span 2;">
+                    <label>
+                        حساب مساعده هوشمند
+                        <span class="p2-text-muted" style="font-size:11px; font-weight:400;">
+                            (ADV_HES — فرمت: کل-معین یا کل-معین-تفصیلی)
+                        </span>
+                    </label>
+                    <input class="pay2-input @(HasError(nameof(CurrentWorkshopAcc.ADV_HES)) ? "error" : "")"
+                           maxlength="100"
+                           placeholder="مثال: 112-1  یا  213-1-5"
+                           @bind="CurrentWorkshopAcc.ADV_HES"
+                           @bind:event="onchange"
+                           @onblur="ValidateAdvHes" />
+                    @if (HasError(nameof(CurrentWorkshopAcc.ADV_HES)))
+                    {
+                        <span class="field-error">@GetError(nameof(CurrentWorkshopAcc.ADV_HES))</span>
+                    }
                 </div>
 
                 <div class="form-field">
@@ -319,37 +322,23 @@
 </div>
 
 @code {
-
-    // ══════════════════════════════════════════
-    // پارامترها و state اصلی
-    // ══════════════════════════════════════════
-
     [Parameter] public EventCallback<string> OnToast { get; set; }
 
     private List<Pay2WorkshopDto> Workshops = new();
     private Pay2WorkshopDto CurrentWorkshop = new();
     private Pay2WorkshopAccDto CurrentWorkshopAcc = new();
-
     private bool IsLoadingWorkshops;
     private bool IsSavingWorkshop;
     private bool IsInsModeDropdownOpen;
-
-    // خطاهای اعتبارسنجی inline هر فیلد
     private readonly Dictionary<string, string> _fieldErrors = new();
 
-    // ══════════════════════════════════════════
-    // چرخه حیات کامپوننت
-    // ══════════════════════════════════════════
-
+    // ── Lifecycle ──────────────────────────────────────────────────────────────
     protected override async Task OnInitializedAsync()
     {
         await LoadWorkshopsAsync();
     }
 
-    // ══════════════════════════════════════════
-    // بارگذاری لیست کارگاه‌ها
-    // ══════════════════════════════════════════
-
+    // ── Data Loading ───────────────────────────────────────────────────────────
     private async Task LoadWorkshopsAsync()
     {
         IsLoadingWorkshops = true;
@@ -367,13 +356,9 @@
         }
     }
 
-    // ══════════════════════════════════════════
-    // انتخاب کارگاه از لیست
-    // ══════════════════════════════════════════
-
+    // ── Workshop Selection ─────────────────────────────────────────────────────
     private async Task SelectWorkshop(Pay2WorkshopDto selected)
     {
-        // کپی کامل — از تغییر مستقیم آیتم لیست جلوگیری می‌کند
         CurrentWorkshop = new Pay2WorkshopDto
         {
             WS_ID = selected.WS_ID,
@@ -387,7 +372,6 @@
             IS_ACTIVE = selected.IS_ACTIVE,
             INS_MODE = selected.INS_MODE
         };
-
         _fieldErrors.Clear();
         IsInsModeDropdownOpen = false;
 
@@ -402,10 +386,7 @@
         }
     }
 
-    // ══════════════════════════════════════════
-    // فرم جدید / انصراف
-    // ══════════════════════════════════════════
-
+    // ── New Workshop ───────────────────────────────────────────────────────────
     private void NewWorkshop()
     {
         CurrentWorkshop = new Pay2WorkshopDto
@@ -418,15 +399,12 @@
         IsInsModeDropdownOpen = false;
     }
 
-    // ══════════════════════════════════════════
-    // ذخیره کارگاه
-    // ══════════════════════════════════════════
-
+    // ── Save ───────────────────────────────────────────────────────────────────
     private async Task SaveWorkshopAsync()
     {
         IsInsModeDropdownOpen = false;
 
-        // ─── پاک‌سازی مقادیر ───
+        // پاکسازی مقادیر
         CurrentWorkshop.WS_CODE = OnlyDigits(CurrentWorkshop.WS_CODE, 10);
         CurrentWorkshop.WS_NAME = CleanText(CurrentWorkshop.WS_NAME);
         CurrentWorkshop.NATIONAL_ID = OnlyDigits(CurrentWorkshop.NATIONAL_ID, 11);
@@ -435,15 +413,15 @@
         CurrentWorkshop.ADDRESS = CleanText(CurrentWorkshop.ADDRESS);
         CurrentWorkshop.PHONE = CleanText(CurrentWorkshop.PHONE);
 
-        CurrentWorkshopAcc.ADV_HES_K = CleanText(CurrentWorkshopAcc.ADV_HES_K);
-        CurrentWorkshopAcc.ADV_HES_M = CleanText(CurrentWorkshopAcc.ADV_HES_M);
+        // پاکسازی سرفصل‌های حسابداری
+        CurrentWorkshopAcc.ADV_HES = CleanText(CurrentWorkshopAcc.ADV_HES);
         CurrentWorkshopAcc.SALARY_EXP = CleanText(CurrentWorkshopAcc.SALARY_EXP);
         CurrentWorkshopAcc.SALARY_PAYABLE = CleanText(CurrentWorkshopAcc.SALARY_PAYABLE);
         CurrentWorkshopAcc.INS_EXP = CleanText(CurrentWorkshopAcc.INS_EXP);
         CurrentWorkshopAcc.INS_PAYABLE = CleanText(CurrentWorkshopAcc.INS_PAYABLE);
         CurrentWorkshopAcc.TAX_PAYABLE = CleanText(CurrentWorkshopAcc.TAX_PAYABLE);
 
-        // ─── اعتبارسنجی client-side ───
+        // Validation
         _fieldErrors.Clear();
 
         if (string.IsNullOrWhiteSpace(CurrentWorkshop.WS_CODE))
@@ -456,13 +434,15 @@
             && CurrentWorkshop.NATIONAL_ID.Length != 11)
             _fieldErrors[nameof(CurrentWorkshop.NATIONAL_ID)] = "شناسه ملی باید دقیقاً ۱۱ رقم باشد.";
 
+        // validation فرمت ADV_HES (اگر وارد شده باشد)
+        ValidateAdvHes();
+
         if (_fieldErrors.Any())
         {
             await Toast(_fieldErrors.First().Value);
             return;
         }
 
-        // ─── ارسال به سرور ───
         IsSavingWorkshop = true;
         try
         {
@@ -471,20 +451,15 @@
                 Workshop = CurrentWorkshop,
                 Accounts = CurrentWorkshopAcc
             };
-
             var savedId = await WorkshopApi.SaveAsync(request);
-
-            // رفرش لیست و انتخاب رکورد ذخیره‌شده
             await LoadWorkshopsAsync();
             var saved = Workshops.FirstOrDefault(x => x.WS_ID == savedId);
             if (saved != null)
                 await SelectWorkshop(saved);
-
             await Toast("اطلاعات کارگاه با موفقیت ذخیره شد.");
         }
         catch (Exception ex)
         {
-            // پیام خوانا از سرور (BadRequest body) یا exception message
             await Toast("خطا: " + ex.Message);
         }
         finally
@@ -493,10 +468,7 @@
         }
     }
 
-    // ══════════════════════════════════════════
-    // Dropdown نوع بیمه
-    // ══════════════════════════════════════════
-
+    // ── Dropdown Helpers ───────────────────────────────────────────────────────
     private void ToggleInsModeDropdown()
       => IsInsModeDropdownOpen = !IsInsModeDropdownOpen;
 
@@ -513,10 +485,7 @@
         _ => "عادی"
     };
 
-    // ══════════════════════════════════════════
-    // اعتبارسنجی inline
-    // ══════════════════════════════════════════
-
+    // ── Validation Helpers ─────────────────────────────────────────────────────
     private void ValidateNationalId()
     {
         var v = CurrentWorkshop.NATIONAL_ID;
@@ -526,33 +495,50 @@
             _fieldErrors.Remove(nameof(CurrentWorkshop.NATIONAL_ID));
     }
 
+    /// <summary>
+    /// اعتبارسنجی فرمت ADV_HES:
+    /// باید حداقل دو بخش عددی با خط‌فاصله داشته باشد (کل-معین).
+    /// مثال معتبر: "112-1"  یا  "213-1-5"  یا  "112-1-3-4-1-6"
+    /// </summary>
+    private void ValidateAdvHes()
+    {
+        var v = CurrentWorkshopAcc.ADV_HES;
+        if (string.IsNullOrWhiteSpace(v))
+        {
+            // خالی بودن مجاز است (اگر مساعده هوشمند غیرفعال باشد)
+            _fieldErrors.Remove(nameof(CurrentWorkshopAcc.ADV_HES));
+            return;
+        }
+
+        var parts = v.Split('-');
+        bool valid = parts.Length >= 2
+                  && parts.All(p => !string.IsNullOrWhiteSpace(p) && p.All(char.IsDigit));
+
+        if (!valid)
+            _fieldErrors[nameof(CurrentWorkshopAcc.ADV_HES)] =
+              "فرمت نادرست. حداقل دو عدد با خط‌فاصله وارد کنید. مثال: 112-1 یا 213-1-5";
+        else
+            _fieldErrors.Remove(nameof(CurrentWorkshopAcc.ADV_HES));
+    }
+
     private bool HasError(string field) => _fieldErrors.ContainsKey(field);
     private string GetError(string field) => _fieldErrors.TryGetValue(field, out var m) ? m : "";
     private void ClearError(string field) => _fieldErrors.Remove(field);
 
-    // ══════════════════════════════════════════
-    // Toast
-    // ══════════════════════════════════════════
-
+    // ── Toast ──────────────────────────────────────────────────────────────────
     private async Task Toast(string message)
     {
         if (OnToast.HasDelegate)
             await OnToast.InvokeAsync(message);
     }
 
-    // ══════════════════════════════════════════
-    // متدهای کمکی پاک‌سازی رشته
-    // ══════════════════════════════════════════
-
-    // فیلترینگ real-time داخل oninput — بدون enforce حداکثر طول
-    // (maxlength روی input خودش این کار را می‌کند)
+    // ── String Helpers ─────────────────────────────────────────────────────────
     private static string? OnlyDigitsLive(string? value, int maxLength)
     {
         if (string.IsNullOrEmpty(value)) return null;
         return new string(value.Where(char.IsDigit).Take(maxLength).ToArray());
     }
 
-    // پاک‌سازی نهایی قبل از ذخیره
     private static string? OnlyDigits(string? value, int maxLength)
     {
         if (string.IsNullOrWhiteSpace(value)) return null;
