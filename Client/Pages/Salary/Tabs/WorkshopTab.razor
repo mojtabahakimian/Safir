@@ -1,5 +1,6 @@
 ﻿@using Safir.Shared.Models.Salary
 @inject Pay2WorkshopApiService WorkshopApi
+@inject IJSRuntime JS
 
 <div class="pay2-tab-container">
     <div class="pay2-workshop-layout">
@@ -104,7 +105,7 @@
                            inputmode="numeric"
                            placeholder="مثال: 1050"
                            value="@CurrentWorkshop.WS_CODE"
-                           @oninput="e => CurrentWorkshop.WS_CODE = OnlyDigitsLive(e.Value?.ToString(), 10)"
+                           @oninput="e => FilterNumeric(e, v => CurrentWorkshop.WS_CODE = v, 10)"
                            @onblur="() => ClearError(nameof(CurrentWorkshop.WS_CODE))" />
                     @if (HasError(nameof(CurrentWorkshop.WS_CODE)))
                     {
@@ -133,7 +134,7 @@
                            inputmode="numeric"
                            placeholder="کد تأمین اجتماعی"
                            value="@CurrentWorkshop.SOCIAL_INS_CODE"
-                           @oninput="e => CurrentWorkshop.SOCIAL_INS_CODE = OnlyDigitsLive(e.Value?.ToString(), 20)" />
+                           @oninput="e => FilterNumeric(e, v => CurrentWorkshop.SOCIAL_INS_CODE = v, 20)" />
                 </div>
 
                 <div class="form-field">
@@ -152,7 +153,7 @@
                            inputmode="numeric"
                            placeholder="۱۱ رقم"
                            value="@CurrentWorkshop.NATIONAL_ID"
-                           @oninput="e => CurrentWorkshop.NATIONAL_ID = OnlyDigitsLive(e.Value?.ToString(), 11)"
+                           @oninput="e => FilterNumeric(e, v => CurrentWorkshop.NATIONAL_ID = v, 11)"
                            @onblur="ValidateNationalId" />
                     @if (HasError(nameof(CurrentWorkshop.NATIONAL_ID)))
                     {
@@ -167,14 +168,13 @@
                            inputmode="numeric"
                            placeholder="شماره تماس"
                            value="@CurrentWorkshop.PHONE"
-                           @oninput="e => CurrentWorkshop.PHONE = OnlyDigitsLive(e.Value?.ToString(), 20)" />
+                           @oninput="e => FilterNumeric(e, v => CurrentWorkshop.PHONE = v, 20)" />
                 </div>
 
             </div>
 
             <div class="form-field p2-mt-8">
                 <label>آدرس</label>
-                @* NVARCHAR(300) در DDL — maxlength=300 *@
                 <input class="pay2-input"
                        maxlength="300"
                        placeholder="آدرس کامل کارگاه"
@@ -200,7 +200,6 @@
                     <label>نوع محاسبه بیمه</label>
                     <div class="pay2-dd">
 
-                        @* FIX: disabled حین ذخیره — هماهنگ با سایر دکمه‌ها *@
                         <button type="button"
                                 class="pay2-dd-button @(IsInsModeDropdownOpen ? "open" : "")"
                                 disabled="@IsSavingWorkshop"
@@ -212,7 +211,6 @@
 
                         @if (IsInsModeDropdownOpen)
                         {
-                            @* overlay بی‌رنگ — کلیک خارج dropdown آن را می‌بندد *@
                             <div style="position:fixed; inset:0; z-index:99;"
                                  @onclick="CloseInsModeDropdown"></div>
 
@@ -244,7 +242,6 @@
 
             <div class="form-grid-2">
 
-                @* ADV_HES: ACC_CODE در DDL = NVARCHAR(20) → maxlength=20 *@
                 <div class="form-field" style="grid-column: span 2;">
                     <label>
                         حساب مساعده هوشمند
@@ -264,7 +261,6 @@
                     }
                 </div>
 
-                @* سایر سرفصل‌ها: ACC_CODE در DDL = NVARCHAR(20) → maxlength=20 *@
                 <div class="form-field">
                     <label>هزینه حقوق</label>
                     <input class="pay2-input"
@@ -420,7 +416,6 @@
     {
         IsInsModeDropdownOpen = false;
 
-        // پاکسازی مقادیر
         CurrentWorkshop.WS_CODE = OnlyDigits(CurrentWorkshop.WS_CODE, 10);
         CurrentWorkshop.WS_NAME = CleanText(CurrentWorkshop.WS_NAME);
         CurrentWorkshop.NATIONAL_ID = OnlyDigits(CurrentWorkshop.NATIONAL_ID, 11);
@@ -428,8 +423,6 @@
         CurrentWorkshop.TAX_CODE = CleanText(CurrentWorkshop.TAX_CODE);
         CurrentWorkshop.ADDRESS = CleanText(CurrentWorkshop.ADDRESS);
         CurrentWorkshop.PHONE = CleanText(CurrentWorkshop.PHONE);
-
-        // پاکسازی سرفصل‌های حسابداری
         CurrentWorkshopAcc.ADV_HES = CleanText(CurrentWorkshopAcc.ADV_HES);
         CurrentWorkshopAcc.SALARY_EXP = CleanText(CurrentWorkshopAcc.SALARY_EXP);
         CurrentWorkshopAcc.SALARY_PAYABLE = CleanText(CurrentWorkshopAcc.SALARY_PAYABLE);
@@ -437,19 +430,14 @@
         CurrentWorkshopAcc.INS_PAYABLE = CleanText(CurrentWorkshopAcc.INS_PAYABLE);
         CurrentWorkshopAcc.TAX_PAYABLE = CleanText(CurrentWorkshopAcc.TAX_PAYABLE);
 
-        // Validation
         _fieldErrors.Clear();
-
         if (string.IsNullOrWhiteSpace(CurrentWorkshop.WS_CODE))
             _fieldErrors[nameof(CurrentWorkshop.WS_CODE)] = "کد کارگاه نمی‌تواند خالی باشد.";
-
         if (string.IsNullOrWhiteSpace(CurrentWorkshop.WS_NAME))
             _fieldErrors[nameof(CurrentWorkshop.WS_NAME)] = "نام کارگاه نمی‌تواند خالی باشد.";
-
         if (!string.IsNullOrWhiteSpace(CurrentWorkshop.NATIONAL_ID)
             && CurrentWorkshop.NATIONAL_ID.Length != 11)
             _fieldErrors[nameof(CurrentWorkshop.NATIONAL_ID)] = "شناسه ملی باید دقیقاً ۱۱ رقم باشد.";
-
         ValidateAdvHes();
 
         if (_fieldErrors.Any())
@@ -483,6 +471,29 @@
         }
     }
 
+    // ── Numeric Input Filter ───────────────────────────────────────────────────
+    //
+    // مشکل Blazor .NET 6:
+    //   وقتی مقدار C# تغییر نکند (null→null)، Blazor DOM را آپدیت نمی‌کند.
+    //   مثال: فیلد خالی، کاربر حرف می‌زند → digits=null → بدون re-render → حرف می‌ماند.
+    //
+    // راه‌حل: اگر raw != filtered، مستقیماً document.activeElement.value را در JS reset کن.
+    //   چون result فقط حاوی 0-9 است، استفاده از eval کاملاً ایمن است.
+    //
+    private async Task FilterNumeric(ChangeEventArgs e, Action<string?> setter, int maxLen)
+    {
+        var raw = e.Value?.ToString() ?? "";
+        var digits = new string(raw.Where(char.IsDigit).Take(maxLen).ToArray());
+        var result = digits.Length == 0 ? null : digits;
+
+        setter(result);
+
+        // اگر DOM هنوز مقدار فیلترنشده را نشان می‌دهد، مستقیماً reset کن
+        if (raw != (result ?? ""))
+            await JS.InvokeVoidAsync("eval",
+                $"document.activeElement.value='{result ?? ""}'");
+    }
+
     // ── Dropdown Helpers ───────────────────────────────────────────────────────
     private void ToggleInsModeDropdown()
         => IsInsModeDropdownOpen = !IsInsModeDropdownOpen;
@@ -496,7 +507,6 @@
         IsInsModeDropdownOpen = false;
     }
 
-    // هماهنگ با Pay2WorkshopDto.InsModeText — معمولی / ده‌درصدی
     private static string GetInsModeText(int value) => value switch
     {
         1 => "معمولی",
@@ -514,11 +524,6 @@
             _fieldErrors.Remove(nameof(CurrentWorkshop.NATIONAL_ID));
     }
 
-    /// <summary>
-    /// اعتبارسنجی فرمت ADV_HES:
-    /// باید حداقل دو بخش عددی با خط‌فاصله داشته باشد (کل-معین).
-    /// مثال معتبر: "112-1"  یا  "213-1-5"
-    /// </summary>
     private void ValidateAdvHes()
     {
         var v = CurrentWorkshopAcc.ADV_HES;
@@ -527,11 +532,9 @@
             _fieldErrors.Remove(nameof(CurrentWorkshopAcc.ADV_HES));
             return;
         }
-
         var parts = v.Split('-');
         bool valid = parts.Length >= 2
                   && parts.All(p => !string.IsNullOrWhiteSpace(p) && p.All(char.IsDigit));
-
         if (!valid)
             _fieldErrors[nameof(CurrentWorkshopAcc.ADV_HES)] =
                 "فرمت نادرست. حداقل دو عدد با خط‌فاصله وارد کنید. مثال: 112-1 یا 213-1-5";
@@ -551,12 +554,6 @@
     }
 
     // ── String Helpers ─────────────────────────────────────────────────────────
-    private static string? OnlyDigitsLive(string? value, int maxLength)
-    {
-        if (string.IsNullOrEmpty(value)) return null;
-        return new string(value.Where(char.IsDigit).Take(maxLength).ToArray());
-    }
-
     private static string? OnlyDigits(string? value, int maxLength)
     {
         if (string.IsNullOrWhiteSpace(value)) return null;
