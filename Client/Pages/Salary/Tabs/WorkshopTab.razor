@@ -1,6 +1,5 @@
 ﻿@using Safir.Shared.Models.Salary
 @inject Pay2WorkshopApiService WorkshopApi
-@inject IJSRuntime JS
 
 <div class="pay2-tab-container">
     <div class="pay2-workshop-layout">
@@ -73,7 +72,6 @@
            ══════════════════════════════════════════ *@
         <div class="card-custom pay2-workshop-form">
 
-            @* ─── عنوان فرم ─── *@
             <div class="pay2-card-header">
                 <h5>
                     @if (CurrentWorkshop.WS_ID == 0)
@@ -85,6 +83,7 @@
                         <span>ویرایش: @CurrentWorkshop.WS_NAME</span>
                     }
                 </h5>
+
                 @if (CurrentWorkshop.WS_ID != 0)
                 {
                     <span class="p2-badge-primary">WS_ID: @CurrentWorkshop.WS_ID</span>
@@ -100,13 +99,14 @@
 
                 <div class="form-field">
                     <label>کد کارگاه *</label>
-                    <input class="pay2-input @(HasError(nameof(CurrentWorkshop.WS_CODE)) ? "error" : "")"
-                           maxlength="10"
-                           inputmode="numeric"
-                           placeholder="مثال: 1050"
-                           value="@CurrentWorkshop.WS_CODE"
-                           @oninput="e => FilterNumeric(e, v => CurrentWorkshop.WS_CODE = v, 10)"
-                           @onblur="() => ClearError(nameof(CurrentWorkshop.WS_CODE))" />
+
+                    <Pay2NumericInput @bind-Value="CurrentWorkshop.WS_CODE"
+                                      MaxLength="10"
+                                      Placeholder="مثال: 1050"
+                                      CssClass="@(HasError(nameof(CurrentWorkshop.WS_CODE)) ? "error" : "")"
+                                      OnFocus="@(_ => ClearError(nameof(CurrentWorkshop.WS_CODE)))"
+                                      OnBlur="@(_ => NormalizeWorkshopCode())" />
+
                     @if (HasError(nameof(CurrentWorkshop.WS_CODE)))
                     {
                         <span class="field-error">@GetError(nameof(CurrentWorkshop.WS_CODE))</span>
@@ -115,12 +115,15 @@
 
                 <div class="form-field">
                     <label>نام کارگاه *</label>
+
                     <input class="pay2-input @(HasError(nameof(CurrentWorkshop.WS_NAME)) ? "error" : "")"
+                           type="text"
                            maxlength="100"
                            placeholder="مثال: کارگاه مرکزی"
-                           @bind="CurrentWorkshop.WS_NAME"
-                           @bind:event="onchange"
+                           @bind-value="CurrentWorkshop.WS_NAME"
+                           @bind-value:event="onchange"
                            @onfocus="() => ClearError(nameof(CurrentWorkshop.WS_NAME))" />
+
                     @if (HasError(nameof(CurrentWorkshop.WS_NAME)))
                     {
                         <span class="field-error">@GetError(nameof(CurrentWorkshop.WS_NAME))</span>
@@ -129,32 +132,33 @@
 
                 <div class="form-field">
                     <label>کد کارگاه بیمه</label>
-                    <input class="pay2-input"
-                           maxlength="20"
-                           inputmode="numeric"
-                           placeholder="کد تأمین اجتماعی"
-                           value="@CurrentWorkshop.SOCIAL_INS_CODE"
-                           @oninput="e => FilterNumeric(e, v => CurrentWorkshop.SOCIAL_INS_CODE = v, 20)" />
+
+                    <Pay2NumericInput @bind-Value="CurrentWorkshop.SOCIAL_INS_CODE"
+                                      MaxLength="20"
+                                      Placeholder="کد تأمین اجتماعی" />
                 </div>
 
                 <div class="form-field">
                     <label>شناسه مالیاتی</label>
+
                     <input class="pay2-input"
+                           type="text"
                            maxlength="20"
                            placeholder="شناسه مالیاتی"
-                           @bind="CurrentWorkshop.TAX_CODE"
-                           @bind:event="onchange" />
+                           @bind-value="CurrentWorkshop.TAX_CODE"
+                           @bind-value:event="onchange" />
                 </div>
 
                 <div class="form-field">
                     <label>شناسه ملی</label>
-                    <input class="pay2-input @(HasError(nameof(CurrentWorkshop.NATIONAL_ID)) ? "error" : "")"
-                           maxlength="11"
-                           inputmode="numeric"
-                           placeholder="۱۱ رقم"
-                           value="@CurrentWorkshop.NATIONAL_ID"
-                           @oninput="e => FilterNumeric(e, v => CurrentWorkshop.NATIONAL_ID = v, 11)"
-                           @onblur="ValidateNationalId" />
+
+                    <Pay2NumericInput @bind-Value="CurrentWorkshop.NATIONAL_ID"
+                                      MaxLength="11"
+                                      Placeholder="۱۱ رقم"
+                                      CssClass="@(HasError(nameof(CurrentWorkshop.NATIONAL_ID)) ? "error" : "")"
+                                      OnFocus="@(_ => ClearError(nameof(CurrentWorkshop.NATIONAL_ID)))"
+                                      OnBlur="@(_ => ValidateNationalId())" />
+
                     @if (HasError(nameof(CurrentWorkshop.NATIONAL_ID)))
                     {
                         <span class="field-error">@GetError(nameof(CurrentWorkshop.NATIONAL_ID))</span>
@@ -163,23 +167,23 @@
 
                 <div class="form-field">
                     <label>تلفن</label>
-                    <input class="pay2-input"
-                           maxlength="20"
-                           inputmode="numeric"
-                           placeholder="شماره تماس"
-                           value="@CurrentWorkshop.PHONE"
-                           @oninput="e => FilterNumeric(e, v => CurrentWorkshop.PHONE = v, 20)" />
+
+                    <Pay2NumericInput @bind-Value="CurrentWorkshop.PHONE"
+                                      MaxLength="20"
+                                      Placeholder="شماره تماس" />
                 </div>
 
             </div>
 
             <div class="form-field p2-mt-8">
                 <label>آدرس</label>
+
                 <input class="pay2-input"
+                       type="text"
                        maxlength="300"
                        placeholder="آدرس کامل کارگاه"
-                       @bind="CurrentWorkshop.ADDRESS"
-                       @bind:event="onchange" />
+                       @bind-value="CurrentWorkshop.ADDRESS"
+                       @bind-value:event="onchange" />
             </div>
 
             @* ─── ردیف وضعیت + نوع بیمه ─── *@
@@ -187,6 +191,7 @@
 
                 <div class="form-field">
                     <label>وضعیت کارگاه</label>
+
                     <div class="pay2-wpf-checkbox-box">
                         <label class="pay2-wpf-checkbox-label">
                             <input type="checkbox" @bind="CurrentWorkshop.IS_ACTIVE" />
@@ -195,9 +200,9 @@
                     </div>
                 </div>
 
-                @* ── Dropdown نوع بیمه ── *@
                 <div class="form-field">
                     <label>نوع محاسبه بیمه</label>
+
                     <div class="pay2-dd">
 
                         <button type="button"
@@ -220,6 +225,7 @@
                                         @onclick="() => SelectInsMode(1)">
                                     معمولی
                                 </button>
+
                                 <button type="button"
                                         class="pay2-dd-item @(CurrentWorkshop.INS_MODE == 2 ? "selected" : "")"
                                         @onclick="() => SelectInsMode(2)">
@@ -249,12 +255,15 @@
                             (ADV_HES — فرمت: کل-معین یا کل-معین-تفصیلی)
                         </span>
                     </label>
-                    <input class="pay2-input @(HasError(nameof(CurrentWorkshopAcc.ADV_HES)) ? "error" : "")"
-                           maxlength="20"
-                           placeholder="مثال: 112-1  یا  213-1-5"
-                           @bind="CurrentWorkshopAcc.ADV_HES"
-                           @bind:event="onchange"
-                           @onblur="ValidateAdvHes" />
+
+                    <Pay2NumericInput @bind-Value="CurrentWorkshopAcc.ADV_HES"
+                                      MaxLength="20"
+                                      AllowDash="true"
+                                      Placeholder="مثال: 112-1  یا  213-1-5"
+                                      CssClass="@(HasError(nameof(CurrentWorkshopAcc.ADV_HES)) ? "error" : "")"
+                                      OnFocus="@(_ => ClearError(nameof(CurrentWorkshopAcc.ADV_HES)))"
+                                      OnBlur="@(_ => ValidateAdvHes())" />
+
                     @if (HasError(nameof(CurrentWorkshopAcc.ADV_HES)))
                     {
                         <span class="field-error">@GetError(nameof(CurrentWorkshopAcc.ADV_HES))</span>
@@ -263,47 +272,57 @@
 
                 <div class="form-field">
                     <label>هزینه حقوق</label>
+
                     <input class="pay2-input"
+                           type="text"
                            maxlength="20"
                            placeholder="SALARY_EXP"
-                           @bind="CurrentWorkshopAcc.SALARY_EXP"
-                           @bind:event="onchange" />
+                           @bind-value="CurrentWorkshopAcc.SALARY_EXP"
+                           @bind-value:event="onchange" />
                 </div>
 
                 <div class="form-field">
                     <label>پرداختنی حقوق</label>
+
                     <input class="pay2-input"
+                           type="text"
                            maxlength="20"
                            placeholder="SALARY_PAYABLE"
-                           @bind="CurrentWorkshopAcc.SALARY_PAYABLE"
-                           @bind:event="onchange" />
+                           @bind-value="CurrentWorkshopAcc.SALARY_PAYABLE"
+                           @bind-value:event="onchange" />
                 </div>
 
                 <div class="form-field">
                     <label>هزینه بیمه</label>
+
                     <input class="pay2-input"
+                           type="text"
                            maxlength="20"
                            placeholder="INS_EXP"
-                           @bind="CurrentWorkshopAcc.INS_EXP"
-                           @bind:event="onchange" />
+                           @bind-value="CurrentWorkshopAcc.INS_EXP"
+                           @bind-value:event="onchange" />
                 </div>
 
                 <div class="form-field">
                     <label>پرداختنی بیمه</label>
+
                     <input class="pay2-input"
+                           type="text"
                            maxlength="20"
                            placeholder="INS_PAYABLE"
-                           @bind="CurrentWorkshopAcc.INS_PAYABLE"
-                           @bind:event="onchange" />
+                           @bind-value="CurrentWorkshopAcc.INS_PAYABLE"
+                           @bind-value:event="onchange" />
                 </div>
 
                 <div class="form-field">
                     <label>پرداختنی مالیات</label>
+
                     <input class="pay2-input"
+                           type="text"
                            maxlength="20"
                            placeholder="TAX_PAYABLE"
-                           @bind="CurrentWorkshopAcc.TAX_PAYABLE"
-                           @bind:event="onchange" />
+                           @bind-value="CurrentWorkshopAcc.TAX_PAYABLE"
+                           @bind-value:event="onchange" />
                 </div>
 
             </div>
@@ -324,7 +343,10 @@
                         <span>ذخیره اطلاعات کارگاه</span>
                     }
                 </button>
-                <button class="btn-outline-pay2" @onclick="NewWorkshop" disabled="@IsSavingWorkshop">
+
+                <button class="btn-outline-pay2"
+                        @onclick="NewWorkshop"
+                        disabled="@IsSavingWorkshop">
                     <i class="bi bi-x-lg"></i> انصراف / جدید
                 </button>
             </div>
@@ -339,21 +361,23 @@
     private List<Pay2WorkshopDto> Workshops = new();
     private Pay2WorkshopDto CurrentWorkshop = new();
     private Pay2WorkshopAccDto CurrentWorkshopAcc = new();
+
     private bool IsLoadingWorkshops;
     private bool IsSavingWorkshop;
     private bool IsInsModeDropdownOpen;
+
     private readonly Dictionary<string, string> _fieldErrors = new();
 
-    // ── Lifecycle ──────────────────────────────────────────────────────────────
     protected override async Task OnInitializedAsync()
     {
+        NewWorkshop();
         await LoadWorkshopsAsync();
     }
 
-    // ── Data Loading ───────────────────────────────────────────────────────────
     private async Task LoadWorkshopsAsync()
     {
         IsLoadingWorkshops = true;
+
         try
         {
             Workshops = await WorkshopApi.GetWorkshopsAsync();
@@ -368,28 +392,29 @@
         }
     }
 
-    // ── Workshop Selection ─────────────────────────────────────────────────────
     private async Task SelectWorkshop(Pay2WorkshopDto selected)
     {
         CurrentWorkshop = new Pay2WorkshopDto
         {
             WS_ID = selected.WS_ID,
-            WS_CODE = selected.WS_CODE,
-            WS_NAME = selected.WS_NAME,
-            NATIONAL_ID = selected.NATIONAL_ID,
-            SOCIAL_INS_CODE = selected.SOCIAL_INS_CODE,
-            TAX_CODE = selected.TAX_CODE,
-            ADDRESS = selected.ADDRESS,
-            PHONE = selected.PHONE,
+            WS_CODE = OnlyDigits(selected.WS_CODE, 10),
+            WS_NAME = CleanText(selected.WS_NAME),
+            NATIONAL_ID = OnlyDigits(selected.NATIONAL_ID, 11),
+            SOCIAL_INS_CODE = OnlyDigits(selected.SOCIAL_INS_CODE, 20),
+            TAX_CODE = CleanText(selected.TAX_CODE),
+            ADDRESS = CleanText(selected.ADDRESS),
+            PHONE = OnlyDigits(selected.PHONE, 20),
             IS_ACTIVE = selected.IS_ACTIVE,
-            INS_MODE = selected.INS_MODE
+            INS_MODE = NormalizeInsMode(selected.INS_MODE)
         };
+
         _fieldErrors.Clear();
         IsInsModeDropdownOpen = false;
 
         try
         {
             CurrentWorkshopAcc = await WorkshopApi.GetAccountsAsync(selected.WS_ID);
+            NormalizeAccounts();
         }
         catch (Exception ex)
         {
@@ -398,7 +423,6 @@
         }
     }
 
-    // ── New Workshop ───────────────────────────────────────────────────────────
     private void NewWorkshop()
     {
         CurrentWorkshop = new Pay2WorkshopDto
@@ -406,38 +430,38 @@
             IS_ACTIVE = true,
             INS_MODE = 1
         };
+
         CurrentWorkshopAcc = new Pay2WorkshopAccDto();
+
         _fieldErrors.Clear();
         IsInsModeDropdownOpen = false;
     }
 
-    // ── Save ───────────────────────────────────────────────────────────────────
     private async Task SaveWorkshopAsync()
     {
         IsInsModeDropdownOpen = false;
 
-        CurrentWorkshop.WS_CODE = OnlyDigits(CurrentWorkshop.WS_CODE, 10);
-        CurrentWorkshop.WS_NAME = CleanText(CurrentWorkshop.WS_NAME);
-        CurrentWorkshop.NATIONAL_ID = OnlyDigits(CurrentWorkshop.NATIONAL_ID, 11);
-        CurrentWorkshop.SOCIAL_INS_CODE = OnlyDigits(CurrentWorkshop.SOCIAL_INS_CODE, 20);
-        CurrentWorkshop.TAX_CODE = CleanText(CurrentWorkshop.TAX_CODE);
-        CurrentWorkshop.ADDRESS = CleanText(CurrentWorkshop.ADDRESS);
-        CurrentWorkshop.PHONE = CleanText(CurrentWorkshop.PHONE);
-        CurrentWorkshopAcc.ADV_HES = CleanText(CurrentWorkshopAcc.ADV_HES);
-        CurrentWorkshopAcc.SALARY_EXP = CleanText(CurrentWorkshopAcc.SALARY_EXP);
-        CurrentWorkshopAcc.SALARY_PAYABLE = CleanText(CurrentWorkshopAcc.SALARY_PAYABLE);
-        CurrentWorkshopAcc.INS_EXP = CleanText(CurrentWorkshopAcc.INS_EXP);
-        CurrentWorkshopAcc.INS_PAYABLE = CleanText(CurrentWorkshopAcc.INS_PAYABLE);
-        CurrentWorkshopAcc.TAX_PAYABLE = CleanText(CurrentWorkshopAcc.TAX_PAYABLE);
+        NormalizeWorkshop();
+        NormalizeAccounts();
 
         _fieldErrors.Clear();
+
         if (string.IsNullOrWhiteSpace(CurrentWorkshop.WS_CODE))
+        {
             _fieldErrors[nameof(CurrentWorkshop.WS_CODE)] = "کد کارگاه نمی‌تواند خالی باشد.";
+        }
+
         if (string.IsNullOrWhiteSpace(CurrentWorkshop.WS_NAME))
+        {
             _fieldErrors[nameof(CurrentWorkshop.WS_NAME)] = "نام کارگاه نمی‌تواند خالی باشد.";
-        if (!string.IsNullOrWhiteSpace(CurrentWorkshop.NATIONAL_ID)
-            && CurrentWorkshop.NATIONAL_ID.Length != 11)
+        }
+
+        if (!string.IsNullOrWhiteSpace(CurrentWorkshop.NATIONAL_ID) &&
+            CurrentWorkshop.NATIONAL_ID.Length != 11)
+        {
             _fieldErrors[nameof(CurrentWorkshop.NATIONAL_ID)] = "شناسه ملی باید دقیقاً ۱۱ رقم باشد.";
+        }
+
         ValidateAdvHes();
 
         if (_fieldErrors.Any())
@@ -447,6 +471,7 @@
         }
 
         IsSavingWorkshop = true;
+
         try
         {
             var request = new Pay2WorkshopSaveRequest
@@ -454,11 +479,17 @@
                 Workshop = CurrentWorkshop,
                 Accounts = CurrentWorkshopAcc
             };
+
             var savedId = await WorkshopApi.SaveAsync(request);
+
             await LoadWorkshopsAsync();
+
             var saved = Workshops.FirstOrDefault(x => x.WS_ID == savedId);
             if (saved != null)
+            {
                 await SelectWorkshop(saved);
+            }
+
             await Toast("اطلاعات کارگاه با موفقیت ذخیره شد.");
         }
         catch (Exception ex)
@@ -471,96 +502,208 @@
         }
     }
 
-    // ── Numeric Input Filter ───────────────────────────────────────────────────
-    //
-    // مشکل Blazor .NET 6:
-    //   وقتی مقدار C# تغییر نکند (null→null)، Blazor DOM را آپدیت نمی‌کند.
-    //   مثال: فیلد خالی، کاربر حرف می‌زند → digits=null → بدون re-render → حرف می‌ماند.
-    //
-    // راه‌حل: اگر raw != filtered، مستقیماً document.activeElement.value را در JS reset کن.
-    //   چون result فقط حاوی 0-9 است، استفاده از eval کاملاً ایمن است.
-    //
-    private async Task FilterNumeric(ChangeEventArgs e, Action<string?> setter, int maxLen)
+    private void NormalizeWorkshopCode()
     {
-        var raw = e.Value?.ToString() ?? "";
-        var digits = new string(raw.Where(char.IsDigit).Take(maxLen).ToArray());
-        var result = digits.Length == 0 ? null : digits;
-
-        setter(result);
-
-        // اگر DOM هنوز مقدار فیلترنشده را نشان می‌دهد، مستقیماً reset کن
-        if (raw != (result ?? ""))
-            await JS.InvokeVoidAsync("eval",
-                $"document.activeElement.value='{result ?? ""}'");
+        CurrentWorkshop.WS_CODE = OnlyDigits(CurrentWorkshop.WS_CODE, 10);
     }
 
-    // ── Dropdown Helpers ───────────────────────────────────────────────────────
-    private void ToggleInsModeDropdown()
-        => IsInsModeDropdownOpen = !IsInsModeDropdownOpen;
-
-    private void CloseInsModeDropdown()
-        => IsInsModeDropdownOpen = false;
-
-    private void SelectInsMode(int value)
-    {
-        CurrentWorkshop.INS_MODE = value;
-        IsInsModeDropdownOpen = false;
-    }
-
-    private static string GetInsModeText(int value) => value switch
-    {
-        1 => "معمولی",
-        2 => "ده‌درصدی",
-        _ => "معمولی"
-    };
-
-    // ── Validation Helpers ─────────────────────────────────────────────────────
     private void ValidateNationalId()
     {
-        var v = CurrentWorkshop.NATIONAL_ID;
-        if (!string.IsNullOrWhiteSpace(v) && v.Length != 11)
+        CurrentWorkshop.NATIONAL_ID = OnlyDigits(CurrentWorkshop.NATIONAL_ID, 11);
+
+        var value = CurrentWorkshop.NATIONAL_ID;
+
+        if (!string.IsNullOrWhiteSpace(value) && value.Length != 11)
+        {
             _fieldErrors[nameof(CurrentWorkshop.NATIONAL_ID)] = "شناسه ملی باید دقیقاً ۱۱ رقم باشد.";
+        }
         else
+        {
             _fieldErrors.Remove(nameof(CurrentWorkshop.NATIONAL_ID));
+        }
     }
 
     private void ValidateAdvHes()
     {
-        var v = CurrentWorkshopAcc.ADV_HES;
-        if (string.IsNullOrWhiteSpace(v))
+        CurrentWorkshopAcc.ADV_HES = CleanAccount(CurrentWorkshopAcc.ADV_HES, 20);
+
+        var value = CurrentWorkshopAcc.ADV_HES;
+
+        if (string.IsNullOrWhiteSpace(value))
         {
             _fieldErrors.Remove(nameof(CurrentWorkshopAcc.ADV_HES));
             return;
         }
-        var parts = v.Split('-');
-        bool valid = parts.Length >= 2
-                  && parts.All(p => !string.IsNullOrWhiteSpace(p) && p.All(char.IsDigit));
+
+        var parts = value.Split('-', StringSplitOptions.RemoveEmptyEntries);
+
+        var valid = parts.Length >= 2
+                    && parts.All(part => part.All(char.IsDigit))
+                    && !value.StartsWith("-")
+                    && !value.EndsWith("-")
+                    && !value.Contains("--");
+
         if (!valid)
+        {
             _fieldErrors[nameof(CurrentWorkshopAcc.ADV_HES)] =
                 "فرمت نادرست. حداقل دو عدد با خط‌فاصله وارد کنید. مثال: 112-1 یا 213-1-5";
+        }
         else
+        {
             _fieldErrors.Remove(nameof(CurrentWorkshopAcc.ADV_HES));
+        }
     }
 
-    private bool HasError(string field) => _fieldErrors.ContainsKey(field);
-    private string GetError(string field) => _fieldErrors.TryGetValue(field, out var m) ? m : "";
-    private void ClearError(string field) => _fieldErrors.Remove(field);
+    private void ToggleInsModeDropdown()
+    {
+        IsInsModeDropdownOpen = !IsInsModeDropdownOpen;
+    }
 
-    // ── Toast ──────────────────────────────────────────────────────────────────
+    private void CloseInsModeDropdown()
+    {
+        IsInsModeDropdownOpen = false;
+    }
+
+    private void SelectInsMode(int value)
+    {
+        CurrentWorkshop.INS_MODE = NormalizeInsMode(value);
+        IsInsModeDropdownOpen = false;
+    }
+
+    private static int NormalizeInsMode(int value)
+    {
+        return value == 2 ? 2 : 1;
+    }
+
+    private static string GetInsModeText(int value)
+    {
+        return value switch
+        {
+            1 => "معمولی",
+            2 => "ده‌درصدی",
+            _ => "معمولی"
+        };
+    }
+
+    private bool HasError(string field)
+    {
+        return _fieldErrors.ContainsKey(field);
+    }
+
+    private string GetError(string field)
+    {
+        return _fieldErrors.TryGetValue(field, out var message) ? message : "";
+    }
+
+    private void ClearError(string field)
+    {
+        _fieldErrors.Remove(field);
+    }
+
     private async Task Toast(string message)
     {
         if (OnToast.HasDelegate)
+        {
             await OnToast.InvokeAsync(message);
+        }
     }
 
-    // ── String Helpers ─────────────────────────────────────────────────────────
+    private void NormalizeWorkshop()
+    {
+        CurrentWorkshop.WS_CODE = OnlyDigits(CurrentWorkshop.WS_CODE, 10);
+        CurrentWorkshop.WS_NAME = CleanText(CurrentWorkshop.WS_NAME);
+        CurrentWorkshop.NATIONAL_ID = OnlyDigits(CurrentWorkshop.NATIONAL_ID, 11);
+        CurrentWorkshop.SOCIAL_INS_CODE = OnlyDigits(CurrentWorkshop.SOCIAL_INS_CODE, 20);
+        CurrentWorkshop.TAX_CODE = CleanText(CurrentWorkshop.TAX_CODE);
+        CurrentWorkshop.ADDRESS = CleanText(CurrentWorkshop.ADDRESS);
+        CurrentWorkshop.PHONE = OnlyDigits(CurrentWorkshop.PHONE, 20);
+        CurrentWorkshop.INS_MODE = NormalizeInsMode(CurrentWorkshop.INS_MODE);
+    }
+
+    private void NormalizeAccounts()
+    {
+        CurrentWorkshopAcc.ADV_HES = CleanAccount(CurrentWorkshopAcc.ADV_HES, 20);
+        CurrentWorkshopAcc.SALARY_EXP = CleanText(CurrentWorkshopAcc.SALARY_EXP);
+        CurrentWorkshopAcc.SALARY_PAYABLE = CleanText(CurrentWorkshopAcc.SALARY_PAYABLE);
+        CurrentWorkshopAcc.INS_EXP = CleanText(CurrentWorkshopAcc.INS_EXP);
+        CurrentWorkshopAcc.INS_PAYABLE = CleanText(CurrentWorkshopAcc.INS_PAYABLE);
+        CurrentWorkshopAcc.TAX_PAYABLE = CleanText(CurrentWorkshopAcc.TAX_PAYABLE);
+    }
+
     private static string? OnlyDigits(string? value, int maxLength)
     {
-        if (string.IsNullOrWhiteSpace(value)) return null;
-        var digits = new string(value.Where(char.IsDigit).Take(maxLength).ToArray());
-        return string.IsNullOrWhiteSpace(digits) ? null : digits;
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return null;
+        }
+
+        var result = new List<char>();
+
+        foreach (var ch in value)
+        {
+            if (ch >= '0' && ch <= '9')
+            {
+                result.Add(ch);
+            }
+            else if (ch >= '۰' && ch <= '۹')
+            {
+                result.Add((char)('0' + (ch - '۰')));
+            }
+            else if (ch >= '٠' && ch <= '٩')
+            {
+                result.Add((char)('0' + (ch - '٠')));
+            }
+
+            if (maxLength > 0 && result.Count >= maxLength)
+            {
+                break;
+            }
+        }
+
+        var text = new string(result.ToArray());
+        return string.IsNullOrWhiteSpace(text) ? null : text;
+    }
+
+    private static string? CleanAccount(string? value, int maxLength)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return null;
+        }
+
+        var result = new List<char>();
+
+        foreach (var ch in value.Trim())
+        {
+            if (ch >= '0' && ch <= '9')
+            {
+                result.Add(ch);
+            }
+            else if (ch >= '۰' && ch <= '۹')
+            {
+                result.Add((char)('0' + (ch - '۰')));
+            }
+            else if (ch >= '٠' && ch <= '٩')
+            {
+                result.Add((char)('0' + (ch - '٠')));
+            }
+            else if (ch == '-')
+            {
+                result.Add('-');
+            }
+
+            if (maxLength > 0 && result.Count >= maxLength)
+            {
+                break;
+            }
+        }
+
+        var text = new string(result.ToArray());
+        return string.IsNullOrWhiteSpace(text) ? null : text;
     }
 
     private static string? CleanText(string? value)
-        => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+    {
+        return string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+    }
 }

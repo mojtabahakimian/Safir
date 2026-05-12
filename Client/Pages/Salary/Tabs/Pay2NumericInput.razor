@@ -1,0 +1,167 @@
+﻿@inject IJSRuntime JS
+
+<input @ref="_inputRef"
+       class="@InputClass"
+       type="text"
+       value="@_text"
+       maxlength="@MaxLength"
+       inputmode="numeric"
+       pattern="@Pattern"
+       autocomplete="off"
+       placeholder="@Placeholder"
+       disabled="@Disabled"
+       readonly="@ReadOnly"
+       @oninput="HandleInputAsync"
+       @onblur="HandleBlurAsync"
+       @onfocus="HandleFocusAsync" />
+
+@code {
+    private ElementReference _inputRef;
+    private IJSObjectReference? _module;
+    private string? _text;
+    private string? _lastValueFromParameter;
+    private bool _focused;
+
+    [Parameter] public string? Value { get; set; }
+    [Parameter] public EventCallback<string?> ValueChanged { get; set; }
+
+    [Parameter] public int MaxLength { get; set; } = 20;
+    [Parameter] public bool AllowDash { get; set; } = false;
+
+    [Parameter] public string? Placeholder { get; set; }
+    [Parameter] public string? CssClass { get; set; }
+
+    [Parameter] public bool Disabled { get; set; }
+    [Parameter] public bool ReadOnly { get; set; }
+
+    [Parameter] public EventCallback<FocusEventArgs> OnBlur { get; set; }
+    [Parameter] public EventCallback<FocusEventArgs> OnFocus { get; set; }
+
+    private string InputClass
+        => string.IsNullOrWhiteSpace(CssClass)
+            ? "pay2-input"
+            : $"pay2-input {CssClass}";
+
+    private string Pattern
+        => AllowDash ? "[0-9\\-]*" : "[0-9]*";
+
+    protected override void OnParametersSet()
+    {
+        var normalized = Normalize(Value);
+
+        if (!_focused || _lastValueFromParameter != Value)
+        {
+            _text = normalized;
+            _lastValueFromParameter = Value;
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            _module = await JS.InvokeAsync<IJSObjectReference>(
+                "import",
+                "./js/pay2-input-guards.js");
+
+            await AttachGuardAsync();
+        }
+    }
+
+    private async Task AttachGuardAsync()
+    {
+        if (_module is null) return;
+
+        await _module.InvokeVoidAsync(
+            "attachInputGuard",
+            _inputRef,
+            new
+            {
+                maxLength = MaxLength,
+                allowDash = AllowDash
+            });
+    }
+
+    private async Task HandleInputAsync(ChangeEventArgs e)
+    {
+        var raw = e.Value?.ToString();
+        var normalized = Normalize(raw);
+
+        _text = normalized;
+        _lastValueFromParameter = normalized;
+
+        await ValueChanged.InvokeAsync(string.IsNullOrWhiteSpace(normalized) ? null : normalized);
+    }
+
+    private async Task HandleBlurAsync(FocusEventArgs e)
+    {
+        _focused = false;
+
+        var normalized = Normalize(_text);
+        _text = normalized;
+        _lastValueFromParameter = normalized;
+
+        await ValueChanged.InvokeAsync(string.IsNullOrWhiteSpace(normalized) ? null : normalized);
+
+        if (OnBlur.HasDelegate)
+            await OnBlur.InvokeAsync(e);
+    }
+
+    private async Task HandleFocusAsync(FocusEventArgs e)
+    {
+        _focused = true;
+
+        if (OnFocus.HasDelegate)
+            await OnFocus.InvokeAsync(e);
+    }
+
+    private string? Normalize(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return null;
+
+        var result = new List<char>();
+
+        foreach (var ch in value)
+        {
+            if (ch >= '0' && ch <= '9')
+            {
+                result.Add(ch);
+            }
+            else if (ch >= '۰' && ch <= '۹')
+            {
+                result.Add((char)('0' + (ch - '۰')));
+            }
+            else if (ch >= '٠' && ch <= '٩')
+            {
+                result.Add((char)('0' + (ch - '٠')));
+            }
+            else if (AllowDash && ch == '-')
+            {
+                result.Add('-');
+            }
+
+            if (MaxLength > 0 && result.Count >= MaxLength)
+                break;
+        }
+
+        var text = new string(result.ToArray());
+        return string.IsNullOrWhiteSpace(text) ? null : text;
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        try
+        {
+            if (_module is not null)
+            {
+                await _module.InvokeVoidAsync("detachInputGuard", _inputRef);
+                await _module.DisposeAsync();
+            }
+        }
+        catch
+        {
+            // هنگام refresh یا خروج از صفحه ممکن است JS runtime قطع شده باشد
+        }
+    }
+}
