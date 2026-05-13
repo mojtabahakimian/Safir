@@ -238,8 +238,8 @@
 .pay2-nav-item {
     display: flex;
     align-items: center;
-    padding: 13px 16px; 
-    margin: 3px 0; 
+    padding: 13px 16px;
+    margin: 3px 0;
     border-radius: var(--p2-radius-md);
     color: var(--p2-text-muted);
     cursor: pointer;
@@ -881,7 +881,8 @@
     justify-content: center;
     gap: 7px;
     border-radius: var(--p2-radius-md);
-    padding: 9px 18px;
+    min-height: 40px;
+    padding: 11px 20px;
     font-size: 13px;
     font-weight: 700;
     font-family: var(--p2-font);
@@ -891,9 +892,10 @@
     transition: all 0.15s ease;
     white-space: nowrap;
     user-select: none;
-    line-height: 1;
+    line-height: 1.35;
     vertical-align: middle;
 }
+
 
 /* ─── Primary ─── */
 .btn-primary-pay2 {
@@ -1980,4 +1982,3 @@
         color: #94a3b8;
         font-size: 11px;
     }
-
