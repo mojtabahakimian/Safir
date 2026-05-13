@@ -444,6 +444,8 @@
         catch (Exception ex)
         {
             CurrentWorkshopAcc = new Pay2WorkshopAccDto { WS_ID = selected.WS_ID };
+            InitialAdvHesList.Clear();
+
             await Toast("خطا در واکشی سرفصل‌های حسابداری: " + ex.Message);
         }
     }
@@ -457,11 +459,11 @@
         };
 
         CurrentWorkshopAcc = new Pay2WorkshopAccDto();
+        InitialAdvHesList.Clear();
 
         _fieldErrors.Clear();
         IsInsModeDropdownOpen = false;
     }
-
     private async Task SaveWorkshopAsync()
     {
         IsInsModeDropdownOpen = false;
