@@ -1,13 +1,13 @@
 ﻿@typeparam TItem
 @typeparam TValue
-
 @implements IDisposable
 
 <div class="@RootClass" @onkeydown="HandleKeyDownAsync">
 
     <div class="@ControlClass">
 
-        <input class="pay2-select-input"
+        <input @ref="_searchInput"
+               class="pay2-select-input"
                type="text"
                value="@_text"
                placeholder="@Placeholder"
@@ -40,6 +40,7 @@
 
     @if (IsOpen)
     {
+        @* لایه نامرئی برای بستن منو با کلیک در خارج *@
         <div class="pay2-select-backdrop" @onclick="Close"></div>
 
         <div class="pay2-select-menu" @onclick:stopPropagation="true">
@@ -99,6 +100,8 @@
 </div>
 
 @code {
+    // ─── مراجع و وضعیت‌ها ───
+    private ElementReference _searchInput;
     private string? _text;
     private TValue? _lastValue;
     private TItem? _selectedItem;
@@ -110,66 +113,47 @@
     private bool _hasMore;
     private int _highlightedIndex;
 
+    // ─── پارامترها ───
     [Parameter] public IEnumerable<TItem>? Items { get; set; }
     [Parameter] public Func<string?, Task<IEnumerable<TItem>>>? SearchItems { get; set; }
-
     [Parameter, EditorRequired] public Func<TItem, string> TextSelector { get; set; } = default!;
     [Parameter, EditorRequired] public Func<TItem, TValue> ValueSelector { get; set; } = default!;
-
     [Parameter] public Func<TItem, string?>? SubTextSelector { get; set; }
     [Parameter] public Func<TItem, string?>? BadgeSelector { get; set; }
     [Parameter] public Func<TItem, string?, bool>? SearchPredicate { get; set; }
-
     [Parameter] public TValue? Value { get; set; }
     [Parameter] public EventCallback<TValue?> ValueChanged { get; set; }
-
     [Parameter] public TItem? SelectedItem { get; set; }
     [Parameter] public EventCallback<TItem?> SelectedItemChanged { get; set; }
-
     [Parameter] public string? Text { get; set; }
     [Parameter] public EventCallback<string?> TextChanged { get; set; }
-
     [Parameter] public string? Placeholder { get; set; }
     [Parameter] public string? CssClass { get; set; }
-
     [Parameter] public bool Editable { get; set; } = true;
     [Parameter] public bool Clearable { get; set; } = true;
     [Parameter] public bool Disabled { get; set; }
     [Parameter] public bool ReadOnly { get; set; }
-
     [Parameter] public bool ClearValueOnTextEdit { get; set; } = false;
-
     [Parameter] public int MaxVisibleItems { get; set; } = 60;
     [Parameter] public int DebounceMilliseconds { get; set; } = 180;
 
-    private bool HasValue
-        => !EqualityComparer<TValue?>.Default.Equals(Value, default);
-
-    private string RootClass
-        => IsOpen ? "pay2-combo open" : "pay2-combo";
-
+    // ─── ویژگی‌های کمکی ───
+    private bool HasValue => !EqualityComparer<TValue?>.Default.Equals(Value, default);
+    private string RootClass => IsOpen ? "pay2-combo open" : "pay2-combo";
     private string ControlClass
     {
         get
         {
             var cls = "pay2-select-control";
-
-            if (!string.IsNullOrWhiteSpace(CssClass))
-                cls += " " + CssClass;
-
-            if (IsOpen)
-                cls += " open";
-
-            if (Disabled)
-                cls += " disabled";
-
-            if (ReadOnly)
-                cls += " readonly";
-
+            if (!string.IsNullOrWhiteSpace(CssClass)) cls += " " + CssClass;
+            if (IsOpen) cls += " open";
+            if (Disabled) cls += " disabled";
+            if (ReadOnly) cls += " readonly";
             return cls;
         }
     }
 
+    // ─── چرخه‌ی حیات ───
     protected override void OnParametersSet()
     {
         if (!EqualityComparer<TValue?>.Default.Equals(Value, _lastValue))
@@ -192,7 +176,6 @@
         }
 
         var found = FindItemByValue(Value);
-
         if (found != null)
         {
             _selectedItem = found;
@@ -202,74 +185,49 @@
 
     private TItem? FindItemByValue(TValue? value)
     {
-        if (Items == null)
-            return default;
-
-        foreach (var item in Items)
-        {
-            var itemValue = ValueSelector(item);
-
-            if (EqualityComparer<TValue?>.Default.Equals(itemValue, value))
-                return item;
-        }
-
-        return default;
+        if (Items == null) return default;
+        return Items.FirstOrDefault(item => EqualityComparer<TValue?>.Default.Equals(ValueSelector(item), value));
     }
 
+    // ─── عملیات‌ها ───
     private async Task OpenAllAsync()
     {
-        if (Disabled || ReadOnly)
-            return;
-
+        if (Disabled || ReadOnly) return;
         IsOpen = true;
         _highlightedIndex = 0;
-
         await RefreshItemsAsync(useCurrentTextAsFilter: false);
     }
 
     private async Task ToggleAsync()
     {
-        if (Disabled || ReadOnly)
-            return;
-
-        if (IsOpen)
-        {
-            Close();
-            return;
-        }
+        if (Disabled || ReadOnly) return;
+        if (IsOpen) { Close(); return; }
 
         await OpenAllAsync();
+        // فوکوس کردن روی اینپوت بلافاصله بعد از باز کردن (تجربه WPF)
+        await _searchInput.FocusAsync();
     }
 
-    private void Close()
-    {
-        IsOpen = false;
-        _highlightedIndex = 0;
-    }
+    private void Close() { IsOpen = false; _highlightedIndex = 0; }
 
     private async Task HandleInputAsync(ChangeEventArgs e)
     {
-        if (!Editable || Disabled || ReadOnly)
-            return;
-
+        if (!Editable || Disabled || ReadOnly) return;
         _text = e.Value?.ToString();
 
-        if (TextChanged.HasDelegate)
-            await TextChanged.InvokeAsync(_text);
+        _highlightedIndex = 0;
 
+        if (TextChanged.HasDelegate) await TextChanged.InvokeAsync(_text);
         _selectedItem = default;
 
         if (ClearValueOnTextEdit)
         {
             Value = default;
             _lastValue = default;
-
-            if (ValueChanged.HasDelegate)
-                await ValueChanged.InvokeAsync(default);
+            if (ValueChanged.HasDelegate) await ValueChanged.InvokeAsync(default);
         }
 
         IsOpen = true;
-
         await DebouncedRefreshAsync();
     }
 
@@ -277,91 +235,61 @@
     {
         _searchCts?.Cancel();
         _searchCts?.Dispose();
-
         var cts = new CancellationTokenSource();
         _searchCts = cts;
 
         try
         {
-            if (DebounceMilliseconds > 0)
-                await Task.Delay(DebounceMilliseconds, cts.Token);
-
-            if (cts.IsCancellationRequested)
-                return;
-
+            if (DebounceMilliseconds > 0) await Task.Delay(DebounceMilliseconds, cts.Token);
+            if (cts.IsCancellationRequested) return;
             await RefreshItemsAsync(useCurrentTextAsFilter: true);
             await InvokeAsync(StateHasChanged);
         }
-        catch (TaskCanceledException)
-        {
-        }
+        catch (TaskCanceledException) { }
     }
 
     private async Task RefreshItemsAsync(bool useCurrentTextAsFilter)
     {
         IsSearching = true;
-
         try
         {
             var query = useCurrentTextAsFilter ? _text?.Trim() : null;
-
             IEnumerable<TItem> source;
 
             if (SearchItems != null)
-            {
                 source = await SearchItems(query);
-            }
             else
             {
                 source = Items ?? Enumerable.Empty<TItem>();
-
                 if (!string.IsNullOrWhiteSpace(query))
                 {
-                    source = source.Where(item =>
-                    {
-                        if (SearchPredicate != null)
-                            return SearchPredicate(item, query);
-
-                        var text = TextSelector(item) ?? "";
-
-                        return text.Contains(query, StringComparison.OrdinalIgnoreCase);
-                    });
+                    // حل باگ NullReference احتمالی
+                    source = source.Where(item => SearchPredicate?.Invoke(item, query) ??
+                                          TextSelector(item)?.Contains(query, StringComparison.OrdinalIgnoreCase) == true);
                 }
             }
 
             var list = source.Take(MaxVisibleItems + 1).ToList();
-
             _hasMore = list.Count > MaxVisibleItems;
             _visibleItems = list.Take(MaxVisibleItems).ToList();
 
             if (_highlightedIndex >= _visibleItems.Count)
                 _highlightedIndex = Math.Max(0, _visibleItems.Count - 1);
         }
-        finally
-        {
-            IsSearching = false;
-        }
+        finally { IsSearching = false; }
     }
 
     private async Task SelectItemAsync(TItem item)
     {
         _selectedItem = item;
         _text = TextSelector(item);
-
         var newValue = ValueSelector(item);
-
         Value = newValue;
         _lastValue = newValue;
 
-        if (ValueChanged.HasDelegate)
-            await ValueChanged.InvokeAsync(newValue);
-
-        if (SelectedItemChanged.HasDelegate)
-            await SelectedItemChanged.InvokeAsync(item);
-
-        if (TextChanged.HasDelegate)
-            await TextChanged.InvokeAsync(_text);
-
+        if (ValueChanged.HasDelegate) await ValueChanged.InvokeAsync(newValue);
+        if (SelectedItemChanged.HasDelegate) await SelectedItemChanged.InvokeAsync(item);
+        if (TextChanged.HasDelegate) await TextChanged.InvokeAsync(_text);
         Close();
     }
 
@@ -371,44 +299,26 @@
         _text = null;
         Value = default;
         _lastValue = default;
-
-        if (ValueChanged.HasDelegate)
-            await ValueChanged.InvokeAsync(default);
-
-        if (SelectedItemChanged.HasDelegate)
-            await SelectedItemChanged.InvokeAsync(default);
-
-        if (TextChanged.HasDelegate)
-            await TextChanged.InvokeAsync(null);
-
-        IsOpen = false;
+        if (ValueChanged.HasDelegate) await ValueChanged.InvokeAsync(default);
+        if (SelectedItemChanged.HasDelegate) await SelectedItemChanged.InvokeAsync(default);
+        if (TextChanged.HasDelegate) await TextChanged.InvokeAsync(null);
+        Close();
         _visibleItems.Clear();
     }
 
-    private bool IsSelected(TItem item)
-    {
-        if (EqualityComparer<TValue?>.Default.Equals(Value, default))
-            return false;
+    private bool IsSelected(TItem item) =>
+        !EqualityComparer<TValue?>.Default.Equals(Value, default) &&
+        EqualityComparer<TValue?>.Default.Equals(ValueSelector(item), Value);
 
-        var itemValue = ValueSelector(item);
-
-        return EqualityComparer<TValue?>.Default.Equals(itemValue, Value);
-    }
-
+    // ─── مدیریت کیبورد ───
     private async Task HandleKeyDownAsync(KeyboardEventArgs e)
     {
-        if (Disabled || ReadOnly)
-            return;
+        if (Disabled || ReadOnly) return;
 
         if (e.Key == "ArrowDown")
         {
-            if (!IsOpen)
-            {
-                await OpenAllAsync();
-                return;
-            }
-
-            if (_visibleItems.Any())
+            if (!IsOpen) await OpenAllAsync();
+            else if (_visibleItems.Any())
                 _highlightedIndex = Math.Min(_highlightedIndex + 1, _visibleItems.Count - 1);
         }
         else if (e.Key == "ArrowUp")
@@ -418,13 +328,8 @@
         }
         else if (e.Key == "Enter")
         {
-            if (IsOpen &&
-                _visibleItems.Any() &&
-                _highlightedIndex >= 0 &&
-                _highlightedIndex < _visibleItems.Count)
-            {
+            if (IsOpen && _highlightedIndex >= 0 && _highlightedIndex < _visibleItems.Count)
                 await SelectItemAsync(_visibleItems[_highlightedIndex]);
-            }
         }
         else if (e.Key == "Escape" || e.Key == "Tab")
         {
