@@ -1,5 +1,7 @@
 ﻿@using Safir.Shared.Models.Salary
 @inject Pay2WorkshopApiService WorkshopApi
+@using Safir.Shared.Models
+@inject LookupApiService LookupService
 
 <div class="pay2-tab-container">
     <div class="pay2-workshop-layout">
@@ -231,17 +233,25 @@
                     <label>
                         حساب مساعده هوشمند
                         <span class="p2-text-muted" style="font-size:11px; font-weight:400;">
-                            (ADV_HES — فرمت: کل-معین یا کل-معین-تفصیلی)
+                            (جستجو بر اساس نام یا کد حساب)
                         </span>
                     </label>
 
-                    <Pay2NumericInput @bind-Value="CurrentWorkshopAcc.ADV_HES"
-                                      MaxLength="20"
-                                      AllowDash="true"
-                                      Placeholder="مثال: 112-1  یا  213-1-5"
-                                      CssClass="@(HasError(nameof(CurrentWorkshopAcc.ADV_HES)) ? "error" : "")"
-                                      OnFocus="@(_ => ClearError(nameof(CurrentWorkshopAcc.ADV_HES)))"
-                                      OnBlur="@(_ => ValidateAdvHes())" />
+                    <Pay2Select TItem="LookupDto<string>"
+                                TValue="string"
+                                SearchItems="SearchAccountsAsync"
+                                Items="InitialAdvHesList"
+                                Value="CurrentWorkshopAcc.ADV_HES"
+                                ValueChanged="OnAdvHesChanged"
+                                TextSelector="@(x => $"{x.Name}  |  {x.Id}")"
+                                ValueSelector="@(x => x.Id)"
+                                Placeholder="جستجوی حساب (مثال: 213-1-16 یا نام حساب)"
+                                CssClass="@(HasError(nameof(CurrentWorkshopAcc.ADV_HES)) ? "error" : "")"
+                                Clearable="true"
+                                Editable="true"
+                                MaxVisibleItems="50"
+                                DebounceMilliseconds="400"
+                                ClearValueOnTextEdit="true" />
 
                     @if (HasError(nameof(CurrentWorkshopAcc.ADV_HES)))
                     {
@@ -415,6 +425,21 @@
         {
             CurrentWorkshopAcc = await WorkshopApi.GetAccountsAsync(selected.WS_ID);
             NormalizeAccounts();
+
+            InitialAdvHesList.Clear();
+            if (!string.IsNullOrWhiteSpace(CurrentWorkshopAcc.ADV_HES))
+            {
+                var lookupResult = await LookupService.GetCustomerLookupAsync(CurrentWorkshopAcc.ADV_HES);
+                var matchedItem = lookupResult?.FirstOrDefault(x => x.Id == CurrentWorkshopAcc.ADV_HES);
+                if (matchedItem != null)
+                {
+                    InitialAdvHesList.Add(matchedItem);
+                }
+                else
+                {
+                    InitialAdvHesList.Add(new LookupDto<string>(CurrentWorkshopAcc.ADV_HES, "حساب نامشخص"));
+                }
+            }
         }
         catch (Exception ex)
         {
@@ -506,6 +531,25 @@
     {
         CurrentWorkshop.WS_CODE = OnlyDigits(CurrentWorkshop.WS_CODE, 10);
     }
+
+    #region MosaedehCode
+    // لیست اولیه فقط برای نمایش نام حسابی که از دیتابیس لود می‌شود (جلوگیری از خالی ماندن تکست‌باکس در حالت ویرایش)
+    private List<LookupDto<string>> InitialAdvHesList = new();
+
+    // متد جستجوی سمت سرور برای AutoComplete (بدون Memory Leak)
+    private async Task<IEnumerable<LookupDto<string>>> SearchAccountsAsync(string? searchTerm)
+    {
+        var result = await LookupService.GetCustomerLookupAsync(searchTerm);
+        return result ?? Enumerable.Empty<LookupDto<string>>();
+    }
+
+    // رویداد تغییر مقدار حساب
+    private void OnAdvHesChanged(string? newValue)
+    {
+        CurrentWorkshopAcc.ADV_HES = newValue;
+        ValidateAdvHes();
+    }
+    #endregion
 
     private void ValidateNationalId()
     {

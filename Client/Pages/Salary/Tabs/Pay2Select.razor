@@ -40,7 +40,6 @@
 
     @if (IsOpen)
     {
-        @* لایه نامرئی برای بستن منو با کلیک در خارج *@
         <div class="pay2-select-backdrop" @onclick="Close"></div>
 
         <div class="pay2-select-menu" @onclick:stopPropagation="true">
@@ -100,7 +99,6 @@
 </div>
 
 @code {
-    // ─── مراجع و وضعیت‌ها ───
     private ElementReference _searchInput;
     private string? _text;
     private TValue? _lastValue;
@@ -113,7 +111,6 @@
     private bool _hasMore;
     private int _highlightedIndex;
 
-    // ─── پارامترها ───
     [Parameter] public IEnumerable<TItem>? Items { get; set; }
     [Parameter] public Func<string?, Task<IEnumerable<TItem>>>? SearchItems { get; set; }
     [Parameter, EditorRequired] public Func<TItem, string> TextSelector { get; set; } = default!;
@@ -137,7 +134,6 @@
     [Parameter] public int MaxVisibleItems { get; set; } = 60;
     [Parameter] public int DebounceMilliseconds { get; set; } = 180;
 
-    // ─── ویژگی‌های کمکی ───
     private bool HasValue => !EqualityComparer<TValue?>.Default.Equals(Value, default);
     private string RootClass => IsOpen ? "pay2-combo open" : "pay2-combo";
     private string ControlClass
@@ -153,7 +149,6 @@
         }
     }
 
-    // ─── چرخه‌ی حیات ───
     protected override void OnParametersSet()
     {
         if (!EqualityComparer<TValue?>.Default.Equals(Value, _lastValue))
@@ -175,11 +170,25 @@
             return;
         }
 
+        // >>> اصلاحیه بسیار مهم برای جستجوی سمت سرور <<<
+        // اگر آیتم قبلاً انتخاب شده در حافظه هست، مستقیماً از همان استفاده می‌کنیم
+        if (_selectedItem != null && EqualityComparer<TValue?>.Default.Equals(ValueSelector(_selectedItem), Value))
+        {
+            _text = TextSelector(_selectedItem);
+            return;
+        }
+
+        // در غیر این صورت در لیست اولیه (Items) می‌گردیم (معمولاً برای لود اولیه کاربرد دارد)
         var found = FindItemByValue(Value);
         if (found != null)
         {
             _selectedItem = found;
             _text = TextSelector(found);
+        }
+        else
+        {
+            // اگر کاربر چیزی تایپ کرده ولی وجود ندارد، تکست را خالی می‌کنیم تا باگ همگام‌سازی رخ ندهد
+            _text = null;
         }
     }
 
@@ -189,7 +198,6 @@
         return Items.FirstOrDefault(item => EqualityComparer<TValue?>.Default.Equals(ValueSelector(item), value));
     }
 
-    // ─── عملیات‌ها ───
     private async Task OpenAllAsync()
     {
         if (Disabled || ReadOnly) return;
@@ -204,11 +212,15 @@
         if (IsOpen) { Close(); return; }
 
         await OpenAllAsync();
-        // فوکوس کردن روی اینپوت بلافاصله بعد از باز کردن (تجربه WPF)
         await _searchInput.FocusAsync();
     }
 
-    private void Close() { IsOpen = false; _highlightedIndex = 0; }
+    private void Close()
+    {
+        IsOpen = false;
+        _highlightedIndex = 0;
+        SyncTextFromValue();
+    }
 
     private async Task HandleInputAsync(ChangeEventArgs e)
     {
@@ -257,13 +269,22 @@
             IEnumerable<TItem> source;
 
             if (SearchItems != null)
-                source = await SearchItems(query);
+            {
+                var searchResult = await SearchItems(query);
+
+                // >>> رفع باگ مهم تداخل شبکه (Race Condition) <<<
+                // اگر در حین اینکه منتظر جواب سرور بودیم، کاربر حرف جدیدی تایپ کرد (توکن کنسل شد)،
+                // این جواب قدیمی را دور می‌ریزیم و آپدیت نمی‌کنیم!
+                if (_searchCts != null && _searchCts.IsCancellationRequested)
+                    return;
+
+                source = searchResult ?? Enumerable.Empty<TItem>();
+            }
             else
             {
                 source = Items ?? Enumerable.Empty<TItem>();
                 if (!string.IsNullOrWhiteSpace(query))
                 {
-                    // حل باگ NullReference احتمالی
                     source = source.Where(item => SearchPredicate?.Invoke(item, query) ??
                                           TextSelector(item)?.Contains(query, StringComparison.OrdinalIgnoreCase) == true);
                 }
@@ -310,7 +331,6 @@
         !EqualityComparer<TValue?>.Default.Equals(Value, default) &&
         EqualityComparer<TValue?>.Default.Equals(ValueSelector(item), Value);
 
-    // ─── مدیریت کیبورد ───
     private async Task HandleKeyDownAsync(KeyboardEventArgs e)
     {
         if (Disabled || ReadOnly) return;
