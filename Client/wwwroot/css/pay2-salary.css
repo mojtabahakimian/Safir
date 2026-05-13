@@ -1687,3 +1687,297 @@
         grid-template-columns: 1fr;
     }
 }
+
+
+
+/* ═══════════════════════════════════════════════════════════════
+   PAY2 Combo / Editable Select / AutoComplete
+   ═══════════════════════════════════════════════════════════════ */
+
+.pay2-combo {
+    position: relative !important;
+    width: 100%;
+    direction: rtl;
+    box-sizing: border-box;
+    z-index: 1;
+}
+
+    .pay2-combo.open {
+        z-index: 3000;
+    }
+
+    .pay2-combo *,
+    .pay2-combo *::before,
+    .pay2-combo *::after {
+        box-sizing: border-box;
+    }
+
+    .pay2-combo .pay2-select-control {
+        position: relative;
+        width: 100%;
+        height: var(--p2-input-h, 42px);
+        display: flex;
+        align-items: center;
+        background: var(--p2-bg-main, #f8fafc);
+        border: 1px solid var(--p2-border, #e2e8f0) !important;
+        border-radius: var(--p2-radius, 10px) !important;
+        padding: 0;
+        margin: 0;
+        overflow: hidden;
+        outline: none !important;
+        box-shadow: none !important;
+        transition: border-color .15s ease, background-color .15s ease;
+    }
+
+        .pay2-combo .pay2-select-control:hover {
+            border-color: #93c5fd !important;
+        }
+
+        .pay2-combo .pay2-select-control.open,
+        .pay2-combo .pay2-select-control:focus-within {
+            background: #fff;
+            border-color: #93c5fd !important;
+            outline: none !important;
+            box-shadow: none !important;
+        }
+
+        .pay2-combo .pay2-select-control.error {
+            border-color: #ef4444 !important;
+            background: #fff7f7;
+        }
+
+        .pay2-combo .pay2-select-control.disabled,
+        .pay2-combo .pay2-select-control.readonly {
+            opacity: .65;
+            cursor: not-allowed;
+        }
+
+        .pay2-combo .pay2-select-control::before,
+        .pay2-combo .pay2-select-control::after {
+            content: none !important;
+            display: none !important;
+        }
+
+    .pay2-combo .pay2-select-input {
+        all: unset;
+        flex: 1 1 auto;
+        min-width: 0;
+        width: 100%;
+        height: 100%;
+        display: block;
+        padding: 0 12px;
+        margin: 0 !important;
+        font-family: inherit;
+        font-size: 13px;
+        font-weight: 500;
+        color: var(--p2-text-main, #1e293b);
+        direction: rtl;
+        text-align: right;
+        background: transparent !important;
+        background-color: transparent !important;
+        border: none !important;
+        outline: none !important;
+        box-shadow: none !important;
+        border-radius: 0 !important;
+        -webkit-appearance: none !important;
+        appearance: none !important;
+        cursor: text;
+    }
+
+        .pay2-combo .pay2-select-input:focus,
+        .pay2-combo .pay2-select-input:focus-visible,
+        .pay2-combo .pay2-select-input:hover,
+        .pay2-combo .pay2-select-input:active {
+            background: transparent !important;
+            background-color: transparent !important;
+            border: none !important;
+            outline: none !important;
+            box-shadow: none !important;
+        }
+
+        .pay2-combo .pay2-select-input::placeholder {
+            color: var(--p2-text-light, #94a3b8);
+            font-weight: 400;
+        }
+
+    .pay2-combo .pay2-select-clear {
+        flex: 0 0 28px;
+        width: 28px;
+        height: 28px;
+        min-width: 28px;
+        max-width: 28px;
+        border: none !important;
+        outline: none !important;
+        box-shadow: none !important;
+        background: transparent !important;
+        color: #94a3b8;
+        font-size: 20px;
+        line-height: 1;
+        cursor: pointer;
+        border-radius: 8px;
+        padding: 0;
+        margin: 0 !important;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .pay2-combo .pay2-select-arrow-button {
+        flex: 0 0 38px;
+        width: 38px;
+        min-width: 38px !important;
+        max-width: 38px !important;
+        height: 100%;
+        border: none !important;
+        outline: none !important;
+        box-shadow: none !important;
+        background: transparent !important;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 0 !important;
+        margin: 0 !important;
+        border-radius: 0 !important;
+        -webkit-appearance: none !important;
+        appearance: none !important;
+    }
+
+        .pay2-combo .pay2-select-arrow-button:hover,
+        .pay2-combo .pay2-select-arrow-button:focus,
+        .pay2-combo .pay2-select-arrow-button:focus-visible,
+        .pay2-combo .pay2-select-arrow-button:active {
+            border: none !important;
+            outline: none !important;
+            box-shadow: none !important;
+            background: #f1f5f9 !important;
+        }
+
+    .pay2-combo .pay2-select-arrow {
+        width: 8px;
+        height: 8px;
+        border-left: 2px solid #64748b;
+        border-bottom: 2px solid #64748b;
+        transform: rotate(-45deg);
+        margin-top: -4px;
+        transition: transform .15s ease, margin-top .15s ease;
+    }
+
+    .pay2-combo .pay2-select-control.open .pay2-select-arrow {
+        transform: rotate(135deg);
+        margin-top: 4px;
+    }
+
+    .pay2-combo .pay2-select-backdrop {
+        position: fixed;
+        inset: 0;
+        z-index: 2998;
+        background: transparent;
+    }
+
+    .pay2-combo .pay2-select-menu {
+        position: absolute !important;
+        z-index: 2999;
+        top: calc(100% + 5px) !important;
+        right: 0 !important;
+        left: auto !important;
+        width: 100% !important;
+        max-height: 300px;
+        overflow-y: auto;
+        background: #fff;
+        border: 1px solid var(--p2-border, #e2e8f0);
+        border-radius: 12px;
+        box-shadow: 0 14px 28px rgba(15, 23, 42, .12);
+        padding: 6px;
+    }
+
+    .pay2-combo .pay2-select-item {
+        width: 100%;
+        min-height: 36px;
+        border: none !important;
+        outline: none !important;
+        box-shadow: none !important;
+        background: transparent;
+        color: var(--p2-text-main, #1e293b);
+        font-family: inherit;
+        font-size: 13px;
+        text-align: right;
+        border-radius: 8px;
+        padding: 7px 10px;
+        cursor: pointer;
+        display: grid;
+        grid-template-columns: 1fr auto;
+        gap: 3px 8px;
+        align-items: center;
+    }
+
+        .pay2-combo .pay2-select-item:hover,
+        .pay2-combo .pay2-select-item:focus,
+        .pay2-combo .pay2-select-item:focus-visible,
+        .pay2-combo .pay2-select-item.highlighted {
+            border: none !important;
+            outline: none !important;
+            box-shadow: none !important;
+            background: #f1f5f9;
+            color: #1e293b;
+        }
+
+        .pay2-combo .pay2-select-item.selected {
+            background: #eff6ff;
+            color: #2563eb;
+            font-weight: 700;
+        }
+
+            .pay2-combo .pay2-select-item.selected.highlighted,
+            .pay2-combo .pay2-select-item.selected:hover {
+                background: #dbeafe;
+                color: #1d4ed8;
+            }
+
+    .pay2-combo .pay2-select-item-main {
+        overflow: hidden;
+        white-space: nowrap;
+        text-overflow: ellipsis;
+    }
+
+    .pay2-combo .pay2-select-item-sub {
+        grid-column: 1 / span 2;
+        color: #64748b;
+        font-size: 11px;
+        font-weight: 400;
+        overflow: hidden;
+        white-space: nowrap;
+        text-overflow: ellipsis;
+    }
+
+    .pay2-combo .pay2-select-item-badge {
+        background: #f1f5f9;
+        color: #475569;
+        border-radius: 999px;
+        padding: 2px 8px;
+        font-size: 11px;
+        font-weight: 600;
+    }
+
+    .pay2-combo .pay2-select-state,
+    .pay2-combo .pay2-select-empty,
+    .pay2-combo .pay2-select-more {
+        min-height: 36px;
+        color: #64748b;
+        font-size: 12px;
+        padding: 9px 10px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+
+    .pay2-combo .pay2-select-empty {
+        justify-content: center;
+    }
+
+    .pay2-combo .pay2-select-more {
+        border-top: 1px solid #f1f5f9;
+        color: #94a3b8;
+        font-size: 11px;
+    }
+

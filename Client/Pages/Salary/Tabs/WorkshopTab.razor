@@ -203,38 +203,17 @@
                 <div class="form-field">
                     <label>نوع محاسبه بیمه</label>
 
-                    <div class="pay2-dd">
-
-                        <button type="button"
-                                class="pay2-dd-button @(IsInsModeDropdownOpen ? "open" : "")"
-                                disabled="@IsSavingWorkshop"
-                                @onclick="ToggleInsModeDropdown"
-                                @onclick:stopPropagation="true">
-                            <span>@GetInsModeText(CurrentWorkshop.INS_MODE)</span>
-                            <span class="pay2-dd-arrow"></span>
-                        </button>
-
-                        @if (IsInsModeDropdownOpen)
-                        {
-                            <div style="position:fixed; inset:0; z-index:99;"
-                                 @onclick="CloseInsModeDropdown"></div>
-
-                            <div class="pay2-dd-menu" style="z-index:100;" @onclick:stopPropagation="true">
-                                <button type="button"
-                                        class="pay2-dd-item @(CurrentWorkshop.INS_MODE == 1 ? "selected" : "")"
-                                        @onclick="() => SelectInsMode(1)">
-                                    معمولی
-                                </button>
-
-                                <button type="button"
-                                        class="pay2-dd-item @(CurrentWorkshop.INS_MODE == 2 ? "selected" : "")"
-                                        @onclick="() => SelectInsMode(2)">
-                                    ده‌درصدی
-                                </button>
-                            </div>
-                        }
-
-                    </div>
+                    <Pay2Select TItem="Pay2InsModeOption"
+                                TValue="int"
+                                Items="InsModeOptions"
+                                @bind-Value="CurrentWorkshop.INS_MODE"
+                                TextSelector="@(x => x.Title)"
+                                ValueSelector="@(x => x.Id)"
+                                SubTextSelector="@(x => x.Description)"
+                                Placeholder="انتخاب نوع بیمه"
+                                Editable="true"
+                                Clearable="false"
+                                MaxVisibleItems="20" />
                 </div>
 
             </div>
@@ -390,6 +369,27 @@
         {
             IsLoadingWorkshops = false;
         }
+    }
+    private static readonly List<Pay2InsModeOption> InsModeOptions = new()
+    {
+        new Pay2InsModeOption
+        {
+            Id = 1,
+            Title = "معمولی",
+            Description = "کارگاه معمولی"
+        },
+        new Pay2InsModeOption
+        {
+            Id = 2,
+            Title = "ده‌درصدی",
+            Description = "تبصره ماده ۷ / SANAD10"
+        }
+    };
+    private sealed class Pay2InsModeOption
+    {
+        public int Id { get; set; }
+        public string Title { get; set; } = "";
+        public string? Description { get; set; }
     }
 
     private async Task SelectWorkshop(Pay2WorkshopDto selected)

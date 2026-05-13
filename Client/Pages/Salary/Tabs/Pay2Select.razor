@@ -1,0 +1,440 @@
+﻿@typeparam TItem
+@typeparam TValue
+
+@implements IDisposable
+
+<div class="@RootClass" @onkeydown="HandleKeyDownAsync">
+
+    <div class="@ControlClass">
+
+        <input class="pay2-select-input"
+               type="text"
+               value="@_text"
+               placeholder="@Placeholder"
+               disabled="@Disabled"
+               readonly="@(!Editable || ReadOnly)"
+               autocomplete="off"
+               @onfocus="OpenAllAsync"
+               @oninput="HandleInputAsync" />
+
+        @if (Clearable && !Disabled && !ReadOnly && HasValue)
+        {
+            <button type="button"
+                    class="pay2-select-clear"
+                    title="پاک کردن"
+                    @onclick="ClearAsync"
+                    @onclick:stopPropagation="true">
+                ×
+            </button>
+        }
+
+        <button type="button"
+                class="pay2-select-arrow-button"
+                disabled="@Disabled"
+                tabindex="-1"
+                @onclick="ToggleAsync"
+                @onclick:stopPropagation="true">
+            <span class="pay2-select-arrow"></span>
+        </button>
+    </div>
+
+    @if (IsOpen)
+    {
+        <div class="pay2-select-backdrop" @onclick="Close"></div>
+
+        <div class="pay2-select-menu" @onclick:stopPropagation="true">
+
+            @if (IsSearching)
+            {
+                <div class="pay2-select-state">
+                    <span class="p2-spinner" style="width:14px;height:14px;border-width:2px;"></span>
+                    <span>در حال جستجو...</span>
+                </div>
+            }
+            else if (!_visibleItems.Any())
+            {
+                <div class="pay2-select-empty">موردی یافت نشد</div>
+            }
+            else
+            {
+                @for (var i = 0; i < _visibleItems.Count; i++)
+                {
+                    var index = i;
+                    var item = _visibleItems[index];
+
+                    <button type="button"
+                            class="pay2-select-item @(index == _highlightedIndex ? "highlighted" : "") @(IsSelected(item) ? "selected" : "")"
+                            @onclick="() => SelectItemAsync(item)">
+                        <span class="pay2-select-item-main">@TextSelector(item)</span>
+
+                        @if (SubTextSelector != null)
+                        {
+                            var sub = SubTextSelector(item);
+                            if (!string.IsNullOrWhiteSpace(sub))
+                            {
+                                <span class="pay2-select-item-sub">@sub</span>
+                            }
+                        }
+
+                        @if (BadgeSelector != null)
+                        {
+                            var badge = BadgeSelector(item);
+                            if (!string.IsNullOrWhiteSpace(badge))
+                            {
+                                <span class="pay2-select-item-badge">@badge</span>
+                            }
+                        }
+                    </button>
+                }
+
+                @if (_hasMore)
+                {
+                    <div class="pay2-select-more">
+                        نتایج بیشتر وجود دارد؛ عبارت جستجو را دقیق‌تر وارد کنید.
+                    </div>
+                }
+            }
+        </div>
+    }
+</div>
+
+@code {
+    private string? _text;
+    private TValue? _lastValue;
+    private TItem? _selectedItem;
+    private List<TItem> _visibleItems = new();
+    private CancellationTokenSource? _searchCts;
+
+    private bool IsOpen;
+    private bool IsSearching;
+    private bool _hasMore;
+    private int _highlightedIndex;
+
+    [Parameter] public IEnumerable<TItem>? Items { get; set; }
+    [Parameter] public Func<string?, Task<IEnumerable<TItem>>>? SearchItems { get; set; }
+
+    [Parameter, EditorRequired] public Func<TItem, string> TextSelector { get; set; } = default!;
+    [Parameter, EditorRequired] public Func<TItem, TValue> ValueSelector { get; set; } = default!;
+
+    [Parameter] public Func<TItem, string?>? SubTextSelector { get; set; }
+    [Parameter] public Func<TItem, string?>? BadgeSelector { get; set; }
+    [Parameter] public Func<TItem, string?, bool>? SearchPredicate { get; set; }
+
+    [Parameter] public TValue? Value { get; set; }
+    [Parameter] public EventCallback<TValue?> ValueChanged { get; set; }
+
+    [Parameter] public TItem? SelectedItem { get; set; }
+    [Parameter] public EventCallback<TItem?> SelectedItemChanged { get; set; }
+
+    [Parameter] public string? Text { get; set; }
+    [Parameter] public EventCallback<string?> TextChanged { get; set; }
+
+    [Parameter] public string? Placeholder { get; set; }
+    [Parameter] public string? CssClass { get; set; }
+
+    [Parameter] public bool Editable { get; set; } = true;
+    [Parameter] public bool Clearable { get; set; } = true;
+    [Parameter] public bool Disabled { get; set; }
+    [Parameter] public bool ReadOnly { get; set; }
+
+    [Parameter] public bool ClearValueOnTextEdit { get; set; } = false;
+
+    [Parameter] public int MaxVisibleItems { get; set; } = 60;
+    [Parameter] public int DebounceMilliseconds { get; set; } = 180;
+
+    private bool HasValue
+        => !EqualityComparer<TValue?>.Default.Equals(Value, default);
+
+    private string RootClass
+        => IsOpen ? "pay2-combo open" : "pay2-combo";
+
+    private string ControlClass
+    {
+        get
+        {
+            var cls = "pay2-select-control";
+
+            if (!string.IsNullOrWhiteSpace(CssClass))
+                cls += " " + CssClass;
+
+            if (IsOpen)
+                cls += " open";
+
+            if (Disabled)
+                cls += " disabled";
+
+            if (ReadOnly)
+                cls += " readonly";
+
+            return cls;
+        }
+    }
+
+    protected override void OnParametersSet()
+    {
+        if (!EqualityComparer<TValue?>.Default.Equals(Value, _lastValue))
+        {
+            _lastValue = Value;
+            SyncTextFromValue();
+        }
+
+        if (Text != null && Text != _text)
+            _text = Text;
+    }
+
+    private void SyncTextFromValue()
+    {
+        if (EqualityComparer<TValue?>.Default.Equals(Value, default))
+        {
+            _selectedItem = default;
+            _text = null;
+            return;
+        }
+
+        var found = FindItemByValue(Value);
+
+        if (found != null)
+        {
+            _selectedItem = found;
+            _text = TextSelector(found);
+        }
+    }
+
+    private TItem? FindItemByValue(TValue? value)
+    {
+        if (Items == null)
+            return default;
+
+        foreach (var item in Items)
+        {
+            var itemValue = ValueSelector(item);
+
+            if (EqualityComparer<TValue?>.Default.Equals(itemValue, value))
+                return item;
+        }
+
+        return default;
+    }
+
+    private async Task OpenAllAsync()
+    {
+        if (Disabled || ReadOnly)
+            return;
+
+        IsOpen = true;
+        _highlightedIndex = 0;
+
+        await RefreshItemsAsync(useCurrentTextAsFilter: false);
+    }
+
+    private async Task ToggleAsync()
+    {
+        if (Disabled || ReadOnly)
+            return;
+
+        if (IsOpen)
+        {
+            Close();
+            return;
+        }
+
+        await OpenAllAsync();
+    }
+
+    private void Close()
+    {
+        IsOpen = false;
+        _highlightedIndex = 0;
+    }
+
+    private async Task HandleInputAsync(ChangeEventArgs e)
+    {
+        if (!Editable || Disabled || ReadOnly)
+            return;
+
+        _text = e.Value?.ToString();
+
+        if (TextChanged.HasDelegate)
+            await TextChanged.InvokeAsync(_text);
+
+        _selectedItem = default;
+
+        if (ClearValueOnTextEdit)
+        {
+            Value = default;
+            _lastValue = default;
+
+            if (ValueChanged.HasDelegate)
+                await ValueChanged.InvokeAsync(default);
+        }
+
+        IsOpen = true;
+
+        await DebouncedRefreshAsync();
+    }
+
+    private async Task DebouncedRefreshAsync()
+    {
+        _searchCts?.Cancel();
+        _searchCts?.Dispose();
+
+        var cts = new CancellationTokenSource();
+        _searchCts = cts;
+
+        try
+        {
+            if (DebounceMilliseconds > 0)
+                await Task.Delay(DebounceMilliseconds, cts.Token);
+
+            if (cts.IsCancellationRequested)
+                return;
+
+            await RefreshItemsAsync(useCurrentTextAsFilter: true);
+            await InvokeAsync(StateHasChanged);
+        }
+        catch (TaskCanceledException)
+        {
+        }
+    }
+
+    private async Task RefreshItemsAsync(bool useCurrentTextAsFilter)
+    {
+        IsSearching = true;
+
+        try
+        {
+            var query = useCurrentTextAsFilter ? _text?.Trim() : null;
+
+            IEnumerable<TItem> source;
+
+            if (SearchItems != null)
+            {
+                source = await SearchItems(query);
+            }
+            else
+            {
+                source = Items ?? Enumerable.Empty<TItem>();
+
+                if (!string.IsNullOrWhiteSpace(query))
+                {
+                    source = source.Where(item =>
+                    {
+                        if (SearchPredicate != null)
+                            return SearchPredicate(item, query);
+
+                        var text = TextSelector(item) ?? "";
+
+                        return text.Contains(query, StringComparison.OrdinalIgnoreCase);
+                    });
+                }
+            }
+
+            var list = source.Take(MaxVisibleItems + 1).ToList();
+
+            _hasMore = list.Count > MaxVisibleItems;
+            _visibleItems = list.Take(MaxVisibleItems).ToList();
+
+            if (_highlightedIndex >= _visibleItems.Count)
+                _highlightedIndex = Math.Max(0, _visibleItems.Count - 1);
+        }
+        finally
+        {
+            IsSearching = false;
+        }
+    }
+
+    private async Task SelectItemAsync(TItem item)
+    {
+        _selectedItem = item;
+        _text = TextSelector(item);
+
+        var newValue = ValueSelector(item);
+
+        Value = newValue;
+        _lastValue = newValue;
+
+        if (ValueChanged.HasDelegate)
+            await ValueChanged.InvokeAsync(newValue);
+
+        if (SelectedItemChanged.HasDelegate)
+            await SelectedItemChanged.InvokeAsync(item);
+
+        if (TextChanged.HasDelegate)
+            await TextChanged.InvokeAsync(_text);
+
+        Close();
+    }
+
+    private async Task ClearAsync()
+    {
+        _selectedItem = default;
+        _text = null;
+        Value = default;
+        _lastValue = default;
+
+        if (ValueChanged.HasDelegate)
+            await ValueChanged.InvokeAsync(default);
+
+        if (SelectedItemChanged.HasDelegate)
+            await SelectedItemChanged.InvokeAsync(default);
+
+        if (TextChanged.HasDelegate)
+            await TextChanged.InvokeAsync(null);
+
+        IsOpen = false;
+        _visibleItems.Clear();
+    }
+
+    private bool IsSelected(TItem item)
+    {
+        if (EqualityComparer<TValue?>.Default.Equals(Value, default))
+            return false;
+
+        var itemValue = ValueSelector(item);
+
+        return EqualityComparer<TValue?>.Default.Equals(itemValue, Value);
+    }
+
+    private async Task HandleKeyDownAsync(KeyboardEventArgs e)
+    {
+        if (Disabled || ReadOnly)
+            return;
+
+        if (e.Key == "ArrowDown")
+        {
+            if (!IsOpen)
+            {
+                await OpenAllAsync();
+                return;
+            }
+
+            if (_visibleItems.Any())
+                _highlightedIndex = Math.Min(_highlightedIndex + 1, _visibleItems.Count - 1);
+        }
+        else if (e.Key == "ArrowUp")
+        {
+            if (IsOpen && _visibleItems.Any())
+                _highlightedIndex = Math.Max(_highlightedIndex - 1, 0);
+        }
+        else if (e.Key == "Enter")
+        {
+            if (IsOpen &&
+                _visibleItems.Any() &&
+                _highlightedIndex >= 0 &&
+                _highlightedIndex < _visibleItems.Count)
+            {
+                await SelectItemAsync(_visibleItems[_highlightedIndex]);
+            }
+        }
+        else if (e.Key == "Escape" || e.Key == "Tab")
+        {
+            Close();
+        }
+    }
+
+    public void Dispose()
+    {
+        _searchCts?.Cancel();
+        _searchCts?.Dispose();
+    }
+}
