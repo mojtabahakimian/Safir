@@ -258,60 +258,49 @@
                         <span class="field-error">@GetError(nameof(CurrentWorkshopAcc.ADV_HES))</span>
                     }
                 </div>
-
                 <div class="form-field">
                     <label>هزینه حقوق</label>
-
-                    <input class="pay2-input"
-                           type="text"
-                           maxlength="20"
-                           placeholder="SALARY_EXP"
-                           @bind-value="CurrentWorkshopAcc.SALARY_EXP"
-                           @bind-value:event="onchange" />
+                    <Pay2NumericInput @bind-Value="CurrentWorkshopAcc.SALARY_EXP"
+                                      MaxLength="20"
+                                      Placeholder="0"
+                                      CssClass="@(HasError(nameof(CurrentWorkshopAcc.SALARY_EXP)) ? "error" : "")"
+                                      OnFocus="@(_ => ClearError(nameof(CurrentWorkshopAcc.SALARY_EXP)))" />
                 </div>
 
                 <div class="form-field">
                     <label>پرداختنی حقوق</label>
-
-                    <input class="pay2-input"
-                           type="text"
-                           maxlength="20"
-                           placeholder="SALARY_PAYABLE"
-                           @bind-value="CurrentWorkshopAcc.SALARY_PAYABLE"
-                           @bind-value:event="onchange" />
+                    <Pay2NumericInput @bind-Value="CurrentWorkshopAcc.SALARY_PAYABLE"
+                                      MaxLength="20"
+                                      Placeholder="0"
+                                      CssClass="@(HasError(nameof(CurrentWorkshopAcc.SALARY_PAYABLE)) ? "error" : "")"
+                                      OnFocus="@(_ => ClearError(nameof(CurrentWorkshopAcc.SALARY_PAYABLE)))" />
                 </div>
 
                 <div class="form-field">
                     <label>هزینه بیمه</label>
-
-                    <input class="pay2-input"
-                           type="text"
-                           maxlength="20"
-                           placeholder="INS_EXP"
-                           @bind-value="CurrentWorkshopAcc.INS_EXP"
-                           @bind-value:event="onchange" />
+                    <Pay2NumericInput @bind-Value="CurrentWorkshopAcc.INS_EXP"
+                                      MaxLength="20"
+                                      Placeholder="0"
+                                      CssClass="@(HasError(nameof(CurrentWorkshopAcc.INS_EXP)) ? "error" : "")"
+                                      OnFocus="@(_ => ClearError(nameof(CurrentWorkshopAcc.INS_EXP)))" />
                 </div>
 
                 <div class="form-field">
                     <label>پرداختنی بیمه</label>
-
-                    <input class="pay2-input"
-                           type="text"
-                           maxlength="20"
-                           placeholder="INS_PAYABLE"
-                           @bind-value="CurrentWorkshopAcc.INS_PAYABLE"
-                           @bind-value:event="onchange" />
+                    <Pay2NumericInput @bind-Value="CurrentWorkshopAcc.INS_PAYABLE"
+                                      MaxLength="20"
+                                      Placeholder="0"
+                                      CssClass="@(HasError(nameof(CurrentWorkshopAcc.INS_PAYABLE)) ? "error" : "")"
+                                      OnFocus="@(_ => ClearError(nameof(CurrentWorkshopAcc.INS_PAYABLE)))" />
                 </div>
 
                 <div class="form-field">
                     <label>پرداختنی مالیات</label>
-
-                    <input class="pay2-input"
-                           type="text"
-                           maxlength="20"
-                           placeholder="TAX_PAYABLE"
-                           @bind-value="CurrentWorkshopAcc.TAX_PAYABLE"
-                           @bind-value:event="onchange" />
+                    <Pay2NumericInput @bind-Value="CurrentWorkshopAcc.TAX_PAYABLE"
+                                      MaxLength="20"
+                                      Placeholder="0"
+                                      CssClass="@(HasError(nameof(CurrentWorkshopAcc.TAX_PAYABLE)) ? "error" : "")"
+                                      OnFocus="@(_ => ClearError(nameof(CurrentWorkshopAcc.TAX_PAYABLE)))" />
                 </div>
 
             </div>
@@ -654,12 +643,15 @@
 
     private void NormalizeAccounts()
     {
+        // کد حساب مساعده (شامل خط‌فاصله)
         CurrentWorkshopAcc.ADV_HES = CleanAccount(CurrentWorkshopAcc.ADV_HES, 20);
-        CurrentWorkshopAcc.SALARY_EXP = CleanText(CurrentWorkshopAcc.SALARY_EXP);
-        CurrentWorkshopAcc.SALARY_PAYABLE = CleanText(CurrentWorkshopAcc.SALARY_PAYABLE);
-        CurrentWorkshopAcc.INS_EXP = CleanText(CurrentWorkshopAcc.INS_EXP);
-        CurrentWorkshopAcc.INS_PAYABLE = CleanText(CurrentWorkshopAcc.INS_PAYABLE);
-        CurrentWorkshopAcc.TAX_PAYABLE = CleanText(CurrentWorkshopAcc.TAX_PAYABLE);
+
+        // مقادیر عددی خالص (مشابه کد کارگاه)
+        CurrentWorkshopAcc.SALARY_EXP = OnlyDigits(CurrentWorkshopAcc.SALARY_EXP, 20);
+        CurrentWorkshopAcc.SALARY_PAYABLE = OnlyDigits(CurrentWorkshopAcc.SALARY_PAYABLE, 20);
+        CurrentWorkshopAcc.INS_EXP = OnlyDigits(CurrentWorkshopAcc.INS_EXP, 20);
+        CurrentWorkshopAcc.INS_PAYABLE = OnlyDigits(CurrentWorkshopAcc.INS_PAYABLE, 20);
+        CurrentWorkshopAcc.TAX_PAYABLE = OnlyDigits(CurrentWorkshopAcc.TAX_PAYABLE, 20);
     }
 
     private static string? OnlyDigits(string? value, int maxLength)
