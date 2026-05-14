@@ -483,11 +483,10 @@
             _fieldErrors[nameof(CurrentWorkshop.WS_NAME)] = "نام کارگاه نمی‌تواند خالی باشد.";
         }
 
-        if (!string.IsNullOrWhiteSpace(CurrentWorkshop.NATIONAL_ID) &&
-            CurrentWorkshop.NATIONAL_ID.Length != 11)
-        {
-            _fieldErrors[nameof(CurrentWorkshop.NATIONAL_ID)] = "شناسه ملی باید دقیقاً ۱۱ رقم باشد.";
-        }
+        // if (!string.IsNullOrWhiteSpace(CurrentWorkshop.NATIONAL_ID) &&CurrentWorkshop.NATIONAL_ID.Length != 11)
+        // {
+        //     _fieldErrors[nameof(CurrentWorkshop.NATIONAL_ID)] = "شناسه ملی باید دقیقاً ۱۱ رقم باشد.";
+        // }
 
         ValidateAdvHes();
 
@@ -561,7 +560,7 @@
 
         if (!string.IsNullOrWhiteSpace(value) && value.Length != 11)
         {
-            _fieldErrors[nameof(CurrentWorkshop.NATIONAL_ID)] = "شناسه ملی باید دقیقاً ۱۱ رقم باشد.";
+            //_fieldErrors[nameof(CurrentWorkshop.NATIONAL_ID)] = "شناسه ملی باید دقیقاً ۱۱ رقم باشد.";
         }
         else
         {
