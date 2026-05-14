@@ -243,7 +243,7 @@
                                 Items="InitialAdvHesList"
                                 Value="CurrentWorkshopAcc.ADV_HES"
                                 ValueChanged="OnAdvHesChanged"
-                                TextSelector="@(x => $"{x.Name}  |  {x.Id}")"
+                                TextSelector="@(x => $"{x.Name}\u200F  |  \u200E{x.Id}\u200E")"
                                 ValueSelector="@(x => x.Id)"
                                 Placeholder="جستجوی حساب (مثال: 213-1-16 یا نام حساب)"
                                 CssClass="@(HasError(nameof(CurrentWorkshopAcc.ADV_HES)) ? "error" : "")"
@@ -353,7 +353,6 @@
 
     private bool IsLoadingWorkshops;
     private bool IsSavingWorkshop;
-    private bool IsInsModeDropdownOpen;
 
     private readonly Dictionary<string, string> _fieldErrors = new();
 
@@ -380,6 +379,7 @@
             IsLoadingWorkshops = false;
         }
     }
+
     private static readonly List<Pay2InsModeOption> InsModeOptions = new()
     {
         new Pay2InsModeOption
@@ -395,6 +395,7 @@
             Description = "تبصره ماده ۷ / SANAD10"
         }
     };
+
     private sealed class Pay2InsModeOption
     {
         public int Id { get; set; }
@@ -419,7 +420,6 @@
         };
 
         _fieldErrors.Clear();
-        IsInsModeDropdownOpen = false;
 
         try
         {
@@ -462,12 +462,10 @@
         InitialAdvHesList.Clear();
 
         _fieldErrors.Clear();
-        IsInsModeDropdownOpen = false;
     }
+
     private async Task SaveWorkshopAsync()
     {
-        IsInsModeDropdownOpen = false;
-
         NormalizeWorkshop();
         NormalizeAccounts();
 
@@ -477,16 +475,21 @@
         {
             _fieldErrors[nameof(CurrentWorkshop.WS_CODE)] = "کد کارگاه نمی‌تواند خالی باشد.";
         }
+        // بررسی تکراری نبودن کد کارگاه قبل از ارسال به دیتابیس (بر اساس محدودیت UNIQUE در SQL)
+        else if (Workshops.Any(w => w.WS_CODE == CurrentWorkshop.WS_CODE && w.WS_ID != CurrentWorkshop.WS_ID))
+        {
+            _fieldErrors[nameof(CurrentWorkshop.WS_CODE)] = "این کد کارگاه قبلاً ثبت شده است.";
+        }
 
         if (string.IsNullOrWhiteSpace(CurrentWorkshop.WS_NAME))
         {
             _fieldErrors[nameof(CurrentWorkshop.WS_NAME)] = "نام کارگاه نمی‌تواند خالی باشد.";
         }
 
-        // if (!string.IsNullOrWhiteSpace(CurrentWorkshop.NATIONAL_ID) &&CurrentWorkshop.NATIONAL_ID.Length != 11)
-        // {
-        //     _fieldErrors[nameof(CurrentWorkshop.NATIONAL_ID)] = "شناسه ملی باید دقیقاً ۱۱ رقم باشد.";
-        // }
+        if (!string.IsNullOrWhiteSpace(CurrentWorkshop.NATIONAL_ID) && CurrentWorkshop.NATIONAL_ID.Length != 11)
+        {
+            ////_fieldErrors[nameof(CurrentWorkshop.NATIONAL_ID)] = "شناسه ملی باید دقیقاً ۱۱ رقم باشد.";
+        }
 
         ValidateAdvHes();
 
@@ -560,7 +563,7 @@
 
         if (!string.IsNullOrWhiteSpace(value) && value.Length != 11)
         {
-            //_fieldErrors[nameof(CurrentWorkshop.NATIONAL_ID)] = "شناسه ملی باید دقیقاً ۱۱ رقم باشد.";
+            ////_fieldErrors[nameof(CurrentWorkshop.NATIONAL_ID)] = "شناسه ملی باید دقیقاً ۱۱ رقم باشد.";
         }
         else
         {
@@ -597,22 +600,6 @@
         {
             _fieldErrors.Remove(nameof(CurrentWorkshopAcc.ADV_HES));
         }
-    }
-
-    private void ToggleInsModeDropdown()
-    {
-        IsInsModeDropdownOpen = !IsInsModeDropdownOpen;
-    }
-
-    private void CloseInsModeDropdown()
-    {
-        IsInsModeDropdownOpen = false;
-    }
-
-    private void SelectInsMode(int value)
-    {
-        CurrentWorkshop.INS_MODE = NormalizeInsMode(value);
-        IsInsModeDropdownOpen = false;
     }
 
     private static int NormalizeInsMode(int value)
