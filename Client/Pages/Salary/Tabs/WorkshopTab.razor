@@ -243,7 +243,7 @@
                                 Items="InitialAdvHesList"
                                 Value="CurrentWorkshopAcc.ADV_HES"
                                 ValueChanged="OnAdvHesChanged"
-                                TextSelector="@(x => $"{x.Name}\u200F  |  \u200E{x.Id}\u200E")"
+                                TextSelector="@(x => $"\u200E{x.Id}\u200E\u200F  -  {x.Name}")"
                                 ValueSelector="@(x => x.Id)"
                                 Placeholder="جستجوی حساب (مثال: 213-1-16 یا نام حساب)"
                                 CssClass="@(HasError(nameof(CurrentWorkshopAcc.ADV_HES)) ? "error" : "")"
