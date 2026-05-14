@@ -292,10 +292,33 @@
 
             var list = source.Take(MaxVisibleItems + 1).ToList();
             _hasMore = list.Count > MaxVisibleItems;
-            _visibleItems = list.Take(MaxVisibleItems).ToList();
 
-            if (_highlightedIndex >= _visibleItems.Count)
-                _highlightedIndex = Math.Max(0, _visibleItems.Count - 1);
+            var selectedValue = Value;
+
+            if (!EqualityComparer<TValue?>.Default.Equals(selectedValue, default))
+            {
+                var selectedInList = list.FirstOrDefault(item =>
+                    EqualityComparer<TValue?>.Default.Equals(ValueSelector(item), selectedValue));
+
+                if (selectedInList is not null)
+                {
+                    list.Remove(selectedInList);
+                    list.Insert(0, selectedInList);
+                }
+                else if (_selectedItem is not null &&
+                         EqualityComparer<TValue?>.Default.Equals(ValueSelector(_selectedItem), selectedValue))
+                {
+                    list.Insert(0, _selectedItem);
+                }
+            }
+
+            _visibleItems = list
+                .GroupBy(item => ValueSelector(item))
+                .Select(g => g.First())
+                .Take(MaxVisibleItems)
+                .ToList();
+
+            _highlightedIndex = _visibleItems.Any() ? 0 : -1;
         }
         finally { IsSearching = false; }
     }

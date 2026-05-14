@@ -404,74 +404,46 @@ namespace Safir.Server.Controllers
             string sql;
             object? parameters = null;
 
-            if (!string.IsNullOrWhiteSpace(searchTerm))
+            if (string.IsNullOrWhiteSpace(searchTerm))
             {
-                string rawTerm = searchTerm.Trim();
-
-                // برای نام حساب: اصلاح حروف فارسی/عربی
-                string nameTerm = CL_METHODS.FixPersianChars(rawTerm);
-
-                // برای کد حساب: تبدیل اعداد فارسی/عربی به انگلیسی و یکسان‌سازی خط تیره
-                string codeTerm = NormalizeAccountingCodeSearch(rawTerm);
-
-                bool isCodeSearch = codeTerm.Any(ch => char.IsDigit(ch) || ch == '-');
-
-                sql = @"
-;WITH Matches AS
-(
-    SELECT
-        LTRIM(RTRIM(CH.HES)) AS Id,
-        CH.NAME AS Name,
-        CASE
-            WHEN LTRIM(RTRIM(CH.HES)) = @CodeExact THEN 0
-            WHEN @IsCodeSearch = 1 AND LTRIM(RTRIM(CH.HES)) LIKE @CodeStarts THEN 1
-            WHEN @IsCodeSearch = 1 AND LTRIM(RTRIM(CH.HES)) LIKE @CodePattern THEN 2
-            WHEN CH.NAME LIKE @NamePattern THEN 3
-            ELSE 4
-        END AS SortNo
-    FROM dbo.CUST_HESAB CH
-    WHERE
-        LTRIM(RTRIM(CH.HES)) = @CodeExact
-        OR (@IsCodeSearch = 1 AND LTRIM(RTRIM(CH.HES)) LIKE @CodeStarts)
-        OR (@IsCodeSearch = 1 AND LTRIM(RTRIM(CH.HES)) LIKE @CodePattern)
-        OR CH.NAME LIKE @NamePattern
-)
-SELECT TOP 50
-    Id,
-    Name
-FROM Matches
-ORDER BY
-    SortNo,
-    CASE WHEN Id = @CodeExact THEN 0 ELSE 1 END,
-    Name,
-    Id;";
-
+                sql = BuildAccountNameLookupSql();
                 parameters = new
                 {
-                    NamePattern = $"%{nameTerm}%",
-                    CodePattern = $"%{codeTerm}%",
-                    CodeExact = codeTerm,
-                    CodeStarts = $"{codeTerm}%",
-                    IsCodeSearch = isCodeSearch ? 1 : 0
+                    NamePattern = "%",
+                    RawNamePattern = "%"
                 };
 
-                _logger.LogInformation(
-                    "API: Fetching customer lookup. RawTerm: {RawTerm}, NameTerm: {NameTerm}, CodeTerm: {CodeTerm}, IsCodeSearch: {IsCodeSearch}",
-                    rawTerm,
-                    nameTerm,
-                    codeTerm,
-                    isCodeSearch);
+                _logger.LogInformation("API: Fetching initial customer lookup from all account levels.");
             }
             else
             {
-                sql = @"
-SELECT TOP 50
-    LTRIM(RTRIM(CH.HES)) AS Id,
-    CH.NAME AS Name
-FROM dbo.CUST_HESAB CH
-ORDER BY CH.NAME;";
+                string rawTerm = searchTerm.Trim();
+                string normalizedCode = NormalizeAccountingCodeSearch(rawTerm);
+                string normalizedName = NormalizePersianSearchText(rawTerm);
 
-                _logger.LogInformation("API: Fetching initial customer lookup TOP 50.");
+                int[] codeParts = TryParseAccountCodeParts(normalizedCode);
+
+                parameters = new
+                {
+                    K = codeParts.Length > 0 ? codeParts[0] : (int?)null,
+                    M = codeParts.Length > 1 ? codeParts[1] : (int?)null,
+                    T1 = codeParts.Length > 2 ? codeParts[2] : (int?)null,
+                    T2 = codeParts.Length > 3 ? codeParts[3] : (int?)null,
+                    T3 = codeParts.Length > 4 ? codeParts[4] : (int?)null,
+                    T4 = codeParts.Length > 5 ? codeParts[5] : (int?)null,
+                    NamePattern = $"%{normalizedName}%",
+                    RawNamePattern = $"%{rawTerm}%"
+                };
+
+                sql = codeParts.Length > 0
+                    ? BuildFastAccountCodeLookupSql(codeParts.Length)
+                    : BuildAccountNameLookupSql();
+
+                _logger.LogInformation(
+                    "API: Customer lookup. RawTerm={RawTerm}, NormalizedCode={NormalizedCode}, PartCount={PartCount}",
+                    rawTerm,
+                    normalizedCode,
+                    codeParts.Length);
             }
 
             try
@@ -481,11 +453,160 @@ ORDER BY CH.NAME;";
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "API: Error fetching customer lookup. SearchTerm: {SearchTerm}", searchTerm);
+                _logger.LogError(ex, "API: Error fetching customer lookup. SearchTerm={SearchTerm}", searchTerm);
                 return StatusCode(500, "Internal server error while fetching customer lookup.");
             }
         }
+        private static string BuildFastAccountCodeLookupSql(int partCount)
+        {
+            string where3 = BuildWhereClause(partCount, 3);
+            string where4 = BuildWhereClause(partCount, 4);
+            string where5 = BuildWhereClause(partCount, 5);
+            string where6 = BuildWhereClause(partCount, 6);
 
+            int sort3 = partCount == 3 ? 0 : 30;
+            int sort4 = partCount == 4 ? 0 : 40;
+            int sort5 = partCount == 5 ? 0 : 50;
+            int sort6 = partCount == 6 ? 0 : 60;
+
+            return $@"
+SELECT TOP 50
+    X.Id,
+    X.Name
+FROM
+(
+    SELECT
+        CONCAT(N_KOL, N'-', NUMBER, N'-', TNUMBER) AS Id,
+        NAME AS Name,
+        {sort3} AS SortNo,
+        3 AS LevelNo
+    FROM dbo.TDETA_HES
+    WHERE {where3}
+
+    UNION ALL
+
+    SELECT
+        CONCAT(N_KOL, N'-', NUMBER, N'-', TNUMBER, N'-', TNUMBER2) AS Id,
+        NAME AS Name,
+        {sort4} AS SortNo,
+        4 AS LevelNo
+    FROM dbo.TDETA_HES2
+    WHERE {where4}
+
+    UNION ALL
+
+    SELECT
+        CONCAT(N_KOL, N'-', NUMBER, N'-', TNUMBER, N'-', TNUMBER2, N'-', TNUMBER3) AS Id,
+        NAME AS Name,
+        {sort5} AS SortNo,
+        5 AS LevelNo
+    FROM dbo.TDETA_HES3
+    WHERE {where5}
+
+    UNION ALL
+
+    SELECT
+        CONCAT(N_KOL, N'-', NUMBER, N'-', TNUMBER, N'-', TNUMBER2, N'-', TNUMBER3, N'-', TNUMBER4) AS Id,
+        NAME AS Name,
+        {sort6} AS SortNo,
+        6 AS LevelNo
+    FROM dbo.TDETA_HES4
+    WHERE {where6}
+) X
+WHERE X.Name IS NOT NULL
+ORDER BY
+    X.SortNo,
+    X.LevelNo,
+    X.Id;";
+        }
+        private static string BuildAccountNameLookupSql()
+        {
+            return @"
+SELECT TOP 50
+    X.Id,
+    X.Name
+FROM
+(
+    SELECT
+        CONCAT(N_KOL, N'-', NUMBER, N'-', TNUMBER) AS Id,
+        NAME AS Name,
+        3 AS LevelNo
+    FROM dbo.TDETA_HES
+    WHERE NAME LIKE @NamePattern OR NAME LIKE @RawNamePattern
+
+    UNION ALL
+
+    SELECT
+        CONCAT(N_KOL, N'-', NUMBER, N'-', TNUMBER, N'-', TNUMBER2) AS Id,
+        NAME AS Name,
+        4 AS LevelNo
+    FROM dbo.TDETA_HES2
+    WHERE NAME LIKE @NamePattern OR NAME LIKE @RawNamePattern
+
+    UNION ALL
+
+    SELECT
+        CONCAT(N_KOL, N'-', NUMBER, N'-', TNUMBER, N'-', TNUMBER2, N'-', TNUMBER3) AS Id,
+        NAME AS Name,
+        5 AS LevelNo
+    FROM dbo.TDETA_HES3
+    WHERE NAME LIKE @NamePattern OR NAME LIKE @RawNamePattern
+
+    UNION ALL
+
+    SELECT
+        CONCAT(N_KOL, N'-', NUMBER, N'-', TNUMBER, N'-', TNUMBER2, N'-', TNUMBER3, N'-', TNUMBER4) AS Id,
+        NAME AS Name,
+        6 AS LevelNo
+    FROM dbo.TDETA_HES4
+    WHERE NAME LIKE @NamePattern OR NAME LIKE @RawNamePattern
+) X
+WHERE X.Name IS NOT NULL
+ORDER BY
+    X.Name,
+    X.LevelNo,
+    X.Id;";
+        }
+        private static string BuildWhereClause(int partCount, int maxLevel)
+        {
+            if (partCount > maxLevel)
+                return "1 = 0";
+
+            var conditions = new List<string>();
+
+            if (partCount >= 1) conditions.Add("N_KOL = @K");
+            if (partCount >= 2) conditions.Add("NUMBER = @M");
+            if (partCount >= 3) conditions.Add("TNUMBER = @T1");
+            if (partCount >= 4) conditions.Add("TNUMBER2 = @T2");
+            if (partCount >= 5) conditions.Add("TNUMBER3 = @T3");
+            if (partCount >= 6) conditions.Add("TNUMBER4 = @T4");
+
+            return conditions.Count == 0 ? "1 = 0" : string.Join(" AND ", conditions);
+        }
+        private static int[] TryParseAccountCodeParts(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+                return Array.Empty<int>();
+
+            string[] rawParts = value.Split(
+                '-',
+                StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+            if (rawParts.Length == 0 || rawParts.Length > 6)
+                return Array.Empty<int>();
+
+            var result = new List<int>();
+
+            foreach (string part in rawParts)
+            {
+                if (!int.TryParse(part, out int number))
+                    return Array.Empty<int>();
+
+                result.Add(number);
+            }
+
+            return result.ToArray();
+        }
         private static string NormalizeAccountingCodeSearch(string value)
         {
             if (string.IsNullOrWhiteSpace(value))
@@ -496,28 +617,34 @@ ORDER BY CH.NAME;";
             foreach (char ch in value.Trim())
             {
                 if (ch >= '0' && ch <= '9')
-                {
                     chars.Add(ch);
-                }
                 else if (ch >= '۰' && ch <= '۹')
-                {
                     chars.Add((char)('0' + (ch - '۰')));
-                }
                 else if (ch >= '٠' && ch <= '٩')
-                {
                     chars.Add((char)('0' + (ch - '٠')));
-                }
-                else if (ch == '-' || ch == '‐' || ch == '-' || ch == '–' || ch == '—' || ch == '−')
-                {
+                else if (ch == '-' || ch == '‐' || ch == '–' || ch == '—' || ch == '−')
                     chars.Add('-');
-                }
                 else if (!char.IsWhiteSpace(ch))
-                {
                     chars.Add(ch);
-                }
             }
 
             return new string(chars.ToArray());
+        }
+        private static string NormalizePersianSearchText(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+                return string.Empty;
+
+            return value
+                .Trim()
+                .Replace('ي', 'ی')
+                .Replace('ك', 'ک')
+                .Replace('ۀ', 'ه')
+                .Replace('ة', 'ه')
+                .Replace('ؤ', 'و')
+                .Replace('إ', 'ا')
+                .Replace('أ', 'ا')
+                .Replace('آ', 'ا');
         }
         #endregion
     }
