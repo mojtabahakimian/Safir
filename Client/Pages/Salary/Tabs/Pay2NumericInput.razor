@@ -1,118 +1,267 @@
-﻿@inject IJSRuntime JS
+﻿@implements IAsyncDisposable
+@inject IJSRuntime JS
+
+@using System.Globalization
+@using System.Linq
+@using System.Text
 
 <input @ref="_inputRef"
        class="@InputClass"
        type="text"
-       value="@_text"
-       maxlength="@MaxLength"
-       inputmode="numeric"
-       pattern="@Pattern"
+       value="@_displayText"
+       maxlength="@EffectiveMaxLength"
+       inputmode="@InputModeValue"
        autocomplete="off"
        placeholder="@Placeholder"
        disabled="@Disabled"
        readonly="@ReadOnly"
+       dir="@Direction"
        @oninput="HandleInputAsync"
        @onblur="HandleBlurAsync"
        @onfocus="HandleFocusAsync" />
 
 @code {
+    public enum NumericInputMode { None, Amount, PersianDate, Percentage }
+
     private ElementReference _inputRef;
     private IJSObjectReference? _module;
-    private string? _text;
-    private string? _lastValueFromParameter;
+
+    private string? _displayText;
+    private string? _lastParameterValue;
+    private string? _lastValidValue;
+
     private bool _focused;
+    private bool _disposed;
+    private bool _jsGuardLoaded;
+
+    private int _lastEffectiveMaxLength = -1;
+    private int _lastMaxDecimalPlaces = -1;
+    private NumericInputMode _lastInputMode = (NumericInputMode)(-1);
+    private bool _lastThreeTwoZero;
 
     [Parameter] public string? Value { get; set; }
     [Parameter] public EventCallback<string?> ValueChanged { get; set; }
 
+    [Parameter] public NumericInputMode InputMode { get; set; } = NumericInputMode.None;
     [Parameter] public int MaxLength { get; set; } = 20;
-    [Parameter] public bool AllowDash { get; set; } = false;
-
+    [Parameter] public bool ThreeTwoZero { get; set; }
+    [Parameter] public int MaxDecimalPlaces { get; set; } = 2;
     [Parameter] public string? Placeholder { get; set; }
     [Parameter] public string? CssClass { get; set; }
-
     [Parameter] public bool Disabled { get; set; }
     [Parameter] public bool ReadOnly { get; set; }
-
+    [Parameter] public string Direction { get; set; } = "ltr";
     [Parameter] public EventCallback<FocusEventArgs> OnBlur { get; set; }
     [Parameter] public EventCallback<FocusEventArgs> OnFocus { get; set; }
 
-    private string InputClass
-        => string.IsNullOrWhiteSpace(CssClass)
-            ? "pay2-input"
-            : $"pay2-input {CssClass}";
+    private int SafeMaxLength => Math.Max(0, MaxLength);
+    private int SafeMaxDecimalPlaces => Math.Max(0, MaxDecimalPlaces);
 
-    private string Pattern
-        => AllowDash ? "[0-9\\-]*" : "[0-9]*";
+    private string InputClass => string.IsNullOrWhiteSpace(CssClass)
+        ? "pay2-input"
+        : $"pay2-input {CssClass}";
+
+    private string InputModeValue => InputMode == NumericInputMode.Percentage ? "decimal" : "numeric";
+
+    private int? EffectiveMaxLength => InputMode switch
+    {
+        NumericInputMode.PersianDate => 8,
+        NumericInputMode.Percentage => SafeMaxLength > 0
+            ? SafeMaxLength + (SafeMaxDecimalPlaces > 0 ? SafeMaxDecimalPlaces + 1 : 0)
+            : null,
+        _ => SafeMaxLength > 0 ? SafeMaxLength : null
+    };
 
     protected override void OnParametersSet()
     {
-        var normalized = Normalize(Value);
+        var normalizedParameter = Normalize(Value);
 
-        if (!_focused || _lastValueFromParameter != Value)
+        if (!_focused && _lastParameterValue != normalizedParameter)
         {
-            _text = normalized;
-            _lastValueFromParameter = Value;
+            _lastParameterValue = normalizedParameter;
+
+            if (IsValidFinalValue(normalizedParameter))
+                _lastValidValue = normalizedParameter;
+
+            _displayText = FormatForDisplay(normalizedParameter);
         }
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
+        if (_disposed)
+            return;
+
         if (firstRender)
         {
-            _module = await JS.InvokeAsync<IJSObjectReference>(
-                "import",
-                "./js/pay2-input-guards.js");
+            try
+            {
+                _module = await JS.InvokeAsync<IJSObjectReference>("import", "./js/pay2-input-guards.js");
+                _jsGuardLoaded = true;
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine($"[Pay2NumericInput] JS Load Error: {ex.Message}");
+                return;
+            }
+        }
 
-            await AttachGuardAsync();
+        var effectiveLen = EffectiveMaxLength ?? 0;
+
+        if (_jsGuardLoaded &&
+            (_lastEffectiveMaxLength != effectiveLen ||
+             _lastInputMode != InputMode ||
+             _lastMaxDecimalPlaces != SafeMaxDecimalPlaces ||
+             _lastThreeTwoZero != ThreeTwoZero))
+        {
+            _lastEffectiveMaxLength = effectiveLen;
+            _lastInputMode = InputMode;
+            _lastMaxDecimalPlaces = SafeMaxDecimalPlaces;
+            _lastThreeTwoZero = ThreeTwoZero;
+
+            await ReAttachGuardAsync();
         }
     }
 
-    private async Task AttachGuardAsync()
+    private async Task ReAttachGuardAsync()
     {
-        if (_module is null) return;
+        if (_disposed || _module is null)
+            return;
 
-        await _module.InvokeVoidAsync(
-            "attachInputGuard",
-            _inputRef,
-            new
+        try
+        {
+            await _module.InvokeVoidAsync("attachInputGuard", _inputRef, new
             {
-                maxLength = MaxLength,
-                allowDash = AllowDash
+                maxLength = EffectiveMaxLength ?? 0,
+                allowDecimal = InputMode == NumericInputMode.Percentage,
+                maxDecimalPlaces = SafeMaxDecimalPlaces,
+                threeTwoZero = ThreeTwoZero && InputMode != NumericInputMode.PersianDate,
+                persianDate = InputMode == NumericInputMode.PersianDate
             });
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"[Pay2NumericInput] ReAttachGuard Error: {ex.Message}");
+        }
     }
 
     private async Task HandleInputAsync(ChangeEventArgs e)
     {
-        var raw = e.Value?.ToString();
-        var normalized = Normalize(raw);
+        var normalized = Normalize(e.Value?.ToString());
 
-        _text = normalized;
-        _lastValueFromParameter = normalized;
+        if (InputMode == NumericInputMode.PersianDate && normalized?.Length > 8)
+            normalized = normalized[..8];
 
-        await ValueChanged.InvokeAsync(string.IsNullOrWhiteSpace(normalized) ? null : normalized);
+        if (InputMode == NumericInputMode.Percentage)
+            normalized = LimitDecimalPlaces(normalized, SafeMaxDecimalPlaces);
+
+        _displayText = normalized;
+
+        if (_lastParameterValue != normalized)
+        {
+            _lastParameterValue = normalized;
+            await ValueChanged.InvokeAsync(normalized);
+        }
+    }
+
+    private async Task HandleFocusAsync(FocusEventArgs e)
+    {
+        _focused = true;
+        _displayText = Normalize(_lastParameterValue);
+
+        if (OnFocus.HasDelegate)
+            await OnFocus.InvokeAsync(e);
     }
 
     private async Task HandleBlurAsync(FocusEventArgs e)
     {
         _focused = false;
 
-        var normalized = Normalize(_text);
-        _text = normalized;
-        _lastValueFromParameter = normalized;
+        var normalized = Normalize(_displayText);
+        var finalValue = FinalizeValue(normalized);
 
-        await ValueChanged.InvokeAsync(string.IsNullOrWhiteSpace(normalized) ? null : normalized);
+        if (finalValue is null && !string.IsNullOrWhiteSpace(normalized))
+            finalValue = _lastValidValue;
+
+        _displayText = FormatForDisplay(finalValue);
+
+        if (_lastParameterValue != finalValue)
+        {
+            _lastParameterValue = finalValue;
+            await ValueChanged.InvokeAsync(finalValue);
+        }
+
+        if (IsValidFinalValue(finalValue))
+            _lastValidValue = finalValue;
 
         if (OnBlur.HasDelegate)
             await OnBlur.InvokeAsync(e);
     }
 
-    private async Task HandleFocusAsync(FocusEventArgs e)
-    {
-        _focused = true;
 
-        if (OnFocus.HasDelegate)
-            await OnFocus.InvokeAsync(e);
+    private string? FinalizeValue(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return null;
+
+        var inv = CultureInfo.InvariantCulture;
+
+        return InputMode switch
+        {
+            NumericInputMode.PersianDate => NormalizePersianDate(value),
+
+            NumericInputMode.Amount when decimal.TryParse(value, NumberStyles.Number, inv, out var amt)
+                => decimal.Truncate(amt).ToString(inv),
+
+            NumericInputMode.Percentage when decimal.TryParse(value, NumberStyles.Number, inv, out var pct)
+                => TruncateDecimal(pct, SafeMaxDecimalPlaces).ToString(inv),
+
+            NumericInputMode.None => value,
+
+            _ => null
+        };
+    }
+
+    private bool IsValidFinalValue(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return true;
+
+        return FinalizeValue(value) is not null;
+    }
+
+    private string? FormatForDisplay(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return null;
+
+        var inv = CultureInfo.InvariantCulture;
+
+        try
+        {
+            if (InputMode == NumericInputMode.Amount &&
+                decimal.TryParse(value, NumberStyles.Number, inv, out var amt))
+                return decimal.Truncate(amt).ToString("N0", inv);
+
+            if (InputMode == NumericInputMode.PersianDate)
+                return FormatPersianDate(value);
+
+            if (InputMode == NumericInputMode.Percentage &&
+                decimal.TryParse(value, NumberStyles.Number, inv, out var pct))
+            {
+                var format = SafeMaxDecimalPlaces > 0
+                    ? "0." + new string('#', SafeMaxDecimalPlaces)
+                    : "0";
+
+                return pct.ToString(format, inv);
+            }
+        }
+        catch
+        {
+            return value;
+        }
+
+        return value;
     }
 
     private string? Normalize(string? value)
@@ -120,48 +269,152 @@
         if (string.IsNullOrWhiteSpace(value))
             return null;
 
-        var result = new List<char>();
+        var sb = new StringBuilder(value.Length);
+        var hasDot = false;
 
         foreach (var ch in value)
         {
-            if (ch >= '0' && ch <= '9')
+            var digit = ToEnglishDigit(ch);
+
+            if (digit is not null)
             {
-                result.Add(ch);
-            }
-            else if (ch >= '۰' && ch <= '۹')
-            {
-                result.Add((char)('0' + (ch - '۰')));
-            }
-            else if (ch >= '٠' && ch <= '٩')
-            {
-                result.Add((char)('0' + (ch - '٠')));
-            }
-            else if (AllowDash && ch == '-')
-            {
-                result.Add('-');
+                sb.Append(digit.Value);
+                continue;
             }
 
-            if (MaxLength > 0 && result.Count >= MaxLength)
-                break;
+            if (InputMode == NumericInputMode.Percentage &&
+                (ch == '.' || ch == '/' || ch == '٫' || ch == ',') &&
+                !hasDot)
+            {
+                sb.Append('.');
+                hasDot = true;
+            }
         }
 
-        var text = new string(result.ToArray());
-        return string.IsNullOrWhiteSpace(text) ? null : text;
+        var result = sb.ToString();
+
+        if (InputMode == NumericInputMode.Percentage)
+            result = LimitDecimalPlaces(result, SafeMaxDecimalPlaces);
+
+        if (InputMode == NumericInputMode.PersianDate && result.Length > 8)
+            result = result[..8];
+
+        return result;
+    }
+
+    private static char? ToEnglishDigit(char ch)
+    {
+        if (ch >= '0' && ch <= '9')
+            return ch;
+
+        const string fa = "۰۱۲۳۴۵۶۷۸۹";
+        const string ar = "٠١٢٣٤٥٦٧٨٩";
+
+        var faIndex = fa.IndexOf(ch);
+        if (faIndex >= 0)
+            return (char)('0' + faIndex);
+
+        var arIndex = ar.IndexOf(ch);
+        if (arIndex >= 0)
+            return (char)('0' + arIndex);
+
+        return null;
+    }
+
+    private static string? LimitDecimalPlaces(string? value, int precision)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return value;
+
+        var dotIndex = value.IndexOf('.');
+        if (dotIndex < 0)
+            return value;
+
+        if (precision <= 0)
+            return value[..dotIndex];
+
+        var allowedLength = dotIndex + 1 + precision;
+        return value.Length > allowedLength ? value[..allowedLength] : value;
+    }
+
+    private static string FormatPersianDate(string value)
+    {
+        var digits = new string(value.Select(ToEnglishDigit).Where(x => x is not null).Select(x => x!.Value).ToArray());
+
+        if (digits.Length <= 4)
+            return digits;
+
+        if (digits.Length <= 6)
+            return $"{digits[..4]}/{digits[4..]}";
+
+        return $"{digits[..4]}/{digits[4..6]}/{digits[6..Math.Min(8, digits.Length)]}";
+    }
+
+    private static string? NormalizePersianDate(string value)
+    {
+        var digits = new string(value.Select(ToEnglishDigit).Where(x => x is not null).Select(x => x!.Value).ToArray());
+
+        if (digits.Length != 8)
+            return null;
+
+        try
+        {
+            var pc = new PersianCalendar();
+
+            var year = int.Parse(digits[..4], CultureInfo.InvariantCulture);
+            var month = int.Parse(digits[4..6], CultureInfo.InvariantCulture);
+            var day = int.Parse(digits[6..8], CultureInfo.InvariantCulture);
+
+            if (year < 1200 || year > 1600)
+                return null;
+
+            if (month < 1 || month > 12)
+                return null;
+
+            if (day < 1 || day > pc.GetDaysInMonth(year, month))
+                return null;
+
+            _ = pc.ToDateTime(year, month, day, 0, 0, 0, 0);
+
+            return digits;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static decimal TruncateDecimal(decimal value, int precision)
+    {
+        if (precision <= 0)
+            return Math.Truncate(value);
+
+        decimal step = 1m;
+
+        for (var i = 0; i < precision; i++)
+            step *= 10m;
+
+        return Math.Truncate(value * step) / step;
     }
 
     public async ValueTask DisposeAsync()
     {
-        try
+        if (_disposed)
+            return;
+
+        _disposed = true;
+
+        if (_module is not null)
         {
-            if (_module is not null)
+            try
             {
                 await _module.InvokeVoidAsync("detachInputGuard", _inputRef);
                 await _module.DisposeAsync();
             }
-        }
-        catch
-        {
-            // هنگام refresh یا خروج از صفحه ممکن است JS runtime قطع شده باشد
+            catch
+            {
+                // ignored
+            }
         }
     }
 }

@@ -261,7 +261,9 @@
                 <div class="form-field">
                     <label>هزینه حقوق</label>
                     <Pay2NumericInput @bind-Value="CurrentWorkshopAcc.SALARY_EXP"
+                                      InputMode="Pay2NumericInput.NumericInputMode.Amount"
                                       MaxLength="20"
+                                      ThreeTwoZero="true"
                                       Placeholder="0"
                                       CssClass="@(HasError(nameof(CurrentWorkshopAcc.SALARY_EXP)) ? "error" : "")"
                                       OnFocus="@(_ => ClearError(nameof(CurrentWorkshopAcc.SALARY_EXP)))" />
