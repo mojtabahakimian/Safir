@@ -201,9 +201,23 @@
     private async Task OpenAllAsync()
     {
         if (Disabled || ReadOnly) return;
+
+        if (IsOpen && !IsSearching && _visibleItems.Any())
+            return;
+
+        _searchCts?.Cancel();
+        _searchCts?.Dispose();
+
+        var cts = new CancellationTokenSource();
+        _searchCts = cts;
+
         IsOpen = true;
         _highlightedIndex = 0;
-        await RefreshItemsAsync(useCurrentTextAsFilter: false);
+
+        await RefreshItemsAsync(useCurrentTextAsFilter: false, cts.Token);
+
+        if (!cts.IsCancellationRequested)
+            await InvokeAsync(StateHasChanged);
     }
 
     private async Task ToggleAsync()
@@ -247,22 +261,35 @@
     {
         _searchCts?.Cancel();
         _searchCts?.Dispose();
+
         var cts = new CancellationTokenSource();
         _searchCts = cts;
 
         try
         {
-            if (DebounceMilliseconds > 0) await Task.Delay(DebounceMilliseconds, cts.Token);
-            if (cts.IsCancellationRequested) return;
-            await RefreshItemsAsync(useCurrentTextAsFilter: true);
-            await InvokeAsync(StateHasChanged);
+            if (DebounceMilliseconds > 0)
+                await Task.Delay(DebounceMilliseconds, cts.Token);
+
+            if (cts.IsCancellationRequested)
+                return;
+
+            await RefreshItemsAsync(useCurrentTextAsFilter: true, cts.Token);
+
+            if (!cts.IsCancellationRequested)
+                await InvokeAsync(StateHasChanged);
         }
-        catch (TaskCanceledException) { }
+        catch (TaskCanceledException)
+        {
+        }
+        catch (ObjectDisposedException)
+        {
+        }
     }
 
-    private async Task RefreshItemsAsync(bool useCurrentTextAsFilter)
+    private async Task RefreshItemsAsync(bool useCurrentTextAsFilter, CancellationToken cancellationToken)
     {
         IsSearching = true;
+
         try
         {
             var query = useCurrentTextAsFilter ? _text?.Trim() : null;
@@ -272,10 +299,7 @@
             {
                 var searchResult = await SearchItems(query);
 
-                // >>> رفع باگ مهم تداخل شبکه (Race Condition) <<<
-                // اگر در حین اینکه منتظر جواب سرور بودیم، کاربر حرف جدیدی تایپ کرد (توکن کنسل شد)،
-                // این جواب قدیمی را دور می‌ریزیم و آپدیت نمی‌کنیم!
-                if (_searchCts != null && _searchCts.IsCancellationRequested)
+                if (cancellationToken.IsCancellationRequested)
                     return;
 
                 source = searchResult ?? Enumerable.Empty<TItem>();
@@ -283,12 +307,17 @@
             else
             {
                 source = Items ?? Enumerable.Empty<TItem>();
+
                 if (!string.IsNullOrWhiteSpace(query))
                 {
-                    source = source.Where(item => SearchPredicate?.Invoke(item, query) ??
-                                          TextSelector(item)?.Contains(query, StringComparison.OrdinalIgnoreCase) == true);
+                    source = source.Where(item =>
+                        SearchPredicate?.Invoke(item, query) ??
+                        TextSelector(item)?.Contains(query, StringComparison.OrdinalIgnoreCase) == true);
                 }
             }
+
+            if (cancellationToken.IsCancellationRequested)
+                return;
 
             var list = source.Take(MaxVisibleItems + 1).ToList();
             _hasMore = list.Count > MaxVisibleItems;
@@ -320,7 +349,11 @@
 
             _highlightedIndex = _visibleItems.Any() ? 0 : -1;
         }
-        finally { IsSearching = false; }
+        finally
+        {
+            if (!cancellationToken.IsCancellationRequested)
+                IsSearching = false;
+        }
     }
 
     private async Task SelectItemAsync(TItem item)
@@ -339,13 +372,19 @@
 
     private async Task ClearAsync()
     {
+        _searchCts?.Cancel();
+        _searchCts?.Dispose();
+        _searchCts = null;
+
         _selectedItem = default;
         _text = null;
         Value = default;
         _lastValue = default;
+
         if (ValueChanged.HasDelegate) await ValueChanged.InvokeAsync(default);
         if (SelectedItemChanged.HasDelegate) await SelectedItemChanged.InvokeAsync(default);
         if (TextChanged.HasDelegate) await TextChanged.InvokeAsync(null);
+
         Close();
         _visibleItems.Clear();
     }
