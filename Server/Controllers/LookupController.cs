@@ -2,17 +2,11 @@
 using Microsoft.AspNetCore.Mvc;
 using Safir.Shared.Interfaces;
 using Safir.Shared.Models; // برای DTO ها
-using System.Collections.Generic;
-using System.Threading.Tasks;
-using System; // برای Exception
-using Microsoft.Extensions.Logging; // برای ILogger
 using Safir.Shared.Models.Automation;
 using Safir.Shared.Utility;
 using Safir.Shared.Models.Kala;
-using Microsoft.AspNetCore.Http; // اضافه کردن این using
 using System.Security.Claims;
 using Safir.Shared.Models.Kharid;
-using Safir.Shared.Models;
 
 namespace Safir.Server.Controllers
 {
@@ -412,27 +406,72 @@ namespace Safir.Server.Controllers
 
             if (!string.IsNullOrWhiteSpace(searchTerm))
             {
-                // جستجو بر اساس نام یا کد مشتری از جدول CUST_HESAB
-                // شما می‌توانید این کوئری را برای جستجو در TDETA_HES و سطوح دیگر نیز گسترش دهید اگر لازم است.
-                sql = @"SELECT DISTINCT TOP 50
-                    CH.hes AS Id,
-                    CH.NAME AS Name
-                FROM dbo.CUST_HESAB CH
-                WHERE CH.NAME LIKE @SearchPattern OR CH.hes LIKE @SearchPattern
-                ORDER BY CH.NAME";
-                parameters = new { SearchPattern = $"%{searchTerm}%" };
-                _logger.LogInformation("API: Fetching customer lookup with searchTerm: {SearchTerm}", searchTerm);
+                string rawTerm = searchTerm.Trim();
+
+                // برای نام حساب: اصلاح حروف فارسی/عربی
+                string nameTerm = CL_METHODS.FixPersianChars(rawTerm);
+
+                // برای کد حساب: تبدیل اعداد فارسی/عربی به انگلیسی و یکسان‌سازی خط تیره
+                string codeTerm = NormalizeAccountingCodeSearch(rawTerm);
+
+                bool isCodeSearch = codeTerm.Any(ch => char.IsDigit(ch) || ch == '-');
+
+                sql = @"
+;WITH Matches AS
+(
+    SELECT
+        LTRIM(RTRIM(CH.HES)) AS Id,
+        CH.NAME AS Name,
+        CASE
+            WHEN LTRIM(RTRIM(CH.HES)) = @CodeExact THEN 0
+            WHEN @IsCodeSearch = 1 AND LTRIM(RTRIM(CH.HES)) LIKE @CodeStarts THEN 1
+            WHEN @IsCodeSearch = 1 AND LTRIM(RTRIM(CH.HES)) LIKE @CodePattern THEN 2
+            WHEN CH.NAME LIKE @NamePattern THEN 3
+            ELSE 4
+        END AS SortNo
+    FROM dbo.CUST_HESAB CH
+    WHERE
+        LTRIM(RTRIM(CH.HES)) = @CodeExact
+        OR (@IsCodeSearch = 1 AND LTRIM(RTRIM(CH.HES)) LIKE @CodeStarts)
+        OR (@IsCodeSearch = 1 AND LTRIM(RTRIM(CH.HES)) LIKE @CodePattern)
+        OR CH.NAME LIKE @NamePattern
+)
+SELECT TOP 50
+    Id,
+    Name
+FROM Matches
+ORDER BY
+    SortNo,
+    CASE WHEN Id = @CodeExact THEN 0 ELSE 1 END,
+    Name,
+    Id;";
+
+                parameters = new
+                {
+                    NamePattern = $"%{nameTerm}%",
+                    CodePattern = $"%{codeTerm}%",
+                    CodeExact = codeTerm,
+                    CodeStarts = $"{codeTerm}%",
+                    IsCodeSearch = isCodeSearch ? 1 : 0
+                };
+
+                _logger.LogInformation(
+                    "API: Fetching customer lookup. RawTerm: {RawTerm}, NameTerm: {NameTerm}, CodeTerm: {CodeTerm}, IsCodeSearch: {IsCodeSearch}",
+                    rawTerm,
+                    nameTerm,
+                    codeTerm,
+                    isCodeSearch);
             }
             else
             {
-                // در صورت عدم وجود searchTerm، یک لیست اولیه (مثلاً TOP 50 یا 100) را برگردانید.
-                // اگر لیست مشتریان بسیار بزرگ است، برگرداندن همه آن‌ها بدون فیلتر اولیه توصیه نمی‌شود.
-                sql = @"SELECT DISTINCT TOP 50
-                    CH.hes AS Id,
-                    CH.NAME AS Name
-                FROM dbo.CUST_HESAB CH
-                ORDER BY CH.NAME";
-                _logger.LogInformation("API: Fetching initial customer lookup (TOP 50).");
+                sql = @"
+SELECT TOP 50
+    LTRIM(RTRIM(CH.HES)) AS Id,
+    CH.NAME AS Name
+FROM dbo.CUST_HESAB CH
+ORDER BY CH.NAME;";
+
+                _logger.LogInformation("API: Fetching initial customer lookup TOP 50.");
             }
 
             try
@@ -445,6 +484,40 @@ namespace Safir.Server.Controllers
                 _logger.LogError(ex, "API: Error fetching customer lookup. SearchTerm: {SearchTerm}", searchTerm);
                 return StatusCode(500, "Internal server error while fetching customer lookup.");
             }
+        }
+
+        private static string NormalizeAccountingCodeSearch(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+                return string.Empty;
+
+            var chars = new List<char>();
+
+            foreach (char ch in value.Trim())
+            {
+                if (ch >= '0' && ch <= '9')
+                {
+                    chars.Add(ch);
+                }
+                else if (ch >= '۰' && ch <= '۹')
+                {
+                    chars.Add((char)('0' + (ch - '۰')));
+                }
+                else if (ch >= '٠' && ch <= '٩')
+                {
+                    chars.Add((char)('0' + (ch - '٠')));
+                }
+                else if (ch == '-' || ch == '‐' || ch == '-' || ch == '–' || ch == '—' || ch == '−')
+                {
+                    chars.Add('-');
+                }
+                else if (!char.IsWhiteSpace(ch))
+                {
+                    chars.Add(ch);
+                }
+            }
+
+            return new string(chars.ToArray());
         }
         #endregion
     }
