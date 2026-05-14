@@ -250,26 +250,27 @@ namespace Safir.Client.Services
             }
         }
 
-        public async Task<List<LookupDto<string>>?> GetCustomerLookupAsync(string? searchTerm = null)
+        // ✅ پارامتر با default value — تمام caller های قدیمی بدون تغییر کامپایل می‌شوند
+        public async Task<List<LookupDto<string>>?> GetCustomerLookupAsync(
+            string? searchTerm = null,
+            CancellationToken cancellationToken = default)   // ← اضافه شد
         {
             try
             {
                 var endpoint = "api/lookup/customerlookup";
                 if (!string.IsNullOrWhiteSpace(searchTerm))
-                {
-                    // افزودن searchTerm به query string اگر وجود داشته باشد
                     endpoint += $"?searchTerm={Uri.EscapeDataString(searchTerm)}";
-                }
-                // اگر ILogger در این سرویس تزریق کرده‌اید، می‌توانید از آن استفاده کنید:
-                // _logger?.LogInformation("Client: Calling API for customer lookup: {Endpoint}", endpoint);
-                Console.WriteLine($"Client: Calling API for customer lookup: {endpoint}"); // برای تست موقت
-                return await _httpClient.GetFromJsonAsync<List<LookupDto<string>>>(endpoint);
+
+                Console.WriteLine($"Client: Calling API for customer lookup: {endpoint}");
+
+                return await _httpClient.GetFromJsonAsync<List<LookupDto<string>>>(
+                    endpoint,
+                    cancellationToken);    // ← اضافه شد
             }
             catch (Exception ex)
             {
-                // _logger?.LogError(ex, "Error fetching Customer Lookup. SearchTerm: {SearchTerm}", searchTerm);
                 Console.WriteLine($"Error fetching Customer Lookup (SearchTerm: {searchTerm}): {ex.Message}");
-                return null; // یا یک لیست خالی برگردانید: new List<LookupDto<string>>()
+                return null;
             }
         }
     }

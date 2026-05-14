@@ -538,9 +538,9 @@
     private List<LookupDto<string>> InitialAdvHesList = new();
 
     // متد جستجوی سمت سرور برای AutoComplete (بدون Memory Leak)
-    private async Task<IEnumerable<LookupDto<string>>> SearchAccountsAsync(string? searchTerm)
+    private async Task<IEnumerable<LookupDto<string>>> SearchAccountsAsync(string? searchTerm, CancellationToken cancellationToken)
     {
-        var result = await LookupService.GetCustomerLookupAsync(searchTerm);
+        var result = await LookupService.GetCustomerLookupAsync(searchTerm, cancellationToken);
         return result ?? Enumerable.Empty<LookupDto<string>>();
     }
 
