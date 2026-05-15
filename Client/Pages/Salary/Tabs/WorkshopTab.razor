@@ -2,6 +2,7 @@
 @inject Pay2WorkshopApiService WorkshopApi
 @using Safir.Shared.Models
 @inject LookupApiService LookupService
+@implements IDisposable
 
 <div class="pay2-tab-container">
     <div class="pay2-workshop-layout">
@@ -261,9 +262,8 @@
                 <div class="form-field">
                     <label>هزینه حقوق</label>
                     <Pay2NumericInput @bind-Value="CurrentWorkshopAcc.SALARY_EXP"
-                                      InputMode="Pay2NumericInput.NumericInputMode.Amount"
                                       MaxLength="20"
-                                      ThreeTwoZero="true"
+                                      InputMode="Pay2NumericInput.NumericInputMode.Amount" ThreeTwoZero="true"
                                       Placeholder="0"
                                       CssClass="@(HasError(nameof(CurrentWorkshopAcc.SALARY_EXP)) ? "error" : "")"
                                       OnFocus="@(_ => ClearError(nameof(CurrentWorkshopAcc.SALARY_EXP)))" />
@@ -273,6 +273,7 @@
                     <label>پرداختنی حقوق</label>
                     <Pay2NumericInput @bind-Value="CurrentWorkshopAcc.SALARY_PAYABLE"
                                       MaxLength="20"
+                                      InputMode="Pay2NumericInput.NumericInputMode.Amount" ThreeTwoZero="true"
                                       Placeholder="0"
                                       CssClass="@(HasError(nameof(CurrentWorkshopAcc.SALARY_PAYABLE)) ? "error" : "")"
                                       OnFocus="@(_ => ClearError(nameof(CurrentWorkshopAcc.SALARY_PAYABLE)))" />
@@ -282,6 +283,7 @@
                     <label>هزینه بیمه</label>
                     <Pay2NumericInput @bind-Value="CurrentWorkshopAcc.INS_EXP"
                                       MaxLength="20"
+                                      InputMode="Pay2NumericInput.NumericInputMode.Amount" ThreeTwoZero="true"
                                       Placeholder="0"
                                       CssClass="@(HasError(nameof(CurrentWorkshopAcc.INS_EXP)) ? "error" : "")"
                                       OnFocus="@(_ => ClearError(nameof(CurrentWorkshopAcc.INS_EXP)))" />
@@ -291,6 +293,7 @@
                     <label>پرداختنی بیمه</label>
                     <Pay2NumericInput @bind-Value="CurrentWorkshopAcc.INS_PAYABLE"
                                       MaxLength="20"
+                                      InputMode="Pay2NumericInput.NumericInputMode.Amount" ThreeTwoZero="true"
                                       Placeholder="0"
                                       CssClass="@(HasError(nameof(CurrentWorkshopAcc.INS_PAYABLE)) ? "error" : "")"
                                       OnFocus="@(_ => ClearError(nameof(CurrentWorkshopAcc.INS_PAYABLE)))" />
@@ -300,6 +303,7 @@
                     <label>پرداختنی مالیات</label>
                     <Pay2NumericInput @bind-Value="CurrentWorkshopAcc.TAX_PAYABLE"
                                       MaxLength="20"
+                                      InputMode="Pay2NumericInput.NumericInputMode.Amount" ThreeTwoZero="true"
                                       Placeholder="0"
                                       CssClass="@(HasError(nameof(CurrentWorkshopAcc.TAX_PAYABLE)) ? "error" : "")"
                                       OnFocus="@(_ => ClearError(nameof(CurrentWorkshopAcc.TAX_PAYABLE)))" />
@@ -338,14 +342,19 @@
 @code {
     [Parameter] public EventCallback<string> OnToast { get; set; }
 
-    private List<Pay2WorkshopDto> Workshops = new();
-    private Pay2WorkshopDto CurrentWorkshop = new();
-    private Pay2WorkshopAccDto CurrentWorkshopAcc = new();
+    List<Pay2WorkshopDto> Workshops = new();
+    Pay2WorkshopDto CurrentWorkshop = new();
+    Pay2WorkshopAccDto CurrentWorkshopAcc = new();
 
-    private bool IsLoadingWorkshops;
-    private bool IsSavingWorkshop;
+    bool IsLoadingWorkshops;
+    bool IsSavingWorkshop;
 
-    private readonly Dictionary<string, string> _fieldErrors = new();
+    readonly Dictionary<string, string> _fieldErrors = new();
+
+    List<LookupDto<string>> InitialAdvHesList = new();
+
+    CancellationTokenSource? _selectWorkshopCts;
+    long _selectWorkshopVersion = 0;
 
     protected override async Task OnInitializedAsync()
     {
@@ -353,16 +362,17 @@
         await LoadWorkshopsAsync();
     }
 
-    private async Task LoadWorkshopsAsync()
+    async Task LoadWorkshopsAsync()
     {
         IsLoadingWorkshops = true;
 
         try
         {
-            Workshops = await WorkshopApi.GetWorkshopsAsync();
+            Workshops = await WorkshopApi.GetWorkshopsAsync() ?? new List<Pay2WorkshopDto>();
         }
         catch (Exception ex)
         {
+            Workshops = new List<Pay2WorkshopDto>();
             await Toast("خطا در واکشی لیست کارگاه‌ها: " + ex.Message);
         }
         finally
@@ -371,7 +381,7 @@
         }
     }
 
-    private static readonly List<Pay2InsModeOption> InsModeOptions = new()
+    static readonly List<Pay2InsModeOption> InsModeOptions = new()
     {
         new Pay2InsModeOption
         {
@@ -387,15 +397,22 @@
         }
     };
 
-    private sealed class Pay2InsModeOption
+    sealed class Pay2InsModeOption
     {
         public int Id { get; set; }
         public string Title { get; set; } = "";
         public string? Description { get; set; }
     }
 
-    private async Task SelectWorkshop(Pay2WorkshopDto selected)
+    async Task SelectWorkshop(Pay2WorkshopDto selected)
     {
+        CancelSelectWorkshop();
+
+        var myVersion = Interlocked.Increment(ref _selectWorkshopVersion);
+        var cts = new CancellationTokenSource();
+        _selectWorkshopCts = cts;
+        var token = cts.Token;
+
         CurrentWorkshop = new Pay2WorkshopDto
         {
             WS_ID = selected.WS_ID,
@@ -411,17 +428,31 @@
         };
 
         _fieldErrors.Clear();
+        CurrentWorkshopAcc = new Pay2WorkshopAccDto { WS_ID = selected.WS_ID };
+        InitialAdvHesList.Clear();
 
         try
         {
-            CurrentWorkshopAcc = await WorkshopApi.GetAccountsAsync(selected.WS_ID);
+            var accounts = await WorkshopApi.GetAccountsAsync(selected.WS_ID);
+
+            if (token.IsCancellationRequested || myVersion != _selectWorkshopVersion)
+                return;
+
+            CurrentWorkshopAcc = accounts ?? new Pay2WorkshopAccDto { WS_ID = selected.WS_ID };
+            CurrentWorkshopAcc.WS_ID = selected.WS_ID;
             NormalizeAccounts();
 
             InitialAdvHesList.Clear();
+
             if (!string.IsNullOrWhiteSpace(CurrentWorkshopAcc.ADV_HES))
             {
-                var lookupResult = await LookupService.GetCustomerLookupAsync(CurrentWorkshopAcc.ADV_HES);
+                var lookupResult = await LookupService.GetCustomerLookupAsync(CurrentWorkshopAcc.ADV_HES, token);
+
+                if (token.IsCancellationRequested || myVersion != _selectWorkshopVersion)
+                    return;
+
                 var matchedItem = lookupResult?.FirstOrDefault(x => x.Id == CurrentWorkshopAcc.ADV_HES);
+
                 if (matchedItem != null)
                 {
                     InitialAdvHesList.Add(matchedItem);
@@ -432,17 +463,26 @@
                 }
             }
         }
+        catch (OperationCanceledException)
+        {
+            // کاربر سریع کارگاه دیگری را انتخاب کرده؛ این خطا طبیعی است.
+        }
         catch (Exception ex)
         {
+            if (token.IsCancellationRequested || myVersion != _selectWorkshopVersion)
+                return;
+
             CurrentWorkshopAcc = new Pay2WorkshopAccDto { WS_ID = selected.WS_ID };
             InitialAdvHesList.Clear();
-
-            await Toast("خطا در واکشی سرفصل‌های حسابداری: " + ex.Message);
+            await Toast("خطا در بارگذاری سرفصل‌های حسابداری: " + ex.Message);
         }
     }
 
-    private void NewWorkshop()
+    void NewWorkshop()
     {
+        CancelSelectWorkshop();
+        Interlocked.Increment(ref _selectWorkshopVersion);
+
         CurrentWorkshop = new Pay2WorkshopDto
         {
             IS_ACTIVE = true,
@@ -451,22 +491,19 @@
 
         CurrentWorkshopAcc = new Pay2WorkshopAccDto();
         InitialAdvHesList.Clear();
-
         _fieldErrors.Clear();
     }
 
-    private async Task SaveWorkshopAsync()
+    async Task SaveWorkshopAsync()
     {
         NormalizeWorkshop();
         NormalizeAccounts();
-
         _fieldErrors.Clear();
 
         if (string.IsNullOrWhiteSpace(CurrentWorkshop.WS_CODE))
         {
             _fieldErrors[nameof(CurrentWorkshop.WS_CODE)] = "کد کارگاه نمی‌تواند خالی باشد.";
         }
-        // بررسی تکراری نبودن کد کارگاه قبل از ارسال به دیتابیس (بر اساس محدودیت UNIQUE در SQL)
         else if (Workshops.Any(w => w.WS_CODE == CurrentWorkshop.WS_CODE && w.WS_ID != CurrentWorkshop.WS_ID))
         {
             _fieldErrors[nameof(CurrentWorkshop.WS_CODE)] = "این کد کارگاه قبلاً ثبت شده است.";
@@ -475,11 +512,6 @@
         if (string.IsNullOrWhiteSpace(CurrentWorkshop.WS_NAME))
         {
             _fieldErrors[nameof(CurrentWorkshop.WS_NAME)] = "نام کارگاه نمی‌تواند خالی باشد.";
-        }
-
-        if (!string.IsNullOrWhiteSpace(CurrentWorkshop.NATIONAL_ID) && CurrentWorkshop.NATIONAL_ID.Length != 11)
-        {
-            ////_fieldErrors[nameof(CurrentWorkshop.NATIONAL_ID)] = "شناسه ملی باید دقیقاً ۱۱ رقم باشد.";
         }
 
         ValidateAdvHes();
@@ -494,6 +526,9 @@
 
         try
         {
+            CurrentWorkshopAcc ??= new Pay2WorkshopAccDto();
+            CurrentWorkshopAcc.WS_ID = CurrentWorkshop.WS_ID;
+
             var request = new Pay2WorkshopSaveRequest
             {
                 Workshop = CurrentWorkshop,
@@ -505,9 +540,14 @@
             await LoadWorkshopsAsync();
 
             var saved = Workshops.FirstOrDefault(x => x.WS_ID == savedId);
+
             if (saved != null)
             {
                 await SelectWorkshop(saved);
+            }
+            else
+            {
+                NewWorkshop();
             }
 
             await Toast("اطلاعات کارگاه با موفقیت ذخیره شد.");
@@ -522,48 +562,33 @@
         }
     }
 
-    private void NormalizeWorkshopCode()
+    void NormalizeWorkshopCode()
     {
         CurrentWorkshop.WS_CODE = OnlyDigits(CurrentWorkshop.WS_CODE, 10);
     }
 
-    #region MosaedehCode
-    // لیست اولیه فقط برای نمایش نام حسابی که از دیتابیس لود می‌شود (جلوگیری از خالی ماندن تکست‌باکس در حالت ویرایش)
-    private List<LookupDto<string>> InitialAdvHesList = new();
-
-    // متد جستجوی سمت سرور برای AutoComplete (بدون Memory Leak)
-    private async Task<IEnumerable<LookupDto<string>>> SearchAccountsAsync(string? searchTerm, CancellationToken cancellationToken)
+    async Task<IEnumerable<LookupDto<string>>> SearchAccountsAsync(string? searchTerm, CancellationToken cancellationToken)
     {
         var result = await LookupService.GetCustomerLookupAsync(searchTerm, cancellationToken);
         return result ?? Enumerable.Empty<LookupDto<string>>();
     }
 
-    // رویداد تغییر مقدار حساب
-    private void OnAdvHesChanged(string? newValue)
+    void OnAdvHesChanged(string? newValue)
     {
+        CurrentWorkshopAcc ??= new Pay2WorkshopAccDto();
         CurrentWorkshopAcc.ADV_HES = newValue;
         ValidateAdvHes();
     }
-    #endregion
 
-    private void ValidateNationalId()
+    void ValidateNationalId()
     {
         CurrentWorkshop.NATIONAL_ID = OnlyDigits(CurrentWorkshop.NATIONAL_ID, 11);
-
-        var value = CurrentWorkshop.NATIONAL_ID;
-
-        if (!string.IsNullOrWhiteSpace(value) && value.Length != 11)
-        {
-            ////_fieldErrors[nameof(CurrentWorkshop.NATIONAL_ID)] = "شناسه ملی باید دقیقاً ۱۱ رقم باشد.";
-        }
-        else
-        {
-            _fieldErrors.Remove(nameof(CurrentWorkshop.NATIONAL_ID));
-        }
+        _fieldErrors.Remove(nameof(CurrentWorkshop.NATIONAL_ID));
     }
 
-    private void ValidateAdvHes()
+    void ValidateAdvHes()
     {
+        CurrentWorkshopAcc ??= new Pay2WorkshopAccDto();
         CurrentWorkshopAcc.ADV_HES = CleanAccount(CurrentWorkshopAcc.ADV_HES, 20);
 
         var value = CurrentWorkshopAcc.ADV_HES;
@@ -593,12 +618,12 @@
         }
     }
 
-    private static int NormalizeInsMode(int value)
+    static int NormalizeInsMode(int value)
     {
         return value == 2 ? 2 : 1;
     }
 
-    private static string GetInsModeText(int value)
+    static string GetInsModeText(int value)
     {
         return value switch
         {
@@ -608,22 +633,22 @@
         };
     }
 
-    private bool HasError(string field)
+    bool HasError(string field)
     {
         return _fieldErrors.ContainsKey(field);
     }
 
-    private string GetError(string field)
+    string GetError(string field)
     {
         return _fieldErrors.TryGetValue(field, out var message) ? message : "";
     }
 
-    private void ClearError(string field)
+    void ClearError(string field)
     {
         _fieldErrors.Remove(field);
     }
 
-    private async Task Toast(string message)
+    async Task Toast(string message)
     {
         if (OnToast.HasDelegate)
         {
@@ -631,7 +656,7 @@
         }
     }
 
-    private void NormalizeWorkshop()
+    void NormalizeWorkshop()
     {
         CurrentWorkshop.WS_CODE = OnlyDigits(CurrentWorkshop.WS_CODE, 10);
         CurrentWorkshop.WS_NAME = CleanText(CurrentWorkshop.WS_NAME);
@@ -643,12 +668,11 @@
         CurrentWorkshop.INS_MODE = NormalizeInsMode(CurrentWorkshop.INS_MODE);
     }
 
-    private void NormalizeAccounts()
+    void NormalizeAccounts()
     {
-        // کد حساب مساعده (شامل خط‌فاصله)
-        CurrentWorkshopAcc.ADV_HES = CleanAccount(CurrentWorkshopAcc.ADV_HES, 20);
+        CurrentWorkshopAcc ??= new Pay2WorkshopAccDto();
 
-        // مقادیر عددی خالص (مشابه کد کارگاه)
+        CurrentWorkshopAcc.ADV_HES = CleanAccount(CurrentWorkshopAcc.ADV_HES, 20);
         CurrentWorkshopAcc.SALARY_EXP = OnlyDigits(CurrentWorkshopAcc.SALARY_EXP, 20);
         CurrentWorkshopAcc.SALARY_PAYABLE = OnlyDigits(CurrentWorkshopAcc.SALARY_PAYABLE, 20);
         CurrentWorkshopAcc.INS_EXP = OnlyDigits(CurrentWorkshopAcc.INS_EXP, 20);
@@ -656,7 +680,7 @@
         CurrentWorkshopAcc.TAX_PAYABLE = OnlyDigits(CurrentWorkshopAcc.TAX_PAYABLE, 20);
     }
 
-    private static string? OnlyDigits(string? value, int maxLength)
+    static string? OnlyDigits(string? value, int maxLength)
     {
         if (string.IsNullOrWhiteSpace(value))
         {
@@ -690,7 +714,7 @@
         return string.IsNullOrWhiteSpace(text) ? null : text;
     }
 
-    private static string? CleanAccount(string? value, int maxLength)
+    static string? CleanAccount(string? value, int maxLength)
     {
         if (string.IsNullOrWhiteSpace(value))
         {
@@ -728,8 +752,25 @@
         return string.IsNullOrWhiteSpace(text) ? null : text;
     }
 
-    private static string? CleanText(string? value)
+    static string? CleanText(string? value)
     {
         return string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+    }
+
+    void CancelSelectWorkshop()
+    {
+        var cts = _selectWorkshopCts;
+        _selectWorkshopCts = null;
+
+        if (cts == null)
+            return;
+
+        try { cts.Cancel(); } catch { }
+        try { cts.Dispose(); } catch { }
+    }
+
+    public void Dispose()
+    {
+        CancelSelectWorkshop();
     }
 }
