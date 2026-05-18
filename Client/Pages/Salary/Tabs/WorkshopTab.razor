@@ -231,29 +231,13 @@
             <div class="form-grid-2">
 
                 <div class="form-field" style="grid-column: span 2;">
-                    <label>
-                        حساب مساعده هوشمند
-                        <span class="p2-text-muted" style="font-size:11px; font-weight:400;">
-                            (جستجو بر اساس نام یا کد حساب)
-                        </span>
-                    </label>
-
-                    <Pay2Select TItem="LookupDto<string>"
-                                TValue="string"
-                                SearchItems="SearchAccountsAsync"
-                                Items="InitialAdvHesList"
+                    <label>حساب مساعده هوشمند <span class="p2-text-muted" style="font-size:11px;">(جستجو بر اساس نام یا کد)</span></label>
+                    <Pay2Select TItem="LookupDto<string>" TValue="string" SearchItems="SearchAccountsAsync" Items="Init_ADV_HES"
                                 Value="CurrentWorkshopAcc.ADV_HES"
-                                ValueChanged="OnAdvHesChanged"
-                                TextSelector="@(x => $"\u200E{x.Id}\u200E\u200F  -  {x.Name}")"
-                                ValueSelector="@(x => x.Id)"
-                                Placeholder="جستجوی حساب (مثال: 213-1-16 یا نام حساب)"
-                                CssClass="@(HasError(nameof(CurrentWorkshopAcc.ADV_HES)) ? "error" : "")"
-                                Clearable="true"
-                                Editable="true"
-                                MaxVisibleItems="50"
-                                DebounceMilliseconds="400"
-                                ClearValueOnTextEdit="true" />
-
+                                ValueChanged="@(v => { CurrentWorkshopAcc.ADV_HES = v; ValidateAccount(v, nameof(CurrentWorkshopAcc.ADV_HES), "مساعده"); })"
+                                TextSelector="@(x => $"\u200E{x.Id}\u200E\u200F  -  {x.Name}")" ValueSelector="@(x => x.Id)"
+                                Placeholder="مثال: 213-1-16" CssClass="@(HasError(nameof(CurrentWorkshopAcc.ADV_HES)) ? "error" : "")"
+                                Clearable="true" Editable="true" MaxVisibleItems="50" DebounceMilliseconds="400" ClearValueOnTextEdit="true" />
                     @if (HasError(nameof(CurrentWorkshopAcc.ADV_HES)))
                     {
                         <span class="field-error">@GetError(nameof(CurrentWorkshopAcc.ADV_HES))</span>
@@ -261,53 +245,69 @@
                 </div>
 
                 <div class="form-field">
-                    <label>
-                        هزینه حقوق
-                        <span class="p2-text-muted" style="font-size:11px; font-weight:400;">(جستجو بر اساس نام یا کد)</span>
-                    </label>
-                    <Pay2Select TItem="LookupDto<string>"
-                                TValue="string"
-                                SearchItems="SearchAccountsAsync"
-                                Items="InitialAccountList"
-                                Value="CurrentWorkshopAcc.SALARY_EXP"
-                                ValueChanged="OnSalaryExpChanged"
-                                TextSelector="@(x => $"\u200E{x.Id}\u200E\u200F  -  {x.Name}")"
-                                ValueSelector="@(x => x.Id)"
-                                Placeholder="جستجوی حساب..."
-                                CssClass="@(HasError(nameof(CurrentWorkshopAcc.SALARY_EXP)) ? "error" : "")"
-                                Clearable="true"
-                                Editable="true"
-                                MaxVisibleItems="50"
-                                DebounceMilliseconds="400"
-                                ClearValueOnTextEdit="true" />
-
-                    @if (HasError(nameof(CurrentWorkshopAcc.SALARY_EXP)))
+                    <label>هزینه حقوق تولید <span class="p2-text-muted" style="font-size:11px;">(HAZTOLID)</span></label>
+                    <Pay2Select TItem="LookupDto<string>" TValue="string" SearchItems="SearchAccountsAsync" Items="Init_SALARY_EXP_TOLID"
+                                Value="CurrentWorkshopAcc.SALARY_EXP_TOLID"
+                                ValueChanged="@(v => { CurrentWorkshopAcc.SALARY_EXP_TOLID = v; ValidateAccount(v, nameof(CurrentWorkshopAcc.SALARY_EXP_TOLID), "حقوق تولید"); })"
+                                TextSelector="@(x => $"\u200E{x.Id}\u200E\u200F  -  {x.Name}")" ValueSelector="@(x => x.Id)"
+                                Placeholder="جستجو..." CssClass="@(HasError(nameof(CurrentWorkshopAcc.SALARY_EXP_TOLID)) ? "error" : "")"
+                                Clearable="true" Editable="true" MaxVisibleItems="50" DebounceMilliseconds="400" ClearValueOnTextEdit="true" />
+                    @if (HasError(nameof(CurrentWorkshopAcc.SALARY_EXP_TOLID)))
                     {
-                        <span class="field-error">@GetError(nameof(CurrentWorkshopAcc.SALARY_EXP))</span>
+                        <span class="field-error">@GetError(nameof(CurrentWorkshopAcc.SALARY_EXP_TOLID))</span>
                     }
                 </div>
 
                 <div class="form-field">
-                    <label>
-                        پرداختنی حقوق
-                        <span class="p2-text-muted" style="font-size:11px; font-weight:400;">(جستجو بر اساس نام یا کد)</span>
-                    </label>
-                    <Pay2Select TItem="LookupDto<string>"
-                                TValue="string"
-                                SearchItems="SearchAccountsAsync"
-                                Items="InitialAccountList"
-                                Value="CurrentWorkshopAcc.SALARY_PAYABLE"
-                                ValueChanged="OnSalaryPayableChanged"
-                                TextSelector="@(x => $"\u200E{x.Id}\u200E\u200F  -  {x.Name}")"
-                                ValueSelector="@(x => x.Id)"
-                                Placeholder="جستجوی حساب..."
-                                CssClass="@(HasError(nameof(CurrentWorkshopAcc.SALARY_PAYABLE)) ? "error" : "")"
-                                Clearable="true"
-                                Editable="true"
-                                MaxVisibleItems="50"
-                                DebounceMilliseconds="400"
-                                ClearValueOnTextEdit="true" />
+                    <label>هزینه حقوق اداری <span class="p2-text-muted" style="font-size:11px;">(HAZEDAR)</span></label>
+                    <Pay2Select TItem="LookupDto<string>" TValue="string" SearchItems="SearchAccountsAsync" Items="Init_SALARY_EXP_EDARI"
+                                Value="CurrentWorkshopAcc.SALARY_EXP_EDARI"
+                                ValueChanged="@(v => { CurrentWorkshopAcc.SALARY_EXP_EDARI = v; ValidateAccount(v, nameof(CurrentWorkshopAcc.SALARY_EXP_EDARI), "حقوق اداری"); })"
+                                TextSelector="@(x => $"\u200E{x.Id}\u200E\u200F  -  {x.Name}")" ValueSelector="@(x => x.Id)"
+                                Placeholder="جستجو..." CssClass="@(HasError(nameof(CurrentWorkshopAcc.SALARY_EXP_EDARI)) ? "error" : "")"
+                                Clearable="true" Editable="true" MaxVisibleItems="50" DebounceMilliseconds="400" ClearValueOnTextEdit="true" />
+                    @if (HasError(nameof(CurrentWorkshopAcc.SALARY_EXP_EDARI)))
+                    {
+                        <span class="field-error">@GetError(nameof(CurrentWorkshopAcc.SALARY_EXP_EDARI))</span>
+                    }
+                </div>
 
+                <div class="form-field">
+                    <label>هزینه حقوق فروش <span class="p2-text-muted" style="font-size:11px;">(HAZFROOSH)</span></label>
+                    <Pay2Select TItem="LookupDto<string>" TValue="string" SearchItems="SearchAccountsAsync" Items="Init_SALARY_EXP_FOROSH"
+                                Value="CurrentWorkshopAcc.SALARY_EXP_FOROSH"
+                                ValueChanged="@(v => { CurrentWorkshopAcc.SALARY_EXP_FOROSH = v; ValidateAccount(v, nameof(CurrentWorkshopAcc.SALARY_EXP_FOROSH), "حقوق فروش"); })"
+                                TextSelector="@(x => $"\u200E{x.Id}\u200E\u200F  -  {x.Name}")" ValueSelector="@(x => x.Id)"
+                                Placeholder="جستجو..." CssClass="@(HasError(nameof(CurrentWorkshopAcc.SALARY_EXP_FOROSH)) ? "error" : "")"
+                                Clearable="true" Editable="true" MaxVisibleItems="50" DebounceMilliseconds="400" ClearValueOnTextEdit="true" />
+                    @if (HasError(nameof(CurrentWorkshopAcc.SALARY_EXP_FOROSH)))
+                    {
+                        <span class="field-error">@GetError(nameof(CurrentWorkshopAcc.SALARY_EXP_FOROSH))</span>
+                    }
+                </div>
+
+                <div class="form-field">
+                    <label>هزینه حقوق خدمات <span class="p2-text-muted" style="font-size:11px;">(HAZKHADAMAT)</span></label>
+                    <Pay2Select TItem="LookupDto<string>" TValue="string" SearchItems="SearchAccountsAsync" Items="Init_SALARY_EXP_KHADAMAT"
+                                Value="CurrentWorkshopAcc.SALARY_EXP_KHADAMAT"
+                                ValueChanged="@(v => { CurrentWorkshopAcc.SALARY_EXP_KHADAMAT = v; ValidateAccount(v, nameof(CurrentWorkshopAcc.SALARY_EXP_KHADAMAT), "حقوق خدمات"); })"
+                                TextSelector="@(x => $"\u200E{x.Id}\u200E\u200F  -  {x.Name}")" ValueSelector="@(x => x.Id)"
+                                Placeholder="جستجو..." CssClass="@(HasError(nameof(CurrentWorkshopAcc.SALARY_EXP_KHADAMAT)) ? "error" : "")"
+                                Clearable="true" Editable="true" MaxVisibleItems="50" DebounceMilliseconds="400" ClearValueOnTextEdit="true" />
+                    @if (HasError(nameof(CurrentWorkshopAcc.SALARY_EXP_KHADAMAT)))
+                    {
+                        <span class="field-error">@GetError(nameof(CurrentWorkshopAcc.SALARY_EXP_KHADAMAT))</span>
+                    }
+                </div>
+
+                <div class="form-field">
+                    <label>پرداختنی حقوق <span class="p2-text-muted" style="font-size:11px;">(BESHO)</span></label>
+                    <Pay2Select TItem="LookupDto<string>" TValue="string" SearchItems="SearchAccountsAsync" Items="Init_SALARY_PAYABLE"
+                                Value="CurrentWorkshopAcc.SALARY_PAYABLE"
+                                ValueChanged="@(v => { CurrentWorkshopAcc.SALARY_PAYABLE = v; ValidateAccount(v, nameof(CurrentWorkshopAcc.SALARY_PAYABLE), "پرداختنی حقوق"); })"
+                                TextSelector="@(x => $"\u200E{x.Id}\u200E\u200F  -  {x.Name}")" ValueSelector="@(x => x.Id)"
+                                Placeholder="جستجو..." CssClass="@(HasError(nameof(CurrentWorkshopAcc.SALARY_PAYABLE)) ? "error" : "")"
+                                Clearable="true" Editable="true" MaxVisibleItems="50" DebounceMilliseconds="400" ClearValueOnTextEdit="true" />
                     @if (HasError(nameof(CurrentWorkshopAcc.SALARY_PAYABLE)))
                     {
                         <span class="field-error">@GetError(nameof(CurrentWorkshopAcc.SALARY_PAYABLE))</span>
@@ -315,26 +315,27 @@
                 </div>
 
                 <div class="form-field">
-                    <label>
-                        هزینه بیمه
-                        <span class="p2-text-muted" style="font-size:11px; font-weight:400;">(جستجو بر اساس نام یا کد)</span>
-                    </label>
-                    <Pay2Select TItem="LookupDto<string>"
-                                TValue="string"
-                                SearchItems="SearchAccountsAsync"
-                                Items="InitialAccountList"
-                                Value="CurrentWorkshopAcc.INS_EXP"
-                                ValueChanged="OnInsExpChanged"
-                                TextSelector="@(x => $"\u200E{x.Id}\u200E\u200F  -  {x.Name}")"
-                                ValueSelector="@(x => x.Id)"
-                                Placeholder="جستجوی حساب..."
-                                CssClass="@(HasError(nameof(CurrentWorkshopAcc.INS_EXP)) ? "error" : "")"
-                                Clearable="true"
-                                Editable="true"
-                                MaxVisibleItems="50"
-                                DebounceMilliseconds="400"
-                                ClearValueOnTextEdit="true" />
+                    <label>صندوق پرسنل / وام <span class="p2-text-muted" style="font-size:11px;">(PSANDHES)</span></label>
+                    <Pay2Select TItem="LookupDto<string>" TValue="string" SearchItems="SearchAccountsAsync" Items="Init_LOAN_HES"
+                                Value="CurrentWorkshopAcc.LOAN_HES"
+                                ValueChanged="@(v => { CurrentWorkshopAcc.LOAN_HES = v; ValidateAccount(v, nameof(CurrentWorkshopAcc.LOAN_HES), "صندوق پرسنل"); })"
+                                TextSelector="@(x => $"\u200E{x.Id}\u200E\u200F  -  {x.Name}")" ValueSelector="@(x => x.Id)"
+                                Placeholder="جستجو..." CssClass="@(HasError(nameof(CurrentWorkshopAcc.LOAN_HES)) ? "error" : "")"
+                                Clearable="true" Editable="true" MaxVisibleItems="50" DebounceMilliseconds="400" ClearValueOnTextEdit="true" />
+                    @if (HasError(nameof(CurrentWorkshopAcc.LOAN_HES)))
+                    {
+                        <span class="field-error">@GetError(nameof(CurrentWorkshopAcc.LOAN_HES))</span>
+                    }
+                </div>
 
+                <div class="form-field">
+                    <label>هزینه ۲۳٪ بیمه <span class="p2-text-muted" style="font-size:11px;">(HAZBIM)</span></label>
+                    <Pay2Select TItem="LookupDto<string>" TValue="string" SearchItems="SearchAccountsAsync" Items="Init_INS_EXP"
+                                Value="CurrentWorkshopAcc.INS_EXP"
+                                ValueChanged="@(v => { CurrentWorkshopAcc.INS_EXP = v; ValidateAccount(v, nameof(CurrentWorkshopAcc.INS_EXP), "هزینه بیمه"); })"
+                                TextSelector="@(x => $"\u200E{x.Id}\u200E\u200F  -  {x.Name}")" ValueSelector="@(x => x.Id)"
+                                Placeholder="جستجو..." CssClass="@(HasError(nameof(CurrentWorkshopAcc.INS_EXP)) ? "error" : "")"
+                                Clearable="true" Editable="true" MaxVisibleItems="50" DebounceMilliseconds="400" ClearValueOnTextEdit="true" />
                     @if (HasError(nameof(CurrentWorkshopAcc.INS_EXP)))
                     {
                         <span class="field-error">@GetError(nameof(CurrentWorkshopAcc.INS_EXP))</span>
@@ -342,26 +343,13 @@
                 </div>
 
                 <div class="form-field">
-                    <label>
-                        پرداختنی بیمه
-                        <span class="p2-text-muted" style="font-size:11px; font-weight:400;">(جستجو بر اساس نام یا کد)</span>
-                    </label>
-                    <Pay2Select TItem="LookupDto<string>"
-                                TValue="string"
-                                SearchItems="SearchAccountsAsync"
-                                Items="InitialAccountList"
+                    <label>اداره بیمه <span class="p2-text-muted" style="font-size:11px;">(EDABIM)</span></label>
+                    <Pay2Select TItem="LookupDto<string>" TValue="string" SearchItems="SearchAccountsAsync" Items="Init_INS_PAYABLE"
                                 Value="CurrentWorkshopAcc.INS_PAYABLE"
-                                ValueChanged="OnInsPayableChanged"
-                                TextSelector="@(x => $"\u200E{x.Id}\u200E\u200F  -  {x.Name}")"
-                                ValueSelector="@(x => x.Id)"
-                                Placeholder="جستجوی حساب..."
-                                CssClass="@(HasError(nameof(CurrentWorkshopAcc.INS_PAYABLE)) ? "error" : "")"
-                                Clearable="true"
-                                Editable="true"
-                                MaxVisibleItems="50"
-                                DebounceMilliseconds="400"
-                                ClearValueOnTextEdit="true" />
-
+                                ValueChanged="@(v => { CurrentWorkshopAcc.INS_PAYABLE = v; ValidateAccount(v, nameof(CurrentWorkshopAcc.INS_PAYABLE), "پرداختنی بیمه"); })"
+                                TextSelector="@(x => $"\u200E{x.Id}\u200E\u200F  -  {x.Name}")" ValueSelector="@(x => x.Id)"
+                                Placeholder="جستجو..." CssClass="@(HasError(nameof(CurrentWorkshopAcc.INS_PAYABLE)) ? "error" : "")"
+                                Clearable="true" Editable="true" MaxVisibleItems="50" DebounceMilliseconds="400" ClearValueOnTextEdit="true" />
                     @if (HasError(nameof(CurrentWorkshopAcc.INS_PAYABLE)))
                     {
                         <span class="field-error">@GetError(nameof(CurrentWorkshopAcc.INS_PAYABLE))</span>
@@ -369,29 +357,30 @@
                 </div>
 
                 <div class="form-field">
-                    <label>
-                        پرداختنی مالیات
-                        <span class="p2-text-muted" style="font-size:11px; font-weight:400;">(جستجو بر اساس نام یا کد)</span>
-                    </label>
-                    <Pay2Select TItem="LookupDto<string>"
-                                TValue="string"
-                                SearchItems="SearchAccountsAsync"
-                                Items="InitialAccountList"
+                    <label>اداره دارایی / مالیات <span class="p2-text-muted" style="font-size:11px;">(HAZMALI)</span></label>
+                    <Pay2Select TItem="LookupDto<string>" TValue="string" SearchItems="SearchAccountsAsync" Items="Init_TAX_PAYABLE"
                                 Value="CurrentWorkshopAcc.TAX_PAYABLE"
-                                ValueChanged="OnTaxPayableChanged"
-                                TextSelector="@(x => $"\u200E{x.Id}\u200E\u200F  -  {x.Name}")"
-                                ValueSelector="@(x => x.Id)"
-                                Placeholder="جستجوی حساب..."
-                                CssClass="@(HasError(nameof(CurrentWorkshopAcc.TAX_PAYABLE)) ? "error" : "")"
-                                Clearable="true"
-                                Editable="true"
-                                MaxVisibleItems="50"
-                                DebounceMilliseconds="400"
-                                ClearValueOnTextEdit="true" />
-
+                                ValueChanged="@(v => { CurrentWorkshopAcc.TAX_PAYABLE = v; ValidateAccount(v, nameof(CurrentWorkshopAcc.TAX_PAYABLE), "مالیات"); })"
+                                TextSelector="@(x => $"\u200E{x.Id}\u200E\u200F  -  {x.Name}")" ValueSelector="@(x => x.Id)"
+                                Placeholder="جستجو..." CssClass="@(HasError(nameof(CurrentWorkshopAcc.TAX_PAYABLE)) ? "error" : "")"
+                                Clearable="true" Editable="true" MaxVisibleItems="50" DebounceMilliseconds="400" ClearValueOnTextEdit="true" />
                     @if (HasError(nameof(CurrentWorkshopAcc.TAX_PAYABLE)))
                     {
                         <span class="field-error">@GetError(nameof(CurrentWorkshopAcc.TAX_PAYABLE))</span>
+                    }
+                </div>
+
+                <div class="form-field">
+                    <label>محل پرداخت <span class="p2-text-muted" style="font-size:11px;">(PARDAKH)</span></label>
+                    <Pay2Select TItem="LookupDto<string>" TValue="string" SearchItems="SearchAccountsAsync" Items="Init_BANK_PAY_HES"
+                                Value="CurrentWorkshopAcc.BANK_PAY_HES"
+                                ValueChanged="@(v => { CurrentWorkshopAcc.BANK_PAY_HES = v; ValidateAccount(v, nameof(CurrentWorkshopAcc.BANK_PAY_HES), "محل پرداخت"); })"
+                                TextSelector="@(x => $"\u200E{x.Id}\u200E\u200F  -  {x.Name}")" ValueSelector="@(x => x.Id)"
+                                Placeholder="جستجو..." CssClass="@(HasError(nameof(CurrentWorkshopAcc.BANK_PAY_HES)) ? "error" : "")"
+                                Clearable="true" Editable="true" MaxVisibleItems="50" DebounceMilliseconds="400" ClearValueOnTextEdit="true" />
+                    @if (HasError(nameof(CurrentWorkshopAcc.BANK_PAY_HES)))
+                    {
+                        <span class="field-error">@GetError(nameof(CurrentWorkshopAcc.BANK_PAY_HES))</span>
                     }
                 </div>
 
@@ -437,8 +426,18 @@
 
     readonly Dictionary<string, string> _fieldErrors = new();
 
-    List<LookupDto<string>> InitialAdvHesList = new();
-    private IEnumerable<LookupDto<string>> InitialAccountList = new List<LookupDto<string>>();
+    // لیست‌های مجزا برای جلوگیری از تداخل دیتا در Dropdown ها
+    List<LookupDto<string>> Init_ADV_HES = new();
+    List<LookupDto<string>> Init_SALARY_EXP_TOLID = new();
+    List<LookupDto<string>> Init_SALARY_EXP_EDARI = new();
+    List<LookupDto<string>> Init_SALARY_EXP_FOROSH = new();
+    List<LookupDto<string>> Init_SALARY_EXP_KHADAMAT = new();
+    List<LookupDto<string>> Init_SALARY_PAYABLE = new();
+    List<LookupDto<string>> Init_LOAN_HES = new();
+    List<LookupDto<string>> Init_INS_EXP = new();
+    List<LookupDto<string>> Init_INS_PAYABLE = new();
+    List<LookupDto<string>> Init_TAX_PAYABLE = new();
+    List<LookupDto<string>> Init_BANK_PAY_HES = new();
 
     CancellationTokenSource? _selectWorkshopCts;
     long _selectWorkshopVersion = 0;
@@ -516,7 +515,6 @@
 
         _fieldErrors.Clear();
         CurrentWorkshopAcc = new Pay2WorkshopAccDto { WS_ID = selected.WS_ID };
-        InitialAdvHesList.Clear();
 
         try
         {
@@ -529,10 +527,20 @@
             CurrentWorkshopAcc.WS_ID = selected.WS_ID;
             NormalizeAccounts();
 
-            InitialAdvHesList.Clear();
-            var tempAccountList = new List<LookupDto<string>>();
+            // پاک کردن کش‌های نمایشی
+            Init_ADV_HES.Clear();
+            Init_SALARY_EXP_TOLID.Clear();
+            Init_SALARY_EXP_EDARI.Clear();
+            Init_SALARY_EXP_FOROSH.Clear();
+            Init_SALARY_EXP_KHADAMAT.Clear();
+            Init_SALARY_PAYABLE.Clear();
+            Init_LOAN_HES.Clear();
+            Init_INS_EXP.Clear();
+            Init_INS_PAYABLE.Clear();
+            Init_TAX_PAYABLE.Clear();
+            Init_BANK_PAY_HES.Clear();
 
-            // --- تابع محلی برای واکشی و اضافه کردن نام حساب به لیست مربوطه ---
+            // --- تابع محلی باهوشِ شما برای واکشی نام حساب‌ها ---
             async Task LoadAccountNameAsync(string? accCode, List<LookupDto<string>> targetList)
             {
                 if (string.IsNullOrWhiteSpace(accCode)) return;
@@ -554,18 +562,25 @@
                 }
             }
 
-            // واکشی حساب مساعده
-            await LoadAccountNameAsync(CurrentWorkshopAcc.ADV_HES, InitialAdvHesList);
+            // ایجاد یک لیست از تسک‌ها برای اجرای همزمان (Parallel)
+            var tasks = new List<Task>
+            {
+                LoadAccountNameAsync(CurrentWorkshopAcc.ADV_HES, Init_ADV_HES),
+                LoadAccountNameAsync(CurrentWorkshopAcc.SALARY_EXP_TOLID, Init_SALARY_EXP_TOLID),
+                LoadAccountNameAsync(CurrentWorkshopAcc.SALARY_EXP_EDARI, Init_SALARY_EXP_EDARI),
+                LoadAccountNameAsync(CurrentWorkshopAcc.SALARY_EXP_FOROSH, Init_SALARY_EXP_FOROSH),
+                LoadAccountNameAsync(CurrentWorkshopAcc.SALARY_EXP_KHADAMAT, Init_SALARY_EXP_KHADAMAT),
+                LoadAccountNameAsync(CurrentWorkshopAcc.SALARY_PAYABLE, Init_SALARY_PAYABLE),
+                LoadAccountNameAsync(CurrentWorkshopAcc.LOAN_HES, Init_LOAN_HES),
+                LoadAccountNameAsync(CurrentWorkshopAcc.INS_EXP, Init_INS_EXP),
+                LoadAccountNameAsync(CurrentWorkshopAcc.INS_PAYABLE, Init_INS_PAYABLE),
+                LoadAccountNameAsync(CurrentWorkshopAcc.TAX_PAYABLE, Init_TAX_PAYABLE),
+                LoadAccountNameAsync(CurrentWorkshopAcc.BANK_PAY_HES, Init_BANK_PAY_HES)
+            };
 
-            // واکشی ۵ حساب جدید و افزودن آن‌ها به لیست مشترک
-            await LoadAccountNameAsync(CurrentWorkshopAcc.SALARY_EXP, tempAccountList);
-            await LoadAccountNameAsync(CurrentWorkshopAcc.SALARY_PAYABLE, tempAccountList);
-            await LoadAccountNameAsync(CurrentWorkshopAcc.INS_EXP, tempAccountList);
-            await LoadAccountNameAsync(CurrentWorkshopAcc.INS_PAYABLE, tempAccountList);
-            await LoadAccountNameAsync(CurrentWorkshopAcc.TAX_PAYABLE, tempAccountList);
+            // منتظر می‌مانیم تا همه 11 ریکوئست به طور همزمان تمام شوند
+            await Task.WhenAll(tasks);
 
-            // مقداردهی نهایی لیست به متغیری که به UI متصل است
-            InitialAccountList = tempAccountList;
         }
         catch (OperationCanceledException)
         {
@@ -577,8 +592,6 @@
                 return;
 
             CurrentWorkshopAcc = new Pay2WorkshopAccDto { WS_ID = selected.WS_ID };
-            InitialAdvHesList.Clear();
-            InitialAccountList = new List<LookupDto<string>>();
             await Toast("خطا در بارگذاری سرفصل‌های حسابداری: " + ex.Message);
         }
     }
@@ -595,8 +608,19 @@
         };
 
         CurrentWorkshopAcc = new Pay2WorkshopAccDto();
-        InitialAdvHesList.Clear();
-        InitialAccountList = new List<LookupDto<string>>();
+
+        Init_ADV_HES.Clear();
+        Init_SALARY_EXP_TOLID.Clear();
+        Init_SALARY_EXP_EDARI.Clear();
+        Init_SALARY_EXP_FOROSH.Clear();
+        Init_SALARY_EXP_KHADAMAT.Clear();
+        Init_SALARY_PAYABLE.Clear();
+        Init_LOAN_HES.Clear();
+        Init_INS_EXP.Clear();
+        Init_INS_PAYABLE.Clear();
+        Init_TAX_PAYABLE.Clear();
+        Init_BANK_PAY_HES.Clear();
+
         _fieldErrors.Clear();
     }
 
@@ -620,13 +644,18 @@
             _fieldErrors[nameof(CurrentWorkshop.WS_NAME)] = "نام کارگاه نمی‌تواند خالی باشد.";
         }
 
-        // اعتبارسنجی یکپارچه برای تمام ۶ حساب
+        // اعتبارسنجی یکپارچه برای تمام ۱۱ حساب قبل از ذخیره
         ValidateAccount(CurrentWorkshopAcc.ADV_HES, nameof(CurrentWorkshopAcc.ADV_HES), "مساعده");
-        ValidateAccount(CurrentWorkshopAcc.SALARY_EXP, nameof(CurrentWorkshopAcc.SALARY_EXP), "هزینه حقوق");
+        ValidateAccount(CurrentWorkshopAcc.SALARY_EXP_TOLID, nameof(CurrentWorkshopAcc.SALARY_EXP_TOLID), "حقوق تولید");
+        ValidateAccount(CurrentWorkshopAcc.SALARY_EXP_EDARI, nameof(CurrentWorkshopAcc.SALARY_EXP_EDARI), "حقوق اداری");
+        ValidateAccount(CurrentWorkshopAcc.SALARY_EXP_FOROSH, nameof(CurrentWorkshopAcc.SALARY_EXP_FOROSH), "حقوق فروش");
+        ValidateAccount(CurrentWorkshopAcc.SALARY_EXP_KHADAMAT, nameof(CurrentWorkshopAcc.SALARY_EXP_KHADAMAT), "حقوق خدمات");
         ValidateAccount(CurrentWorkshopAcc.SALARY_PAYABLE, nameof(CurrentWorkshopAcc.SALARY_PAYABLE), "پرداختنی حقوق");
+        ValidateAccount(CurrentWorkshopAcc.LOAN_HES, nameof(CurrentWorkshopAcc.LOAN_HES), "صندوق وام");
         ValidateAccount(CurrentWorkshopAcc.INS_EXP, nameof(CurrentWorkshopAcc.INS_EXP), "هزینه بیمه");
         ValidateAccount(CurrentWorkshopAcc.INS_PAYABLE, nameof(CurrentWorkshopAcc.INS_PAYABLE), "پرداختنی بیمه");
         ValidateAccount(CurrentWorkshopAcc.TAX_PAYABLE, nameof(CurrentWorkshopAcc.TAX_PAYABLE), "مالیات");
+        ValidateAccount(CurrentWorkshopAcc.BANK_PAY_HES, nameof(CurrentWorkshopAcc.BANK_PAY_HES), "محل پرداخت");
 
         if (_fieldErrors.Any())
         {
@@ -679,7 +708,7 @@
         CurrentWorkshop.WS_CODE = OnlyDigits(CurrentWorkshop.WS_CODE, 10);
     }
 
-    // متد جامع اعتبارسنجی حساب‌ها
+    // متد جامع اعتبارسنجی حساب‌ها - نوشته شده توسط شما
     void ValidateAccount(string? value, string fieldName, string fieldLabel)
     {
         var cleanedValue = CleanAccount(value, 20);
@@ -706,43 +735,6 @@
         {
             _fieldErrors.Remove(fieldName);
         }
-    }
-
-    void OnAdvHesChanged(string? newValue)
-    {
-        CurrentWorkshopAcc ??= new Pay2WorkshopAccDto();
-        CurrentWorkshopAcc.ADV_HES = newValue;
-        ValidateAccount(newValue, nameof(CurrentWorkshopAcc.ADV_HES), "مساعده");
-    }
-
-    private void OnSalaryExpChanged(string value)
-    {
-        CurrentWorkshopAcc.SALARY_EXP = value;
-        ValidateAccount(value, nameof(CurrentWorkshopAcc.SALARY_EXP), "هزینه حقوق");
-    }
-
-    private void OnSalaryPayableChanged(string value)
-    {
-        CurrentWorkshopAcc.SALARY_PAYABLE = value;
-        ValidateAccount(value, nameof(CurrentWorkshopAcc.SALARY_PAYABLE), "پرداختنی حقوق");
-    }
-
-    private void OnInsExpChanged(string value)
-    {
-        CurrentWorkshopAcc.INS_EXP = value;
-        ValidateAccount(value, nameof(CurrentWorkshopAcc.INS_EXP), "هزینه بیمه");
-    }
-
-    private void OnInsPayableChanged(string value)
-    {
-        CurrentWorkshopAcc.INS_PAYABLE = value;
-        ValidateAccount(value, nameof(CurrentWorkshopAcc.INS_PAYABLE), "پرداختنی بیمه");
-    }
-
-    private void OnTaxPayableChanged(string value)
-    {
-        CurrentWorkshopAcc.TAX_PAYABLE = value;
-        ValidateAccount(value, nameof(CurrentWorkshopAcc.TAX_PAYABLE), "مالیات");
     }
 
     async Task<IEnumerable<LookupDto<string>>> SearchAccountsAsync(string? searchTerm, CancellationToken cancellationToken)
@@ -812,11 +804,16 @@
         CurrentWorkshopAcc ??= new Pay2WorkshopAccDto();
 
         CurrentWorkshopAcc.ADV_HES = CleanAccount(CurrentWorkshopAcc.ADV_HES, 20);
-        CurrentWorkshopAcc.SALARY_EXP = CleanAccount(CurrentWorkshopAcc.SALARY_EXP, 20);
+        CurrentWorkshopAcc.SALARY_EXP_TOLID = CleanAccount(CurrentWorkshopAcc.SALARY_EXP_TOLID, 20);
+        CurrentWorkshopAcc.SALARY_EXP_EDARI = CleanAccount(CurrentWorkshopAcc.SALARY_EXP_EDARI, 20);
+        CurrentWorkshopAcc.SALARY_EXP_FOROSH = CleanAccount(CurrentWorkshopAcc.SALARY_EXP_FOROSH, 20);
+        CurrentWorkshopAcc.SALARY_EXP_KHADAMAT = CleanAccount(CurrentWorkshopAcc.SALARY_EXP_KHADAMAT, 20);
         CurrentWorkshopAcc.SALARY_PAYABLE = CleanAccount(CurrentWorkshopAcc.SALARY_PAYABLE, 20);
+        CurrentWorkshopAcc.LOAN_HES = CleanAccount(CurrentWorkshopAcc.LOAN_HES, 20);
         CurrentWorkshopAcc.INS_EXP = CleanAccount(CurrentWorkshopAcc.INS_EXP, 20);
         CurrentWorkshopAcc.INS_PAYABLE = CleanAccount(CurrentWorkshopAcc.INS_PAYABLE, 20);
         CurrentWorkshopAcc.TAX_PAYABLE = CleanAccount(CurrentWorkshopAcc.TAX_PAYABLE, 20);
+        CurrentWorkshopAcc.BANK_PAY_HES = CleanAccount(CurrentWorkshopAcc.BANK_PAY_HES, 20);
     }
 
     static string? OnlyDigits(string? value, int maxLength)

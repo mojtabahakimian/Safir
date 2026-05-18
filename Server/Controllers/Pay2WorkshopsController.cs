@@ -50,11 +50,16 @@ WHERE  WS_ID = @wsId";
             switch (row.ACC_KEY)
             {
                 case "ADV_HES": acc.ADV_HES = row.ACC_CODE; break;
-                case "SALARY_EXP": acc.SALARY_EXP = row.ACC_CODE; break;
+                case "SALARY_EXP_TOLID": acc.SALARY_EXP_TOLID = row.ACC_CODE; break;
+                case "SALARY_EXP_EDARI": acc.SALARY_EXP_EDARI = row.ACC_CODE; break;
+                case "SALARY_EXP_FOROSH": acc.SALARY_EXP_FOROSH = row.ACC_CODE; break;
+                case "SALARY_EXP_KHADAMAT": acc.SALARY_EXP_KHADAMAT = row.ACC_CODE; break;
                 case "SALARY_PAYABLE": acc.SALARY_PAYABLE = row.ACC_CODE; break;
                 case "INS_EXP": acc.INS_EXP = row.ACC_CODE; break;
                 case "INS_PAYABLE": acc.INS_PAYABLE = row.ACC_CODE; break;
                 case "TAX_PAYABLE": acc.TAX_PAYABLE = row.ACC_CODE; break;
+                case "LOAN_HES": acc.LOAN_HES = row.ACC_CODE; break;
+                case "BANK_PAY_HES": acc.BANK_PAY_HES = row.ACC_CODE; break;
             }
         }
 
@@ -155,12 +160,17 @@ WHERE WS_ID = @WS_ID AND ACC_KEY = @ACC_KEY";
 
                 var accEntries = new[]
                 {
-                    ("ADV_HES",        a.ADV_HES),
-                    ("SALARY_EXP",     a.SALARY_EXP),
-                    ("SALARY_PAYABLE", a.SALARY_PAYABLE),
-                    ("INS_EXP",        a.INS_EXP),
-                    ("INS_PAYABLE",    a.INS_PAYABLE),
-                    ("TAX_PAYABLE",    a.TAX_PAYABLE),
+                    ("ADV_HES",             a.ADV_HES),
+                    ("SALARY_EXP_TOLID",    a.SALARY_EXP_TOLID),
+                    ("SALARY_EXP_EDARI",    a.SALARY_EXP_EDARI),
+                    ("SALARY_EXP_FOROSH",   a.SALARY_EXP_FOROSH),
+                    ("SALARY_EXP_KHADAMAT", a.SALARY_EXP_KHADAMAT),
+                    ("SALARY_PAYABLE",      a.SALARY_PAYABLE),
+                    ("INS_EXP",             a.INS_EXP),
+                    ("INS_PAYABLE",         a.INS_PAYABLE),
+                    ("TAX_PAYABLE",         a.TAX_PAYABLE),
+                    ("LOAN_HES",            a.LOAN_HES),
+                    ("BANK_PAY_HES",        a.BANK_PAY_HES)
                 };
 
                 foreach (var (key, code) in accEntries)
@@ -206,10 +216,16 @@ WHERE WS_ID = @WS_ID AND ACC_KEY = @ACC_KEY";
 
         a.ADV_HES = NormalizeAccountCode(a.ADV_HES, 20);
         a.SALARY_EXP = CleanText(a.SALARY_EXP, 20);
-        a.SALARY_PAYABLE = CleanText(a.SALARY_PAYABLE, 20);
-        a.INS_EXP = CleanText(a.INS_EXP, 20);
-        a.INS_PAYABLE = CleanText(a.INS_PAYABLE, 20);
-        a.TAX_PAYABLE = CleanText(a.TAX_PAYABLE, 20);
+        a.SALARY_EXP_TOLID = NormalizeAccountCode(a.SALARY_EXP_TOLID, 20);
+        a.SALARY_EXP_EDARI = NormalizeAccountCode(a.SALARY_EXP_EDARI, 20);
+        a.SALARY_EXP_FOROSH = NormalizeAccountCode(a.SALARY_EXP_FOROSH, 20);
+        a.SALARY_EXP_KHADAMAT = NormalizeAccountCode(a.SALARY_EXP_KHADAMAT, 20);
+        a.SALARY_PAYABLE = NormalizeAccountCode(a.SALARY_PAYABLE, 20);
+        a.INS_EXP = NormalizeAccountCode(a.INS_EXP, 20);
+        a.INS_PAYABLE = NormalizeAccountCode(a.INS_PAYABLE, 20);
+        a.TAX_PAYABLE = NormalizeAccountCode(a.TAX_PAYABLE, 20);
+        a.LOAN_HES = NormalizeAccountCode(a.LOAN_HES, 20);
+        a.BANK_PAY_HES = NormalizeAccountCode(a.BANK_PAY_HES, 20);
 
         if (string.IsNullOrWhiteSpace(w.WS_CODE))
             return "کد کارگاه نمی‌تواند خالی باشد.";

@@ -53,6 +53,13 @@
         public string? INS_EXP { get; set; }
         public string? INS_PAYABLE { get; set; }
         public string? TAX_PAYABLE { get; set; }
+
+        public string? SALARY_EXP_TOLID { get; set; }
+        public string? SALARY_EXP_EDARI { get; set; }
+        public string? SALARY_EXP_FOROSH { get; set; }
+        public string? SALARY_EXP_KHADAMAT { get; set; }
+        public string? LOAN_HES { get; set; }
+        public string? BANK_PAY_HES { get; set; }
     }
 
     /// <summary>
