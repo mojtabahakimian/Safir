@@ -36,8 +36,8 @@
                     </tr>
                 </thead>
                 <tbody>
-                    @* جایگزینی foreach با Virtualize (سازگار با دات‌نت 6) *@
-                    <Virtualize Items="Employees" Context="emp">
+                    @* جایگزینی foreach با Virtualize *@
+                    <Virtualize Items="Employees" Context="emp" SpacerElement="tr">
                         <tr>
                             <td class="p2-text-mono p2-text-muted">@emp.EMP_CODE</td>
                             <td><strong>@emp.FIRST_NAME @emp.LAST_NAME</strong><br /><span style="font-size:10px; color:#94a3b8">@emp.NATIONAL_CODE</span></td>
@@ -113,7 +113,14 @@
                     </div>
                     <div class="form-field">
                         <label>شغل پرسنل (اختیاری)</label>
-                        <Pay2Select TItem="LookupDto<int>" TValue="int?" Items="Jobs" @bind-Value="CurrentEmp.JOB_ID" TextSelector="x => x.Name" ValueSelector="x => x.Id" Placeholder="انتخاب شغل..." Clearable="true" />
+                        <Pay2Select TItem="LookupDto<int>" TValue="int?"
+                                    SearchItems="SearchJobsAsync"
+                                    Items="Init_JOB"
+                                    @bind-Value="CurrentEmp.JOB_ID"
+                                    TextSelector="x => x.Name"
+                                    ValueSelector="x => x.Id"
+                                    Placeholder="جستجوی عنوان شغل..."
+                                    Clearable="true" Editable="true" />
                     </div>
                     <div class="form-field">
                         <label>تاریخ شروع به کار *</label>
@@ -180,6 +187,7 @@
 
     List<LookupDto<byte>> MaritalOptions = new() { new((byte)1, "متأهل"), new((byte)2, "مجرد") };
     List<LookupDto<string>> Init_ACC_T = new();
+    List<LookupDto<int>> Init_JOB = new();
 
     protected override async Task OnInitializedAsync()
     {
@@ -189,31 +197,25 @@
     async Task LoadData()
     {
         IsLoading = true;
-        StateHasChanged(); // اجبار به رندر صفحه لودینگ
+        StateHasChanged();
 
         try
         {
-            // ۱. شروع تمام درخواست‌ها به صورت همزمان
             var wsTask = WorkshopApi.GetWorkshopsAsync();
-            var jobsTask = EmployeeApi.GetJobsLookupAsync();
             var empTask = EmployeeApi.GetEmployeesAsync();
 
-            // ۲. منتظر ماندن تا زمانی که "همه" درخواست‌ها تمام شوند
-            await Task.WhenAll(wsTask, jobsTask, empTask);
+            await Task.WhenAll(wsTask, empTask);
 
-            // ۳. اختصاص مقادیر
             Workshops = wsTask.Result;
-            Jobs = jobsTask.Result;
             Employees = empTask.Result;
         }
-        catch (Exception ex)
-        {
-            Snackbar.Add(ex.Message, Severity.Error);
-        }
-        finally
-        {
-            IsLoading = false;
-        }
+        catch (Exception ex) { Snackbar.Add(ex.Message, Severity.Error); }
+        finally { IsLoading = false; }
+    }
+    // ۳. این متد را برای جستجوی کامپوننت Pay2Select اضافه کنید:
+    async Task<IEnumerable<LookupDto<int>>> SearchJobsAsync(string? searchTerm, CancellationToken cancellationToken)
+    {
+        return await EmployeeApi.GetJobsLookupAsync(searchTerm);
     }
 
     void OpenNewEmpModal()
@@ -221,6 +223,7 @@
         CurrentEmp = new Pay2EmployeeDto { IS_ACTIVE = true, HIRE_DATE = long.Parse(Safir.Shared.Utility.CL_Tarikh.GetCurrentPersianDateAsLong().ToString()) };
         HireDateStr = CurrentEmp.HIRE_DATE.ToString();
         BirthDateStr = "";
+        Init_JOB.Clear(); // اضافه شد
         Init_ACC_T.Clear();
         ShowEmpModal = true;
     }
@@ -237,6 +240,12 @@
             var res = await LookupService.GetCustomerLookupAsync(CurrentEmp.ACC_T);
             if (res != null && res.Any(x => x.Id == CurrentEmp.ACC_T)) Init_ACC_T.Add(res.First(x => x.Id == CurrentEmp.ACC_T));
             else Init_ACC_T.Add(new LookupDto<string>(CurrentEmp.ACC_T, "حساب نامشخص"));
+        }
+
+        Init_JOB.Clear();
+        if (CurrentEmp.JOB_ID.HasValue && !string.IsNullOrEmpty(emp.JobName))
+        {
+            Init_JOB.Add(new LookupDto<int>(CurrentEmp.JOB_ID.Value, emp.JobName));
         }
 
         ShowEmpModal = true;

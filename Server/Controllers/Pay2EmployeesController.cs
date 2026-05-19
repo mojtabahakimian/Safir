@@ -34,15 +34,31 @@ namespace Safir.Server.Controllers
 
         // این متد را داخل کلاس Pay2EmployeesController اضافه کنید:
         [HttpGet("jobs-lookup")]
-        public async Task<ActionResult<IEnumerable<LookupDto<int>>>> GetJobsLookup()
+        public async Task<ActionResult<IEnumerable<LookupDto<int>>>> GetJobsLookup([FromQuery] string? searchTerm = null)
         {
-            const string sql = @"
-        SELECT JOB_ID AS Id, JOB_NAME AS Name 
-        FROM PAY2_JOB 
-        WHERE IS_ACTIVE = 1 
-        ORDER BY JOB_NAME";
+            string sql;
+            object parameters;
 
-            var data = await _db.DoGetDataSQLAsync<LookupDto<int>>(sql);
+            if (string.IsNullOrWhiteSpace(searchTerm))
+            {
+                sql = @"
+                    SELECT TOP 50 JOB_ID AS Id, JOB_NAME AS Name 
+                    FROM PAY2_JOB 
+                    WHERE IS_ACTIVE = 1 
+                    ORDER BY JOB_NAME";
+                parameters = new { };
+            }
+            else
+            {
+                sql = @"
+                    SELECT TOP 50 JOB_ID AS Id, JOB_NAME AS Name 
+                    FROM PAY2_JOB 
+                    WHERE IS_ACTIVE = 1 AND (JOB_NAME LIKE @Search OR JOB_CODE LIKE @Search)
+                    ORDER BY JOB_NAME";
+                parameters = new { Search = $"%{searchTerm}%" };
+            }
+
+            var data = await _db.DoGetDataSQLAsync<LookupDto<int>>(sql, parameters);
             return Ok(data ?? Enumerable.Empty<LookupDto<int>>());
         }
 

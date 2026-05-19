@@ -31,7 +31,13 @@ namespace Safir.Client.Services
             return await res.Content.ReadFromJsonAsync<int>();
         }
 
-        public async Task<List<LookupDto<int>>> GetJobsLookupAsync()
-            => await _http.GetFromJsonAsync<List<LookupDto<int>>>("api/pay2/employees/jobs-lookup") ?? new();
+        public async Task<List<LookupDto<int>>> GetJobsLookupAsync(string? searchTerm = null)
+        {
+            var url = "api/pay2/employees/jobs-lookup";
+            if (!string.IsNullOrWhiteSpace(searchTerm))
+                url += $"?searchTerm={Uri.EscapeDataString(searchTerm)}";
+
+            return await _http.GetFromJsonAsync<List<LookupDto<int>>>(url) ?? new();
+        }
     }
 }
