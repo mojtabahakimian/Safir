@@ -1,29 +1,31 @@
 <Project Sdk="Microsoft.NET.Sdk.BlazorWebAssembly">
 
-  <PropertyGroup>
-    <TargetFramework>net6.0</TargetFramework>
-    <Nullable>enable</Nullable>
-    <ImplicitUsings>enable</ImplicitUsings>
-    <ServiceWorkerAssetsManifest>service-worker-assets.js</ServiceWorkerAssetsManifest>
-    <UserSecretsId>f3df9012-da18-49e5-96d7-36887a962be9</UserSecretsId>
-	  <Version>1.0.0.9</Version>
-  </PropertyGroup>
+	<PropertyGroup>
+		<TargetFramework>net8.0</TargetFramework>
+		<Nullable>enable</Nullable>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<ServiceWorkerAssetsManifest>service-worker-assets.js</ServiceWorkerAssetsManifest>
+		<UserSecretsId>f3df9012-da18-49e5-96d7-36887a962be9</UserSecretsId>
+		<Version>1.0.0.9</Version>
+	</PropertyGroup>
 
-  <ItemGroup>
-    <PackageReference Include="Blazored.LocalStorage" Version="4.5.0" />
-    <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly" Version="6.0.20" />
-    <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly.Authentication" Version="6.0.36" />
-    <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly.DevServer" Version="6.0.20" PrivateAssets="all" />
-    <PackageReference Include="MudBlazor" Version="6.21.0" />
-    <PackageReference Include="System.IdentityModel.Tokens.Jwt" Version="6.36.0" />
-  </ItemGroup>
+	<ItemGroup>
+		<PackageReference Include="Blazored.LocalStorage" Version="4.5.0" />
+		<!-- نسخه‌ها دقیقاً روی 8 تنظیم شدند -->
+		<PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly" Version="8.0.0" />
+		<PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly.Authentication" Version="8.0.0" />
+		<PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly.DevServer" Version="8.0.0" PrivateAssets="all" />
 
-  <ItemGroup>
-    <ProjectReference Include="..\Shared\Safir.Shared.csproj" />
-  </ItemGroup>
+		<PackageReference Include="MudBlazor" Version="6.21.0" />
+		<PackageReference Include="System.IdentityModel.Tokens.Jwt" Version="6.36.0" />
+	</ItemGroup>
 
-  <ItemGroup>
-    <ServiceWorker Include="wwwroot\service-worker.js" PublishedContent="wwwroot\service-worker.published.js" />
-  </ItemGroup>
+	<ItemGroup>
+		<ProjectReference Include="..\Shared\Safir.Shared.csproj" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<ServiceWorker Include="wwwroot\service-worker.js" PublishedContent="wwwroot\service-worker.published.js" />
+	</ItemGroup>
 
 </Project>

@@ -36,8 +36,8 @@
                     </tr>
                 </thead>
                 <tbody>
-                    @foreach (var emp in Employees)
-                    {
+                    @* جایگزینی foreach با Virtualize (سازگار با دات‌نت 6) *@
+                    <Virtualize Items="Employees" Context="emp">
                         <tr>
                             <td class="p2-text-mono p2-text-muted">@emp.EMP_CODE</td>
                             <td><strong>@emp.FIRST_NAME @emp.LAST_NAME</strong><br /><span style="font-size:10px; color:#94a3b8">@emp.NATIONAL_CODE</span></td>
@@ -55,7 +55,7 @@
                                 <button class="btn-ghost-pay2" style="color:#8b5cf6;" @onclick="() => OpenDecreeModal(emp)"><i class="bi bi-file-earmark-person"></i> احکام</button>
                             </td>
                         </tr>
-                    }
+                    </Virtualize>
                 </tbody>
             </table>
         </div>
@@ -189,14 +189,31 @@
     async Task LoadData()
     {
         IsLoading = true;
+        StateHasChanged(); // اجبار به رندر صفحه لودینگ
+
         try
         {
-            Workshops = await WorkshopApi.GetWorkshopsAsync();
-            Jobs = await EmployeeApi.GetJobsLookupAsync(); // بارگذاری مشاغل از سرور
-            Employees = await EmployeeApi.GetEmployeesAsync();
+            // ۱. شروع تمام درخواست‌ها به صورت همزمان
+            var wsTask = WorkshopApi.GetWorkshopsAsync();
+            var jobsTask = EmployeeApi.GetJobsLookupAsync();
+            var empTask = EmployeeApi.GetEmployeesAsync();
+
+            // ۲. منتظر ماندن تا زمانی که "همه" درخواست‌ها تمام شوند
+            await Task.WhenAll(wsTask, jobsTask, empTask);
+
+            // ۳. اختصاص مقادیر
+            Workshops = wsTask.Result;
+            Jobs = jobsTask.Result;
+            Employees = empTask.Result;
         }
-        catch (Exception ex) { Snackbar.Add(ex.Message, Severity.Error); }
-        finally { IsLoading = false; }
+        catch (Exception ex)
+        {
+            Snackbar.Add(ex.Message, Severity.Error);
+        }
+        finally
+        {
+            IsLoading = false;
+        }
     }
 
     void OpenNewEmpModal()
