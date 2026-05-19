@@ -1622,72 +1622,118 @@
     }
 }
 
-@media (max-width: 768px) {
-    :root {
-        --p2-sidebar-w: 220px;
-        --p2-input-h: 40px;
+/* =========================================================
+   📱 ریسپانسیو برای تبلت و موبایل (کمتر از 900px)
+   ========================================================= */
+@media (max-width: 900px) {
+    .pay2-app {
+        flex-direction: column;
+        height: auto;
+        min-height: 100vh;
+        overflow-y: auto; /* کل صفحه اسکرول شود */
+    }
+
+    /* ۱. سایدبار تبدیل به هدر افقی می‌شود */
+    .pay2-sidebar {
+        width: 100% !important;
+        min-width: 100%;
+        height: auto;
+        border-left: none;
+        border-bottom: 1px solid var(--p2-border);
+        flex-direction: column; /* فرزندان زیر هم باشند */
+        z-index: 100;
+    }
+
+    /* مخفی کردن بخش‌های غیر ضروری در موبایل برای خلوت شدن صفحه */
+    .pay2-period-card,
+    .pay2-sidebar-footer {
+        display: none;
+    }
+
+    /* وسط چین کردن لوگو */
+    .pay2-brand {
+        padding: 12px 16px;
+        justify-content: center;
+        border-bottom: none;
+    }
+
+    /* ۲. منو به صورت افقی و اسکرول‌دار (Swipeable) درمی‌آید */
+    .pay2-menu {
+        display: flex;
+        flex-direction: row;
+        overflow-x: auto;
+        padding: 0 10px 10px 10px;
+        gap: 8px;
+        /* مخفی کردن اسکرول‌بار در مرورگرها */
+        -ms-overflow-style: none; /* IE and Edge */
+        scrollbar-width: none; /* Firefox */
+    }
+
+        .pay2-menu::-webkit-scrollbar {
+            display: none; /* Chrome, Safari and Opera */
+        }
+
+    .pay2-nav-item {
+        flex-direction: row;
+        white-space: nowrap;
+        padding: 8px 16px;
+        margin: 0;
+        background: var(--p2-bg-hover);
+    }
+
+        .pay2-nav-item.active {
+            background-color: var(--p2-primary);
+            color: white;
+        }
+
+    /* ۳. تنظیم هدر اصلی صفحه (جستجو و عنوان) */
+    .pay2-header {
+        flex-direction: column;
+        gap: 12px;
+        height: auto;
+        padding: 16px;
+        align-items: stretch;
+    }
+
+        .pay2-header > div {
+            width: 100%;
+            justify-content: space-between;
+        }
+
+    .pay2-search-wrapper {
+        flex: 1;
+    }
+
+    .pay2-search-input {
+        width: 100%;
+    }
+
+    /* ۴. تنظیم محتوا و گریدها */
+    .pay2-main {
+        overflow: visible;
     }
 
     .pay2-content {
         padding: 16px;
     }
 
+    /* همه چیز در موبایل تک‌ستونه می‌شود */
     .form-grid-2,
-    .form-grid-3 {
-        grid-template-columns: 1fr;
+    .form-grid-3,
+    .form-grid-4,
+    .dashboard-top-grid,
+    .dashboard-bottom-grid {
+        grid-template-columns: 1fr !important;
     }
 
-    .col-span-2,
-    .col-span-3 {
-        grid-column: span 1;
-    }
-
-    .p2-stat-grid,
-    .dashboard-top-grid {
-        grid-template-columns: 1fr 1fr;
-    }
-
-    .pay2-search-input {
-        width: 160px;
-    }
-
-    .p2-card {
-        padding: 16px;
-    }
-}
-
-@media (max-width: 480px) {
-    .pay2-app {
+    /* فاصله دادن به دکمه‌های مودال در موبایل */
+    .card-custom[style*="position:fixed"] > div:last-child > div:last-child {
         flex-direction: column;
     }
 
-    .pay2-sidebar {
-        width: 100%;
-        min-width: unset;
-        height: auto;
-        border-left: none;
-        border-bottom: 1px solid var(--p2-border);
-        flex-direction: row;
-        overflow-x: auto;
-    }
-
-    .pay2-menu {
-        flex-direction: row;
-        overflow-x: auto;
-        padding: 6px;
-        white-space: nowrap;
-    }
-
-    .pay2-nav-item {
-        padding: 8px 12px;
-        font-size: 12px;
-        white-space: nowrap;
-    }
-
-    .p2-stat-grid,
-    .dashboard-top-grid {
-        grid-template-columns: 1fr;
-    }
+        .card-custom[style*="position:fixed"] > div:last-child > div:last-child button {
+            width: 100%;
+        }
 }
 
 

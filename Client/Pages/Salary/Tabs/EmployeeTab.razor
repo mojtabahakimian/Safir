@@ -23,41 +23,46 @@
     else
     {
         <div class="card-custom" style="padding: 0; overflow:hidden;">
-            <table class="p2-table">
-                <thead>
-                    <tr>
-                        <th>کد</th>
-                        <th>نام و نام خانوادگی</th>
-                        <th>کارگاه</th>
-                        <th>شغل</th>
-                        <th>کد تفصیلی (مساعده)</th>
-                        <th>وضعیت</th>
-                        <th style="text-align:center;">عملیات</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    @* جایگزینی foreach با Virtualize *@
-                    <Virtualize Items="Employees" Context="emp" SpacerElement="tr">
+            <!-- اضافه کردن اسکرول عمودی (max-height) و افقی (overflow-x) -->
+            <div style="max-height: 65vh; overflow-y: auto; overflow-x: auto; width: 100%;">
+
+                <!-- تنظیم عرض حداقل (min-width: 800px) برای جلوگیری از له شدن ستون‌ها در موبایل -->
+                <table class="p2-table" style="position: relative; width: 100%; min-width: 800px;">
+                    <thead style="position: sticky; top: 0; z-index: 10;">
                         <tr>
-                            <td class="p2-text-mono p2-text-muted">@emp.EMP_CODE</td>
-                            <td><strong>@emp.FIRST_NAME @emp.LAST_NAME</strong><br /><span style="font-size:10px; color:#94a3b8">@emp.NATIONAL_CODE</span></td>
-                            <td class="p2-text-muted">@emp.WorkshopName</td>
-                            <td class="p2-text-muted">@emp.JobName</td>
-                            <td>
-                                @if (!string.IsNullOrEmpty(emp.ACC_T))
-                                {
-                                    <span class="p2-badge-primary p2-text-mono">@emp.ACC_T</span>
-                                }
-                            </td>
-                            <td><span class="@(emp.IS_ACTIVE ? "p2-badge-success" : "p2-badge-neutral")">@emp.StatusText</span></td>
-                            <td style="text-align:center;">
-                                <button class="btn-ghost-pay2 p2-text-primary" @onclick="() => OpenEditEmpModal(emp)"><i class="bi bi-pencil"></i> ویرایش</button>
-                                <button class="btn-ghost-pay2" style="color:#8b5cf6;" @onclick="() => OpenDecreeModal(emp)"><i class="bi bi-file-earmark-person"></i> احکام</button>
-                            </td>
+                            <th>کد</th>
+                            <th>نام و نام خانوادگی</th>
+                            <th>کارگاه</th>
+                            <th>شغل</th>
+                            <th>کد تفصیلی (مساعده)</th>
+                            <th>وضعیت</th>
+                            <th style="text-align:center;">عملیات</th>
                         </tr>
-                    </Virtualize>
-                </tbody>
-            </table>
+                    </thead>
+                    <tbody>
+                        <Virtualize Items="Employees" Context="emp">
+                            <tr>
+                                <td class="p2-text-mono p2-text-muted">@emp.EMP_CODE</td>
+                                <td><strong>@emp.FIRST_NAME @emp.LAST_NAME</strong><br /><span style="font-size:10px; color:#94a3b8">@emp.NATIONAL_CODE</span></td>
+                                <td class="p2-text-muted">@emp.WorkshopName</td>
+                                <td class="p2-text-muted">@emp.JobName</td>
+                                <td>
+                                    @if (!string.IsNullOrEmpty(emp.ACC_T))
+                                    {
+                                        <span class="p2-badge-primary p2-text-mono">@emp.ACC_T</span>
+                                    }
+                                </td>
+                                <td><span class="@(emp.IS_ACTIVE ? "p2-badge-success" : "p2-badge-neutral")">@emp.StatusText</span></td>
+                                <td style="text-align:center;">
+                                    <button class="btn-ghost-pay2 p2-text-primary" @onclick="() => OpenEditEmpModal(emp)"><i class="bi bi-pencil"></i> ویرایش</button>
+                                    <button class="btn-ghost-pay2" style="color:#8b5cf6;" @onclick="() => OpenDecreeModal(emp)"><i class="bi bi-file-earmark-person"></i> احکام</button>
+                                </td>
+                            </tr>
+                        </Virtualize>
+                    </tbody>
+                </table>
+
+            </div>
         </div>
     }
 

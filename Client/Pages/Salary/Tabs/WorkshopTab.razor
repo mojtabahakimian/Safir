@@ -36,37 +36,41 @@
             }
             else
             {
-                <table class="workshop-table">
-                    <thead>
-                        <tr>
-                            <th>کد</th>
-                            <th>نام کارگاه</th>
-                            <th>نوع بیمه</th>
-                            <th>وضعیت</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        @foreach (var item in Workshops)
-                        {
-                            <tr class="workshop-row @(CurrentWorkshop.WS_ID == item.WS_ID ? "active" : "")"
-                                @onclick="() => SelectWorkshop(item)">
-                                <td class="p2-text-mono">@item.WS_CODE</td>
-                                <td>@item.WS_NAME</td>
-                                <td class="p2-text-muted" style="font-size:12px;">@item.InsModeText</td>
-                                <td>
-                                    @if (item.IS_ACTIVE)
-                                    {
-                                        <span class="p2-badge-success">فعال</span>
-                                    }
-                                    else
-                                    {
-                                        <span class="p2-badge-neutral">غیرفعال</span>
-                                    }
-                                </td>
+                <!-- اضافه شدن div برای کنترل اسکرول افقی در موبایل -->
+                <div style="width: 100%; overflow-x: auto;">
+                    <!-- اضافه شدن min-width: 500px برای جلوگیری از له شدن ستون‌ها در موبایل -->
+                    <table class="workshop-table" style="width: 100%;">
+                        <thead>
+                            <tr>
+                                <th>کد</th>
+                                <th>نام کارگاه</th>
+                                <th>نوع بیمه</th>
+                                <th>وضعیت</th>
                             </tr>
-                        }
-                    </tbody>
-                </table>
+                        </thead>
+                        <tbody>
+                            @foreach (var item in Workshops)
+                            {
+                                <tr class="workshop-row @(CurrentWorkshop.WS_ID == item.WS_ID ? "active" : "")"
+                                    @onclick="() => SelectWorkshop(item)">
+                                    <td class="p2-text-mono">@item.WS_CODE</td>
+                                    <td>@item.WS_NAME</td>
+                                    <td class="p2-text-muted" style="font-size:12px;">@item.InsModeText</td>
+                                    <td>
+                                        @if (item.IS_ACTIVE)
+                                        {
+                                            <span class="p2-badge-success">فعال</span>
+                                        }
+                                        else
+                                        {
+                                            <span class="p2-badge-neutral">غیرفعال</span>
+                                        }
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
             }
         </div>
 
