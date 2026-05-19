@@ -1,0 +1,153 @@
+﻿@inject Safir.Client.Services.Pay2EmployeeApiService EmployeeApi
+@inject Safir.Client.Services.Pay2WorkshopApiService WorkshopApi
+@inject ISnackbar Snackbar
+@using Safir.Shared.Models.Salary
+@using Safir.Client.Pages.Salary.Tabs.EmployeeComponents
+
+<div class="pay2-tab-container">
+    <div class="pay2-card-header">
+        <div>
+            <h5 class="pay2-section-title">مدیریت پرسنل (PAY2_EMPLOYEE)</h5>
+            <div class="pay2-section-subtitle">لیست پرسنل، اطلاعات پایه و ارتباط با حسابداری.</div>
+        </div>
+        <button class="btn-primary-pay2" @onclick="OpenNewEmpModal">
+            <i class="bi bi-plus-lg"></i> پرسنل جدید
+        </button>
+    </div>
+
+    @if (IsLoading)
+    {
+        <div class="p2-loading"><div class="p2-spinner"></div> در حال دریافت اطلاعات...</div>
+    }
+    else
+    {
+        <div class="card-custom" style="padding: 0; overflow:hidden;">
+            <div style="max-height: 65vh; overflow-y: auto; overflow-x: auto; width: 100%;">
+                <table class="p2-table" style="position: relative; width: 100%; min-width: 800px;">
+                    <thead style="position: sticky; top: 0; z-index: 10;">
+                        <tr>
+                            <th>کد</th>
+                            <th>نام و نام خانوادگی</th>
+                            <th>کارگاه</th>
+                            <th>شغل</th>
+                            <th>کد تفصیلی (مساعده)</th>
+                            <th>وضعیت</th>
+                            <th style="text-align:center;">عملیات</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <Virtualize Items="Employees" Context="emp">
+                            <tr>
+                                <td class="p2-text-mono p2-text-muted">@emp.EMP_CODE</td>
+                                <td><strong>@emp.FIRST_NAME @emp.LAST_NAME</strong><br /><span style="font-size:10px; color:#94a3b8">@emp.NATIONAL_CODE</span></td>
+                                <td class="p2-text-muted">@emp.WorkshopName</td>
+                                <td class="p2-text-muted">@emp.JobName</td>
+                                <td>
+                                    @if (!string.IsNullOrEmpty(emp.ACC_T))
+                                    {
+                                        <span class="p2-badge-primary p2-text-mono">@emp.ACC_T</span>
+                                    }
+                                </td>
+                                <td><span class="@(emp.IS_ACTIVE ? "p2-badge-success" : "p2-badge-neutral")">@emp.StatusText</span></td>
+                                <td style="text-align:center;">
+                                    <button class="btn-ghost-pay2 p2-text-primary" @onclick="() => OpenEditEmpModal(emp)"><i class="bi bi-pencil"></i> ویرایش</button>
+                                    <button class="btn-ghost-pay2" style="color:#8b5cf6;" @onclick="() => OpenDecreeModal(emp)"><i class="bi bi-file-earmark-person"></i> احکام</button>
+                                </td>
+                            </tr>
+                        </Virtualize>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    }
+
+    @* ------------------- صدا زدن مودال فرزند ------------------- *@
+    <EmployeeEditModal IsOpen="ShowEmpModal"
+                       Employee="CurrentEmp"
+                       Workshops="Workshops"
+                       IsSaving="IsSaving"
+                       OnClose="CloseModals"
+                       OnSave="HandleSaveEmployee" />
+
+</div>
+
+@code {
+    bool IsLoading = true;
+    bool IsSaving = false;
+    bool ShowEmpModal = false;
+
+    List<Pay2EmployeeDto> Employees = new();
+    List<Pay2WorkshopDto> Workshops = new();
+    Pay2EmployeeDto CurrentEmp = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadData();
+    }
+
+    async Task LoadData()
+    {
+        IsLoading = true;
+        StateHasChanged();
+
+        try
+        {
+            var wsTask = WorkshopApi.GetWorkshopsAsync();
+            var empTask = EmployeeApi.GetEmployeesAsync();
+
+            await Task.WhenAll(wsTask, empTask);
+
+            Workshops = wsTask.Result;
+            Employees = empTask.Result;
+        }
+        catch (Exception ex) { Snackbar.Add(ex.Message, MudBlazor.Severity.Error); }
+        finally { IsLoading = false; }
+    }
+
+    void OpenNewEmpModal()
+    {
+        CurrentEmp = new Pay2EmployeeDto
+        {
+            IS_ACTIVE = true,
+            HIRE_DATE = long.Parse(Safir.Shared.Utility.CL_Tarikh.GetCurrentPersianDateAsLong().ToString())
+        };
+        ShowEmpModal = true;
+    }
+
+    void OpenEditEmpModal(Pay2EmployeeDto emp)
+    {
+        // یک کپی عمیق از شخص می‌گیریم تا اگر کاربر تغییر داد ولی لغو کرد، دیتای لیست خراب نشود
+        CurrentEmp = System.Text.Json.JsonSerializer.Deserialize<Pay2EmployeeDto>(System.Text.Json.JsonSerializer.Serialize(emp))!;
+        ShowEmpModal = true;
+    }
+
+    void CloseModals()
+    {
+        ShowEmpModal = false;
+    }
+
+    async Task HandleSaveEmployee(Pay2EmployeeDto employeeToSave)
+    {
+        IsSaving = true;
+        StateHasChanged();
+
+        try
+        {
+            await EmployeeApi.SaveEmployeeAsync(employeeToSave);
+            Snackbar.Add("پرسنل با موفقیت ذخیره شد.", MudBlazor.Severity.Success);
+            CloseModals();
+            await LoadData(); // رفرش کردن گرید
+        }
+        catch (Exception ex) { Snackbar.Add(ex.Message, MudBlazor.Severity.Error); }
+        finally
+        {
+            IsSaving = false;
+            StateHasChanged();
+        }
+    }
+
+    void OpenDecreeModal(Pay2EmployeeDto emp)
+    {
+        Snackbar.Add("مدیریت احکام به زودی متصل می‌شود...", MudBlazor.Severity.Info);
+    }
+}

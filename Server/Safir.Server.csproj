@@ -1,51 +1,51 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk.Web">
 
-  <PropertyGroup>
-    <TargetFramework>net6.0</TargetFramework>
-    <Nullable>enable</Nullable>
-    <ImplicitUsings>enable</ImplicitUsings>
-    <UserSecretsId>ea04bfe3-0374-4c0a-b151-058c4a6cf75c</UserSecretsId>
-  </PropertyGroup>
+	<PropertyGroup>
+		<TargetFramework>net8.0</TargetFramework>
+		<Nullable>enable</Nullable>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<UserSecretsId>ea04bfe3-0374-4c0a-b151-058c4a6cf75c</UserSecretsId>
+	</PropertyGroup>
 
-  <ItemGroup>
-    <Compile Remove="Models\**" />
-    <Content Remove="Models\**" />
-    <EmbeddedResource Remove="Models\**" />
-    <None Remove="Models\**" />
-  </ItemGroup>
+	<ItemGroup>
+		<Compile Remove="Models\**" />
+		<Content Remove="Models\**" />
+		<EmbeddedResource Remove="Models\**" />
+		<None Remove="Models\**" />
+	</ItemGroup>
 
-  <ItemGroup>
-    <None Remove="Fonts\2.png" />
-    <None Remove="Fonts\IRANYekanFN.TTF" />
-    <None Remove="Rpts\R_DAFTAR_TAFZILY_2_2.mrt" />
-  </ItemGroup>
+	<ItemGroup>
+		<None Remove="Fonts\2.png" />
+		<None Remove="Fonts\IRANYekanFN.TTF" />
+		<None Remove="Rpts\R_DAFTAR_TAFZILY_2_2.mrt" />
+	</ItemGroup>
 
-  <ItemGroup>
-    <Content Include="Fonts\IRANYekanFN.TTF">
-      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
-    </Content>
-    <Content Include="Rpts\R_DAFTAR_TAFZILY_2_2.mrt">
-      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
-    </Content>
-  </ItemGroup>
+	<ItemGroup>
+		<Content Include="Fonts\IRANYekanFN.TTF">
+			<CopyToOutputDirectory>Always</CopyToOutputDirectory>
+		</Content>
+		<Content Include="Rpts\R_DAFTAR_TAFZILY_2_2.mrt">
+			<CopyToOutputDirectory>Always</CopyToOutputDirectory>
+		</Content>
+	</ItemGroup>
 
-  <ItemGroup>
-    <EmbeddedResource Include="Fonts\2.png" />
-  </ItemGroup>
+	<ItemGroup>
+		<EmbeddedResource Include="Fonts\2.png" />
+	</ItemGroup>
 
-  <ItemGroup>
-    <PackageReference Include="Dapper" Version="2.1.66" />
-    <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="6.0.36" />
-    <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly.Server" Version="6.0.20" />
-    <PackageReference Include="QuestPDF" Version="2025.4.0" />
-    <PackageReference Include="Stimulsoft.Reports.Web.NetCore" Version="2023.1.1" />
-    <PackageReference Include="System.Data.SqlClient" Version="4.9.0" />
-  </ItemGroup>
+	<ItemGroup>
+		<PackageReference Include="Dapper" Version="2.1.79" />
+		<PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="8.0.0" />
+		<PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly.Server" Version="8.0.0" />
 
-  <ItemGroup>
-    <ProjectReference Include="..\Client\Safir.Client.csproj" />
-    <ProjectReference Include="..\Shared\Safir.Shared.csproj" />
-  </ItemGroup>
+		<PackageReference Include="QuestPDF" Version="2025.4.0" />
+		<PackageReference Include="Stimulsoft.Reports.Web.NetCore" Version="2023.1.1" />
+		<PackageReference Include="System.Data.SqlClient" Version="4.9.0" />
+	</ItemGroup>
 
+	<ItemGroup>
+		<ProjectReference Include="..\Client\Safir.Client.csproj" />
+		<ProjectReference Include="..\Shared\Safir.Shared.csproj" />
+	</ItemGroup>
 
 </Project>

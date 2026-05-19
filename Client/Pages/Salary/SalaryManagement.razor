@@ -1,0 +1,339 @@
+﻿@page "/salary/manage"
+@layout EmptyLayout
+@using Safir.Client.Pages.Salary.Tabs
+@using Safir.Shared.Models.Salary
+
+@* ══════════════════════════════════════════════════════════
+   Toast — نمایش پیام‌های عملیاتی
+   ══════════════════════════════════════════════════════════ *@
+@if (IsToastVisible)
+{
+    <div class="pay2-toast">@ToastMessage</div>
+}
+
+@* ══════════════════════════════════════════════════════════
+   پوسته اصلی اپلیکیشن
+   ══════════════════════════════════════════════════════════ *@
+<div class="pay2-app">
+
+    @* ─────────────────────────────────────────
+     سایدبار
+     ───────────────────────────────────────── *@
+    <aside class="pay2-sidebar">
+
+        @* برند / لوگو *@
+        <div class="pay2-brand">
+            <div class="pay2-brand-icon">P2</div>
+            <div>
+                <div class="pay2-brand-name">مستر کارکت</div>
+                <div class="pay2-brand-version">نسخه PAY2 v6.0</div>
+            </div>
+        </div>
+
+        @* کارت دوره فعال *@
+        <div class="pay2-period-card">
+            <div class="pay2-period-label">دوره فعال</div>
+            <div class="pay2-period-row">
+                <div class="pay2-period-value">۱۴۰۴/۰۱</div>
+                <div class="pay2-period-badge">باز</div>
+            </div>
+        </div>
+
+        @* منوی ناوبری *@
+        <ul class="pay2-menu">
+
+            <li class="pay2-nav-item @(ActiveTab == "dashboard" ? "active" : "")"
+                @onclick='() => SetActiveTab("dashboard")'>
+                <i class="bi bi-grid-1x2"></i>
+                داشبورد
+            </li>
+
+            <li class="pay2-nav-item @(ActiveTab == "workshops" ? "active" : "")"
+                @onclick='() => SetActiveTab("workshops")'>
+                <i class="bi bi-building"></i>
+                مدیریت کارگاه‌ها
+            </li>
+
+            <li class="pay2-nav-item @(ActiveTab == "employees" ? "active" : "")"
+                @onclick='() => SetActiveTab("employees")'>
+                <i class="bi bi-people"></i>
+                پرسنل و احکام
+            </li>
+
+            <li class="pay2-nav-item @(ActiveTab == "attendance" ? "active" : "")"
+                @onclick='() => SetActiveTab("attendance")'>
+                <i class="bi bi-calendar-check"></i>
+                کارکرد و مرخصی
+            </li>
+
+            <li class="pay2-nav-item @(ActiveTab == "advances" ? "active" : "")"
+                @onclick='() => SetActiveTab("advances")'>
+                <i class="bi bi-cash-coin"></i>
+                مساعده هوشمند
+            </li>
+
+            <li class="pay2-nav-item @(ActiveTab == "payroll" ? "active" : "")"
+                @onclick='() => SetActiveTab("payroll")'>
+                <i class="bi bi-calculator"></i>
+                محاسبه حقوق
+            </li>
+
+            <li class="pay2-nav-item @(ActiveTab == "settings" ? "active" : "")"
+                @onclick='() => SetActiveTab("settings")'>
+                <i class="bi bi-gear"></i>
+                تنظیمات سیستم
+            </li>
+
+            <li class="pay2-nav-item @(ActiveTab == "itemdefs" ? "active" : "")"
+                @onclick='() => SetActiveTab("itemdefs")'>
+                <i class="bi bi-list-check"></i>
+                آیتم‌های حقوقی
+            </li>
+
+        </ul>
+
+        @* فوتر سایدبار *@
+        <div class="pay2-sidebar-footer">
+            <div class="pay2-user-avatar">مد</div>
+            <div>
+                <div class="pay2-user-name">مدیر سیستم</div>
+                <div class="pay2-user-role">کارگاه مرکزی</div>
+            </div>
+        </div>
+
+    </aside>
+
+    @* ─────────────────────────────────────────
+     ناحیه اصلی
+     ───────────────────────────────────────── *@
+    <main class="pay2-main">
+
+        @* هدر بالای صفحه *@
+        <header class="pay2-header">
+            <div class="pay2-header-title">@GetTabTitle(ActiveTab)</div>
+
+            <div style="display:flex; align-items:center; gap:12px;">
+                <div class="pay2-search-wrapper">
+                    <i class="bi bi-search"></i>
+                    <input type="text"
+                           class="pay2-search-input"
+                           placeholder="جستجوی سریع..." />
+                </div>
+                <button class="btn-ghost-pay2"
+                        style="width:40px; height:40px; border-radius:var(--p2-radius-md);"
+                        title="خروج">
+                    <i class="bi bi-box-arrow-right"></i>
+                </button>
+            </div>
+        </header>
+
+        @* محتوای تب‌ها *@
+        <div class="pay2-content">
+
+            @* ══ داشبورد ══ *@
+            @if (ActiveTab == "dashboard")
+            {
+                <div class="pay2-tab-container">
+
+                    @* ردیف بالا: کارت‌های آمار *@
+                    <div class="dashboard-top-grid">
+
+                        <div class="card-custom">
+                            <div class="stat-icon-box"
+                                 style="background:var(--p2-primary-light); color:var(--p2-primary);">
+                                <i class="bi bi-people-fill"></i>
+                            </div>
+                            <div class="p2-stat-label">پرسنل فعال</div>
+                            <div class="p2-stat-value">۱۲۴ نفر</div>
+                        </div>
+
+                        <div class="card-custom">
+                            <div class="stat-icon-box"
+                                 style="background:var(--p2-success-bg); color:var(--p2-success-text);">
+                                <i class="bi bi-wallet2"></i>
+                            </div>
+                            <div class="p2-stat-label">تخمین حقوق خالص</div>
+                            <div class="p2-stat-value">۲.۴ میلیارد</div>
+                        </div>
+
+                        <div class="card-custom">
+                            <div class="stat-icon-box"
+                                 style="background:var(--p2-warning-bg); color:var(--p2-warning-text);">
+                                <i class="bi bi-cash-stack"></i>
+                            </div>
+                            <div class="p2-stat-label">مساعده کسر شده</div>
+                            <div class="p2-stat-value">۱۸۵ میلیون</div>
+                        </div>
+
+                        @* کارت CTA — اجرای موتور حقوق *@
+                        <div class="card-custom"
+                             style="background:var(--p2-primary); border:none; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:16px;">
+                            <div style="color:white; font-weight:700; font-size:15px; text-align:center;">
+                                دوره آماده محاسبه است
+                            </div>
+                            <button class="btn-outline-white">
+                                <i class="bi bi-play-circle"></i>
+                                اجرای موتور حقوق
+                            </button>
+                        </div>
+
+                    </div>
+
+                    @* ردیف پایین: لیست مساعده + منطق مرخصی *@
+                    <div class="dashboard-bottom-grid">
+
+                        @* لیست آخرین اسناد مساعده *@
+                        <div class="card-custom" style="padding:0;">
+                            <div style="padding:18px 20px; border-bottom:1px solid var(--p2-border-light);">
+                                <span style="font-weight:800; font-size:15px;">
+                                    آخرین اسناد حسابداری (مساعده)
+                                </span>
+                            </div>
+                            <div>
+                                @foreach (var row in DashboardAdvanceRows)
+                                {
+                                    <div class="advance-list-item">
+                                        <div style="font-weight:700;">@row.Name</div>
+                                        <div class="p2-text-mono p2-text-muted">@row.DocRef</div>
+                                        <div class="p2-text-mono">@row.Amount</div>
+                                        <div style="display:flex; justify-content:flex-end;">
+                                            <span class="p2-badge-success">آماده کسر</span>
+                                        </div>
+                                    </div>
+                                }
+                            </div>
+                        </div>
+
+                        @* کارت منطق مرخصی v6 *@
+                        <div class="card-custom">
+                            <div style="font-weight:800; font-size:15px; margin-bottom:18px;">
+                                منطق مرخصی (نسخه v6)
+                            </div>
+                            <div style="background:white; border:1px solid var(--p2-border); border-radius:var(--p2-radius-md); padding:14px; margin-bottom:14px; display:flex; justify-content:space-between; align-items:center;">
+                                <div class="p2-text-muted" style="font-size:13px;">مبنای هر روز مرخصی</div>
+                                <span class="p2-badge-primary" style="font-size:14px; padding:4px 12px;">۴۴۰ دقیقه</span>
+                            </div>
+                            <div class="p2-text-muted" style="line-height:1.9; text-align:justify; font-size:13px;">
+                                طبق معماری جدید، تمام محاسبات استحقاق و مانده مرخصی
+                                (PAY2_LEAVE_BAL) به منظور یکپارچگی کامل با سیستم تسویه‌حساب،
+                                بر اساس دقیقه‌های واقعی انجام می‌شود.
+                            </div>
+                        </div>
+
+                    </div>
+                </div>
+            }
+
+            @* ══ مدیریت کارگاه‌ها ══ *@
+          
+            @if (ActiveTab == "workshops")
+            {
+                <WorkshopTab OnToast="ShowToastAsync" />
+            }
+
+            @* پرسنل و احکام *@
+
+        
+            @if (ActiveTab == "employees")
+            {
+                <EmployeeTab />
+            }
+
+            @if (ActiveTab != "dashboard" && ActiveTab != "workshops" && ActiveTab != "employees")
+            {
+                <div class="pay2-tab-container"
+                     style="display:flex; flex-direction:column; align-items:center; justify-content:center; height:100%;">
+                    <div class="p2-empty-state">
+                        <i class="bi bi-tools"></i>
+                        <h4>«@GetTabTitle(ActiveTab)»</h4>
+                        <p>این بخش در حال توسعه است و به‌زودی اضافه می‌شود.</p>
+                    </div>
+                </div>
+            }
+
+            @* ══ تب‌های در دست توسعه ══ *@
+   
+            @if (ActiveTab != "dashboard" && ActiveTab != "workshops")
+            {
+                <div class="pay2-tab-container"
+                     style="display:flex; flex-direction:column; align-items:center; justify-content:center; height:100%;">
+                    <div class="p2-empty-state">
+                        <i class="bi bi-tools"></i>
+                        <h4>«@GetTabTitle(ActiveTab)»</h4>
+                        <p>این بخش در حال توسعه است و به‌زودی اضافه می‌شود.</p>
+                    </div>
+                </div>
+            }
+
+        </div>
+    </main>
+</div>
+
+@code {
+
+    // ══════════════════════════════════════════
+    // State
+    // ══════════════════════════════════════════
+
+    private string ActiveTab = "dashboard";
+    private bool IsToastVisible = false;
+    private string ToastMessage = string.Empty;
+    private int _toastVersion = 0;
+
+    // ──────────────────────────────────────────
+    // داده‌های placeholder داشبورد
+    // (بعداً از API واقعی جایگزین می‌شود)
+    // ──────────────────────────────────────────
+    private record AdvanceRow(string Name, string DocRef, string Amount);
+
+    private static readonly List<AdvanceRow> DashboardAdvanceRows = new()
+  {
+    new("علی احمدی",   "ADV_HES / T-1050", "۷۵,۰۰۰,۰۰۰"),
+    new("سارا رضایی",  "ADV_HES / T-1050", "۲۰,۰۰۰,۰۰۰"),
+    new("محمد کریمی",  "ADV_HES / T-1050", "۵,۰۰۰,۰۰۰"),
+  };
+
+    // ══════════════════════════════════════════
+    // ناوبری تب‌ها
+    // ══════════════════════════════════════════
+
+    private void SetActiveTab(string tabName)
+    {
+        if (ActiveTab == tabName) return;
+        ActiveTab = tabName;
+    }
+
+    private static string GetTabTitle(string tabName) => tabName switch
+    {
+        "dashboard" => "داشبورد",
+        "workshops" => "مدیریت کارگاه‌ها",
+        "employees" => "پرسنل و احکام",
+        "attendance" => "کارکرد و مرخصی",
+        "advances" => "مساعده هوشمند",
+        "payroll" => "محاسبه حقوق",
+        "settings" => "تنظیمات سیستم",
+        "itemdefs" => "آیتم‌های حقوقی",
+        _ => "سیستم حقوق و دستمزد"
+    };
+
+    // ══════════════════════════════════════════
+    // Toast — با versioning برای جلوگیری از
+    // بسته شدن زودهنگام در صورت چند پیام پشت سر هم
+    // ══════════════════════════════════════════
+
+    private async Task ShowToastAsync(string message)
+    {
+        var version = ++_toastVersion;
+        ToastMessage = message;
+        IsToastVisible = true;
+        StateHasChanged();
+
+        await Task.Delay(3200);
+
+        if (version == _toastVersion)
+        {
+            IsToastVisible = false;
+            StateHasChanged();
+        }
+    }
+}

@@ -58,6 +58,10 @@ builder.Services.AddScoped<PermissionApiService>();
 builder.Services.AddScoped<ConnectivityService>(); // <--- این خط را اضافه کنید
 
 builder.Services.AddScoped<ReportApiService>();
+
+builder.Services.AddScoped<Pay2WorkshopApiService>();
+
+builder.Services.AddScoped<Pay2EmployeeApiService>();
 #endregion
 
 

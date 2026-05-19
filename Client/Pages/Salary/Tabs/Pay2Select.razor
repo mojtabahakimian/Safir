@@ -1,0 +1,587 @@
+﻿@typeparam TItem
+@typeparam TValue
+@implements IDisposable
+
+<div class="@RootClass" @onkeydown="HandleKeyDownAsync">
+
+    <div class="@ControlClass">
+
+        <input @ref="_searchInput"
+               class="pay2-select-input"
+               type="text"
+               value="@_text"
+               placeholder="@Placeholder"
+               disabled="@Disabled"
+               readonly="@(!Editable || ReadOnly)"
+               autocomplete="off"
+               @onfocus="OpenAllAsync"
+               @oninput="HandleInputAsync" />
+
+        @if (Clearable && !Disabled && !ReadOnly && HasValue)
+        {
+            <button type="button"
+                    class="pay2-select-clear"
+                    title="پاک کردن"
+                    @onclick="ClearAsync"
+                    @onclick:stopPropagation="true">
+                ×
+            </button>
+        }
+
+        <button type="button"
+                class="pay2-select-arrow-button"
+                disabled="@Disabled"
+                tabindex="-1"
+                @onclick="ToggleAsync"
+                @onclick:stopPropagation="true">
+            <span class="pay2-select-arrow"></span>
+        </button>
+    </div>
+
+    @if (IsOpen)
+    {
+        <div class="pay2-select-backdrop" @onclick="Close"></div>
+
+        <div class="pay2-select-menu" @onclick:stopPropagation="true">
+
+            @if (IsSearching)
+            {
+                <div class="pay2-select-state">
+                    <span class="p2-spinner" style="width:14px;height:14px;border-width:2px;"></span>
+                    <span>در حال جستجو...</span>
+                </div>
+            }
+            else if (!_visibleItems.Any())
+            {
+                <div class="pay2-select-empty">موردی یافت نشد</div>
+            }
+            else
+            {
+                @for (var i = 0; i < _visibleItems.Count; i++)
+                {
+                    var index = i;
+                    var item = _visibleItems[index];
+
+                    <button type="button"
+                            class="pay2-select-item @(index == _highlightedIndex ? "highlighted" : "") @(IsSelected(item) ? "selected" : "")"
+                            @onclick="() => SelectItemAsync(item)">
+                        <span class="pay2-select-item-main">@TextSelector(item)</span>
+
+                        @if (SubTextSelector != null)
+                        {
+                            var sub = SubTextSelector(item);
+                            if (!string.IsNullOrWhiteSpace(sub))
+                            {
+                                <span class="pay2-select-item-sub">@sub</span>
+                            }
+                        }
+
+                        @if (BadgeSelector != null)
+                        {
+                            var badge = BadgeSelector(item);
+                            if (!string.IsNullOrWhiteSpace(badge))
+                            {
+                                <span class="pay2-select-item-badge">@badge</span>
+                            }
+                        }
+                    </button>
+                }
+
+                @if (_hasMore)
+                {
+                    <div class="pay2-select-more">
+                        نتایج بیشتر وجود دارد؛ عبارت جستجو را دقیق‌تر وارد کنید.
+                    </div>
+                }
+            }
+        </div>
+    }
+</div>
+
+@code {
+
+    // ════════════════════════════════════════════════════════════════
+    // فیلدهای داخلی
+    // ════════════════════════════════════════════════════════════════
+
+    private ElementReference _searchInput;
+    private string? _text;
+    private TValue? _lastValue;          // آخرین مقداری که از parent رسیده — برای تشخیص تغییر
+    private TValue? _lastResolvedValue;  // آخرین مقداری که ResolveItem برایش فراخوانی شده
+    private TItem? _selectedItem;
+    private List<TItem> _visibleItems = new();
+
+    // ✅ FIX #7 — CancellationTokenSource فقط از طریق CancelAndDisposeCts مدیریت می‌شود
+    private CancellationTokenSource? _searchCts;
+
+    private bool _isOpen;
+    private bool _isSearching;
+    private bool _hasMore;
+    private int _highlightedIndex;
+
+    // ════════════════════════════════════════════════════════════════
+    // پارامترها
+    // ════════════════════════════════════════════════════════════════
+
+    [Parameter] public IEnumerable<TItem>? Items { get; set; }
+
+    // ✅ FIX #2 — CancellationToken به امضای SearchItems اضافه شد
+    //            هر HTTP call اکنون کنسل‌پذیر است
+    [Parameter] public Func<string?, CancellationToken, Task<IEnumerable<TItem>>>? SearchItems { get; set; }
+
+    // ✅ FIX #3 — پارامتر جدید برای حل مشکل Edit Mode در server-side search
+    //            وقتی Value از بیرون ست می‌شود ولی آیتم در حافظه نیست،
+    //            کامپوننت از این تابع برای resolve کردن نام آیتم استفاده می‌کند
+    [Parameter] public Func<TValue, Task<TItem?>>? ResolveItem { get; set; }
+
+    [Parameter, EditorRequired] public Func<TItem, string> TextSelector { get; set; } = default!;
+    [Parameter, EditorRequired] public Func<TItem, TValue> ValueSelector { get; set; } = default!;
+    [Parameter] public Func<TItem, string?>? SubTextSelector { get; set; }
+    [Parameter] public Func<TItem, string?>? BadgeSelector { get; set; }
+    [Parameter] public Func<TItem, string?, bool>? SearchPredicate { get; set; }
+
+    [Parameter] public TValue? Value { get; set; }
+    [Parameter] public EventCallback<TValue?> ValueChanged { get; set; }
+    [Parameter] public TItem? SelectedItem { get; set; }
+    [Parameter] public EventCallback<TItem?> SelectedItemChanged { get; set; }
+    [Parameter] public string? Text { get; set; }
+    [Parameter] public EventCallback<string?> TextChanged { get; set; }
+
+    [Parameter] public string? Placeholder { get; set; }
+    [Parameter] public string? CssClass { get; set; }
+    [Parameter] public bool Editable { get; set; } = true;
+    [Parameter] public bool Clearable { get; set; } = true;
+    [Parameter] public bool Disabled { get; set; }
+    [Parameter] public bool ReadOnly { get; set; }
+    [Parameter] public bool ClearValueOnTextEdit { get; set; } = false;
+    [Parameter] public int MaxVisibleItems { get; set; } = 60;
+    [Parameter] public int DebounceMilliseconds { get; set; } = 180;
+
+    // ════════════════════════════════════════════════════════════════
+    // پراپرتی‌های محاسباتی
+    // ════════════════════════════════════════════════════════════════
+
+    private bool HasValue => !EqualityComparer<TValue?>.Default.Equals(Value, default);
+    private bool IsOpen { get => _isOpen; set => _isOpen = value; }
+    private bool IsSearching { get => _isSearching; set => _isSearching = value; }
+
+    private string RootClass => IsOpen ? "pay2-combo open" : "pay2-combo";
+
+    private string ControlClass
+    {
+        get
+        {
+            var cls = "pay2-select-control";
+            if (!string.IsNullOrWhiteSpace(CssClass)) cls += " " + CssClass;
+            if (IsOpen) cls += " open";
+            if (Disabled) cls += " disabled";
+            if (ReadOnly) cls += " readonly";
+            return cls;
+        }
+    }
+
+    // ════════════════════════════════════════════════════════════════
+    // Lifecycle
+    // ════════════════════════════════════════════════════════════════
+    private IEnumerable<TItem>? _lastItems;
+    protected override void OnParametersSet()
+    {
+        // تشخیص تغییر در Value یا لیست Items (برای حل مشکل Late-Loading)
+        bool valueChanged = !EqualityComparer<TValue?>.Default.Equals(Value, _lastValue);
+        bool itemsChanged = !ReferenceEquals(Items, _lastItems);
+
+        if (valueChanged || itemsChanged)
+        {
+            _lastValue = Value;
+            _lastItems = Items; // ذخیره رفرنس جدید
+
+            SyncTextFromValueSync();
+
+            // اگر آیتم در لیست نبود و ResolveItem تعریف شده، برای Edit Mode استعلام می‌گیریم
+            if (_selectedItem == null && HasValue && ResolveItem != null &&
+                !EqualityComparer<TValue?>.Default.Equals(Value, _lastResolvedValue))
+            {
+                _ = ResolveItemInBackgroundAsync(Value!);
+            }
+        }
+
+        // اگر Text از بیرون به صورت دستی bind شده باشد
+        if (Text != null && Text != _text)
+            _text = Text;
+    }
+
+    // ════════════════════════════════════════════════════════════════
+    // Sync متن از Value — نسخه همزمان (sync)
+    // ════════════════════════════════════════════════════════════════
+
+    private void SyncTextFromValueSync()
+    {
+        if (EqualityComparer<TValue?>.Default.Equals(Value, default))
+        {
+            _selectedItem = default;
+            _text = null;
+            return;
+        }
+
+        // ۱. بررسی اینکه آیا آیتم فعلی در حافظه با Value همخوانی دارد
+        if (_selectedItem != null &&
+            EqualityComparer<TValue?>.Default.Equals(ValueSelector(_selectedItem), Value))
+        {
+            _text = TextSelector(_selectedItem);
+            return;
+        }
+
+        // ۲. جستجو در لیست Items استاتیک
+        var found = FindItemByValue(Value);
+        if (found != null)
+        {
+            _selectedItem = found;
+            _text = TextSelector(found);
+        }
+        else
+        {
+            // ۳. اگر پیدا نشد: متن را ریست می‌کنیم تا تناقض (Desync) نمایش داده نشود.
+            // در این حالت منتظر اجرای ResolveItemInBackgroundAsync می‌مانیم.
+            _selectedItem = default;
+            _text = null;
+        }
+    }
+
+    // ✅ FIX #3 — resolve آیتم از سرور در پس‌زمینه (برای Edit Mode)
+    private async Task ResolveItemInBackgroundAsync(TValue value)
+    {
+        if (ResolveItem == null) return;
+
+        _lastResolvedValue = value;
+
+        try
+        {
+            var resolved = await ResolveItem(value);
+
+            // اطمینان از اینکه Value هنوز همان است (تغییر نکرده در حین await)
+            if (resolved != null && EqualityComparer<TValue?>.Default.Equals(Value, value))
+            {
+                _selectedItem = resolved;
+                _text = TextSelector(resolved);
+                if (!_isDisposed) // اضافه کردن این چک حیاتی
+                {
+                    await InvokeAsync(StateHasChanged);
+                }
+            }
+        }
+        catch
+        {
+            // اگر سرور در دسترس نبود، _text خالی می‌ماند — مشکلی نیست
+        }
+    }
+
+    private TItem? FindItemByValue(TValue? value)
+    {
+        if (Items == null) return default;
+        return Items.FirstOrDefault(item =>
+            EqualityComparer<TValue?>.Default.Equals(ValueSelector(item), value));
+    }
+
+    // ════════════════════════════════════════════════════════════════
+    // باز/بسته کردن dropdown
+    // ════════════════════════════════════════════════════════════════
+
+    private async Task OpenAllAsync()
+    {
+        if (Disabled || ReadOnly) return;
+
+        // اگر قبلاً باز است و آیتم دارد، دوباره باز نکن
+        if (IsOpen && !IsSearching && _visibleItems.Any())
+            return;
+
+        CancelAndDisposeCts();
+
+        var cts = new CancellationTokenSource();
+        _searchCts = cts;
+
+        IsOpen = true;
+        _highlightedIndex = 0;
+
+        await RefreshItemsAsync(useCurrentTextAsFilter: false, cts.Token);
+
+        if (!cts.IsCancellationRequested)
+            await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task ToggleAsync()
+    {
+        if (Disabled || ReadOnly) return;
+        if (IsOpen) { Close(); return; }
+
+        await OpenAllAsync();
+        await _searchInput.FocusAsync();
+    }
+
+    // ✅ FIX #4 — Close حالا CTS را کنسل می‌کند تا HTTP در پرواز قطع شود
+    // ✅ FIX #5 — IsSearching همینجا هم false می‌شود
+    private void Close()
+    {
+        CancelAndDisposeCts();
+        IsOpen = false;
+        IsSearching = false;
+        _highlightedIndex = 0;
+        SyncTextFromValueSync();
+    }
+
+    // ════════════════════════════════════════════════════════════════
+    // ورودی کاربر
+    // ════════════════════════════════════════════════════════════════
+
+    private async Task HandleInputAsync(ChangeEventArgs e)
+    {
+        if (!Editable || Disabled || ReadOnly) return;
+
+        _text = e.Value?.ToString();
+        _highlightedIndex = 0;
+        _selectedItem = default;
+
+        if (TextChanged.HasDelegate) await TextChanged.InvokeAsync(_text);
+
+        if (ClearValueOnTextEdit)
+        {
+            // ✅ FIX #1 — به‌جای Value = default (تغییر مستقیم Parameter)،
+            //            فقط _lastValue آپدیت می‌شود و parent از طریق callback اطلاع می‌گیرد
+            _lastValue = default;
+            if (ValueChanged.HasDelegate) await ValueChanged.InvokeAsync(default);
+            if (SelectedItemChanged.HasDelegate) await SelectedItemChanged.InvokeAsync(default);
+        }
+
+        IsOpen = true;
+        await DebouncedRefreshAsync();
+    }
+
+    // ════════════════════════════════════════════════════════════════
+    // جستجو با debounce
+    // ════════════════════════════════════════════════════════════════
+
+    private async Task DebouncedRefreshAsync()
+    {
+        CancelAndDisposeCts();
+
+        var cts = new CancellationTokenSource();
+        _searchCts = cts;
+
+        try
+        {
+            if (DebounceMilliseconds > 0)
+                await Task.Delay(DebounceMilliseconds, cts.Token);
+
+            if (cts.IsCancellationRequested) return;
+
+            await RefreshItemsAsync(useCurrentTextAsFilter: true, cts.Token);
+
+            if (!cts.IsCancellationRequested)
+                await InvokeAsync(StateHasChanged);
+        }
+        catch (TaskCanceledException)
+        {
+            // ✅ FIX #5 — اسپینر را ریست کن و UI را refresh کن
+            IsSearching = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private async Task RefreshItemsAsync(bool useCurrentTextAsFilter, CancellationToken cancellationToken)
+    {
+        IsSearching = true;
+
+        try
+        {
+            var query = useCurrentTextAsFilter ? _text?.Trim() : null;
+            IEnumerable<TItem> source;
+
+            if (SearchItems != null)
+            {
+                // ✅ FIX #2 — CancellationToken به SearchItems پاس داده می‌شود
+                var searchResult = await SearchItems(query, cancellationToken);
+
+                if (cancellationToken.IsCancellationRequested) return;
+
+                source = searchResult ?? Enumerable.Empty<TItem>();
+            }
+            else
+            {
+                source = Items ?? Enumerable.Empty<TItem>();
+
+                if (!string.IsNullOrWhiteSpace(query))
+                {
+                    source = source.Where(item =>
+                        SearchPredicate?.Invoke(item, query) ??
+                        TextSelector(item)?.Contains(query, StringComparison.OrdinalIgnoreCase) == true);
+                }
+            }
+
+            if (cancellationToken.IsCancellationRequested) return;
+
+            // ── آیتم انتخاب‌شده را اول لیست قرار بده ────────────────
+            var rawList = source.Take(MaxVisibleItems + 1).ToList();
+            var hasMoreRaw = rawList.Count > MaxVisibleItems;
+
+            var selectedValue = Value;
+
+            if (!EqualityComparer<TValue?>.Default.Equals(selectedValue, default))
+            {
+                var selectedInList = rawList.FirstOrDefault(item =>
+                    EqualityComparer<TValue?>.Default.Equals(ValueSelector(item), selectedValue));
+
+                if (selectedInList is not null)
+                {
+                    rawList.Remove(selectedInList);
+                    rawList.Insert(0, selectedInList);
+                }
+                else if (_selectedItem is not null &&
+                         EqualityComparer<TValue?>.Default.Equals(ValueSelector(_selectedItem), selectedValue))
+                {
+                    rawList.Insert(0, _selectedItem);
+                }
+            }
+
+            // ── dedup با GroupBy ──────────────────────────────────────
+            var deduped = rawList
+                .GroupBy(item => ValueSelector(item))
+                .Select(g => g.First())
+                .Take(MaxVisibleItems)
+                .ToList();
+
+            // ✅ FIX #6 — _hasMore بعد از dedup و Take نهایی محاسبه می‌شود
+            _visibleItems = deduped;
+            _hasMore = hasMoreRaw && _visibleItems.Count >= MaxVisibleItems;
+            _highlightedIndex = _visibleItems.Any() ? 0 : -1;
+        }
+        finally
+        {
+            // ✅ FIX #5 — فقط اگر این آخرین search باشد spinner خاموش می‌شود
+            // اگر همیشه false کنیم، ممکن است search جدیدی شروع شده باشد
+            // و این finally قدیمی spinner آن را خاموش کند — اشتباه
+            // شرط: یا هیچ search فعالی نیست (_searchCts==null)
+            //       یا CTS فعلی همان CTS این search است (آخرین نسخه هستیم)
+            if (_searchCts == null || _searchCts.Token == cancellationToken)
+                IsSearching = false;
+        }
+    }
+
+    // ════════════════════════════════════════════════════════════════
+    // انتخاب آیتم
+    // ════════════════════════════════════════════════════════════════
+
+    private async Task SelectItemAsync(TItem item)
+    {
+        _selectedItem = item;
+        _text = TextSelector(item);
+        var newValue = ValueSelector(item);
+
+        // ✅ FIX #1 — Value (Parameter) مستقیم تغییر داده نمی‌شود
+        //            _lastValue آپدیت می‌شود تا OnParametersSet re-sync نکند
+        //            parent از طریق ValueChanged مطلع می‌شود
+        _lastValue = newValue;
+
+        if (ValueChanged.HasDelegate) await ValueChanged.InvokeAsync(newValue);
+        if (SelectedItemChanged.HasDelegate) await SelectedItemChanged.InvokeAsync(item);
+        if (TextChanged.HasDelegate) await TextChanged.InvokeAsync(_text);
+
+        // ── Close بدون SyncTextFromValueSync ─────────────────────────
+        // چون parent هنوز Value را آپدیت نکرده، SyncTextFromValueSync
+        // ممکن است _text را اشتباه ریست کند — به همین دلیل inline close می‌زنیم
+        CancelAndDisposeCts();
+        IsOpen = false;
+        IsSearching = false;
+        _highlightedIndex = 0;
+    }
+
+    // ════════════════════════════════════════════════════════════════
+    // پاک کردن
+    // ════════════════════════════════════════════════════════════════
+
+    private async Task ClearAsync()
+    {
+        CancelAndDisposeCts();
+
+        _selectedItem = default;
+        _lastResolvedValue = default;
+        _text = null;
+
+        // ✅ FIX #1 — Value (Parameter) مستقیم تغییر داده نمی‌شود
+        _lastValue = default;
+
+        if (ValueChanged.HasDelegate) await ValueChanged.InvokeAsync(default);
+        if (SelectedItemChanged.HasDelegate) await SelectedItemChanged.InvokeAsync(default);
+        if (TextChanged.HasDelegate) await TextChanged.InvokeAsync(null);
+
+        IsOpen = false;
+        IsSearching = false;
+        _highlightedIndex = 0;
+        _visibleItems.Clear();
+    }
+
+    // ════════════════════════════════════════════════════════════════
+    // کمکی‌ها
+    // ════════════════════════════════════════════════════════════════
+
+    private bool IsSelected(TItem item) =>
+        !EqualityComparer<TValue?>.Default.Equals(Value, default) &&
+        EqualityComparer<TValue?>.Default.Equals(ValueSelector(item), Value);
+
+    // ✅ FIX #7 — مدیریت صحیح CTS:
+    //   ۱. فیلد اول null می‌شود تا dispose دوباره نخورد
+    //   ۲. Cancel حتماً قبل از Dispose فراخوانی می‌شود
+    //   ۳. استثناهای Cancel/Dispose بدون سر و صدا نادیده گرفته می‌شوند
+    //   نتیجه: ObjectDisposedException دیگر رخ نمی‌دهد
+    private void CancelAndDisposeCts()
+    {
+        var cts = _searchCts;
+        _searchCts = null;          // اول null — سپس cancel + dispose
+        if (cts == null) return;
+        try { cts.Cancel(); } catch { /* قبلاً dispose شده بود */ }
+        try { cts.Dispose(); } catch { /* قبلاً dispose شده بود */ }
+    }
+
+    // ════════════════════════════════════════════════════════════════
+    // کیبورد
+    // ════════════════════════════════════════════════════════════════
+
+    private async Task HandleKeyDownAsync(KeyboardEventArgs e)
+    {
+        if (Disabled || ReadOnly) return;
+
+        switch (e.Key)
+        {
+            case "ArrowDown":
+                if (!IsOpen) await OpenAllAsync();
+                else if (_visibleItems.Any())
+                    _highlightedIndex = Math.Min(_highlightedIndex + 1, _visibleItems.Count - 1);
+                break;
+
+            case "ArrowUp":
+                if (IsOpen && _visibleItems.Any())
+                    _highlightedIndex = Math.Max(_highlightedIndex - 1, 0);
+                break;
+
+            case "Enter":
+                if (IsOpen && _highlightedIndex >= 0 && _highlightedIndex < _visibleItems.Count)
+                    await SelectItemAsync(_visibleItems[_highlightedIndex]);
+                break;
+
+            case "Escape":
+            case "Tab":
+                Close();
+                break;
+        }
+    }
+
+    // ════════════════════════════════════════════════════════════════
+    // IDisposable
+    // ════════════════════════════════════════════════════════════════
+
+    private bool _isDisposed = false;
+
+    public void Dispose()
+    {
+        _isDisposed = true; // اضافه کردن این خط
+        CancelAndDisposeCts();
+    }
+}
