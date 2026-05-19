@@ -225,12 +225,34 @@
             }
 
             @* ══ مدیریت کارگاه‌ها ══ *@
+          
             @if (ActiveTab == "workshops")
             {
                 <WorkshopTab OnToast="ShowToastAsync" />
             }
 
+            @* پرسنل و احکام *@
+
+        
+            @if (ActiveTab == "employees")
+            {
+                <EmployeeTab />
+            }
+
+            @if (ActiveTab != "dashboard" && ActiveTab != "workshops" && ActiveTab != "employees")
+            {
+                <div class="pay2-tab-container"
+                     style="display:flex; flex-direction:column; align-items:center; justify-content:center; height:100%;">
+                    <div class="p2-empty-state">
+                        <i class="bi bi-tools"></i>
+                        <h4>«@GetTabTitle(ActiveTab)»</h4>
+                        <p>این بخش در حال توسعه است و به‌زودی اضافه می‌شود.</p>
+                    </div>
+                </div>
+            }
+
             @* ══ تب‌های در دست توسعه ══ *@
+   
             @if (ActiveTab != "dashboard" && ActiveTab != "workshops")
             {
                 <div class="pay2-tab-container"
