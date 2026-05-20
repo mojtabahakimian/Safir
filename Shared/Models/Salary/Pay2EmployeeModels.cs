@@ -1,12 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-
-using System.ComponentModel.DataAnnotations;
-
-namespace Safir.Shared.Models.Salary
+﻿namespace Safir.Shared.Models.Salary
 {
     public class Pay2EmployeeDto
     {
@@ -64,4 +56,44 @@ namespace Safir.Shared.Models.Salary
         public string? NOTES { get; set; }
         public string? TemplateName { get; set; }
     }
+
+    // =========================================================
+    // این کلاس جدید برای اقلام ریالی اضافه می‌شود
+    // =========================================================
+    public class Pay2DecreeLineDto
+    {
+        public int DEC_ID { get; set; }
+        public int ITEM_ID { get; set; }
+        public string? ITEM_NAME { get; set; }
+        public long AMOUNT { get; set; }
+
+        public bool? INS_OV { get; set; }
+        public bool? TAX_OV { get; set; }
+        public byte? BASIS_OV { get; set; }
+
+        // --- Helper Properties برای بایند کردن راحت به Dropdown در Blazor ---
+        public int InsCombo
+        {
+            get => INS_OV == null ? 0 : (INS_OV == true ? 1 : 2);
+            set => INS_OV = value == 0 ? (bool?)null : (value == 1);
+        }
+
+        public int TaxCombo
+        {
+            get => TAX_OV == null ? 0 : (TAX_OV == true ? 1 : 2);
+            set => TAX_OV = value == 0 ? (bool?)null : (value == 1);
+        }
+
+        public int BasisCombo
+        {
+            get => BASIS_OV == null ? 0 : (BASIS_OV == 1 ? 1 : 2);
+            set => BASIS_OV = value == 0 ? (byte?)null : (byte)value;
+        }
+
+        // --- برای نمایش متن‌های فارسی در جدول گرید ---
+        public string InsText => INS_OV == null ? "پایه" : (INS_OV == true ? "مشمول" : "معاف");
+        public string TaxText => TAX_OV == null ? "پایه" : (TAX_OV == true ? "مشمول" : "معاف");
+        public string BasisText => BASIS_OV == null ? "پایه" : (BASIS_OV == 1 ? "روزانه" : "ماهیانه");
+    }
+
 }

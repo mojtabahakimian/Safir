@@ -199,5 +199,115 @@ namespace Safir.Server.Controllers
                 return BadRequest(ex.Message);
             }
         }
+
+        // اضافه کردن به فایل Pay2EmployeesController.cs
+
+        [HttpGet("templates-lookup")]
+        public async Task<ActionResult<IEnumerable<LookupDto<int>>>> GetTemplatesLookup()
+        {
+            // خواندن قالب‌های فعال برای پر کردن Dropdown
+            const string sql = "SELECT TMPL_ID AS Id, TMPL_NAME AS Name FROM PAY2_ITEM_TEMPLATE WHERE IS_ACTIVE = 1 ORDER BY TMPL_NAME";
+            return Ok(await _db.DoGetDataSQLAsync<LookupDto<int>>(sql));
+        }
+
+        [HttpDelete("decree/{decId:int}")]
+        public async Task<IActionResult> DeleteDecree(int decId)
+        {
+            try
+            {
+                await _db.ExecuteInTransactionAsync(async (conn, tran) =>
+                {
+                    // اول اقلام ریالی حذف می‌شوند، سپس خود هدر حکم
+                    await conn.ExecuteAsync("DELETE FROM PAY2_DECREE_LINE WHERE DEC_ID = @decId", new { decId }, tran);
+                    await conn.ExecuteAsync("DELETE FROM PAY2_DECREE WHERE DEC_ID = @decId", new { decId }, tran);
+                });
+                return Ok();
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(ex.Message);
+            }
+        }
+
+
+        [HttpGet("itemdefs-lookup")]
+        public async Task<ActionResult<IEnumerable<LookupDto<int>>>> GetItemDefsLookup()
+        {
+            // فقط آیتم‌های پرداختی (نوع 1 و 2) را می‌آوریم و کسورات اتوماتیک را فیلتر می‌کنیم
+            const string sql = @"
+        SELECT ITEM_ID AS Id, ITEM_NAME AS Name 
+        FROM PAY2_ITEM_DEF 
+        WHERE IS_ACTIVE = 1 
+          AND ITEM_TYPE IN (1, 2) 
+          AND ITEM_CODE NOT IN ('INS_DED','TAX_DED','LOAN_DED','ADVANCE_DED')
+        ORDER BY SORT_ORDER, ITEM_NAME";
+
+            return Ok(await _db.DoGetDataSQLAsync<LookupDto<int>>(sql));
+        }
+
+        [HttpGet("decree/{decId:int}/lines")]
+        public async Task<ActionResult<IEnumerable<Pay2DecreeLineDto>>> GetDecreeLines(int decId)
+        {
+            const string sql = @"
+        SELECT L.DEC_ID, L.ITEM_ID, I.ITEM_NAME, L.AMOUNT, L.INS_OV, L.TAX_OV, L.BASIS_OV
+        FROM PAY2_DECREE_LINE L
+        INNER JOIN PAY2_ITEM_DEF I ON L.ITEM_ID = I.ITEM_ID
+        WHERE L.DEC_ID = @decId
+        ORDER BY I.SORT_ORDER";
+
+            return Ok(await _db.DoGetDataSQLAsync<Pay2DecreeLineDto>(sql, new { decId }));
+        }
+
+        [HttpPost("decree/line/save")]
+        public async Task<IActionResult> SaveDecreeLine([FromBody] Pay2DecreeLineDto line)
+        {
+            try
+            {
+                await _db.ExecuteInTransactionAsync(async (conn, tran) =>
+                {
+                    // اول چک می‌کنیم آیا این آیتم قبلا برای این حکم ثبت شده یا خیر
+                    int count = await conn.QuerySingleAsync<int>(
+                        "SELECT COUNT(1) FROM PAY2_DECREE_LINE WHERE DEC_ID=@DEC_ID AND ITEM_ID=@ITEM_ID",
+                        new { line.DEC_ID, line.ITEM_ID }, tran);
+
+                    if (count == 0)
+                    {
+                        // درج جدید
+                        const string insertSql = @"INSERT INTO PAY2_DECREE_LINE (DEC_ID, ITEM_ID, AMOUNT, INS_OV, TAX_OV, BASIS_OV)
+                                           VALUES (@DEC_ID, @ITEM_ID, @AMOUNT, @INS_OV, @TAX_OV, @BASIS_OV)";
+                        await conn.ExecuteAsync(insertSql, line, tran);
+                    }
+                    else
+                    {
+                        // آپدیت قلم موجود
+                        const string updateSql = @"UPDATE PAY2_DECREE_LINE 
+                                           SET AMOUNT=@AMOUNT, INS_OV=@INS_OV, TAX_OV=@TAX_OV, BASIS_OV=@BASIS_OV
+                                           WHERE DEC_ID=@DEC_ID AND ITEM_ID=@ITEM_ID";
+                        await conn.ExecuteAsync(updateSql, line, tran);
+                    }
+                });
+                return Ok();
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(ex.Message);
+            }
+        }
+
+        [HttpDelete("decree/{decId:int}/line/{itemId:int}")]
+        public async Task<IActionResult> DeleteDecreeLine(int decId, int itemId)
+        {
+            try
+            {
+                const string sql = "DELETE FROM PAY2_DECREE_LINE WHERE DEC_ID=@decId AND ITEM_ID=@itemId";
+                await _db.DoExecuteSQLAsync(sql, new { decId, itemId });
+                return Ok();
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(ex.Message);
+            }
+        }
+
     }
 }

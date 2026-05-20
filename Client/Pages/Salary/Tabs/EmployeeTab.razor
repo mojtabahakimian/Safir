@@ -69,6 +69,12 @@
                        OnClose="CloseModals"
                        OnSave="HandleSaveEmployee" />
 
+    <Safir.Client.Pages.Salary.Tabs.EmployeeComponents.DecreeModal IsOpen="ShowDecreeModal"
+                                                                   EmployeeId="SelectedEmpForDecree.EMP_ID"
+                                                                   WorkshopId="SelectedEmpForDecree.WS_ID"
+                                                                   EmployeeName="@SelectedEmpForDecree.FullDisplayName"
+                                                                   OnClose="() => ShowDecreeModal = false" />
+
 </div>
 
 @code {
@@ -146,8 +152,12 @@
         }
     }
 
+    bool ShowDecreeModal = false;
+    Pay2EmployeeDto SelectedEmpForDecree = new();
     void OpenDecreeModal(Pay2EmployeeDto emp)
     {
-        Snackbar.Add("مدیریت احکام به زودی متصل می‌شود...", MudBlazor.Severity.Info);
+        SelectedEmpForDecree = emp;
+        ShowDecreeModal = true;
     }
+
 }
