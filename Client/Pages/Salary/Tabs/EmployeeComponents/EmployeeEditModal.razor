@@ -55,13 +55,14 @@
                 <div class="form-field">
                     <label>شغل پرسنل (اختیاری)</label>
                     <Pay2Select TItem="LookupDto<int>" TValue="int?"
-                                SearchItems="SearchJobsAsync"
+                                SearchItems="(query, ct) => EmployeeApi.GetJobsLookupAsync(query, ct)"
                                 Items="Init_JOB"
                                 @bind-Value="Employee.JOB_ID"
                                 TextSelector="x => x.Name"
                                 ValueSelector="x => x.Id"
                                 Placeholder="جستجوی عنوان شغل..."
                                 Clearable="true" Editable="true" />
+
                 </div>
                 <div class="form-field">
                     <label>تاریخ شروع به کار *</label>

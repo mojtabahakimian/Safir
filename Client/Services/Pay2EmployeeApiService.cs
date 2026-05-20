@@ -31,13 +31,25 @@ namespace Safir.Client.Services
             return await res.Content.ReadFromJsonAsync<int>();
         }
 
-        public async Task<List<LookupDto<int>>> GetJobsLookupAsync(string? searchTerm = null)
+        public async Task<IEnumerable<LookupDto<int>>> GetJobsLookupAsync(string? searchTerm, CancellationToken cancellationToken = default)
         {
-            var url = "api/pay2/employees/jobs-lookup";
-            if (!string.IsNullOrWhiteSpace(searchTerm))
-                url += $"?searchTerm={Uri.EscapeDataString(searchTerm)}";
+            try
+            {
+                var response = await _http.GetFromJsonAsync<List<LookupDto<int>>>(
+                    $"api/pay2/employees/jobs-lookup?searchTerm={searchTerm}",
+                    cancellationToken);
 
-            return await _http.GetFromJsonAsync<List<LookupDto<int>>>(url) ?? new();
+                return response ?? new List<LookupDto<int>>();
+            }
+            catch (Exception ex)
+            {
+                // ✅ مهار کامل استثنا (خطای ۵۰۰ یا لغو ناگهانی اتصال شبکه)
+                // این کار باعث می‌شود کامپوننت جنریک شما کرش نکرده و وضعیت در حال جستجو به صورت ایمن خاموش شود
+                Console.WriteLine($"[PAY2 UI Handled] Jobs lookup API error: {ex.Message}");
+
+                return Enumerable.Empty<LookupDto<int>>();
+            }
         }
+
     }
 }
