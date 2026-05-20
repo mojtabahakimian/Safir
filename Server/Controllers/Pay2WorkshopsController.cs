@@ -207,6 +207,57 @@ WHERE WS_ID = @WS_ID AND ACC_KEY = @ACC_KEY";
         }
     }
 
+    [HttpDelete("{wsId:int}")]
+    public async Task<IActionResult> Delete(int wsId)
+    {
+        try
+        {
+            await _db.ExecuteInTransactionAsync(async (conn, tran) =>
+            {
+                // ۱. بررسی پرسنل مرتبط
+                int empCount = await conn.QuerySingleAsync<int>(
+                    "SELECT COUNT(1) FROM PAY2_EMPLOYEE WHERE WS_ID = @wsId", new { wsId }, tran);
+                if (empCount > 0)
+                    throw new InvalidOperationException($"این کارگاه دارای {empCount} پرسنل است. لطفاً به جای حذف، وضعیت آن را «غیرفعال» کنید.");
+
+                // ۲. بررسی دوره‌های کارکرد/حقوق
+                int periodCount = await conn.QuerySingleAsync<int>(
+                    "SELECT COUNT(1) FROM PAY2_PERIOD WHERE WS_ID = @wsId", new { wsId }, tran);
+                if (periodCount > 0)
+                    throw new InvalidOperationException($"برای این کارگاه {periodCount} دوره حقوق ثبت شده است و قابل حذف فیزیکی نیست.");
+
+                // ۳. بررسی قالب‌های حقوقی مرتبط
+                int tmplCount = await conn.QuerySingleAsync<int>(
+                    "SELECT COUNT(1) FROM PAY2_ITEM_TEMPLATE WHERE WS_ID = @wsId", new { wsId }, tran);
+                if (tmplCount > 0)
+                    throw new InvalidOperationException("قالب‌های حقوقی به این کارگاه متصل هستند. ابتدا ارتباط آن‌ها را حذف کنید.");
+
+                // ۴. حذف سرفصل‌های حسابداری کارگاه (جدول فرزند)
+                await conn.ExecuteAsync("DELETE FROM PAY2_WORKSHOP_ACC WHERE WS_ID = @wsId", new { wsId }, tran);
+
+                // ۵. حذف خود کارگاه
+                int rows = await conn.ExecuteAsync("DELETE FROM PAY2_WORKSHOP WHERE WS_ID = @wsId", new { wsId }, tran);
+                if (rows == 0)
+                    throw new InvalidOperationException("کارگاه یافت نشد.");
+            });
+
+            return Ok();
+        }
+        catch (InvalidOperationException ex)
+        {
+            // خطاهای مربوط به بیزینس لاجیک که خودمون پرتاب کردیم
+            return BadRequest(ex.Message);
+        }
+        catch (System.Data.SqlClient.SqlException sqlEx) when (sqlEx.Number == 547)
+        {
+            // خطای درگیری کلید خارجی دیتابیس (محض اطمینان)
+            return BadRequest("این کارگاه در بخش‌های دیگر سیستم در حال استفاده است و قابل حذف نیست.");
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, "خطای سیستمی در حذف کارگاه: " + ex.Message);
+        }
+    }
     private static string? NormalizeAndValidate(Pay2WorkshopDto w, Pay2WorkshopAccDto a)
     {
         w.WS_CODE = NormalizeRequiredDigits(w.WS_CODE, 10);
