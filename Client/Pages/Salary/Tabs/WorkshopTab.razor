@@ -156,6 +156,8 @@
                            @bind-value:event="onchange" />
                 </div>
 
+
+
                 <div class="form-field">
                     <label>شناسه ملی</label>
 
@@ -178,6 +180,22 @@
                     <Pay2NumericInput @bind-Value="CurrentWorkshop.PHONE"
                                       MaxLength="20"
                                       Placeholder="شماره تماس" />
+                </div>
+
+                <div class="form-field">
+                    <label>کد پستی</label>
+                    <Pay2NumericInput @bind-Value="CurrentWorkshop.POSTAL_CODE"
+                                      MaxLength="10"
+                                      Placeholder="کد پستی ۱۰ رقمی" />
+                </div>
+                <div class="form-field">
+                    <label>نام کارفرما / مدیر</label>
+                    <input class="pay2-input"
+                           type="text"
+                           maxlength="100"
+                           placeholder="نام کارفرما"
+                           @bind-value="CurrentWorkshop.EMPLOYER_NAME"
+                           @bind-value:event="onchange" />
                 </div>
 
             </div>
@@ -513,6 +531,8 @@
             TAX_CODE = CleanText(selected.TAX_CODE),
             ADDRESS = CleanText(selected.ADDRESS),
             PHONE = OnlyDigits(selected.PHONE, 20),
+            POSTAL_CODE = OnlyDigits(selected.POSTAL_CODE, 20),
+            EMPLOYER_NAME = CleanText(selected.EMPLOYER_NAME),
             IS_ACTIVE = selected.IS_ACTIVE,
             INS_MODE = NormalizeInsMode(selected.INS_MODE)
         };
@@ -800,6 +820,8 @@
         CurrentWorkshop.TAX_CODE = CleanText(CurrentWorkshop.TAX_CODE);
         CurrentWorkshop.ADDRESS = CleanText(CurrentWorkshop.ADDRESS);
         CurrentWorkshop.PHONE = OnlyDigits(CurrentWorkshop.PHONE, 20);
+        CurrentWorkshop.POSTAL_CODE = OnlyDigits(CurrentWorkshop.POSTAL_CODE, 20);
+        CurrentWorkshop.EMPLOYER_NAME = CleanText(CurrentWorkshop.EMPLOYER_NAME);
         CurrentWorkshop.INS_MODE = NormalizeInsMode(CurrentWorkshop.INS_MODE);
     }
 

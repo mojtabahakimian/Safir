@@ -15,6 +15,8 @@
         public string? PHONE { get; set; }
         public bool IS_ACTIVE { get; set; } = true;
         public int INS_MODE { get; set; } = 1;
+        public string? POSTAL_CODE { get; set; }
+        public string? EMPLOYER_NAME { get; set; }
 
         public string InsModeText => INS_MODE switch
         {

@@ -25,7 +25,7 @@ public class Pay2WorkshopsController : ControllerBase
     {
         const string sql = @"
 SELECT WS_ID, WS_CODE, WS_NAME, NATIONAL_ID, SOCIAL_INS_CODE, TAX_CODE,
-       ADDRESS, PHONE, IS_ACTIVE, ISNULL(INS_MODE, 1) AS INS_MODE
+ADDRESS, PHONE, POSTAL_CODE, EMPLOYER_NAME, IS_ACTIVE, ISNULL(INS_MODE, 1) AS INS_MODE
 FROM   PAY2_WORKSHOP
 ORDER  BY WS_ID";
 
@@ -106,12 +106,12 @@ WHERE  WS_CODE = @WS_CODE
                 {
                     const string insertSql = @"
 INSERT INTO PAY2_WORKSHOP
-    (WS_CODE, WS_NAME, NATIONAL_ID, SOCIAL_INS_CODE, TAX_CODE,
-     ADDRESS, PHONE, IS_ACTIVE, INS_MODE, CREATED_BY)
+(WS_CODE, WS_NAME, NATIONAL_ID, SOCIAL_INS_CODE, TAX_CODE,
+ADDRESS, PHONE, POSTAL_CODE, EMPLOYER_NAME, IS_ACTIVE, INS_MODE, CREATED_BY)
 OUTPUT INSERTED.WS_ID
 VALUES
-    (@WS_CODE, @WS_NAME, @NATIONAL_ID, @SOCIAL_INS_CODE, @TAX_CODE,
-     @ADDRESS, @PHONE, @IS_ACTIVE, @INS_MODE, @CREATED_BY)";
+(@WS_CODE, @WS_NAME, @NATIONAL_ID, @SOCIAL_INS_CODE, @TAX_CODE,
+@ADDRESS, @PHONE, @POSTAL_CODE, @EMPLOYER_NAME, @IS_ACTIVE, @INS_MODE, @CREATED_BY)";
 
                     newOrUpdatedWsId = await conn.QueryFirstAsync<int>(insertSql, new
                     {
@@ -122,6 +122,8 @@ VALUES
                         w.TAX_CODE,
                         w.ADDRESS,
                         w.PHONE,
+                        w.POSTAL_CODE,
+                        w.EMPLOYER_NAME,
                         w.IS_ACTIVE,
                         w.INS_MODE,
                         CREATED_BY = userCod
@@ -131,15 +133,17 @@ VALUES
                 {
                     const string updateSql = @"
 UPDATE PAY2_WORKSHOP SET
-    WS_CODE         = @WS_CODE,
-    WS_NAME         = @WS_NAME,
-    NATIONAL_ID     = @NATIONAL_ID,
-    SOCIAL_INS_CODE = @SOCIAL_INS_CODE,
-    TAX_CODE        = @TAX_CODE,
-    ADDRESS         = @ADDRESS,
-    PHONE           = @PHONE,
-    IS_ACTIVE       = @IS_ACTIVE,
-    INS_MODE        = @INS_MODE
+WS_CODE         = @WS_CODE,
+WS_NAME         = @WS_NAME,
+NATIONAL_ID     = @NATIONAL_ID,
+SOCIAL_INS_CODE = @SOCIAL_INS_CODE,
+TAX_CODE        = @TAX_CODE,
+ADDRESS         = @ADDRESS,
+PHONE           = @PHONE,
+POSTAL_CODE     = @POSTAL_CODE,
+EMPLOYER_NAME   = @EMPLOYER_NAME,
+IS_ACTIVE       = @IS_ACTIVE,
+INS_MODE        = @INS_MODE
 WHERE WS_ID = @WS_ID";
 
                     await conn.ExecuteAsync(updateSql, w, tran);
@@ -227,6 +231,12 @@ WHERE WS_ID = @WS_ID AND ACC_KEY = @ACC_KEY";
         a.LOAN_HES = NormalizeAccountCode(a.LOAN_HES, 20);
         a.BANK_PAY_HES = NormalizeAccountCode(a.BANK_PAY_HES, 20);
 
+        w.POSTAL_CODE = NormalizeOptionalDigits(w.POSTAL_CODE, 20);
+        w.EMPLOYER_NAME = CleanText(w.EMPLOYER_NAME, 100);
+
+        if (!string.IsNullOrWhiteSpace(w.POSTAL_CODE) && !Regex.IsMatch(w.POSTAL_CODE, @"^\d+$"))
+            return "کد پستی فقط باید عدد باشد.";
+
         if (string.IsNullOrWhiteSpace(w.WS_CODE))
             return "کد کارگاه نمی‌تواند خالی باشد.";
 
@@ -236,9 +246,10 @@ WHERE WS_ID = @WS_ID AND ACC_KEY = @ACC_KEY";
         if (string.IsNullOrWhiteSpace(w.WS_NAME))
             return "نام کارگاه نمی‌تواند خالی باشد.";
 
-        if (!string.IsNullOrWhiteSpace(w.NATIONAL_ID) &&
-            !Regex.IsMatch(w.NATIONAL_ID, @"^\d{11}$"))
-            return "شناسه ملی باید دقیقاً ۱۱ رقم عددی باشد.";
+        //فعلا کامنت شده چون ممکنه بعدا طولش تغییر کنه
+        //if (!string.IsNullOrWhiteSpace(w.NATIONAL_ID) &&
+        //    !Regex.IsMatch(w.NATIONAL_ID, @"^\d{11}$"))
+        //    return "شناسه ملی باید دقیقاً ۱۱ رقم عددی باشد.";
 
         if (!string.IsNullOrWhiteSpace(w.SOCIAL_INS_CODE) &&
             !Regex.IsMatch(w.SOCIAL_INS_CODE, @"^\d+$"))
