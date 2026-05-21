@@ -16,208 +16,217 @@
 
         <div style="padding: 24px;">
 
-            <!-- ================= ۱. مشخصات فردی ================= -->
-            <div class="p2-sub-card-title"><i class="bi bi-person"></i> ۱. مشخصات فردی</div>
+            @if (!_isDataLoaded)
+            {
+                <div style="display:flex; justify-content:center; align-items:center; height:200px; flex-direction:column; gap:15px;">
+                    <span class="p2-spinner" style="width:40px; height:40px; border-color:var(--p2-primary); border-top-color:transparent;"></span>
+                    <span style="font-size:14px; color:var(--p2-primary); font-weight:600;">در حال بارگذاری و همگام‌سازی اطلاعات...</span>
+                </div>
+            }
+            else
+            {
+                <!-- ================= ۱. مشخصات فردی ================= -->
+                <div class="p2-sub-card-title"><i class="bi bi-person"></i> ۱. مشخصات فردی</div>
 
-            <div class="form-grid-3 p2-mb-16">
-                <div class="form-field">
-                    <label>کد پرسنلی (EMP_CODE) *</label>
-                    <Pay2NumericInput @bind-Value="Employee.EMP_CODE" MaxLength="20" Direction="ltr" />
-                </div>
-                <div class="form-field">
-                    <label>نام *</label>
-                    <input class="pay2-input" type="text" @bind="Employee.FIRST_NAME" />
-                </div>
-                <div class="form-field">
-                    <label>نام خانوادگی *</label>
-                    <input class="pay2-input" type="text" @bind="Employee.LAST_NAME" />
-                </div>
-            </div>
-
-            <div class="form-grid-3 p2-mb-16">
-                <div class="form-field">
-                    <label>کد ملی</label>
-                    <Pay2NumericInput @bind-Value="Employee.NATIONAL_CODE" MaxLength="10" Direction="ltr" />
-                </div>
-                <div class="form-field">
-                    <label>جنسیت *</label>
-                    <Pay2Select TItem="LookupDto<byte>" TValue="byte" Items="GenderOptions" @bind-Value="Employee.GENDER" TextSelector="x => x.Name" ValueSelector="x => x.Id" Clearable="false" />
-                </div>
-                <div class="form-field">
-                    <label>وضعیت تأهل *</label>
-                    <Pay2Select TItem="LookupDto<byte>" TValue="byte" Items="MaritalOptions" @bind-Value="Employee.MARITAL" TextSelector="x => x.Name" ValueSelector="x => x.Id" Clearable="false" />
-                </div>
-            </div>
-
-            <div class="form-grid-3 p2-mb-16">
-                <div class="form-field">
-                    <label>نام پدر</label>
-                    <input class="pay2-input" type="text" @bind="Employee.FATHER_NAME" />
-                </div>
-                <div class="form-field">
-                    <label>شماره شناسنامه</label>
-                    <Pay2NumericInput @bind-Value="Employee.ID_NUMBER" MaxLength="20" Direction="ltr" />
-                </div>
-                <div class="form-field">
-                    <label>محل صدور شناسنامه</label>
-                    <input class="pay2-input" type="text" @bind="Employee.BIRTH_PLACE" />
-                </div>
-            </div>
-
-            <div class="form-grid-3 p2-mb-16">
-                <div class="form-field">
-                    <label>ملیت *</label>
-                    <Pay2Select TItem="LookupDto<byte>" TValue="byte" Items="NatOptions" @bind-Value="Employee.NATIONALITY" TextSelector="x => x.Name" ValueSelector="x => x.Id" Clearable="false" />
-                </div>
-                <div class="form-field">
-                    <label>تاریخ تولد (شمسی)</label>
-                    <Pay2NumericInput @bind-Value="BirthDateStr" InputMode="Pay2NumericInput.NumericInputMode.PersianDate" Placeholder="13600101" Direction="ltr" />
-                </div>
-                <div class="form-field" style="display:flex; justify-content:flex-end; flex-direction: column;">
-                    <div class="pay2-wpf-checkbox-box">
-                        <label class="pay2-wpf-checkbox-label" style="color: #7c3aed;">
-                            <input type="checkbox" @bind="Employee.IS_JANBAZ" /> جانباز (ISJANBAZ)
-                        </label>
+                <div class="form-grid-3 p2-mb-16">
+                    <div class="form-field">
+                        <label>کد پرسنلی (EMP_CODE) *</label>
+                        <Pay2NumericInput @bind-Value="Employee.EMP_CODE" MaxLength="20" Direction="ltr" />
+                    </div>
+                    <div class="form-field">
+                        <label>نام *</label>
+                        <input class="pay2-input" type="text" @bind="Employee.FIRST_NAME" />
+                    </div>
+                    <div class="form-field">
+                        <label>نام خانوادگی *</label>
+                        <input class="pay2-input" type="text" @bind="Employee.LAST_NAME" />
                     </div>
                 </div>
-            </div>
 
-            <hr class="p2-divider" />
-
-            <!-- ================= ۲. اطلاعات شغلی و سازمانی ================= -->
-            <div class="p2-sub-card-title p2-mt-24"><i class="bi bi-briefcase"></i> ۲. اطلاعات شغلی و سازمانی</div>
-
-            <div class="form-grid-3 p2-mb-16">
-                <div class="form-field">
-                    <label>کارگاه محل خدمت *</label>
-                    <Pay2Select TItem="Pay2WorkshopDto" TValue="int" Items="Workshops" @bind-Value="Employee.WS_ID" TextSelector="x => x.WS_NAME" ValueSelector="x => x.WS_ID" Clearable="false" />
-                </div>
-                <div class="form-field">
-                    <label>شغل (PAY2_JOB)</label>
-                    <Pay2Select TItem="LookupDto<int>" TValue="int?"
-                                SearchItems="(query, ct) => EmployeeApi.GetJobsLookupAsync(query, ct)"
-                                Items="Init_JOB"
-                                @bind-Value="Employee.JOB_ID"
-                                TextSelector="x => x.Name"
-                                ValueSelector="x => x.Id"
-                                Placeholder="جستجوی عنوان شغل..."
-                                Clearable="true" Editable="true" />
-                </div>
-                <div class="form-field">
-                    <label>تاریخ شروع به کار (شمسی) *</label>
-                    <Pay2NumericInput @bind-Value="HireDateStr" InputMode="Pay2NumericInput.NumericInputMode.PersianDate" Placeholder="14030101" Direction="ltr" />
-                </div>
-            </div>
-
-            <div class="form-grid-3 p2-mb-16">
-                <div class="form-field">
-                    <label>واحد سازمانی</label>
-                    <Pay2Select TItem="LookupDto<byte?>" TValue="byte?" Items="UnitOptions" @bind-Value="Employee.UNIT" TextSelector="x => x.Name" ValueSelector="x => x.Id" Clearable="true" Placeholder="— انتخاب کنید —" />
-                </div>
-                <div class="form-field">
-                    <label>مدرک تحصیلی</label>
-                    <Pay2Select TItem="LookupDto<byte?>" TValue="byte?" Items="EduOptions" @bind-Value="Employee.EDU_LEVEL" TextSelector="x => x.Name" ValueSelector="x => x.Id" Clearable="true" Placeholder="— انتخاب کنید —" />
-                </div>
-                <div class="form-field">
-                    <label>تاریخ ترک کار (شمسی)</label>
-                    <Pay2NumericInput @bind-Value="FireDateStr" InputMode="Pay2NumericInput.NumericInputMode.PersianDate" Direction="ltr" Placeholder="در صورت پایان همکاری" />
-                </div>
-            </div>
-
-            <hr class="p2-divider" />
-
-            <!-- ================= ۳. اطلاعات مالی، بیمه و حسابداری ================= -->
-            <div class="p2-sub-card-title p2-mt-24"><i class="bi bi-shield-check"></i> ۳. اطلاعات مالی، بیمه و حسابداری</div>
-
-            <div class="form-grid-3 p2-mb-16">
-                <div class="form-field" style="grid-column: span 2;">
-                    <label style="color: var(--p2-primary);">کد تفصیلی حسابداری (برای مساعده هوشمند)</label>
-                    <Pay2Select TItem="LookupDto<string>" TValue="string"
-                                SearchItems="SearchAccountsAsync"
-                                Items="Init_ACC_T"
-                                @bind-Value="Employee.ACC_T"
-                                TextSelector="@(x => $"\u200E{x.Id}\u200E  -  {x.Name}")"
-                                ValueSelector="@(x => x.Id)"
-                                Placeholder="جستجوی کد تفصیلی پرسنل..."
-                                Clearable="true" Editable="true" />
-                </div>
-                <div class="form-field">
-                    <label>شماره بیمه (INS_CODE)</label>
-                    <Pay2NumericInput @bind-Value="Employee.INS_CODE" MaxLength="15" Direction="ltr" />
-                </div>
-            </div>
-
-            <div class="form-grid-3 p2-mb-16">
-                <div class="form-field">
-                    <label>نوع بیمه *</label>
-                    <Pay2Select TItem="LookupDto<byte>" TValue="byte" Items="InsTypeOptions" @bind-Value="Employee.INS_TYPE" TextSelector="x => x.Name" ValueSelector="x => x.Id" Clearable="false" />
-                </div>
-                <div class="form-field">
-                    <label>معافیت منطقه محروم (%)</label>
-                    <Pay2NumericInput @bind-Value="RegionDeprivationStr" MaxLength="3" Direction="ltr" />
-                </div>
-                <div class="form-field" style="display:flex; justify-content:flex-end; flex-direction: column;">
-                    <div class="pay2-wpf-checkbox-box">
-                        <label class="pay2-wpf-checkbox-label" style="color: var(--p2-warning-text);">
-                            <input type="checkbox" @bind="Employee.TAX_EXEMPT" /> معاف از مالیات (TAXEXEMPT)
-                        </label>
+                <div class="form-grid-3 p2-mb-16">
+                    <div class="form-field">
+                        <label>کد ملی</label>
+                        <Pay2NumericInput @bind-Value="Employee.NATIONAL_CODE" MaxLength="10" Direction="ltr" />
+                    </div>
+                    <div class="form-field">
+                        <label>جنسیت *</label>
+                        <Pay2Select TItem="LookupDto<byte>" TValue="byte" Items="GenderOptions" @bind-Value="Employee.GENDER" TextSelector="x => x.Name" ValueSelector="x => x.Id" Clearable="false" />
+                    </div>
+                    <div class="form-field">
+                        <label>وضعیت تأهل *</label>
+                        <Pay2Select TItem="LookupDto<byte>" TValue="byte" Items="MaritalOptions" @bind-Value="Employee.MARITAL" TextSelector="x => x.Name" ValueSelector="x => x.Id" Clearable="false" />
                     </div>
                 </div>
-            </div>
 
-            <hr class="p2-divider" />
-
-            <!-- ================= ۴. اطلاعات تماس و پرداخت ================= -->
-            <div class="p2-sub-card-title p2-mt-24"><i class="bi bi-telephone"></i> ۴. اطلاعات تماس و پرداخت</div>
-
-            <div class="form-grid-4 p2-mb-16">
-                <div class="form-field">
-                    <label>شماره کارت ساعت</label>
-                    <input class="pay2-input" type="text" @bind="Employee.CARD_NO" dir="ltr" />
-                </div>
-                <div class="form-field">
-                    <label>موبایل</label>
-                    <Pay2NumericInput @bind-Value="Employee.MOBILE" MaxLength="15" Direction="ltr" />
-                </div>
-                <div class="form-field">
-                    <label>شماره حساب بانکی</label>
-                    <Pay2NumericInput @bind-Value="Employee.BANK_ACC" MaxLength="30" Direction="ltr" />
-                </div>
-                <div class="form-field">
-                    <label>شماره شبا (IBAN)</label>
-                    <input class="pay2-input" type="text" @bind="Employee.IBAN" dir="ltr" />
-                </div>
-            </div>
-
-            <div class="form-field p2-mb-16">
-                <label>یادداشت</label>
-                <textarea class="pay2-textarea" @bind="Employee.NOTES"></textarea>
-            </div>
-
-            <div class="form-grid-2 p2-mt-24">
-                <div class="form-field">
-                    <div class="pay2-wpf-checkbox-box" style="background: var(--p2-primary-light); border-color: var(--p2-primary-border);">
-                        <label class="pay2-wpf-checkbox-label" style="color: var(--p2-primary);">
-                            <input type="checkbox" @bind="Employee.IS_ACTIVE" /> وضعیت: فعال است (ISACTIVE = 1)
-                        </label>
+                <div class="form-grid-3 p2-mb-16">
+                    <div class="form-field">
+                        <label>نام پدر</label>
+                        <input class="pay2-input" type="text" @bind="Employee.FATHER_NAME" />
+                    </div>
+                    <div class="form-field">
+                        <label>شماره شناسنامه</label>
+                        <Pay2NumericInput @bind-Value="Employee.ID_NUMBER" MaxLength="20" Direction="ltr" />
+                    </div>
+                    <div class="form-field">
+                        <label>محل صدور شناسنامه</label>
+                        <input class="pay2-input" type="text" @bind="Employee.BIRTH_PLACE" />
                     </div>
                 </div>
-            </div>
 
-            <!-- ================= دکمه های عملیات ================= -->
-            <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:24px;">
-                <button class="btn-outline-pay2" @onclick="Close">انصراف</button>
-                <button class="btn-primary-pay2" @onclick="SubmitSave" disabled="@IsSaving">
-                    @if (IsSaving)
-                    {
-                        <span class="p2-spinner"></span>
-                    }
-                    else
-                    {
-                        <span>ذخیره اطلاعات پرسنل</span>
-                    }
-                </button>
-            </div>
+                <div class="form-grid-3 p2-mb-16">
+                    <div class="form-field">
+                        <label>ملیت *</label>
+                        <Pay2Select TItem="LookupDto<byte>" TValue="byte" Items="NatOptions" @bind-Value="Employee.NATIONALITY" TextSelector="x => x.Name" ValueSelector="x => x.Id" Clearable="false" />
+                    </div>
+                    <div class="form-field">
+                        <label>تاریخ تولد (شمسی)</label>
+                        <Pay2NumericInput @bind-Value="BirthDateStr" InputMode="Pay2NumericInput.NumericInputMode.PersianDate" Placeholder="13600101" Direction="ltr" />
+                    </div>
+                    <div class="form-field" style="display:flex; justify-content:flex-end; flex-direction: column;">
+                        <div class="pay2-wpf-checkbox-box">
+                            <label class="pay2-wpf-checkbox-label" style="color: #7c3aed;">
+                                <input type="checkbox" @bind="Employee.IS_JANBAZ" /> جانباز (ISJANBAZ)
+                            </label>
+                        </div>
+                    </div>
+                </div>
+
+                <hr class="p2-divider" />
+
+                <!-- ================= ۲. اطلاعات شغلی و سازمانی ================= -->
+                <div class="p2-sub-card-title p2-mt-24"><i class="bi bi-briefcase"></i> ۲. اطلاعات شغلی و سازمانی</div>
+
+                <div class="form-grid-3 p2-mb-16">
+                    <div class="form-field">
+                        <label>کارگاه محل خدمت *</label>
+                        <Pay2Select TItem="Pay2WorkshopDto" TValue="int" Items="Workshops" @bind-Value="Employee.WS_ID" TextSelector="x => x.WS_NAME" ValueSelector="x => x.WS_ID" Clearable="false" />
+                    </div>
+                    <div class="form-field">
+                        <label>شغل (PAY2_JOB)</label>
+                        <Pay2Select TItem="LookupDto<int>" TValue="int?"
+                                    SearchItems="SearchJobsAsync"
+                                    Items="Init_JOB"
+                                    @bind-Value="Employee.JOB_ID"
+                                    TextSelector="x => x.Name"
+                                    ValueSelector="x => x.Id"
+                                    Placeholder="جستجوی عنوان شغل..."
+                                    Clearable="true" Editable="true" />
+                    </div>
+                    <div class="form-field">
+                        <label>تاریخ شروع به کار (شمسی) *</label>
+                        <Pay2NumericInput @bind-Value="HireDateStr" InputMode="Pay2NumericInput.NumericInputMode.PersianDate" Placeholder="14030101" Direction="ltr" />
+                    </div>
+                </div>
+
+                <div class="form-grid-3 p2-mb-16">
+                    <div class="form-field">
+                        <label>واحد سازمانی</label>
+                        <Pay2Select TItem="LookupDto<byte?>" TValue="byte?" Items="UnitOptions" @bind-Value="Employee.UNIT" TextSelector="x => x.Name" ValueSelector="x => x.Id" Clearable="true" Placeholder="— انتخاب کنید —" />
+                    </div>
+                    <div class="form-field">
+                        <label>مدرک تحصیلی</label>
+                        <Pay2Select TItem="LookupDto<byte?>" TValue="byte?" Items="EduOptions" @bind-Value="Employee.EDU_LEVEL" TextSelector="x => x.Name" ValueSelector="x => x.Id" Clearable="true" Placeholder="— انتخاب کنید —" />
+                    </div>
+                    <div class="form-field">
+                        <label>تاریخ ترک کار (شمسی)</label>
+                        <Pay2NumericInput @bind-Value="FireDateStr" InputMode="Pay2NumericInput.NumericInputMode.PersianDate" Direction="ltr" Placeholder="در صورت پایان همکاری" />
+                    </div>
+                </div>
+
+                <hr class="p2-divider" />
+
+                <!-- ================= ۳. اطلاعات مالی، بیمه و حسابداری ================= -->
+                <div class="p2-sub-card-title p2-mt-24"><i class="bi bi-shield-check"></i> ۳. اطلاعات مالی، بیمه و حسابداری</div>
+
+                <div class="form-grid-3 p2-mb-16">
+                    <div class="form-field" style="grid-column: span 2;">
+                        <label style="color: var(--p2-primary);">کد تفصیلی حسابداری (برای مساعده هوشمند)</label>
+                        <Pay2Select TItem="LookupDto<string>" TValue="string"
+                                    SearchItems="SearchAccountsAsync"
+                                    Items="Init_ACC_T"
+                                    @bind-Value="Employee.ACC_T"
+                                    TextSelector="@(x => $"\u200E{x.Id}\u200E  -  {x.Name}")"
+                                    ValueSelector="@(x => x.Id)"
+                                    Placeholder="جستجوی کد تفصیلی پرسنل..."
+                                    Clearable="true" Editable="true" />
+                    </div>
+                    <div class="form-field">
+                        <label>شماره بیمه (INS_CODE)</label>
+                        <Pay2NumericInput @bind-Value="Employee.INS_CODE" MaxLength="15" Direction="ltr" />
+                    </div>
+                </div>
+
+                <div class="form-grid-3 p2-mb-16">
+                    <div class="form-field">
+                        <label>نوع بیمه *</label>
+                        <Pay2Select TItem="LookupDto<byte>" TValue="byte" Items="InsTypeOptions" @bind-Value="Employee.INS_TYPE" TextSelector="x => x.Name" ValueSelector="x => x.Id" Clearable="false" />
+                    </div>
+                    <div class="form-field">
+                        <label>معافیت منطقه محروم (%)</label>
+                        <Pay2NumericInput @bind-Value="RegionDeprivationStr" MaxLength="3" Direction="ltr" />
+                    </div>
+                    <div class="form-field" style="display:flex; justify-content:flex-end; flex-direction: column;">
+                        <div class="pay2-wpf-checkbox-box">
+                            <label class="pay2-wpf-checkbox-label" style="color: var(--p2-warning-text);">
+                                <input type="checkbox" @bind="Employee.TAX_EXEMPT" /> معاف از مالیات (TAXEXEMPT)
+                            </label>
+                        </div>
+                    </div>
+                </div>
+
+                <hr class="p2-divider" />
+
+                <!-- ================= ۴. اطلاعات تماس و پرداخت ================= -->
+                <div class="p2-sub-card-title p2-mt-24"><i class="bi bi-telephone"></i> ۴. اطلاعات تماس و پرداخت</div>
+
+                <div class="form-grid-4 p2-mb-16">
+                    <div class="form-field">
+                        <label>شماره کارت ساعت</label>
+                        <input class="pay2-input" type="text" @bind="Employee.CARD_NO" dir="ltr" />
+                    </div>
+                    <div class="form-field">
+                        <label>موبایل</label>
+                        <Pay2NumericInput @bind-Value="Employee.MOBILE" MaxLength="15" Direction="ltr" />
+                    </div>
+                    <div class="form-field">
+                        <label>شماره حساب بانکی</label>
+                        <Pay2NumericInput @bind-Value="Employee.BANK_ACC" MaxLength="30" Direction="ltr" />
+                    </div>
+                    <div class="form-field">
+                        <label>شماره شبا (IBAN)</label>
+                        <input class="pay2-input" type="text" @bind="Employee.IBAN" dir="ltr" />
+                    </div>
+                </div>
+
+                <div class="form-field p2-mb-16">
+                    <label>یادداشت</label>
+                    <textarea class="pay2-textarea" @bind="Employee.NOTES"></textarea>
+                </div>
+
+                <div class="form-grid-2 p2-mt-24">
+                    <div class="form-field">
+                        <div class="pay2-wpf-checkbox-box" style="background: var(--p2-primary-light); border-color: var(--p2-primary-border);">
+                            <label class="pay2-wpf-checkbox-label" style="color: var(--p2-primary);">
+                                <input type="checkbox" @bind="Employee.IS_ACTIVE" /> وضعیت: فعال است (ISACTIVE = 1)
+                            </label>
+                        </div>
+                    </div>
+                </div>
+
+                <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:24px;">
+                    <button class="btn-outline-pay2" @onclick="Close">انصراف</button>
+                    <button class="btn-primary-pay2" @onclick="SubmitSave" disabled="@IsSaving">
+                        @if (IsSaving)
+                        {
+                            <span class="p2-spinner"></span>
+                        }
+                        else
+                        {
+                            <span>ذخیره اطلاعات پرسنل</span>
+                        }
+                    </button>
+                </div>
+            }
         </div>
     </div>
 }
@@ -234,11 +243,12 @@
     string? BirthDateStr;
     string? HireDateStr;
     string? FireDateStr;
-    string? RegionDeprivationStr; // <-- فیلد واسطه اضافه شده برای جلوگیری از خطای Byte
+    string? RegionDeprivationStr;
 
-    bool _hasInitialized = false;
+    private int _lastProcessedEmpId = -1;
+    private bool _lastOpenState = false;
+    private bool _isDataLoaded = false;
 
-    // لیست‌های مورد نیاز برای Dropdown ها منطبق بر دیتابیس
     List<LookupDto<byte>> GenderOptions = new() { new((byte)1, "مذکر"), new((byte)2, "مونث") };
     List<LookupDto<byte>> MaritalOptions = new() { new((byte)1, "متأهل"), new((byte)2, "مجرد") };
     List<LookupDto<byte>> NatOptions = new() { new((byte)1, "ایرانی"), new((byte)2, "خارجی") };
@@ -257,37 +267,72 @@
 
     protected override async Task OnParametersSetAsync()
     {
-        if (IsOpen && !_hasInitialized)
+        if (IsOpen && (!_lastOpenState || (Employee != null && Employee.EMP_ID != _lastProcessedEmpId)))
         {
-            _hasInitialized = true;
+            _lastOpenState = true;
+            _lastProcessedEmpId = Employee?.EMP_ID ?? 0;
+            _isDataLoaded = false; // نمایش اسکرین لودینگ
 
+            await InitializeModalData();
+        }
+        else if (!IsOpen)
+        {
+            _lastOpenState = false;
+            _lastProcessedEmpId = -1;
+            _isDataLoaded = false;
+        }
+    }
+
+    private async Task InitializeModalData()
+    {
+        if (Employee == null) return;
+
+        try
+        {
             // پر کردن مقادیر متنی واسطه برای Pay2NumericInput
-            HireDateStr = Employee.HIRE_DATE.ToString();
+            HireDateStr = Employee.HIRE_DATE > 0 ? Employee.HIRE_DATE.ToString() : "";
             BirthDateStr = Employee.BIRTH_DATE?.ToString();
             FireDateStr = Employee.FIRE_DATE?.ToString();
-            RegionDeprivationStr = Employee.REGION_DEPRIVATION.ToString(); // <-- مقداردهی اولیه
+            RegionDeprivationStr = Employee.REGION_DEPRIVATION.ToString();
 
-            // پر کردن لیست کشویی دستی برای شغل (اگر از قبل شغل داشته باشد)
-            Init_JOB.Clear();
+            // پر کردن لیست کشویی برای شغل
+            Init_JOB = new List<LookupDto<int>>();
             if (Employee.JOB_ID.HasValue && !string.IsNullOrEmpty(Employee.JobName))
             {
                 Init_JOB.Add(new LookupDto<int>(Employee.JOB_ID.Value, Employee.JobName));
             }
 
-            // پر کردن لیست کشویی حسابداری
-            Init_ACC_T.Clear();
-            if (!string.IsNullOrEmpty(Employee.ACC_T))
+            // پر کردن فیلد حسابداری
+            Init_ACC_T = new List<LookupDto<string>>();
+            if (!string.IsNullOrWhiteSpace(Employee.ACC_T))
             {
                 var res = await LookupService.GetCustomerLookupAsync(Employee.ACC_T, default);
-                if (res != null && res.Any(x => x.Id == Employee.ACC_T))
-                    Init_ACC_T.Add(res.First(x => x.Id == Employee.ACC_T));
+                var matchedAccount = res?.FirstOrDefault(x => x.Id == Employee.ACC_T);
+
+                if (matchedAccount != null)
+                {
+                    Init_ACC_T.Add(matchedAccount);
+                }
                 else
-                    Init_ACC_T.Add(new LookupDto<string>(Employee.ACC_T, "حساب نامشخص"));
+                {
+                    Init_ACC_T.Add(new LookupDto<string>(Employee.ACC_T, $"{Employee.ACC_T} - حذف شده از حسابداری"));
+                }
             }
         }
-        else if (!IsOpen)
+        catch (Exception ex)
         {
-            _hasInitialized = false; // ریست کردن برای باز شدن بعدی
+            // در صورتی که سرور کلاً خطا دهد یا اینترنت قطع باشد، جلوی کرش را می‌گیریم
+            if (!string.IsNullOrWhiteSpace(Employee.ACC_T))
+            {
+                Init_ACC_T.Add(new LookupDto<string>(Employee.ACC_T, Employee.ACC_T));
+            }
+            Console.WriteLine($"Error loading employee relations: {ex.Message}");
+        }
+        finally
+        {
+            // در هر صورت (موفق یا ناموفق)، فرم باید از حالت لودینگ خارج شود و به کاربر اجازه کار بدهد
+            _isDataLoaded = true;
+            StateHasChanged();
         }
     }
 
@@ -308,28 +353,27 @@
 
     async Task SubmitSave()
     {
-        // 1. اعتبارسنجی اولیه
         if (string.IsNullOrWhiteSpace(Employee.EMP_CODE) || string.IsNullOrWhiteSpace(Employee.FIRST_NAME) || string.IsNullOrWhiteSpace(Employee.LAST_NAME))
         {
-            Snackbar.Add("کد پرسنلی، نام و نام خانوادگی الزامی است.", MudBlazor.Severity.Warning); return;
+            Snackbar.Add("کد پرسنلی، نام و نام خانوادگی الزامی است.", MudBlazor.Severity.Warning);
+            return;
         }
         if (Employee.WS_ID <= 0)
         {
-            Snackbar.Add("انتخاب کارگاه الزامی است.", MudBlazor.Severity.Warning); return;
+            Snackbar.Add("انتخاب کارگاه الزامی است.", MudBlazor.Severity.Warning);
+            return;
         }
 
-        // 2. تبدیل رشته‌های واسطه به نوع اصلی دیتا برای دیتابیس
         long.TryParse(HireDateStr?.Replace("/", ""), out long hDate);
         long.TryParse(BirthDateStr?.Replace("/", ""), out long bDate);
         long.TryParse(FireDateStr?.Replace("/", ""), out long fDate);
-        byte.TryParse(RegionDeprivationStr, out byte regDep); // <-- تبدیل متن به بایت
+        byte.TryParse(RegionDeprivationStr, out byte regDep);
 
         Employee.HIRE_DATE = hDate > 13000000 ? hDate : long.Parse(Safir.Shared.Utility.CL_Tarikh.GetCurrentPersianDateAsLong().ToString());
         Employee.BIRTH_DATE = bDate > 13000000 ? bDate : null;
         Employee.FIRE_DATE = fDate > 13000000 ? fDate : null;
-        Employee.REGION_DEPRIVATION = regDep; // <-- ثبت در مدل نهایی
+        Employee.REGION_DEPRIVATION = regDep;
 
-        // 3. ارسال اطلاعات به والد
         await OnSave.InvokeAsync(Employee);
     }
 }
