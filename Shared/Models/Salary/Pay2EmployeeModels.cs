@@ -71,26 +71,25 @@
         public bool? TAX_OV { get; set; }
         public byte? BASIS_OV { get; set; }
 
-        // --- Helper Properties برای بایند کردن راحت به Dropdown در Blazor ---
+        // 👇 تغییر عدد 0 به 3 برای رفع مشکل خالی شدن کمبوباکس در Blazor
         public int InsCombo
         {
-            get => INS_OV == null ? 0 : (INS_OV == true ? 1 : 2);
-            set => INS_OV = value == 0 ? (bool?)null : (value == 1);
+            get => INS_OV == null ? 3 : (INS_OV == true ? 1 : 2);
+            set => INS_OV = value == 3 ? (bool?)null : (value == 1);
         }
 
         public int TaxCombo
         {
-            get => TAX_OV == null ? 0 : (TAX_OV == true ? 1 : 2);
-            set => TAX_OV = value == 0 ? (bool?)null : (value == 1);
+            get => TAX_OV == null ? 3 : (TAX_OV == true ? 1 : 2);
+            set => TAX_OV = value == 3 ? (bool?)null : (value == 1);
         }
 
         public int BasisCombo
         {
-            get => BASIS_OV == null ? 0 : (BASIS_OV == 1 ? 1 : 2);
-            set => BASIS_OV = value == 0 ? (byte?)null : (byte)value;
+            get => BASIS_OV == null ? 3 : (BASIS_OV == 1 ? 1 : 2);
+            set => BASIS_OV = value == 3 ? (byte?)null : (byte)value;
         }
 
-        // --- برای نمایش متن‌های فارسی در جدول گرید ---
         public string InsText => INS_OV == null ? "پایه" : (INS_OV == true ? "مشمول" : "معاف");
         public string TaxText => TAX_OV == null ? "پایه" : (TAX_OV == true ? "مشمول" : "معاف");
         public string BasisText => BASIS_OV == null ? "پایه" : (BASIS_OV == 1 ? "روزانه" : "ماهیانه");
