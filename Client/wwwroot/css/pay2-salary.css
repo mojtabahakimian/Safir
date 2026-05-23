@@ -2100,3 +2100,27 @@
         border-radius: 0;
     }
 }
+
+/* ========================================================
+   استایل‌های سفارشی برای منوی کشویی (MudMenu)
+   ======================================================== */
+
+.pay2-more-menu {
+    border-radius: var(--p2-radius-md) !important;
+    font-family: var(--p2-font) !important;
+    direction: rtl;
+    border: 1px solid var(--p2-border-light);
+    overflow: hidden !important; /* این خط باعث می‌شود گوشه‌های داخلی تیز بیرون نزنند */
+    margin-right: 15px !important; /* ایجاد فاصله از لبه چپ مانیتور */
+}
+
+    /* گرد کردن لبه‌های داخلی آیتم‌ها و ایجاد فاصله مناسب */
+    .pay2-more-menu .mud-list-item {
+        border-radius: 8px !important;
+        margin: 4px 8px !important;
+        min-height: 38px !important;
+    }
+
+        .pay2-more-menu .mud-list-item:hover {
+            background-color: var(--p2-bg-main) !important;
+        }
