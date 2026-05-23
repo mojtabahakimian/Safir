@@ -690,5 +690,95 @@ namespace Safir.Server.Controllers
             }
         }
 
+        [HttpGet("{empId:int}/settlements")]
+        public async Task<ActionResult<IEnumerable<Pay2SettlementDto>>> GetSettlements(int empId)
+        {
+            const string sql = "SELECT * FROM PAY2_SETTLEMENT WHERE EMP_ID = @empId ORDER BY SETTLE_DATE DESC";
+            return Ok(await _db.DoGetDataSQLAsync<Pay2SettlementDto>(sql, new { empId }));
+        }
+
+        [HttpPost("{empId:int}/settlement/calculate")]
+        public async Task<IActionResult> CalculateSettlement(int empId, [FromQuery] int wsId, [FromBody] Pay2SettlementInputDto input)
+        {
+            var userIdString = User.FindFirstValue(ClaimTypes.NameIdentifier);
+            if (!int.TryParse(userIdString, out int userCod)) return Unauthorized();
+
+            try
+            {
+                // 1. بررسی عدم وجود پیش‌نویس باز
+                int draftCount = await _db.DoGetDataSQLAsyncSingle<int>(
+                    "SELECT COUNT(1) FROM PAY2_SETTLEMENT WHERE EMP_ID = @empId AND STATUS = 1", new { empId });
+
+                if (draftCount > 0)
+                    return BadRequest("این پرسنل یک تسویه حساب پیش‌نویس دارد. لطفاً ابتدا آن را حذف یا نهایی کنید.");
+
+                // 2. فراخوانی SP موتور تسویه حساب
+                string sql = @"
+            DECLARE @newId INT; 
+            EXEC SP_PAY2_CALC_SETTLE 
+                @EMP_ID = @EMP_ID, 
+                @WS_ID = @WS_ID, 
+                @SETTLE_DATE = @SETTLE_DATE, 
+                @END_DATE = @END_DATE, 
+                @PREV_CREDIT = @PREV_CREDIT, 
+                @OTHER_INCOME = @OTHER_INCOME, 
+                @OTHER_DED = @OTHER_DED, 
+                @CALC_BY = @User, 
+                @NEW_SET_ID = @newId OUTPUT;
+            SELECT @newId;";
+
+                var p = new DynamicParameters(input);
+                p.Add("EMP_ID", empId);
+                p.Add("WS_ID", wsId);
+                p.Add("User", userCod);
+
+                await _db.DoGetDataSQLAsyncSingle<int?>(sql, p);
+
+                return Ok();
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(ex.Message);
+            }
+        }
+
+        [HttpPut("settlement/{setId:int}/finalize")]
+        public async Task<IActionResult> FinalizeSettlement(int setId)
+        {
+            var userIdString = User.FindFirstValue(ClaimTypes.NameIdentifier);
+            if (!int.TryParse(userIdString, out int userCod)) return Unauthorized();
+
+            try
+            {
+                await _db.DoExecuteSQLAsync("EXEC SP_PAY2_FINALIZE_SETTLE @SET_ID = @setId, @APPROVED_BY = @userCod", new { setId, userCod });
+                return Ok();
+            }
+            catch (Exception ex) { return BadRequest(ex.Message); }
+        }
+
+        [HttpDelete("settlement/{setId:int}")]
+        public async Task<IActionResult> DeleteSettlement(int setId)
+        {
+            try
+            {
+                await _db.ExecuteInTransactionAsync(async (conn, tran) =>
+                {
+                    // خواندن شناسه پرسنل برای بازگرداندن وضعیت او به فعال
+                    int? empId = await conn.QuerySingleOrDefaultAsync<int?>("SELECT EMP_ID FROM PAY2_SETTLEMENT WHERE SET_ID=@setId AND STATUS=1", new { setId }, tran);
+                    if (!empId.HasValue) throw new InvalidOperationException("تسویه حساب یافت نشد یا از حالت پیش‌نویس خارج شده است.");
+
+                    await conn.ExecuteAsync("DELETE FROM PAY2_SETTLEMENT WHERE SET_ID = @setId", new { setId }, tran);
+
+                    // برگرداندن پرسنل به حالت فعال (چون محاسبه تسویه باعث غیرفعال شدن او شده بود)
+                    await conn.ExecuteAsync("UPDATE PAY2_EMPLOYEE SET IS_ACTIVE = 1, FIRE_DATE = NULL WHERE EMP_ID = @empId", new { empId }, tran);
+                });
+                return Ok();
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(ex.Message);
+            }
+        }
+
     }
 }

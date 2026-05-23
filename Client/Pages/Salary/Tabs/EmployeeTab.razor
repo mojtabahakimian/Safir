@@ -179,6 +179,13 @@
                                                                         EmployeeId="SelectedEmpForAction.EMP_ID"
                                                                         EmployeeName="@SelectedEmpForAction.FullDisplayName"
                                                                         OnClose="() => ShowAdvanceExclModal = false" />
+
+    <!-- مدال تسویه حساب -->
+    <Safir.Client.Pages.Salary.Tabs.EmployeeComponents.SettlementModal IsOpen="ShowSettlementModal"
+                                                                       EmployeeId="SelectedEmpForAction.EMP_ID"
+                                                                       WorkshopId="SelectedEmpForAction.WS_ID"
+                                                                       EmployeeName="@SelectedEmpForAction.FullDisplayName"
+                                                                       OnClose="CloseSettlementModal" />
 </div>
 
 @code {
@@ -284,6 +291,7 @@
     bool ShowLoanModal = false;
     bool ShowOverrideModal = false;
     bool ShowAdvanceExclModal = false;
+    bool ShowSettlementModal = false;
 
     void ShowMenuAction(Pay2EmployeeDto emp, string action)
     {
@@ -296,13 +304,19 @@
             case "وام پرسنلی": ShowLoanModal = true; break;
             case "استثنا مشمولیت": ShowOverrideModal = true; break;
             case "استثنا مساعده": ShowAdvanceExclModal = true; break;
+            case "تسویه حساب": ShowSettlementModal = true; break;
+
             default:
                 Snackbar.Add($"مدیریت {action} برای {emp.FIRST_NAME} به زودی متصل می‌شود...", MudBlazor.Severity.Info);
                 break;
         }
     }
 
-
+    async Task CloseSettlementModal()
+    {
+        ShowSettlementModal = false;
+        await LoadData(); // 🔴 رفرش کردن لیست اصلی پرسنل
+    }
 
 
 }

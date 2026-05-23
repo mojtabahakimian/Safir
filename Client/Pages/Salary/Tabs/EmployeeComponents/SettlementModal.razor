@@ -1,0 +1,285 @@
+﻿@using Safir.Shared.Models.Salary
+@using Safir.Shared.Models
+@inject Safir.Client.Services.Pay2EmployeeApiService EmployeeApi
+@inject ISnackbar Snackbar
+@inject MudBlazor.IDialogService DialogService
+
+@if (IsOpen)
+{
+    <div class="pay2-select-backdrop" style="background: rgba(15,23,42,0.6); z-index: 2999;" @onclick="Close"></div>
+
+    <div class="card-custom pay2-modal-container" style="max-width: 1050px;">
+
+        <!-- Header -->
+        <div class="pay2-modal-header p2-card-header" style="margin:0;">
+            <h5 style="margin:0; font-size:18px;">تسویه حساب پرسنل: @EmployeeName</h5>
+            <button class="btn-ghost-pay2" @onclick="Close"><i class="bi bi-x-lg"></i></button>
+        </div>
+
+        <div class="pay2-modal-body">
+            @if (!_isDataLoaded)
+            {
+                <div style="display:flex; justify-content:center; align-items:center; height:200px; flex-direction:column; gap:15px;">
+                    <span class="p2-spinner" style="width:40px; height:40px; border-color:var(--p2-danger-text); border-top-color:transparent;"></span>
+                    <span style="font-size:14px; color:var(--p2-danger-text); font-weight:600;">در حال بارگذاری اطلاعات تسویه حساب...</span>
+                </div>
+            }
+            else
+            {
+                <div class="p2-sub-card-title" style="color: var(--p2-danger-text);">
+                    <i class="bi bi-door-open"></i> محاسبه تسویه حساب جدید (این عملیات باعث غیرفعال شدن پرسنل می‌شود)
+                </div>
+
+                <div class="form-grid-5 p2-mb-16" style="align-items: end;">
+                    <div class="form-field">
+                        <label>تاریخ تسویه (شمسی) *</label>
+                        <Pay2NumericInput @bind-Value="SettleDateStr" InputMode="Pay2NumericInput.NumericInputMode.PersianDate" Direction="ltr" />
+                    </div>
+                    <div class="form-field">
+                        <label>تاریخ پایان کار (شمسی) *</label>
+                        <Pay2NumericInput @bind-Value="EndDateStr" InputMode="Pay2NumericInput.NumericInputMode.PersianDate" Direction="ltr" />
+                    </div>
+                    <div class="form-field">
+                        <label>سایر درآمدها (ریال)</label>
+                        <Pay2NumericInput @bind-Value="OtherIncomeStr" InputMode="Pay2NumericInput.NumericInputMode.Amount" MaxLength="16" Direction="ltr" IsDigitGroupActive="true" ThreeTwoZero="true" />
+                    </div>
+                    <div class="form-field">
+                        <label>سایر کسورات (ریال)</label>
+                        <Pay2NumericInput @bind-Value="OtherDedStr" InputMode="Pay2NumericInput.NumericInputMode.Amount" MaxLength="16" Direction="ltr" IsDigitGroupActive="true" ThreeTwoZero="true" />
+                    </div>
+                    <div class="form-field">
+                        <label>بستانکاری قبلی (ریال)</label>
+                        <Pay2NumericInput @bind-Value="PrevCreditStr" InputMode="Pay2NumericInput.NumericInputMode.Amount" MaxLength="16" Direction="ltr" IsDigitGroupActive="true" ThreeTwoZero="true" />
+                    </div>
+                </div>
+
+                <div style="display:flex; justify-content:flex-start; margin-bottom: 24px;">
+                    <button class="btn-primary-pay2" style="background: var(--p2-danger-text); border-color: var(--p2-danger-text);" @onclick="CalculateSettlement" disabled="@IsSaving">
+                        @if (IsSaving)
+                        {
+                            <span class="p2-spinner"></span>
+                        }
+                        else
+                        {
+
+                            <i class="bi bi-calculator"></i>
+                            <span>محاسبه تسویه حساب (اجرای موتور)</span>
+         }
+                    </button>
+                </div>
+
+                <hr class="p2-divider" />
+
+                <!-- جدول سوابق -->
+                <div class="p2-sub-card-title"><i class="bi bi-card-checklist"></i> لیست تسویه‌حساب‌های این پرسنل</div>
+
+                <div class="pay2-table-responsive">
+                    <table class="p2-table">
+                        <thead style="position: sticky; top: 0; z-index: 10;">
+                            <tr>
+                                <th style="text-align:center;">تاریخ تسویه</th>
+                                <th style="text-align:center;">وضعیت</th>
+                                <th style="text-align:center;">خالص پرداختی</th>
+                                <th style="text-align:center;">عیدی</th>
+                                <th style="text-align:center;">سنوات</th>
+                                <th style="text-align:center;">مانده مرخصی</th>
+                                <th style="text-align:center;">جمع کسورات</th>
+                                <th style="text-align:center;">عملیات</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @if (!Settlements.Any())
+                            {
+                                <tr><td colspan="8" style="text-align:center; padding:20px; color:#94a3b8;">هیچ تسویه حسابی برای این پرسنل ثبت نشده است.</td></tr>
+                            }
+                            @foreach (var set in Settlements)
+                            {
+                                <tr>
+                                    <td class="p2-text-mono" style="text-align:center;">@set.SETTLE_DATE</td>
+                                    <td style="text-align:center; font-weight:600; color: @set.StatusColor;">@set.StatusText</td>
+                                    <td class="p2-text-mono" style="text-align:center; font-weight:bold; color:var(--p2-success-text); font-size: 14px;">@set.NET_SETTLE.ToString("N0")</td>
+                                    <td class="p2-text-mono" style="text-align:center;">@set.EIDI.ToString("N0")</td>
+                                    <td class="p2-text-mono" style="text-align:center;">@set.SANAVAT.ToString("N0")</td>
+                                    <td class="p2-text-mono" style="text-align:center;">@set.LEAVE_PAY.ToString("N0")</td>
+                                    <td class="p2-text-mono p2-text-danger" style="text-align:center;">@set.TOTAL_DED.ToString("N0")</td>
+                                    <td style="text-align:center; min-width: 150px;">
+                                        @if (set.CanEdit)
+                                        {
+                                            <button class="btn-ghost-pay2 p2-text-primary" @onclick="() => FinalizeSettlement(set)"><i class="bi bi-check2-all"></i> تأیید نهایی</button>
+                                            <button class="btn-ghost-pay2 p2-text-danger" @onclick="() => DeleteSettlement(set)"><i class="bi bi-trash"></i> حذف</button>
+                                        }
+                                        else
+                                        {
+                                            <span style="color: #94a3b8; font-size: 11px;">غیرقابل تغییر</span>
+                                        }
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+        </div>
+
+        <div class="pay2-modal-footer">
+            <button class="btn-outline-pay2" @onclick="Close" style="border-radius:20px; padding:8px 24px;">بستن فرم</button>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public bool IsOpen { get; set; }
+    [Parameter] public int EmployeeId { get; set; }
+    [Parameter] public int WorkshopId { get; set; } // ارسال برای استور پروسیجر
+    [Parameter] public string EmployeeName { get; set; } = "";
+    [Parameter] public EventCallback OnClose { get; set; }
+
+    List<Pay2SettlementDto> Settlements = new();
+    Pay2SettlementInputDto CurrentInput = new();
+
+    string? SettleDateStr;
+    string? EndDateStr;
+    string? OtherIncomeStr;
+    string? OtherDedStr;
+    string? PrevCreditStr;
+
+    bool IsSaving = false;
+    private int _lastProcessedEmpId = -1;
+    private bool _lastOpenState = false;
+    private bool _isDataLoaded = false;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (IsOpen && (!_lastOpenState || EmployeeId != _lastProcessedEmpId))
+        {
+            _lastOpenState = true;
+            _lastProcessedEmpId = EmployeeId;
+            _isDataLoaded = false;
+
+            ResetForm();
+            await InitializeDataAsync();
+        }
+        else if (!IsOpen)
+        {
+            _lastOpenState = false;
+            _lastProcessedEmpId = -1;
+            _isDataLoaded = false;
+        }
+    }
+
+    private async Task InitializeDataAsync()
+    {
+        try
+        {
+            Settlements = await EmployeeApi.GetSettlementsAsync(EmployeeId);
+        }
+        catch (Exception ex) { Console.WriteLine(ex.Message); }
+        finally
+        {
+            _isDataLoaded = true;
+            StateHasChanged();
+        }
+    }
+
+    void ResetForm()
+    {
+        CurrentInput = new Pay2SettlementInputDto();
+        string currentShamsi = Safir.Shared.Utility.CL_Tarikh.GetCurrentPersianDateAsLong().ToString();
+        SettleDateStr = currentShamsi;
+        EndDateStr = currentShamsi;
+        OtherIncomeStr = "0";
+        OtherDedStr = "0";
+        PrevCreditStr = "0";
+    }
+
+    async Task CalculateSettlement()
+    {
+        long.TryParse(SettleDateStr?.Replace("/", ""), out long sDate);
+        long.TryParse(EndDateStr?.Replace("/", ""), out long eDate);
+        long.TryParse(OtherIncomeStr?.Replace(",", ""), out long oInc);
+        long.TryParse(OtherDedStr?.Replace(",", ""), out long oDed);
+        long.TryParse(PrevCreditStr?.Replace(",", ""), out long pCr);
+
+        if (sDate <= 13000000 || eDate <= 13000000)
+        {
+            Snackbar.Add("تاریخ تسویه و تاریخ پایان کار نامعتبر است.", MudBlazor.Severity.Warning); return;
+        }
+
+        CurrentInput.SETTLE_DATE = sDate;
+        CurrentInput.END_DATE = eDate;
+        CurrentInput.OTHER_INCOME = oInc;
+        CurrentInput.OTHER_DED = oDed;
+        CurrentInput.PREV_CREDIT = pCr;
+
+        IsSaving = true;
+        try
+        {
+            await EmployeeApi.CalculateSettlementAsync(EmployeeId, WorkshopId, CurrentInput);
+            Snackbar.Add("تسویه حساب با موفقیت محاسبه و به عنوان پیش‌نویس ثبت شد.", MudBlazor.Severity.Success);
+            ResetForm();
+            Settlements = await EmployeeApi.GetSettlementsAsync(EmployeeId);
+
+            // 💡 از آنجایی که کاربر غیرفعال شده است، نیاز داریم به فرم اصلی خبر بدهیم که جدول پرسنل را رفرش کند
+            // این کار از طریق بستن فرم انجام می‌شود تا کاربر مجبور شود نتیجه را در جدول اصلی ببیند
+        }
+        catch (Exception ex) { Snackbar.Add(ex.Message, MudBlazor.Severity.Error); }
+        finally { IsSaving = false; }
+    }
+
+    async Task FinalizeSettlement(Pay2SettlementDto item)
+    {
+        var parameters = new MudBlazor.DialogParameters
+        {
+            ["Title"] = "تأیید نهایی تسویه حساب",
+            ["ContentText"] = $"آیا از تأیید نهایی این تسویه حساب اطمینان دارید؟ تغییر پس از تأیید ممکن نیست و سند آماده صدور به حسابداری می‌شود.",
+            ["ConfirmButtonText"] = "بله، تأیید نهایی",
+            ["CancelButtonText"] = "انصراف"
+        };
+        var options = new MudBlazor.DialogOptions { CloseButton = false, MaxWidth = MudBlazor.MaxWidth.ExtraSmall };
+
+        var dialog = DialogService.Show<Safir.Client.Shared.ConfirmDialog>("تایید نهایی", parameters, options);
+        var result = await dialog.Result;
+
+        if (!result.Cancelled)
+        {
+            try
+            {
+                await EmployeeApi.FinalizeSettlementAsync(item.SET_ID);
+                Snackbar.Add("تسویه حساب با موفقیت نهایی شد.", MudBlazor.Severity.Success);
+                Settlements = await EmployeeApi.GetSettlementsAsync(EmployeeId);
+            }
+            catch (Exception ex) { Snackbar.Add("خطا در نهایی‌سازی: " + ex.Message, MudBlazor.Severity.Error); }
+        }
+    }
+
+    async Task DeleteSettlement(Pay2SettlementDto item)
+    {
+        var parameters = new MudBlazor.DialogParameters
+        {
+            ["Title"] = "حذف تسویه حساب",
+            ["ContentText"] = $"آیا از حذف این پیش‌نویس تسویه حساب اطمینان دارید؟ با این کار پرسنل مجدداً در حالت فعال قرار می‌گیرد.",
+            ["ConfirmButtonText"] = "بله، حذف کن",
+            ["CancelButtonText"] = "انصراف"
+        };
+        var options = new MudBlazor.DialogOptions { CloseButton = false, MaxWidth = MudBlazor.MaxWidth.ExtraSmall };
+
+        var dialog = DialogService.Show<Safir.Client.Shared.ConfirmDialog>("تایید حذف", parameters, options);
+        var result = await dialog.Result;
+
+        if (!result.Cancelled)
+        {
+            try
+            {
+                await EmployeeApi.DeleteSettlementAsync(item.SET_ID);
+                Snackbar.Add("پیش‌نویس تسویه حذف شد و پرسنل به حالت فعال بازگشت.", MudBlazor.Severity.Success);
+                Settlements = await EmployeeApi.GetSettlementsAsync(EmployeeId);
+            }
+            catch (Exception ex) { Snackbar.Add("خطا در حذف: " + ex.Message, MudBlazor.Severity.Error); }
+        }
+    }
+
+    async Task Close()
+    {
+        await OnClose.InvokeAsync();
+    }
+}

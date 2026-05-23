@@ -204,5 +204,31 @@ namespace Safir.Client.Services
             if (!res.IsSuccessStatusCode)
                 throw new Exception(await res.Content.ReadAsStringAsync());
         }
+
+        public async Task<List<Pay2SettlementDto>> GetSettlementsAsync(int empId)
+        {
+            return await _http.GetFromJsonAsync<List<Pay2SettlementDto>>($"api/pay2/employees/{empId}/settlements") ?? new();
+        }
+
+        public async Task CalculateSettlementAsync(int empId, int wsId, Pay2SettlementInputDto input)
+        {
+            var res = await _http.PostAsJsonAsync($"api/pay2/employees/{empId}/settlement/calculate?wsId={wsId}", input);
+            if (!res.IsSuccessStatusCode)
+                throw new Exception(await res.Content.ReadAsStringAsync());
+        }
+
+        public async Task FinalizeSettlementAsync(int setId)
+        {
+            var res = await _http.PutAsync($"api/pay2/employees/settlement/{setId}/finalize", null);
+            if (!res.IsSuccessStatusCode)
+                throw new Exception(await res.Content.ReadAsStringAsync());
+        }
+
+        public async Task DeleteSettlementAsync(int setId)
+        {
+            var res = await _http.DeleteAsync($"api/pay2/employees/settlement/{setId}");
+            if (!res.IsSuccessStatusCode)
+                throw new Exception(await res.Content.ReadAsStringAsync());
+        }
     }
 }

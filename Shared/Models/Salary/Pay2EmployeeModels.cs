@@ -250,4 +250,51 @@
         public double? DEED_N_S { get; set; }
     }
 
+    public class Pay2SettlementInputDto
+    {
+        public long SETTLE_DATE { get; set; }
+        public long END_DATE { get; set; }
+        public long OTHER_INCOME { get; set; }
+        public long OTHER_DED { get; set; }
+        public long PREV_CREDIT { get; set; }
+    }
+
+    public class Pay2SettlementDto
+    {
+        public int SET_ID { get; set; }
+        public int EMP_ID { get; set; }
+        public int WS_ID { get; set; }
+        public long SETTLE_DATE { get; set; }
+        public long END_DATE { get; set; }
+        public int SENIORITY_DAYS { get; set; }
+        public decimal SENIORITY_YEARS { get; set; }
+        public long LAST_SALARY { get; set; }
+
+        public int LEAVE_BAL_MIN { get; set; }
+        public decimal LEAVE_BAL_DAYS { get; set; }
+
+        public long EIDI { get; set; }
+        public long BON { get; set; }
+        public long LEAVE_PAY { get; set; }
+        public long SANAVAT { get; set; }
+        public long PREV_CREDIT { get; set; }
+        public long OTHER_INCOME { get; set; }
+
+        public long PREV_DEBIT { get; set; }
+        public long EIDI_TAX { get; set; }
+        public long LOAN_BALANCE { get; set; }
+        public long OTHER_DED { get; set; }
+
+        public byte STATUS { get; set; }
+
+        // --- پراپرتی‌های محاسباتی و نمایشی ---
+        public long TOTAL_INCOME => EIDI + BON + LEAVE_PAY + SANAVAT + PREV_CREDIT + OTHER_INCOME;
+        public long TOTAL_DED => PREV_DEBIT + EIDI_TAX + LOAN_BALANCE + OTHER_DED;
+        public long NET_SETTLE => TOTAL_INCOME - TOTAL_DED;
+
+        public string StatusText => STATUS == 1 ? "پیش‌نویس" : (STATUS == 2 ? "تأیید نهایی" : "سند صادر شده");
+        public string StatusColor => STATUS == 1 ? "#d97706" : (STATUS == 2 ? "#059669" : "#2563eb");
+        public bool CanEdit => STATUS == 1; // فقط پیش‌نویس‌ها قابل حذف یا تایید هستند
+    }
+
 }
