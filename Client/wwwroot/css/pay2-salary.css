@@ -2124,3 +2124,43 @@
         .pay2-more-menu .mud-list-item:hover {
             background-color: var(--p2-bg-main) !important;
         }
+
+
+/* ========================================================
+   افکت‌های هاور (Hover) برای دکمه‌های عملیات در جداول
+   ======================================================== */
+
+.p2-action-edit {
+    color: var(--p2-primary);
+}
+
+    .p2-action-edit:hover {
+        background-color: var(--p2-primary-light) !important;
+        color: var(--p2-primary-dark) !important;
+        transform: translateY(-1px);
+    }
+
+.p2-action-decree {
+    color: #8b5cf6; /* بنفش روشن */
+}
+
+    .p2-action-decree:hover {
+        background-color: #ede9fe !important; /* پس‌زمینه بنفش خیلی ملایم */
+        color: #6d28d9 !important; /* بنفش تیره */
+        transform: translateY(-1px);
+    }
+
+.p2-action-leave {
+    color: #f59e0b; /* نارنجی/کهربایی */
+}
+
+    .p2-action-leave:hover {
+        background-color: #fef3c7 !important; /* پس‌زمینه زرد ملایم */
+        color: #d97706 !important; /* نارنجی تیره */
+        transform: translateY(-1px);
+    }
+
+/* ترانزیشن نرم برای همه دکمه‌های گوست */
+.btn-ghost-pay2 {
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}

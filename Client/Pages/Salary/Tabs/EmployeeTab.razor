@@ -52,10 +52,18 @@
                                 <td style="text-align:center; min-width: 250px;">
                                     <div style="display:flex; justify-content:center; align-items:center; gap:8px;">
 
-                                        <!-- دکمه‌های اصلی و پرکاربرد -->
-                                        <button class="btn-ghost-pay2 p2-text-primary" @onclick="() => OpenEditEmpModal(emp)"><i class="bi bi-pencil"></i> ویرایش</button>
-                                        <button class="btn-ghost-pay2" style="color:#8b5cf6;" @onclick="() => OpenDecreeModal(emp)"><i class="bi bi-file-earmark-person"></i> احکام</button>
-                                        <button class="btn-ghost-pay2" style="color:#f59e0b;" @onclick="() => ShowLeaveRequestModal_Click(emp)"><i class="bi bi-calendar-plus"></i> ثبت مرخصی</button>
+                                        <!-- دکمه‌های اصلی و پرکاربرد با کلاس‌های اختصاصی هاور -->
+                                        <button class="btn-ghost-pay2 p2-action-edit" @onclick="() => OpenEditEmpModal(emp)">
+                                            <i class="bi bi-pencil"></i> ویرایش
+                                        </button>
+
+                                        <button class="btn-ghost-pay2 p2-action-decree" @onclick="() => OpenDecreeModal(emp)">
+                                            <i class="bi bi-file-earmark-person"></i> احکام
+                                        </button>
+
+                                        <button class="btn-ghost-pay2 p2-action-leave" @onclick="() => ShowLeaveRequestModal_Click(emp)">
+                                            <i class="bi bi-calendar-plus"></i> ثبت مرخصی
+                                        </button>
 
                                         <!-- منوی کشویی برای گزینه‌های بیشتر -->
                                         <MudMenu Icon="@Icons.Material.Filled.MoreVert" Color="Color.Default"
