@@ -168,6 +168,12 @@
                                                                  EmployeeName="@SelectedEmpForAction.FullDisplayName"
                                                                  OnClose="() => ShowLoanModal = false" />
 
+    <!-- مدال استثناهای مشمولیت -->
+    <Safir.Client.Pages.Salary.Tabs.EmployeeComponents.OverrideModal IsOpen="ShowOverrideModal"
+                                                                     EmployeeId="SelectedEmpForAction.EMP_ID"
+                                                                     EmployeeName="@SelectedEmpForAction.FullDisplayName"
+                                                                     OnClose="() => ShowOverrideModal = false" />
+
 </div>
 
 @code {
@@ -271,6 +277,7 @@
     bool ShowLeaveBalModal = false;
     Pay2EmployeeDto SelectedEmpForAction = new();
     bool ShowLoanModal = false;
+    bool ShowOverrideModal = false;
 
     void ShowMenuAction(Pay2EmployeeDto emp, string action)
     {
@@ -281,6 +288,7 @@
             case "قراردادها": ShowContractModal = true; break;
             case "مانده مرخصی": ShowLeaveBalModal = true; break;
             case "وام پرسنلی": ShowLoanModal = true; break;
+            case "استثنا مشمولیت": ShowOverrideModal = true; break;
             default:
                 Snackbar.Add($"مدیریت {action} برای {emp.FIRST_NAME} به زودی متصل می‌شود...", MudBlazor.Severity.Info);
                 break;

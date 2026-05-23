@@ -201,4 +201,45 @@
 
         public long BALANCE => AMOUNT - (PAID_INST * INSTALLMENT);
     }
+    public class Pay2OverrideDto
+    {
+        public int EMP_ID { get; set; }
+        public int ITEM_ID { get; set; }
+        public string? ITEM_NAME { get; set; }
+
+        public bool? INS_OV { get; set; }
+        public bool? TAX_OV { get; set; }
+        public byte? BASIS_OV { get; set; }
+
+        public long VALID_FROM { get; set; }
+        public long? VALID_TO { get; set; }
+        public string? REASON { get; set; }
+
+        // --- Helper Properties برای بایند کردن به Dropdown ---
+        // دقت کنید: شناسه 3 برای "بدون تغییر" است تا مشکل خالی شدن کمبوباکس پیش نیاید
+        public int InsCombo
+        {
+            get => INS_OV == null ? 3 : (INS_OV == true ? 1 : 2);
+            set => INS_OV = value == 3 ? (bool?)null : (value == 1);
+        }
+
+        public int TaxCombo
+        {
+            get => TAX_OV == null ? 3 : (TAX_OV == true ? 1 : 2);
+            set => TAX_OV = value == 3 ? (bool?)null : (value == 1);
+        }
+
+        public int BasisCombo
+        {
+            get => BASIS_OV == null ? 3 : (BASIS_OV == 1 ? 1 : 2);
+            set => BASIS_OV = value == 3 ? (byte?)null : (byte)value;
+        }
+
+        // --- برای نمایش در جدول گرید ---
+        public string InsText => INS_OV == null ? "بدون تغییر" : (INS_OV == true ? "مشمول" : "معاف");
+        public string TaxText => TAX_OV == null ? "بدون تغییر" : (TAX_OV == true ? "مشمول" : "معاف");
+        public string BasisText => BASIS_OV == null ? "بدون تغییر" : (BASIS_OV == 1 ? "روزانه" : "ماهیانه");
+    }
+
+
 }

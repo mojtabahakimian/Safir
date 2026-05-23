@@ -556,5 +556,80 @@ namespace Safir.Server.Controllers
             }
         }
 
+        [HttpGet("{empId:int}/overrides")]
+        public async Task<ActionResult<IEnumerable<Pay2OverrideDto>>> GetOverrides(int empId)
+        {
+            const string sql = @"
+        SELECT O.EMP_ID, O.ITEM_ID, I.ITEM_NAME, O.INS_OV, O.TAX_OV, O.BASIS_OV, 
+               O.VALID_FROM, O.VALID_TO, O.REASON
+        FROM PAY2_OVERRIDE O
+        INNER JOIN PAY2_ITEM_DEF I ON O.ITEM_ID = I.ITEM_ID
+        WHERE O.EMP_ID = @empId
+        ORDER BY O.VALID_FROM DESC, I.SORT_ORDER ASC";
+
+            return Ok(await _db.DoGetDataSQLAsync<Pay2OverrideDto>(sql, new { empId }));
+        }
+
+        [HttpPost("override/save")]
+        public async Task<IActionResult> SaveOverride([FromBody] Pay2OverrideDto ovr, [FromQuery] bool isEditing)
+        {
+            var userIdString = User.FindFirstValue(ClaimTypes.NameIdentifier);
+            if (!int.TryParse(userIdString, out int userCod)) return Unauthorized();
+
+            try
+            {
+                await _db.ExecuteInTransactionAsync(async (conn, tran) =>
+                {
+                    if (!isEditing)
+                    {
+                        // درج جدید (بررسی تکراری بودن کلید اصلی مرکب)
+                        int exists = await conn.QuerySingleAsync<int>(
+                            "SELECT COUNT(1) FROM PAY2_OVERRIDE WHERE EMP_ID=@EMP_ID AND ITEM_ID=@ITEM_ID AND VALID_FROM=@VALID_FROM",
+                            new { ovr.EMP_ID, ovr.ITEM_ID, ovr.VALID_FROM }, tran);
+
+                        if (exists > 0)
+                            throw new InvalidOperationException("این استثنا با همین تاریخ شروع، قبلاً برای این آیتم ثبت شده است.");
+
+                        const string insertSql = @"
+                    INSERT INTO PAY2_OVERRIDE (EMP_ID, ITEM_ID, INS_OV, TAX_OV, BASIS_OV, VALID_FROM, VALID_TO, REASON, CREATED_AT, CREATED_BY)
+                    VALUES (@EMP_ID, @ITEM_ID, @INS_OV, @TAX_OV, @BASIS_OV, @VALID_FROM, @VALID_TO, @REASON, GETDATE(), @User)";
+
+                        var p = new DynamicParameters(ovr);
+                        p.Add("User", userCod);
+                        await conn.ExecuteAsync(insertSql, p, tran);
+                    }
+                    else
+                    {
+                        // آپدیت (تاریخ پایان و گزینه‌ها قابل تغییر است)
+                        const string updateSql = @"
+                    UPDATE PAY2_OVERRIDE 
+                    SET INS_OV=@INS_OV, TAX_OV=@TAX_OV, BASIS_OV=@BASIS_OV, VALID_TO=@VALID_TO, REASON=@REASON
+                    WHERE EMP_ID=@EMP_ID AND ITEM_ID=@ITEM_ID AND VALID_FROM=@VALID_FROM";
+
+                        await conn.ExecuteAsync(updateSql, ovr, tran);
+                    }
+                });
+                return Ok();
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(ex.Message);
+            }
+        }
+
+        [HttpDelete("override/{empId:int}/{itemId:int}/{validFrom:long}")]
+        public async Task<IActionResult> DeleteOverride(int empId, int itemId, long validFrom)
+        {
+            try
+            {
+                const string sql = "DELETE FROM PAY2_OVERRIDE WHERE EMP_ID=@empId AND ITEM_ID=@itemId AND VALID_FROM=@validFrom";
+                await _db.DoExecuteSQLAsync(sql, new { empId, itemId, validFrom });
+                return Ok();
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(ex.Message);
+            }
+        }
     }
 }

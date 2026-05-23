@@ -166,5 +166,24 @@ namespace Safir.Client.Services
             if (!res.IsSuccessStatusCode)
                 throw new Exception(await res.Content.ReadAsStringAsync());
         }
+
+        public async Task<List<Pay2OverrideDto>> GetOverridesAsync(int empId)
+        {
+            return await _http.GetFromJsonAsync<List<Pay2OverrideDto>>($"api/pay2/employees/{empId}/overrides") ?? new();
+        }
+
+        public async Task SaveOverrideAsync(Pay2OverrideDto ovr, bool isEditing)
+        {
+            var res = await _http.PostAsJsonAsync($"api/pay2/employees/override/save?isEditing={isEditing}", ovr);
+            if (!res.IsSuccessStatusCode)
+                throw new Exception(await res.Content.ReadAsStringAsync());
+        }
+
+        public async Task DeleteOverrideAsync(int empId, int itemId, long validFrom)
+        {
+            var res = await _http.DeleteAsync($"api/pay2/employees/override/{empId}/{itemId}/{validFrom}");
+            if (!res.IsSuccessStatusCode)
+                throw new Exception(await res.Content.ReadAsStringAsync());
+        }
     }
 }
