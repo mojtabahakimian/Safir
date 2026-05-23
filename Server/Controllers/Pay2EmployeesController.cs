@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Mvc;
 using Safir.Shared.Interfaces;
 using Safir.Shared.Models;
 using Safir.Shared.Models.Salary;
+using System.Data;
 using System.Security.Claims;
 using static Safir.Shared.Models.Salary.Pay2LeaveDto;
 
@@ -482,5 +483,78 @@ namespace Safir.Server.Controllers
                 return BadRequest(ex.Message);
             }
         }
+        [HttpGet("{empId:int}/loans")]
+        public async Task<ActionResult<IEnumerable<Pay2LoanDto>>> GetLoans(int empId)
+        {
+            const string sql = "SELECT * FROM PAY2_LOAN WHERE EMP_ID = @empId ORDER BY LOAN_DATE DESC";
+            return Ok(await _db.DoGetDataSQLAsync<Pay2LoanDto>(sql, new { empId }));
+        }
+
+        [HttpPost("loan/save")]
+        public async Task<IActionResult> SaveLoan([FromBody] Pay2LoanDto loan)
+        {
+            var userIdString = User.FindFirstValue(ClaimTypes.NameIdentifier);
+            if (!int.TryParse(userIdString, out int userCod)) return Unauthorized();
+
+            try
+            {
+                await _db.ExecuteInTransactionAsync(async (conn, tran) =>
+                {
+                    int savedLoanId = loan.LOAN_ID;
+
+                    if (loan.LOAN_ID == 0)
+                    {
+                        // درج وام جدید
+                        const string insertSql = @"
+                    INSERT INTO PAY2_LOAN (EMP_ID, WS_ID, LOAN_TYPE, LOAN_DATE, AMOUNT, INSTALLMENT, TOTAL_INST, PAID_INST, FIRST_PAY, PURPOSE, IS_ACTIVE, CREATED_AT, CREATED_BY)
+                    OUTPUT INSERTED.LOAN_ID
+                    VALUES (@EMP_ID, @WS_ID, @LOAN_TYPE, @LOAN_DATE, @AMOUNT, @INSTALLMENT, @TOTAL_INST, 0, @FIRST_PAY, @PURPOSE, @IS_ACTIVE, GETDATE(), @User)";
+
+                        var p = new DynamicParameters(loan);
+                        p.Add("User", userCod);
+                        savedLoanId = await conn.QuerySingleAsync<int>(insertSql, p, tran);
+                    }
+                    else
+                    {
+                        // آپدیت وام موجود (فقط مقادیر هدر تغییر می‌کند)
+                        const string updateSql = @"
+                    UPDATE PAY2_LOAN 
+                    SET LOAN_TYPE=@LOAN_TYPE, LOAN_DATE=@LOAN_DATE, AMOUNT=@AMOUNT, INSTALLMENT=@INSTALLMENT, TOTAL_INST=@TOTAL_INST, FIRST_PAY=@FIRST_PAY, PURPOSE=@PURPOSE, IS_ACTIVE=@IS_ACTIVE
+                    WHERE LOAN_ID=@LOAN_ID";
+                        await conn.ExecuteAsync(updateSql, loan, tran);
+                    }
+
+                    // 🔴 جادوی سیستم: تولید اتوماتیک یا آپدیت اقساط 🔴
+                    // این SP که در دیتابیس شما وجود دارد، اقساط باقی‌مانده را بر اساس تاریخ FIRST_PAY می‌سازد
+                    await conn.ExecuteAsync("SP_PAY2_LOAN_GEN_SCHED", new { LOAN_ID = savedLoanId }, tran, commandType: CommandType.StoredProcedure);
+                });
+
+                return Ok();
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(ex.Message);
+            }
+        }
+
+        [HttpDelete("loan/{loanId:int}")]
+        public async Task<IActionResult> DeleteLoan(int loanId)
+        {
+            try
+            {
+                await _db.ExecuteInTransactionAsync(async (conn, tran) =>
+                {
+                    // برای جلوگیری از خطای کلید خارجی، ابتدا اقساط (جدول فرزند) پاک می‌شوند
+                    await conn.ExecuteAsync("DELETE FROM PAY2_LOAN_SCHED WHERE LOAN_ID = @loanId", new { loanId }, tran);
+                    await conn.ExecuteAsync("DELETE FROM PAY2_LOAN WHERE LOAN_ID = @loanId", new { loanId }, tran);
+                });
+                return Ok();
+            }
+            catch (Exception ex)
+            {
+                return BadRequest("خطا در حذف وام (ممکن است اقساطی از آن در ماه قبل کسر شده باشد). " + ex.Message);
+            }
+        }
+
     }
 }

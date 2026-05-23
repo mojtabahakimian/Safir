@@ -147,5 +147,24 @@ namespace Safir.Client.Services
             if (!res.IsSuccessStatusCode)
                 throw new Exception(await res.Content.ReadAsStringAsync());
         }
+
+        public async Task<List<Pay2LoanDto>> GetLoansAsync(int empId)
+        {
+            return await _http.GetFromJsonAsync<List<Pay2LoanDto>>($"api/pay2/employees/{empId}/loans") ?? new();
+        }
+
+        public async Task SaveLoanAsync(Pay2LoanDto loan)
+        {
+            var res = await _http.PostAsJsonAsync("api/pay2/employees/loan/save", loan);
+            if (!res.IsSuccessStatusCode)
+                throw new Exception(await res.Content.ReadAsStringAsync());
+        }
+
+        public async Task DeleteLoanAsync(int loanId)
+        {
+            var res = await _http.DeleteAsync($"api/pay2/employees/loan/{loanId}");
+            if (!res.IsSuccessStatusCode)
+                throw new Exception(await res.Content.ReadAsStringAsync());
+        }
     }
 }

@@ -161,6 +161,13 @@
                                                                          EmployeeName="@SelectedEmpForAction.FullDisplayName"
                                                                          OnClose="() => ShowLeaveBalModal = false" />
 
+    <!-- مدال مدیریت وام‌ها -->
+    <Safir.Client.Pages.Salary.Tabs.EmployeeComponents.LoanModal IsOpen="ShowLoanModal"
+                                                                 EmployeeId="SelectedEmpForAction.EMP_ID"
+                                                                 WorkshopId="SelectedEmpForAction.WS_ID"
+                                                                 EmployeeName="@SelectedEmpForAction.FullDisplayName"
+                                                                 OnClose="() => ShowLoanModal = false" />
+
 </div>
 
 @code {
@@ -263,6 +270,7 @@
     bool ShowContractModal = false;
     bool ShowLeaveBalModal = false;
     Pay2EmployeeDto SelectedEmpForAction = new();
+    bool ShowLoanModal = false;
 
     void ShowMenuAction(Pay2EmployeeDto emp, string action)
     {
@@ -270,12 +278,9 @@
 
         switch (action)
         {
-            case "قراردادها":
-                ShowContractModal = true;
-                break;
-            case "مانده مرخصی":
-                ShowLeaveBalModal = true;
-                break;
+            case "قراردادها": ShowContractModal = true; break;
+            case "مانده مرخصی": ShowLeaveBalModal = true; break;
+            case "وام پرسنلی": ShowLoanModal = true; break;
             default:
                 Snackbar.Add($"مدیریت {action} برای {emp.FIRST_NAME} به زودی متصل می‌شود...", MudBlazor.Severity.Info);
                 break;

@@ -173,4 +173,32 @@
         public int BALANCE_MIN => ENTITLEMENT_MIN + CARRIED_IN_MIN - USED_MIN;
         public decimal BALANCE_DAYS => Math.Round((decimal)BALANCE_MIN / 440m, 2);
     }
+    public class Pay2LoanDto
+    {
+        public int LOAN_ID { get; set; }
+        public int EMP_ID { get; set; }
+        public int WS_ID { get; set; }
+        public byte LOAN_TYPE { get; set; } = 1;
+        public long LOAN_DATE { get; set; }
+        public long AMOUNT { get; set; }
+        public long INSTALLMENT { get; set; }
+        public short TOTAL_INST { get; set; }
+        public short PAID_INST { get; set; }
+        public long FIRST_PAY { get; set; }
+        public string? PURPOSE { get; set; }
+        public bool IS_ACTIVE { get; set; } = true;
+
+        // --- پراپرتی‌های نمایشی و محاسباتی ---
+        public string LoanTypeText => LOAN_TYPE switch
+        {
+            1 => "قرض‌الحسنه",
+            2 => "رفاهی",
+            3 => "ضروری",
+            4 => "مسکن",
+            5 => "سایر",
+            _ => "نامشخص"
+        };
+
+        public long BALANCE => AMOUNT - (PAID_INST * INSTALLMENT);
+    }
 }
