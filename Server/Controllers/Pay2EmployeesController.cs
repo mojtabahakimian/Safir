@@ -631,5 +631,64 @@ namespace Safir.Server.Controllers
                 return BadRequest(ex.Message);
             }
         }
+        [HttpGet("{empId:int}/advance-excls")]
+        public async Task<ActionResult<IEnumerable<Pay2AdvanceExclDto>>> GetAdvanceExcls(int empId)
+        {
+            const string sql = "SELECT * FROM PAY2_ADVANCE_EXCL WHERE EMP_ID = @empId ORDER BY PERIOD_DATE DESC";
+            return Ok(await _db.DoGetDataSQLAsync<Pay2AdvanceExclDto>(sql, new { empId }));
+        }
+
+        [HttpPost("advance-excl/save")]
+        public async Task<IActionResult> SaveAdvanceExcl([FromBody] Pay2AdvanceExclDto excl)
+        {
+            var userIdString = User.FindFirstValue(ClaimTypes.NameIdentifier);
+            if (!int.TryParse(userIdString, out int userCod)) return Unauthorized();
+
+            try
+            {
+                await _db.ExecuteInTransactionAsync(async (conn, tran) =>
+                {
+                    if (excl.EXCL_ID == 0)
+                    {
+                        const string insertSql = @"
+                    INSERT INTO PAY2_ADVANCE_EXCL (EMP_ID, PERIOD_DATE, EXCL_AMOUNT, REASON, DEED_N_S, CREATED_AT, CREATED_BY)
+                    VALUES (@EMP_ID, @PERIOD_DATE, @EXCL_AMOUNT, @REASON, @DEED_N_S, GETDATE(), @User)";
+
+                        var p = new DynamicParameters(excl);
+                        p.Add("User", userCod);
+                        await conn.ExecuteAsync(insertSql, p, tran);
+                    }
+                    else
+                    {
+                        const string updateSql = @"
+                    UPDATE PAY2_ADVANCE_EXCL 
+                    SET PERIOD_DATE=@PERIOD_DATE, EXCL_AMOUNT=@EXCL_AMOUNT, REASON=@REASON, DEED_N_S=@DEED_N_S
+                    WHERE EXCL_ID=@EXCL_ID";
+
+                        await conn.ExecuteAsync(updateSql, excl, tran);
+                    }
+                });
+                return Ok();
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(ex.Message);
+            }
+        }
+
+        [HttpDelete("advance-excl/{exclId:int}")]
+        public async Task<IActionResult> DeleteAdvanceExcl(int exclId)
+        {
+            try
+            {
+                await _db.DoExecuteSQLAsync("DELETE FROM PAY2_ADVANCE_EXCL WHERE EXCL_ID = @exclId", new { exclId });
+                return Ok();
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(ex.Message);
+            }
+        }
+
     }
 }

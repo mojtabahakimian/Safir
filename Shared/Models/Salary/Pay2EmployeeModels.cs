@@ -240,6 +240,14 @@
         public string TaxText => TAX_OV == null ? "بدون تغییر" : (TAX_OV == true ? "مشمول" : "معاف");
         public string BasisText => BASIS_OV == null ? "بدون تغییر" : (BASIS_OV == 1 ? "روزانه" : "ماهیانه");
     }
-
+    public class Pay2AdvanceExclDto
+    {
+        public int EXCL_ID { get; set; }
+        public int EMP_ID { get; set; }
+        public long PERIOD_DATE { get; set; }
+        public long EXCL_AMOUNT { get; set; }
+        public string? REASON { get; set; }
+        public double? DEED_N_S { get; set; }
+    }
 
 }

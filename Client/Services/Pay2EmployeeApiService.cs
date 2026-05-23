@@ -185,5 +185,24 @@ namespace Safir.Client.Services
             if (!res.IsSuccessStatusCode)
                 throw new Exception(await res.Content.ReadAsStringAsync());
         }
+
+        public async Task<List<Pay2AdvanceExclDto>> GetAdvanceExclsAsync(int empId)
+        {
+            return await _http.GetFromJsonAsync<List<Pay2AdvanceExclDto>>($"api/pay2/employees/{empId}/advance-excls") ?? new();
+        }
+
+        public async Task SaveAdvanceExclAsync(Pay2AdvanceExclDto excl)
+        {
+            var res = await _http.PostAsJsonAsync("api/pay2/employees/advance-excl/save", excl);
+            if (!res.IsSuccessStatusCode)
+                throw new Exception(await res.Content.ReadAsStringAsync());
+        }
+
+        public async Task DeleteAdvanceExclAsync(int exclId)
+        {
+            var res = await _http.DeleteAsync($"api/pay2/employees/advance-excl/{exclId}");
+            if (!res.IsSuccessStatusCode)
+                throw new Exception(await res.Content.ReadAsStringAsync());
+        }
     }
 }
