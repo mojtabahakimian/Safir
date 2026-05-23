@@ -5,6 +5,7 @@ using Safir.Shared.Interfaces;
 using Safir.Shared.Models;
 using Safir.Shared.Models.Salary;
 using System.Security.Claims;
+using static Safir.Shared.Models.Salary.Pay2LeaveDto;
 
 namespace Safir.Server.Controllers
 {
@@ -370,6 +371,57 @@ namespace Safir.Server.Controllers
                 return Ok();
             }
             catch (Exception ex) { return BadRequest(ex.Message); }
+        }
+
+        [HttpGet("{empId:int}/contracts")]
+        public async Task<ActionResult<IEnumerable<Pay2ContractDto>>> GetContracts(int empId)
+        {
+            const string sql = "SELECT * FROM PAY2_CONTRACT WHERE EMP_ID = @empId ORDER BY START_DATE DESC";
+            return Ok(await _db.DoGetDataSQLAsync<Pay2ContractDto>(sql, new { empId }));
+        }
+
+        [HttpPost("contract/save")]
+        public async Task<IActionResult> SaveContract([FromBody] Pay2ContractDto contract)
+        {
+            try
+            {
+                if (contract.CON_ID == 0)
+                {
+                    const string insertSql = @"
+                INSERT INTO PAY2_CONTRACT (EMP_ID, CON_TYPE, START_DATE, END_DATE, TRIAL_END, WEEKLY_HOURS, NOTES, CREATED_AT)
+                VALUES (@EMP_ID, @CON_TYPE, @START_DATE, @END_DATE, @TRIAL_END, @WEEKLY_HOURS, @NOTES, GETDATE())";
+
+                    await _db.DoExecuteSQLAsync(insertSql, contract);
+                }
+                else
+                {
+                    const string updateSql = @"
+                UPDATE PAY2_CONTRACT 
+                SET CON_TYPE=@CON_TYPE, START_DATE=@START_DATE, END_DATE=@END_DATE, TRIAL_END=@TRIAL_END, WEEKLY_HOURS=@WEEKLY_HOURS, NOTES=@NOTES
+                WHERE CON_ID=@CON_ID";
+
+                    await _db.DoExecuteSQLAsync(updateSql, contract);
+                }
+                return Ok();
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(ex.Message);
+            }
+        }
+
+        [HttpDelete("contract/{conId:int}")]
+        public async Task<IActionResult> DeleteContract(int conId)
+        {
+            try
+            {
+                await _db.DoExecuteSQLAsync("DELETE FROM PAY2_CONTRACT WHERE CON_ID = @conId", new { conId });
+                return Ok();
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(ex.Message);
+            }
         }
     }
 }

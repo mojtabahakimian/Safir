@@ -71,25 +71,29 @@
                 <div class="form-grid-2 p2-mb-16" style="align-items: center;">
                     <div class="form-field">
                         <label>ارجاع به (مدیر واحد)</label>
-                        <Pay2Select TItem="LookupDto<int>" TValue="int?" Items="EmployeesLookup" @bind-Value="CurrentLeave.REFER_TO" TextSelector="x => x.Name" ValueSelector="x => x.Id" Placeholder="— انتخاب کنید —" Clearable="true" />
+                        <!-- دقت کنید که در اینجا TValue برابر int? و Items برابر LookupDto<int?> است -->
+                        <Pay2Select TItem="LookupDto<int?>" TValue="int?" Items="EmployeesLookup" @bind-Value="CurrentLeave.REFER_TO" TextSelector="x => x.Name" ValueSelector="x => x.Id" Placeholder="— انتخاب کنید —" Clearable="true" />
                     </div>
                     <div class="form-field">
                         <label>مانده مرخصی فعلی پرسنل</label>
                         <div style="background: var(--p2-info-bg); border: 1px solid var(--p2-info-border); border-radius: var(--p2-radius-md); padding: 9px 12px; color: var(--p2-primary); font-weight: bold; font-size: 13px; text-align: center;">
-                            @if (CurrentBalanceMin == 0)
+                            @if (CurrentBalanceMin <= 0)
                             {
                                 <span>سابقه‌ای ثبت نشده</span>
                             }
                             else
                             {
-
-                                <span>@(CurrentBalanceMin / 440m) روز (@CurrentBalanceMin دقیقه)</span>
+                                <span>@((CurrentBalanceMin / 440m).ToString("0.##")) روز (@CurrentBalanceMin دقیقه)</span>
                             }
                         </div>
                     </div>
                 </div>
 
-                <div style="display:flex; justify-content:flex-start; gap:10px; margin-bottom: 24px;">
+                <div style="display:flex; justify-content:flex-end; gap:10px; margin-bottom: 24px;">
+                    @if (CurrentLeave.LEV_ID > 0)
+                    {
+                        <button class="btn-outline-pay2" @onclick="ResetForm">انصراف</button>
+                    }
                     <button class="btn-primary-pay2" @onclick="SubmitSave" disabled="@IsSaving">
                         @if (IsSaving)
                         {
@@ -97,14 +101,9 @@
                         }
                         else
                         {
-
                             <span>ذخیره مرخصی</span>
                         }
                     </button>
-                    @if (CurrentLeave.LEV_ID > 0)
-                    {
-                        <button class="btn-outline-pay2" @onclick="ResetForm">انصراف</button>
-                    }
                 </div>
 
                 <hr class="p2-divider" />
@@ -165,7 +164,10 @@
     [Parameter] public EventCallback OnClose { get; set; }
 
     List<Pay2LeaveDto> Leaves = new();
-    List<LookupDto<int>> EmployeesLookup = new();
+
+    // تبدیل به int? تا ارور Binding کمبوباکس برطرف شود
+    List<LookupDto<int?>> EmployeesLookup = new();
+
     Pay2LeaveDto CurrentLeave = new();
 
     string? StartDateStr;
@@ -210,14 +212,22 @@
     {
         try
         {
-            EmployeesLookup = await EmployeeApi.GetEmployeesLookupAsync();
+            // خواندن لیست پرسنل و تبدیل آن به int?
+            var rawEmployees = await EmployeeApi.GetEmployeesLookupAsync();
+            EmployeesLookup = rawEmployees.Select(x => new LookupDto<int?>(x.Id, x.Name)).ToList();
+
             Leaves = await EmployeeApi.GetLeavesAsync(EmployeeId);
 
             // دریافت مانده مرخصی برای سال جاری (شمسی)
-            int currentYear = int.Parse(Safir.Shared.Utility.CL_Tarikh.GetCurrentPersianDateAsLong().ToString().Substring(0, 4));
+            string currentShamsi = Safir.Shared.Utility.CL_Tarikh.GetCurrentPersianDateAsLong().ToString();
+            int currentYear = int.Parse(currentShamsi.Substring(0, 4));
+
             CurrentBalanceMin = await EmployeeApi.GetLeaveBalanceAsync(EmployeeId, currentYear);
         }
-        catch (Exception ex) { Console.WriteLine(ex.Message); }
+        catch (Exception ex)
+        {
+            Console.WriteLine(ex.Message);
+        }
         finally
         {
             _isDataLoaded = true;
@@ -237,12 +247,30 @@
 
     void EditLeave(Pay2LeaveDto item)
     {
-        CurrentLeave = System.Text.Json.JsonSerializer.Deserialize<Pay2LeaveDto>(System.Text.Json.JsonSerializer.Serialize(item))!;
+        // 🔴 استفاده از کپی مستقیم به جای Deserialize برای جلوگیری از هرگونه خطای بایندینگ
+        CurrentLeave = new Pay2LeaveDto
+        {
+            LEV_ID = item.LEV_ID,
+            EMP_ID = item.EMP_ID,
+            LEV_TYPE = item.LEV_TYPE,
+            REQUEST_DATE = item.REQUEST_DATE,
+            START_DATE = item.START_DATE,
+            END_DATE = item.END_DATE,
+            REQ_DAYS = item.REQ_DAYS,
+            REQ_HOURS = item.REQ_HOURS,
+            REQ_MINUTES = item.REQ_MINUTES,
+            BAL_BEFORE = item.BAL_BEFORE,
+            DESCRIPTION = item.DESCRIPTION,
+            REFER_TO = item.REFER_TO,
+            STATUS = item.STATUS
+        };
+
         StartDateStr = CurrentLeave.START_DATE.ToString();
         EndDateStr = CurrentLeave.END_DATE.ToString();
         ReqDaysStr = CurrentLeave.REQ_DAYS.ToString();
         ReqHoursStr = CurrentLeave.REQ_HOURS.ToString();
         ReqMinsStr = CurrentLeave.REQ_MINUTES.ToString();
+
         StateHasChanged();
     }
 
@@ -266,14 +294,14 @@
         CurrentLeave.EMP_ID = EmployeeId;
         CurrentLeave.START_DATE = sDate;
         CurrentLeave.END_DATE = eDate;
-        CurrentLeave.REQUEST_DATE = sDate; // تاریخ درخواست را با تاریخ شروع یکی در نظر می‌گیریم
+        CurrentLeave.REQUEST_DATE = sDate; // تاریخ درخواست با شروع یکی می‌شود
         CurrentLeave.REQ_DAYS = d;
         CurrentLeave.REQ_HOURS = h;
         CurrentLeave.REQ_MINUTES = m;
 
         if (CurrentLeave.LEV_ID == 0)
         {
-            CurrentLeave.BAL_BEFORE = CurrentBalanceMin; // ثبت مانده لحظه‌ای در زمان ایجاد
+            CurrentLeave.BAL_BEFORE = CurrentBalanceMin;
         }
 
         IsSaving = true;

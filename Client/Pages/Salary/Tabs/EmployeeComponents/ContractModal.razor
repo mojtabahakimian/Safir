@@ -1,0 +1,281 @@
+﻿@using Safir.Shared.Models.Salary
+@using Safir.Shared.Models
+@using static Safir.Shared.Models.Salary.Pay2LeaveDto
+@inject Safir.Client.Services.Pay2EmployeeApiService EmployeeApi
+@inject ISnackbar Snackbar
+@inject MudBlazor.IDialogService DialogService
+
+@if (IsOpen)
+{
+    <div class="pay2-select-backdrop" style="background: rgba(15,23,42,0.6); z-index: 2999;" @onclick="Close"></div>
+
+    <div class="card-custom pay2-modal-container">
+
+        <div class="pay2-modal-header p2-card-header" style="margin:0;">
+            <h5 style="margin:0; font-size:18px;">مدیریت قراردادها: @EmployeeName</h5>
+            <button class="btn-ghost-pay2" @onclick="Close"><i class="bi bi-x-lg"></i></button>
+        </div>
+
+        <div class="pay2-modal-body">
+            @if (!_isDataLoaded)
+            {
+                <div style="display:flex; justify-content:center; align-items:center; height:200px; flex-direction:column; gap:15px;">
+                    <span class="p2-spinner" style="width:40px; height:40px; border-color:var(--p2-primary); border-top-color:transparent;"></span>
+                    <span style="font-size:14px; color:var(--p2-primary); font-weight:600;">در حال بارگذاری سوابق قرارداد...</span>
+                </div>
+            }
+            else
+            {
+                <div class="p2-sub-card-title"><i class="bi bi-journal-text"></i> ثبت / ویرایش قرارداد جدید</div>
+
+                <div class="form-grid-3 p2-mb-16">
+                    <div class="form-field">
+                        <label>نوع قرارداد *</label>
+                        <Pay2Select TItem="LookupDto<byte>" TValue="byte" Items="ContractTypeOptions" @bind-Value="CurrentContract.CON_TYPE" TextSelector="x => x.Name" ValueSelector="x => x.Id" Clearable="false" />
+                    </div>
+                    <div class="form-field">
+                        <label>تاریخ شروع (شمسی) *</label>
+                        <Pay2NumericInput @bind-Value="StartDateStr" InputMode="Pay2NumericInput.NumericInputMode.PersianDate" Direction="ltr" />
+                    </div>
+                    <div class="form-field">
+                        <label>ساعت کار هفتگی *</label>
+                        <Pay2NumericInput @bind-Value="WeeklyHoursStr" MaxLength="5" Direction="ltr" />
+                    </div>
+                </div>
+
+                <div class="form-grid-3 p2-mb-16">
+                    <div class="form-field">
+                        <label>تاریخ پایان (اختیاری)</label>
+                        <Pay2NumericInput @bind-Value="EndDateStr" InputMode="Pay2NumericInput.NumericInputMode.PersianDate" Direction="ltr" Placeholder="خالی = نامحدود" />
+                    </div>
+                    <div class="form-field">
+                        <label>پایان دوره آزمایشی (اختیاری)</label>
+                        <Pay2NumericInput @bind-Value="TrialEndStr" InputMode="Pay2NumericInput.NumericInputMode.PersianDate" Direction="ltr" />
+                    </div>
+                    <div class="form-field">
+                        <label>توضیحات (NOTES)</label>
+                        <input class="pay2-input" type="text" @bind="CurrentContract.NOTES" />
+                    </div>
+                </div>
+
+                <div style="display:flex; justify-content:flex-end; gap:10px; margin-bottom: 24px;">
+                    @if (CurrentContract.CON_ID > 0)
+                    {
+                        <button class="btn-outline-pay2" @onclick="ResetForm">انصراف</button>
+                    }
+                    <button class="btn-primary-pay2" @onclick="SubmitSave" disabled="@IsSaving">
+                        @if (IsSaving)
+                        {
+                            <span class="p2-spinner"></span>
+                        }
+                        else
+                        {
+
+                            <span>ذخیره قرارداد</span>
+                        }
+                    </button>
+                </div>
+
+                <hr class="p2-divider" />
+
+                <div class="p2-sub-card-title"><i class="bi bi-clock-history"></i> تاریخچه قراردادهای پرسنل</div>
+
+                <div class="pay2-table-responsive">
+                    <table class="p2-table">
+                        <thead style="position: sticky; top: 0; z-index: 10;">
+                            <tr>
+                                <th>نوع</th>
+                                <th style="text-align:center;">تاریخ شروع</th>
+                                <th style="text-align:center;">تاریخ پایان</th>
+                                <th style="text-align:center;">پایان آزمایشی</th>
+                                <th style="text-align:center;">ساعت هفتگی</th>
+                                <th>توضیحات</th>
+                                <th style="text-align:center;">عملیات</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @if (!Contracts.Any())
+                            {
+                                <tr><td colspan="7" style="text-align:center; padding:20px; color:#94a3b8;">هیچ قراردادی برای این پرسنل ثبت نشده است.</td></tr>
+                            }
+                            @foreach (var con in Contracts)
+                            {
+                                <tr style="background: @(CurrentContract.CON_ID == con.CON_ID ? "var(--p2-primary-light)" : "transparent")">
+                                    <td class="p2-text-muted">@con.ConTypeText</td>
+                                    <td class="p2-text-mono p2-text-primary" style="text-align:center; font-weight:bold;">@con.START_DATE</td>
+                                    <td class="p2-text-mono" style="text-align:center;">@(con.END_DATE?.ToString() ?? "—")</td>
+                                    <td class="p2-text-mono" style="text-align:center;">@(con.TRIAL_END?.ToString() ?? "—")</td>
+                                    <td class="p2-text-mono" style="text-align:center; font-weight:bold;">@con.WEEKLY_HOURS</td>
+                                    <td class="p2-text-muted">@con.NOTES</td>
+                                    <td style="text-align:center; min-width: 150px;">
+                                        <button class="btn-ghost-pay2 p2-text-primary" @onclick="() => EditContract(con)">ویرایش</button>
+                                        <button class="btn-ghost-pay2 p2-text-danger" @onclick="() => DeleteContract(con)">حذف</button>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+        </div>
+
+        <div class="pay2-modal-footer">
+            <button class="btn-outline-pay2" @onclick="Close" style="border-radius:20px; padding:8px 24px;">بستن فرم</button>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public bool IsOpen { get; set; }
+    [Parameter] public int EmployeeId { get; set; }
+    [Parameter] public string EmployeeName { get; set; } = "";
+    [Parameter] public EventCallback OnClose { get; set; }
+
+    List<Pay2ContractDto> Contracts = new();
+    Pay2ContractDto CurrentContract = new();
+
+    string? StartDateStr;
+    string? EndDateStr;
+    string? TrialEndStr;
+    string? WeeklyHoursStr;
+
+    bool IsSaving = false;
+    private int _lastProcessedEmpId = -1;
+    private bool _lastOpenState = false;
+    private bool _isDataLoaded = false;
+
+    List<LookupDto<byte>> ContractTypeOptions = new() {
+        new(1, "دائم"), new(2, "موقت"), new(3, "پیمانی"), new(4, "ساعتی")
+    };
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (IsOpen && (!_lastOpenState || EmployeeId != _lastProcessedEmpId))
+        {
+            _lastOpenState = true;
+            _lastProcessedEmpId = EmployeeId;
+            _isDataLoaded = false;
+
+            ResetForm();
+            await InitializeDataAsync();
+        }
+        else if (!IsOpen)
+        {
+            _lastOpenState = false;
+            _lastProcessedEmpId = -1;
+            _isDataLoaded = false;
+        }
+    }
+
+    private async Task InitializeDataAsync()
+    {
+        try
+        {
+            Contracts = await EmployeeApi.GetContractsAsync(EmployeeId);
+        }
+        catch (Exception ex) { Console.WriteLine(ex.Message); }
+        finally
+        {
+            _isDataLoaded = true;
+            StateHasChanged();
+        }
+    }
+
+    void ResetForm()
+    {
+        CurrentContract = new Pay2ContractDto { CON_TYPE = 1, WEEKLY_HOURS = 44.0m };
+        StartDateStr = Safir.Shared.Utility.CL_Tarikh.GetCurrentPersianDateAsLong().ToString();
+        EndDateStr = null;
+        TrialEndStr = null;
+        WeeklyHoursStr = "44.0";
+    }
+
+    void EditContract(Pay2ContractDto item)
+    {
+        CurrentContract = new Pay2ContractDto
+        {
+            CON_ID = item.CON_ID,
+            EMP_ID = item.EMP_ID,
+            CON_TYPE = item.CON_TYPE,
+            START_DATE = item.START_DATE,
+            END_DATE = item.END_DATE,
+            TRIAL_END = item.TRIAL_END,
+            WEEKLY_HOURS = item.WEEKLY_HOURS,
+            NOTES = item.NOTES
+        };
+
+        StartDateStr = CurrentContract.START_DATE.ToString();
+        EndDateStr = CurrentContract.END_DATE?.ToString();
+        TrialEndStr = CurrentContract.TRIAL_END?.ToString();
+        WeeklyHoursStr = CurrentContract.WEEKLY_HOURS.ToString("G29"); // حدف صفرهای اضافی
+
+        StateHasChanged();
+    }
+
+    async Task SubmitSave()
+    {
+        long.TryParse(StartDateStr?.Replace("/", ""), out long sDate);
+        long.TryParse(EndDateStr?.Replace("/", ""), out long eDate);
+        long.TryParse(TrialEndStr?.Replace("/", ""), out long tDate);
+        decimal.TryParse(WeeklyHoursStr, out decimal wHours);
+
+        if (sDate <= 13000000)
+        {
+            Snackbar.Add("تاریخ شروع نامعتبر است.", MudBlazor.Severity.Warning); return;
+        }
+        if (wHours <= 0 || wHours > 168)
+        {
+            Snackbar.Add("ساعت کار هفتگی نامعتبر است (باید بین ۱ تا ۱۶۸ باشد).", MudBlazor.Severity.Warning); return;
+        }
+        if (eDate > 0 && eDate < sDate)
+        {
+            Snackbar.Add("تاریخ پایان نمی‌تواند قبل از شروع قرارداد باشد.", MudBlazor.Severity.Warning); return;
+        }
+
+        CurrentContract.EMP_ID = EmployeeId;
+        CurrentContract.START_DATE = sDate;
+        CurrentContract.END_DATE = eDate > 13000000 ? eDate : null;
+        CurrentContract.TRIAL_END = tDate > 13000000 ? tDate : null;
+        CurrentContract.WEEKLY_HOURS = wHours;
+
+        IsSaving = true;
+        try
+        {
+            await EmployeeApi.SaveContractAsync(CurrentContract);
+            Snackbar.Add("قرارداد با موفقیت ذخیره شد.", MudBlazor.Severity.Success);
+            ResetForm();
+            Contracts = await EmployeeApi.GetContractsAsync(EmployeeId);
+        }
+        catch (Exception ex) { Snackbar.Add(ex.Message, MudBlazor.Severity.Error); }
+        finally { IsSaving = false; }
+    }
+
+    async Task DeleteContract(Pay2ContractDto item)
+    {
+        var parameters = new MudBlazor.DialogParameters
+        {
+            ["Title"] = "حذف قرارداد",
+            ["ContentText"] = $"آیا از حذف این قرارداد (شروع از: {item.START_DATE}) اطمینان دارید؟",
+            ["ConfirmButtonText"] = "بله، حذف کن",
+            ["CancelButtonText"] = "انصراف"
+        };
+        var options = new MudBlazor.DialogOptions { CloseButton = false, MaxWidth = MudBlazor.MaxWidth.ExtraSmall };
+
+        var dialog = DialogService.Show<Safir.Client.Shared.ConfirmDialog>("تایید حذف", parameters, options);
+        var result = await dialog.Result;
+
+        if (!result.Cancelled)
+        {
+            try
+            {
+                await EmployeeApi.DeleteContractAsync(item.CON_ID);
+                Snackbar.Add("قرارداد با موفقیت حذف شد.", MudBlazor.Severity.Success);
+                if (CurrentContract.CON_ID == item.CON_ID) ResetForm();
+                Contracts = await EmployeeApi.GetContractsAsync(EmployeeId);
+            }
+            catch (Exception ex) { Snackbar.Add("خطا در حذف: " + ex.Message, MudBlazor.Severity.Error); }
+        }
+    }
+
+    async Task Close() => await OnClose.InvokeAsync();
+}

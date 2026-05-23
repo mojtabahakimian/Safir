@@ -1,6 +1,7 @@
 ﻿using Safir.Shared.Models;
 using Safir.Shared.Models.Salary;
 using System.Net.Http.Json;
+using static Safir.Shared.Models.Salary.Pay2LeaveDto;
 
 namespace Safir.Client.Services
 {
@@ -107,6 +108,25 @@ namespace Safir.Client.Services
         {
             var res = await _http.DeleteAsync($"api/pay2/employees/leave/{levId}");
             if (!res.IsSuccessStatusCode) throw new Exception(await res.Content.ReadAsStringAsync());
+        }
+
+        public async Task<List<Pay2ContractDto>> GetContractsAsync(int empId)
+        {
+            return await _http.GetFromJsonAsync<List<Pay2ContractDto>>($"api/pay2/employees/{empId}/contracts") ?? new();
+        }
+
+        public async Task SaveContractAsync(Pay2ContractDto contract)
+        {
+            var res = await _http.PostAsJsonAsync("api/pay2/employees/contract/save", contract);
+            if (!res.IsSuccessStatusCode)
+                throw new Exception(await res.Content.ReadAsStringAsync());
+        }
+
+        public async Task DeleteContractAsync(int conId)
+        {
+            var res = await _http.DeleteAsync($"api/pay2/employees/contract/{conId}");
+            if (!res.IsSuccessStatusCode)
+                throw new Exception(await res.Content.ReadAsStringAsync());
         }
     }
 }

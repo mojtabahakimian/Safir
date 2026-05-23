@@ -134,6 +134,28 @@
             4 => "تأیید مدیرعامل",
             _ => "نامشخص"
         };
+
+        public class Pay2ContractDto
+        {
+            public int CON_ID { get; set; }
+            public int EMP_ID { get; set; }
+            public byte CON_TYPE { get; set; } = 1;
+            public long START_DATE { get; set; }
+            public long? END_DATE { get; set; }
+            public long? TRIAL_END { get; set; }
+            public decimal WEEKLY_HOURS { get; set; } = 44.0m;
+            public string? NOTES { get; set; }
+
+            // --- پراپرتی نمایشی ---
+            public string ConTypeText => CON_TYPE switch
+            {
+                1 => "دائم",
+                2 => "موقت",
+                3 => "پیمانی",
+                4 => "ساعتی",
+                _ => "نامشخص"
+            };
+        }
     }
 
 }

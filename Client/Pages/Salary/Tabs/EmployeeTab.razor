@@ -73,7 +73,7 @@
                                                  PopoverClass="pay2-more-menu">
 
                                             <!-- قراردادها -->
-                                            <MudMenuItem OnClick='() => ShowSnackbar(emp.FIRST_NAME, "قراردادها")'>
+                                            <MudMenuItem OnClick='() => ShowMenuAction(emp, "قراردادها")'>
                                                 <div style="color: #d97706; font-family: var(--p2-font); font-size: 13px; font-weight: 600;">
                                                     <i class="bi bi-journal-text" style="margin-left: 8px;"></i> قراردادها
                                                 </div>
@@ -148,6 +148,12 @@
                                                                          EmployeeId="SelectedEmpForLeave.EMP_ID"
                                                                          EmployeeName="@SelectedEmpForLeave.FullDisplayName"
                                                                          OnClose="() => ShowLeaveModal = false" />
+
+    <!-- مدال مدیریت قراردادها -->
+    <Safir.Client.Pages.Salary.Tabs.EmployeeComponents.ContractModal IsOpen="ShowContractModal"
+                                                                     EmployeeId="SelectedEmpForAction.EMP_ID"
+                                                                     EmployeeName="@SelectedEmpForAction.FullDisplayName"
+                                                                     OnClose="() => ShowContractModal = false" />
 
 </div>
 
@@ -245,6 +251,24 @@
     {
         SelectedEmpForLeave = emp;
         ShowLeaveModal = true;
+    }
+
+    bool ShowContractModal = false;
+    Pay2EmployeeDto SelectedEmpForAction = new();
+
+    void ShowMenuAction(Pay2EmployeeDto emp, string action)
+    {
+        SelectedEmpForAction = emp;
+
+        switch (action)
+        {
+            case "قراردادها":
+                ShowContractModal = true;
+                break;
+            default:
+                Snackbar.Add($"مدیریت {action} به زودی متصل می‌شود...", MudBlazor.Severity.Info);
+                break;
+        }
     }
 
 }
