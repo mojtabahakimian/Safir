@@ -3,6 +3,7 @@
 @using Safir.Shared.Models
 @inject LookupApiService LookupService
 @implements IDisposable
+@inject MudBlazor.IDialogService DialogService
 
 <div class="pay2-tab-container">
     <div class="pay2-workshop-layout">
@@ -156,6 +157,8 @@
                            @bind-value:event="onchange" />
                 </div>
 
+
+
                 <div class="form-field">
                     <label>شناسه ملی</label>
 
@@ -178,6 +181,22 @@
                     <Pay2NumericInput @bind-Value="CurrentWorkshop.PHONE"
                                       MaxLength="20"
                                       Placeholder="شماره تماس" />
+                </div>
+
+                <div class="form-field">
+                    <label>کد پستی</label>
+                    <Pay2NumericInput @bind-Value="CurrentWorkshop.POSTAL_CODE"
+                                      MaxLength="10"
+                                      Placeholder="کد پستی ۱۰ رقمی" />
+                </div>
+                <div class="form-field">
+                    <label>نام کارفرما / مدیر</label>
+                    <input class="pay2-input"
+                           type="text"
+                           maxlength="100"
+                           placeholder="نام کارفرما"
+                           @bind-value="CurrentWorkshop.EMPLOYER_NAME"
+                           @bind-value:event="onchange" />
                 </div>
 
             </div>
@@ -391,27 +410,38 @@
             </div>
 
             @* ─── دکمه‌های عملیات ─── *@
-            <div style="display:flex; gap:10px; margin-top:28px; flex-wrap:wrap;">
-                <button class="btn-primary-pay2"
-                        @onclick="SaveWorkshopAsync"
-                        disabled="@IsSavingWorkshop">
-                    @if (IsSavingWorkshop)
-                    {
-                        <span class="p2-spinner" style="width:14px;height:14px;border-width:2px;"></span>
-                        <span>در حال ذخیره...</span>
-                    }
-                    else
-                    {
-                        <i class="bi bi-floppy"></i>
-                        <span>ذخیره اطلاعات کارگاه</span>
-                    }
-                </button>
+            <div style="display:flex; justify-content:space-between; margin-top:28px; flex-wrap:wrap; width: 100%;">
+                <div style="display:flex; gap:10px;">
+                    <button class="btn-primary-pay2"
+                            @onclick="SaveWorkshopAsync"
+                            disabled="@IsSavingWorkshop">
+                        @if (IsSavingWorkshop)
+                        {
+                            <span class="p2-spinner" style="width:14px;height:14px;border-width:2px;"></span>
+                            <span>در حال ذخیره...</span>
+                        }
+                        else
+                        {
+                            <i class="bi bi-floppy"></i>
+                            <span>ذخیره اطلاعات کارگاه</span>
+                        }
+                    </button>
+                    <button class="btn-outline-pay2"
+                            @onclick="NewWorkshop"
+                            disabled="@IsSavingWorkshop">
+                        <i class="bi bi-x-lg"></i> انصراف / جدید
+                    </button>
+                </div>
 
-                <button class="btn-outline-pay2"
-                        @onclick="NewWorkshop"
-                        disabled="@IsSavingWorkshop">
-                    <i class="bi bi-x-lg"></i> انصراف / جدید
-                </button>
+                <!-- دکمه حذف فقط زمانی نمایش داده شود که کارگاه از قبل وجود دارد -->
+                @if (CurrentWorkshop.WS_ID > 0)
+                {
+                    <button class="btn-danger-pay2"
+                            @onclick="DeleteWorkshopAsync"
+                            disabled="@IsSavingWorkshop">
+                        <i class="bi bi-trash"></i> حذف کارگاه
+                    </button>
+                }
             </div>
 
         </div>
@@ -513,6 +543,8 @@
             TAX_CODE = CleanText(selected.TAX_CODE),
             ADDRESS = CleanText(selected.ADDRESS),
             PHONE = OnlyDigits(selected.PHONE, 20),
+            POSTAL_CODE = OnlyDigits(selected.POSTAL_CODE, 20),
+            EMPLOYER_NAME = CleanText(selected.EMPLOYER_NAME),
             IS_ACTIVE = selected.IS_ACTIVE,
             INS_MODE = NormalizeInsMode(selected.INS_MODE)
         };
@@ -768,6 +800,54 @@
         };
     }
 
+    async Task DeleteWorkshopAsync()
+    {
+        // ۱. نمایش پیام تایید با استفاده از دیالوگ MudBlazor
+        var parameters = new MudBlazor.DialogParameters
+        {
+            ["Title"] = "حذف کارگاه",
+            ["ContentText"] = $"آیا از حذف کامل کارگاه «{CurrentWorkshop.WS_NAME}» و تمامی تنظیمات حسابداری آن اطمینان دارید؟\n\nنکته: در صورت وجود پرسنل یا سوابق حقوقی، سیستم اجازه حذف نخواهد داد.",
+            ["ConfirmButtonText"] = "بله، حذف شود",
+            ["CancelButtonText"] = "انصراف"
+        };
+
+        var options = new MudBlazor.DialogOptions { CloseButton = false, MaxWidth = MudBlazor.MaxWidth.ExtraSmall };
+
+        // فراخوانی دیالوگ مشترک شما (ConfirmDialog)
+        var dialog = DialogService.Show<Safir.Client.Shared.ConfirmDialog>("تایید حذف", parameters, options);
+        var result = await dialog.Result;
+
+        // ۲. اگر کاربر تایید کرد، عملیات حذف انجام شود
+        if (!result.Cancelled)
+        {
+            IsSavingWorkshop = true;
+            StateHasChanged();
+            try
+            {
+                var KargahFullName = CurrentWorkshop.WS_ID + " " + CurrentWorkshop.WS_NAME;
+
+                await WorkshopApi.DeleteAsync(CurrentWorkshop.WS_ID);
+
+                // نمایش پیام موفقیت
+                await Toast($"کارگاه [{KargahFullName}] با موفقیت حذف شد.");
+
+                // ریست کردن فرم و لود مجدد لیست
+                NewWorkshop();
+                await LoadWorkshopsAsync();
+            }
+            catch (Exception ex)
+            {
+                // اگر از سمت سرور خطایی برگشت (مثلا پرسنل داشت)، اینجا نمایش داده میشه
+                await Toast("خطا: " + ex.Message);
+            }
+            finally
+            {
+                IsSavingWorkshop = false;
+                StateHasChanged();
+            }
+        }
+    }
+
     bool HasError(string field)
     {
         return _fieldErrors.ContainsKey(field);
@@ -800,6 +880,8 @@
         CurrentWorkshop.TAX_CODE = CleanText(CurrentWorkshop.TAX_CODE);
         CurrentWorkshop.ADDRESS = CleanText(CurrentWorkshop.ADDRESS);
         CurrentWorkshop.PHONE = OnlyDigits(CurrentWorkshop.PHONE, 20);
+        CurrentWorkshop.POSTAL_CODE = OnlyDigits(CurrentWorkshop.POSTAL_CODE, 20);
+        CurrentWorkshop.EMPLOYER_NAME = CleanText(CurrentWorkshop.EMPLOYER_NAME);
         CurrentWorkshop.INS_MODE = NormalizeInsMode(CurrentWorkshop.INS_MODE);
     }
 

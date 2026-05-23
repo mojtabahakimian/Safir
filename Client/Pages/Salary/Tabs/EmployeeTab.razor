@@ -49,9 +49,77 @@
                                     }
                                 </td>
                                 <td><span class="@(emp.IS_ACTIVE ? "p2-badge-success" : "p2-badge-neutral")">@emp.StatusText</span></td>
-                                <td style="text-align:center;">
-                                    <button class="btn-ghost-pay2 p2-text-primary" @onclick="() => OpenEditEmpModal(emp)"><i class="bi bi-pencil"></i> ویرایش</button>
-                                    <button class="btn-ghost-pay2" style="color:#8b5cf6;" @onclick="() => OpenDecreeModal(emp)"><i class="bi bi-file-earmark-person"></i> احکام</button>
+                                <td style="text-align:center; min-width: 250px;">
+                                    <div style="display:flex; justify-content:center; align-items:center; gap:8px;">
+
+                                        <!-- دکمه‌های اصلی و پرکاربرد با کلاس‌های اختصاصی هاور -->
+                                        <button class="btn-ghost-pay2 p2-action-edit" @onclick="() => OpenEditEmpModal(emp)">
+                                            <i class="bi bi-pencil"></i> ویرایش
+                                        </button>
+
+                                        <button class="btn-ghost-pay2 p2-action-decree" @onclick="() => OpenDecreeModal(emp)">
+                                            <i class="bi bi-file-earmark-person"></i> احکام
+                                        </button>
+
+                                        <button class="btn-ghost-pay2 p2-action-leave" @onclick="() => ShowLeaveRequestModal_Click(emp)">
+                                            <i class="bi bi-calendar-plus"></i> ثبت مرخصی
+                                        </button>
+
+                                        <!-- منوی کشویی برای گزینه‌های بیشتر -->
+                                        <MudMenu Icon="@Icons.Material.Filled.MoreVert" Color="Color.Default"
+                                                 AnchorOrigin="Origin.BottomLeft"
+                                                 TransformOrigin="Origin.TopRight"
+                                                 Dense="true" Elevation="4"
+                                                 PopoverClass="pay2-more-menu">
+
+                                            <!-- قراردادها -->
+                                            <MudMenuItem OnClick='() => ShowMenuAction(emp, "قراردادها")'>
+                                                <div style="color: #d97706; font-family: var(--p2-font); font-size: 13px; font-weight: 600;">
+                                                    <i class="bi bi-journal-text" style="margin-left: 8px;"></i> قراردادها
+                                                </div>
+                                            </MudMenuItem>
+
+                                            <!-- مانده مرخصی -->
+                                            <MudMenuItem OnClick='() => ShowMenuAction(emp, "مانده مرخصی")'>
+                                                <div style="color: #10b981; font-family: var(--p2-font); font-size: 13px; font-weight: 600;">
+                                                    <i class="bi bi-calendar-check" style="margin-left: 8px;"></i> مانده مرخصی
+                                                </div>
+                                            </MudMenuItem>
+
+                                            <!-- وام پرسنلی -->
+                                            <MudMenuItem OnClick='() => ShowMenuAction(emp, "وام پرسنلی")'>
+                                                <div style="color: #3b82f6; font-family: var(--p2-font); font-size: 13px; font-weight: 600;">
+                                                    <i class="bi bi-cash-coin" style="margin-left: 8px;"></i> وام پرسنلی
+                                                </div>
+                                            </MudMenuItem>
+
+                                            <MudDivider />
+
+                                            <!-- استثنا مشمولیت -->
+                                            <MudMenuItem OnClick='() => ShowMenuAction(emp, "استثنا مشمولیت")'>
+                                                <div style="color: #ec4899; font-family: var(--p2-font); font-size: 13px; font-weight: 600;">
+                                                    <i class="bi bi-sliders" style="margin-left: 8px;"></i> استثنا مشمولیت
+                                                </div>
+                                            </MudMenuItem>
+
+                                            <!-- استثنا مساعده -->
+                                            <MudMenuItem OnClick='() => ShowMenuAction(emp, "استثنا مساعده")'>
+                                                <div style="color: #eab308; font-family: var(--p2-font); font-size: 13px; font-weight: 600;">
+                                                    <i class="bi bi-wallet2" style="margin-left: 8px;"></i> استثنا مساعده
+                                                </div>
+                                            </MudMenuItem>
+
+                                            <MudDivider />
+
+                                            <!-- تسویه حساب (خاتمه کار) -->
+                                            <MudMenuItem OnClick='() => ShowMenuAction(emp, "تسویه حساب")'>
+                                                <div style="color: #ef4444; font-family: var(--p2-font); font-size: 13px; font-weight: 600;">
+                                                    <i class="bi bi-door-open" style="margin-left: 8px;"></i> تسویه حساب (خاتمه کار)
+                                                </div>
+                                            </MudMenuItem>
+
+                                        </MudMenu>
+                                    </div>
                                 </td>
                             </tr>
                         </Virtualize>
@@ -69,6 +137,55 @@
                        OnClose="CloseModals"
                        OnSave="HandleSaveEmployee" />
 
+    <Safir.Client.Pages.Salary.Tabs.EmployeeComponents.DecreeModal IsOpen="ShowDecreeModal"
+                                                                   EmployeeId="SelectedEmpForDecree.EMP_ID"
+                                                                   WorkshopId="SelectedEmpForDecree.WS_ID"
+                                                                   EmployeeName="@SelectedEmpForDecree.FullDisplayName"
+                                                                   OnClose="() => ShowDecreeModal = false" />
+
+    <!-- اضافه شدن مدال مرخصی -->
+    <Safir.Client.Pages.Salary.Tabs.EmployeeComponents.LeaveRequestModal IsOpen="ShowLeaveModal"
+                                                                         EmployeeId="SelectedEmpForLeave.EMP_ID"
+                                                                         EmployeeName="@SelectedEmpForLeave.FullDisplayName"
+                                                                         OnClose="() => ShowLeaveModal = false" />
+
+    <!-- مدال مدیریت قراردادها -->
+    <Safir.Client.Pages.Salary.Tabs.EmployeeComponents.ContractModal IsOpen="ShowContractModal"
+                                                                     EmployeeId="SelectedEmpForAction.EMP_ID"
+                                                                     EmployeeName="@SelectedEmpForAction.FullDisplayName"
+                                                                     OnClose="() => ShowContractModal = false" />
+
+    <!-- اضافه شدن مدال مانده مرخصی -->
+    <Safir.Client.Pages.Salary.Tabs.EmployeeComponents.LeaveBalanceModal IsOpen="ShowLeaveBalModal"
+                                                                         EmployeeId="SelectedEmpForAction.EMP_ID"
+                                                                         EmployeeName="@SelectedEmpForAction.FullDisplayName"
+                                                                         OnClose="() => ShowLeaveBalModal = false" />
+
+    <!-- مدال مدیریت وام‌ها -->
+    <Safir.Client.Pages.Salary.Tabs.EmployeeComponents.LoanModal IsOpen="ShowLoanModal"
+                                                                 EmployeeId="SelectedEmpForAction.EMP_ID"
+                                                                 WorkshopId="SelectedEmpForAction.WS_ID"
+                                                                 EmployeeName="@SelectedEmpForAction.FullDisplayName"
+                                                                 OnClose="() => ShowLoanModal = false" />
+
+    <!-- مدال استثناهای مشمولیت -->
+    <Safir.Client.Pages.Salary.Tabs.EmployeeComponents.OverrideModal IsOpen="ShowOverrideModal"
+                                                                     EmployeeId="SelectedEmpForAction.EMP_ID"
+                                                                     EmployeeName="@SelectedEmpForAction.FullDisplayName"
+                                                                     OnClose="() => ShowOverrideModal = false" />
+
+    <!-- مدال استثنا مساعده -->
+    <Safir.Client.Pages.Salary.Tabs.EmployeeComponents.AdvanceExclModal IsOpen="ShowAdvanceExclModal"
+                                                                        EmployeeId="SelectedEmpForAction.EMP_ID"
+                                                                        EmployeeName="@SelectedEmpForAction.FullDisplayName"
+                                                                        OnClose="() => ShowAdvanceExclModal = false" />
+
+    <!-- مدال تسویه حساب -->
+    <Safir.Client.Pages.Salary.Tabs.EmployeeComponents.SettlementModal IsOpen="ShowSettlementModal"
+                                                                       EmployeeId="SelectedEmpForAction.EMP_ID"
+                                                                       WorkshopId="SelectedEmpForAction.WS_ID"
+                                                                       EmployeeName="@SelectedEmpForAction.FullDisplayName"
+                                                                       OnClose="CloseSettlementModal" />
 </div>
 
 @code {
@@ -126,6 +243,11 @@
         ShowEmpModal = false;
     }
 
+    void ShowSnackbar(string? name, string action)
+    {
+        Snackbar.Add($"مدیریت {action} برای {name} به زودی اضافه می‌شود...", MudBlazor.Severity.Info);
+    }
+
     async Task HandleSaveEmployee(Pay2EmployeeDto employeeToSave)
     {
         IsSaving = true;
@@ -146,8 +268,55 @@
         }
     }
 
+    bool ShowDecreeModal = false;
+    Pay2EmployeeDto SelectedEmpForDecree = new();
     void OpenDecreeModal(Pay2EmployeeDto emp)
     {
-        Snackbar.Add("مدیریت احکام به زودی متصل می‌شود...", MudBlazor.Severity.Info);
+        SelectedEmpForDecree = emp;
+        ShowDecreeModal = true;
     }
+
+    bool ShowLeaveModal = false;
+    Pay2EmployeeDto SelectedEmpForLeave = new();
+    void ShowLeaveRequestModal_Click(Pay2EmployeeDto emp)
+    {
+        SelectedEmpForLeave = emp;
+        ShowLeaveModal = true;
+    }
+
+
+    bool ShowContractModal = false;
+    bool ShowLeaveBalModal = false;
+    Pay2EmployeeDto SelectedEmpForAction = new();
+    bool ShowLoanModal = false;
+    bool ShowOverrideModal = false;
+    bool ShowAdvanceExclModal = false;
+    bool ShowSettlementModal = false;
+
+    void ShowMenuAction(Pay2EmployeeDto emp, string action)
+    {
+        SelectedEmpForAction = emp;
+
+        switch (action)
+        {
+            case "قراردادها": ShowContractModal = true; break;
+            case "مانده مرخصی": ShowLeaveBalModal = true; break;
+            case "وام پرسنلی": ShowLoanModal = true; break;
+            case "استثنا مشمولیت": ShowOverrideModal = true; break;
+            case "استثنا مساعده": ShowAdvanceExclModal = true; break;
+            case "تسویه حساب": ShowSettlementModal = true; break;
+
+            default:
+                Snackbar.Add($"مدیریت {action} برای {emp.FIRST_NAME} به زودی متصل می‌شود...", MudBlazor.Severity.Info);
+                break;
+        }
+    }
+
+    async Task CloseSettlementModal()
+    {
+        ShowSettlementModal = false;
+        await LoadData(); // 🔴 رفرش کردن لیست اصلی پرسنل
+    }
+
+
 }

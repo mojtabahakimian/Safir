@@ -30,4 +30,14 @@ public class Pay2WorkshopApiService
         }
         return await response.Content.ReadFromJsonAsync<int>();
     }
+
+    public async Task DeleteAsync(int wsId)
+    {
+        var response = await _http.DeleteAsync($"api/pay2/workshops/{wsId}");
+        if (!response.IsSuccessStatusCode)
+        {
+            var msg = await response.Content.ReadAsStringAsync();
+            throw new Exception(string.IsNullOrWhiteSpace(msg) ? "خطا در حذف کارگاه" : msg);
+        }
+    }
 }

@@ -1,0 +1,313 @@
+﻿@using Safir.Shared.Models.Salary
+@using Safir.Shared.Models
+@inject Safir.Client.Services.Pay2EmployeeApiService EmployeeApi
+@inject ISnackbar Snackbar
+@inject MudBlazor.IDialogService DialogService
+
+@if (IsOpen)
+{
+    <div class="pay2-select-backdrop" style="background: rgba(15,23,42,0.6); z-index: 2999;" @onclick="Close"></div>
+
+    <div class="card-custom pay2-modal-container">
+
+        <!-- Header -->
+        <div class="pay2-modal-header p2-card-header" style="margin:0;">
+            <h5 style="margin:0; font-size:18px;">استثناهای مشمولیت: @EmployeeName</h5>
+            <button class="btn-ghost-pay2" @onclick="Close"><i class="bi bi-x-lg"></i></button>
+        </div>
+
+        <div class="pay2-modal-body">
+            @if (!_isDataLoaded)
+            {
+                <div style="display:flex; justify-content:center; align-items:center; height:200px; flex-direction:column; gap:15px;">
+                    <span class="p2-spinner" style="width:40px; height:40px; border-color:var(--p2-primary); border-top-color:transparent;"></span>
+                    <span style="font-size:14px; color:var(--p2-primary); font-weight:600;">در حال بارگذاری اطلاعات مشمولیت...</span>
+                </div>
+            }
+            else
+            {
+                <div class="p2-sub-card-title"><i class="bi bi-sliders"></i> ثبت / ویرایش استثنای جدید (مختص پرسنل جاری)</div>
+
+                <div class="form-grid-3 p2-mb-16">
+                    <div class="form-field">
+                        <label>آیتم حقوقی (PAY2_ITEM_DEF) *</label>
+                        <Pay2Select TItem="LookupDto<int>" TValue="int" Items="ItemDefs"
+                                    @bind-Value="CurrentOverride.ITEM_ID"
+                                    TextSelector="x => x.Name" ValueSelector="x => x.Id"
+                                    Placeholder="— انتخاب کنید —" Clearable="false"
+                                    Disabled="@IsEditing" />
+                    </div>
+                    <div class="form-field">
+                        <label>تاریخ شروع (شمسی) *</label>
+                        <Pay2NumericInput @bind-Value="ValidFromStr" InputMode="Pay2NumericInput.NumericInputMode.PersianDate" Direction="ltr" Disabled="@IsEditing" ToolTip="کلید اصلی: قابل ویرایش نیست" />
+                    </div>
+                    <div class="form-field">
+                        <label>تاریخ پایان (اختیاری)</label>
+                        <Pay2NumericInput @bind-Value="ValidToStr" InputMode="Pay2NumericInput.NumericInputMode.PersianDate" Direction="ltr" Placeholder="خالی = تا همیشه معتبر" />
+                    </div>
+                </div>
+
+                <div style="background: var(--p2-primary-light); border: 1px solid #bfdbfe; border-radius: var(--p2-radius-md); padding: 16px; margin-bottom: 16px;">
+                    <div class="form-grid-3">
+                        <div class="form-field">
+                            <label>وضعیت بیمه (Override)</label>
+                            <Pay2Select TItem="LookupDto<int>" TValue="int" Items="OverrideOptions"
+                                        @bind-Value="CurrentOverride.InsCombo" TextSelector="x => x.Name" ValueSelector="x => x.Id" Clearable="false" />
+                        </div>
+                        <div class="form-field">
+                            <label>وضعیت مالیات (Override)</label>
+                            <Pay2Select TItem="LookupDto<int>" TValue="int" Items="OverrideOptions"
+                                        @bind-Value="CurrentOverride.TaxCombo" TextSelector="x => x.Name" ValueSelector="x => x.Id" Clearable="false" />
+                        </div>
+                        <div class="form-field">
+                            <label>مبنای محاسبه (Override)</label>
+                            <Pay2Select TItem="LookupDto<int>" TValue="int" Items="BasisOptions"
+                                        @bind-Value="CurrentOverride.BasisCombo" TextSelector="x => x.Name" ValueSelector="x => x.Id" Clearable="false" />
+                        </div>
+                    </div>
+                </div>
+
+                <div class="form-grid-2 p2-mb-16" style="align-items: end;">
+                    <div class="form-field">
+                        <label>توضیحات و دلیل استثنا *</label>
+                        <input class="pay2-input" type="text" @bind="CurrentOverride.REASON" />
+                    </div>
+
+                    <div style="display:flex; justify-content:flex-end; gap:10px;">
+                        @if (IsEditing)
+                        {
+                            <button class="btn-outline-pay2" @onclick="ResetForm">انصراف</button>
+                        }
+                        <button class="btn-primary-pay2" @onclick="SubmitSave" disabled="@IsSaving">
+                            @if (IsSaving)
+                            {
+                                <span class="p2-spinner"></span>
+                            }
+                            else
+                            {
+
+                                <span>ذخیره استثنا</span>
+                            }
+                        </button>
+                    </div>
+                </div>
+
+                <hr class="p2-divider" />
+
+                <!-- جدول سوابق -->
+                <div class="p2-sub-card-title"><i class="bi bi-card-checklist"></i> لیست استثناهای ثبت شده برای این پرسنل</div>
+
+                <div class="pay2-table-responsive">
+                    <table class="p2-table">
+                        <thead style="position: sticky; top: 0; z-index: 10;">
+                            <tr>
+                                <th>آیتم حقوقی</th>
+                                <th style="text-align:center;">شروع اعتبار</th>
+                                <th style="text-align:center;">پایان اعتبار</th>
+                                <th style="text-align:center;">بیمه</th>
+                                <th style="text-align:center;">مالیات</th>
+                                <th style="text-align:center;">مبنا</th>
+                                <th style="text-align:center;">عملیات</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @if (!Overrides.Any())
+                            {
+                                <tr><td colspan="7" style="text-align:center; padding:20px; color:#94a3b8;">هیچ استثنایی برای این پرسنل ثبت نشده است.</td></tr>
+                            }
+                            @foreach (var ovr in Overrides)
+                            {
+                                <tr style="background: @(CurrentOverride.ITEM_ID == ovr.ITEM_ID && CurrentOverride.VALID_FROM == ovr.VALID_FROM ? "var(--p2-primary-light)" : "transparent")">
+                                    <td><b>@ovr.ITEM_NAME</b></td>
+                                    <td class="p2-text-mono p2-text-primary" style="text-align:center; font-weight:bold;">@ovr.VALID_FROM</td>
+                                    <td class="p2-text-mono" style="text-align:center;">@(ovr.VALID_TO?.ToString() ?? "—")</td>
+                                    <td style="text-align:center; color: var(--p2-text-muted);">@ovr.InsText</td>
+                                    <td style="text-align:center; color: var(--p2-text-muted);">@ovr.TaxText</td>
+                                    <td style="text-align:center; color: var(--p2-text-muted);">@ovr.BasisText</td>
+                                    <td style="text-align:center; min-width: 150px;">
+                                        <button class="btn-ghost-pay2 p2-text-primary" @onclick="() => EditOverride(ovr)">ویرایش</button>
+                                        <button class="btn-ghost-pay2 p2-text-danger" @onclick="() => DeleteOverride(ovr)">حذف</button>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+        </div>
+
+        <div class="pay2-modal-footer">
+            <button class="btn-outline-pay2" @onclick="Close" style="border-radius:20px; padding:8px 24px;">بستن فرم</button>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public bool IsOpen { get; set; }
+    [Parameter] public int EmployeeId { get; set; }
+    [Parameter] public string EmployeeName { get; set; } = "";
+    [Parameter] public EventCallback OnClose { get; set; }
+
+    List<Pay2OverrideDto> Overrides = new();
+    List<LookupDto<int>> ItemDefs = new();
+    Pay2OverrideDto CurrentOverride = new();
+
+    string? ValidFromStr;
+    string? ValidToStr;
+
+    bool IsSaving = false;
+    bool IsEditing = false;
+    private int _lastProcessedEmpId = -1;
+    private bool _lastOpenState = false;
+    private bool _isDataLoaded = false;
+
+    // شناسه 3 برای "بدون تغییر" است (چون نوعِ کامپوننت int است)
+    List<LookupDto<int>> OverrideOptions = new() {
+        new(3, "بدون تغییر (طبق تعریف آیتم)"), new(1, "مشمول"), new(2, "معاف")
+    };
+    List<LookupDto<int>> BasisOptions = new() {
+        new(3, "بدون تغییر (طبق تعریف آیتم)"), new(1, "روزانه"), new(2, "ماهیانه")
+    };
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (IsOpen && (!_lastOpenState || EmployeeId != _lastProcessedEmpId))
+        {
+            _lastOpenState = true;
+            _lastProcessedEmpId = EmployeeId;
+            _isDataLoaded = false;
+
+            ResetForm();
+            await InitializeDataAsync();
+        }
+        else if (!IsOpen)
+        {
+            _lastOpenState = false;
+            _lastProcessedEmpId = -1;
+            _isDataLoaded = false;
+        }
+    }
+
+    private async Task InitializeDataAsync()
+    {
+        try
+        {
+            // خواندن همزمان لیست آیتم‌ها و سوابق استثناها
+            var itemTask = EmployeeApi.GetItemDefsLookupAsync();
+            var ovrTask = EmployeeApi.GetOverridesAsync(EmployeeId);
+
+            await Task.WhenAll(itemTask, ovrTask);
+
+            ItemDefs = itemTask.Result;
+            Overrides = ovrTask.Result;
+        }
+        catch (Exception ex) { Console.WriteLine(ex.Message); }
+        finally
+        {
+            _isDataLoaded = true;
+            StateHasChanged();
+        }
+    }
+
+    void ResetForm()
+    {
+        CurrentOverride = new Pay2OverrideDto();
+        ValidFromStr = Safir.Shared.Utility.CL_Tarikh.GetCurrentPersianDateAsLong().ToString();
+        ValidToStr = null;
+        IsEditing = false;
+    }
+
+    void EditOverride(Pay2OverrideDto item)
+    {
+        // مپ مستقیم برای ایمنی و جلوگیری از خطاهای بایندینگ
+        CurrentOverride = new Pay2OverrideDto
+        {
+            EMP_ID = item.EMP_ID,
+            ITEM_ID = item.ITEM_ID,
+            ITEM_NAME = item.ITEM_NAME,
+            INS_OV = item.INS_OV,
+            TAX_OV = item.TAX_OV,
+            BASIS_OV = item.BASIS_OV,
+            VALID_FROM = item.VALID_FROM,
+            VALID_TO = item.VALID_TO,
+            REASON = item.REASON
+        };
+
+        ValidFromStr = CurrentOverride.VALID_FROM.ToString();
+        ValidToStr = CurrentOverride.VALID_TO?.ToString();
+
+        IsEditing = true;
+        StateHasChanged();
+    }
+
+    async Task SubmitSave()
+    {
+        if (CurrentOverride.ITEM_ID == 0)
+        {
+            Snackbar.Add("انتخاب آیتم حقوقی الزامی است.", MudBlazor.Severity.Warning); return;
+        }
+        if (string.IsNullOrWhiteSpace(CurrentOverride.REASON))
+        {
+            Snackbar.Add("لطفاً دلیل یا توضیحاتی برای این استثنا وارد کنید.", MudBlazor.Severity.Warning); return;
+        }
+
+        long.TryParse(ValidFromStr?.Replace("/", ""), out long vFrom);
+        long.TryParse(ValidToStr?.Replace("/", ""), out long vTo);
+
+        if (vFrom <= 13000000)
+        {
+            Snackbar.Add("تاریخ شروع اعتبار نامعتبر است.", MudBlazor.Severity.Warning); return;
+        }
+        if (vTo > 0 && vTo < vFrom)
+        {
+            Snackbar.Add("تاریخ پایان نمی‌تواند قبل از تاریخ شروع باشد.", MudBlazor.Severity.Warning); return;
+        }
+
+        CurrentOverride.EMP_ID = EmployeeId;
+        CurrentOverride.VALID_FROM = vFrom;
+        CurrentOverride.VALID_TO = vTo > 13000000 ? vTo : null;
+
+        IsSaving = true;
+        try
+        {
+            await EmployeeApi.SaveOverrideAsync(CurrentOverride, IsEditing);
+            Snackbar.Add("استثنای مشمولیت با موفقیت ذخیره شد.", MudBlazor.Severity.Success);
+            ResetForm();
+            Overrides = await EmployeeApi.GetOverridesAsync(EmployeeId);
+        }
+        catch (Exception ex) { Snackbar.Add(ex.Message, MudBlazor.Severity.Error); }
+        finally { IsSaving = false; }
+    }
+
+    async Task DeleteOverride(Pay2OverrideDto item)
+    {
+        var parameters = new MudBlazor.DialogParameters
+        {
+            ["Title"] = "حذف استثنا",
+            ["ContentText"] = $"آیا از حذف این استثنا (آیتم: {item.ITEM_NAME}) اطمینان دارید؟",
+            ["ConfirmButtonText"] = "بله، حذف کن",
+            ["CancelButtonText"] = "انصراف"
+        };
+        var options = new MudBlazor.DialogOptions { CloseButton = false, MaxWidth = MudBlazor.MaxWidth.ExtraSmall };
+
+        var dialog = DialogService.Show<Safir.Client.Shared.ConfirmDialog>("تایید حذف", parameters, options);
+        var result = await dialog.Result;
+
+        if (!result.Cancelled)
+        {
+            try
+            {
+                await EmployeeApi.DeleteOverrideAsync(item.EMP_ID, item.ITEM_ID, item.VALID_FROM);
+                Snackbar.Add("استثنا با موفقیت حذف شد.", MudBlazor.Severity.Success);
+
+                if (CurrentOverride.ITEM_ID == item.ITEM_ID && CurrentOverride.VALID_FROM == item.VALID_FROM)
+                    ResetForm();
+
+                Overrides = await EmployeeApi.GetOverridesAsync(EmployeeId);
+            }
+            catch (Exception ex) { Snackbar.Add("خطا در حذف: " + ex.Message, MudBlazor.Severity.Error); }
+        }
+    }
+
+    async Task Close() => await OnClose.InvokeAsync();
+}

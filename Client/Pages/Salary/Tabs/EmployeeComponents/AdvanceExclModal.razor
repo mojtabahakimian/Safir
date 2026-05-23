@@ -1,0 +1,270 @@
+﻿@using Safir.Shared.Models.Salary
+@using Safir.Shared.Models
+@inject Safir.Client.Services.Pay2EmployeeApiService EmployeeApi
+@inject ISnackbar Snackbar
+@inject MudBlazor.IDialogService DialogService
+
+@if (IsOpen)
+{
+    <div class="pay2-select-backdrop" style="background: rgba(15,23,42,0.6); z-index: 2999;" @onclick="Close"></div>
+
+    <div class="card-custom pay2-modal-container">
+
+        <!-- Header -->
+        <div class="pay2-modal-header p2-card-header" style="margin:0;">
+            <h5 style="margin:0; font-size:18px;">استثناهای مساعده: @EmployeeName</h5>
+            <button class="btn-ghost-pay2" @onclick="Close"><i class="bi bi-x-lg"></i></button>
+        </div>
+
+        <div class="pay2-modal-body">
+            @if (!_isDataLoaded)
+            {
+                <div style="display:flex; justify-content:center; align-items:center; height:200px; flex-direction:column; gap:15px;">
+                    <span class="p2-spinner" style="width:40px; height:40px; border-color:var(--p2-primary); border-top-color:transparent;"></span>
+                    <span style="font-size:14px; color:var(--p2-primary); font-weight:600;">در حال بارگذاری اطلاعات استثناها...</span>
+                </div>
+            }
+            else
+            {
+                <div class="p2-sub-card-title"><i class="bi bi-wallet2"></i> ثبت / ویرایش کسر استثنایی از مانده مساعده</div>
+
+                <div class="form-grid-3 p2-mb-16">
+                    <div class="form-field">
+                        <label>ماه اعمال استثنا (YYYYMM00) *</label>
+                        <Pay2NumericInput @bind-Value="PeriodDateStr" InputMode="Pay2NumericInput.NumericInputMode.PersianDate" Direction="ltr" Placeholder="مثال: 14030100" />
+                    </div>
+                    <div class="form-field">
+                        <label>مبلغ کسر از مانده بدهی (ریال) *</label>
+                        <Pay2NumericInput @bind-Value="ExclAmountStr" MaxLength="16" Direction="ltr" ThreeTwoZero="true"/>
+                    </div>
+                    <div class="form-field">
+                        <label>شماره سند مرجع (اختیاری)</label>
+                        <Pay2NumericInput @bind-Value="DeedNsStr" Direction="ltr" />
+                    </div>
+                </div>
+
+                <div class="form-grid-2 p2-mb-16" style="align-items: end;">
+                    <div class="form-field">
+                        <label>دلیل استثنا / توضیحات *</label>
+                        <input class="pay2-input" type="text" @bind="CurrentExcl.REASON" />
+                    </div>
+
+                    <div style="display:flex; justify-content:flex-end; gap:10px;">
+                        @if (CurrentExcl.EXCL_ID > 0)
+                        {
+                            <button class="btn-outline-pay2" @onclick="ResetForm">انصراف</button>
+                        }
+                        <button class="btn-primary-pay2" @onclick="SubmitSave" disabled="@IsSaving">
+                            @if (IsSaving)
+                            {
+                                <span class="p2-spinner"></span>
+                            }
+                            else
+                            {
+
+                                <span>ذخیره استثنا</span>
+                            }
+                        </button>
+                    </div>
+                </div>
+
+                <hr class="p2-divider" />
+
+                <!-- جدول سوابق -->
+                <div class="p2-sub-card-title"><i class="bi bi-card-checklist"></i> لیست استثناهای ثبت شده مساعده برای این پرسنل</div>
+
+                <div class="pay2-table-responsive">
+                    <table class="p2-table">
+                        <thead style="position: sticky; top: 0; z-index: 10;">
+                            <tr>
+                                <th style="text-align:center;">ماه اعمال</th>
+                                <th style="text-align:center;">مبلغ کسر شده (ریال)</th>
+                                <th style="text-align:center;">سند مرجع</th>
+                                <th>دلیل استثنا</th>
+                                <th style="text-align:center;">عملیات</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @if (!Excls.Any())
+                            {
+                                <tr><td colspan="5" style="text-align:center; padding:20px; color:#94a3b8;">هیچ استثنایی برای این پرسنل ثبت نشده است.</td></tr>
+                            }
+                            @foreach (var exc in Excls)
+                            {
+                                <tr style="background: @(CurrentExcl.EXCL_ID == exc.EXCL_ID ? "var(--p2-primary-light)" : "transparent")">
+                                    <td class="p2-text-mono" style="text-align:center;">@exc.PERIOD_DATE</td>
+                                    <td class="p2-text-mono p2-text-primary" style="text-align:center; font-weight:bold;">@exc.EXCL_AMOUNT.ToString("N0")</td>
+                                    <td class="p2-text-mono" style="text-align:center;">@(exc.DEED_N_S?.ToString() ?? "—")</td>
+                                    <td class="p2-text-muted">@exc.REASON</td>
+                                    <td style="text-align:center; min-width: 150px;">
+                                        <button class="btn-ghost-pay2 p2-text-primary" @onclick="() => EditExcl(exc)">ویرایش</button>
+                                        <button class="btn-ghost-pay2 p2-text-danger" @onclick="() => DeleteExcl(exc)">حذف</button>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+        </div>
+
+        <div class="pay2-modal-footer">
+            <button class="btn-outline-pay2" @onclick="Close" style="border-radius:20px; padding:8px 24px;">بستن فرم</button>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public bool IsOpen { get; set; }
+    [Parameter] public int EmployeeId { get; set; }
+    [Parameter] public string EmployeeName { get; set; } = "";
+    [Parameter] public EventCallback OnClose { get; set; }
+
+    List<Pay2AdvanceExclDto> Excls = new();
+    Pay2AdvanceExclDto CurrentExcl = new();
+
+    string? PeriodDateStr;
+    string? ExclAmountStr;
+    string? DeedNsStr;
+
+    bool IsSaving = false;
+    private int _lastProcessedEmpId = -1;
+    private bool _lastOpenState = false;
+    private bool _isDataLoaded = false;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (IsOpen && (!_lastOpenState || EmployeeId != _lastProcessedEmpId))
+        {
+            _lastOpenState = true;
+            _lastProcessedEmpId = EmployeeId;
+            _isDataLoaded = false;
+
+            ResetForm();
+            await InitializeDataAsync();
+        }
+        else if (!IsOpen)
+        {
+            _lastOpenState = false;
+            _lastProcessedEmpId = -1;
+            _isDataLoaded = false;
+        }
+    }
+
+    private async Task InitializeDataAsync()
+    {
+        try
+        {
+            Excls = await EmployeeApi.GetAdvanceExclsAsync(EmployeeId);
+        }
+        catch (Exception ex) { Console.WriteLine(ex.Message); }
+        finally
+        {
+            _isDataLoaded = true;
+            StateHasChanged();
+        }
+    }
+
+    void ResetForm()
+    {
+        CurrentExcl = new Pay2AdvanceExclDto();
+
+        // تولید تاریخ پیش‌فرض به شکل 14030500
+        string currentShamsi = Safir.Shared.Utility.CL_Tarikh.GetCurrentPersianDateAsLong().ToString();
+        PeriodDateStr = currentShamsi.Substring(0, 6) + "00";
+
+        ExclAmountStr = null;
+        DeedNsStr = null;
+    }
+
+    void EditExcl(Pay2AdvanceExclDto item)
+    {
+        // مپ مستقیم فیلدها برای ویرایش
+        CurrentExcl = new Pay2AdvanceExclDto
+        {
+            EXCL_ID = item.EXCL_ID,
+            EMP_ID = item.EMP_ID,
+            PERIOD_DATE = item.PERIOD_DATE,
+            EXCL_AMOUNT = item.EXCL_AMOUNT,
+            REASON = item.REASON,
+            DEED_N_S = item.DEED_N_S
+        };
+
+        PeriodDateStr = CurrentExcl.PERIOD_DATE.ToString();
+        ExclAmountStr = CurrentExcl.EXCL_AMOUNT.ToString();
+        DeedNsStr = CurrentExcl.DEED_N_S?.ToString();
+
+        StateHasChanged();
+    }
+
+    async Task SubmitSave()
+    {
+        if (string.IsNullOrWhiteSpace(CurrentExcl.REASON))
+        {
+            Snackbar.Add("ذکر دلیل استثنا الزامی است.", MudBlazor.Severity.Warning); return;
+        }
+
+        long.TryParse(PeriodDateStr?.Replace("/", ""), out long pDate);
+        long.TryParse(ExclAmountStr?.Replace(",", ""), out long amt);
+
+        double? dNs = null;
+        if (!string.IsNullOrWhiteSpace(DeedNsStr) && double.TryParse(DeedNsStr.Replace(",", ""), out double pNs))
+        {
+            dNs = pNs;
+        }
+
+        if (pDate <= 13000000)
+        {
+            Snackbar.Add("ماه اعمال استثنا نامعتبر است (مثال صحیح: 14030100).", MudBlazor.Severity.Warning); return;
+        }
+        if (amt <= 0)
+        {
+            Snackbar.Add("مبلغ کسر باید بزرگتر از صفر باشد.", MudBlazor.Severity.Warning); return;
+        }
+
+        CurrentExcl.EMP_ID = EmployeeId;
+        CurrentExcl.PERIOD_DATE = pDate;
+        CurrentExcl.EXCL_AMOUNT = amt;
+        CurrentExcl.DEED_N_S = dNs;
+
+        IsSaving = true;
+        try
+        {
+            await EmployeeApi.SaveAdvanceExclAsync(CurrentExcl);
+            Snackbar.Add("استثنای مساعده با موفقیت ثبت شد.", MudBlazor.Severity.Success);
+            ResetForm();
+            Excls = await EmployeeApi.GetAdvanceExclsAsync(EmployeeId);
+        }
+        catch (Exception ex) { Snackbar.Add(ex.Message, MudBlazor.Severity.Error); }
+        finally { IsSaving = false; }
+    }
+
+    async Task DeleteExcl(Pay2AdvanceExclDto item)
+    {
+        var parameters = new MudBlazor.DialogParameters
+        {
+            ["Title"] = "حذف استثنا",
+            ["ContentText"] = $"آیا از حذف این استثنا اطمینان دارید؟ با این کار این مبلغ مجدداً در محاسبات کسر خواهد شد.",
+            ["ConfirmButtonText"] = "بله، حذف کن",
+            ["CancelButtonText"] = "انصراف"
+        };
+        var options = new MudBlazor.DialogOptions { CloseButton = false, MaxWidth = MudBlazor.MaxWidth.ExtraSmall };
+
+        var dialog = DialogService.Show<Safir.Client.Shared.ConfirmDialog>("تایید حذف", parameters, options);
+        var result = await dialog.Result;
+
+        if (!result.Cancelled)
+        {
+            try
+            {
+                await EmployeeApi.DeleteAdvanceExclAsync(item.EXCL_ID);
+                Snackbar.Add("استثنا با موفقیت حذف شد.", MudBlazor.Severity.Success);
+                if (CurrentExcl.EXCL_ID == item.EXCL_ID) ResetForm();
+                Excls = await EmployeeApi.GetAdvanceExclsAsync(EmployeeId);
+            }
+            catch (Exception ex) { Snackbar.Add("خطا در حذف: " + ex.Message, MudBlazor.Severity.Error); }
+        }
+    }
+
+    async Task Close() => await OnClose.InvokeAsync();
+}

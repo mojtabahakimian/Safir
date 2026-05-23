@@ -25,7 +25,7 @@ public class Pay2WorkshopsController : ControllerBase
     {
         const string sql = @"
 SELECT WS_ID, WS_CODE, WS_NAME, NATIONAL_ID, SOCIAL_INS_CODE, TAX_CODE,
-       ADDRESS, PHONE, IS_ACTIVE, ISNULL(INS_MODE, 1) AS INS_MODE
+ADDRESS, PHONE, POSTAL_CODE, EMPLOYER_NAME, IS_ACTIVE, ISNULL(INS_MODE, 1) AS INS_MODE
 FROM   PAY2_WORKSHOP
 ORDER  BY WS_ID";
 
@@ -106,12 +106,12 @@ WHERE  WS_CODE = @WS_CODE
                 {
                     const string insertSql = @"
 INSERT INTO PAY2_WORKSHOP
-    (WS_CODE, WS_NAME, NATIONAL_ID, SOCIAL_INS_CODE, TAX_CODE,
-     ADDRESS, PHONE, IS_ACTIVE, INS_MODE, CREATED_BY)
+(WS_CODE, WS_NAME, NATIONAL_ID, SOCIAL_INS_CODE, TAX_CODE,
+ADDRESS, PHONE, POSTAL_CODE, EMPLOYER_NAME, IS_ACTIVE, INS_MODE, CREATED_BY)
 OUTPUT INSERTED.WS_ID
 VALUES
-    (@WS_CODE, @WS_NAME, @NATIONAL_ID, @SOCIAL_INS_CODE, @TAX_CODE,
-     @ADDRESS, @PHONE, @IS_ACTIVE, @INS_MODE, @CREATED_BY)";
+(@WS_CODE, @WS_NAME, @NATIONAL_ID, @SOCIAL_INS_CODE, @TAX_CODE,
+@ADDRESS, @PHONE, @POSTAL_CODE, @EMPLOYER_NAME, @IS_ACTIVE, @INS_MODE, @CREATED_BY)";
 
                     newOrUpdatedWsId = await conn.QueryFirstAsync<int>(insertSql, new
                     {
@@ -122,6 +122,8 @@ VALUES
                         w.TAX_CODE,
                         w.ADDRESS,
                         w.PHONE,
+                        w.POSTAL_CODE,
+                        w.EMPLOYER_NAME,
                         w.IS_ACTIVE,
                         w.INS_MODE,
                         CREATED_BY = userCod
@@ -131,15 +133,17 @@ VALUES
                 {
                     const string updateSql = @"
 UPDATE PAY2_WORKSHOP SET
-    WS_CODE         = @WS_CODE,
-    WS_NAME         = @WS_NAME,
-    NATIONAL_ID     = @NATIONAL_ID,
-    SOCIAL_INS_CODE = @SOCIAL_INS_CODE,
-    TAX_CODE        = @TAX_CODE,
-    ADDRESS         = @ADDRESS,
-    PHONE           = @PHONE,
-    IS_ACTIVE       = @IS_ACTIVE,
-    INS_MODE        = @INS_MODE
+WS_CODE         = @WS_CODE,
+WS_NAME         = @WS_NAME,
+NATIONAL_ID     = @NATIONAL_ID,
+SOCIAL_INS_CODE = @SOCIAL_INS_CODE,
+TAX_CODE        = @TAX_CODE,
+ADDRESS         = @ADDRESS,
+PHONE           = @PHONE,
+POSTAL_CODE     = @POSTAL_CODE,
+EMPLOYER_NAME   = @EMPLOYER_NAME,
+IS_ACTIVE       = @IS_ACTIVE,
+INS_MODE        = @INS_MODE
 WHERE WS_ID = @WS_ID";
 
                     await conn.ExecuteAsync(updateSql, w, tran);
@@ -203,6 +207,57 @@ WHERE WS_ID = @WS_ID AND ACC_KEY = @ACC_KEY";
         }
     }
 
+    [HttpDelete("{wsId:int}")]
+    public async Task<IActionResult> Delete(int wsId)
+    {
+        try
+        {
+            await _db.ExecuteInTransactionAsync(async (conn, tran) =>
+            {
+                // ۱. بررسی پرسنل مرتبط
+                int empCount = await conn.QuerySingleAsync<int>(
+                    "SELECT COUNT(1) FROM PAY2_EMPLOYEE WHERE WS_ID = @wsId", new { wsId }, tran);
+                if (empCount > 0)
+                    throw new InvalidOperationException($"این کارگاه دارای {empCount} پرسنل است. لطفاً به جای حذف، وضعیت آن را «غیرفعال» کنید.");
+
+                // ۲. بررسی دوره‌های کارکرد/حقوق
+                int periodCount = await conn.QuerySingleAsync<int>(
+                    "SELECT COUNT(1) FROM PAY2_PERIOD WHERE WS_ID = @wsId", new { wsId }, tran);
+                if (periodCount > 0)
+                    throw new InvalidOperationException($"برای این کارگاه {periodCount} دوره حقوق ثبت شده است و قابل حذف فیزیکی نیست.");
+
+                // ۳. بررسی قالب‌های حقوقی مرتبط
+                int tmplCount = await conn.QuerySingleAsync<int>(
+                    "SELECT COUNT(1) FROM PAY2_ITEM_TEMPLATE WHERE WS_ID = @wsId", new { wsId }, tran);
+                if (tmplCount > 0)
+                    throw new InvalidOperationException("قالب‌های حقوقی به این کارگاه متصل هستند. ابتدا ارتباط آن‌ها را حذف کنید.");
+
+                // ۴. حذف سرفصل‌های حسابداری کارگاه (جدول فرزند)
+                await conn.ExecuteAsync("DELETE FROM PAY2_WORKSHOP_ACC WHERE WS_ID = @wsId", new { wsId }, tran);
+
+                // ۵. حذف خود کارگاه
+                int rows = await conn.ExecuteAsync("DELETE FROM PAY2_WORKSHOP WHERE WS_ID = @wsId", new { wsId }, tran);
+                if (rows == 0)
+                    throw new InvalidOperationException("کارگاه یافت نشد.");
+            });
+
+            return Ok();
+        }
+        catch (InvalidOperationException ex)
+        {
+            // خطاهای مربوط به بیزینس لاجیک که خودمون پرتاب کردیم
+            return BadRequest(ex.Message);
+        }
+        catch (System.Data.SqlClient.SqlException sqlEx) when (sqlEx.Number == 547)
+        {
+            // خطای درگیری کلید خارجی دیتابیس (محض اطمینان)
+            return BadRequest("این کارگاه در بخش‌های دیگر سیستم در حال استفاده است و قابل حذف نیست.");
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, "خطای سیستمی در حذف کارگاه: " + ex.Message);
+        }
+    }
     private static string? NormalizeAndValidate(Pay2WorkshopDto w, Pay2WorkshopAccDto a)
     {
         w.WS_CODE = NormalizeRequiredDigits(w.WS_CODE, 10);
@@ -227,6 +282,12 @@ WHERE WS_ID = @WS_ID AND ACC_KEY = @ACC_KEY";
         a.LOAN_HES = NormalizeAccountCode(a.LOAN_HES, 20);
         a.BANK_PAY_HES = NormalizeAccountCode(a.BANK_PAY_HES, 20);
 
+        w.POSTAL_CODE = NormalizeOptionalDigits(w.POSTAL_CODE, 20);
+        w.EMPLOYER_NAME = CleanText(w.EMPLOYER_NAME, 100);
+
+        if (!string.IsNullOrWhiteSpace(w.POSTAL_CODE) && !Regex.IsMatch(w.POSTAL_CODE, @"^\d+$"))
+            return "کد پستی فقط باید عدد باشد.";
+
         if (string.IsNullOrWhiteSpace(w.WS_CODE))
             return "کد کارگاه نمی‌تواند خالی باشد.";
 
@@ -236,9 +297,10 @@ WHERE WS_ID = @WS_ID AND ACC_KEY = @ACC_KEY";
         if (string.IsNullOrWhiteSpace(w.WS_NAME))
             return "نام کارگاه نمی‌تواند خالی باشد.";
 
-        if (!string.IsNullOrWhiteSpace(w.NATIONAL_ID) &&
-            !Regex.IsMatch(w.NATIONAL_ID, @"^\d{11}$"))
-            return "شناسه ملی باید دقیقاً ۱۱ رقم عددی باشد.";
+        //فعلا کامنت شده چون ممکنه بعدا طولش تغییر کنه
+        //if (!string.IsNullOrWhiteSpace(w.NATIONAL_ID) &&
+        //    !Regex.IsMatch(w.NATIONAL_ID, @"^\d{11}$"))
+        //    return "شناسه ملی باید دقیقاً ۱۱ رقم عددی باشد.";
 
         if (!string.IsNullOrWhiteSpace(w.SOCIAL_INS_CODE) &&
             !Regex.IsMatch(w.SOCIAL_INS_CODE, @"^\d+$"))

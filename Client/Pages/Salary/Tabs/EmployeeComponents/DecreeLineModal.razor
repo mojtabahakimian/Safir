@@ -1,0 +1,281 @@
+﻿@using Safir.Shared.Models.Salary
+@using Safir.Shared.Models
+@inject Safir.Client.Services.Pay2EmployeeApiService EmployeeApi
+@inject ISnackbar Snackbar
+@inject MudBlazor.IDialogService DialogService
+
+@if (IsOpen)
+{
+    <div class="pay2-select-backdrop" style="background: rgba(15,23,42,0.6); z-index: 3001;" @onclick="Close"></div>
+
+    <div class="card-custom pay2-modal-container" style="z-index:3002;">
+
+        <div class="pay2-modal-header p2-card-header" style="margin:0; display:flex; justify-content:space-between; align-items:center;">
+            <h5 style="margin:0; font-size:18px;">
+                اقلام ریالی حکم مورخ: <span style="color: #8b5cf6; font-family: Consolas;">@DecreeDate</span>
+            </h5>
+            <button class="btn-ghost-pay2" @onclick="Close"><i class="bi bi-x-lg"></i></button>
+        </div>
+
+        <div class="pay2-modal-body">
+
+            @if (!_isDataLoaded)
+            {
+                <div style="display:flex; justify-content:center; align-items:center; height:200px; flex-direction:column; gap:15px;">
+                    <span class="p2-spinner" style="width:40px; height:40px; border-color:var(--p2-primary); border-top-color:transparent;"></span>
+                    <span style="font-size:14px; color:var(--p2-primary); font-weight:600;">در حال بارگذاری اقلام و تعاریف سیستم...</span>
+                </div>
+            }
+            else
+            {
+                <div class="p2-sub-card-title"><i class="bi bi-cash-stack"></i> افزودن / ویرایش آیتم حقوقی</div>
+
+                <div class="form-grid-2 p2-mb-16">
+                    <div class="form-field">
+                        <label>انتخاب آیتم (PAY2_ITEM_DEF) *</label>
+                        <Pay2Select TItem="LookupDto<int>" TValue="int" Items="ItemDefs"
+                                    @bind-Value="CurrentLine.ITEM_ID"
+                                    TextSelector="x => x.Name" ValueSelector="x => x.Id"
+                                    Placeholder="— انتخاب کنید —" Clearable="false"
+                                    Disabled="@IsEditing" />
+                    </div>
+                    <div class="form-field">
+                        <label>مبلغ در این حکم (ریال) *</label>
+                        <Pay2NumericInput @bind-Value="CurrentAmountStr" MaxLength="16" Direction="ltr" />
+                    </div>
+                </div>
+
+                <div style="background: var(--p2-primary-light); border: 1px solid #bfdbfe; border-radius: var(--p2-radius-md); padding: 16px; margin-bottom: 16px;">
+                    <div class="form-grid-3">
+                        <div class="form-field">
+                            <label>مشمولیت بیمه (Override)</label>
+                            <Pay2Select TItem="LookupDto<int>" TValue="int" Items="OverrideOptions"
+                                        @bind-Value="CurrentLine.InsCombo" TextSelector="x => x.Name" ValueSelector="x => x.Id" Clearable="false" />
+                        </div>
+                        <div class="form-field">
+                            <label>مشمولیت مالیات (Override)</label>
+                            <Pay2Select TItem="LookupDto<int>" TValue="int" Items="OverrideOptions"
+                                        @bind-Value="CurrentLine.TaxCombo" TextSelector="x => x.Name" ValueSelector="x => x.Id" Clearable="false" />
+                        </div>
+                        <div class="form-field">
+                            <label>مبنای محاسبه (Override)</label>
+                            <Pay2Select TItem="LookupDto<int>" TValue="int" Items="BasisOptions"
+                                        @bind-Value="CurrentLine.BasisCombo" TextSelector="x => x.Name" ValueSelector="x => x.Id" Clearable="false" />
+                        </div>
+                    </div>
+                </div>
+
+                <div style="display:flex; justify-content:flex-end; gap:10px; margin-bottom: 24px;">
+                    @if (IsEditing)
+                    {
+                        <button class="btn-outline-pay2" @onclick="ResetForm">انصراف</button>
+                    }
+                    <button class="btn-primary-pay2" @onclick="SubmitSave" disabled="@IsSaving">
+                        @if (IsSaving)
+                        {
+                            <span class="p2-spinner"></span>
+                        }
+                        else
+                        {
+                            <span>ذخیره آیتم</span>
+                        }
+                    </button>
+                </div>
+
+                <hr class="p2-divider" />
+
+                <div class="p2-sub-card-title"><i class="bi bi-list-check"></i> لیست اقلام ریالی حکم</div>
+
+                <div class="pay2-table-responsive">
+                    <table class="p2-table">
+                        <thead style="position: sticky; top: 0; z-index: 10;">
+                            <tr>
+                                <th>عنوان آیتم</th>
+                                <th style="text-align:center;">مبلغ (ریال)</th>
+                                <th style="text-align:center;">بیمه</th>
+                                <th style="text-align:center;">مالیات</th>
+                                <th style="text-align:center;">مبنا</th>
+                                <th style="text-align:center;">عملیات</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @if (!Lines.Any())
+                            {
+                                <tr><td colspan="6" style="text-align:center; padding:20px; color:#94a3b8;">هیچ آیتمی برای این حکم ثبت نشده است.</td></tr>
+                            }
+                            @foreach (var item in Lines)
+                            {
+                                <tr style="background: @(CurrentLine.ITEM_ID == item.ITEM_ID ? "var(--p2-bg-hover)" : "transparent")">
+                                    <td><b>@item.ITEM_NAME</b></td>
+                                    <td class="p2-text-mono p2-text-primary" style="text-align:center; font-weight:bold;">@item.AMOUNT.ToString("N0")</td>
+                                    <td style="text-align:center; color: var(--p2-text-muted);">@item.InsText</td>
+                                    <td style="text-align:center; color: var(--p2-text-muted);">@item.TaxText</td>
+                                    <td style="text-align:center; color: var(--p2-text-muted);">@item.BasisText</td>
+                                    <td style="text-align:center; min-width: 150px;">
+                                        <button class="btn-ghost-pay2 p2-text-primary" @onclick="() => EditLine(item)">ویرایش</button>
+                                        <button class="btn-ghost-pay2 p2-text-danger" @onclick="() => DeleteLine(item)">حذف</button>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+        </div>
+
+        <div class="pay2-modal-footer">
+            <button class="btn-outline-pay2" @onclick="Close" style="border-radius:20px; padding:8px 24px;">بازگشت به لیست احکام</button>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public bool IsOpen { get; set; }
+    [Parameter] public int DecreeId { get; set; }
+    [Parameter] public long DecreeDate { get; set; }
+    [Parameter] public EventCallback OnClose { get; set; }
+
+    List<Pay2DecreeLineDto> Lines = new();
+    List<LookupDto<int>> ItemDefs = new();
+    Pay2DecreeLineDto CurrentLine = new();
+
+    string? CurrentAmountStr;
+    bool IsSaving = false;
+    bool IsEditing = false;
+
+    private int _lastProcessedDecId = -1;
+    private bool _lastOpenState = false;
+    private bool _isDataLoaded = false;
+
+    // لیست‌های Dropdown با نوع int
+    // لیست‌های Dropdown (استفاده از شناسه 3 به جای 0 برای جلوگیری از مخفی شدن متن در Blazor)
+    List<LookupDto<int>> OverrideOptions = new() {
+        new(3, "طبق تعریف پایه"), new(1, "مشمول"), new(2, "معاف")
+    };
+    List<LookupDto<int>> BasisOptions = new() {
+        new(3, "طبق تعریف پایه"), new(1, "روزانه"), new(2, "ماهیانه")
+    };
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (IsOpen && (!_lastOpenState || DecreeId != _lastProcessedDecId))
+        {
+            _lastOpenState = true;
+            _lastProcessedDecId = DecreeId;
+            _isDataLoaded = false;
+
+            ResetForm();
+            await InitializeDataAsync();
+        }
+        else if (!IsOpen)
+        {
+            _lastOpenState = false;
+            _lastProcessedDecId = -1;
+            _isDataLoaded = false;
+        }
+    }
+
+    private async Task InitializeDataAsync()
+    {
+        try
+        {
+            // منتظر می‌مانیم تا هم لیست تعاریف آیتم‌ها و هم اقلام ریالی این حکم به طور کامل لود شوند
+            ItemDefs = await EmployeeApi.GetItemDefsLookupAsync();
+            Lines = await EmployeeApi.GetDecreeLinesAsync(DecreeId);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine(ex.Message);
+        }
+        finally
+        {
+            // پس از دریافت کامل اطلاعات، قفل رندر باز می‌شود
+            _isDataLoaded = true;
+            StateHasChanged();
+        }
+    }
+
+    void ResetForm()
+    {
+        CurrentLine = new Pay2DecreeLineDto();
+        CurrentAmountStr = null;
+        IsEditing = false;
+    }
+
+    void EditLine(Pay2DecreeLineDto item)
+    {
+        CurrentLine = new Pay2DecreeLineDto
+        {
+            DEC_ID = item.DEC_ID,
+            ITEM_ID = item.ITEM_ID,
+            ITEM_NAME = item.ITEM_NAME,
+            AMOUNT = item.AMOUNT,
+
+            // این سه مقدار اصل کاری هستند که باید منتقل شوند
+            INS_OV = item.INS_OV,
+            TAX_OV = item.TAX_OV,
+            BASIS_OV = item.BASIS_OV
+        };
+
+        CurrentAmountStr = CurrentLine.AMOUNT.ToString();
+        IsEditing = true;
+
+        StateHasChanged();
+    }
+
+    async Task SubmitSave()
+    {
+        if (CurrentLine.ITEM_ID == 0)
+        {
+            Snackbar.Add("انتخاب آیتم حقوقی الزامی است.", MudBlazor.Severity.Warning); return;
+        }
+
+        long.TryParse(CurrentAmountStr?.Replace(",", ""), out long amt);
+
+        CurrentLine.DEC_ID = DecreeId;
+        CurrentLine.AMOUNT = amt;
+
+        IsSaving = true;
+        try
+        {
+            await EmployeeApi.SaveDecreeLineAsync(CurrentLine);
+            Snackbar.Add("آیتم ریالی با موفقیت ثبت شد.", MudBlazor.Severity.Success);
+            ResetForm();
+
+            // لود مجدد لیست برای نمایش تغییرات جدید
+            Lines = await EmployeeApi.GetDecreeLinesAsync(DecreeId);
+        }
+        catch (Exception ex) { Snackbar.Add(ex.Message, MudBlazor.Severity.Error); }
+        finally { IsSaving = false; }
+    }
+
+    async Task DeleteLine(Pay2DecreeLineDto item)
+    {
+        var parameters = new MudBlazor.DialogParameters
+        {
+            ["Title"] = "حذف آیتم",
+            ["ContentText"] = $"آیا از حذف آیتم ریالی «{item.ITEM_NAME}» از این حکم اطمینان دارید؟",
+            ["ConfirmButtonText"] = "بله، حذف کن",
+            ["CancelButtonText"] = "انصراف"
+        };
+        var options = new MudBlazor.DialogOptions { CloseButton = false, MaxWidth = MudBlazor.MaxWidth.ExtraSmall };
+
+        var dialog = DialogService.Show<Safir.Client.Shared.ConfirmDialog>("تایید حذف", parameters, options);
+        var result = await dialog.Result;
+
+        if (!result.Cancelled)
+        {
+            try
+            {
+                await EmployeeApi.DeleteDecreeLineAsync(item.DEC_ID, item.ITEM_ID);
+                Snackbar.Add("آیتم با موفقیت حذف شد.", MudBlazor.Severity.Success);
+                if (CurrentLine.ITEM_ID == item.ITEM_ID) ResetForm();
+
+                Lines = await EmployeeApi.GetDecreeLinesAsync(DecreeId);
+            }
+            catch (Exception ex) { Snackbar.Add("خطا در حذف: " + ex.Message, MudBlazor.Severity.Error); }
+        }
+    }
+
+    async Task Close() => await OnClose.InvokeAsync();
+}

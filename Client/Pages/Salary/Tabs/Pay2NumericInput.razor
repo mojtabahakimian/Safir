@@ -16,6 +16,7 @@
        disabled="@Disabled"
        readonly="@ReadOnly"
        dir="@Direction"
+       title="@ToolTip"
        @oninput="HandleInputAsync"
        @onblur="HandleBlurAsync"
        @onfocus="HandleFocusAsync" />
@@ -44,6 +45,7 @@
 
     [Parameter] public NumericInputMode InputMode { get; set; } = NumericInputMode.None;
     [Parameter] public int MaxLength { get; set; } = 20;
+    [Parameter] public bool IsDigitGroupActive { get; set; }
     [Parameter] public bool ThreeTwoZero { get; set; }
     [Parameter] public int MaxDecimalPlaces { get; set; } = 2;
     [Parameter] public string? Placeholder { get; set; }
@@ -53,6 +55,7 @@
     [Parameter] public string Direction { get; set; } = "rtl";
     [Parameter] public EventCallback<FocusEventArgs> OnBlur { get; set; }
     [Parameter] public EventCallback<FocusEventArgs> OnFocus { get; set; }
+    [Parameter] public string? ToolTip { get; set; }
 
     private int SafeMaxLength => Math.Max(0, MaxLength);
     private int SafeMaxDecimalPlaces => Math.Max(0, MaxDecimalPlaces);

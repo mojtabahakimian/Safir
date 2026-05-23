@@ -1,0 +1,288 @@
+﻿@using Safir.Shared.Models.Salary
+@using Safir.Shared.Models
+@inject Safir.Client.Services.Pay2EmployeeApiService EmployeeApi
+@inject ISnackbar Snackbar
+@inject MudBlazor.IDialogService DialogService
+
+@if (IsOpen)
+{
+    <div class="pay2-select-backdrop" style="background: rgba(15,23,42,0.6); z-index: 2999;" @onclick="Close"></div>
+
+    <!-- کانتینر اصلی مدال با قابلیت تغییر سایز و اسکرول داخلی -->
+    <div class="card-custom pay2-modal-container">
+
+        <!-- Header ثابت -->
+        <div class="pay2-modal-header p2-card-header" style="margin:0;">
+            <h5 style="margin:0; font-size:18px;">احکام کارگزینی: @EmployeeName</h5>
+            <button class="btn-ghost-pay2" @onclick="Close"><i class="bi bi-x-lg"></i></button>
+        </div>
+
+        <!-- Body قابل اسکرول -->
+        <div class="pay2-modal-body">
+
+            <div class="p2-sub-card-title"><i class="bi bi-file-earmark-plus"></i> ثبت / ویرایش حکم جدید</div>
+
+            <div class="form-grid-4 p2-mb-16">
+                <div class="form-field">
+                    <label>تاریخ صدور (شمسی) *</label>
+                    <Pay2NumericInput @bind-Value="IssuedDateStr" InputMode="Pay2NumericInput.NumericInputMode.PersianDate" Direction="ltr" />
+                </div>
+                <div class="form-field">
+                    <label>تاریخ شروع اجرا *</label>
+                    <Pay2NumericInput @bind-Value="EffFromStr" InputMode="Pay2NumericInput.NumericInputMode.PersianDate" Direction="ltr" />
+                </div>
+                <div class="form-field">
+                    <label>تاریخ پایان اجرا</label>
+                    <Pay2NumericInput @bind-Value="EffToStr" InputMode="Pay2NumericInput.NumericInputMode.PersianDate" Direction="ltr" Placeholder="خالی = تا حکم بعدی" />
+                </div>
+                <div class="form-field">
+                    <label>استفاده از قالب (ایجاد خودکار آیتم‌ها)</label>
+                    <Pay2Select TItem="LookupDto<int>" TValue="int?" Items="Templates" @bind-Value="CurrentDecree.TMPL_ID" TextSelector="x => x.Name" ValueSelector="x => x.Id" Placeholder="— انتخاب کنید —" Clearable="true" />
+                </div>
+            </div>
+
+            <div class="form-field p2-mb-16">
+                <label>توضیحات حکم</label>
+                <input class="pay2-input" type="text" @bind="CurrentDecree.NOTES" />
+            </div>
+
+            <div class="form-grid-4 p2-mb-16" style="align-items: end;">
+                <div class="form-field">
+                    <label>مدرک تحصیلی در این حکم</label>
+                    <Pay2Select TItem="LookupDto<byte?>" TValue="byte?" Items="EduOptions" @bind-Value="CurrentDecree.EDU_LEVEL" TextSelector="x => x.Name" ValueSelector="x => x.Id" Clearable="true" Placeholder="— انتخاب کنید —" />
+                </div>
+                <div class="form-field">
+                    <label>وضعیت تأهل</label>
+                    <Pay2Select TItem="LookupDto<byte>" TValue="byte" Items="MaritalOptions" @bind-Value="CurrentDecree.MARITAL" TextSelector="x => x.Name" ValueSelector="x => x.Id" Clearable="false" />
+                </div>
+
+                <div class="form-field" style="display:flex; flex-direction:row; gap:16px; align-items:center; height:42px;">
+                    <label style="margin:0; font-weight:600; cursor:pointer;">
+                        <input type="checkbox" @bind="CurrentDecree.IS_MANAGER" style="vertical-align: middle;" /> پست مدیریتی؟
+                    </label>
+                    <label style="margin:0; font-weight:700; color:var(--p2-success-text); cursor:pointer;">
+                        <input type="checkbox" @bind="CurrentDecree.IS_CONFIRMED" style="vertical-align: middle;" /> تأیید نهایی
+                    </label>
+                </div>
+
+                <div style="display:flex; justify-content:flex-end; gap:10px;">
+                    @if (CurrentDecree.DEC_ID > 0)
+                    {
+                        <button class="btn-outline-pay2" @onclick="ResetForm">انصراف</button>
+                    }
+                    <button class="btn-primary-pay2" @onclick="SubmitSave" disabled="@IsSaving">
+                        @if (IsSaving)
+                        {
+                            <span class="p2-spinner"></span>
+                        }
+                        else
+                        {
+                            <span>ذخیره حکم</span>
+                        }
+                    </button>
+                </div>
+            </div>
+
+            <hr class="p2-divider" />
+
+            <!-- بخش لیست سوابق احکام -->
+            <div class="p2-sub-card-title"><i class="bi bi-clock-history"></i> سوابق احکام پرسنل</div>
+
+            <!-- کانتینر مخصوص جدول برای اسکرول افقی در موبایل -->
+            <div class="pay2-table-responsive">
+                <table class="p2-table">
+                    <thead style="position: sticky; top: 0; z-index: 10;">
+                        <tr>
+                            <th style="text-align:center;">صدور</th>
+                            <th style="text-align:center;">شروع اجرا</th>
+                            <th style="text-align:center;">پایان اجرا</th>
+                            <th>قالب پایه</th>
+                            <th style="text-align:center;">تأیید شده</th>
+                            <th style="text-align:center;">عملیات</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @if (!Decrees.Any())
+                        {
+                            <tr><td colspan="6" style="text-align:center; padding:20px; color:#94a3b8;">هیچ حکمی برای این پرسنل ثبت نشده است.</td></tr>
+                        }
+                        @foreach (var dec in Decrees)
+                        {
+                            <tr style="background: @(CurrentDecree.DEC_ID == dec.DEC_ID ? "var(--p2-primary-light)" : "transparent")">
+                                <td class="p2-text-mono" style="text-align:center;">@dec.ISSUED_DATE</td>
+                                <td class="p2-text-mono p2-text-primary" style="text-align:center;"><b>@dec.EFF_FROM</b></td>
+                                <td class="p2-text-mono" style="text-align:center;">@(dec.EFF_TO?.ToString() ?? "—")</td>
+                                <td class="p2-text-muted">@(dec.TemplateName ?? "—")</td>
+                                <td style="text-align:center;">
+                                    @if (dec.IS_CONFIRMED)
+                                    {
+                                        <i class="bi bi-check-square-fill" style="color:var(--p2-success-text); font-size:16px;"></i>
+                                    }
+                                    else
+                                    {
+                                        <i class="bi bi-square" style="color:var(--p2-text-light); font-size:16px;"></i>
+                                    }
+                                </td>
+                                <td style="text-align:center; min-width: 250px;">
+                                    <button class="btn-ghost-pay2" style="color:#8b5cf6;" @onclick="() => OpenDecreeLines(dec)">آیتم‌های ریالی</button>
+                                    <button class="btn-ghost-pay2 p2-text-primary" @onclick="() => EditDecree(dec)">ویرایش</button>
+                                    <button class="btn-ghost-pay2 p2-text-danger" @onclick="() => DeleteDecree(dec)">حذف</button>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+
+        </div>
+
+        <!-- Footer ثابت -->
+        <div class="pay2-modal-footer">
+            <button class="btn-outline-pay2" @onclick="Close" style="border-radius:20px; padding:8px 24px;">بستن صفحه</button>
+        </div>
+    </div>
+
+    <!-- فراخوانی مدال اقلام ریالی -->
+    <DecreeLineModal IsOpen="ShowDecreeLineModal"
+                     DecreeId="SelectedDecForLine.DEC_ID"
+                     DecreeDate="SelectedDecForLine.EFF_FROM"
+                     OnClose="CloseDecreeLineModal" />
+}
+
+@code {
+    [Parameter] public bool IsOpen { get; set; }
+    [Parameter] public int EmployeeId { get; set; }
+    [Parameter] public int WorkshopId { get; set; }
+    [Parameter] public string EmployeeName { get; set; } = "";
+    [Parameter] public EventCallback OnClose { get; set; }
+
+    List<Pay2DecreeDto> Decrees = new();
+    List<LookupDto<int>> Templates = new();
+    Pay2DecreeDto CurrentDecree = new();
+
+    string? IssuedDateStr;
+    string? EffFromStr;
+    string? EffToStr;
+    bool IsSaving = false;
+    bool _hasInitialized = false;
+
+    // متغیرهای مدیریت مدال دوم (آیتم‌های ریالی)
+    bool ShowDecreeLineModal = false;
+    Pay2DecreeDto SelectedDecForLine = new();
+
+    List<LookupDto<byte>> MaritalOptions = new() { new((byte)1, "متأهل"), new((byte)2, "مجرد") };
+    List<LookupDto<byte?>> EduOptions = new() {
+        new((byte)1, "زیر دیپلم"), new((byte)2, "دیپلم"), new((byte)3, "فوق دیپلم"),
+        new((byte)4, "لیسانس"), new((byte)5, "فوق لیسانس"), new((byte)6, "دکترا")
+    };
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (IsOpen && !_hasInitialized)
+        {
+            _hasInitialized = true;
+            ResetForm();
+            await LoadData();
+        }
+        else if (!IsOpen)
+        {
+            _hasInitialized = false;
+        }
+    }
+
+    async Task LoadData()
+    {
+        try
+        {
+            Templates = await EmployeeApi.GetTemplatesLookupAsync();
+            Decrees = await EmployeeApi.GetDecreesAsync(EmployeeId);
+        }
+        catch (Exception ex) { Snackbar.Add(ex.Message, MudBlazor.Severity.Error); }
+    }
+
+    void ResetForm()
+    {
+        CurrentDecree = new Pay2DecreeDto { MARITAL = 1 };
+        IssuedDateStr = Safir.Shared.Utility.CL_Tarikh.GetCurrentPersianDateAsLong().ToString();
+        EffFromStr = IssuedDateStr;
+        EffToStr = null;
+    }
+
+    void EditDecree(Pay2DecreeDto dec)
+    {
+        CurrentDecree = System.Text.Json.JsonSerializer.Deserialize<Pay2DecreeDto>(System.Text.Json.JsonSerializer.Serialize(dec))!;
+        IssuedDateStr = CurrentDecree.ISSUED_DATE.ToString();
+        EffFromStr = CurrentDecree.EFF_FROM.ToString();
+        EffToStr = CurrentDecree.EFF_TO?.ToString();
+    }
+
+    async Task SubmitSave()
+    {
+        long.TryParse(IssuedDateStr?.Replace("/", ""), out long issDate);
+        long.TryParse(EffFromStr?.Replace("/", ""), out long fromDate);
+        long.TryParse(EffToStr?.Replace("/", ""), out long toDate);
+
+        if (issDate <= 13000000 || fromDate <= 13000000)
+        {
+            Snackbar.Add("تاریخ صدور و شروع اجرا نامعتبر است.", MudBlazor.Severity.Warning); return;
+        }
+
+        CurrentDecree.EMP_ID = EmployeeId;
+        CurrentDecree.WS_ID = WorkshopId;
+        CurrentDecree.ISSUED_DATE = issDate;
+        CurrentDecree.EFF_FROM = fromDate;
+        CurrentDecree.EFF_TO = toDate > 13000000 ? toDate : null;
+
+        IsSaving = true;
+        try
+        {
+            await EmployeeApi.SaveDecreeAsync(CurrentDecree);
+            Snackbar.Add("حکم با موفقیت ثبت شد.", MudBlazor.Severity.Success);
+            ResetForm();
+            await LoadData();
+        }
+        catch (Exception ex) { Snackbar.Add(ex.Message, MudBlazor.Severity.Error); }
+        finally { IsSaving = false; }
+    }
+
+    async Task DeleteDecree(Pay2DecreeDto dec)
+    {
+        var parameters = new MudBlazor.DialogParameters
+        {
+            ["Title"] = "حذف حکم",
+            ["ContentText"] = $"آیا از حذف این حکم (شروع اجرا: {dec.EFF_FROM}) اطمینان دارید؟ تمام آیتم‌های ریالی این حکم نیز حذف خواهند شد.",
+            ["ConfirmButtonText"] = "بله، حذف کن",
+            ["CancelButtonText"] = "انصراف"
+        };
+        var options = new MudBlazor.DialogOptions { CloseButton = false, MaxWidth = MudBlazor.MaxWidth.ExtraSmall };
+
+        var dialog = DialogService.Show<Safir.Client.Shared.ConfirmDialog>("تایید حذف", parameters, options);
+        var result = await dialog.Result;
+
+        if (!result.Cancelled)
+        {
+            try
+            {
+                await EmployeeApi.DeleteDecreeAsync(dec.DEC_ID);
+                Snackbar.Add("حکم کارگزینی با موفقیت حذف شد.", MudBlazor.Severity.Success);
+                if (CurrentDecree.DEC_ID == dec.DEC_ID) ResetForm();
+                await LoadData();
+            }
+            catch (Exception ex) { Snackbar.Add("خطا در حذف: " + ex.Message, MudBlazor.Severity.Error); }
+        }
+    }
+
+    // متدهای باز و بسته کردن مودال اقلام
+    void OpenDecreeLines(Pay2DecreeDto dec)
+    {
+        SelectedDecForLine = dec;
+        ShowDecreeLineModal = true;
+    }
+
+    async Task CloseDecreeLineModal()
+    {
+        ShowDecreeLineModal = false;
+    }
+
+    async Task Close() => await OnClose.InvokeAsync();
+}

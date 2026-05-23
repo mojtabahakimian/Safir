@@ -1,0 +1,329 @@
+﻿@using Safir.Shared.Models.Salary
+@using Safir.Shared.Models
+@inject Safir.Client.Services.Pay2EmployeeApiService EmployeeApi
+@inject ISnackbar Snackbar
+@inject MudBlazor.IDialogService DialogService
+
+@if (IsOpen)
+{
+    <div class="pay2-select-backdrop" style="background: rgba(15,23,42,0.6); z-index: 2999;" @onclick="Close"></div>
+
+    <div class="card-custom pay2-modal-container">
+
+        <!-- Header -->
+        <div class="pay2-modal-header p2-card-header" style="margin:0;">
+            <h5 style="margin:0; font-size:18px;">مدیریت وام‌ها: @EmployeeName</h5>
+            <button class="btn-ghost-pay2" @onclick="Close"><i class="bi bi-x-lg"></i></button>
+        </div>
+
+        <div class="pay2-modal-body">
+            @if (!_isDataLoaded)
+            {
+                <div style="display:flex; justify-content:center; align-items:center; height:200px; flex-direction:column; gap:15px;">
+                    <span class="p2-spinner" style="width:40px; height:40px; border-color:var(--p2-primary); border-top-color:transparent;"></span>
+                    <span style="font-size:14px; color:var(--p2-primary); font-weight:600;">در حال بارگذاری اطلاعات وام‌ها...</span>
+                </div>
+            }
+            else
+            {
+                <div class="p2-sub-card-title"><i class="bi bi-cash-coin"></i> ثبت / ویرایش وام جدید (به همراه تولید خودکار اقساط)</div>
+
+                <div class="form-grid-4 p2-mb-16">
+                    <div class="form-field">
+                        <label>نوع وام *</label>
+                        <Pay2Select TItem="LookupDto<byte>" TValue="byte" Items="LoanTypeOptions" @bind-Value="CurrentLoan.LOAN_TYPE" TextSelector="x => x.Name" ValueSelector="x => x.Id" Clearable="false" />
+                    </div>
+                    <div class="form-field">
+                        <label>تاریخ اعطا (شمسی) *</label>
+                        <Pay2NumericInput @bind-Value="LoanDateStr" InputMode="Pay2NumericInput.NumericInputMode.PersianDate" Direction="ltr" />
+                    </div>
+                    <div class="form-field">
+                        <label>مبلغ کل وام (ریال) *</label>
+                        <Pay2NumericInput @bind-Value="AmountStr" MaxLength="16" Direction="ltr" />
+                    </div>
+                    <div class="form-field">
+                        <label>مبلغ هر قسط (ریال) *</label>
+                        <Pay2NumericInput @bind-Value="InstAmountStr" MaxLength="16" Direction="ltr" />
+                    </div>
+                </div>
+
+                <div class="form-grid-3 p2-mb-16">
+                    <div class="form-field">
+                        <label>تعداد کل اقساط *</label>
+                        <Pay2NumericInput @bind-Value="TotalInstStr" MaxLength="4" Direction="ltr" />
+                    </div>
+                    <div class="form-field">
+                        <label>ماه شروع بازپرداخت (YYYYMM00) *</label>
+                        <Pay2NumericInput @bind-Value="FirstPayStr" InputMode="Pay2NumericInput.NumericInputMode.PersianDate" Direction="ltr" Placeholder="مثال: 14030200" />
+                    </div>
+                    <div class="form-field">
+                        <label>علت / توضیحات</label>
+                        <input class="pay2-input" type="text" @bind="CurrentLoan.PURPOSE" />
+                    </div>
+                </div>
+
+                <div class="form-grid-2 p2-mb-16" style="align-items: center;">
+                    <div class="form-field">
+                        <div class="pay2-wpf-checkbox-box">
+                            <label class="pay2-wpf-checkbox-label" style="color: var(--p2-primary);">
+                                <input type="checkbox" @bind="CurrentLoan.IS_ACTIVE" style="vertical-align: middle;" /> وام فعال است و از حقوق کسر می‌گردد
+                            </label>
+                        </div>
+                    </div>
+
+                    <div style="display:flex; justify-content:flex-end; gap:10px;">
+                        @if (CurrentLoan.LOAN_ID > 0)
+                        {
+                            <button class="btn-outline-pay2" @onclick="ResetForm">انصراف</button>
+                        }
+                        <button class="btn-primary-pay2" @onclick="SubmitSave" disabled="@IsSaving">
+                            @if (IsSaving)
+                            {
+                                <span class="p2-spinner"></span>
+                            }
+                            else
+                            {
+
+                                <span>ذخیره وام و ایجاد اقساط</span>
+                            }
+                        </button>
+                    </div>
+                </div>
+
+                <hr class="p2-divider" />
+
+                <!-- جدول سوابق وام -->
+                <div class="p2-sub-card-title"><i class="bi bi-card-checklist"></i> لیست وام‌های پرسنل</div>
+
+                <div class="pay2-table-responsive">
+                    <table class="p2-table">
+                        <thead style="position: sticky; top: 0; z-index: 10;">
+                            <tr>
+                                <th style="text-align:center;">نوع وام</th>
+                                <th style="text-align:center;">تاریخ اعطا</th>
+                                <th style="text-align:center;">مبلغ کل (ریال)</th>
+                                <th style="text-align:center;">مبلغ قسط</th>
+                                <th style="text-align:center;">تعداد</th>
+                                <th style="text-align:center;">پرداخت شده</th>
+                                <th style="text-align:center;">مانده وام (ریال)</th>
+                                <th style="text-align:center;">فعال</th>
+                                <th style="text-align:center;">عملیات</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @if (!Loans.Any())
+                            {
+                                <tr><td colspan="9" style="text-align:center; padding:20px; color:#94a3b8;">هیچ وامی برای این پرسنل ثبت نشده است.</td></tr>
+                            }
+                            @foreach (var ln in Loans)
+                            {
+                                <tr style="background: @(CurrentLoan.LOAN_ID == ln.LOAN_ID ? "var(--p2-primary-light)" : "transparent")">
+                                    <td class="p2-text-muted" style="text-align:center;">@ln.LoanTypeText</td>
+                                    <td class="p2-text-mono" style="text-align:center;">@ln.LOAN_DATE</td>
+                                    <td class="p2-text-mono p2-text-primary" style="text-align:center; font-weight:bold;">@ln.AMOUNT.ToString("N0")</td>
+                                    <td class="p2-text-mono" style="text-align:center;">@ln.INSTALLMENT.ToString("N0")</td>
+                                    <td class="p2-text-mono" style="text-align:center;">@ln.TOTAL_INST</td>
+                                    <td class="p2-text-mono" style="text-align:center; color:var(--p2-success-text);">@ln.PAID_INST</td>
+                                    <td class="p2-text-mono p2-text-danger" style="text-align:center; font-weight:bold;">@ln.BALANCE.ToString("N0")</td>
+                                    <td style="text-align:center;">
+                                        @if (ln.IS_ACTIVE)
+                                        {
+                                            <i class="bi bi-check-square-fill" style="color:var(--p2-success-text); font-size:16px;"></i>
+                                        }
+                                        else
+                                        {
+
+                                            <i class="bi bi-square" style="color:var(--p2-text-light); font-size:16px;"></i>
+                                        }
+                                    </td>
+                                    <td style="text-align:center; min-width: 150px;">
+                                        <button class="btn-ghost-pay2 p2-text-primary" @onclick="() => EditLoan(ln)">ویرایش</button>
+                                        <button class="btn-ghost-pay2 p2-text-danger" @onclick="() => DeleteLoan(ln)">حذف</button>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+        </div>
+
+        <div class="pay2-modal-footer">
+            <button class="btn-outline-pay2" @onclick="Close" style="border-radius:20px; padding:8px 24px;">بستن فرم</button>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public bool IsOpen { get; set; }
+    [Parameter] public int EmployeeId { get; set; }
+    [Parameter] public int WorkshopId { get; set; } // برای ذخیره کارگاه در جدول وام
+    [Parameter] public string EmployeeName { get; set; } = "";
+    [Parameter] public EventCallback OnClose { get; set; }
+
+    List<Pay2LoanDto> Loans = new();
+    Pay2LoanDto CurrentLoan = new();
+
+    string? LoanDateStr;
+    string? AmountStr;
+    string? InstAmountStr;
+    string? TotalInstStr;
+    string? FirstPayStr;
+
+    bool IsSaving = false;
+    private int _lastProcessedEmpId = -1;
+    private bool _lastOpenState = false;
+    private bool _isDataLoaded = false;
+
+    List<LookupDto<byte>> LoanTypeOptions = new() {
+        new(1, "قرض‌الحسنه"), new(2, "رفاهی"), new(3, "ضروری"), new(4, "مسکن"), new(5, "سایر")
+    };
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (IsOpen && (!_lastOpenState || EmployeeId != _lastProcessedEmpId))
+        {
+            _lastOpenState = true;
+            _lastProcessedEmpId = EmployeeId;
+            _isDataLoaded = false;
+
+            ResetForm();
+            await InitializeDataAsync();
+        }
+        else if (!IsOpen)
+        {
+            _lastOpenState = false;
+            _lastProcessedEmpId = -1;
+            _isDataLoaded = false;
+        }
+    }
+
+    private async Task InitializeDataAsync()
+    {
+        try
+        {
+            Loans = await EmployeeApi.GetLoansAsync(EmployeeId);
+        }
+        catch (Exception ex) { Console.WriteLine(ex.Message); }
+        finally
+        {
+            _isDataLoaded = true;
+            StateHasChanged();
+        }
+    }
+
+    void ResetForm()
+    {
+        CurrentLoan = new Pay2LoanDto { LOAN_TYPE = 1, IS_ACTIVE = true };
+
+        // خواندن تاریخ روز شمسی برای پیش‌فرض
+        string currentShamsi = Safir.Shared.Utility.CL_Tarikh.GetCurrentPersianDateAsLong().ToString();
+        LoanDateStr = currentShamsi;
+
+        // پیش‌فرض ماه شروع بازپرداخت (YYYYMM00)
+        FirstPayStr = currentShamsi.Substring(0, 6) + "00";
+
+        AmountStr = null;
+        InstAmountStr = null;
+        TotalInstStr = null;
+    }
+
+    void EditLoan(Pay2LoanDto item)
+    {
+        CurrentLoan = new Pay2LoanDto
+        {
+            LOAN_ID = item.LOAN_ID,
+            EMP_ID = item.EMP_ID,
+            WS_ID = item.WS_ID,
+            LOAN_TYPE = item.LOAN_TYPE,
+            LOAN_DATE = item.LOAN_DATE,
+            AMOUNT = item.AMOUNT,
+            INSTALLMENT = item.INSTALLMENT,
+            TOTAL_INST = item.TOTAL_INST,
+            PAID_INST = item.PAID_INST,
+            FIRST_PAY = item.FIRST_PAY,
+            PURPOSE = item.PURPOSE,
+            IS_ACTIVE = item.IS_ACTIVE
+        };
+
+        LoanDateStr = CurrentLoan.LOAN_DATE.ToString();
+        AmountStr = CurrentLoan.AMOUNT.ToString();
+        InstAmountStr = CurrentLoan.INSTALLMENT.ToString();
+        TotalInstStr = CurrentLoan.TOTAL_INST.ToString();
+        FirstPayStr = CurrentLoan.FIRST_PAY.ToString();
+
+        StateHasChanged();
+    }
+
+    async Task SubmitSave()
+    {
+        long.TryParse(LoanDateStr?.Replace("/", ""), out long lDate);
+        long.TryParse(FirstPayStr?.Replace("/", ""), out long fPay);
+        long.TryParse(AmountStr?.Replace(",", ""), out long amt);
+        long.TryParse(InstAmountStr?.Replace(",", ""), out long instAmt);
+        short.TryParse(TotalInstStr, out short totInst);
+
+        if (lDate <= 13000000 || fPay <= 13000000)
+        {
+            Snackbar.Add("تاریخ اعطا و ماه شروع بازپرداخت نامعتبر است.", MudBlazor.Severity.Warning); return;
+        }
+        if (amt <= 0 || instAmt <= 0 || totInst <= 0)
+        {
+            Snackbar.Add("مبلغ وام، مبلغ قسط و تعداد اقساط باید بیشتر از صفر باشد.", MudBlazor.Severity.Warning); return;
+        }
+
+        CurrentLoan.EMP_ID = EmployeeId;
+        CurrentLoan.WS_ID = WorkshopId;
+        CurrentLoan.LOAN_DATE = lDate;
+        CurrentLoan.FIRST_PAY = fPay;
+        CurrentLoan.AMOUNT = amt;
+        CurrentLoan.INSTALLMENT = instAmt;
+        CurrentLoan.TOTAL_INST = totInst;
+
+        IsSaving = true;
+        try
+        {
+            await EmployeeApi.SaveLoanAsync(CurrentLoan);
+            Snackbar.Add("وام و اقساط آن با موفقیت ذخیره شد.", MudBlazor.Severity.Success);
+            ResetForm();
+            Loans = await EmployeeApi.GetLoansAsync(EmployeeId);
+        }
+        catch (Exception ex) { Snackbar.Add(ex.Message, MudBlazor.Severity.Error); }
+        finally { IsSaving = false; }
+    }
+
+    async Task DeleteLoan(Pay2LoanDto item)
+    {
+        if (item.PAID_INST > 0)
+        {
+            Snackbar.Add("این وام دارای اقساط پرداخت شده است و قابل حذف فیزیکی نیست. لطفاً تیک 'فعال' آن را بردارید.", MudBlazor.Severity.Warning);
+            return;
+        }
+
+        var parameters = new MudBlazor.DialogParameters
+        {
+            ["Title"] = "حذف وام",
+            ["ContentText"] = $"آیا از حذف کامل این وام و اقساط آن اطمینان دارید؟",
+            ["ConfirmButtonText"] = "بله، حذف کن",
+            ["CancelButtonText"] = "انصراف"
+        };
+        var options = new MudBlazor.DialogOptions { CloseButton = false, MaxWidth = MudBlazor.MaxWidth.ExtraSmall };
+
+        var dialog = DialogService.Show<Safir.Client.Shared.ConfirmDialog>("تایید حذف", parameters, options);
+        var result = await dialog.Result;
+
+        if (!result.Cancelled)
+        {
+            try
+            {
+                await EmployeeApi.DeleteLoanAsync(item.LOAN_ID);
+                Snackbar.Add("وام و تمامی اقساط آن با موفقیت حذف شد.", MudBlazor.Severity.Success);
+                if (CurrentLoan.LOAN_ID == item.LOAN_ID) ResetForm();
+                Loans = await EmployeeApi.GetLoansAsync(EmployeeId);
+            }
+            catch (Exception ex) { Snackbar.Add("خطا در حذف: " + ex.Message, MudBlazor.Severity.Error); }
+        }
+    }
+
+    async Task Close() => await OnClose.InvokeAsync();
+}
