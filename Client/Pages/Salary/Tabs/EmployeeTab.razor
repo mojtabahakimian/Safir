@@ -49,9 +49,10 @@
                                     }
                                 </td>
                                 <td><span class="@(emp.IS_ACTIVE ? "p2-badge-success" : "p2-badge-neutral")">@emp.StatusText</span></td>
-                                <td style="text-align:center;">
+                                <td style="text-align:center; min-width: 250px;">
                                     <button class="btn-ghost-pay2 p2-text-primary" @onclick="() => OpenEditEmpModal(emp)"><i class="bi bi-pencil"></i> ویرایش</button>
                                     <button class="btn-ghost-pay2" style="color:#8b5cf6;" @onclick="() => OpenDecreeModal(emp)"><i class="bi bi-file-earmark-person"></i> احکام</button>
+                                    <button class="btn-ghost-pay2" style="color:#f59e0b;" @onclick="() => ShowLeaveRequestModal_Click(emp)"><i class="bi bi-calendar-plus"></i> ثبت مرخصی</button>
                                 </td>
                             </tr>
                         </Virtualize>
@@ -74,6 +75,12 @@
                                                                    WorkshopId="SelectedEmpForDecree.WS_ID"
                                                                    EmployeeName="@SelectedEmpForDecree.FullDisplayName"
                                                                    OnClose="() => ShowDecreeModal = false" />
+
+    <!-- اضافه شدن مدال مرخصی -->
+    <Safir.Client.Pages.Salary.Tabs.EmployeeComponents.LeaveRequestModal IsOpen="ShowLeaveModal"
+                                                                         EmployeeId="SelectedEmpForLeave.EMP_ID"
+                                                                         EmployeeName="@SelectedEmpForLeave.FullDisplayName"
+                                                                         OnClose="() => ShowLeaveModal = false" />
 
 </div>
 
@@ -158,6 +165,14 @@
     {
         SelectedEmpForDecree = emp;
         ShowDecreeModal = true;
+    }
+
+    bool ShowLeaveModal = false;
+    Pay2EmployeeDto SelectedEmpForLeave = new();
+    void ShowLeaveRequestModal_Click(Pay2EmployeeDto emp)
+    {
+        SelectedEmpForLeave = emp;
+        ShowLeaveModal = true;
     }
 
 }

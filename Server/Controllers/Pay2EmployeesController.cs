@@ -309,5 +309,67 @@ namespace Safir.Server.Controllers
             }
         }
 
+        [HttpGet("lookup")]
+        public async Task<ActionResult<IEnumerable<LookupDto<int>>>> GetEmployeesLookup()
+        {
+            const string sql = "SELECT EMP_ID AS Id, EMP_CODE + ' - ' + LAST_NAME + ' ' + FIRST_NAME AS Name FROM PAY2_EMPLOYEE WHERE IS_ACTIVE = 1";
+            return Ok(await _db.DoGetDataSQLAsync<LookupDto<int>>(sql));
+        }
+
+        [HttpGet("{empId:int}/leave-balance")]
+        public async Task<ActionResult<int>> GetLeaveBalance(int empId, [FromQuery] int year)
+        {
+            const string sql = "SELECT ISNULL(BALANCE_MIN, 0) FROM PAY2_LEAVE_BAL WHERE EMP_ID = @empId AND YEAR = @year";
+            var bal = await _db.DoGetDataSQLAsyncSingle<int?>(sql, new { empId, year });
+            return Ok(bal ?? 0);
+        }
+
+        [HttpGet("{empId:int}/leaves")]
+        public async Task<ActionResult<IEnumerable<Pay2LeaveDto>>> GetLeaves(int empId)
+        {
+            const string sql = "SELECT * FROM PAY2_LEAVE WHERE EMP_ID = @empId ORDER BY START_DATE DESC";
+            return Ok(await _db.DoGetDataSQLAsync<Pay2LeaveDto>(sql, new { empId }));
+        }
+
+        [HttpPost("leave/save")]
+        public async Task<IActionResult> SaveLeave([FromBody] Pay2LeaveDto leave)
+        {
+            var userIdString = User.FindFirstValue(ClaimTypes.NameIdentifier);
+            if (!int.TryParse(userIdString, out int userCod)) return Unauthorized();
+
+            try
+            {
+                if (leave.LEV_ID == 0)
+                {
+                    const string insertSql = @"
+                INSERT INTO PAY2_LEAVE (EMP_ID, LEV_TYPE, REQUEST_DATE, START_DATE, END_DATE, REQ_DAYS, REQ_HOURS, REQ_MINUTES, BAL_BEFORE, DESCRIPTION, REFER_TO, STATUS, CREATED_AT, CREATED_BY)
+                VALUES (@EMP_ID, @LEV_TYPE, @REQUEST_DATE, @START_DATE, @END_DATE, @REQ_DAYS, @REQ_HOURS, @REQ_MINUTES, @BAL_BEFORE, @DESCRIPTION, @REFER_TO, @STATUS, GETDATE(), @User)";
+
+                    var p = new DynamicParameters(leave);
+                    p.Add("User", userCod);
+                    await _db.DoExecuteSQLAsync(insertSql, p);
+                }
+                else
+                {
+                    const string updateSql = @"
+                UPDATE PAY2_LEAVE SET LEV_TYPE=@LEV_TYPE, START_DATE=@START_DATE, END_DATE=@END_DATE, REQ_DAYS=@REQ_DAYS, REQ_HOURS=@REQ_HOURS, REQ_MINUTES=@REQ_MINUTES, DESCRIPTION=@DESCRIPTION, REFER_TO=@REFER_TO, STATUS=@STATUS
+                WHERE LEV_ID=@LEV_ID";
+                    await _db.DoExecuteSQLAsync(updateSql, leave);
+                }
+                return Ok();
+            }
+            catch (Exception ex) { return BadRequest(ex.Message); }
+        }
+
+        [HttpDelete("leave/{levId:int}")]
+        public async Task<IActionResult> DeleteLeave(int levId)
+        {
+            try
+            {
+                await _db.DoExecuteSQLAsync("DELETE FROM PAY2_LEAVE WHERE LEV_ID = @levId", new { levId });
+                return Ok();
+            }
+            catch (Exception ex) { return BadRequest(ex.Message); }
+        }
     }
 }

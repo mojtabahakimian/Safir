@@ -1,0 +1,319 @@
+﻿@using Safir.Shared.Models.Salary
+@using Safir.Shared.Models
+@inject Safir.Client.Services.Pay2EmployeeApiService EmployeeApi
+@inject ISnackbar Snackbar
+@inject MudBlazor.IDialogService DialogService
+
+@if (IsOpen)
+{
+    <div class="pay2-select-backdrop" style="background: rgba(15,23,42,0.6); z-index: 2999;" @onclick="Close"></div>
+
+    <div class="card-custom pay2-modal-container">
+
+        <div class="pay2-modal-header p2-card-header" style="margin:0;">
+            <h5 style="margin:0; font-size:18px;">ثبت و مدیریت مرخصی: @EmployeeName</h5>
+            <button class="btn-ghost-pay2" @onclick="Close"><i class="bi bi-x-lg"></i></button>
+        </div>
+
+        <div class="pay2-modal-body">
+            @if (!_isDataLoaded)
+            {
+                <div style="display:flex; justify-content:center; align-items:center; height:200px; flex-direction:column; gap:15px;">
+                    <span class="p2-spinner" style="width:40px; height:40px; border-color:var(--p2-primary); border-top-color:transparent;"></span>
+                    <span style="font-size:14px; color:var(--p2-primary); font-weight:600;">در حال بارگذاری اطلاعات مرخصی...</span>
+                </div>
+            }
+            else
+            {
+                <div class="p2-sub-card-title"><i class="bi bi-calendar-plus"></i> ثبت / ویرایش درخواست مرخصی</div>
+
+                <div class="form-grid-3 p2-mb-16">
+                    <div class="form-field">
+                        <label>نوع مرخصی *</label>
+                        <Pay2Select TItem="LookupDto<byte>" TValue="byte" Items="LeaveTypeOptions" @bind-Value="CurrentLeave.LEV_TYPE" TextSelector="x => x.Name" ValueSelector="x => x.Id" Clearable="false" />
+                    </div>
+                    <div class="form-field">
+                        <label>تاریخ شروع (شمسی) *</label>
+                        <Pay2NumericInput @bind-Value="StartDateStr" InputMode="Pay2NumericInput.NumericInputMode.PersianDate" Direction="ltr" />
+                    </div>
+                    <div class="form-field">
+                        <label>تاریخ پایان (شمسی) *</label>
+                        <Pay2NumericInput @bind-Value="EndDateStr" InputMode="Pay2NumericInput.NumericInputMode.PersianDate" Direction="ltr" />
+                    </div>
+                </div>
+
+                <div class="form-grid-3 p2-mb-16">
+                    <div class="form-field">
+                        <label>روز *</label>
+                        <Pay2NumericInput @bind-Value="ReqDaysStr" MaxLength="3" Direction="ltr" />
+                    </div>
+                    <div class="form-field">
+                        <label>ساعت</label>
+                        <Pay2NumericInput @bind-Value="ReqHoursStr" MaxLength="2" Direction="ltr" />
+                    </div>
+                    <div class="form-field">
+                        <label>دقیقه اضافه</label>
+                        <Pay2NumericInput @bind-Value="ReqMinsStr" MaxLength="2" Direction="ltr" />
+                    </div>
+                </div>
+
+                <div class="form-grid-3 p2-mb-16">
+                    <div class="form-field" style="grid-column: span 2;">
+                        <label>توضیحات و علت</label>
+                        <input class="pay2-input" type="text" @bind="CurrentLeave.DESCRIPTION" />
+                    </div>
+                    <div class="form-field">
+                        <label>وضعیت تأیید</label>
+                        <Pay2Select TItem="LookupDto<byte>" TValue="byte" Items="StatusOptions" @bind-Value="CurrentLeave.STATUS" TextSelector="x => x.Name" ValueSelector="x => x.Id" Clearable="false" />
+                    </div>
+                </div>
+
+                <div class="form-grid-2 p2-mb-16" style="align-items: center;">
+                    <div class="form-field">
+                        <label>ارجاع به (مدیر واحد)</label>
+                        <Pay2Select TItem="LookupDto<int>" TValue="int?" Items="EmployeesLookup" @bind-Value="CurrentLeave.REFER_TO" TextSelector="x => x.Name" ValueSelector="x => x.Id" Placeholder="— انتخاب کنید —" Clearable="true" />
+                    </div>
+                    <div class="form-field">
+                        <label>مانده مرخصی فعلی پرسنل</label>
+                        <div style="background: var(--p2-info-bg); border: 1px solid var(--p2-info-border); border-radius: var(--p2-radius-md); padding: 9px 12px; color: var(--p2-primary); font-weight: bold; font-size: 13px; text-align: center;">
+                            @if (CurrentBalanceMin == 0)
+                            {
+                                <span>سابقه‌ای ثبت نشده</span>
+                            }
+                            else
+                            {
+
+                                <span>@(CurrentBalanceMin / 440m) روز (@CurrentBalanceMin دقیقه)</span>
+                            }
+                        </div>
+                    </div>
+                </div>
+
+                <div style="display:flex; justify-content:flex-start; gap:10px; margin-bottom: 24px;">
+                    <button class="btn-primary-pay2" @onclick="SubmitSave" disabled="@IsSaving">
+                        @if (IsSaving)
+                        {
+                            <span class="p2-spinner"></span>
+                        }
+                        else
+                        {
+
+                            <span>ذخیره مرخصی</span>
+                        }
+                    </button>
+                    @if (CurrentLeave.LEV_ID > 0)
+                    {
+                        <button class="btn-outline-pay2" @onclick="ResetForm">انصراف</button>
+                    }
+                </div>
+
+                <hr class="p2-divider" />
+
+                <div class="p2-sub-card-title"><i class="bi bi-clock-history"></i> تاریخچه مرخصی‌های ثبت شده</div>
+
+                <div class="pay2-table-responsive">
+                    <table class="p2-table">
+                        <thead style="position: sticky; top: 0; z-index: 10;">
+                            <tr>
+                                <th>نوع</th>
+                                <th style="text-align:center;">تاریخ شروع</th>
+                                <th style="text-align:center;">تاریخ پایان</th>
+                                <th style="text-align:center;">روز</th>
+                                <th style="text-align:center;">مانده قبلی (دق)</th>
+                                <th style="text-align:center;">معادل دقیقه</th>
+                                <th style="text-align:center;">وضعیت</th>
+                                <th style="text-align:center;">عملیات</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @if (!Leaves.Any())
+                            {
+                                <tr><td colspan="8" style="text-align:center; padding:20px; color:#94a3b8;">هیچ مرخصی‌ای برای این پرسنل ثبت نشده است.</td></tr>
+                            }
+                            @foreach (var lv in Leaves)
+                            {
+                                <tr style="background: @(CurrentLeave.LEV_ID == lv.LEV_ID ? "var(--p2-primary-light)" : "transparent")">
+                                    <td class="p2-text-muted">@lv.LeaveTypeText</td>
+                                    <td class="p2-text-mono" style="text-align:center;">@lv.START_DATE</td>
+                                    <td class="p2-text-mono" style="text-align:center;">@lv.END_DATE</td>
+                                    <td style="text-align:center; font-weight:bold;">@lv.REQ_DAYS</td>
+                                    <td class="p2-text-mono" style="text-align:center;">@(lv.BAL_BEFORE?.ToString("N0") ?? "-")</td>
+                                    <td class="p2-text-mono p2-text-primary" style="text-align:center; font-weight:bold;">@lv.TotalMinutes</td>
+                                    <td style="text-align:center;">@lv.StatusText</td>
+                                    <td style="text-align:center; min-width: 150px;">
+                                        <button class="btn-ghost-pay2 p2-text-primary" @onclick="() => EditLeave(lv)">ویرایش</button>
+                                        <button class="btn-ghost-pay2 p2-text-danger" @onclick="() => DeleteLeave(lv)">حذف</button>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+        </div>
+
+        <div class="pay2-modal-footer">
+            <button class="btn-outline-pay2" @onclick="Close" style="border-radius:20px; padding:8px 24px;">بستن فرم</button>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public bool IsOpen { get; set; }
+    [Parameter] public int EmployeeId { get; set; }
+    [Parameter] public string EmployeeName { get; set; } = "";
+    [Parameter] public EventCallback OnClose { get; set; }
+
+    List<Pay2LeaveDto> Leaves = new();
+    List<LookupDto<int>> EmployeesLookup = new();
+    Pay2LeaveDto CurrentLeave = new();
+
+    string? StartDateStr;
+    string? EndDateStr;
+    string? ReqDaysStr;
+    string? ReqHoursStr;
+    string? ReqMinsStr;
+
+    int CurrentBalanceMin = 0;
+    bool IsSaving = false;
+    private int _lastProcessedEmpId = -1;
+    private bool _lastOpenState = false;
+    private bool _isDataLoaded = false;
+
+    List<LookupDto<byte>> LeaveTypeOptions = new() {
+        new(1, "استحقاقی"), new(2, "استعلاجی"), new(3, "بدون حقوق"), new(4, "زایمان"), new(5, "مأموریت")
+    };
+    List<LookupDto<byte>> StatusOptions = new() {
+        new(1, "ثبت اولیه"), new(2, "تأیید درخواست"), new(3, "تأیید مدیر واحد"), new(4, "تأیید مدیرعامل")
+    };
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (IsOpen && (!_lastOpenState || EmployeeId != _lastProcessedEmpId))
+        {
+            _lastOpenState = true;
+            _lastProcessedEmpId = EmployeeId;
+            _isDataLoaded = false;
+
+            ResetForm();
+            await InitializeDataAsync();
+        }
+        else if (!IsOpen)
+        {
+            _lastOpenState = false;
+            _lastProcessedEmpId = -1;
+            _isDataLoaded = false;
+        }
+    }
+
+    private async Task InitializeDataAsync()
+    {
+        try
+        {
+            EmployeesLookup = await EmployeeApi.GetEmployeesLookupAsync();
+            Leaves = await EmployeeApi.GetLeavesAsync(EmployeeId);
+
+            // دریافت مانده مرخصی برای سال جاری (شمسی)
+            int currentYear = int.Parse(Safir.Shared.Utility.CL_Tarikh.GetCurrentPersianDateAsLong().ToString().Substring(0, 4));
+            CurrentBalanceMin = await EmployeeApi.GetLeaveBalanceAsync(EmployeeId, currentYear);
+        }
+        catch (Exception ex) { Console.WriteLine(ex.Message); }
+        finally
+        {
+            _isDataLoaded = true;
+            StateHasChanged();
+        }
+    }
+
+    void ResetForm()
+    {
+        CurrentLeave = new Pay2LeaveDto { LEV_TYPE = 1, STATUS = 1 };
+        StartDateStr = Safir.Shared.Utility.CL_Tarikh.GetCurrentPersianDateAsLong().ToString();
+        EndDateStr = StartDateStr;
+        ReqDaysStr = "0";
+        ReqHoursStr = "0";
+        ReqMinsStr = "0";
+    }
+
+    void EditLeave(Pay2LeaveDto item)
+    {
+        CurrentLeave = System.Text.Json.JsonSerializer.Deserialize<Pay2LeaveDto>(System.Text.Json.JsonSerializer.Serialize(item))!;
+        StartDateStr = CurrentLeave.START_DATE.ToString();
+        EndDateStr = CurrentLeave.END_DATE.ToString();
+        ReqDaysStr = CurrentLeave.REQ_DAYS.ToString();
+        ReqHoursStr = CurrentLeave.REQ_HOURS.ToString();
+        ReqMinsStr = CurrentLeave.REQ_MINUTES.ToString();
+        StateHasChanged();
+    }
+
+    async Task SubmitSave()
+    {
+        long.TryParse(StartDateStr?.Replace("/", ""), out long sDate);
+        long.TryParse(EndDateStr?.Replace("/", ""), out long eDate);
+        short.TryParse(ReqDaysStr, out short d);
+        byte.TryParse(ReqHoursStr, out byte h);
+        byte.TryParse(ReqMinsStr, out byte m);
+
+        if (sDate <= 13000000 || eDate <= 13000000)
+        {
+            Snackbar.Add("تاریخ شروع و پایان نامعتبر است.", MudBlazor.Severity.Warning); return;
+        }
+        if (d == 0 && h == 0 && m == 0)
+        {
+            Snackbar.Add("مدت مرخصی (روز/ساعت/دقیقه) نمی‌تواند صفر باشد.", MudBlazor.Severity.Warning); return;
+        }
+
+        CurrentLeave.EMP_ID = EmployeeId;
+        CurrentLeave.START_DATE = sDate;
+        CurrentLeave.END_DATE = eDate;
+        CurrentLeave.REQUEST_DATE = sDate; // تاریخ درخواست را با تاریخ شروع یکی در نظر می‌گیریم
+        CurrentLeave.REQ_DAYS = d;
+        CurrentLeave.REQ_HOURS = h;
+        CurrentLeave.REQ_MINUTES = m;
+
+        if (CurrentLeave.LEV_ID == 0)
+        {
+            CurrentLeave.BAL_BEFORE = CurrentBalanceMin; // ثبت مانده لحظه‌ای در زمان ایجاد
+        }
+
+        IsSaving = true;
+        try
+        {
+            await EmployeeApi.SaveLeaveAsync(CurrentLeave);
+            Snackbar.Add("درخواست مرخصی ثبت شد.", MudBlazor.Severity.Success);
+            ResetForm();
+            Leaves = await EmployeeApi.GetLeavesAsync(EmployeeId);
+        }
+        catch (Exception ex) { Snackbar.Add(ex.Message, MudBlazor.Severity.Error); }
+        finally { IsSaving = false; }
+    }
+
+    async Task DeleteLeave(Pay2LeaveDto item)
+    {
+        var parameters = new MudBlazor.DialogParameters
+        {
+            ["Title"] = "حذف مرخصی",
+            ["ContentText"] = $"آیا از حذف این مرخصی (شروع از: {item.START_DATE}) اطمینان دارید؟",
+            ["ConfirmButtonText"] = "بله، حذف کن",
+            ["CancelButtonText"] = "انصراف"
+        };
+        var options = new MudBlazor.DialogOptions { CloseButton = false, MaxWidth = MudBlazor.MaxWidth.ExtraSmall };
+
+        var dialog = DialogService.Show<Safir.Client.Shared.ConfirmDialog>("تایید حذف", parameters, options);
+        var result = await dialog.Result;
+
+        if (!result.Cancelled)
+        {
+            try
+            {
+                await EmployeeApi.DeleteLeaveAsync(item.LEV_ID);
+                Snackbar.Add("مرخصی با موفقیت حذف شد.", MudBlazor.Severity.Success);
+                if (CurrentLeave.LEV_ID == item.LEV_ID) ResetForm();
+                Leaves = await EmployeeApi.GetLeavesAsync(EmployeeId);
+            }
+            catch (Exception ex) { Snackbar.Add("خطا در حذف: " + ex.Message, MudBlazor.Severity.Error); }
+        }
+    }
+
+    async Task Close() => await OnClose.InvokeAsync();
+}
