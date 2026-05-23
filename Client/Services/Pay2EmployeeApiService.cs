@@ -128,5 +128,24 @@ namespace Safir.Client.Services
             if (!res.IsSuccessStatusCode)
                 throw new Exception(await res.Content.ReadAsStringAsync());
         }
+
+        public async Task<List<Pay2LeaveBalDto>> GetLeaveBalancesAsync(int empId)
+        {
+            return await _http.GetFromJsonAsync<List<Pay2LeaveBalDto>>($"api/pay2/employees/{empId}/leave-balances") ?? new();
+        }
+
+        public async Task SaveLeaveBalanceAsync(Pay2LeaveBalDto bal)
+        {
+            var res = await _http.PostAsJsonAsync("api/pay2/employees/leave-balance/save", bal);
+            if (!res.IsSuccessStatusCode)
+                throw new Exception(await res.Content.ReadAsStringAsync());
+        }
+
+        public async Task DeleteLeaveBalanceAsync(int empId, int year)
+        {
+            var res = await _http.DeleteAsync($"api/pay2/employees/leave-balance/{empId}/{year}");
+            if (!res.IsSuccessStatusCode)
+                throw new Exception(await res.Content.ReadAsStringAsync());
+        }
     }
 }

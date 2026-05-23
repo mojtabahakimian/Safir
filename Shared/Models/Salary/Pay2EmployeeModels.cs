@@ -158,4 +158,19 @@
         }
     }
 
+    public class Pay2LeaveBalDto
+    {
+        public int EMP_ID { get; set; }
+        public short YEAR { get; set; }
+
+        // مقادیر بر حسب دقیقه هستند (۱ روز = ۴۴۰ دقیقه در نسخه v6)
+        public int ENTITLEMENT_MIN { get; set; } = 11440; // پیش‌فرض 26 روز
+        public int USED_MIN { get; set; } = 0;
+        public int CARRIED_IN_MIN { get; set; } = 0;
+        public int CARRIED_OUT_MIN { get; set; } = 0;
+
+        // --- پراپرتی‌های نمایشی و محاسباتی ---
+        public int BALANCE_MIN => ENTITLEMENT_MIN + CARRIED_IN_MIN - USED_MIN;
+        public decimal BALANCE_DAYS => Math.Round((decimal)BALANCE_MIN / 440m, 2);
+    }
 }

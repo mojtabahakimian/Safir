@@ -1,0 +1,307 @@
+﻿@using Safir.Shared.Models.Salary
+@using Safir.Shared.Models
+@inject Safir.Client.Services.Pay2EmployeeApiService EmployeeApi
+@inject ISnackbar Snackbar
+@inject MudBlazor.IDialogService DialogService
+
+@if (IsOpen)
+{
+    <div class="pay2-select-backdrop" style="background: rgba(15,23,42,0.6); z-index: 2999;" @onclick="Close"></div>
+
+    <div class="card-custom pay2-modal-container">
+
+        <!-- Header -->
+        <div class="pay2-modal-header p2-card-header" style="margin:0;">
+            <h5 style="margin:0; font-size:18px;">مانده مرخصی: @EmployeeName</h5>
+            <button class="btn-ghost-pay2" @onclick="Close"><i class="bi bi-x-lg"></i></button>
+        </div>
+
+        <div class="pay2-modal-body">
+            @if (!_isDataLoaded)
+            {
+                <div style="display:flex; justify-content:center; align-items:center; height:200px; flex-direction:column; gap:15px;">
+                    <span class="p2-spinner" style="width:40px; height:40px; border-color:var(--p2-primary); border-top-color:transparent;"></span>
+                    <span style="font-size:14px; color:var(--p2-primary); font-weight:600;">در حال بارگذاری سوابق مرخصی...</span>
+                </div>
+            }
+            else
+            {
+                <div class="p2-sub-card-title"><i class="bi bi-calendar-check"></i> ثبت / ویرایش مانده سالانه (ذخیره به دقیقه)</div>
+
+                <div class="form-grid-5 p2-mb-16">
+                    <div class="form-field">
+                        <label>سال (YEAR) *</label>
+                        <Pay2NumericInput @bind-Value="YearStr" MaxLength="4" Direction="ltr" Disabled="@IsEditing" />
+                    </div>
+                    <div class="form-field">
+                        <label>استحقاق (دقیقه) *</label>
+                        <Pay2NumericInput @bind-Value="EntitlementStr" MaxLength="6" Direction="ltr" />
+                    </div>
+                    <div class="form-field">
+                        <label>استفاده شده (دقیقه)</label>
+                        <Pay2NumericInput @bind-Value="UsedStr" MaxLength="6" Direction="ltr" />
+                    </div>
+                    <div class="form-field">
+                        <label>انتقالی از قبل (دقیقه)</label>
+                        <Pay2NumericInput @bind-Value="CarriedInStr" MaxLength="6" Direction="ltr" />
+                    </div>
+                    <div class="form-field">
+                        <label>انتقالی به بعد (دقیقه)</label>
+                        <Pay2NumericInput @bind-Value="CarriedOutStr" MaxLength="6" Direction="ltr" />
+                    </div>
+                </div>
+
+                <!-- کادر محاسبه لحظه‌ای -->
+                <div style="background: var(--p2-primary-light); border: 1px solid #bfdbfe; border-radius: var(--p2-radius-md); padding: 12px 16px; margin-bottom: 24px; display:flex; align-items:center; gap:8px;">
+                    <span style="color: var(--p2-primary); font-weight: bold;">محاسبه لحظه‌ای:</span>
+                    <span style="color: var(--p2-text-muted);">مانده کل:</span>
+                    <span style="font-family: Consolas; font-weight: bold; font-size: 15px; color: var(--p2-text-main);">@CurrentBalanceMin</span>
+                    <span style="color: var(--p2-text-muted);">دقیقه | معادل:</span>
+                    <span style="font-family: Consolas; font-weight: bold; font-size: 15px; color: var(--p2-text-main);">@CurrentBalanceDays</span>
+                    <span style="color: var(--p2-text-muted);">روز (بر مبنای ۴۴۰ دقیقه)</span>
+                </div>
+
+                <div style="display:flex; justify-content:flex-end; gap:10px; margin-bottom: 24px;">
+                    @if (IsEditing)
+                    {
+                        <button class="btn-outline-pay2" @onclick="ResetForm">انصراف</button>
+                    }
+                    <button class="btn-primary-pay2" @onclick="SubmitSave" disabled="@IsSaving">
+                        @if (IsSaving)
+                        {
+                            <span class="p2-spinner"></span>
+                        }
+                        else
+                        {
+
+                            <span>ذخیره مانده مرخصی</span>
+                        }
+                    </button>
+                </div>
+
+                <hr class="p2-divider" />
+
+                <!-- جدول سوابق مرخصی -->
+                <div class="p2-sub-card-title"><i class="bi bi-clock-history"></i> سوابق مرخصی پرسنل</div>
+
+                <div class="pay2-table-responsive">
+                    <table class="p2-table">
+                        <thead style="position: sticky; top: 0; z-index: 10;">
+                            <tr>
+                                <th style="text-align:center;">سال</th>
+                                <th style="text-align:center;">استحقاق (دقیقه)</th>
+                                <th style="text-align:center;">استفاده (دقیقه)</th>
+                                <th style="text-align:center;">از سال قبل (دقیقه)</th>
+                                <th style="text-align:center;">به سال بعد (دقیقه)</th>
+                                <th style="text-align:center;">مانده (دقیقه)</th>
+                                <th style="text-align:center;">مانده (روز)</th>
+                                <th style="text-align:center;">عملیات</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @if (!Balances.Any())
+                            {
+                                <tr><td colspan="8" style="text-align:center; padding:20px; color:#94a3b8;">هیچ سابقه‌ای برای این پرسنل ثبت نشده است.</td></tr>
+                            }
+                            @foreach (var bal in Balances)
+                            {
+                                <tr style="background: @(CurrentBal.YEAR == bal.YEAR ? "var(--p2-primary-light)" : "transparent")">
+                                    <td class="p2-text-mono" style="text-align:center;">@bal.YEAR</td>
+                                    <td class="p2-text-mono" style="text-align:center;">@bal.ENTITLEMENT_MIN.ToString("N0")</td>
+                                    <td class="p2-text-mono" style="text-align:center;">@bal.USED_MIN.ToString("N0")</td>
+                                    <td class="p2-text-mono" style="text-align:center;">@bal.CARRIED_IN_MIN.ToString("N0")</td>
+                                    <td class="p2-text-mono" style="text-align:center;">@bal.CARRIED_OUT_MIN.ToString("N0")</td>
+                                    <td class="p2-text-mono" style="text-align:center;">@bal.BALANCE_MIN.ToString("N0")</td>
+                                    <td class="p2-text-mono" style="text-align:center; font-weight:bold; color:var(--p2-success-text);">@bal.BALANCE_DAYS.ToString("0.##")</td>
+                                    <td style="text-align:center; min-width: 150px;">
+                                        <button class="btn-ghost-pay2 p2-text-primary" @onclick="() => EditBal(bal)">ویرایش</button>
+                                        <button class="btn-ghost-pay2 p2-text-danger" @onclick="() => DeleteBal(bal)">حذف</button>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+        </div>
+
+        <div class="pay2-modal-footer">
+            <button class="btn-outline-pay2" @onclick="Close" style="border-radius:20px; padding:8px 24px;">بستن</button>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public bool IsOpen { get; set; }
+    [Parameter] public int EmployeeId { get; set; }
+    [Parameter] public string EmployeeName { get; set; } = "";
+    [Parameter] public EventCallback OnClose { get; set; }
+
+    List<Pay2LeaveBalDto> Balances = new();
+    Pay2LeaveBalDto CurrentBal = new();
+
+    string? _yearStr;
+    string? _entitlementStr;
+    string? _usedStr;
+    string? _carriedInStr;
+    string? _carriedOutStr;
+
+    // پراپرتی‌هایی با Setter هوشمند برای بروزرسانی لحظه‌ای کادر محاسبه
+    string? YearStr { get => _yearStr; set { _yearStr = value; UpdateLiveCalc(); } }
+    string? EntitlementStr { get => _entitlementStr; set { _entitlementStr = value; UpdateLiveCalc(); } }
+    string? UsedStr { get => _usedStr; set { _usedStr = value; UpdateLiveCalc(); } }
+    string? CarriedInStr { get => _carriedInStr; set { _carriedInStr = value; UpdateLiveCalc(); } }
+    string? CarriedOutStr { get => _carriedOutStr; set { _carriedOutStr = value; UpdateLiveCalc(); } }
+
+    int CurrentBalanceMin = 0;
+    string CurrentBalanceDays = "0";
+
+    bool IsSaving = false;
+    bool IsEditing = false;
+    private int _lastProcessedEmpId = -1;
+    private bool _lastOpenState = false;
+    private bool _isDataLoaded = false;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (IsOpen && (!_lastOpenState || EmployeeId != _lastProcessedEmpId))
+        {
+            _lastOpenState = true;
+            _lastProcessedEmpId = EmployeeId;
+            _isDataLoaded = false;
+
+            ResetForm();
+            await InitializeDataAsync();
+        }
+        else if (!IsOpen)
+        {
+            _lastOpenState = false;
+            _lastProcessedEmpId = -1;
+            _isDataLoaded = false;
+        }
+    }
+
+    private async Task InitializeDataAsync()
+    {
+        try
+        {
+            Balances = await EmployeeApi.GetLeaveBalancesAsync(EmployeeId);
+        }
+        catch (Exception ex) { Console.WriteLine(ex.Message); }
+        finally
+        {
+            _isDataLoaded = true;
+            StateHasChanged();
+        }
+    }
+
+    void ResetForm()
+    {
+        CurrentBal = new Pay2LeaveBalDto();
+        // خواندن سال جاری شمسی
+        string currentShamsi = Safir.Shared.Utility.CL_Tarikh.GetCurrentPersianDateAsLong().ToString();
+        YearStr = currentShamsi.Substring(0, 4);
+
+        EntitlementStr = "11440"; // ۲۶ روز به صورت پیش فرض
+        UsedStr = "0";
+        CarriedInStr = "0";
+        CarriedOutStr = "0";
+
+        IsEditing = false;
+        UpdateLiveCalc();
+    }
+
+    void UpdateLiveCalc()
+    {
+        int.TryParse(EntitlementStr?.Replace(",", ""), out int e);
+        int.TryParse(CarriedInStr?.Replace(",", ""), out int cIn);
+        int.TryParse(UsedStr?.Replace(",", ""), out int u);
+
+        CurrentBalanceMin = e + cIn - u;
+        CurrentBalanceDays = Math.Round(CurrentBalanceMin / 440m, 2).ToString("0.##");
+    }
+
+    void EditBal(Pay2LeaveBalDto item)
+    {
+        CurrentBal = new Pay2LeaveBalDto
+        {
+            EMP_ID = item.EMP_ID,
+            YEAR = item.YEAR,
+            ENTITLEMENT_MIN = item.ENTITLEMENT_MIN,
+            USED_MIN = item.USED_MIN,
+            CARRIED_IN_MIN = item.CARRIED_IN_MIN,
+            CARRIED_OUT_MIN = item.CARRIED_OUT_MIN
+        };
+
+        _yearStr = CurrentBal.YEAR.ToString();
+        _entitlementStr = CurrentBal.ENTITLEMENT_MIN.ToString();
+        _usedStr = CurrentBal.USED_MIN.ToString();
+        _carriedInStr = CurrentBal.CARRIED_IN_MIN.ToString();
+        _carriedOutStr = CurrentBal.CARRIED_OUT_MIN.ToString();
+
+        IsEditing = true;
+        UpdateLiveCalc();
+        StateHasChanged();
+    }
+
+    async Task SubmitSave()
+    {
+        short.TryParse(YearStr, out short year);
+        int.TryParse(EntitlementStr?.Replace(",", ""), out int ent);
+        int.TryParse(UsedStr?.Replace(",", ""), out int used);
+        int.TryParse(CarriedInStr?.Replace(",", ""), out int cIn);
+        int.TryParse(CarriedOutStr?.Replace(",", ""), out int cOut);
+
+        if (year < 1300 || year > 1500)
+        {
+            Snackbar.Add("سال وارد شده نامعتبر است.", MudBlazor.Severity.Warning); return;
+        }
+
+        CurrentBal.EMP_ID = EmployeeId;
+        CurrentBal.YEAR = year;
+        CurrentBal.ENTITLEMENT_MIN = ent;
+        CurrentBal.USED_MIN = used;
+        CurrentBal.CARRIED_IN_MIN = cIn;
+        CurrentBal.CARRIED_OUT_MIN = cOut;
+
+        IsSaving = true;
+        try
+        {
+            await EmployeeApi.SaveLeaveBalanceAsync(CurrentBal);
+            Snackbar.Add("مانده مرخصی با موفقیت ذخیره شد.", MudBlazor.Severity.Success);
+            ResetForm();
+            Balances = await EmployeeApi.GetLeaveBalancesAsync(EmployeeId);
+        }
+        catch (Exception ex) { Snackbar.Add(ex.Message, MudBlazor.Severity.Error); }
+        finally { IsSaving = false; }
+    }
+
+    async Task DeleteBal(Pay2LeaveBalDto item)
+    {
+        var parameters = new MudBlazor.DialogParameters
+        {
+            ["Title"] = "حذف مانده مرخصی",
+            ["ContentText"] = $"آیا از حذف سابقه مرخصی سال {item.YEAR} اطمینان دارید؟",
+            ["ConfirmButtonText"] = "بله، حذف کن",
+            ["CancelButtonText"] = "انصراف"
+        };
+        var options = new MudBlazor.DialogOptions { CloseButton = false, MaxWidth = MudBlazor.MaxWidth.ExtraSmall };
+
+        var dialog = DialogService.Show<Safir.Client.Shared.ConfirmDialog>("تایید حذف", parameters, options);
+        var result = await dialog.Result;
+
+        if (!result.Cancelled)
+        {
+            try
+            {
+                await EmployeeApi.DeleteLeaveBalanceAsync(item.EMP_ID, item.YEAR);
+                Snackbar.Add("سابقه مرخصی با موفقیت حذف شد.", MudBlazor.Severity.Success);
+                if (CurrentBal.YEAR == item.YEAR) ResetForm();
+                Balances = await EmployeeApi.GetLeaveBalancesAsync(EmployeeId);
+            }
+            catch (Exception ex) { Snackbar.Add("خطا در حذف: " + ex.Message, MudBlazor.Severity.Error); }
+        }
+    }
+
+    async Task Close() => await OnClose.InvokeAsync();
+}

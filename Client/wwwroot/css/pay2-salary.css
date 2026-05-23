@@ -2164,3 +2164,15 @@
 .btn-ghost-pay2 {
     transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
+
+.form-grid-5 {
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 14px 16px;
+}
+
+@media (max-width: 900px) {
+    .form-grid-5 {
+        grid-template-columns: 1fr !important;
+    }
+}

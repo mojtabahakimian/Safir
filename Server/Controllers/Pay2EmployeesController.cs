@@ -423,5 +423,64 @@ namespace Safir.Server.Controllers
                 return BadRequest(ex.Message);
             }
         }
+
+        [HttpGet("{empId:int}/leave-balances")]
+        public async Task<ActionResult<IEnumerable<Pay2LeaveBalDto>>> GetLeaveBalances(int empId)
+        {
+            const string sql = "SELECT * FROM PAY2_LEAVE_BAL WHERE EMP_ID = @empId ORDER BY YEAR DESC";
+            return Ok(await _db.DoGetDataSQLAsync<Pay2LeaveBalDto>(sql, new { empId }));
+        }
+
+        [HttpPost("leave-balance/save")]
+        public async Task<IActionResult> SaveLeaveBalance([FromBody] Pay2LeaveBalDto bal)
+        {
+            try
+            {
+                await _db.ExecuteInTransactionAsync(async (conn, tran) =>
+                {
+                    // اول چک می‌کنیم آیا برای این سال رکوردی هست یا نه
+                    int count = await conn.QuerySingleAsync<int>(
+                        "SELECT COUNT(1) FROM PAY2_LEAVE_BAL WHERE EMP_ID=@EMP_ID AND YEAR=@YEAR",
+                        new { bal.EMP_ID, bal.YEAR }, tran);
+
+                    if (count == 0)
+                    {
+                        // درج جدید
+                        const string insertSql = @"
+                    INSERT INTO PAY2_LEAVE_BAL (EMP_ID, YEAR, ENTITLEMENT_MIN, USED_MIN, CARRIED_IN_MIN, CARRIED_OUT_MIN, UPDATED_AT)
+                    VALUES (@EMP_ID, @YEAR, @ENTITLEMENT_MIN, @USED_MIN, @CARRIED_IN_MIN, @CARRIED_OUT_MIN, GETDATE())";
+                        await conn.ExecuteAsync(insertSql, bal, tran);
+                    }
+                    else
+                    {
+                        // آپدیت
+                        const string updateSql = @"
+                    UPDATE PAY2_LEAVE_BAL 
+                    SET ENTITLEMENT_MIN=@ENTITLEMENT_MIN, USED_MIN=@USED_MIN, CARRIED_IN_MIN=@CARRIED_IN_MIN, CARRIED_OUT_MIN=@CARRIED_OUT_MIN, UPDATED_AT=GETDATE()
+                    WHERE EMP_ID=@EMP_ID AND YEAR=@YEAR";
+                        await conn.ExecuteAsync(updateSql, bal, tran);
+                    }
+                });
+                return Ok();
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(ex.Message);
+            }
+        }
+
+        [HttpDelete("leave-balance/{empId:int}/{year:int}")]
+        public async Task<IActionResult> DeleteLeaveBalance(int empId, int year)
+        {
+            try
+            {
+                await _db.DoExecuteSQLAsync("DELETE FROM PAY2_LEAVE_BAL WHERE EMP_ID = @empId AND YEAR = @year", new { empId, year });
+                return Ok();
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(ex.Message);
+            }
+        }
     }
 }

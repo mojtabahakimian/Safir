@@ -80,14 +80,14 @@
                                             </MudMenuItem>
 
                                             <!-- مانده مرخصی -->
-                                            <MudMenuItem OnClick='() => ShowSnackbar(emp.FIRST_NAME, "مانده مرخصی")'>
+                                            <MudMenuItem OnClick='() => ShowMenuAction(emp, "مانده مرخصی")'>
                                                 <div style="color: #10b981; font-family: var(--p2-font); font-size: 13px; font-weight: 600;">
                                                     <i class="bi bi-calendar-check" style="margin-left: 8px;"></i> مانده مرخصی
                                                 </div>
                                             </MudMenuItem>
 
                                             <!-- وام پرسنلی -->
-                                            <MudMenuItem OnClick='() => ShowSnackbar(emp.FIRST_NAME, "وام پرسنلی")'>
+                                            <MudMenuItem OnClick='() => ShowMenuAction(emp, "وام پرسنلی")'>
                                                 <div style="color: #3b82f6; font-family: var(--p2-font); font-size: 13px; font-weight: 600;">
                                                     <i class="bi bi-cash-coin" style="margin-left: 8px;"></i> وام پرسنلی
                                                 </div>
@@ -96,14 +96,14 @@
                                             <MudDivider />
 
                                             <!-- استثنا مشمولیت -->
-                                            <MudMenuItem OnClick='() => ShowSnackbar(emp.FIRST_NAME, "استثنا مشمولیت")'>
+                                            <MudMenuItem OnClick='() => ShowMenuAction(emp, "استثنا مشمولیت")'>
                                                 <div style="color: #ec4899; font-family: var(--p2-font); font-size: 13px; font-weight: 600;">
                                                     <i class="bi bi-sliders" style="margin-left: 8px;"></i> استثنا مشمولیت
                                                 </div>
                                             </MudMenuItem>
 
                                             <!-- استثنا مساعده -->
-                                            <MudMenuItem OnClick='() => ShowSnackbar(emp.FIRST_NAME, "استثنا مساعده")'>
+                                            <MudMenuItem OnClick='() => ShowMenuAction(emp, "استثنا مساعده")'>
                                                 <div style="color: #eab308; font-family: var(--p2-font); font-size: 13px; font-weight: 600;">
                                                     <i class="bi bi-wallet2" style="margin-left: 8px;"></i> استثنا مساعده
                                                 </div>
@@ -112,7 +112,7 @@
                                             <MudDivider />
 
                                             <!-- تسویه حساب (خاتمه کار) -->
-                                            <MudMenuItem OnClick='() => ShowSnackbar(emp.FIRST_NAME, "تسویه حساب")'>
+                                            <MudMenuItem OnClick='() => ShowMenuAction(emp, "تسویه حساب")'>
                                                 <div style="color: #ef4444; font-family: var(--p2-font); font-size: 13px; font-weight: 600;">
                                                     <i class="bi bi-door-open" style="margin-left: 8px;"></i> تسویه حساب (خاتمه کار)
                                                 </div>
@@ -154,6 +154,12 @@
                                                                      EmployeeId="SelectedEmpForAction.EMP_ID"
                                                                      EmployeeName="@SelectedEmpForAction.FullDisplayName"
                                                                      OnClose="() => ShowContractModal = false" />
+
+    <!-- اضافه شدن مدال مانده مرخصی -->
+    <Safir.Client.Pages.Salary.Tabs.EmployeeComponents.LeaveBalanceModal IsOpen="ShowLeaveBalModal"
+                                                                         EmployeeId="SelectedEmpForAction.EMP_ID"
+                                                                         EmployeeName="@SelectedEmpForAction.FullDisplayName"
+                                                                         OnClose="() => ShowLeaveBalModal = false" />
 
 </div>
 
@@ -253,7 +259,9 @@
         ShowLeaveModal = true;
     }
 
+
     bool ShowContractModal = false;
+    bool ShowLeaveBalModal = false;
     Pay2EmployeeDto SelectedEmpForAction = new();
 
     void ShowMenuAction(Pay2EmployeeDto emp, string action)
@@ -265,10 +273,16 @@
             case "قراردادها":
                 ShowContractModal = true;
                 break;
+            case "مانده مرخصی":
+                ShowLeaveBalModal = true;
+                break;
             default:
-                Snackbar.Add($"مدیریت {action} به زودی متصل می‌شود...", MudBlazor.Severity.Info);
+                Snackbar.Add($"مدیریت {action} برای {emp.FIRST_NAME} به زودی متصل می‌شود...", MudBlazor.Severity.Info);
                 break;
         }
     }
+
+
+
 
 }
