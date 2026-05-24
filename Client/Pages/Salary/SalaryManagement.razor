@@ -272,6 +272,11 @@
             <Safir.Client.Pages.Salary.Tabs.EmployeeComponents.JobModal IsOpen="ShowJobModal"
                                                                         OnClose="() => ShowJobModal = false" />
 
+            @if (ActiveTab == "attendance")
+            {
+                <Safir.Client.Pages.Salary.Tabs.AttendanceTab />
+            }
+
             @* ══ تب‌های در دست توسعه ══ *@
             @if (ActiveTab != "dashboard" && ActiveTab != "workshops" && ActiveTab != "employees")
             {
