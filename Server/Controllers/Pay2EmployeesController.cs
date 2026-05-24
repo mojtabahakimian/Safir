@@ -968,5 +968,101 @@ namespace Safir.Server.Controllers
             catch (Exception ex) { return BadRequest(ex.Message); }
         }
 
+        [HttpGet("jobs/paged")]
+        public async Task<ActionResult<PagedResult<Pay2JobDto>>> GetPagedJobs([FromQuery] int page = 1, [FromQuery] int pageSize = 50, [FromQuery] string? search = null)
+        {
+            try
+            {
+                var parameters = new DynamicParameters();
+                string whereClause = "";
+
+                if (!string.IsNullOrWhiteSpace(search))
+                {
+                    whereClause = "WHERE JOB_CODE LIKE @Search OR JOB_NAME LIKE @Search";
+                    parameters.Add("Search", $"%{search.Trim()}%");
+                }
+
+                string countSql = $"SELECT COUNT(1) FROM PAY2_JOB {whereClause}";
+                string dataSql = $@"
+            SELECT JOB_ID, JOB_CODE, JOB_NAME, JOB_GROUP, IS_ACTIVE 
+            FROM PAY2_JOB 
+            {whereClause}
+            ORDER BY JOB_NAME
+            OFFSET @Offset ROWS FETCH NEXT @PageSize ROWS ONLY";
+
+                parameters.Add("Offset", (page - 1) * pageSize);
+                parameters.Add("PageSize", pageSize);
+
+                int totalCount = await _db.DoGetDataSQLAsyncSingle<int>(countSql, parameters);
+                var items = await _db.DoGetDataSQLAsync<Pay2JobDto>(dataSql, parameters);
+
+                var result = new PagedResult<Pay2JobDto>
+                {
+                    Items = items?.ToList() ?? new List<Pay2JobDto>(),
+                    TotalCount = totalCount,
+                    PageNumber = page,
+                    PageSize = pageSize
+                };
+
+                return Ok(result);
+            }
+            catch (Exception ex) { return StatusCode(500, ex.Message); }
+        }
+
+        [HttpPost("jobs/save")]
+        public async Task<IActionResult> SaveJob([FromBody] Pay2JobDto job)
+        {
+            try
+            {
+                await _db.ExecuteInTransactionAsync(async (conn, tran) =>
+                {
+                    if (job.JOB_ID == 0) // درج جدید
+                    {
+                        int codeExists = await conn.QuerySingleAsync<int>("SELECT COUNT(1) FROM PAY2_JOB WHERE JOB_CODE = @Code", new { Code = job.JOB_CODE }, tran);
+                        if (codeExists > 0) throw new InvalidOperationException($"کد شغل «{job.JOB_CODE}» تکراری است.");
+
+                        const string insertSql = "INSERT INTO PAY2_JOB (JOB_CODE, JOB_NAME, JOB_GROUP, IS_ACTIVE) VALUES (@JOB_CODE, @JOB_NAME, @JOB_GROUP, @IS_ACTIVE)";
+                        await conn.ExecuteAsync(insertSql, job, tran);
+                    }
+                    else // ویرایش
+                    {
+                        int codeExists = await conn.QuerySingleAsync<int>("SELECT COUNT(1) FROM PAY2_JOB WHERE JOB_CODE = @Code AND JOB_ID <> @Id", new { Code = job.JOB_CODE, Id = job.JOB_ID }, tran);
+                        if (codeExists > 0) throw new InvalidOperationException($"کد شغل «{job.JOB_CODE}» تکراری است.");
+
+                        const string updateSql = "UPDATE PAY2_JOB SET JOB_CODE=@JOB_CODE, JOB_NAME=@JOB_NAME, JOB_GROUP=@JOB_GROUP, IS_ACTIVE=@IS_ACTIVE WHERE JOB_ID=@JOB_ID";
+                        await conn.ExecuteAsync(updateSql, job, tran);
+                    }
+                });
+                return Ok();
+            }
+            catch (InvalidOperationException ex) { return BadRequest(ex.Message); }
+            catch (Exception ex) { return StatusCode(500, "خطای سیستمی: " + ex.Message); }
+        }
+
+        [HttpDelete("jobs/{id:int}")]
+        public async Task<IActionResult> DeleteJob(int id)
+        {
+            try
+            {
+                await _db.ExecuteInTransactionAsync(async (conn, tran) =>
+                {
+                    int usageCount = await conn.QuerySingleAsync<int>("SELECT COUNT(1) FROM PAY2_EMPLOYEE WHERE JOB_ID = @Id", new { Id = id }, tran);
+
+                    if (usageCount > 0)
+                    {
+                        // Soft Delete: اگر شغلی به پرسنل وصل است، فقط غیرفعالش کن
+                        await conn.ExecuteAsync("UPDATE PAY2_JOB SET IS_ACTIVE = 0 WHERE JOB_ID = @Id", new { Id = id }, tran);
+                    }
+                    else
+                    {
+                        // Hard Delete
+                        await conn.ExecuteAsync("DELETE FROM PAY2_JOB WHERE JOB_ID = @Id", new { Id = id }, tran);
+                    }
+                });
+                return Ok();
+            }
+            catch (Exception ex) { return BadRequest(ex.Message); }
+        }
+
     }
 }

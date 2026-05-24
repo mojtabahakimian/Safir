@@ -329,6 +329,13 @@
         public string TaxText => TAX_OV == null ? "پایه" : (TAX_OV == true ? "مشمول" : "معاف");
         public string BasisText => BASIS_OV == null ? "پایه" : (BASIS_OV == 1 ? "روزانه" : "ماهیانه");
     }
-
+    public class Pay2JobDto
+    {
+        public int JOB_ID { get; set; }
+        public string? JOB_CODE { get; set; }
+        public string? JOB_NAME { get; set; }
+        public string? JOB_GROUP { get; set; }
+        public bool IS_ACTIVE { get; set; } = true;
+    }
 
 }

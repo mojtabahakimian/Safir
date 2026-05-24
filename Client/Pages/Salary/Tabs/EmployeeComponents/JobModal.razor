@@ -1,0 +1,289 @@
+﻿@using Safir.Shared.Models
+@using Safir.Shared.Models.Salary
+@inject Safir.Client.Services.Pay2EmployeeApiService EmployeeApi
+@inject ISnackbar Snackbar
+@inject MudBlazor.IDialogService DialogService
+
+@if (IsOpen)
+{
+    <div class="pay2-select-backdrop" style="background: rgba(15,23,42,0.6); z-index: 2999;" @onclick="Close"></div>
+    <div class="card-custom pay2-modal-container" style="max-width: 900px;">
+
+        <div class="pay2-modal-header p2-card-header" style="margin:0;">
+            <h5 style="margin:0; font-size:18px;">تعریف و مدیریت مشاغل (PAY2_JOB)</h5>
+            <button class="btn-ghost-pay2" @onclick="Close"><i class="bi bi-x-lg"></i></button>
+        </div>
+
+        <div class="pay2-modal-body">
+
+            <!-- فرم ثبت / ویرایش سریع -->
+            <div class="p2-sub-card-title"><span style="color: var(--p2-primary);">افزودن / ویرایش شغل</span></div>
+            <div class="form-grid-4 p2-mb-16">
+                <div class="form-field">
+                    <label>کد شغل (JOB_CODE) *</label>
+                    <input class="pay2-input" type="text" @bind="CurrentJob.JOB_CODE" dir="ltr" placeholder="مثال: 1001" />
+                </div>
+                <div class="form-field">
+                    <label>عنوان شغل *</label>
+                    <input class="pay2-input" type="text" @bind="CurrentJob.JOB_NAME" placeholder="مثال: کارشناس آی‌تی" />
+                </div>
+                <div class="form-field">
+                    <label>گروه شغلی</label>
+                    <input class="pay2-input" type="text" @bind="CurrentJob.JOB_GROUP" />
+                </div>
+                <div class="form-field" style="display:flex; flex-direction:row; gap:10px; align-items:flex-end;">
+                    <label style="margin:0 0 10px 0; font-weight:600; cursor:pointer; color: var(--p2-text-main);">
+                        <input type="checkbox" @bind="CurrentJob.IS_ACTIVE" style="vertical-align: middle; margin-left: 4px;" /> شغل فعال است؟
+                    </label>
+                </div>
+            </div>
+
+            <div style="display:flex; justify-content:flex-end; gap:10px; margin-bottom: 24px;">
+                @if (IsEditing)
+                {
+                    <button class="btn-outline-pay2" @onclick="ResetForm">انصراف</button>
+                }
+                <button class="btn-primary-pay2" @onclick="SubmitSave" disabled="@IsSaving">
+                    @if (IsSaving)
+                    {
+                        <span class="p2-spinner"></span>
+                    }
+                    else
+                    {
+
+                        <span>ذخیره شغل</span>
+                    }
+                </button>
+            </div>
+
+            <hr class="p2-divider" />
+
+            <!-- بخش جستجو و جدول -->
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                <div class="p2-sub-card-title" style="margin: 0;">
+                    <span style="color: var(--p2-text-main);">لیست مشاغل (کل: @TotalCount)</span>
+                </div>
+
+                <div class="pay2-search-wrapper" style="width: 300px;">
+                    <i class="bi bi-search"></i>
+                    <input type="text" class="pay2-search-input" style="width: 100%;"
+                           placeholder="جستجوی عنوان یا کد شغل..."
+                           @bind="SearchTerm" @bind:event="oninput" @onkeyup="HandleSearch" />
+                </div>
+            </div>
+
+            @if (IsLoadingGrid)
+            {
+                <div style="display:flex; justify-content:center; align-items:center; height:150px; flex-direction:column; gap:15px;">
+                    <span class="p2-spinner" style="border-color:var(--p2-primary); border-top-color:transparent;"></span>
+                </div>
+            }
+            else
+            {
+                <div class="pay2-table-responsive" style="min-height: 250px;">
+                    <table class="p2-table">
+                        <thead style="position: sticky; top: 0; z-index: 10;">
+                            <tr>
+                                <th>کد شغل</th>
+                                <th>عنوان شغل</th>
+                                <th>گروه</th>
+                                <th style="text-align:center;">وضعیت</th>
+                                <th style="text-align:center;">عملیات</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @if (!PagedJobs.Any())
+                            {
+                                <tr><td colspan="5" style="text-align:center; padding:20px; color:#94a3b8;">شغلی یافت نشد.</td></tr>
+                            }
+                            @foreach (var job in PagedJobs)
+                            {
+                                <tr style="background: @(CurrentJob.JOB_ID == job.JOB_ID ? "var(--p2-primary-light)" : "transparent")">
+                                    <td class="p2-text-mono" style="font-weight:bold;">@job.JOB_CODE</td>
+                                    <td>@job.JOB_NAME</td>
+                                    <td>@job.JOB_GROUP</td>
+                                    <td style="text-align:center;">
+                                        @if (job.IS_ACTIVE)
+                                        {
+                                            <i class="bi bi-check-square-fill" style="color:var(--p2-success-text); font-size:16px;"></i>
+                                        }
+                                        else
+                                        {
+
+                                            <i class="bi bi-square" style="color:var(--p2-text-light); font-size:16px;"></i>
+                                        }
+                                    </td>
+                                    <td style="text-align:center; min-width: 150px;">
+                                        <button class="btn-ghost-pay2 p2-text-primary" @onclick="() => EditJob(job)">ویرایش</button>
+                                        <button class="btn-ghost-pay2 p2-text-danger" @onclick="() => DeleteJob(job)">حذف</button>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- کنترل‌های صفحه‌بندی -->
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-top: 15px;">
+                    <span style="font-size:12px; color:var(--p2-text-muted);">صفحه @CurrentPage از @TotalPages</span>
+                    <div style="display:flex; gap:5px;">
+                        <button class="btn-outline-pay2 sm" disabled="@(!HasPrevPage)" @onclick="() => ChangePage(-1)">قبلی</button>
+                        <button class="btn-outline-pay2 sm" disabled="@(!HasNextPage)" @onclick="() => ChangePage(1)">بعدی</button>
+                    </div>
+                </div>
+            }
+        </div>
+        <div class="pay2-modal-footer">
+            <button class="btn-outline-pay2" @onclick="Close" style="border-radius:12px; padding:8px 24px; min-width: 100px;">بستن صفحه</button>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public bool IsOpen { get; set; }
+    [Parameter] public EventCallback OnClose { get; set; }
+
+    List<Pay2JobDto> PagedJobs = new();
+    Pay2JobDto CurrentJob = new();
+
+    bool IsSaving = false;
+    bool IsLoadingGrid = false;
+    bool IsEditing = false;
+    bool _lastOpenState = false;
+
+    // متغیرهای صفحه‌بندی و جستجو
+    int CurrentPage = 1;
+    int PageSize = 10;
+    int TotalCount = 0;
+    int TotalPages => TotalCount == 0 ? 1 : (int)Math.Ceiling((double)TotalCount / PageSize);
+    bool HasNextPage => CurrentPage < TotalPages;
+    bool HasPrevPage => CurrentPage > 1;
+
+    string SearchTerm = "";
+    System.Timers.Timer? debounceTimer;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (IsOpen && !_lastOpenState)
+        {
+            _lastOpenState = true;
+            ResetForm();
+            CurrentPage = 1;
+            SearchTerm = "";
+            await LoadDataAsync();
+        }
+        else if (!IsOpen)
+        {
+            _lastOpenState = false;
+        }
+    }
+
+    async Task LoadDataAsync()
+    {
+        IsLoadingGrid = true;
+        StateHasChanged();
+        try
+        {
+            var result = await EmployeeApi.GetPagedJobsAsync(CurrentPage, PageSize, SearchTerm);
+            PagedJobs = result.Items;
+            TotalCount = result.TotalCount;
+        }
+        catch (Exception ex) { Snackbar.Add(ex.Message, MudBlazor.Severity.Error); }
+        finally
+        {
+            IsLoadingGrid = false;
+            StateHasChanged();
+        }
+    }
+
+    // منطق Debounce برای سرچ زنده
+    void HandleSearch(KeyboardEventArgs e)
+    {
+        if (debounceTimer != null)
+        {
+            debounceTimer.Stop();
+            debounceTimer.Dispose();
+        }
+
+        debounceTimer = new System.Timers.Timer(500);
+        debounceTimer.Elapsed += async (s, ev) =>
+        {
+            CurrentPage = 1; // ریست صفحه در زمان سرچ
+            await InvokeAsync(LoadDataAsync);
+            debounceTimer.Stop();
+        };
+        debounceTimer.Start();
+    }
+
+    async Task ChangePage(int step)
+    {
+        CurrentPage += step;
+        await LoadDataAsync();
+    }
+
+    void ResetForm()
+    {
+        CurrentJob = new Pay2JobDto { IS_ACTIVE = true };
+        IsEditing = false;
+    }
+
+    void EditJob(Pay2JobDto item)
+    {
+        CurrentJob = new Pay2JobDto
+        {
+            JOB_ID = item.JOB_ID,
+            JOB_CODE = item.JOB_CODE,
+            JOB_NAME = item.JOB_NAME,
+            JOB_GROUP = item.JOB_GROUP,
+            IS_ACTIVE = item.IS_ACTIVE
+        };
+        IsEditing = true;
+    }
+
+    async Task SubmitSave()
+    {
+        if (string.IsNullOrWhiteSpace(CurrentJob.JOB_CODE) || string.IsNullOrWhiteSpace(CurrentJob.JOB_NAME))
+        {
+            Snackbar.Add("کد و عنوان شغل الزامی است.", MudBlazor.Severity.Warning);
+            return;
+        }
+
+        IsSaving = true;
+        try
+        {
+            await EmployeeApi.SaveJobAsync(CurrentJob);
+            Snackbar.Add("شغل با موفقیت ذخیره شد.", MudBlazor.Severity.Success);
+            ResetForm();
+            await LoadDataAsync();
+        }
+        catch (Exception ex) { Snackbar.Add(ex.Message, MudBlazor.Severity.Error); }
+        finally { IsSaving = false; }
+    }
+
+    async Task DeleteJob(Pay2JobDto item)
+    {
+        var parameters = new MudBlazor.DialogParameters
+        {
+            ["Title"] = "حذف شغل",
+            ["ContentText"] = $"آیا از حذف شغل «{item.JOB_NAME}» اطمینان دارید؟ اگر این شغل به پرسنلی متصل باشد، سیستم فقط آن را غیرفعال خواهد کرد.",
+            ["ConfirmButtonText"] = "حذف کن",
+            ["CancelButtonText"] = "انصراف"
+        };
+        var dialog = DialogService.Show<Safir.Client.Shared.ConfirmDialog>("تایید حذف", parameters, new MudBlazor.DialogOptions { CloseButton = false, MaxWidth = MudBlazor.MaxWidth.ExtraSmall });
+        var result = await dialog.Result;
+
+        if (!result.Cancelled)
+        {
+            try
+            {
+                await EmployeeApi.DeleteJobAsync(item.JOB_ID);
+                Snackbar.Add("عملیات با موفقیت انجام شد.", MudBlazor.Severity.Success);
+                if (CurrentJob.JOB_ID == item.JOB_ID) ResetForm();
+                await LoadDataAsync();
+            }
+            catch (Exception ex) { Snackbar.Add(ex.Message, MudBlazor.Severity.Error); }
+        }
+    }
+
+    async Task Close() => await OnClose.InvokeAsync();
+}

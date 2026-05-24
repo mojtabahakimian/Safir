@@ -265,5 +265,23 @@ namespace Safir.Client.Services
             if (!res.IsSuccessStatusCode) throw new Exception(await res.Content.ReadAsStringAsync());
         }
 
+        public async Task<PagedResult<Pay2JobDto>> GetPagedJobsAsync(int page, int pageSize, string? search)
+        {
+            string url = $"api/pay2/employees/jobs/paged?page={page}&pageSize={pageSize}";
+            if (!string.IsNullOrWhiteSpace(search)) url += $"&search={Uri.EscapeDataString(search)}";
+
+            return await _http.GetFromJsonAsync<PagedResult<Pay2JobDto>>(url) ?? new PagedResult<Pay2JobDto>();
+        }
+        public async Task SaveJobAsync(Pay2JobDto job)
+        {
+            var res = await _http.PostAsJsonAsync("api/pay2/employees/jobs/save", job);
+            if (!res.IsSuccessStatusCode) throw new Exception(await res.Content.ReadAsStringAsync());
+        }
+        public async Task DeleteJobAsync(int id)
+        {
+            var res = await _http.DeleteAsync($"api/pay2/employees/jobs/{id}");
+            if (!res.IsSuccessStatusCode) throw new Exception(await res.Content.ReadAsStringAsync());
+        }
+
     }
 }
