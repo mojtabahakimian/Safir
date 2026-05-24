@@ -780,5 +780,79 @@ namespace Safir.Server.Controllers
             }
         }
 
+        [HttpDelete("{empId:int}")]
+        public async Task<IActionResult> DeleteEmployee(int empId)
+        {
+            try
+            {
+                await _db.ExecuteInTransactionAsync(async (conn, tran) =>
+                {
+                    // ۱. بررسی بسیار دقیق تمام وابستگی‌های عملیاتی، مالی و رسمی
+                    string checkSql = @"
+                SELECT 
+                    (SELECT COUNT(1) FROM PAY2_RUN_LINE WHERE EMP_ID = @empId) AS RunCount,
+                    (SELECT COUNT(1) FROM PAY2_ATTENDANCE WHERE EMP_ID = @empId) AS AttCount,
+                    (SELECT COUNT(1) FROM PAY2_SETTLEMENT WHERE EMP_ID = @empId) AS SetCount,
+                    (SELECT COUNT(1) FROM PAY2_LOAN WHERE EMP_ID = @empId) AS LoanCount,
+                    (SELECT COUNT(1) FROM PAY2_DECREE WHERE EMP_ID = @empId AND IS_CONFIRMED = 1) AS ConfirmedDecreeCount,
+                    (SELECT COUNT(1) FROM PAY2_LEAVE WHERE EMP_ID = @empId AND STATUS > 1) AS ApprovedLeaveCount";
+
+                    var checks = await conn.QuerySingleAsync<dynamic>(checkSql, new { empId }, tran);
+
+                    // ۲. اعتبارسنجی خطوط قرمز (Red Lines)
+                    if (checks.RunCount > 0)
+                        throw new InvalidOperationException("این پرسنل دارای محاسبه حقوق (فیش صادر شده) است و قابل حذف نیست.");
+
+                    if (checks.AttCount > 0)
+                        throw new InvalidOperationException("برای این پرسنل کارکرد ماهیانه ثبت شده است و قابل حذف نیست.");
+
+                    if (checks.SetCount > 0)
+                        throw new InvalidOperationException("این پرسنل دارای سابقه تسویه حساب است و قابل حذف نیست.");
+
+                    if (checks.LoanCount > 0)
+                        throw new InvalidOperationException("این پرسنل دارای سابقه وام است (حتی تسویه شده). به دلیل سوابق مالی، حذف فیزیکی ممنوع است.");
+
+                    if (checks.ConfirmedDecreeCount > 0)
+                        throw new InvalidOperationException("این پرسنل دارای احکام کارگزینی تأیید شده است. مدارک رسمی قابل حذف نیستند.");
+
+                    if (checks.ApprovedLeaveCount > 0)
+                        throw new InvalidOperationException("این پرسنل دارای مرخصی تأیید شده است و سوابق آن قابل حذف نیست.");
+
+                    // ۳. اگر به این مرحله رسید، یعنی پرسنل به صورت آزمایشی/اشتباهی ثبت شده 
+                    // و فقط رکوردهای پیش‌نویس (Draft) دارد. حالا با خیال راحت زباله‌ها را پاک می‌کنیم.
+
+                    // پاک کردن اقلام احکامِ پیش‌نویس
+                    await conn.ExecuteAsync("DELETE FROM PAY2_DECREE_LINE WHERE DEC_ID IN (SELECT DEC_ID FROM PAY2_DECREE WHERE EMP_ID = @empId)", new { empId }, tran);
+                    await conn.ExecuteAsync("DELETE FROM PAY2_DECREE WHERE EMP_ID = @empId", new { empId }, tran);
+
+                    // پاک کردن سایر سوابق بی‌اهمیت
+                    await conn.ExecuteAsync("DELETE FROM PAY2_CONTRACT WHERE EMP_ID = @empId", new { empId }, tran);
+                    await conn.ExecuteAsync("DELETE FROM PAY2_LEAVE_BAL WHERE EMP_ID = @empId", new { empId }, tran);
+                    await conn.ExecuteAsync("DELETE FROM PAY2_LEAVE WHERE EMP_ID = @empId", new { empId }, tran); // فقط پیش‌نویس‌ها مانده‌اند
+                    await conn.ExecuteAsync("DELETE FROM PAY2_OVERRIDE WHERE EMP_ID = @empId", new { empId }, tran);
+                    await conn.ExecuteAsync("DELETE FROM PAY2_ADVANCE_EXCL WHERE EMP_ID = @empId", new { empId }, tran);
+
+                    // ۴. حذف فیزیکی خود پرسنل
+                    int deletedRows = await conn.ExecuteAsync("DELETE FROM PAY2_EMPLOYEE WHERE EMP_ID = @empId", new { empId }, tran);
+
+                    if (deletedRows == 0)
+                    {
+                        throw new InvalidOperationException("پرسنل مورد نظر در سیستم یافت نشد.");
+                    }
+                });
+
+                return Ok();
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(ex.Message); // نمایش پیام فارسی دقیق به کاربر
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, "خطای سیستمی هنگام حذف پرسنل: " + ex.Message);
+            }
+        }
+
+
     }
 }

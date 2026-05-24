@@ -230,5 +230,17 @@ namespace Safir.Client.Services
             if (!res.IsSuccessStatusCode)
                 throw new Exception(await res.Content.ReadAsStringAsync());
         }
+
+        public async Task DeleteEmployeeAsync(int empId)
+        {
+            var res = await _http.DeleteAsync($"api/pay2/employees/{empId}");
+            if (!res.IsSuccessStatusCode)
+            {
+                // در صورت بروز خطا (مثلاً داشتن وام)، متن فارسی از سمت سرور به اینجا می‌رسد
+                var errorMsg = await res.Content.ReadAsStringAsync();
+                throw new Exception(errorMsg);
+            }
+        }
+
     }
 }
