@@ -13,13 +13,13 @@
         border-radius: 8px;
         position: relative;
         background: #fff;
-        --sticky-offset: 80px; /* مقدار اولیه آفست ستون دوم */
+        --sticky-offset: var(--c0, 80px);
     }
 
     .p2-excel-table {
         border-collapse: separate;
         border-spacing: 0;
-        table-layout: fixed; /* اجبار به رعایت سایزهای colgroup */
+        table-layout: fixed;
         width: max-content;
         min-width: 100%;
         font-size: 13px;
@@ -47,7 +47,6 @@
             vertical-align: middle;
         }
 
-    /* === ستون‌های چسبان === */
     .p2-sticky-col-1 {
         position: sticky;
         right: 0;
@@ -77,14 +76,13 @@
         background: #fef2f2;
     }
 
-    /* اینپوت‌های داخل گرید */
     .p2-grid-input {
         width: calc(100% - 6px);
         margin: 3px;
         min-width: 60px;
         height: 32px;
         border: 2px solid transparent;
-        border-radius: 6px; /* 🟢 گردی لبه‌ها */
+        border-radius: 6px;
         outline: none;
         text-align: center;
         font-family: Consolas, Tahoma;
@@ -100,7 +98,7 @@
             border-radius: 6px;
             z-index: 5;
             position: relative;
-            transform: scale(1.05); /* 🟢 زوم نرم سلول */
+            transform: scale(1.05);
         }
 
         .p2-grid-input:disabled {
@@ -116,6 +114,7 @@
         display: flex;
         align-items: center;
         justify-content: center;
+        overflow: hidden;
     }
 
     .p2-excel-table tbody tr {
@@ -181,7 +180,6 @@
         font-weight: bold;
     }
 
-    /* دستگیره‌های Resize */
     .p2-col-resizer {
         position: absolute;
         top: 0;
@@ -208,7 +206,6 @@
 
 <div class="pay2-tab-container">
 
-    <!-- هدر فرم -->
     <div class="card-custom" style="padding: 16px; margin-bottom: 16px; display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-end;">
         <div class="form-field" style="width: 250px;">
             <label>انتخاب کارگاه *</label>
@@ -234,13 +231,18 @@
 
         @if (PeriodData != null)
         {
+            <div class="pay2-search-wrapper" style="width: 220px;">
+                <i class="bi bi-search"></i>
+                <input type="text" class="pay2-search-input" style="width: 100%;" placeholder="جستجوی کد یا نام..." @bind="SearchTerm" @bind:event="oninput" />
+            </div>
+
             <div style="display:flex; align-items:center; gap: 15px; background: var(--p2-bg-main); padding: 8px 16px; border-radius: var(--p2-radius-sm); border: 1px solid var(--p2-border);">
                 <div style="display:flex; align-items:center; gap: 6px;">
-                    <label style="margin:0; font-size: 12px; font-weight: bold; color: var(--p2-text-muted);">تعطیلات رسمی:</label>
+                    <label style="margin:0; font-size: 12px; font-weight: bold; color: var(--p2-text-muted);">تعطیلات:</label>
                     <input type="number" class="pay2-input" style="width: 60px; height: 30px; text-align: center; border: 1px solid #cbd5e1;" @bind="PeriodData.Period.HOLIDAY_DAYS" disabled="@PeriodData.Period.IsReadOnly" />
                 </div>
                 <label style="margin:0; font-size: 12px; font-weight: bold; cursor:pointer;">
-                    <input type="checkbox" @bind="PeriodData.Period.TENDAR_APPLY" disabled="@PeriodData.Period.IsReadOnly" style="vertical-align: middle; margin-left:4px;" /> اعمال کسر ۱۰٪
+                    <input type="checkbox" @bind="PeriodData.Period.TENDAR_APPLY" disabled="@PeriodData.Period.IsReadOnly" style="vertical-align: middle; margin-left:4px;" /> اعمال ۱۰٪
                 </label>
                 <span class="p2-badge @(PeriodData.Period.STATUS == 1 ? "p2-badge-success" : "p2-badge-warning")">@PeriodData.Period.StatusText</span>
             </div>
@@ -259,12 +261,11 @@
         }
     </div>
 
-    <!-- گرید اصلی -->
     @if (IsLoading)
     {
         <div style="display:flex; justify-content:center; align-items:center; height:300px; flex-direction:column; gap:15px;">
             <span class="p2-spinner" style="width:40px; height:40px; border-color:var(--p2-primary); border-top-color:transparent;"></span>
-            <span style="font-size:14px; font-weight:600; color:var(--p2-text-muted);">در حال دریافت لیست کارکرد...</span>
+            <span style="font-size:14px; font-weight:600; color:var(--p2-text-muted);">در حال دریافت و پردازش لیست کارکرد...</span>
         </div>
     }
     else if (PeriodData != null)
@@ -272,35 +273,34 @@
         <div class="card-custom" style="padding: 0; border: none; box-shadow: none;">
             <div class="p2-excel-wrapper">
                 <table class="p2-excel-table">
-                    <!-- 🟢 اینجا colgroup اضافه شد 🟢 -->
                     <colgroup>
-                        <col style="width: 80px;" /> <!-- 0 -->
-                        <col style="width: 180px;" /> <!-- 1 -->
+                        <col style="width: var(--c0, 80px);" /> <!-- 0 -->
+                        <col style="width: var(--c1, 180px);" /> <!-- 1 -->
 
-                        <col style="width: 100px;" /> <!-- 2 -->
-                        <col style="width: 90px;" /> <!-- 3 -->
-                        <col style="width: 90px;" /> <!-- 4 -->
-                        <col style="width: 90px;" /> <!-- 5 -->
-                        <col style="width: 90px;" /> <!-- 6 -->
+                        <col style="width: var(--c2, 100px);" /> <!-- 2 -->
+                        <col style="width: var(--c3, 90px);" /> <!-- 3 -->
+                        <col style="width: var(--c4, 90px);" /> <!-- 4 -->
+                        <col style="width: var(--c5, 90px);" /> <!-- 5 -->
+                        <col style="width: var(--c6, 90px);" /> <!-- 6 -->
 
-                        <col style="width: 120px;" /> <!-- 7 -->
-                        <col style="width: 110px;" /> <!-- 8 -->
-                        <col style="width: 110px;" /> <!-- 9 -->
+                        <col style="width: var(--c7, 120px);" /> <!-- 7 -->
+                        <col style="width: var(--c8, 110px);" /> <!-- 8 -->
+                        <col style="width: var(--c9, 110px);" /> <!-- 9 -->
 
-                        <col style="width: 90px;" /> <!-- 10 -->
-                        <col style="width: 90px;" /> <!-- 11 -->
-                        <col style="width: 100px;" /> <!-- 12 -->
+                        <col style="width: var(--c10, 90px);" /> <!-- 10 -->
+                        <col style="width: var(--c11, 90px);" /> <!-- 11 -->
+                        <col style="width: var(--c12, 100px);" /> <!-- 12 -->
 
-                        <col style="width: 110px;" /> <!-- 13 -->
-                        <col style="width: 110px;" /> <!-- 14 -->
-                        <col style="width: 100px;" /> <!-- 15 -->
-                        <col style="width: 90px;" /> <!-- 16 -->
+                        <col style="width: var(--c13, 110px);" /> <!-- 13 -->
+                        <col style="width: var(--c14, 110px);" /> <!-- 14 -->
+                        <col style="width: var(--c15, 100px);" /> <!-- 15 -->
+                        <col style="width: var(--c16, 90px);" /> <!-- 16 -->
 
-                        <col style="width: 140px;" /> <!-- 17 -->
-                        <col style="width: 140px;" /> <!-- 18 -->
-                        <col style="width: 140px;" /> <!-- 19 -->
+                        <col style="width: var(--c17, 140px);" /> <!-- 17 -->
+                        <col style="width: var(--c18, 140px);" /> <!-- 18 -->
+                        <col style="width: var(--c19, 140px);" /> <!-- 19 -->
 
-                        <col style="width: 100px;" /> <!-- 20 -->
+                        <col style="width: var(--c20, 100px);" /> <!-- 20 -->
                     </colgroup>
                     <thead>
                         <tr>
@@ -334,10 +334,13 @@
                         </tr>
                     </thead>
                     <tbody>
-                        <Virtualize Items="PeriodData.Lines" Context="item" OverscanCount="10">
-                            <tr class="@(item.LOCKED ? "row-locked" : (item.IsDirty ? "row-dirty" : ""))">
+                        @if (!FilteredLines.Any())
+                        {
+                            <tr><td colspan="21" style="text-align:center; padding:30px; color:var(--p2-text-muted);">رکوردی یافت نشد.</td></tr>
+                        }
 
-                                <!-- 🟢 پاک شدن تمام style های width از td ها 🟢 -->
+                        <Virtualize Items="FilteredLines" Context="item" OverscanCount="10">
+                            <tr class="@(item.LOCKED ? "row-locked" : (item.IsDirty ? "row-dirty" : ""))" @key="item.EMP_ID">
                                 <td class="p2-sticky-col-1"><div class="p2-cell-text" style="font-family:Consolas; font-weight:bold; color:var(--p2-text-muted);">@item.EMP_CODE</div></td>
                                 <td class="p2-sticky-col-2"><div class="p2-cell-text" style="font-weight:bold; font-size:12px; justify-content: flex-start;" title="@item.FULL_NAME">@item.FULL_NAME</div></td>
 
@@ -364,7 +367,7 @@
                                 <td><Safir.Client.Pages.Salary.Tabs.Pay2NumericInput @bind-Value="item.TRANSP_AMOUNT_STR" IsDigitGroupActive="true" ThreeTwoZero="true" CssClass="p2-grid-input" Disabled="@(item.LOCKED || PeriodData.Period.IsReadOnly)" /></td>
                                 <td><Safir.Client.Pages.Salary.Tabs.Pay2NumericInput @bind-Value="item.KASR_OTHER_STR" IsDigitGroupActive="true" ThreeTwoZero="true" CssClass="p2-grid-input input-danger" Disabled="@(item.LOCKED || PeriodData.Period.IsReadOnly)" /></td>
 
-                                <td style="text-align: center; padding: 0 5px;">
+                                <td style="text-align: center; padding: 0 5px; width: 100px;">
                                     <button class="btn-primary-pay2 sm" style="background:#6366f1; border-color:#6366f1; height: 28px;" @onclick="() => OpenDynamicValues(item.EMP_ID, item.FULL_NAME)">⊕ پویا</button>
                                 </td>
                             </tr>
@@ -372,11 +375,14 @@
                     </tbody>
                 </table>
             </div>
+            <div style="padding: 10px 16px; border-top: 1px solid var(--p2-border-light); font-size: 12px; color: var(--p2-text-muted);">
+                تعداد کل پرسنل: <b>@(PeriodData.Lines?.Count ?? 0)</b> |
+                تعداد نمایش داده شده: <b>@FilteredLines.Count</b>
+            </div>
         </div>
     }
 </div>
 
-<!-- Modal مقادیر پویا -->
 @if (ShowDynamicModal)
 {
     <div class="pay2-select-backdrop" style="background: rgba(15,23,42,0.6); z-index: 2999;" @onclick="() => ShowDynamicModal = false"></div>
@@ -412,8 +418,21 @@
     string PeriodDateStr = "14030100";
 
     Pay2AttendanceSaveRequest? PeriodData;
+    List<Pay2AttendanceLineDto> FilteredLines = new();
+
     bool IsLoading = false;
     bool IsSaving = false;
+
+    string _searchTerm = "";
+    string SearchTerm
+    {
+        get => _searchTerm;
+        set
+        {
+            _searchTerm = value;
+            ApplyFilter(); // جستجوی لایو بدون تایمر
+        }
+    }
 
     bool ShowDynamicModal = false;
     int ActiveEmpId;
@@ -445,9 +464,30 @@
         {
             long pDate = long.Parse(PeriodDateStr.Replace("/", ""));
             PeriodData = await AttApi.InitPeriodAsync(SelectedWsId, pDate);
+
+            FilteredLines = PeriodData.Lines.ToList();
+            _searchTerm = "";
         }
         catch (Exception ex) { Snackbar.Add(ex.Message, MudBlazor.Severity.Error); }
         finally { IsLoading = false; }
+    }
+
+    void ApplyFilter()
+    {
+        if (PeriodData == null || PeriodData.Lines == null) return;
+
+        if (string.IsNullOrWhiteSpace(_searchTerm))
+        {
+            FilteredLines = PeriodData.Lines.ToList();
+        }
+        else
+        {
+            var term = _searchTerm.Trim().ToLower();
+            FilteredLines = PeriodData.Lines.Where(x =>
+                (x.FULL_NAME != null && x.FULL_NAME.ToLower().Contains(term)) ||
+                (x.EMP_CODE != null && x.EMP_CODE.Contains(term))
+            ).ToList();
+        }
     }
 
     async Task SaveBulk()
