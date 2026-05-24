@@ -4,7 +4,6 @@
 @inject ISnackbar Snackbar
 
 <style>
-    /* کانتینر اصلی گرید با اسکرول */
     .p2-excel-wrapper {
         width: 100%;
         overflow-x: auto;
@@ -14,17 +13,18 @@
         border-radius: 8px;
         position: relative;
         background: #fff;
+        --sticky-offset: 80px; /* مقدار اولیه آفست ستون دوم */
     }
 
     .p2-excel-table {
-        border-collapse: separate; /* مهم برای sticky */
+        border-collapse: separate;
         border-spacing: 0;
-        min-width: max-content;
+        table-layout: fixed; /* اجبار به رعایت سایزهای colgroup */
+        width: max-content;
+        min-width: 100%;
         font-size: 13px;
-        width: 100%;
     }
 
-        /* هدرهای بالا */
         .p2-excel-table th {
             background: #f8fafc;
             color: var(--p2-text-main);
@@ -39,65 +39,52 @@
             white-space: nowrap;
         }
 
-        /* سلول‌های عادی */
         .p2-excel-table td {
             border-bottom: 1px solid #e2e8f0;
             border-left: 1px solid #e2e8f0;
             padding: 0;
-            background: inherit; /* ارث بری بک‌گراند از سطر (tr) */
+            background: inherit;
+            vertical-align: middle;
         }
 
-    /* === جادوی ستون‌های چسبان (Sticky Columns) === */
-    /* ستون اول: کد پرسنلی */
+    /* === ستون‌های چسبان === */
     .p2-sticky-col-1 {
         position: sticky;
         right: 0;
         z-index: 10;
-        /* دادن بک‌گراند سالید بسیار مهم است تا محتوای زیرین دیده نشود */
         background: #f8fafc;
         box-shadow: -1px 0 0 #e2e8f0;
     }
-    /* ستون دوم: نام و نام خانوادگی */
+
     .p2-sticky-col-2 {
         position: sticky;
-        right: 80px; /* باید دقیقاً برابر عرض ستون اول باشد */
+        right: var(--sticky-offset) !important;
         z-index: 10;
         background: #f8fafc;
-        /* ایجاد یک سایه محو در سمت چپ برای جدا کردن ناحیه ثابت از اسکرول‌شونده */
         box-shadow: -3px 0 5px rgba(0,0,0,0.04), -1px 0 0 #cbd5e1;
     }
 
-    /* هدر ستون‌های چسبان باید z-index بالاتری داشته باشند */
-    .p2-excel-table th.p2-sticky-col-1,
-    .p2-excel-table th.p2-sticky-col-2 {
+    .p2-excel-table th.p2-sticky-col-1, .p2-excel-table th.p2-sticky-col-2 {
         z-index: 30;
         background: #f1f5f9;
     }
 
-    /* در زمان هاور شدن یا کثیف شدن، بک‌گراند ستون‌های چسبان هم باید عوض شود */
-    .p2-excel-table tr:hover td.p2-sticky-col-1,
-    .p2-excel-table tr:hover td.p2-sticky-col-2 {
-        background: #f1f5f9;
-    }
-
-    .row-dirty td.p2-sticky-col-1,
-    .row-dirty td.p2-sticky-col-2 {
+    .row-dirty td.p2-sticky-col-1, .row-dirty td.p2-sticky-col-2 {
         background: #f0fdf4;
     }
 
-    .row-locked td.p2-sticky-col-1,
-    .row-locked td.p2-sticky-col-2 {
+    .row-locked td.p2-sticky-col-1, .row-locked td.p2-sticky-col-2 {
         background: #fef2f2;
     }
 
     /* اینپوت‌های داخل گرید */
     .p2-grid-input {
-        width: calc(100% - 6px); /* کمی کوچک‌تر تا حاشیه‌ها دیده شود */
-        margin: 3px; /* ایجاد فاصله از دیواره‌های سلول جدول */
+        width: calc(100% - 6px);
+        margin: 3px;
         min-width: 60px;
         height: 32px;
-        border: 2px solid transparent; /* کادر شفاف برای جلوگیری از پرش تصویر */
-        border-radius: 6px; /* 🟢 گرد کردن لبه‌های کادر 🟢 */
+        border: 2px solid transparent;
+        border-radius: 6px; /* 🟢 گردی لبه‌ها */
         outline: none;
         text-align: center;
         font-family: Consolas, Tahoma;
@@ -108,12 +95,12 @@
 
         .p2-grid-input:focus {
             background: #fff;
-            border-color: var(--p2-primary); /* کادر آبی رنگ جذاب */
-            box-shadow: 0 4px 12px rgba(37, 99, 235, 0.15); /* سایه نرم برای ایجاد عمق */
-            border-radius: 6px; /* حفظ گردی لبه‌ها در حالت فوکوس */
+            border-color: var(--p2-primary);
+            box-shadow: 0 4px 12px rgba(37, 99, 235, 0.15);
+            border-radius: 6px;
             z-index: 5;
             position: relative;
-            transform: scale(1.05); /* 🟢 یک بزرگ‌نمایی بسیار نرم و زیبا مثل اکسل تحت وب 🟢 */
+            transform: scale(1.05); /* 🟢 زوم نرم سلول */
         }
 
         .p2-grid-input:disabled {
@@ -131,15 +118,24 @@
         justify-content: center;
     }
 
-    /* رنگ‌بندی پس‌زمینه ردیف‌ها */
     .p2-excel-table tbody tr {
         background: #fff;
         transition: background 0.1s;
+        position: relative;
+        z-index: 1;
     }
 
-        .p2-excel-table tbody tr:hover {
-            background: #f8fafc;
+        .p2-excel-table tbody tr:focus-within {
+            z-index: 20;
         }
+
+    .p2-excel-table td:focus-within {
+        z-index: 30;
+    }
+
+    .p2-excel-table tbody tr:hover {
+        background: #f8fafc;
+    }
 
     .row-dirty {
         background-color: #f0fdf4 !important;
@@ -150,7 +146,6 @@
         opacity: 0.8;
     }
 
-    /* رنگ‌بندی ملایم هدر ستون‌ها برای راهنمایی بصری بهتر */
     .bg-group-1 {
         background-color: #f8fafc !important;
     }
@@ -158,7 +153,7 @@
     .bg-group-2 {
         background-color: #fffbeb !important;
     }
-    /* نارنجی ملایم برای اضافه‌کار */
+
     .bg-group-3 {
         background-color: #f8fafc !important;
     }
@@ -166,7 +161,7 @@
     .bg-group-4 {
         background-color: #ecfdf5 !important;
     }
-    /* سبز ملایم برای کارکرد رسمی/اسمی */
+
     .bg-group-5 {
         background-color: #f8fafc !important;
     }
@@ -185,11 +180,35 @@
         color: var(--p2-danger-text) !important;
         font-weight: bold;
     }
+
+    /* دستگیره‌های Resize */
+    .p2-col-resizer {
+        position: absolute;
+        top: 0;
+        left: -2px;
+        width: 6px;
+        height: 100%;
+        cursor: col-resize;
+        z-index: 50;
+        background-color: transparent;
+        transition: background-color 0.2s;
+    }
+
+        .p2-col-resizer:hover, .p2-col-resizer:active {
+            background-color: var(--p2-primary);
+        }
+</style>
+
+<style>
+    body.p2-resizing * {
+        user-select: none !important;
+        cursor: col-resize !important;
+    }
 </style>
 
 <div class="pay2-tab-container">
 
-    <!-- هدر فرم (فیلترها) -->
+    <!-- هدر فرم -->
     <div class="card-custom" style="padding: 16px; margin-bottom: 16px; display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-end;">
         <div class="form-field" style="width: 250px;">
             <label>انتخاب کارگاه *</label>
@@ -234,7 +253,7 @@
                 else
                 {
 
-                    <span><i class="bi bi-floppy"></i> ذخیره اطلاعات کارکرد</span>
+                    <span><i class="bi bi-floppy"></i> ذخیره کارکرد</span>
                 }
             </button>
         }
@@ -253,42 +272,72 @@
         <div class="card-custom" style="padding: 0; border: none; box-shadow: none;">
             <div class="p2-excel-wrapper">
                 <table class="p2-excel-table">
+                    <!-- 🟢 اینجا colgroup اضافه شد 🟢 -->
+                    <colgroup>
+                        <col style="width: 80px;" /> <!-- 0 -->
+                        <col style="width: 180px;" /> <!-- 1 -->
+
+                        <col style="width: 100px;" /> <!-- 2 -->
+                        <col style="width: 90px;" /> <!-- 3 -->
+                        <col style="width: 90px;" /> <!-- 4 -->
+                        <col style="width: 90px;" /> <!-- 5 -->
+                        <col style="width: 90px;" /> <!-- 6 -->
+
+                        <col style="width: 120px;" /> <!-- 7 -->
+                        <col style="width: 110px;" /> <!-- 8 -->
+                        <col style="width: 110px;" /> <!-- 9 -->
+
+                        <col style="width: 90px;" /> <!-- 10 -->
+                        <col style="width: 90px;" /> <!-- 11 -->
+                        <col style="width: 100px;" /> <!-- 12 -->
+
+                        <col style="width: 110px;" /> <!-- 13 -->
+                        <col style="width: 110px;" /> <!-- 14 -->
+                        <col style="width: 100px;" /> <!-- 15 -->
+                        <col style="width: 90px;" /> <!-- 16 -->
+
+                        <col style="width: 140px;" /> <!-- 17 -->
+                        <col style="width: 140px;" /> <!-- 18 -->
+                        <col style="width: 140px;" /> <!-- 19 -->
+
+                        <col style="width: 100px;" /> <!-- 20 -->
+                    </colgroup>
                     <thead>
                         <tr>
-                            <th class="p2-sticky-col-1" style="width: 80px; min-width:80px;">کد پرسنلی</th>
-                            <th class="p2-sticky-col-2" style="width: 180px; min-width:180px;">نام و نام خانوادگی</th>
+                            <th class="p2-sticky-col-1">کد پرسنلی<div class="p2-col-resizer" onmousedown="startP2Resize(event, this, 0, true)"></div></th>
+                            <th class="p2-sticky-col-2">نام و نام خانوادگی<div class="p2-col-resizer" onmousedown="startP2Resize(event, this, 1, false)"></div></th>
 
-                            <th class="bg-group-1" style="color:var(--p2-primary);">کل کارکرد</th>
-                            <th class="bg-group-1">روز تولید</th>
-                            <th class="bg-group-1">روز اداری</th>
-                            <th class="bg-group-1">روز خدمات</th>
-                            <th class="bg-group-1">روز فروش</th>
+                            <th class="bg-group-1" style="color:var(--p2-primary);">کل کارکرد<div class="p2-col-resizer" onmousedown="startP2Resize(event, this, 2, false)"></div></th>
+                            <th class="bg-group-1">روز تولید<div class="p2-col-resizer" onmousedown="startP2Resize(event, this, 3, false)"></div></th>
+                            <th class="bg-group-1">روز اداری<div class="p2-col-resizer" onmousedown="startP2Resize(event, this, 4, false)"></div></th>
+                            <th class="bg-group-1">روز خدمات<div class="p2-col-resizer" onmousedown="startP2Resize(event, this, 5, false)"></div></th>
+                            <th class="bg-group-1">روز فروش<div class="p2-col-resizer" onmousedown="startP2Resize(event, this, 6, false)"></div></th>
 
-                            <th class="bg-group-2" style="color:#d97706;">اضافه‌کار عادی</th>
-                            <th class="bg-group-2" style="color:#d97706;">اضافه‌کار تعطیل</th>
-                            <th class="bg-group-2" style="color:#d97706;">اضافه‌کار اداری</th>
+                            <th class="bg-group-2" style="color:#d97706;">اضافه‌کار عادی<div class="p2-col-resizer" onmousedown="startP2Resize(event, this, 7, false)"></div></th>
+                            <th class="bg-group-2" style="color:#d97706;">اضافه‌کار تعطیل<div class="p2-col-resizer" onmousedown="startP2Resize(event, this, 8, false)"></div></th>
+                            <th class="bg-group-2" style="color:#d97706;">اضافه‌کار اداری<div class="p2-col-resizer" onmousedown="startP2Resize(event, this, 9, false)"></div></th>
 
-                            <th class="bg-group-3">روز مرخصی</th>
-                            <th class="bg-group-3">روز غیبت</th>
-                            <th class="bg-group-3">روز مأموریت</th>
+                            <th class="bg-group-3">روز مرخصی<div class="p2-col-resizer" onmousedown="startP2Resize(event, this, 10, false)"></div></th>
+                            <th class="bg-group-3">روز غیبت<div class="p2-col-resizer" onmousedown="startP2Resize(event, this, 11, false)"></div></th>
+                            <th class="bg-group-3">روز مأموریت<div class="p2-col-resizer" onmousedown="startP2Resize(event, this, 12, false)"></div></th>
 
-                            <th class="bg-group-4" style="color:#059669;">کارکرد اسمی</th>
-                            <th class="bg-group-4" style="color:#059669;">کارکرد رسمی</th>
-                            <th class="bg-group-3">تعطیلات رسمی</th>
-                            <th class="bg-group-3">تعداد جمعه</th>
+                            <th class="bg-group-4" style="color:#059669;">کارکرد اسمی<div class="p2-col-resizer" onmousedown="startP2Resize(event, this, 13, false)"></div></th>
+                            <th class="bg-group-4" style="color:#059669;">کارکرد رسمی<div class="p2-col-resizer" onmousedown="startP2Resize(event, this, 14, false)"></div></th>
+                            <th class="bg-group-3">تعطیلات رسمی<div class="p2-col-resizer" onmousedown="startP2Resize(event, this, 15, false)"></div></th>
+                            <th class="bg-group-3">تعداد جمعه<div class="p2-col-resizer" onmousedown="startP2Resize(event, this, 16, false)"></div></th>
 
-                            <th class="bg-group-5">پاداش/راندمان (ریال)</th>
-                            <th class="bg-group-5">حق ایاب‌وذهاب (ریال)</th>
-                            <th class="bg-group-5" style="color:#ef4444;">سایر کسورات (ریال)</th>
+                            <th class="bg-group-5">پاداش/راندمان (ریال)<div class="p2-col-resizer" onmousedown="startP2Resize(event, this, 17, false)"></div></th>
+                            <th class="bg-group-5">حق ایاب‌وذهاب (ریال)<div class="p2-col-resizer" onmousedown="startP2Resize(event, this, 18, false)"></div></th>
+                            <th class="bg-group-5" style="color:#ef4444;">سایر کسورات (ریال)<div class="p2-col-resizer" onmousedown="startP2Resize(event, this, 19, false)"></div></th>
 
-                            <th class="bg-group-5">عملیات</th>
+                            <th class="bg-group-5">عملیات<div class="p2-col-resizer" onmousedown="startP2Resize(event, this, 20, false)"></div></th>
                         </tr>
                     </thead>
                     <tbody>
                         <Virtualize Items="PeriodData.Lines" Context="item" OverscanCount="10">
-                            <!-- اضافه شدن کلاس row-dirty برای سبز کردن سطرهای ویرایش شده -->
                             <tr class="@(item.LOCKED ? "row-locked" : (item.IsDirty ? "row-dirty" : ""))">
 
+                                <!-- 🟢 پاک شدن تمام style های width از td ها 🟢 -->
                                 <td class="p2-sticky-col-1"><div class="p2-cell-text" style="font-family:Consolas; font-weight:bold; color:var(--p2-text-muted);">@item.EMP_CODE</div></td>
                                 <td class="p2-sticky-col-2"><div class="p2-cell-text" style="font-weight:bold; font-size:12px; justify-content: flex-start;" title="@item.FULL_NAME">@item.FULL_NAME</div></td>
 
@@ -366,7 +415,6 @@
     bool IsLoading = false;
     bool IsSaving = false;
 
-    // متغیرهای مودال پویا
     bool ShowDynamicModal = false;
     int ActiveEmpId;
     string ActiveEmpName = "";
@@ -406,7 +454,6 @@
     {
         if (PeriodData == null || PeriodData.Period.IsReadOnly) return;
 
-        // فقط ردیف‌های تغییر یافته (IsDirty == true) را جدا می‌کنیم
         var dirtyLines = PeriodData.Lines.Where(x => x.IsDirty && !x.LOCKED).ToList();
 
         if (!dirtyLines.Any())
@@ -421,12 +468,11 @@
             var req = new Pay2AttendanceSaveRequest
             {
                 Period = PeriodData.Period,
-                Lines = dirtyLines // فقط تغییرات ارسال می‌شود
+                Lines = dirtyLines
             };
 
             await AttApi.SaveBulkAsync(req);
 
-            // پس از ذخیره موفق، تیک تغییرات را برمی‌داریم تا ردیف سبز رنگ به حالت عادی برگردد
             dirtyLines.ForEach(x => x.IsDirty = false);
 
             Snackbar.Add($"اطلاعات کارکرد با موفقیت ذخیره شد ({dirtyLines.Count} ردیف).", MudBlazor.Severity.Success);

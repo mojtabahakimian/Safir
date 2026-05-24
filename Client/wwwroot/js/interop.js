@@ -1,4 +1,4 @@
-window.initializeStimulsoftViewer = (containerId, reportUrl) => {
+﻿window.initializeStimulsoftViewer = (containerId, reportUrl) => {
     const viewerOptions = {
         height: "100%",
         width: "100%",
@@ -29,4 +29,44 @@ window.downloadPdfFromBase64 = (base64String, fileName) => {
     } catch (e) {
         console.error("Error downloading PDF:", e);
     }
+};
+
+
+window.startP2Resize = function (e, resizerElement, colIndex, isCol1) {
+    e.preventDefault();
+    e.stopPropagation();
+
+    const wrapper = resizerElement.closest('.p2-excel-wrapper');
+    const table = wrapper.querySelector('.p2-excel-table');
+    const cols = table.querySelectorAll('col');
+    const targetCol = cols[colIndex];
+
+    if (!wrapper || !targetCol) return;
+
+    let startX = e.clientX;
+    let startWidth = targetCol.offsetWidth || parseFloat(getComputedStyle(targetCol).width);
+
+    document.body.classList.add('p2-resizing');
+
+    const mouseMove = function (event) {
+        const newWidth = startWidth + (startX - event.clientX); // منطق RTL
+
+        if (newWidth > 60) {
+            targetCol.style.width = `${newWidth}px`; // تغییر عرض تگ col
+
+            if (isCol1) {
+                // اگر ستون اول تغییر کرد، مکان چسبیدن ستون دوم را آپدیت می‌کنیم
+                wrapper.style.setProperty('--sticky-offset', `${newWidth}px`);
+            }
+        }
+    };
+
+    const mouseUp = function () {
+        document.body.classList.remove('p2-resizing');
+        document.removeEventListener('mousemove', mouseMove);
+        document.removeEventListener('mouseup', mouseUp);
+    };
+
+    document.addEventListener('mousemove', mouseMove);
+    document.addEventListener('mouseup', mouseUp);
 };
