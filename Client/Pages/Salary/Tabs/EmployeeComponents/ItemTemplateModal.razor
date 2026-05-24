@@ -1,0 +1,258 @@
+﻿@using Safir.Shared.Models
+@using Safir.Shared.Models.Salary
+@inject Safir.Client.Services.Pay2EmployeeApiService EmployeeApi
+@inject Safir.Client.Services.Pay2WorkshopApiService WorkshopApi
+@inject ISnackbar Snackbar
+@inject MudBlazor.IDialogService DialogService
+
+@if (IsOpen)
+{
+    <div class="pay2-select-backdrop" style="background: rgba(15,23,42,0.6); z-index: 2999;" @onclick="Close"></div>
+    <div class="card-custom pay2-modal-container" style="max-width: 850px;">
+
+        <div class="pay2-modal-header p2-card-header" style="margin:0;">
+            <h5 style="margin:0; font-size:18px;">مدیریت قالب‌های حکم (PAY2_ITEM_TEMPLATE)</h5>
+            <button class="btn-ghost-pay2" @onclick="Close"><i class="bi bi-x-lg"></i></button>
+        </div>
+
+        <div class="pay2-modal-body">
+            @if (!_isDataLoaded)
+            {
+                <div style="display:flex; justify-content:center; align-items:center; height:200px; flex-direction:column; gap:15px;">
+                    <span class="p2-spinner" style="width:40px; height:40px; border-color:var(--p2-primary); border-top-color:transparent;"></span>
+                    <span style="font-size:14px; color:var(--p2-primary); font-weight:600;">در حال بارگذاری قالب‌ها...</span>
+                </div>
+            }
+            else
+            {
+                <div class="p2-sub-card-title"><span style="color: var(--p2-primary);">ثبت / ویرایش قالب</span></div>
+
+                <div class="form-grid-3 p2-mb-16">
+                    <div class="form-field">
+                        <label>اختصاص به کارگاه</label>
+                        <Safir.Client.Pages.Salary.Tabs.Pay2Select TItem="LookupDto<int?>" TValue="int?"
+                                                                   Items="WorkshopsWithAllOption"
+                                                                   @bind-Value="CurrentTemplate.WS_ID"
+                                                                   TextSelector="x => x.Name"
+                                                                   ValueSelector="x => x.Id"
+                                                                   Clearable="true"
+                                                                   Placeholder="همه کارگاه‌ها" />
+                    </div>
+                    <div class="form-field">
+                        <label>عنوان قالب *</label>
+                        <input class="pay2-input" type="text" @bind="CurrentTemplate.TMPL_NAME" placeholder="مثال: قالب کارگران تولید" />
+                    </div>
+                    <div class="form-field">
+                        <label>کد قالب (انگلیسی) *</label>
+                        <input class="pay2-input" type="text" @bind="CurrentTemplate.TMPL_CODE" placeholder="مثال: TEMPLATE_1" dir="ltr" />
+                    </div>
+                </div>
+
+                <div class="form-grid-2 p2-mb-16" style="align-items: center;">
+                    <div style="display:flex; justify-content:flex-start; align-items:center; gap:15px;">
+                        <button class="btn-primary-pay2" @onclick="SubmitSave" disabled="@IsSaving" style="width: 120px;">
+                            @if (IsSaving)
+                            {
+                                <span class="p2-spinner"></span>
+                            }
+                            else
+                            {
+                                <span>ذخیره قالب</span>
+                            }
+                        </button>
+
+                        <label style="margin:0; font-weight:600; cursor:pointer; color: var(--p2-text-main); font-size: 13px;">
+                            <input type="checkbox" @bind="CurrentTemplate.IS_ACTIVE" style="vertical-align: middle; margin-left: 4px;" /> قالب فعال است؟
+                        </label>
+
+                        @if (CurrentTemplate.TMPL_ID > 0)
+                        {
+                            <button class="btn-outline-pay2" @onclick="ResetForm">انصراف</button>
+                        }
+                    </div>
+
+                    <div class="form-field">
+                        <label>توضیحات</label>
+                        <input class="pay2-input" type="text" @bind="CurrentTemplate.NOTES" />
+                    </div>
+                </div>
+
+                <hr class="p2-divider" />
+
+                <!-- جدول سوابق -->
+                <div class="p2-sub-card-title"><span style="color: var(--p2-text-main);">لیست قالب‌های تعریف شده</span></div>
+                <div class="pay2-table-responsive">
+                    <table class="p2-table">
+                        <thead style="position: sticky; top: 0; z-index: 10;">
+                            <tr>
+                                <th>کد قالب</th>
+                                <th>عنوان قالب</th>
+                                <th style="text-align:center;">کارگاه</th>
+                                <th style="text-align:center;">فعال</th>
+                                <th style="text-align:center;">عملیات</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @if (!Templates.Any())
+                            {
+                                <tr><td colspan="5" style="text-align:center; padding:20px; color:#94a3b8;">هیچ قالبی در سیستم ثبت نشده است.</td></tr>
+                            }
+                            @foreach (var tmp in Templates)
+                            {
+                                <tr style="background: @(CurrentTemplate.TMPL_ID == tmp.TMPL_ID ? "var(--p2-primary-light)" : "transparent")">
+                                    <td class="p2-text-mono" style="font-weight:bold;">@tmp.TMPL_CODE</td>
+                                    <td>@tmp.TMPL_NAME</td>
+                                    <td class="p2-text-muted" style="text-align:center;">@tmp.DisplayWorkshop</td>
+                                    <td style="text-align:center;">
+                                        @if (tmp.IS_ACTIVE)
+                                        {
+                                            <i class="bi bi-check-square-fill" style="color:var(--p2-success-text); font-size:16px;"></i>
+                                        }
+                                        else
+                                        {
+                                            <i class="bi bi-square" style="color:var(--p2-text-light); font-size:16px;"></i>
+                                        }
+                                    </td>
+                                    <td style="text-align:center; min-width: 200px;">
+                                        <button class="btn-ghost-pay2" style="color:#10b981;" @onclick="() => OpenTemplateItems(tmp)">آیتم‌ها</button>
+                                        <button class="btn-ghost-pay2 p2-text-primary" @onclick="() => EditTemplate(tmp)">ویرایش</button>
+                                        <button class="btn-ghost-pay2 p2-text-danger" @onclick="() => DeleteTemplate(tmp)">حذف</button>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+        </div>
+        <div class="pay2-modal-footer" style="justify-content: flex-start;">
+            <button class="btn-outline-pay2" @onclick="Close" style="border-radius:12px; padding:8px 24px; min-width: 100px;">بستن</button>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public bool IsOpen { get; set; }
+    [Parameter] public EventCallback OnClose { get; set; }
+    [Parameter] public EventCallback<Pay2ItemTemplateDto> OnManageLines { get; set; }
+
+    List<Pay2ItemTemplateDto> Templates = new();
+    Pay2ItemTemplateDto CurrentTemplate = new();
+
+    List<LookupDto<int?>> WorkshopsWithAllOption = new();
+
+    bool IsSaving = false;
+    bool _isDataLoaded = false;
+    bool _lastOpenState = false;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (IsOpen && !_lastOpenState)
+        {
+            _lastOpenState = true;
+            _isDataLoaded = false;
+            ResetForm();
+            await LoadDataAsync();
+        }
+        else if (!IsOpen)
+        {
+            _lastOpenState = false;
+        }
+    }
+
+    async Task LoadDataAsync()
+    {
+        try
+        {
+            var wsTask = WorkshopApi.GetWorkshopsAsync();
+            var tmpTask = EmployeeApi.GetTemplatesAsync();
+            await Task.WhenAll(wsTask, tmpTask);
+
+            WorkshopsWithAllOption.Clear();
+            WorkshopsWithAllOption.Add(new LookupDto<int?>(null, "همه کارگاه‌ها"));
+            foreach (var w in wsTask.Result)
+            {
+                WorkshopsWithAllOption.Add(new LookupDto<int?>(w.WS_ID, w.WS_NAME));
+            }
+
+            Templates = tmpTask.Result;
+        }
+        catch (Exception ex) { Snackbar.Add(ex.Message, MudBlazor.Severity.Error); }
+        finally
+        {
+            _isDataLoaded = true;
+            StateHasChanged();
+        }
+    }
+
+    void ResetForm()
+    {
+        CurrentTemplate = new Pay2ItemTemplateDto { IS_ACTIVE = true, WS_ID = null };
+    }
+
+    void EditTemplate(Pay2ItemTemplateDto item)
+    {
+        CurrentTemplate = new Pay2ItemTemplateDto
+        {
+            TMPL_ID = item.TMPL_ID,
+            TMPL_CODE = item.TMPL_CODE,
+            TMPL_NAME = item.TMPL_NAME,
+            WS_ID = item.WS_ID,
+            IS_ACTIVE = item.IS_ACTIVE,
+            NOTES = item.NOTES
+        };
+    }
+
+    async Task SubmitSave()
+    {
+        if (string.IsNullOrWhiteSpace(CurrentTemplate.TMPL_CODE) || string.IsNullOrWhiteSpace(CurrentTemplate.TMPL_NAME))
+        {
+            Snackbar.Add("کد و عنوان قالب الزامی است.", MudBlazor.Severity.Warning);
+            return;
+        }
+
+        IsSaving = true;
+        try
+        {
+            await EmployeeApi.SaveTemplateAsync(CurrentTemplate);
+            Snackbar.Add("قالب با موفقیت ذخیره شد.", MudBlazor.Severity.Success);
+            ResetForm();
+            await LoadDataAsync();
+        }
+        catch (Exception ex) { Snackbar.Add(ex.Message, MudBlazor.Severity.Error); }
+        finally { IsSaving = false; }
+    }
+
+    async Task DeleteTemplate(Pay2ItemTemplateDto item)
+    {
+        var parameters = new MudBlazor.DialogParameters
+        {
+            ["Title"] = "حذف قالب",
+            ["ContentText"] = $"آیا از حذف قالب «{item.TMPL_NAME}» اطمینان دارید؟ تمام آیتم‌های متصل به آن نیز حذف خواهند شد.",
+            ["ConfirmButtonText"] = "بله، حذف کن",
+            ["CancelButtonText"] = "انصراف"
+        };
+        var options = new MudBlazor.DialogOptions { CloseButton = false, MaxWidth = MudBlazor.MaxWidth.ExtraSmall };
+        var dialog = DialogService.Show<Safir.Client.Shared.ConfirmDialog>("تایید حذف", parameters, options);
+        var result = await dialog.Result;
+
+        if (!result.Cancelled)
+        {
+            try
+            {
+                await EmployeeApi.DeleteTemplateAsync(item.TMPL_ID);
+                Snackbar.Add("قالب با موفقیت حذف شد.", MudBlazor.Severity.Success);
+                if (CurrentTemplate.TMPL_ID == item.TMPL_ID) ResetForm();
+                await LoadDataAsync();
+            }
+            catch (Exception ex) { Snackbar.Add(ex.Message, MudBlazor.Severity.Error); }
+        }
+    }
+
+    async Task OpenTemplateItems(Pay2ItemTemplateDto item)
+    {
+        await OnManageLines.InvokeAsync(item);
+    }
+
+    async Task Close() => await OnClose.InvokeAsync();
+}

@@ -90,6 +90,22 @@
                 آیتم‌های حقوقی
             </li>
 
+            <li class="pay2-nav-item @(ActiveTab == "itemdefs" ? "active" : "")" @onclick='() => SetActiveTab("itemdefs")'>
+                <i class="bi bi-list-check"></i>
+                آیتم‌های حقوقی
+            </li>
+
+            <!-- خط جداکننده -->
+            <div style="padding: 0 16px;">
+                <hr style="border-color: var(--p2-border-light); margin: 10px 0;" />
+            </div>
+
+            <!-- دکمه قالب‌های حکم -->
+            <li class="pay2-nav-item" @onclick="OpenTemplateModal">
+                <i class="bi bi-file-earmark-text"></i>
+                قالب‌های حکم
+            </li>
+
         </ul>
 
         @* فوتر سایدبار *@
@@ -232,12 +248,19 @@
             }
 
             @* پرسنل و احکام *@
-
-        
             @if (ActiveTab == "employees")
             {
                 <EmployeeTab />
             }
+
+            <Safir.Client.Pages.Salary.Tabs.EmployeeComponents.ItemTemplateModal IsOpen="ShowTemplateModal"
+                                                                                 OnClose="() => ShowTemplateModal = false"
+                                                                                 OnManageLines="OpenTemplateLinesModal" />
+
+            <Safir.Client.Pages.Salary.Tabs.EmployeeComponents.ItemTemplateLineModal IsOpen="ShowTemplateLineModal"
+                                                                                     MasterTemplateId="SelectedTmplForLines.TMPL_ID"
+                                                                                     MasterTemplateName="@SelectedTmplForLines.TMPL_NAME"
+                                                                                     OnClose="() => ShowTemplateLineModal = false" />
 
             @* ══ تب‌های در دست توسعه ══ *@
             @if (ActiveTab != "dashboard" && ActiveTab != "workshops" && ActiveTab != "employees")
@@ -322,5 +345,20 @@
             IsToastVisible = false;
             StateHasChanged();
         }
+    }
+
+    bool ShowTemplateModal = false;
+    bool ShowTemplateLineModal = false;
+    Pay2ItemTemplateDto SelectedTmplForLines = new();
+
+    void OpenTemplateModal()
+    {
+        ShowTemplateModal = true;
+    }
+
+    void OpenTemplateLinesModal(Pay2ItemTemplateDto tmpl)
+    {
+        SelectedTmplForLines = tmpl;
+        ShowTemplateLineModal = true;
     }
 }

@@ -297,4 +297,38 @@
         public bool CanEdit => STATUS == 1; // فقط پیش‌نویس‌ها قابل حذف یا تایید هستند
     }
 
+    public class Pay2ItemTemplateDto
+    {
+        public int TMPL_ID { get; set; }
+        public string? TMPL_CODE { get; set; }
+        public string? TMPL_NAME { get; set; }
+        public int? WS_ID { get; set; }
+        public bool IS_ACTIVE { get; set; } = true;
+        public string? NOTES { get; set; }
+
+        // پراپرتی‌های نمایشی برای گرید کلاینت
+        public string? WorkshopName { get; set; }
+        public string DisplayWorkshop => (WS_ID == null || WS_ID <= 0) ? "همه کارگاه‌ها" : WorkshopName ?? "نامشخص";
+    }
+    public class Pay2ItemTmplLineDto
+    {
+        public int TMPL_ID { get; set; }
+        public int ITEM_ID { get; set; }
+        public string? ITEM_NAME { get; set; }
+        public long DEF_AMOUNT { get; set; }
+        public bool? INS_OV { get; set; }
+        public bool? TAX_OV { get; set; }
+        public byte? BASIS_OV { get; set; }
+
+        // پراپرتی‌های کمکی برای بایندینگ به کامبوباکسِ Pay2Select در UI
+        public int InsCombo { get => INS_OV == null ? 3 : (INS_OV == true ? 1 : 2); set => INS_OV = value == 3 ? (bool?)null : (value == 1); }
+        public int TaxCombo { get => TAX_OV == null ? 3 : (TAX_OV == true ? 1 : 2); set => TAX_OV = value == 3 ? (bool?)null : (value == 1); }
+        public int BasisCombo { get => BASIS_OV == null ? 3 : (BASIS_OV == 1 ? 1 : 2); set => BASIS_OV = value == 3 ? (byte?)null : (byte)value; }
+
+        public string InsText => INS_OV == null ? "پایه" : (INS_OV == true ? "مشمول" : "معاف");
+        public string TaxText => TAX_OV == null ? "پایه" : (TAX_OV == true ? "مشمول" : "معاف");
+        public string BasisText => BASIS_OV == null ? "پایه" : (BASIS_OV == 1 ? "روزانه" : "ماهیانه");
+    }
+
+
 }

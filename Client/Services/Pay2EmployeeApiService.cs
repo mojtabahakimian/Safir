@@ -242,5 +242,28 @@ namespace Safir.Client.Services
             }
         }
 
+        public async Task<List<Pay2ItemTemplateDto>> GetTemplatesAsync() => await _http.GetFromJsonAsync<List<Pay2ItemTemplateDto>>("api/pay2/employees/templates") ?? new();
+        public async Task SaveTemplateAsync(Pay2ItemTemplateDto tmpl)
+        {
+            var res = await _http.PostAsJsonAsync("api/pay2/employees/template/save", tmpl);
+            if (!res.IsSuccessStatusCode) throw new Exception(await res.Content.ReadAsStringAsync());
+        }
+        public async Task DeleteTemplateAsync(int tmplId)
+        {
+            var res = await _http.DeleteAsync($"api/pay2/employees/template/{tmplId}");
+            if (!res.IsSuccessStatusCode) throw new Exception(await res.Content.ReadAsStringAsync());
+        }
+        public async Task<List<Pay2ItemTmplLineDto>> GetTemplateLinesAsync(int tmplId) => await _http.GetFromJsonAsync<List<Pay2ItemTmplLineDto>>($"api/pay2/employees/template/{tmplId}/lines") ?? new();
+        public async Task SaveTemplateLineAsync(Pay2ItemTmplLineDto line)
+        {
+            var res = await _http.PostAsJsonAsync("api/pay2/employees/template/line/save", line);
+            if (!res.IsSuccessStatusCode) throw new Exception(await res.Content.ReadAsStringAsync());
+        }
+        public async Task DeleteTemplateLineAsync(int tmplId, int itemId)
+        {
+            var res = await _http.DeleteAsync($"api/pay2/employees/template/{tmplId}/line/{itemId}");
+            if (!res.IsSuccessStatusCode) throw new Exception(await res.Content.ReadAsStringAsync());
+        }
+
     }
 }
