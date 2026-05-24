@@ -149,5 +149,26 @@ namespace Safir.Server.Controllers
             catch (InvalidOperationException ex) { return BadRequest(ex.Message); }
             catch (Exception ex) { return StatusCode(500, ex.Message); }
         }
+
+        [HttpPost("close-period/{perId:int}")]
+        public async Task<IActionResult> ClosePeriod(int perId)
+        {
+            try
+            {
+                await _db.ExecuteInTransactionAsync(async (conn, tran) =>
+                {
+                    await conn.ExecuteAsync(
+                        "EXEC dbo.SP_PAY2_CLOSE_PERIOD @PER_ID=@perId, @CLOSE_BY=NULL",
+                        new { perId },
+                        tran);
+                });
+
+                return Ok();
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(ex.Message);
+            }
+        }
     }
 }

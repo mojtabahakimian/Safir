@@ -258,6 +258,14 @@
                     <span><i class="bi bi-floppy"></i> ذخیره کارکرد</span>
                 }
             </button>
+
+            <button class="btn-primary-pay2"
+                    style="background:#2563eb; border-color:#2563eb;"
+                    @onclick="ClosePeriod"
+                    disabled="@(PeriodData.Period.IsReadOnly || IsSaving)">
+                <i class="bi bi-lock"></i>
+                بستن کارکرد و آماده‌سازی محاسبه
+            </button>
         }
     </div>
 
@@ -368,7 +376,12 @@
                                 <td><Safir.Client.Pages.Salary.Tabs.Pay2NumericInput @bind-Value="item.KASR_OTHER_STR" IsDigitGroupActive="true" ThreeTwoZero="true" CssClass="p2-grid-input input-danger" Disabled="@(item.LOCKED || PeriodData.Period.IsReadOnly)" /></td>
 
                                 <td style="text-align: center; padding: 0 5px; width: 100px;">
-                                    <button class="btn-primary-pay2 sm" style="background:#6366f1; border-color:#6366f1; height: 28px;" @onclick="() => OpenDynamicValues(item.EMP_ID, item.FULL_NAME)">⊕ پویا</button>
+                                    <button class="btn-primary-pay2 sm"
+                                            style="background:#6366f1; border-color:#6366f1; height: 28px;"
+                                            @onclick="() => OpenDynamicValues(item.EMP_ID, item.FULL_NAME)"
+                                            disabled="@(item.LOCKED || PeriodData.Period.IsReadOnly)">
+                                        ⊕ پویا
+                                    </button>
                                 </td>
                             </tr>
                         </Virtualize>
@@ -543,4 +556,40 @@
         }
         catch (Exception ex) { Snackbar.Add(ex.Message, MudBlazor.Severity.Error); }
     }
+    async Task ClosePeriod()
+    {
+        if (PeriodData == null)
+        {
+            Snackbar.Add("ابتدا دوره کارکرد را بارگذاری کنید.", Severity.Warning);
+            return;
+        }
+
+        var dirtyLines = PeriodData.Lines.Where(x => x.IsDirty && !x.LOCKED).ToList();
+        if (dirtyLines.Any())
+        {
+            Snackbar.Add("قبل از بستن دوره، ابتدا تغییرات کارکرد را ذخیره کنید.", Severity.Warning);
+            return;
+        }
+
+        IsSaving = true;
+        try
+        {
+            await AttApi.ClosePeriodAsync(PeriodData.Period.PER_ID);
+
+            long pDate = long.Parse(PeriodDateStr.Replace("/", ""));
+            PeriodData = await AttApi.InitPeriodAsync(SelectedWsId, pDate);
+            FilteredLines = PeriodData.Lines.ToList();
+
+            Snackbar.Add("دوره کارکرد بسته شد و آماده محاسبه حقوق است.", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add(ex.Message, Severity.Error);
+        }
+        finally
+        {
+            IsSaving = false;
+        }
+    }
+
 }

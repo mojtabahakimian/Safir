@@ -63,7 +63,7 @@
             <li class="pay2-nav-item @(ActiveTab == "attendance" ? "active" : "")"
                 @onclick='() => SetActiveTab("attendance")'>
                 <i class="bi bi-calendar-check"></i>
-                کارکرد و مرخصی
+                کارکرد پرسنل
             </li>
 
             <li class="pay2-nav-item @(ActiveTab == "advances" ? "active" : "")"
@@ -272,7 +272,10 @@
             }
 
             @* ══ تب‌های در دست توسعه ══ *@
-            @if (ActiveTab != "dashboard" && ActiveTab != "workshops" && ActiveTab != "employees")
+            @if (ActiveTab != "dashboard" &&
+                        ActiveTab != "workshops" &&
+                        ActiveTab != "employees" &&
+                        ActiveTab != "attendance")
             {
                 <div class="pay2-tab-container"
                      style="display:flex; flex-direction:column; align-items:center; justify-content:center; height:100%;">
@@ -327,7 +330,7 @@
         "dashboard" => "داشبورد",
         "workshops" => "مدیریت کارگاه‌ها",
         "employees" => "پرسنل و احکام",
-        "attendance" => "کارکرد و مرخصی",
+        "attendance" => "کارکرد پرسنل",
         "advances" => "مساعده هوشمند",
         "payroll" => "محاسبه حقوق",
         "settings" => "تنظیمات سیستم",

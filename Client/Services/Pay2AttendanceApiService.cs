@@ -25,5 +25,13 @@ namespace Safir.Client.Services
             var res = await _http.PostAsJsonAsync($"api/pay2/attendance/dynamic-values/save?perId={perId}&empId={empId}", values);
             if (!res.IsSuccessStatusCode) throw new Exception(await res.Content.ReadAsStringAsync());
         }
+
+        public async Task ClosePeriodAsync(int perId)
+        {
+            var res = await _http.PostAsync($"api/pay2/attendance/close-period/{perId}", null);
+            if (!res.IsSuccessStatusCode)
+                throw new Exception(await res.Content.ReadAsStringAsync());
+        }
+
     }
 }
