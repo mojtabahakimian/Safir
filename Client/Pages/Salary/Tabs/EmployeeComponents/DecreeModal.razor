@@ -57,11 +57,11 @@
                 </div>
 
                 <div class="form-field" style="display:flex; flex-direction:row; gap:16px; align-items:center; height:42px;">
-                    <label style="margin:0; font-weight:600; cursor:pointer;">
-                        <input type="checkbox" @bind="CurrentDecree.IS_MANAGER" style="vertical-align: middle;" /> پست مدیریتی؟
+                    <label style="margin:0; font-weight:600; cursor:pointer; color: var(--p2-text-main); font-size: 12.5px;" title="مدیران مشمول ۳ درصد بیمه بیکاری سهم کارفرما نیستند">
+                        <input type="checkbox" @bind="CurrentDecree.IS_MANAGER" style="vertical-align: middle; margin-left: 4px;" /> ۳٪ بیکاری محاسبه نشود
                     </label>
-                    <label style="margin:0; font-weight:700; color:var(--p2-success-text); cursor:pointer;">
-                        <input type="checkbox" @bind="CurrentDecree.IS_CONFIRMED" style="vertical-align: middle;" /> تأیید نهایی
+                    <label style="margin:0; font-weight:700; color:var(--p2-success-text); cursor:pointer; font-size: 13px;">
+                        <input type="checkbox" @bind="CurrentDecree.IS_CONFIRMED" style="vertical-align: middle; margin-left: 4px;" /> تأیید نهایی این حکم
                     </label>
                 </div>
 
