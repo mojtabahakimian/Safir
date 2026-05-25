@@ -63,7 +63,7 @@
             <li class="pay2-nav-item @(ActiveTab == "attendance" ? "active" : "")"
                 @onclick='() => SetActiveTab("attendance")'>
                 <i class="bi bi-calendar-check"></i>
-                کارکرد و مرخصی
+                کارکرد پرسنل
             </li>
 
             <li class="pay2-nav-item @(ActiveTab == "advances" ? "active" : "")"
@@ -84,10 +84,27 @@
                 تنظیمات سیستم
             </li>
 
-            <li class="pay2-nav-item @(ActiveTab == "itemdefs" ? "active" : "")"
-                @onclick='() => SetActiveTab("itemdefs")'>
+            <li class="pay2-nav-item @(ActiveTab == "itemdefs" ? "active" : "")" @onclick='() => SetActiveTab("itemdefs")'>
                 <i class="bi bi-list-check"></i>
                 آیتم‌های حقوقی
+            </li>
+
+            <!-- خط جداکننده -->
+            <div style="padding: 0 16px;">
+                <hr style="border-color: var(--p2-border-light); margin: 10px 0;" />
+            </div>
+
+            <!-- دکمه قالب‌های حکم -->
+            <li class="pay2-nav-item" @onclick="OpenTemplateModal">
+                <i class="bi bi-file-earmark-text"></i>
+                قالب‌های حکم
+            </li>
+
+
+            <!-- دکمه مدیریت مشاغل -->
+            <li class="pay2-nav-item" @onclick="OpenJobModal">
+                <i class="bi bi-briefcase"></i>
+                مدیریت مشاغل
             </li>
 
         </ul>
@@ -232,15 +249,33 @@
             }
 
             @* پرسنل و احکام *@
-
-        
             @if (ActiveTab == "employees")
             {
                 <EmployeeTab />
             }
 
+            <Safir.Client.Pages.Salary.Tabs.EmployeeComponents.ItemTemplateModal IsOpen="ShowTemplateModal"
+                                                                                 OnClose="() => ShowTemplateModal = false"
+                                                                                 OnManageLines="OpenTemplateLinesModal" />
+
+            <Safir.Client.Pages.Salary.Tabs.EmployeeComponents.ItemTemplateLineModal IsOpen="ShowTemplateLineModal"
+                                                                                     MasterTemplateId="SelectedTmplForLines.TMPL_ID"
+                                                                                     MasterTemplateName="@SelectedTmplForLines.TMPL_NAME"
+                                                                                     OnClose="() => ShowTemplateLineModal = false" />
+
+            <Safir.Client.Pages.Salary.Tabs.EmployeeComponents.JobModal IsOpen="ShowJobModal"
+                                                                        OnClose="() => ShowJobModal = false" />
+
+            @if (ActiveTab == "attendance")
+            {
+                <Safir.Client.Pages.Salary.Tabs.AttendanceTab />
+            }
+
             @* ══ تب‌های در دست توسعه ══ *@
-            @if (ActiveTab != "dashboard" && ActiveTab != "workshops" && ActiveTab != "employees")
+            @if (ActiveTab != "dashboard" &&
+                        ActiveTab != "workshops" &&
+                        ActiveTab != "employees" &&
+                        ActiveTab != "attendance")
             {
                 <div class="pay2-tab-container"
                      style="display:flex; flex-direction:column; align-items:center; justify-content:center; height:100%;">
@@ -295,7 +330,7 @@
         "dashboard" => "داشبورد",
         "workshops" => "مدیریت کارگاه‌ها",
         "employees" => "پرسنل و احکام",
-        "attendance" => "کارکرد و مرخصی",
+        "attendance" => "کارکرد پرسنل",
         "advances" => "مساعده هوشمند",
         "payroll" => "محاسبه حقوق",
         "settings" => "تنظیمات سیستم",
@@ -322,5 +357,26 @@
             IsToastVisible = false;
             StateHasChanged();
         }
+    }
+
+    bool ShowJobModal = false;
+    bool ShowTemplateModal = false;
+    bool ShowTemplateLineModal = false;
+    Pay2ItemTemplateDto SelectedTmplForLines = new();
+
+    void OpenTemplateModal()
+    {
+        ShowTemplateModal = true;
+    }
+
+    void OpenTemplateLinesModal(Pay2ItemTemplateDto tmpl)
+    {
+        SelectedTmplForLines = tmpl;
+        ShowTemplateLineModal = true;
+    }
+
+    void OpenJobModal()
+    {
+        ShowJobModal = true;
     }
 }

@@ -230,5 +230,58 @@ namespace Safir.Client.Services
             if (!res.IsSuccessStatusCode)
                 throw new Exception(await res.Content.ReadAsStringAsync());
         }
+
+        public async Task DeleteEmployeeAsync(int empId)
+        {
+            var res = await _http.DeleteAsync($"api/pay2/employees/{empId}");
+            if (!res.IsSuccessStatusCode)
+            {
+                // در صورت بروز خطا (مثلاً داشتن وام)، متن فارسی از سمت سرور به اینجا می‌رسد
+                var errorMsg = await res.Content.ReadAsStringAsync();
+                throw new Exception(errorMsg);
+            }
+        }
+
+        public async Task<List<Pay2ItemTemplateDto>> GetTemplatesAsync() => await _http.GetFromJsonAsync<List<Pay2ItemTemplateDto>>("api/pay2/employees/templates") ?? new();
+        public async Task SaveTemplateAsync(Pay2ItemTemplateDto tmpl)
+        {
+            var res = await _http.PostAsJsonAsync("api/pay2/employees/template/save", tmpl);
+            if (!res.IsSuccessStatusCode) throw new Exception(await res.Content.ReadAsStringAsync());
+        }
+        public async Task DeleteTemplateAsync(int tmplId)
+        {
+            var res = await _http.DeleteAsync($"api/pay2/employees/template/{tmplId}");
+            if (!res.IsSuccessStatusCode) throw new Exception(await res.Content.ReadAsStringAsync());
+        }
+        public async Task<List<Pay2ItemTmplLineDto>> GetTemplateLinesAsync(int tmplId) => await _http.GetFromJsonAsync<List<Pay2ItemTmplLineDto>>($"api/pay2/employees/template/{tmplId}/lines") ?? new();
+        public async Task SaveTemplateLineAsync(Pay2ItemTmplLineDto line)
+        {
+            var res = await _http.PostAsJsonAsync("api/pay2/employees/template/line/save", line);
+            if (!res.IsSuccessStatusCode) throw new Exception(await res.Content.ReadAsStringAsync());
+        }
+        public async Task DeleteTemplateLineAsync(int tmplId, int itemId)
+        {
+            var res = await _http.DeleteAsync($"api/pay2/employees/template/{tmplId}/line/{itemId}");
+            if (!res.IsSuccessStatusCode) throw new Exception(await res.Content.ReadAsStringAsync());
+        }
+
+        public async Task<PagedResult<Pay2JobDto>> GetPagedJobsAsync(int page, int pageSize, string? search)
+        {
+            string url = $"api/pay2/employees/jobs/paged?page={page}&pageSize={pageSize}";
+            if (!string.IsNullOrWhiteSpace(search)) url += $"&search={Uri.EscapeDataString(search)}";
+
+            return await _http.GetFromJsonAsync<PagedResult<Pay2JobDto>>(url) ?? new PagedResult<Pay2JobDto>();
+        }
+        public async Task SaveJobAsync(Pay2JobDto job)
+        {
+            var res = await _http.PostAsJsonAsync("api/pay2/employees/jobs/save", job);
+            if (!res.IsSuccessStatusCode) throw new Exception(await res.Content.ReadAsStringAsync());
+        }
+        public async Task DeleteJobAsync(int id)
+        {
+            var res = await _http.DeleteAsync($"api/pay2/employees/jobs/{id}");
+            if (!res.IsSuccessStatusCode) throw new Exception(await res.Content.ReadAsStringAsync());
+        }
+
     }
 }

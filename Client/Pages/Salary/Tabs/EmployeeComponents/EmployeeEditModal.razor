@@ -166,7 +166,8 @@
                         <Pay2NumericInput @bind-Value="RegionDeprivationStr" MaxLength="3" Direction="ltr" />
                     </div>
                     <div class="form-field" style="display:flex; justify-content:flex-end; flex-direction: column;">
-                        <div class="pay2-wpf-checkbox-box">
+                        <div class="pay2-wpf-checkbox-box"
+                             title="نکته مهم: این تیک یک معافیت ۱۰۰ درصدی مطلق است. منحصراً برای جانبازان و شاغلین مناطق آزاد استفاده شود. برای پرسنل عادی نباید زده شود.">
                             <label class="pay2-wpf-checkbox-label" style="color: var(--p2-warning-text);">
                                 <input type="checkbox" @bind="Employee.TAX_EXEMPT" /> معاف از مالیات (TAXEXEMPT)
                             </label>

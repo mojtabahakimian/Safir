@@ -780,5 +780,289 @@ namespace Safir.Server.Controllers
             }
         }
 
+        [HttpDelete("{empId:int}")]
+        public async Task<IActionResult> DeleteEmployee(int empId)
+        {
+            try
+            {
+                await _db.ExecuteInTransactionAsync(async (conn, tran) =>
+                {
+                    // ۱. بررسی بسیار دقیق تمام وابستگی‌های عملیاتی، مالی و رسمی
+                    string checkSql = @"
+                SELECT 
+                    (SELECT COUNT(1) FROM PAY2_RUN_LINE WHERE EMP_ID = @empId) AS RunCount,
+                    (SELECT COUNT(1) FROM PAY2_ATTENDANCE WHERE EMP_ID = @empId) AS AttCount,
+                    (SELECT COUNT(1) FROM PAY2_SETTLEMENT WHERE EMP_ID = @empId) AS SetCount,
+                    (SELECT COUNT(1) FROM PAY2_LOAN WHERE EMP_ID = @empId) AS LoanCount,
+                    (SELECT COUNT(1) FROM PAY2_DECREE WHERE EMP_ID = @empId AND IS_CONFIRMED = 1) AS ConfirmedDecreeCount,
+                    (SELECT COUNT(1) FROM PAY2_LEAVE WHERE EMP_ID = @empId AND STATUS > 1) AS ApprovedLeaveCount";
+
+                    var checks = await conn.QuerySingleAsync<dynamic>(checkSql, new { empId }, tran);
+
+                    // ۲. اعتبارسنجی خطوط قرمز (Red Lines)
+                    if (checks.RunCount > 0)
+                        throw new InvalidOperationException("این پرسنل دارای محاسبه حقوق (فیش صادر شده) است و قابل حذف نیست.");
+
+                    if (checks.AttCount > 0)
+                        throw new InvalidOperationException("برای این پرسنل کارکرد ماهیانه ثبت شده است و قابل حذف نیست.");
+
+                    if (checks.SetCount > 0)
+                        throw new InvalidOperationException("این پرسنل دارای سابقه تسویه حساب است و قابل حذف نیست.");
+
+                    if (checks.LoanCount > 0)
+                        throw new InvalidOperationException("این پرسنل دارای سابقه وام است (حتی تسویه شده). به دلیل سوابق مالی، حذف فیزیکی ممنوع است.");
+
+                    if (checks.ConfirmedDecreeCount > 0)
+                        throw new InvalidOperationException("این پرسنل دارای احکام کارگزینی تأیید شده است. مدارک رسمی قابل حذف نیستند.");
+
+                    if (checks.ApprovedLeaveCount > 0)
+                        throw new InvalidOperationException("این پرسنل دارای مرخصی تأیید شده است و سوابق آن قابل حذف نیست.");
+
+                    // ۳. اگر به این مرحله رسید، یعنی پرسنل به صورت آزمایشی/اشتباهی ثبت شده 
+                    // و فقط رکوردهای پیش‌نویس (Draft) دارد. حالا با خیال راحت زباله‌ها را پاک می‌کنیم.
+
+                    // پاک کردن اقلام احکامِ پیش‌نویس
+                    await conn.ExecuteAsync("DELETE FROM PAY2_DECREE_LINE WHERE DEC_ID IN (SELECT DEC_ID FROM PAY2_DECREE WHERE EMP_ID = @empId)", new { empId }, tran);
+                    await conn.ExecuteAsync("DELETE FROM PAY2_DECREE WHERE EMP_ID = @empId", new { empId }, tran);
+
+                    // پاک کردن سایر سوابق بی‌اهمیت
+                    await conn.ExecuteAsync("DELETE FROM PAY2_CONTRACT WHERE EMP_ID = @empId", new { empId }, tran);
+                    await conn.ExecuteAsync("DELETE FROM PAY2_LEAVE_BAL WHERE EMP_ID = @empId", new { empId }, tran);
+                    await conn.ExecuteAsync("DELETE FROM PAY2_LEAVE WHERE EMP_ID = @empId", new { empId }, tran); // فقط پیش‌نویس‌ها مانده‌اند
+                    await conn.ExecuteAsync("DELETE FROM PAY2_OVERRIDE WHERE EMP_ID = @empId", new { empId }, tran);
+                    await conn.ExecuteAsync("DELETE FROM PAY2_ADVANCE_EXCL WHERE EMP_ID = @empId", new { empId }, tran);
+
+                    // ۴. حذف فیزیکی خود پرسنل
+                    int deletedRows = await conn.ExecuteAsync("DELETE FROM PAY2_EMPLOYEE WHERE EMP_ID = @empId", new { empId }, tran);
+
+                    if (deletedRows == 0)
+                    {
+                        throw new InvalidOperationException("پرسنل مورد نظر در سیستم یافت نشد.");
+                    }
+                });
+
+                return Ok();
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(ex.Message); // نمایش پیام فارسی دقیق به کاربر
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, "خطای سیستمی هنگام حذف پرسنل: " + ex.Message);
+            }
+        }
+
+        [HttpGet("templates")]
+        public async Task<ActionResult<IEnumerable<Pay2ItemTemplateDto>>> GetTemplates()
+        {
+            const string sql = @"
+        SELECT T.TMPL_ID, T.TMPL_CODE, T.TMPL_NAME, T.WS_ID, 
+               T.IS_ACTIVE, T.NOTES, W.WS_NAME AS WorkshopName
+        FROM PAY2_ITEM_TEMPLATE T
+        LEFT JOIN PAY2_WORKSHOP W ON T.WS_ID = W.WS_ID
+        ORDER BY T.TMPL_ID DESC";
+            return Ok(await _db.DoGetDataSQLAsync<Pay2ItemTemplateDto>(sql));
+        }
+
+        [HttpPost("template/save")]
+        public async Task<IActionResult> SaveTemplate([FromBody] Pay2ItemTemplateDto tmpl)
+        {
+            try
+            {
+                await _db.ExecuteInTransactionAsync(async (conn, tran) =>
+                {
+                    if (tmpl.TMPL_ID == 0)
+                    {
+                        int count = await conn.QuerySingleAsync<int>("SELECT COUNT(1) FROM PAY2_ITEM_TEMPLATE WHERE TMPL_CODE = @TMPL_CODE", new { tmpl.TMPL_CODE }, tran);
+                        if (count > 0) throw new InvalidOperationException("کد قالب (انگلیسی) تکراری است.");
+
+                        const string insertSql = @"INSERT INTO PAY2_ITEM_TEMPLATE (TMPL_CODE, TMPL_NAME, WS_ID, IS_ACTIVE, NOTES) 
+                                           VALUES (@TMPL_CODE, @TMPL_NAME, @WS_ID, @IS_ACTIVE, @NOTES)";
+                        await conn.ExecuteAsync(insertSql, tmpl, tran);
+                    }
+                    else
+                    {
+                        int count = await conn.QuerySingleAsync<int>("SELECT COUNT(1) FROM PAY2_ITEM_TEMPLATE WHERE TMPL_CODE = @TMPL_CODE AND TMPL_ID <> @TMPL_ID", new { tmpl.TMPL_CODE, tmpl.TMPL_ID }, tran);
+                        if (count > 0) throw new InvalidOperationException("کد قالب (انگلیسی) تکراری است.");
+
+                        const string updateSql = @"UPDATE PAY2_ITEM_TEMPLATE 
+                                           SET TMPL_CODE=@TMPL_CODE, TMPL_NAME=@TMPL_NAME, WS_ID=@WS_ID, IS_ACTIVE=@IS_ACTIVE, NOTES=@NOTES 
+                                           WHERE TMPL_ID=@TMPL_ID";
+                        await conn.ExecuteAsync(updateSql, tmpl, tran);
+                    }
+                });
+                return Ok();
+            }
+            catch (InvalidOperationException ex) { return BadRequest(ex.Message); }
+            catch (Exception ex) { return BadRequest("خطای سرور: " + ex.Message); }
+        }
+
+        [HttpDelete("template/{tmplId:int}")]
+        public async Task<IActionResult> DeleteTemplate(int tmplId)
+        {
+            try
+            {
+                await _db.ExecuteInTransactionAsync(async (conn, tran) =>
+                {
+                    await conn.ExecuteAsync("DELETE FROM PAY2_ITEM_TMPL_LINE WHERE TMPL_ID = @tmplId", new { tmplId }, tran);
+                    int rows = await conn.ExecuteAsync("DELETE FROM PAY2_ITEM_TEMPLATE WHERE TMPL_ID = @tmplId", new { tmplId }, tran);
+                    if (rows == 0) throw new InvalidOperationException("قالب یافت نشد.");
+                });
+                return Ok();
+            }
+            catch (System.Data.SqlClient.SqlException ex) when (ex.Number == 547)
+            {
+                return BadRequest("این قالب در احکام پرسنل استفاده شده و قابل حذف نیست. لطفاً آن را غیرفعال کنید.");
+            }
+            catch (Exception ex) { return BadRequest(ex.Message); }
+        }
+
+        [HttpGet("template/{tmplId:int}/lines")]
+        public async Task<ActionResult<IEnumerable<Pay2ItemTmplLineDto>>> GetTemplateLines(int tmplId)
+        {
+            const string sql = @"SELECT L.TMPL_ID, L.ITEM_ID, I.ITEM_NAME, L.DEF_AMOUNT, L.INS_OV, L.TAX_OV, L.BASIS_OV
+                         FROM PAY2_ITEM_TMPL_LINE L
+                         INNER JOIN PAY2_ITEM_DEF I ON L.ITEM_ID = I.ITEM_ID
+                         WHERE L.TMPL_ID = @tmplId
+                         ORDER BY I.SORT_ORDER";
+            return Ok(await _db.DoGetDataSQLAsync<Pay2ItemTmplLineDto>(sql, new { tmplId }));
+        }
+
+        [HttpPost("template/line/save")]
+        public async Task<IActionResult> SaveTemplateLine([FromBody] Pay2ItemTmplLineDto line)
+        {
+            try
+            {
+                await _db.ExecuteInTransactionAsync(async (conn, tran) =>
+                {
+                    int count = await conn.QuerySingleAsync<int>("SELECT COUNT(1) FROM PAY2_ITEM_TMPL_LINE WHERE TMPL_ID=@TMPL_ID AND ITEM_ID=@ITEM_ID", new { line.TMPL_ID, line.ITEM_ID }, tran);
+
+                    if (count == 0)
+                    {
+                        const string insertSql = @"INSERT INTO PAY2_ITEM_TMPL_LINE (TMPL_ID, ITEM_ID, DEF_AMOUNT, INS_OV, TAX_OV, BASIS_OV)
+                                           VALUES (@TMPL_ID, @ITEM_ID, @DEF_AMOUNT, @INS_OV, @TAX_OV, @BASIS_OV)";
+                        await conn.ExecuteAsync(insertSql, line, tran);
+                    }
+                    else
+                    {
+                        const string updateSql = @"UPDATE PAY2_ITEM_TMPL_LINE 
+                                           SET DEF_AMOUNT=@DEF_AMOUNT, INS_OV=@INS_OV, TAX_OV=@TAX_OV, BASIS_OV=@BASIS_OV
+                                           WHERE TMPL_ID=@TMPL_ID AND ITEM_ID=@ITEM_ID";
+                        await conn.ExecuteAsync(updateSql, line, tran);
+                    }
+                });
+                return Ok();
+            }
+            catch (Exception ex) { return BadRequest(ex.Message); }
+        }
+
+        [HttpDelete("template/{tmplId:int}/line/{itemId:int}")]
+        public async Task<IActionResult> DeleteTemplateLine(int tmplId, int itemId)
+        {
+            try
+            {
+                await _db.DoExecuteSQLAsync("DELETE FROM PAY2_ITEM_TMPL_LINE WHERE TMPL_ID=@tmplId AND ITEM_ID=@itemId", new { tmplId, itemId });
+                return Ok();
+            }
+            catch (Exception ex) { return BadRequest(ex.Message); }
+        }
+
+        [HttpGet("jobs/paged")]
+        public async Task<ActionResult<PagedResult<Pay2JobDto>>> GetPagedJobs([FromQuery] int page = 1, [FromQuery] int pageSize = 50, [FromQuery] string? search = null)
+        {
+            try
+            {
+                var parameters = new DynamicParameters();
+                string whereClause = "";
+
+                if (!string.IsNullOrWhiteSpace(search))
+                {
+                    whereClause = "WHERE JOB_CODE LIKE @Search OR JOB_NAME LIKE @Search";
+                    parameters.Add("Search", $"%{search.Trim()}%");
+                }
+
+                string countSql = $"SELECT COUNT(1) FROM PAY2_JOB {whereClause}";
+                string dataSql = $@"
+            SELECT JOB_ID, JOB_CODE, JOB_NAME, JOB_GROUP, IS_ACTIVE 
+            FROM PAY2_JOB 
+            {whereClause}
+            ORDER BY JOB_NAME
+            OFFSET @Offset ROWS FETCH NEXT @PageSize ROWS ONLY";
+
+                parameters.Add("Offset", (page - 1) * pageSize);
+                parameters.Add("PageSize", pageSize);
+
+                int totalCount = await _db.DoGetDataSQLAsyncSingle<int>(countSql, parameters);
+                var items = await _db.DoGetDataSQLAsync<Pay2JobDto>(dataSql, parameters);
+
+                var result = new PagedResult<Pay2JobDto>
+                {
+                    Items = items?.ToList() ?? new List<Pay2JobDto>(),
+                    TotalCount = totalCount,
+                    PageNumber = page,
+                    PageSize = pageSize
+                };
+
+                return Ok(result);
+            }
+            catch (Exception ex) { return StatusCode(500, ex.Message); }
+        }
+
+        [HttpPost("jobs/save")]
+        public async Task<IActionResult> SaveJob([FromBody] Pay2JobDto job)
+        {
+            try
+            {
+                await _db.ExecuteInTransactionAsync(async (conn, tran) =>
+                {
+                    if (job.JOB_ID == 0) // درج جدید
+                    {
+                        int codeExists = await conn.QuerySingleAsync<int>("SELECT COUNT(1) FROM PAY2_JOB WHERE JOB_CODE = @Code", new { Code = job.JOB_CODE }, tran);
+                        if (codeExists > 0) throw new InvalidOperationException($"کد شغل «{job.JOB_CODE}» تکراری است.");
+
+                        const string insertSql = "INSERT INTO PAY2_JOB (JOB_CODE, JOB_NAME, JOB_GROUP, IS_ACTIVE) VALUES (@JOB_CODE, @JOB_NAME, @JOB_GROUP, @IS_ACTIVE)";
+                        await conn.ExecuteAsync(insertSql, job, tran);
+                    }
+                    else // ویرایش
+                    {
+                        int codeExists = await conn.QuerySingleAsync<int>("SELECT COUNT(1) FROM PAY2_JOB WHERE JOB_CODE = @Code AND JOB_ID <> @Id", new { Code = job.JOB_CODE, Id = job.JOB_ID }, tran);
+                        if (codeExists > 0) throw new InvalidOperationException($"کد شغل «{job.JOB_CODE}» تکراری است.");
+
+                        const string updateSql = "UPDATE PAY2_JOB SET JOB_CODE=@JOB_CODE, JOB_NAME=@JOB_NAME, JOB_GROUP=@JOB_GROUP, IS_ACTIVE=@IS_ACTIVE WHERE JOB_ID=@JOB_ID";
+                        await conn.ExecuteAsync(updateSql, job, tran);
+                    }
+                });
+                return Ok();
+            }
+            catch (InvalidOperationException ex) { return BadRequest(ex.Message); }
+            catch (Exception ex) { return StatusCode(500, "خطای سیستمی: " + ex.Message); }
+        }
+
+        [HttpDelete("jobs/{id:int}")]
+        public async Task<IActionResult> DeleteJob(int id)
+        {
+            try
+            {
+                await _db.ExecuteInTransactionAsync(async (conn, tran) =>
+                {
+                    int usageCount = await conn.QuerySingleAsync<int>("SELECT COUNT(1) FROM PAY2_EMPLOYEE WHERE JOB_ID = @Id", new { Id = id }, tran);
+
+                    if (usageCount > 0)
+                    {
+                        // Soft Delete: اگر شغلی به پرسنل وصل است، فقط غیرفعالش کن
+                        await conn.ExecuteAsync("UPDATE PAY2_JOB SET IS_ACTIVE = 0 WHERE JOB_ID = @Id", new { Id = id }, tran);
+                    }
+                    else
+                    {
+                        // Hard Delete
+                        await conn.ExecuteAsync("DELETE FROM PAY2_JOB WHERE JOB_ID = @Id", new { Id = id }, tran);
+                    }
+                });
+                return Ok();
+            }
+            catch (Exception ex) { return BadRequest(ex.Message); }
+        }
+
     }
 }

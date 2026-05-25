@@ -19,7 +19,8 @@
        title="@ToolTip"
        @oninput="HandleInputAsync"
        @onblur="HandleBlurAsync"
-       @onfocus="HandleFocusAsync" />
+       @onfocus="HandleFocusAsync"
+       @onkeydown="HandleKeyDownAsync" />
 
 @code {
     public enum NumericInputMode { None, Amount, PersianDate, Percentage }
@@ -35,6 +36,7 @@
     private bool _disposed;
     private bool _jsGuardLoaded;
 
+    string? _valueOnFocus; // 🟢 نگهداری مقدار اولیه سلول
     private int _lastEffectiveMaxLength = -1;
     private int _lastMaxDecimalPlaces = -1;
     private NumericInputMode _lastInputMode = (NumericInputMode)(-1);
@@ -167,15 +169,15 @@
         }
     }
 
-    private async Task HandleFocusAsync(FocusEventArgs e)
+    async Task HandleFocusAsync(FocusEventArgs e)
     {
         _focused = true;
-        _displayText = Normalize(_lastParameterValue);
+        _valueOnFocus = _displayText; // 🟢 ذخیره مقدار قبل از شروع تایپ
 
+        _displayText = Normalize(_lastParameterValue);
         if (OnFocus.HasDelegate)
             await OnFocus.InvokeAsync(e);
     }
-
     private async Task HandleBlurAsync(FocusEventArgs e)
     {
         _focused = false;
@@ -200,7 +202,25 @@
         if (OnBlur.HasDelegate)
             await OnBlur.InvokeAsync(e);
     }
+    async Task HandleKeyDownAsync(KeyboardEventArgs e)
+    {
+        if (Disabled || ReadOnly) return;
 
+        // 🟢 اگر کاربر کلید Escape را زد، مقدار قبلی برگردانده شود
+        if (e.Key == "Escape")
+        {
+            _displayText = _valueOnFocus; // برگرداندن متن به حالت اول
+
+            var normalized = Normalize(_displayText);
+            var finalValue = FinalizeValue(normalized) ?? _lastValidValue;
+
+            _lastParameterValue = finalValue;
+            await ValueChanged.InvokeAsync(finalValue);
+
+            // گرفتن فوکوس از روی سلول برای اتمام عملیات لغو
+            try { await JS.InvokeVoidAsync("HTMLElement.prototype.blur.call", _inputRef); } catch { }
+        }
+    }
 
     private string? FinalizeValue(string? value)
     {
