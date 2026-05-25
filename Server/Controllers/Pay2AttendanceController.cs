@@ -191,5 +191,40 @@ namespace Safir.Server.Controllers
                    day == 0;
         }
 
+        [HttpGet("periods")]
+        public async Task<ActionResult<IEnumerable<Pay2PeriodLookupDto>>> GetPeriods([FromQuery] int wsId)
+        {
+            if (wsId <= 0)
+                return BadRequest("کارگاه نامعتبر است.");
+
+            const string sql = @"
+        SELECT 
+            PERIOD_DATE,
+            CAST(PERIOD_DATE / 10000 AS NVARCHAR(4)) 
+            + N' - ' +
+            RIGHT(N'00' + CAST((PERIOD_DATE / 100) % 100 AS NVARCHAR(2)), 2)
+            + N' - ' +
+            CASE ((PERIOD_DATE / 100) % 100)
+                WHEN 1 THEN N'فروردین'
+                WHEN 2 THEN N'اردیبهشت'
+                WHEN 3 THEN N'خرداد'
+                WHEN 4 THEN N'تیر'
+                WHEN 5 THEN N'مرداد'
+                WHEN 6 THEN N'شهریور'
+                WHEN 7 THEN N'مهر'
+                WHEN 8 THEN N'آبان'
+                WHEN 9 THEN N'آذر'
+                WHEN 10 THEN N'دی'
+                WHEN 11 THEN N'بهمن'
+                WHEN 12 THEN N'اسفند'
+                ELSE N'نامعتبر'
+            END AS PERIOD_TITLE
+        FROM PAY2_PERIOD
+        WHERE WS_ID = @wsId
+        ORDER BY PERIOD_DATE DESC;";
+
+            var rows = await _db.DoGetDataSQLAsync<Pay2PeriodLookupDto>(sql, new { wsId });
+            return Ok(rows);
+        }
     }
 }

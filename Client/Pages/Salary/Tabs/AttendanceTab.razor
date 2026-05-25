@@ -209,11 +209,24 @@
     <div class="card-custom" style="padding: 16px; margin-bottom: 16px; display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-end;">
         <div class="form-field" style="width: 250px;">
             <label>انتخاب کارگاه *</label>
-            <Safir.Client.Pages.Salary.Tabs.Pay2Select TItem="Pay2WorkshopDto" TValue="int" Items="Workshops" @bind-Value="SelectedWsId" TextSelector="x => x.WS_NAME" ValueSelector="x => x.WS_ID" Clearable="false" />
+            <Safir.Client.Pages.Salary.Tabs.Pay2Select TItem="Pay2WorkshopDto"
+                                                       TValue="int"
+                                                       Items="Workshops"
+                                                       @bind-Value="SelectedWsId"
+                                                       @bind-Value:after="OnWorkshopChangedAsync"
+                                                       TextSelector="x => x.WS_NAME"
+                                                       ValueSelector="x => x.WS_ID"
+                                                       Clearable="false" />
         </div>
-        <div class="form-field" style="width: 140px;">
-            <label>ماه (مثال: 14030700) *</label>
-            <Safir.Client.Pages.Salary.Tabs.Pay2NumericInput @bind-Value="PeriodDateStr" MaxLength="8" Direction="ltr" />
+        <div class="form-field" style="width: 220px;">
+            <label>ماه دوره *</label>
+            <Safir.Client.Pages.Salary.Tabs.Pay2Select TItem="Pay2PeriodLookupDto"
+                                                       TValue="long"
+                                                       Items="PeriodOptions"
+                                                       @bind-Value="SelectedPeriodDate"
+                                                       TextSelector="x => x.PERIOD_TITLE"
+                                                       ValueSelector="x => x.PERIOD_DATE"
+                                                       Clearable="false" />
         </div>
         <button class="btn-primary-pay2" @onclick="LoadPeriod" disabled="@IsLoading">
             @if (IsLoading)
@@ -459,15 +472,15 @@
             Workshops = await WorkshopApi.GetWorkshopsAsync() ?? new();
             if (Workshops.Any()) SelectedWsId = Workshops.First().WS_ID;
 
-            string currentShamsi = Safir.Shared.Utility.CL_Tarikh.GetCurrentPersianDateAsLong().ToString();
-            if (currentShamsi.Length >= 6) PeriodDateStr = currentShamsi.Substring(0, 6) + "00";
+            await LoadPeriodOptionsAsync();
+
         }
         catch { }
     }
 
     async Task LoadPeriod()
     {
-        if (SelectedWsId <= 0 || string.IsNullOrWhiteSpace(PeriodDateStr))
+        if (SelectedWsId <= 0 || SelectedPeriodDate <= 0)
         {
             Snackbar.Add("کارگاه و ماه را مشخص کنید.", MudBlazor.Severity.Warning); return;
         }
@@ -475,11 +488,13 @@
         IsLoading = true;
         try
         {
-            if (!TryNormalizePeriodDate(PeriodDateStr, out long pDate, out string periodError))
+            if (SelectedPeriodDate <= 0)
             {
-                Snackbar.Add(periodError, MudBlazor.Severity.Warning);
+                Snackbar.Add("ماه دوره را انتخاب کنید.", MudBlazor.Severity.Warning);
                 return;
             }
+
+            long pDate = SelectedPeriodDate;
             PeriodData = await AttApi.InitPeriodAsync(SelectedWsId, pDate);
 
             FilteredLines = PeriodData.Lines.ToList();
@@ -536,6 +551,30 @@
         finally { IsSaving = false; }
     }
 
+    async Task OnWorkshopChangedAsync()
+    {
+        PeriodData = null;
+        FilteredLines.Clear();
+        _searchTerm = "";
+        await LoadPeriodOptionsAsync();
+    }
+
+    async Task LoadPeriodOptionsAsync()
+    {
+        PeriodOptions = new();
+
+        if (SelectedWsId <= 0)
+        {
+            SelectedPeriodDate = 0;
+            return;
+        }
+
+        PeriodOptions = await AttApi.GetPeriodsAsync(SelectedWsId);
+        SelectedPeriodDate = PeriodOptions.Any()
+            ? PeriodOptions.First().PERIOD_DATE
+            : 0;
+    }
+
     async Task OpenDynamicValues(int empId, string name)
     {
         ActiveEmpId = empId;
@@ -578,12 +617,7 @@
         {
             await AttApi.ClosePeriodAsync(PeriodData.Period.PER_ID);
 
-            if (!TryNormalizePeriodDate(PeriodDateStr, out long pDate, out string periodError))
-            {
-                Snackbar.Add(periodError, MudBlazor.Severity.Warning);
-                return;
-            }
-
+            long pDate = SelectedPeriodDate;
             PeriodData = await AttApi.InitPeriodAsync(SelectedWsId, pDate);
             FilteredLines = PeriodData.Lines.ToList();
 
@@ -599,6 +633,8 @@
         }
     }
 
+    List<Pay2PeriodLookupDto> PeriodOptions = new();
+    long SelectedPeriodDate;
     static bool TryNormalizePeriodDate(string? input, out long periodDate, out string error)
     {
         periodDate = 0;
@@ -639,5 +675,7 @@
 
         return true;
     }
+
+
 
 }

@@ -32,6 +32,6 @@ namespace Safir.Client.Services
             if (!res.IsSuccessStatusCode)
                 throw new Exception(await res.Content.ReadAsStringAsync());
         }
-
+        public async Task<List<Pay2PeriodLookupDto>> GetPeriodsAsync(int wsId) => await _http.GetFromJsonAsync<List<Pay2PeriodLookupDto>>($"api/pay2/attendance/periods?wsId={wsId}") ?? new();
     }
 }
