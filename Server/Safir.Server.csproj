@@ -48,4 +48,8 @@
 		<ProjectReference Include="..\Shared\Safir.Shared.csproj" />
 	</ItemGroup>
 
+	<ItemGroup>
+	  <Folder Include="InfoHelper\" />
+	</ItemGroup>
+
 </Project>
