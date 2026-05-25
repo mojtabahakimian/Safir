@@ -105,8 +105,21 @@ namespace Safir.Server.Controllers
             if (request.WS_ID <= 0)
                 return BadRequest("کارگاه نامعتبر است.");
 
-            if (!IsValidPayrollPeriodDate(request.PERIOD_DATE))
-                return BadRequest("ماه دوره نامعتبر است. فرمت صحیح مثل 14030700 است.");
+
+            const string periodCheckSql = @"
+SELECT COUNT(1)
+FROM PAY2_PERIOD
+WHERE WS_ID = @WS_ID
+  AND PERIOD_DATE = @PERIOD_DATE;";
+
+            var periodExistsRows = await _db.DoGetDataSQLAsync<int>(periodCheckSql, new
+            {
+                request.WS_ID,
+                request.PERIOD_DATE
+            });
+
+            if (periodExistsRows.FirstOrDefault() == 0)
+                return BadRequest("دوره انتخاب‌شده برای این کارگاه در سیستم وجود ندارد.");
 
             try
             {

@@ -198,8 +198,8 @@ namespace Safir.Server.Controllers
                 return BadRequest("کارگاه نامعتبر است.");
 
             const string sql = @"
-        SELECT 
-            PERIOD_DATE,
+     SELECT 
+            (PERIOD_DATE / 100) * 100 AS PERIOD_DATE, --جهت صفر کردن روز ها تا فقط سال و ماه بمونه
             CAST(PERIOD_DATE / 10000 AS NVARCHAR(4)) 
             + N' - ' +
             RIGHT(N'00' + CAST((PERIOD_DATE / 100) % 100 AS NVARCHAR(2)), 2)
