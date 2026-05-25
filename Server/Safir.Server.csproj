@@ -8,9 +8,13 @@
 	</PropertyGroup>
 
 	<ItemGroup>
+		<Compile Remove="InfoHelper\**" />
 		<Compile Remove="Models\**" />
+		<Content Remove="InfoHelper\**" />
 		<Content Remove="Models\**" />
+		<EmbeddedResource Remove="InfoHelper\**" />
 		<EmbeddedResource Remove="Models\**" />
+		<None Remove="InfoHelper\**" />
 		<None Remove="Models\**" />
 	</ItemGroup>
 
@@ -46,10 +50,6 @@
 	<ItemGroup>
 		<ProjectReference Include="..\Client\Safir.Client.csproj" />
 		<ProjectReference Include="..\Shared\Safir.Shared.csproj" />
-	</ItemGroup>
-
-	<ItemGroup>
-	  <Folder Include="InfoHelper\" />
 	</ItemGroup>
 
 </Project>

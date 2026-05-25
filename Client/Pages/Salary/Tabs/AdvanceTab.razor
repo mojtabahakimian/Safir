@@ -1,0 +1,762 @@
+﻿@using Safir.Shared.Models.Salary
+@inject Safir.Client.Services.Pay2AdvanceApiService AdvanceApi
+@inject Safir.Client.Services.Pay2WorkshopApiService WorkshopApi
+@inject Safir.Client.Services.Pay2EmployeeApiService EmployeeApi
+@inject ISnackbar Snackbar
+
+<div class="pay2-tab-container">
+
+    <div class="card-custom" style="padding:18px; margin-bottom:16px;">
+        <div style="display:flex; flex-wrap:wrap; gap:14px; align-items:flex-end;">
+
+            <div class="form-field" style="width:260px;">
+                <label>انتخاب کارگاه *</label>
+                <Safir.Client.Pages.Salary.Tabs.Pay2Select TItem="Pay2WorkshopDto"
+                                                           TValue="int"
+                                                           Items="Workshops"
+                                                           @bind-Value="SelectedWsId"
+                                                           @bind-Value:after="OnWorkshopChangedAsync"
+                                                           TextSelector="x => x.WS_NAME"
+                                                           ValueSelector="x => x.WS_ID"
+                                                           Clearable="false" />
+            </div>
+
+            <div class="form-field" style="width:230px;">
+                <label>ماه دوره *</label>
+                <Safir.Client.Pages.Salary.Tabs.Pay2Select TItem="Pay2PeriodLookupDto"
+                                                           TValue="long"
+                                                           Items="Periods"
+                                                           @bind-Value="SelectedPeriodDate"
+                                                           TextSelector="x => x.PERIOD_TITLE"
+                                                           ValueSelector="x => x.PERIOD_DATE"
+                                                           Clearable="false" />
+            </div>
+
+            <div class="form-field" style="width:170px;">
+                <label>شماره سند حقوق</label>
+                <Safir.Client.Pages.Salary.Tabs.Pay2NumericInput @bind-Value="PayrollNsStr"
+                                                                 Direction="ltr"
+                                                                 MaxLength="20"
+                                                                 Placeholder="خالی = خودکار" />
+            </div>
+
+            <button class="btn-primary-pay2" @onclick="LoadAdvancesAsync" disabled="@IsLoading">
+                @if (IsLoading)
+                {
+                    <span class="p2-spinner"></span>
+                }
+                else
+                {
+                    <span><i class="bi bi-arrow-repeat"></i> بروزرسانی از حسابداری</span>
+                }
+            </button>
+
+            <button class="btn-outline-pay2" @onclick="OpenSettings" disabled="@(SelectedWsId <= 0 || IsLoading)">
+                <i class="bi bi-gear"></i>
+                تنظیمات اتصال
+            </button>
+
+            <div style="flex-grow:1;"></div>
+
+            @if (Rows.Any())
+            {
+                <div class="pay2-search-wrapper" style="width:250px;">
+                    <i class="bi bi-search"></i>
+                    <input class="pay2-search-input"
+                           style="width:100%;"
+                           placeholder="جستجوی پرسنل یا کد تفصیلی..."
+                           @bind="SearchTerm"
+                           @bind:event="oninput" />
+                </div>
+            }
+        </div>
+    </div>
+
+    <div class="dashboard-top-grid" style="margin-bottom:16px;">
+        <div class="card-custom">
+            <div class="p2-stat-label">محدوده بررسی (ADV_SCOPE)</div>
+            <div style="font-weight:800; margin-top:8px;">@ScopeText</div>
+        </div>
+
+        <div class="card-custom">
+            <div class="p2-stat-label">حساب مساعده کارگاه (ADV_HES)</div>
+            <div class="p2-text-mono" style="font-weight:800; margin-top:8px;">
+                @(string.IsNullOrWhiteSpace(Settings.ADV_HES) ? "تنظیم نشده" : Settings.ADV_HES)
+            </div>
+        </div>
+
+        <div class="card-custom">
+            <div class="p2-stat-label">فیلتر مانده مثبت</div>
+            <div style="font-weight:800; margin-top:8px;">
+                @(Settings.ADV_MIN_POSITIVE ? "فقط مانده‌های بدهکار" : "همه مانده‌ها")
+            </div>
+        </div>
+
+        <div class="card-custom">
+            <div class="p2-stat-label">جمع کسر در موتور حقوق</div>
+            <div class="p2-text-mono p2-text-primary" style="font-size:20px; font-weight:900; margin-top:8px;">
+                @FilteredRows.Sum(x => x.ADVANCE_DEDUCTION).ToString("N0")
+            </div>
+        </div>
+    </div>
+
+    @if (IsLoading)
+    {
+        <div style="height:300px; display:flex; align-items:center; justify-content:center; flex-direction:column; gap:14px;">
+            <span class="p2-spinner" style="width:38px; height:38px; border-color:var(--p2-primary); border-top-color:transparent;"></span>
+            <span class="p2-text-muted" style="font-weight:700;">در حال خواندن مانده مساعده از حسابداری...</span>
+        </div>
+    }
+    else if (!Rows.Any())
+    {
+        <div class="card-custom">
+            <div class="p2-empty-state">
+                <i class="bi bi-cash-coin"></i>
+                <h4>هنوز داده‌ای بارگذاری نشده است</h4>
+                <p>کارگاه و ماه را انتخاب کن و دکمه «بروزرسانی از حسابداری» را بزن.</p>
+            </div>
+        </div>
+    }
+    else
+    {
+        <div class="card-custom" style="padding:0;">
+            <div class="pay2-table-responsive">
+                <table class="p2-table">
+                    <thead>
+                        <tr>
+                            <th style="text-align:right;">پرسنل</th>
+                            <th style="text-align:center;">کد تفصیلی</th>
+                            <th style="text-align:left;">مانده خام حسابداری</th>
+                            <th style="text-align:left;">استثنا دستی</th>
+                            <th style="text-align:left;">کسر در موتور حقوق</th>
+                            <th style="text-align:center;">عملیات</th>
+                        </tr>
+                    </thead>
+
+                    <tbody>
+                        @foreach (var row in FilteredRows)
+                        {
+                            <tr>
+                                <td>
+                                    <div style="font-weight:800;">@row.FULL_NAME</div>
+                                    <div class="p2-text-muted p2-text-mono" style="font-size:11px;">@row.PCODE</div>
+                                </td>
+
+                                <td class="p2-text-mono" style="text-align:center;">
+                                    @(string.IsNullOrWhiteSpace(row.PCODE) ? "—" : row.PCODE)
+                                </td>
+
+                                <td class="p2-text-mono" style="text-align:left; font-weight:700;">
+                                    @row.RAW_BALANCE.ToString("N0")
+                                </td>
+
+                                <td class="p2-text-mono" style="text-align:left; color:#ef4444; font-weight:700;">
+                                    @row.MANUAL_EXCL.ToString("N0")
+                                </td>
+
+                                <td class="p2-text-mono p2-text-primary" style="text-align:left; font-weight:900;">
+                                    @row.ADVANCE_DEDUCTION.ToString("N0")
+                                </td>
+
+                                <td style="text-align:center;">
+                                    <button class="btn-outline-pay2 sm" @onclick="() => OpenExclModal(row)">
+                                        استثنا
+                                    </button>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+
+            <div style="padding:10px 16px; border-top:1px solid var(--p2-border-light); font-size:12px; color:var(--p2-text-muted);">
+                تعداد کل: <b>@Rows.Count</b> |
+                تعداد نمایش داده‌شده: <b>@FilteredRows.Count</b> |
+                جمع مانده خام: <b>@FilteredRows.Sum(x => x.RAW_BALANCE).ToString("N0")</b> |
+                جمع استثنا: <b>@FilteredRows.Sum(x => x.MANUAL_EXCL).ToString("N0")</b>
+            </div>
+        </div>
+    }
+</div>
+
+@if (ShowSettingsModal)
+{
+    <div class="pay2-select-backdrop"
+         style="background:rgba(15,23,42,0.6); z-index:2999;"
+         @onclick="CloseSettings"></div>
+
+    <div class="card-custom pay2-modal-container" style="max-width:560px;">
+        <div class="pay2-modal-header p2-card-header" style="margin:0;">
+            <h5 style="margin:0;">تنظیمات سطح کارگاه — مساعده هوشمند</h5>
+            <button class="btn-ghost-pay2" @onclick="CloseSettings">
+                <i class="bi bi-x-lg"></i>
+            </button>
+        </div>
+
+        <div class="pay2-modal-body" style="padding:20px;">
+            <div class="form-field">
+                <label>کد حساب مساعده هوشمند (ADV_HES)</label>
+                <div class="p2-text-muted" style="font-size:12px; margin-bottom:8px;">
+                    مقدار در PAY2_WORKSHOP_ACC با کلید ADV_HES ذخیره می‌شود. نمونه: 112-1-1 یا 213-1-2-4-1-6
+                </div>
+
+                <input class="pay2-input"
+                       style="width:100%; direction:ltr; text-align:left; font-family:Consolas;"
+                       @bind="Settings.ADV_HES"
+                       placeholder="مثال: 112-1-1" />
+            </div>
+        </div>
+
+        <div class="pay2-modal-footer" style="justify-content:flex-end;">
+            <button class="btn-outline-pay2" @onclick="CloseSettings" style="margin-left:10px;">انصراف</button>
+
+            <button class="btn-primary-pay2" @onclick="SaveSettingsAsync" disabled="@IsSavingSettings">
+                @if (IsSavingSettings)
+                {
+                    <span class="p2-spinner"></span>
+                }
+                else
+                {
+                    <span>ذخیره در کارگاه</span>
+                }
+            </button>
+        </div>
+    </div>
+}
+
+@if (ShowExclModal)
+{
+    <div class="pay2-select-backdrop"
+         style="background:rgba(15,23,42,0.6); z-index:2999;"
+         @onclick="CloseExclModal"></div>
+
+    <div class="card-custom pay2-modal-container" style="max-width:860px; height:620px;">
+        <div class="pay2-modal-header p2-card-header" style="margin:0;">
+            <h5 style="margin:0;">
+                استثناهای مساعده:
+                <span class="p2-text-primary">@SelectedRow?.FULL_NAME</span>
+            </h5>
+
+            <button class="btn-ghost-pay2" @onclick="CloseExclModal">
+                <i class="bi bi-x-lg"></i>
+            </button>
+        </div>
+
+        <div class="pay2-modal-body" style="padding:18px; overflow:auto;">
+            <div class="card-custom" style="padding:14px; background:var(--p2-bg-main); box-shadow:none; margin-bottom:14px;">
+                <div style="display:grid; grid-template-columns:160px 180px 160px 1fr auto; gap:12px; align-items:end;">
+
+                    <div class="form-field">
+                        <label>ماه اعمال *</label>
+                        <Safir.Client.Pages.Salary.Tabs.Pay2NumericInput @bind-Value="ExclPeriodStr"
+                                                                         Direction="ltr"
+                                                                         MaxLength="8"
+                                                                         Placeholder="14030700" />
+                    </div>
+
+                    <div class="form-field">
+                        <label>مبلغ استثنا *</label>
+                        <Safir.Client.Pages.Salary.Tabs.Pay2NumericInput @bind-Value="ExclAmountStr"
+                                                                         Direction="ltr"
+                                                                         IsDigitGroupActive="true"
+                                                                         ThreeTwoZero="true"
+                                                                         Placeholder="0" />
+                    </div>
+
+                    <div class="form-field">
+                        <label>شماره سند مرجع</label>
+                        <Safir.Client.Pages.Salary.Tabs.Pay2NumericInput @bind-Value="ExclDeedNsStr"
+                                                                         Direction="ltr"
+                                                                         Placeholder="اختیاری" />
+                    </div>
+
+                    <div class="form-field">
+                        <label>دلیل / توضیح *</label>
+                        <input class="pay2-input"
+                               @bind="CurrentExcl.REASON"
+                               placeholder="مثلاً ثبت اشتباه، سند برگشتی، اصلاح دستی..." />
+                    </div>
+
+                    <div>
+                        @if (CurrentExcl.EXCL_ID > 0)
+                        {
+                            <button class="btn-outline-pay2" @onclick="ResetExclForm" style="margin-left:8px;">
+                                انصراف
+                            </button>
+                        }
+
+                        <button class="btn-primary-pay2" @onclick="SaveExclAsync" disabled="@IsSavingExcl">
+                            ذخیره
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            @if (EmployeeExcls.Count == 0)
+            {
+                <div class="p2-empty-state">
+                    <i class="bi bi-journal-x"></i>
+                    <h4>استثنایی ثبت نشده</h4>
+                </div>
+            }
+            else
+            {
+                <table class="p2-table">
+                    <thead>
+                        <tr>
+                            <th style="text-align:center;">ماه اعمال</th>
+                            <th style="text-align:left;">مبلغ</th>
+                            <th style="text-align:center;">شماره سند</th>
+                            <th>دلیل</th>
+                            <th style="text-align:center;">عملیات</th>
+                        </tr>
+                    </thead>
+
+                    <tbody>
+                        @foreach (var item in EmployeeExcls)
+                        {
+                            <tr style="background:@(item.EXCL_ID == CurrentExcl.EXCL_ID ? "var(--p2-primary-light)" : "transparent")">
+                                <td class="p2-text-mono" style="text-align:center;">@item.PERIOD_DATE</td>
+
+                                <td class="p2-text-mono p2-text-primary" style="text-align:left; font-weight:800;">
+                                    @item.EXCL_AMOUNT.ToString("N0")
+                                </td>
+
+                                <td class="p2-text-mono" style="text-align:center;">
+                                    @(item.DEED_N_S?.ToString() ?? "—")
+                                </td>
+
+                                <td>@item.REASON</td>
+
+                                <td style="text-align:center;">
+                                    <button class="btn-ghost-pay2 p2-text-primary" @onclick="() => EditExcl(item)">
+                                        ویرایش
+                                    </button>
+
+                                    <button class="btn-ghost-pay2 p2-text-danger" @onclick="() => DeleteExclAsync(item)">
+                                        حذف
+                                    </button>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            }
+        </div>
+
+        <div class="pay2-modal-footer" style="justify-content:flex-end;">
+            <button class="btn-outline-pay2" @onclick="CloseExclModal">
+                بستن
+            </button>
+        </div>
+    </div>
+}
+
+@code {
+    List<Pay2WorkshopDto> Workshops = new();
+    List<Pay2PeriodLookupDto> Periods = new();
+    List<Pay2SmartAdvanceRowDto> Rows = new();
+    List<Pay2SmartAdvanceRowDto> FilteredRows = new();
+
+    Pay2SmartAdvanceSettingsDto Settings = new();
+
+    int SelectedWsId;
+    long SelectedPeriodDate;
+    string? PayrollNsStr;
+
+    bool IsLoading;
+    bool IsSavingSettings;
+    bool IsSavingExcl;
+
+    string _searchTerm = "";
+    string SearchTerm
+    {
+        get => _searchTerm;
+        set
+        {
+            _searchTerm = value;
+            ApplyFilter();
+        }
+    }
+
+    bool ShowSettingsModal;
+    bool ShowExclModal;
+
+    Pay2SmartAdvanceRowDto? SelectedRow;
+    List<Pay2AdvanceExclDto> EmployeeExcls = new();
+    Pay2AdvanceExclDto CurrentExcl = new();
+
+    string? ExclPeriodStr;
+    string? ExclAmountStr;
+    string? ExclDeedNsStr;
+
+    string ScopeText => Settings.ADV_SCOPE == "OPEN_BALANCE"
+        ? "کل مانده باز تا سند حقوق"
+        : "اسناد ماه جاری";
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            Workshops = await WorkshopApi.GetWorkshopsAsync() ?? new();
+
+            if (Workshops.Any())
+                SelectedWsId = Workshops.First().WS_ID;
+
+            await LoadWorkshopDependentDataAsync();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add(ex.Message, Severity.Error);
+        }
+    }
+
+    async Task OnWorkshopChangedAsync()
+    {
+        Rows.Clear();
+        FilteredRows.Clear();
+        _searchTerm = "";
+        await LoadWorkshopDependentDataAsync();
+    }
+
+    async Task LoadWorkshopDependentDataAsync()
+    {
+        Periods = new();
+        SelectedPeriodDate = 0;
+        Settings = new Pay2SmartAdvanceSettingsDto { WS_ID = SelectedWsId };
+
+        if (SelectedWsId <= 0)
+            return;
+
+        Periods = await AdvanceApi.GetPeriodsAsync(SelectedWsId);
+
+        if (Periods.Any())
+            SelectedPeriodDate = Periods.First().PERIOD_DATE;
+
+        Settings = await AdvanceApi.GetSettingsAsync(SelectedWsId);
+    }
+
+    async Task LoadAdvancesAsync()
+    {
+        if (SelectedWsId <= 0)
+        {
+            Snackbar.Add("کارگاه را انتخاب کنید.", Severity.Warning);
+            return;
+        }
+
+        if (SelectedPeriodDate <= 0)
+        {
+            Snackbar.Add("ماه دوره را انتخاب کنید.", Severity.Warning);
+            return;
+        }
+
+        IsLoading = true;
+
+        try
+        {
+            double? payrollNs = null;
+
+            if (!string.IsNullOrWhiteSpace(PayrollNsStr))
+            {
+                var normalized = NormalizeNumericText(PayrollNsStr);
+
+                if (double.TryParse(normalized, out double parsed))
+                    payrollNs = parsed;
+                else
+                {
+                    Snackbar.Add("شماره سند حقوق نامعتبر است.", Severity.Warning);
+                    return;
+                }
+            }
+
+            Rows = await AdvanceApi.CalculateAsync(new Pay2SmartAdvanceCalcRequest
+            {
+                WS_ID = SelectedWsId,
+                PERIOD_DATE = SelectedPeriodDate,
+                PAYROLL_N_S = payrollNs
+            });
+
+            ApplyFilter();
+
+            Snackbar.Add("مانده مساعده از حسابداری بروزرسانی شد.", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add(ex.Message, Severity.Error);
+        }
+        finally
+        {
+            IsLoading = false;
+        }
+    }
+
+    void ApplyFilter()
+    {
+        if (Rows == null || Rows.Count == 0)
+        {
+            FilteredRows = new();
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(_searchTerm))
+        {
+            FilteredRows = Rows.ToList();
+            return;
+        }
+
+        var term = _searchTerm.Trim().ToLower();
+
+        FilteredRows = Rows
+            .Where(x =>
+                (x.FULL_NAME != null && x.FULL_NAME.ToLower().Contains(term)) ||
+                (x.PCODE != null && x.PCODE.ToLower().Contains(term)))
+            .ToList();
+    }
+
+    void OpenSettings()
+    {
+        ShowSettingsModal = true;
+    }
+
+    void CloseSettings()
+    {
+        ShowSettingsModal = false;
+    }
+
+    async Task SaveSettingsAsync()
+    {
+        if (SelectedWsId <= 0)
+        {
+            Snackbar.Add("کارگاه را انتخاب کنید.", Severity.Warning);
+            return;
+        }
+
+        Settings.WS_ID = SelectedWsId;
+
+        if (string.IsNullOrWhiteSpace(Settings.ADV_HES))
+        {
+            Snackbar.Add("کد حساب مساعده را وارد کنید.", Severity.Warning);
+            return;
+        }
+
+        IsSavingSettings = true;
+
+        try
+        {
+            await AdvanceApi.SaveSettingsAsync(Settings);
+            Settings = await AdvanceApi.GetSettingsAsync(SelectedWsId);
+
+            Snackbar.Add("تنظیمات مساعده کارگاه ذخیره شد.", Severity.Success);
+            ShowSettingsModal = false;
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add(ex.Message, Severity.Error);
+        }
+        finally
+        {
+            IsSavingSettings = false;
+        }
+    }
+
+    async Task OpenExclModal(Pay2SmartAdvanceRowDto row)
+    {
+        SelectedRow = row;
+        ResetExclForm();
+        ShowExclModal = true;
+
+        try
+        {
+            EmployeeExcls = await EmployeeApi.GetAdvanceExclsAsync(row.EMP_ID);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add(ex.Message, Severity.Error);
+        }
+    }
+
+    void CloseExclModal()
+    {
+        ShowExclModal = false;
+        SelectedRow = null;
+        EmployeeExcls.Clear();
+        ResetExclForm();
+    }
+
+    void ResetExclForm()
+    {
+        CurrentExcl = new Pay2AdvanceExclDto();
+        ExclPeriodStr = SelectedPeriodDate > 0 ? SelectedPeriodDate.ToString() : null;
+        ExclAmountStr = null;
+        ExclDeedNsStr = null;
+    }
+
+    void EditExcl(Pay2AdvanceExclDto item)
+    {
+        CurrentExcl = new Pay2AdvanceExclDto
+        {
+            EXCL_ID = item.EXCL_ID,
+            EMP_ID = item.EMP_ID,
+            PERIOD_DATE = item.PERIOD_DATE,
+            EXCL_AMOUNT = item.EXCL_AMOUNT,
+            REASON = item.REASON,
+            DEED_N_S = item.DEED_N_S
+        };
+
+        ExclPeriodStr = item.PERIOD_DATE.ToString();
+        ExclAmountStr = item.EXCL_AMOUNT.ToString();
+        ExclDeedNsStr = item.DEED_N_S?.ToString();
+    }
+
+    async Task SaveExclAsync()
+    {
+        if (SelectedRow == null)
+        {
+            Snackbar.Add("پرسنل انتخاب نشده است.", Severity.Warning);
+            return;
+        }
+
+        if (!TryParsePeriodDate(ExclPeriodStr, out long periodDate, out string periodError))
+        {
+            Snackbar.Add(periodError, Severity.Warning);
+            return;
+        }
+
+        var amountText = NormalizeNumericText(ExclAmountStr);
+
+        if (!long.TryParse(amountText, out long amount) || amount <= 0)
+        {
+            Snackbar.Add("مبلغ استثنا باید بزرگتر از صفر باشد.", Severity.Warning);
+            return;
+        }
+
+        double? deedNs = null;
+        var deedText = NormalizeNumericText(ExclDeedNsStr);
+
+        if (!string.IsNullOrWhiteSpace(deedText))
+        {
+            if (double.TryParse(deedText, out double parsedDeed))
+                deedNs = parsedDeed;
+            else
+            {
+                Snackbar.Add("شماره سند مرجع نامعتبر است.", Severity.Warning);
+                return;
+            }
+        }
+
+        if (string.IsNullOrWhiteSpace(CurrentExcl.REASON))
+        {
+            Snackbar.Add("دلیل استثنا را وارد کنید.", Severity.Warning);
+            return;
+        }
+
+        IsSavingExcl = true;
+
+        try
+        {
+            CurrentExcl.EMP_ID = SelectedRow.EMP_ID;
+            CurrentExcl.PERIOD_DATE = periodDate;
+            CurrentExcl.EXCL_AMOUNT = amount;
+            CurrentExcl.DEED_N_S = deedNs;
+
+            await EmployeeApi.SaveAdvanceExclAsync(CurrentExcl);
+
+            EmployeeExcls = await EmployeeApi.GetAdvanceExclsAsync(SelectedRow.EMP_ID);
+            ResetExclForm();
+
+            Snackbar.Add("استثنای مساعده ذخیره شد.", Severity.Success);
+
+            await LoadAdvancesAsync();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add(ex.Message, Severity.Error);
+        }
+        finally
+        {
+            IsSavingExcl = false;
+        }
+    }
+
+    async Task DeleteExclAsync(Pay2AdvanceExclDto item)
+    {
+        if (item.EXCL_ID <= 0)
+            return;
+
+        try
+        {
+            await EmployeeApi.DeleteAdvanceExclAsync(item.EXCL_ID);
+
+            if (SelectedRow != null)
+                EmployeeExcls = await EmployeeApi.GetAdvanceExclsAsync(SelectedRow.EMP_ID);
+
+            Snackbar.Add("استثنای مساعده حذف شد.", Severity.Success);
+
+            await LoadAdvancesAsync();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add(ex.Message, Severity.Error);
+        }
+    }
+
+    static bool TryParsePeriodDate(string? input, out long periodDate, out string error)
+    {
+        periodDate = 0;
+        error = string.Empty;
+
+        var raw = NormalizeNumericText(input);
+
+        if (raw.Length != 8 || !long.TryParse(raw, out periodDate))
+        {
+            error = "ماه باید دقیقاً ۸ رقم باشد. مثال: 14030700";
+            return false;
+        }
+
+        int year = (int)(periodDate / 10000);
+        int month = (int)((periodDate / 100) % 100);
+        int day = (int)(periodDate % 100);
+
+        if (year < 1300 || year > 1499)
+        {
+            error = "سال دوره نامعتبر است.";
+            return false;
+        }
+
+        if (month < 1 || month > 12)
+        {
+            error = "ماه دوره باید بین 01 تا 12 باشد.";
+            return false;
+        }
+
+        if (day != 0)
+        {
+            error = "دو رقم آخر دوره باید 00 باشد. مثال: 14030700";
+            return false;
+        }
+
+        return true;
+    }
+
+    static string NormalizeNumericText(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return string.Empty;
+
+        var result = new List<char>();
+
+        foreach (var ch in value.Trim())
+        {
+            if (ch >= '0' && ch <= '9')
+                result.Add(ch);
+            else if (ch >= '۰' && ch <= '۹')
+                result.Add((char)('0' + (ch - '۰')));
+            else if (ch >= '٠' && ch <= '٩')
+                result.Add((char)('0' + (ch - '٠')));
+            else if (ch == '.' || ch == '-')
+                result.Add(ch);
+        }
+
+        return new string(result.ToArray());
+    }
+}
