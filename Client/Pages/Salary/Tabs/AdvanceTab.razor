@@ -2,7 +2,9 @@
 @inject Safir.Client.Services.Pay2AdvanceApiService AdvanceApi
 @inject Safir.Client.Services.Pay2WorkshopApiService WorkshopApi
 @inject Safir.Client.Services.Pay2EmployeeApiService EmployeeApi
+@inject Safir.Client.Services.LookupApiService LookupService
 @inject ISnackbar Snackbar
+@using Safir.Shared.Models
 
 <div class="pay2-tab-container">
 
@@ -200,10 +202,20 @@
                     مقدار در PAY2_WORKSHOP_ACC با کلید ADV_HES ذخیره می‌شود. نمونه: 112-1-1 یا 213-1-2-4-1-6
                 </div>
 
-                <input class="pay2-input"
-                       style="width:100%; direction:ltr; text-align:left; font-family:Consolas;"
-                       @bind="Settings.ADV_HES"
-                       placeholder="مثال: 112-1-1" />
+                <Safir.Client.Pages.Salary.Tabs.Pay2Select TItem="LookupDto<string>"
+                                                           TValue="string"
+                                                           SearchItems="SearchAccountsAsync"
+                                                           Items="Init_ADV_HES"
+                                                           Value="Settings.ADV_HES"
+                                                           ValueChanged="@(v => Settings.ADV_HES = v)"
+                                                           TextSelector="@(x => $"\u200E{x.Id}\u200E\u200F  -  {x.Name}")"
+                                                           ValueSelector="@(x => x.Id)"
+                                                           Placeholder="مثال: 213-1-16"
+                                                           Clearable="true"
+                                                           Editable="true"
+                                                           MaxVisibleItems="50"
+                                                           DebounceMilliseconds="400"
+                                                           ClearValueOnTextEdit="true" />
             </div>
         </div>
 
@@ -357,7 +369,7 @@
     List<Pay2PeriodLookupDto> Periods = new();
     List<Pay2SmartAdvanceRowDto> Rows = new();
     List<Pay2SmartAdvanceRowDto> FilteredRows = new();
-
+    List<LookupDto<string>> Init_ADV_HES = new();
     Pay2SmartAdvanceSettingsDto Settings = new();
 
     int SelectedWsId;
@@ -410,7 +422,11 @@
             Snackbar.Add(ex.Message, Severity.Error);
         }
     }
-
+    private async Task<IEnumerable<LookupDto<string>>> SearchAccountsAsync(string? searchTerm, CancellationToken cancellationToken)
+    {
+        var result = await LookupService.GetCustomerLookupAsync(searchTerm);
+        return result ?? Enumerable.Empty<LookupDto<string>>();
+    }
     async Task OnWorkshopChangedAsync()
     {
         Rows.Clear();
@@ -482,7 +498,7 @@
         }
         catch (Exception ex)
         {
-            Snackbar.Add(ex.Message, Severity.Error);
+            Snackbar.Add(GetFriendlyAdvanceError(ex.Message), Severity.Error);
         }
         finally
         {
@@ -513,8 +529,33 @@
             .ToList();
     }
 
-    void OpenSettings()
+    async Task OpenSettings()
     {
+        Init_ADV_HES = new();
+
+        if (!string.IsNullOrWhiteSpace(Settings.ADV_HES))
+        {
+            try
+            {
+                var accounts = await SearchAccountsAsync(Settings.ADV_HES, CancellationToken.None);
+                var account = accounts.FirstOrDefault(x => x.Id == Settings.ADV_HES);
+
+                Init_ADV_HES.Add(account ?? new LookupDto<string>
+                {
+                    Id = Settings.ADV_HES,
+                    Name = "نام حساب یافت نشد"
+                });
+            }
+            catch
+            {
+                Init_ADV_HES.Add(new LookupDto<string>
+                {
+                    Id = Settings.ADV_HES,
+                    Name = "نام حساب یافت نشد"
+                });
+            }
+        }
+
         ShowSettingsModal = true;
     }
 
@@ -738,6 +779,19 @@
         return true;
     }
 
+    static string GetFriendlyAdvanceError(string? message)
+    {
+        if (string.IsNullOrWhiteSpace(message))
+            return "خطا در بروزرسانی اطلاعات مساعده.";
+
+        if (message.Contains("ADV_HES") || message.Contains("PAY2_WORKSHOP_ACC"))
+            return "حساب مساعده برای این کارگاه تنظیم نشده است. لطفاً از «تنظیمات اتصال» کد حساب مساعده را ثبت کنید.";
+
+        if (message.Contains("SP_PAY2_GET_ADVANCES"))
+            return "خطا در محاسبه مساعده از اطلاعات حسابداری.";
+
+        return "خطا در بروزرسانی اطلاعات مساعده. لطفاً تنظیمات کارگاه و دوره را بررسی کنید.";
+    }
     static string NormalizeNumericText(string? value)
     {
         if (string.IsNullOrWhiteSpace(value))
