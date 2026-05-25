@@ -475,7 +475,11 @@
         IsLoading = true;
         try
         {
-            long pDate = long.Parse(PeriodDateStr.Replace("/", ""));
+            if (!TryNormalizePeriodDate(PeriodDateStr, out long pDate, out string periodError))
+            {
+                Snackbar.Add(periodError, MudBlazor.Severity.Warning);
+                return;
+            }
             PeriodData = await AttApi.InitPeriodAsync(SelectedWsId, pDate);
 
             FilteredLines = PeriodData.Lines.ToList();
@@ -509,12 +513,6 @@
 
         var dirtyLines = PeriodData.Lines.Where(x => x.IsDirty && !x.LOCKED).ToList();
 
-        if (!dirtyLines.Any())
-        {
-            Snackbar.Add("هیچ تغییری برای ذخیره وجود ندارد.", MudBlazor.Severity.Info);
-            return;
-        }
-
         IsSaving = true;
         try
         {
@@ -528,7 +526,11 @@
 
             dirtyLines.ForEach(x => x.IsDirty = false);
 
-            Snackbar.Add($"اطلاعات کارکرد با موفقیت ذخیره شد ({dirtyLines.Count} ردیف).", MudBlazor.Severity.Success);
+            Snackbar.Add(
+             dirtyLines.Any()
+                 ? $"اطلاعات کارکرد با موفقیت ذخیره شد ({dirtyLines.Count} ردیف)."
+                 : "تنظیمات دوره با موفقیت ذخیره شد.",
+             MudBlazor.Severity.Success);
         }
         catch (Exception ex) { Snackbar.Add(ex.Message, MudBlazor.Severity.Error); }
         finally { IsSaving = false; }
@@ -576,7 +578,12 @@
         {
             await AttApi.ClosePeriodAsync(PeriodData.Period.PER_ID);
 
-            long pDate = long.Parse(PeriodDateStr.Replace("/", ""));
+            if (!TryNormalizePeriodDate(PeriodDateStr, out long pDate, out string periodError))
+            {
+                Snackbar.Add(periodError, MudBlazor.Severity.Warning);
+                return;
+            }
+
             PeriodData = await AttApi.InitPeriodAsync(SelectedWsId, pDate);
             FilteredLines = PeriodData.Lines.ToList();
 
@@ -590,6 +597,47 @@
         {
             IsSaving = false;
         }
+    }
+
+    static bool TryNormalizePeriodDate(string? input, out long periodDate, out string error)
+    {
+        periodDate = 0;
+        error = string.Empty;
+
+        string raw = (input ?? string.Empty)
+            .Trim()
+            .Replace("/", "")
+            .Replace("-", "");
+
+        if (raw.Length != 8 || !long.TryParse(raw, out periodDate))
+        {
+            error = "ماه باید دقیقاً ۸ رقم باشد. مثال صحیح: 14030700";
+            return false;
+        }
+
+        int year = (int)(periodDate / 10000);
+        int month = (int)((periodDate / 100) % 100);
+        int day = (int)(periodDate % 100);
+
+        if (year < 1300 || year > 1499)
+        {
+            error = "سال دوره نامعتبر است.";
+            return false;
+        }
+
+        if (month < 1 || month > 12)
+        {
+            error = "ماه دوره باید بین 01 تا 12 باشد.";
+            return false;
+        }
+
+        if (day != 0)
+        {
+            error = "برای دوره حقوق، دو رقم آخر باید 00 باشد. مثال: 14030700";
+            return false;
+        }
+
+        return true;
     }
 
 }

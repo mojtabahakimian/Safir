@@ -18,6 +18,12 @@ namespace Safir.Server.Controllers
         [HttpGet("init")]
         public async Task<IActionResult> InitPeriod([FromQuery] int wsId, [FromQuery] long periodDate)
         {
+            if (wsId <= 0)
+                return BadRequest("کارگاه نامعتبر است.");
+
+            if (!IsValidPayrollPeriodDate(periodDate))
+                return BadRequest("ماه دوره نامعتبر است. فرمت صحیح: YYYYMM00 مثل 14030700");
+
             try
             {
                 var result = await _db.ExecuteInTransactionAsync(async (conn, tran) =>
@@ -69,13 +75,15 @@ namespace Safir.Server.Controllers
 
             // فقط خطوطی که در کلاینت ویرایش شده‌اند را پردازش می‌کنیم (کاهش چشمگیر بار سرور)
             var dirtyLines = request.Lines.Where(x => !x.LOCKED).ToList();
-            if (!dirtyLines.Any()) return Ok(); // اگر هیچ چیز تغییر نکرده بود سریع برگرد
 
             try
             {
                 await _db.ExecuteInTransactionAsync(async (conn, tran) =>
                 {
                     await conn.ExecuteAsync("UPDATE PAY2_PERIOD SET HOLIDAY_DAYS=@HOLIDAY_DAYS, TENDAR_APPLY=@TENDAR_APPLY WHERE PER_ID=@PER_ID", request.Period, tran);
+
+                    if (!dirtyLines.Any())
+                        return;
 
                     // 🚀 جادوی پرفورمنس: استفاده از OPENJSON برای ثبت 1000 رکورد در 1 میلی‌ثانیه!
                     string jsonData = System.Text.Json.JsonSerializer.Serialize(dirtyLines);
@@ -170,5 +178,18 @@ namespace Safir.Server.Controllers
                 return BadRequest(ex.Message);
             }
         }
+        private static bool IsValidPayrollPeriodDate(long periodDate)
+        {
+            int year = (int)(periodDate / 10000);
+            int month = (int)((periodDate / 100) % 100);
+            int day = (int)(periodDate % 100);
+
+            return year >= 1300 &&
+                   year <= 1499 &&
+                   month >= 1 &&
+                   month <= 12 &&
+                   day == 0;
+        }
+
     }
 }
