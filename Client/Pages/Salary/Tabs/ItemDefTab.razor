@@ -1,0 +1,363 @@
+﻿@using Safir.Shared.Models.Salary
+@using Safir.Shared.Models
+@inject Safir.Client.Services.Pay2ItemDefApiService ItemDefApi
+@inject ISnackbar Snackbar
+@inject MudBlazor.IDialogService DialogService
+
+<div class="pay2-tab-container">
+    <div class="pay2-two-panel">
+
+        @* ══════════════════════════════════════════
+           پنل چپ: فرم افزودن و ویرایش (فرم در سمت چپ میافتد)
+           ══════════════════════════════════════════ *@
+        <div class="card-custom pay2-two-panel-form">
+
+            <div class="pay2-card-header">
+                <h5 style="color: var(--p2-primary);">
+                    @if (CurrentItem.ITEM_ID == 0)
+                    {
+                        <span>افزودن آیتم جدید</span>
+                    }
+                    else
+                    {
+                        <span>ویرایش آیتم</span>
+                    }
+                </h5>
+                @if (CurrentItem.IS_SYSTEM)
+                {
+                    <span class="p2-badge-warning"><i class="bi bi-shield-lock"></i> سیستمی</span>
+                }
+            </div>
+
+            <div class="form-field p2-mb-16">
+                <label>کد آیتم (انگلیسی) *</label>
+                <input class="pay2-input" type="text" dir="ltr"
+                       @bind="CurrentItem.ITEM_CODE"
+                       disabled="@CurrentItem.IS_SYSTEM"
+                       placeholder="مثال: RISK_ALLOWANCE" />
+            </div>
+
+            <div class="form-field p2-mb-16">
+                <label>نام فارسی (روی فیش) *</label>
+                <input class="pay2-input" type="text"
+                       @bind="CurrentItem.ITEM_NAME"
+                       placeholder="مثال: حق مسئولیت" />
+            </div>
+
+            <div class="form-field p2-mb-16">
+                <label>نوع آیتم *</label>
+                <Pay2Select TItem="LookupDto<byte>" TValue="byte" Items="ItemTypeOptions"
+                            @bind-Value="CurrentItem.ITEM_TYPE"
+                            TextSelector="x => x.Name" ValueSelector="x => x.Id"
+                            Clearable="false" disabled="@CurrentItem.IS_SYSTEM" />
+            </div>
+
+            <div class="form-field p2-mb-16">
+                <label>مبنای محاسبه *</label>
+                <Pay2Select TItem="LookupDto<byte>" TValue="byte" Items="CalcBasisOptions"
+                            @bind-Value="CurrentItem.CALC_BASIS"
+                            TextSelector="x => x.Name" ValueSelector="x => x.Id"
+                            Clearable="false" />
+            </div>
+
+            <div class="form-grid-2 p2-mb-16">
+                <div class="form-field">
+                    <label>مبنای بیمه</label>
+                    <Pay2Select TItem="LookupDto<byte>" TValue="byte" Items="BaseDaysOptions"
+                                @bind-Value="CurrentItem.INS_BASE_DAYS"
+                                TextSelector="x => x.Name" ValueSelector="x => x.Id"
+                                Clearable="false" />
+                </div>
+                <div class="form-field">
+                    <label>مبنای پرداخت</label>
+                    <Pay2Select TItem="LookupDto<byte>" TValue="byte" Items="BaseDaysOptions"
+                                @bind-Value="CurrentItem.PAY_BASE_DAYS"
+                                TextSelector="x => x.Name" ValueSelector="x => x.Id"
+                                Clearable="false" />
+                </div>
+            </div>
+
+            <div style="background: var(--p2-bg-main); border: 1px solid var(--p2-border-light); border-radius: var(--p2-radius-sm); padding: 12px; margin-bottom: 16px;">
+                <label style="display:block; font-size:11px; color:var(--p2-text-muted); margin-bottom:8px; text-align:center;">تنظیمات مشمولیت</label>
+                <div style="display:flex; justify-content:space-around; align-items:center; flex-wrap:wrap; gap:10px;">
+                    <label style="margin:0; font-size: 12px; font-weight: bold; cursor:pointer;">
+                        <input type="checkbox" @bind="CurrentItem.INS_SUBJECT" style="vertical-align: middle;" /> مشمول بیمه
+                    </label>
+                    <label style="margin:0; font-size: 12px; font-weight: bold; cursor:pointer;">
+                        <input type="checkbox" @bind="CurrentItem.TAX_SUBJECT" style="vertical-align: middle;" /> مشمول مالیات
+                    </label>
+                    <label style="margin:0; font-size: 12px; font-weight: bold; cursor:pointer;">
+                        <input type="checkbox" @bind="CurrentItem.SHOW_IN_SLIP" style="vertical-align: middle;" /> نمایش در فیش
+                    </label>
+                    <label style="margin:0; font-size: 12px; font-weight: bold; cursor:pointer; color:var(--p2-primary);">
+                        <input type="checkbox" @bind="CurrentItem.IS_ACTIVE" style="vertical-align: middle;" /> آیتم فعال است
+                    </label>
+                </div>
+            </div>
+
+            <div class="form-field p2-mb-16">
+                <label>ترتیب نمایش (SORT_ORDER)</label>
+                <Pay2NumericInput @bind-Value="SortOrderStr" Direction="ltr" MaxLength="4" />
+            </div>
+
+            <div class="form-field p2-mb-16">
+                <label>یادداشت</label>
+                <textarea class="pay2-textarea" @bind="CurrentItem.NOTES"></textarea>
+            </div>
+
+            <div style="display:flex; justify-content:space-between; margin-top:20px;">
+                <button class="btn-primary-pay2" @onclick="SaveItemAsync" disabled="@IsSaving">
+                    @if (IsSaving)
+                    {
+                        <span class="p2-spinner"></span>
+                    }
+                    else
+                    {
+                        <span>ثبت آیتم @(CurrentItem.ITEM_ID == 0 ? "جدید" : "")</span>
+                    }
+                </button>
+
+                @if (CurrentItem.ITEM_ID > 0)
+                {
+                    <button class="btn-outline-pay2" @onclick="ResetForm">انصراف / جدید</button>
+                }
+            </div>
+
+        </div>
+
+        @* ══════════════════════════════════════════
+           پنل راست: لیست آیتم‌ها
+           ══════════════════════════════════════════ *@
+        <div class="pay2-two-panel-list">
+
+            <div class="pay2-card-header" style="padding: 18px; border-bottom: 1px solid var(--p2-border-light); margin:0;">
+                <h5>لیست آیتم‌های تعریف‌شده</h5>
+                <div class="pay2-search-wrapper" style="width: 250px;">
+                    <i class="bi bi-search"></i>
+                    <input type="text" class="pay2-search-input" style="width: 100%; border:none; background:var(--p2-bg-main);"
+                           placeholder="جستجو..." @bind="SearchTerm" @bind:event="oninput" />
+                </div>
+            </div>
+
+            @if (IsLoading)
+            {
+                <div class="p2-loading"><div class="p2-spinner"></div> در حال بارگذاری...</div>
+            }
+            else
+            {
+                <div style="max-height: calc(100vh - 200px); overflow-y: auto; overflow-x: auto;">
+                    <table class="p2-table" style="min-width: 800px;">
+                        <thead style="position: sticky; top: 0; z-index: 10;">
+                            <tr>
+                                <th>کد آیتم</th>
+                                <th>نام فارسی</th>
+                                <th style="text-align:center;">نوع</th>
+                                <th style="text-align:center;">مبنا</th>
+                                <th style="text-align:center;">بیمه</th>
+                                <th style="text-align:center;">مالیات</th>
+                                <th style="text-align:center;">وضعیت</th>
+                                <th style="text-align:center;">سیستمی</th>
+                                <th style="text-align:center;">عملیات</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var item in FilteredItems)
+                            {
+                                <tr style="background: @(CurrentItem.ITEM_ID == item.ITEM_ID ? "var(--p2-primary-light)" : "transparent")">
+                                    <td class="p2-text-mono p2-text-muted">@item.ITEM_CODE</td>
+                                    <td style="font-weight:700;">@item.ITEM_NAME</td>
+                                    <td class="p2-text-muted" style="text-align:center;">@item.ItemTypeText</td>
+                                    <td class="p2-text-muted" style="text-align:center;">@item.CalcBasisText</td>
+                                    <td style="text-align:center;">
+                                        @if (item.INS_SUBJECT)
+                                        {
+                                            <span style="color:#059669; font-weight:bold;">مشمول</span>
+                                        }
+                                        else
+                                        {
+
+                                            <span style="color:#ef4444;">معاف</span>
+                                        }
+                                    </td>
+                                    <td style="text-align:center;">
+                                        @if (item.TAX_SUBJECT)
+                                        {
+                                            <span style="color:#059669; font-weight:bold;">مشمول</span>
+                                        }
+                                        else
+                                        {
+
+                                            <span style="color:#ef4444;">معاف</span>
+                                        }
+                                    </td>
+                                    <td style="text-align:center;">
+                                        @if (item.IS_ACTIVE)
+                                        {
+                                            <span class="p2-badge-success">فعال</span>
+                                        }
+                                        else
+                                        {
+
+                                            <span class="p2-badge-neutral">غیرفعال</span>
+                                        }
+                                    </td>
+                                    <td style="text-align:center;">
+                                        @if (item.IS_SYSTEM)
+                                        {
+                                            <span style="color:var(--p2-primary); font-weight:bold;">بله</span>
+                                        }
+                                        else
+                                        {
+
+                                            <span style="color:#cbd5e1;">خیر</span>
+                                        }
+                                    </td>
+                                    <td style="text-align:center;">
+                                        <button class="btn-ghost-pay2 p2-text-primary p2-btn-sm" @onclick="() => EditItem(item)">ویرایش</button>
+
+                                        @if (!item.IS_SYSTEM)
+                                        {
+                                            <button class="btn-ghost-pay2 p2-text-danger p2-btn-sm" @onclick="() => DeleteItem(item)">حذف</button>
+                                        }
+                                        else
+                                        {
+                                            // جای خالی برای تراز ماندن دکمه‌ها
+                                            <span style="display:inline-block; width:45px;"></span>
+                                        }
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+        </div>
+    </div>
+</div>
+
+@code {
+    List<Pay2ItemDefDto> Items = new();
+    Pay2ItemDefDto CurrentItem = new();
+
+    bool IsLoading = true;
+    bool IsSaving = false;
+    string? SortOrderStr = "100";
+
+    string _searchTerm = "";
+    string SearchTerm
+    {
+        get => _searchTerm;
+        set { _searchTerm = value; StateHasChanged(); }
+    }
+
+    IEnumerable<Pay2ItemDefDto> FilteredItems => string.IsNullOrWhiteSpace(_searchTerm)
+            ? Items
+            : Items.Where(x =>
+                (x.ITEM_NAME != null && x.ITEM_NAME.Contains(_searchTerm, StringComparison.OrdinalIgnoreCase)) ||
+                (x.ITEM_CODE != null && x.ITEM_CODE.Contains(_searchTerm, StringComparison.OrdinalIgnoreCase)));
+
+    List<LookupDto<byte>> ItemTypeOptions = new() {
+        new(1, "1 — پرداختی ثابت"), new(2, "2 — پرداختی متغیر/کارکردی"),
+        new(3, "3 — کسر ثابت"), new(4, "4 — کسر متغیر"), new(5, "5 — آگاهی (نمایش)")
+    };
+
+    List<LookupDto<byte>> CalcBasisOptions = new() {
+        new(1, "1 — روزانه"), new(2, "2 — ماهیانه (مبلغ کامل)")
+    };
+
+    List<LookupDto<byte>> BaseDaysOptions = new() {
+        new(1, "DAYS (اسمی)"), new(2, "DAYSB (رسمی)")
+    };
+
+    protected override async Task OnInitializedAsync()
+    {
+        ResetForm();
+        await LoadDataAsync();
+    }
+
+    async Task LoadDataAsync()
+    {
+        IsLoading = true;
+        try
+        {
+            Items = await ItemDefApi.GetItemDefsAsync();
+        }
+        catch (Exception ex) { Snackbar.Add(ex.Message, MudBlazor.Severity.Error); }
+        finally { IsLoading = false; }
+    }
+
+    void ResetForm()
+    {
+        CurrentItem = new Pay2ItemDefDto
+        {
+            ITEM_TYPE = 1,
+            CALC_BASIS = 2,
+            INS_BASE_DAYS = 1,
+            PAY_BASE_DAYS = 2,
+            INS_SUBJECT = true,
+            TAX_SUBJECT = true,
+            SHOW_IN_SLIP = true,
+            IS_ACTIVE = true
+        };
+        SortOrderStr = "100";
+    }
+
+    void EditItem(Pay2ItemDefDto item)
+    {
+        // Deep copy برای عدم تغییر مستقیم در گرید
+        CurrentItem = System.Text.Json.JsonSerializer.Deserialize<Pay2ItemDefDto>(System.Text.Json.JsonSerializer.Serialize(item))!;
+        SortOrderStr = CurrentItem.SORT_ORDER.ToString();
+    }
+
+    async Task SaveItemAsync()
+    {
+        if (string.IsNullOrWhiteSpace(CurrentItem.ITEM_CODE) || string.IsNullOrWhiteSpace(CurrentItem.ITEM_NAME))
+        {
+            Snackbar.Add("کد و نام آیتم الزامی است.", MudBlazor.Severity.Warning); return;
+        }
+
+        CurrentItem.ITEM_CODE = CurrentItem.ITEM_CODE?.Trim().ToUpperInvariant();
+        CurrentItem.ITEM_NAME = CurrentItem.ITEM_NAME?.Trim();
+        CurrentItem.NOTES = CurrentItem.NOTES?.Trim();
+
+        short.TryParse(SortOrderStr, out short sort);
+        CurrentItem.SORT_ORDER = sort > 0 ? sort : (short)100;
+
+        IsSaving = true;
+        try
+        {
+            await ItemDefApi.SaveItemDefAsync(CurrentItem);
+            Snackbar.Add("آیتم حقوقی با موفقیت ذخیره شد.", MudBlazor.Severity.Success);
+            ResetForm();
+            await LoadDataAsync();
+        }
+        catch (Exception ex) { Snackbar.Add(ex.Message, MudBlazor.Severity.Error); }
+        finally { IsSaving = false; }
+    }
+
+    async Task DeleteItem(Pay2ItemDefDto item)
+    {
+        var parameters = new MudBlazor.DialogParameters
+        {
+            ["Title"] = "حذف آیتم حقوقی",
+            ["ContentText"] = $"آیا از حذف آیتم «{item.ITEM_NAME}» اطمینان دارید؟ اگر این آیتم در احکام استفاده شده باشد، سیستم اجازه حذف نمی‌دهد.",
+            ["ConfirmButtonText"] = "بله، حذف کن",
+            ["CancelButtonText"] = "انصراف"
+        };
+        var options = new MudBlazor.DialogOptions { CloseButton = false, MaxWidth = MudBlazor.MaxWidth.ExtraSmall };
+        var dialog = DialogService.Show<Safir.Client.Shared.ConfirmDialog>("تایید حذف", parameters, options);
+        var result = await dialog.Result;
+
+        if (!result.Cancelled)
+        {
+            try
+            {
+                await ItemDefApi.DeleteItemDefAsync(item.ITEM_ID);
+                Snackbar.Add("آیتم با موفقیت حذف شد.", MudBlazor.Severity.Success);
+                if (CurrentItem.ITEM_ID == item.ITEM_ID) ResetForm();
+                await LoadDataAsync();
+            }
+            catch (Exception ex) { Snackbar.Add("خطا در حذف: " + ex.Message, MudBlazor.Severity.Error); }
+        }
+    }
+}

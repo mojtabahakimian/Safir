@@ -55,7 +55,7 @@ builder.Services.AddScoped<ClientAppSettingsService>(); // Scoped مناسب ا�
 
 builder.Services.AddScoped<PermissionApiService>();
 
-builder.Services.AddScoped<ConnectivityService>(); // <--- این خط را اضافه کنید
+builder.Services.AddScoped<ConnectivityService>();
 
 builder.Services.AddScoped<ReportApiService>();
 
@@ -64,6 +64,15 @@ builder.Services.AddScoped<Pay2WorkshopApiService>();
 builder.Services.AddScoped<Pay2EmployeeApiService>();
 
 builder.Services.AddScoped<Pay2AttendanceApiService>();
+
+builder.Services.AddScoped<Pay2AdvanceApiService>();
+
+builder.Services.AddScoped<Pay2SettingsApiService>();
+
+builder.Services.AddScoped<Pay2ItemDefApiService>();
+
+builder.Services.AddScoped<BugReportApiService>();
+
 #endregion
 
 

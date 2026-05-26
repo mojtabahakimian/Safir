@@ -1,0 +1,42 @@
+IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='BugReports' and xtype='U')
+BEGIN
+    CREATE TABLE BugReports (
+        Id INT PRIMARY KEY IDENTITY(1,1),
+        CreatedAt DATETIME NOT NULL DEFAULT (GETDATE()),
+        CreatedBy NVARCHAR(100) NULL,
+        CustomerName NVARCHAR(200) NULL,
+        ContactInfo NVARCHAR(100) NULL,
+        AppVersion NVARCHAR(50) NULL,
+        FrontendVersion NVARCHAR(50) NULL,
+        BackendVersion NVARCHAR(50) NULL,
+        PageUrl NVARCHAR(500) NULL,
+        Route NVARCHAR(200) NULL,
+        ModuleName NVARCHAR(100) NULL,
+        MenuName NVARCHAR(100) NULL,
+        DatabaseName NVARCHAR(100) NULL,
+        ServerName NVARCHAR(100) NULL,
+        EnvironmentName NVARCHAR(50) NULL,
+        Severity NVARCHAR(50) NOT NULL,
+        Category NVARCHAR(100) NULL,
+        HappensAlways BIT NOT NULL DEFAULT 0,
+        IsBlocking BIT NOT NULL DEFAULT 0,
+        TestedOnAnotherDevice BIT NOT NULL DEFAULT 0,
+        HasRecentChanges BIT NOT NULL DEFAULT 0,
+        ReproduceSteps NVARCHAR(MAX) NOT NULL,
+        ExpectedResult NVARCHAR(MAX) NOT NULL,
+        ActualResult NVARCHAR(MAX) NOT NULL,
+        UserDescription NVARCHAR(MAX) NOT NULL,
+        BrowserInfo NVARCHAR(200) NULL,
+        OperatingSystem NVARCHAR(100) NULL,
+        ScreenSize NVARCHAR(50) NULL,
+        UserAgent NVARCHAR(500) NULL,
+        ApiEndpoint NVARCHAR(500) NULL,
+        HttpStatusCode INT NULL,
+        ErrorMessage NVARCHAR(MAX) NULL,
+        StackTrace NVARCHAR(MAX) NULL,
+        TraceId NVARCHAR(100) NULL,
+        Status NVARCHAR(50) NOT NULL DEFAULT 'New',
+        AdminNote NVARCHAR(MAX) NULL
+    );
+END
+GO

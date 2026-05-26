@@ -77,7 +77,7 @@ try
 
 
         StiFontCollection.AddFontFile(fontPath);
-   
+
         // <<< --- حذف بررسی FontManager.FontFamilies --- >>>
     }
     else
@@ -104,36 +104,43 @@ using (var scope = app.Services.CreateScope())
         var dbService = services.GetRequiredService<IDatabaseService>();
         var env = services.GetRequiredService<IWebHostEnvironment>();
 
-        // 1. آدرس فایل اسکریپت را پیدا کنید
-        string scriptPath = Path.Combine(env.ContentRootPath, "Scripts", "001_CreateEvaporationReportsTable.sql");
-
-        if (File.Exists(scriptPath))
+        // 1. آدرس فایل های اسکریپت را پیدا کنید
+        string[] scriptsToRun = new string[]
         {
-            logger.LogInformation("Migration Script found: {ScriptPath}", scriptPath);
+            "001_CreateEvaporationReportsTable.sql",
+            "002_CreateBugReportsTable.sql"
+        };
 
-            // 2. محتوای اسکریپت را بخوانید
-            string sqlScript = await File.ReadAllTextAsync(scriptPath);
+        foreach (var scriptName in scriptsToRun)
+        {
+            string scriptPath = Path.Combine(env.ContentRootPath, "Scripts", scriptName);
 
-            // 3. مهم: اسکریپت را بر اساس دستور "GO" جدا کنید
-            // دستور "GO" یک دستور T-SQL نیست و توسط Dapper یا SqlClient اجرا نمی‌شود.
-            // باید اسکریپت را به بچ‌های (batches) جداگانه تقسیم کنیم.
-            var scriptBatches = Regex.Split(sqlScript, @"^\s*GO\s*$",
-                                        RegexOptions.Multiline | RegexOptions.IgnoreCase | RegexOptions.IgnorePatternWhitespace);
-
-            // 4. هر بخش (batch) را جداگانه اجرا کنید
-            foreach (var batch in scriptBatches)
+            if (File.Exists(scriptPath))
             {
-                if (string.IsNullOrWhiteSpace(batch)) continue;
+                logger.LogInformation("Migration Script found: {ScriptPath}", scriptPath);
 
-                await dbService.DoExecuteSQLAsync(batch);
-                logger.LogInformation("Successfully executed migration batch.");
+                // 2. محتوای اسکریپت را بخوانید
+                string sqlScript = await File.ReadAllTextAsync(scriptPath);
+
+                // 3. مهم: اسکریپت را بر اساس دستور "GO" جدا کنید
+                var scriptBatches = Regex.Split(sqlScript, @"^\s*GO\s*$",
+                                            RegexOptions.Multiline | RegexOptions.IgnoreCase | RegexOptions.IgnorePatternWhitespace);
+
+                // 4. هر بخش (batch) را جداگانه اجرا کنید
+                foreach (var batch in scriptBatches)
+                {
+                    if (string.IsNullOrWhiteSpace(batch)) continue;
+
+                    await dbService.DoExecuteSQLAsync(batch);
+                    logger.LogInformation("Successfully executed migration batch.");
+                }
+
+                logger.LogInformation("Database migration script '{ScriptName}' executed successfully.", scriptName);
             }
-
-            logger.LogInformation("Database migration script '001_CreateEvaporationReportsTable.sql' executed successfully.");
-        }
-        else
-        {
-            logger.LogWarning("Database migration script not found at: {ScriptPath}", scriptPath);
+            else
+            {
+                logger.LogWarning("Database migration script not found at: {ScriptPath}", scriptPath);
+            }
         }
     }
     catch (Exception ex)

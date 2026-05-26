@@ -249,6 +249,7 @@
             }
 
             @* پرسنل و احکام *@
+        
             @if (ActiveTab == "employees")
             {
                 <EmployeeTab />
@@ -271,11 +272,28 @@
                 <Safir.Client.Pages.Salary.Tabs.AttendanceTab />
             }
 
+            @if (ActiveTab == "advances")
+            {
+                <Safir.Client.Pages.Salary.Tabs.AdvanceTab />
+            }
+
             @* ══ تب‌های در دست توسعه ══ *@
+       
+            @if (ActiveTab == "settings")
+            {
+                <Safir.Client.Pages.Salary.Tabs.SettingsTab />
+            }
+            @if (ActiveTab == "itemdefs")
+            {
+                <Safir.Client.Pages.Salary.Tabs.ItemDefTab />
+            }
             @if (ActiveTab != "dashboard" &&
                         ActiveTab != "workshops" &&
                         ActiveTab != "employees" &&
-                        ActiveTab != "attendance")
+                        ActiveTab != "attendance" &&
+                        ActiveTab != "advances" &&
+                        ActiveTab != "itemdefs" &&
+                        ActiveTab != "settings")
             {
                 <div class="pay2-tab-container"
                      style="display:flex; flex-direction:column; align-items:center; justify-content:center; height:100%;">
