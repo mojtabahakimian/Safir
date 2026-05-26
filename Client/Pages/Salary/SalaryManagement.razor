@@ -249,6 +249,7 @@
             }
 
             @* پرسنل و احکام *@
+        
             @if (ActiveTab == "employees")
             {
                 <EmployeeTab />
@@ -277,11 +278,17 @@
             }
 
             @* ══ تب‌های در دست توسعه ══ *@
+       
+            @if (ActiveTab == "settings")
+            {
+                <Safir.Client.Pages.Salary.Tabs.SettingsTab />
+            }
             @if (ActiveTab != "dashboard" &&
                         ActiveTab != "workshops" &&
                         ActiveTab != "employees" &&
                         ActiveTab != "attendance" &&
-                        ActiveTab != "advances")
+                        ActiveTab != "advances" &&
+                        ActiveTab != "settings")
             {
                 <div class="pay2-tab-container"
                      style="display:flex; flex-direction:column; align-items:center; justify-content:center; height:100%;">
