@@ -49,6 +49,7 @@ namespace Safir.Server.Controllers
                         [CreatedBy], [CustomerName], [ContactInfo], [AppVersion], [FrontendVersion], 
                         [BackendVersion], [PageUrl], [Route], [ModuleName], [MenuName], 
                         [DatabaseName], [ServerName], [EnvironmentName], [Severity], [Category], 
+                        [HappensAlways], [IsBlocking], [TestedOnAnotherDevice], [HasRecentChanges], 
                         [ReproduceSteps], [ExpectedResult], [ActualResult], [UserDescription], 
                         [BrowserInfo], [OperatingSystem], [ScreenSize], [UserAgent], [ApiEndpoint], 
                         [HttpStatusCode], [ErrorMessage], [StackTrace], [TraceId], [Status]
@@ -56,6 +57,7 @@ namespace Safir.Server.Controllers
                         @CreatedBy, @CustomerName, @ContactInfo, @AppVersion, @FrontendVersion, 
                         @BackendVersion, @PageUrl, @Route, @ModuleName, @MenuName, 
                         @DatabaseName, @ServerName, @EnvironmentName, @Severity, @Category, 
+                        @HappensAlways, @IsBlocking, @TestedOnAnotherDevice, @HasRecentChanges, 
                         @ReproduceSteps, @ExpectedResult, @ActualResult, @UserDescription, 
                         @BrowserInfo, @OperatingSystem, @ScreenSize, @UserAgent, @ApiEndpoint, 
                         @HttpStatusCode, @ErrorMessage, @StackTrace, @TraceId, @Status

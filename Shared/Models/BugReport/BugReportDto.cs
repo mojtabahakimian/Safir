@@ -55,6 +55,12 @@ namespace Safir.Shared.Models.BugReport
         [MaxLength(100)]
         public string? Category { get; set; }
 
+        public bool HappensAlways { get; set; } // Whether the problem always happens
+
+        public bool IsBlocking { get; set; }
+        public bool TestedOnAnotherDevice { get; set; }
+        public bool HasRecentChanges { get; set; }
+
         [Required(ErrorMessage = "مراحل تکرار خطا الزامی است.")]
         public string ReproduceSteps { get; set; }
 

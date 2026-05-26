@@ -24,6 +24,14 @@
         <MudForm Model="@_model" @ref="_form" IsValidChanged="OnValidChanged">
             <MudGrid>
                 <MudItem xs="12">
+                    <MudText Typo="Typo.h6" Class="mb-2 mt-4" Color="Color.Primary">اطلاعات سیستم</MudText>
+                    <MudDivider Class="mb-4" />
+                </MudItem>
+                <MudItem xs="12">
+                    <MudTextField @bind-Value="_model.AppVersion" Label="نسخه نرم‌افزار حسابداری (ERP)" Variant="Variant.Outlined" ReadOnly="false" HelperText="مثال: 14.5.2" />
+                </MudItem>
+
+                <MudItem xs="12">
                     <MudText Typo="Typo.h6" Class="mb-2 mt-4" Color="Color.Primary">اطلاعات کاربری (اختیاری)</MudText>
                     <MudDivider Class="mb-4" />
                 </MudItem>
@@ -49,22 +57,42 @@
                     </MudSelect>
                 </MudItem>
                 <MudItem xs="12" sm="6">
-                    <MudTextField @bind-Value="_model.ModuleName" Label="محل بروز خطا (مثال: سبد خرید)" Variant="Variant.Outlined" />
+                    <MudSelect @bind-Value="_model.Category" Label="در کدام بخش مشکل دارید؟" Variant="Variant.Outlined">
+                        <MudSelectItem Value="@("ورود و حساب کاربری")">ورود و حساب کاربری</MudSelectItem>
+                        <MudSelectItem Value="@("فرآیند خرید و سبد خرید")">فرآیند خرید و سبد خرید</MudSelectItem>
+                        <MudSelectItem Value="@("حقوق و دستمزد")">حقوق و دستمزد</MudSelectItem>
+                        <MudSelectItem Value="@("تعریف مشتریان")">تعریف مشتریان</MudSelectItem>
+                        <MudSelectItem Value="@("گزارش‌ها")">گزارش‌ها</MudSelectItem>
+                        <MudSelectItem Value="@("سایر موارد")">سایر موارد (لطفاً در شرح توضیح دهید)</MudSelectItem>
+                    </MudSelect>
                 </MudItem>
 
                 <MudItem xs="12">
-                    <MudTextField @bind-Value="_model.UserDescription" Label="شرح کلی مشکل" Required="true" RequiredError="شرح مشکل الزامی است." Lines="3" Variant="Variant.Outlined" />
+                    <MudTextField @bind-Value="_model.UserDescription" Label="به زبان ساده، مشکل چیست؟" HelperText="مثال: وقتی دکمه تایید خرید رو میزنم، صفحه سفید میشه." Required="true" RequiredError="شرح مشکل الزامی است." Lines="3" Variant="Variant.Outlined" />
+                </MudItem>
+
+                <MudItem xs="12" Class="py-1">
+                    <MudCheckBox @bind-Value="_model.HappensAlways" Label="آیا هر بار که امتحان می‌کنید، دقیقاً همین اتفاق می‌افتد؟" Color="Color.Primary" />
+                </MudItem>
+                <MudItem xs="12" Class="py-1">
+                    <MudCheckBox @bind-Value="_model.IsBlocking" Label="آیا این مشکل باعث توقف کامل کار شما شده است؟ (مثلاً امکان ثبت هیچ سندی را ندارید)" Color="Color.Error" />
+                </MudItem>
+                <MudItem xs="12" Class="py-1">
+                    <MudCheckBox @bind-Value="_model.HasRecentChanges" Label="آیا اخیراً تغییری در سیستم عامل، شبکه یا اینترنت خود داده‌اید؟" Color="Color.Primary" />
+                </MudItem>
+                <MudItem xs="12" Class="py-1">
+                    <MudCheckBox @bind-Value="_model.TestedOnAnotherDevice" Label="آیا روی سیستم دیگری هم چک کردید و همین مشکل وجود داشت؟" Color="Color.Primary" />
                 </MudItem>
 
                 <MudItem xs="12">
-                    <MudTextField @bind-Value="_model.ReproduceSteps" Label="مراحل تکرار خطا (قدم به قدم)" Required="true" RequiredError="مراحل تکرار خطا الزامی است." Lines="4" Variant="Variant.Outlined" />
+                    <MudTextField @bind-Value="_model.ReproduceSteps" Label="شما دقیقا چه کارهایی کردید که به خطا خوردید؟" HelperText="مثال: ۱- رفتم تو بخش مشتریان ۲- روی دکمه جدید کلیک کردم ۳- نام رو نوشتم ۴- وقتی ثبت زدم خطا داد" Required="true" RequiredError="مراحل تکرار خطا الزامی است." Lines="4" Variant="Variant.Outlined" />
                 </MudItem>
 
                 <MudItem xs="12" sm="6">
-                    <MudTextField @bind-Value="_model.ExpectedResult" Label="نتیجه مورد انتظار" Required="true" RequiredError="نتیجه مورد انتظار الزامی است." Lines="3" Variant="Variant.Outlined" />
+                    <MudTextField @bind-Value="_model.ExpectedResult" Label="انتظار داشتید چه اتفاقی بیفتد؟" HelperText="مثال: انتظار داشتم پیام 'مشتری با موفقیت ثبت شد' رو ببینم." Required="true" RequiredError="نتیجه مورد انتظار الزامی است." Lines="3" Variant="Variant.Outlined" />
                 </MudItem>
                 <MudItem xs="12" sm="6">
-                    <MudTextField @bind-Value="_model.ActualResult" Label="نتیجه واقعی (خطا)" Required="true" RequiredError="نتیجه واقعی الزامی است." Lines="3" Variant="Variant.Outlined" />
+                    <MudTextField @bind-Value="_model.ActualResult" Label="اما به جای آن چه اتفاقی افتاد؟" HelperText="مثال: یه پیام خطای قرمز رنگ با متن انگلیسی نشون داد." Required="true" RequiredError="نتیجه واقعی الزامی است." Lines="3" Variant="Variant.Outlined" />
                 </MudItem>
 
                 <MudItem xs="12" Class="d-flex justify-center mt-6">
@@ -97,8 +125,7 @@
         try
         {
             var version = System.Reflection.Assembly.GetExecutingAssembly().GetName().Version;
-            _model.AppVersion = version?.ToString() ?? "Unknown";
-            _model.FrontendVersion = _model.AppVersion;
+            _model.FrontendVersion = version?.ToString() ?? "Unknown";
         }
         catch { }
     }
