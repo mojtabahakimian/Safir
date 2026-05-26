@@ -30,57 +30,62 @@
                         @GetSectionNumber(section). @GetSectionTitle(section)
                     </h4>
 
-                    <div class="form-grid-3">
+                    <!-- 🚀 استفاده از CSS Grid برای ستون‌بندی دقیق و بی‌نقص -->
+                    <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 24px 16px; align-items: start;">
                         @foreach (var cfg in _groupedConfigs[section])
                         {
-                            <div class="form-field" style="grid-column:span @GetColumnSpan(cfg.CFG_KEY);">
-                                <label title="@cfg.DESC_FA">@cfg.LABEL_FA</label>
+                            <div class="form-field" style="display: flex; flex-direction: column; grid-column: span @GetColumnSpan(cfg.CFG_KEY);">
 
-                                @if (cfg.CFG_KEY == "TAX_YEAR")
-                                {
-                                    <div style="display:flex; gap:8px; align-items: center;">
-                                        <div style="flex-grow: 1;">
-                                            <Safir.Client.Pages.Salary.Tabs.Pay2NumericInput @bind-Value="cfg.CFG_VALUE"
-                                                                                             Direction="ltr"
-                                                                                             MaxLength="4" />
+                                <!-- 🚀 فیکس کردن ارتفاع لیبل‌ها: این کار باعث می‌شود تمام Input ها در یک خط تراز شوند -->
+                                <label title="@cfg.DESC_FA" style="min-height: 38px; display: flex; align-items: flex-end; padding-bottom: 6px; line-height: 1.4; margin: 0;">
+                                    @cfg.LABEL_FA
+                                </label>
+
+                                <div style="position: relative; width: 100%;">
+                                    @if (cfg.CFG_KEY == "TAX_YEAR")
+                                    {
+                                        <div style="display:flex; gap:8px; align-items: stretch; height: var(--p2-input-h, 42px);">
+                                            <div style="flex-grow: 1;">
+                                                <Safir.Client.Pages.Salary.Tabs.Pay2NumericInput @bind-Value="cfg.CFG_VALUE"
+                                                                                                 Direction="ltr"
+                                                                                                 MaxLength="4" />
+                                            </div>
+                                            <button class="btn-outline-pay2"
+                                                    style="white-space:nowrap; padding: 0 16px; height: 100%; margin: 0;"
+                                                    @onclick="OpenTaxModal">
+                                                مدیریت پله‌های مالیاتی
+                                            </button>
                                         </div>
-                                        <button class="btn-outline-pay2"
-                                                style="white-space:nowrap; height: 42px;"
-                                                @onclick="OpenTaxModal">
-                                            مدیریت پله‌های مالیاتی
-                                        </button>
-                                    </div>
-                                }
-                                else if (!string.IsNullOrWhiteSpace(cfg.CFG_OPTIONS) || cfg.DATA_TYPE?.Equals("BOOL", StringComparison.OrdinalIgnoreCase) == true)
-                                {
-                                    <Safir.Client.Pages.Salary.Tabs.Pay2Select TItem="LookupDto<string>"
-                                                                               TValue="string"
-                                                                               Items="@_optionsCache[cfg.CFG_KEY]"
-                                                                               @bind-Value="cfg.CFG_VALUE"
-                                                                               TextSelector="x => x.Name"
-                                                                               ValueSelector="x => x.Id"
-                                                                               Clearable="false" />
-                                }
-                                else if (cfg.DATA_TYPE?.Equals("INT", StringComparison.OrdinalIgnoreCase) == true ||
-                                cfg.DATA_TYPE?.Equals("DECIMAL", StringComparison.OrdinalIgnoreCase) == true)
-                                {
-                                    <Safir.Client.Pages.Salary.Tabs.Pay2NumericInput @bind-Value="cfg.CFG_VALUE"
-                                                                                     InputMode="@(cfg.DATA_TYPE == "DECIMAL" ? Safir.Client.Pages.Salary.Tabs.Pay2NumericInput.NumericInputMode.Percentage : Safir.Client.Pages.Salary.Tabs.Pay2NumericInput.NumericInputMode.Amount)"
-                                                                                     IsDigitGroupActive="false"
-                                                                                     ThreeTwoZero="false"
-                                                                                     Direction="ltr" />
-                                }
-                                else
-                                {
-                                    <input class="pay2-input" type="text" style="direction:ltr; text-align:left;" @bind="cfg.CFG_VALUE" />
-                                }
+                                    }
+                                    else if (!string.IsNullOrWhiteSpace(cfg.CFG_OPTIONS) || cfg.DATA_TYPE?.Equals("BOOL", StringComparison.OrdinalIgnoreCase) == true)
+                                    {
+                                        <Safir.Client.Pages.Salary.Tabs.Pay2Select TItem="LookupDto<string>"
+                                                                                   TValue="string"
+                                                                                   Items="@_optionsCache[cfg.CFG_KEY]"
+                                                                                   @bind-Value="cfg.CFG_VALUE"
+                                                                                   TextSelector="x => x.Name"
+                                                                                   ValueSelector="x => x.Id"
+                                                                                   Clearable="false" />
+                                    }
+                                    else if (cfg.DATA_TYPE?.Equals("INT", StringComparison.OrdinalIgnoreCase) == true ||
+                                    cfg.DATA_TYPE?.Equals("DECIMAL", StringComparison.OrdinalIgnoreCase) == true)
+                                    {
+                                        <Safir.Client.Pages.Salary.Tabs.Pay2NumericInput @bind-Value="cfg.CFG_VALUE"
+                                                                                         InputMode="@(cfg.DATA_TYPE == "DECIMAL" ? Safir.Client.Pages.Salary.Tabs.Pay2NumericInput.NumericInputMode.Percentage : Safir.Client.Pages.Salary.Tabs.Pay2NumericInput.NumericInputMode.Amount)"
+                                                                                         IsDigitGroupActive="false"
+                                                                                         ThreeTwoZero="false"
+                                                                                         Direction="ltr" />
+                                    }
+                                    else
+                                    {
+                                        <input class="pay2-input" type="text" style="direction:ltr; text-align:left;" @bind="cfg.CFG_VALUE" />
+                                    }
+                                </div>
 
-                                @if (!string.IsNullOrWhiteSpace(cfg.DESC_FA))
-                                {
-                                    <div class="p2-text-muted" style="font-size:11px; margin-top:4px; line-height:1.7;">
-                                        @cfg.DESC_FA
-                                    </div>
-                                }
+                                <!-- 🚀 فیکس کردن ارتفاع توضیحات: در صورت خالی بودن هم فضای آن حفظ می‌شود تا ردیف بعدی خراب نشود -->
+                                <div class="p2-text-muted" style="font-size:11px; margin-top:6px; line-height:1.6; min-height: 34px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; text-overflow: ellipsis;" title="@cfg.DESC_FA">
+                                    @cfg.DESC_FA
+                                </div>
                             </div>
                         }
                     </div>
@@ -89,8 +94,8 @@
         }
     </div>
 
-    <!-- دکمه ذخیره در انتهای فرم -->
-    <div class="card-custom" style="padding: 16px 24px; margin-top: 16px; display: flex; justify-content: flex-end; align-items: center; background: var(--p2-bg-white); border-radius: var(--p2-radius-lg);">
+    <!-- دکمه ذخیره در پایین‌ترین قسمت صفحه فیکس شده است -->
+    <div class="card-custom" style="padding: 16px 24px; margin-top: 16px; display: flex; justify-content: flex-end; align-items: center; background: var(--p2-bg-white); border-radius: var(--p2-radius-lg); flex-shrink: 0;">
         <button class="btn-primary-pay2" @onclick="SaveAllSettingsAsync" disabled="@IsSaving" style="min-width: 250px;">
             @if (IsSaving)
             {
@@ -110,7 +115,7 @@
          style="background:rgba(15,23,42,0.6); z-index:2999;"
          @onclick="CloseTaxModal"></div>
 
-    <div class="card-custom pay2-modal-container" style="max-width:780px; height:660px;">
+    <div class="card-custom pay2-modal-container" style="max-width:850px; height:700px;">
         <div class="pay2-modal-header p2-card-header" style="margin:0;">
             <h5 style="margin:0;">مدیریت مالیات پلکانی سالانه (PAY2_TAX_BRACKET)</h5>
             <button class="btn-ghost-pay2" @onclick="CloseTaxModal">
@@ -120,22 +125,32 @@
 
         <div class="pay2-modal-body" style="padding:18px; overflow:auto;">
             <div style="display:flex; gap:12px; align-items:flex-end; margin-bottom:16px;">
-                <div class="form-field" style="width:160px;">
-                    <label>سال مالیاتی</label>
-                    <Safir.Client.Pages.Salary.Tabs.Pay2NumericInput @bind-Value="SelectedTaxYearStr"
-                                                                     Direction="ltr"
-                                                                     MaxLength="4" />
-                </div>
 
-                <button class="btn-outline-pay2" @onclick="LoadTaxBracketsAsync">
-                    <i class="bi bi-search"></i> نمایش
-                </button>
+                <!-- 🚀 شبیه‌سازی ComboBox سال‌ها (با قابلیت تایپ سال جدید) -->
+                <div class="form-field" style="width:200px;">
+                    <label>فیلتر سال / ایجاد سال جدید</label>
+                    <Safir.Client.Pages.Salary.Tabs.Pay2Select TItem="LookupDto<string>"
+                                                               TValue="string"
+                                                               Items="_availableTaxYears"
+                                                               Value="@SelectedTaxYearStr"
+                                                               ValueChanged="OnTaxYearChanged"
+                                                               TextSelector="x => x.Name"
+                                                               ValueSelector="x => x.Id"
+                                                               Editable="true"
+                                                               Clearable="false"
+                                                               Placeholder="مثال: 1404" />
+                </div>
 
                 <button class="btn-outline-pay2" @onclick="CopyPreviousTaxYearAsync">
                     <i class="bi bi-copy"></i> کپی از سال قبل
                 </button>
 
-                <div style="flex-grow:1;"></div>
+                <div style="flex-grow:1;">
+                    <div class="p2-text-muted" style="font-size:11px; text-align:left; padding-top: 10px;">
+                        ردیف جدید را در آخرین سطر جدول وارد کنید.<br />
+                        مالیات ثابت به صورت خودکار محاسبه می‌شود.
+                    </div>
+                </div>
 
                 <button class="btn-primary-pay2" @onclick="AddTaxBracketRow">
                     + ردیف جدید
@@ -149,7 +164,7 @@
                             <th style="text-align:center;width:70px;">پله</th>
                             <th style="text-align:left;">سقف سالانه پله (ریال)</th>
                             <th style="text-align:center;width:120px;">نرخ (%)</th>
-                            <th style="text-align:left;">مالیات ثابت خودکار</th>
+                            <th style="text-align:left;">مالیات ثابت (خودکار)</th>
                             <th style="text-align:center;width:80px;">حذف</th>
                         </tr>
                     </thead>
@@ -172,7 +187,9 @@
                                 </td>
 
                                 <td>
-                                    <Safir.Client.Pages.Salary.Tabs.Pay2NumericInput @bind-Value="row.UPPER_LIMIT_STR"
+                                    <!-- 🚀 فراخوانی محاسبه لحظه‌ای مالیات با OnBlur -->
+                                    <Safir.Client.Pages.Salary.Tabs.Pay2NumericInput Value="@row.UPPER_LIMIT_STR"
+                                                                                     ValueChanged="@((string val) => { row.UPPER_LIMIT_STR = val; RecalculateLiveFixedTax(); })"
                                                                                      InputMode="Safir.Client.Pages.Salary.Tabs.Pay2NumericInput.NumericInputMode.Amount"
                                                                                      IsDigitGroupActive="true"
                                                                                      ThreeTwoZero="true"
@@ -181,7 +198,8 @@
                                 </td>
 
                                 <td>
-                                    <Safir.Client.Pages.Salary.Tabs.Pay2NumericInput @bind-Value="row.RATE_PCT_STR"
+                                    <Safir.Client.Pages.Salary.Tabs.Pay2NumericInput Value="@row.RATE_PCT_STR"
+                                                                                     ValueChanged="@((string val) => { row.RATE_PCT_STR = val; RecalculateLiveFixedTax(); })"
                                                                                      InputMode="Safir.Client.Pages.Salary.Tabs.Pay2NumericInput.NumericInputMode.Percentage"
                                                                                      MaxDecimalPlaces="2"
                                                                                      Direction="ltr"
@@ -206,7 +224,7 @@
 
             <div style="margin-top:12px; padding:12px; background:#f0fdf4; border-radius:10px; color:#166534; font-size:12px;">
                 تعداد پله‌های نمایش‌داده‌شده: <b>@TaxBrackets.Count</b> |
-                مالیات ثابت هنگام ذخیره دوباره محاسبه می‌شود.
+                سال: <b>@SelectedTaxYearStr</b>
             </div>
         </div>
 
@@ -220,7 +238,7 @@
                 }
                 else
                 {
-                    <span>محاسبه هوشمند و ذخیره پله‌ها</span>
+                    <span>ذخیره پله‌ها برای سال @SelectedTaxYearStr</span>
                 }
             </button>
         </div>
@@ -231,10 +249,13 @@
     List<Pay2ConfigDto> Configs = new();
     List<Pay2TaxBracketDto> TaxBrackets = new();
 
-    // کش‌های اختصاصی برای جلوگیری از رندرینگ مجدد و افت پرفورمنس
+    // کش‌های اختصاصی
     Dictionary<string, List<Pay2ConfigDto>> _groupedConfigs = new();
     Dictionary<string, List<LookupDto<string>>> _optionsCache = new();
     List<string> _orderedSections = new();
+
+    // کش سال‌های مالیاتی برای Pay2Select
+    List<LookupDto<string>> _availableTaxYears = new();
 
     bool IsLoading = true;
     bool IsSaving = false;
@@ -261,19 +282,16 @@
         {
             Configs = await SettingsApi.GetConfigsAsync();
 
-            // 1. کش کردن سکشن‌ها برای جلوگیری از محاسبه مجدد در حلقه HTML
             _orderedSections = Configs
                 .Select(x => x.CFG_SECTION)
                 .Distinct()
                 .OrderBy(GetSectionOrder)
                 .ToList();
 
-            // 2. گروه‌بندی کانفیگ‌ها در Dictionary
             _groupedConfigs = Configs
                 .GroupBy(x => x.CFG_SECTION)
                 .ToDictionary(g => g.Key, g => g.ToList());
 
-            // 3. کش کردن مقادیر Dropdown ها
             _optionsCache.Clear();
             foreach (var cfg in Configs)
             {
@@ -294,7 +312,6 @@
             }
             else
             {
-                // استفاده از سال سیستم به عنوان پیش‌فرض به جای هاردکد 1403
                 string currentShamsi = CL_Tarikh.GetCurrentPersianDateAsLong().ToString();
                 SelectedTaxYear = short.Parse(currentShamsi.Substring(0, 4));
             }
@@ -363,12 +380,43 @@
     async Task OpenTaxModal()
     {
         ShowTaxModal = true;
+        await LoadTaxYearsLookupAsync();
         await LoadTaxBracketsAsync();
     }
 
     void CloseTaxModal()
     {
         ShowTaxModal = false;
+    }
+
+    // 🚀 واکشی لیست سال‌ها برای نمایش در Pay2Select
+    async Task LoadTaxYearsLookupAsync()
+    {
+        try
+        {
+            var years = await SettingsApi.GetTaxYearsAsync();
+            _availableTaxYears = years.Select(y => new LookupDto<string>
+            {
+                Id = y.ToString(),
+                Name = $"سال {y}"
+            }).ToList();
+
+            // اگر سال انتخابی فعلی در لیست نیست (کاربر تازه تایپ کرده)، آن را اضافه کن
+            if (!_availableTaxYears.Any(x => x.Id == SelectedTaxYearStr))
+            {
+                _availableTaxYears.Insert(0, new LookupDto<string> { Id = SelectedTaxYearStr, Name = $"سال {SelectedTaxYearStr} (جدید)" });
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine(ex.Message);
+        }
+    }
+
+    async Task OnTaxYearChanged(string newYear)
+    {
+        SelectedTaxYearStr = newYear;
+        await LoadTaxBracketsAsync();
     }
 
     async Task LoadTaxBracketsAsync()
@@ -420,6 +468,8 @@
             RATE_PCT_STR = "0",
             FIXED_TAX_STR = "0"
         });
+
+        RecalculateLiveFixedTax();
     }
 
     void RemoveTaxBracketRow(Pay2TaxBracketDto row)
@@ -429,6 +479,31 @@
         short order = 1;
         foreach (var item in TaxBrackets.OrderBy(x => x.SORT_ORDER))
             item.SORT_ORDER = order++;
+
+        RecalculateLiveFixedTax();
+    }
+
+    // 🚀 محاسبه لحظه‌ای مالیات در UI (مشابه نسخه WPF)
+    void RecalculateLiveFixedTax()
+    {
+        long prevLimit = 0;
+        long fixedTax = 0;
+
+        foreach (var row in TaxBrackets.OrderBy(x => x.SORT_ORDER))
+        {
+            row.FIXED_TAX = fixedTax;
+
+            long.TryParse(NormalizeNumericText(row.UPPER_LIMIT_STR), out long currentLimit);
+            decimal.TryParse(NormalizeNumericText(row.RATE_PCT_STR), out decimal currentRate);
+
+            var taxableInThisStep = currentLimit - prevLimit;
+            if (taxableInThisStep < 0) taxableInThisStep = 0;
+
+            fixedTax += (long)Math.Round(taxableInThisStep * (double)currentRate / 100D);
+            prevLimit = currentLimit;
+        }
+
+        StateHasChanged();
     }
 
     async Task SaveTaxBracketsAsync()
@@ -466,8 +541,10 @@
                 Items = TaxBrackets
             });
 
-            Snackbar.Add("پله‌های مالیاتی با موفقیت ذخیره شد.", MudBlazor.Severity.Success);
+            Snackbar.Add($"پله‌های مالیاتی سال {SelectedTaxYearStr} ذخیره شد.", MudBlazor.Severity.Success);
 
+            // به‌روزرسانی لیست سال‌های دراپ‌داون در صورت ایجاد سال جدید
+            await LoadTaxYearsLookupAsync();
             await LoadTaxBracketsAsync();
         }
         catch (Exception ex)
