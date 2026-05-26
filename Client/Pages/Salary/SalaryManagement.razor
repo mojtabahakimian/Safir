@@ -283,11 +283,16 @@
             {
                 <Safir.Client.Pages.Salary.Tabs.SettingsTab />
             }
+            @if (ActiveTab == "itemdefs")
+            {
+                <Safir.Client.Pages.Salary.Tabs.ItemDefTab />
+            }
             @if (ActiveTab != "dashboard" &&
                         ActiveTab != "workshops" &&
                         ActiveTab != "employees" &&
                         ActiveTab != "attendance" &&
                         ActiveTab != "advances" &&
+                        ActiveTab != "itemdefs" &&
                         ActiveTab != "settings")
             {
                 <div class="pay2-tab-container"
