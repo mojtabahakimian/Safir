@@ -64,7 +64,7 @@ ORDER BY
 
             try
             {
-                // 🚀 رفع مشکل N+1 Query: واکشی تمامی تنظیمات پایه به صورت یکجا
+                // 🚀 حل مشکل N+1 Query: واکشی تمامی تنظیمات پایه به صورت یکجا
                 var existingConfigs = (await _db.DoGetDataSQLAsync<Pay2ConfigDto>(
                     "SELECT CFG_KEY, CFG_OPTIONS, DATA_TYPE FROM PAY2_CONFIG"))
                     .ToDictionary(x => x.CFG_KEY, x => x);
@@ -146,7 +146,8 @@ FROM PAY2_TAX_BRACKET
 WHERE (@Year IS NULL OR TAX_YEAR = @Year)
 ORDER BY TAX_YEAR DESC, SORT_ORDER;";
 
-            var rows = (await _db.DoGetDataSQLAsync<Pay2TaxBracketDto>(sql, new { Year = year })).ToList();
+            // حل مشکل NullReference در صورتی که دیتابیس خالی باشد
+            var rows = (await _db.DoGetDataSQLAsync<Pay2TaxBracketDto>(sql, new { Year = year }) ?? Enumerable.Empty<Pay2TaxBracketDto>()).ToList();
 
             foreach (var row in rows)
             {
@@ -173,6 +174,12 @@ ORDER BY TAX_YEAR DESC, SORT_ORDER;";
             var rows = request.Items
                 .OrderBy(x => x.SORT_ORDER)
                 .ToList();
+
+            // بررسی مقادیر تکراری برای سقف پله‌ها
+            if (rows.GroupBy(x => x.UPPER_LIMIT).Any(g => g.Count() > 1))
+            {
+                return BadRequest("سقف پله‌ها نمی‌تواند تکراری باشد.");
+            }
 
             for (int i = 0; i < rows.Count; i++)
             {

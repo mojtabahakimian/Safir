@@ -1,5 +1,6 @@
 ﻿@using Safir.Shared.Models
 @using Safir.Shared.Models.Salary
+@using Safir.Shared.Utility
 @inject Safir.Client.Services.Pay2SettingsApiService SettingsApi
 @inject ISnackbar Snackbar
 
@@ -22,7 +23,7 @@
         }
         else
         {
-            @foreach (var section in OrderedSections)
+            @foreach (var section in _orderedSections)
             {
                 <div style="border-top:1px solid var(--p2-border-light); padding-top:28px; margin-top:28px;">
                     <h4 style="color:var(--p2-primary); margin:0 0 18px 0;">
@@ -30,7 +31,7 @@
                     </h4>
 
                     <div class="form-grid-3">
-                        @foreach (var cfg in Configs.Where(x => x.CFG_SECTION == section))
+                        @foreach (var cfg in _groupedConfigs[section])
                         {
                             <div class="form-field" style="grid-column:span @GetColumnSpan(cfg.CFG_KEY);">
                                 <label title="@cfg.DESC_FA">@cfg.LABEL_FA</label>
@@ -50,21 +51,11 @@
                                         </button>
                                     </div>
                                 }
-                                else if (!string.IsNullOrWhiteSpace(cfg.CFG_OPTIONS))
+                                else if (!string.IsNullOrWhiteSpace(cfg.CFG_OPTIONS) || cfg.DATA_TYPE?.Equals("BOOL", StringComparison.OrdinalIgnoreCase) == true)
                                 {
                                     <Safir.Client.Pages.Salary.Tabs.Pay2Select TItem="LookupDto<string>"
                                                                                TValue="string"
-                                                                               Items="@GetOptionsAsLookup(cfg.CFG_OPTIONS, cfg.OPT_LABELS)"
-                                                                               @bind-Value="cfg.CFG_VALUE"
-                                                                               TextSelector="x => x.Name"
-                                                                               ValueSelector="x => x.Id"
-                                                                               Clearable="false" />
-                                }
-                                else if (cfg.DATA_TYPE?.Equals("BOOL", StringComparison.OrdinalIgnoreCase) == true)
-                                {
-                                    <Safir.Client.Pages.Salary.Tabs.Pay2Select TItem="LookupDto<string>"
-                                                                               TValue="string"
-                                                                               Items="@GetBoolOptions()"
+                                                                               Items="@_optionsCache[cfg.CFG_KEY]"
                                                                                @bind-Value="cfg.CFG_VALUE"
                                                                                TextSelector="x => x.Name"
                                                                                ValueSelector="x => x.Id"
@@ -239,7 +230,11 @@
 @code {
     List<Pay2ConfigDto> Configs = new();
     List<Pay2TaxBracketDto> TaxBrackets = new();
-    List<short> TaxYears = new();
+
+    // کش‌های اختصاصی برای جلوگیری از رندرینگ مجدد و افت پرفورمنس
+    Dictionary<string, List<Pay2ConfigDto>> _groupedConfigs = new();
+    Dictionary<string, List<LookupDto<string>>> _optionsCache = new();
+    List<string> _orderedSections = new();
 
     bool IsLoading = true;
     bool IsSaving = false;
@@ -252,12 +247,6 @@
         get => SelectedTaxYear.ToString();
         set { if (short.TryParse(value, out short y)) SelectedTaxYear = y; }
     }
-
-    string[] OrderedSections => Configs
-        .Select(x => x.CFG_SECTION)
-        .Distinct()
-        .OrderBy(GetSectionOrder)
-        .ToArray();
 
     protected override async Task OnInitializedAsync()
     {
@@ -272,11 +261,43 @@
         {
             Configs = await SettingsApi.GetConfigsAsync();
 
+            // 1. کش کردن سکشن‌ها برای جلوگیری از محاسبه مجدد در حلقه HTML
+            _orderedSections = Configs
+                .Select(x => x.CFG_SECTION)
+                .Distinct()
+                .OrderBy(GetSectionOrder)
+                .ToList();
+
+            // 2. گروه‌بندی کانفیگ‌ها در Dictionary
+            _groupedConfigs = Configs
+                .GroupBy(x => x.CFG_SECTION)
+                .ToDictionary(g => g.Key, g => g.ToList());
+
+            // 3. کش کردن مقادیر Dropdown ها
+            _optionsCache.Clear();
+            foreach (var cfg in Configs)
+            {
+                if (!string.IsNullOrWhiteSpace(cfg.CFG_OPTIONS))
+                {
+                    _optionsCache[cfg.CFG_KEY] = GetOptionsAsLookup(cfg.CFG_OPTIONS, cfg.OPT_LABELS);
+                }
+                else if (cfg.DATA_TYPE?.Equals("BOOL", StringComparison.OrdinalIgnoreCase) == true)
+                {
+                    _optionsCache[cfg.CFG_KEY] = GetBoolOptions();
+                }
+            }
+
             var taxYear = GetConfig("TAX_YEAR");
             if (short.TryParse(taxYear?.CFG_VALUE, out var y))
+            {
                 SelectedTaxYear = y;
+            }
             else
-                SelectedTaxYear = 1403;
+            {
+                // استفاده از سال سیستم به عنوان پیش‌فرض به جای هاردکد 1403
+                string currentShamsi = CL_Tarikh.GetCurrentPersianDateAsLong().ToString();
+                SelectedTaxYear = short.Parse(currentShamsi.Substring(0, 4));
+            }
         }
         catch (Exception ex)
         {
@@ -288,7 +309,6 @@
         }
     }
 
-    // متدهای کمکی برای تبدیل Options دیتابیس به آبجکت‌های Dropdown در Blazor
     private List<LookupDto<string>> GetOptionsAsLookup(string? optionsText, string? labelsText)
     {
         var opts = SplitOptions(optionsText);
