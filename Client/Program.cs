@@ -70,6 +70,9 @@ builder.Services.AddScoped<Pay2AdvanceApiService>();
 builder.Services.AddScoped<Pay2SettingsApiService>();
 
 builder.Services.AddScoped<Pay2ItemDefApiService>();
+
+builder.Services.AddScoped<BugReportApiService>();
+
 #endregion
 
 

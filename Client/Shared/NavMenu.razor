@@ -48,6 +48,11 @@
                 نسخه: @appVersion
             </MudNavLink>
 
+
+            <MudNavLink Href="bug-report" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.BugReport">
+                گزارش خطای نرم‌افزار
+            </MudNavLink>
+
             <!-- گروه تنظیمات -->
             <MudNavGroup Title="تنظیمات" Icon="@Icons.Material.Filled.Settings" Expanded="false">
                 <MudNavLink Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.Person">@context.User.FindFirst(Safir.Shared.Constants.BaseknowClaimTypes.UUSER)?.Value</MudNavLink>
