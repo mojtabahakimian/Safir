@@ -316,9 +316,8 @@
             Snackbar.Add("کد و نام آیتم الزامی است.", MudBlazor.Severity.Warning); return;
         }
 
-        // --- اضافه شدن: تمیز کردن داده‌ها در کلاینت پیش از ارسال ---
-        CurrentItem.ITEM_CODE = CurrentItem.ITEM_CODE.Trim().ToUpperInvariant();
-        CurrentItem.ITEM_NAME = CurrentItem.ITEM_NAME.Trim();
+        CurrentItem.ITEM_CODE = CurrentItem.ITEM_CODE?.Trim().ToUpperInvariant();
+        CurrentItem.ITEM_NAME = CurrentItem.ITEM_NAME?.Trim();
         CurrentItem.NOTES = CurrentItem.NOTES?.Trim();
 
         short.TryParse(SortOrderStr, out short sort);

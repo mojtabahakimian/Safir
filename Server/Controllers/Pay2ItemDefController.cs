@@ -33,7 +33,7 @@ namespace Safir.Server.Controllers
             var userIdString = User.FindFirstValue(ClaimTypes.NameIdentifier);
             if (!int.TryParse(userIdString, out int userCod)) return Unauthorized();
 
-            // --- اضافه شدن: نرمال‌سازی و اعتبارسنجی سمت سرور ---
+            // نرم‌افزاری‌سازی سمت سرور (جلوگیری از خطای اسپیس اضافی)
             item.ITEM_CODE = item.ITEM_CODE?.Trim().ToUpperInvariant();
             item.ITEM_NAME = item.ITEM_NAME?.Trim();
 
@@ -41,7 +41,6 @@ namespace Safir.Server.Controllers
                 return BadRequest("کد آیتم الزامی است.");
             if (string.IsNullOrWhiteSpace(item.ITEM_NAME))
                 return BadRequest("نام آیتم الزامی است.");
-            // --------------------------------------------------
 
             try
             {
@@ -114,17 +113,26 @@ namespace Safir.Server.Controllers
                     if (isSystem)
                         throw new InvalidOperationException("آیتم‌های سیستمی قابل حذف نیستند. می‌توانید آن‌ها را غیرفعال کنید.");
 
-                    // بررسی اتصال به احکام و قالب‌ها
+                    // بررسی اتصال به احکام
                     int usedInDecrees = await conn.QuerySingleAsync<int>("SELECT COUNT(1) FROM PAY2_DECREE_LINE WHERE ITEM_ID = @id", new { id }, tran);
                     if (usedInDecrees > 0)
                         throw new InvalidOperationException("این آیتم در احکام پرسنل استفاده شده و قابل حذف فیزیکی نیست. لطفاً آن را غیرفعال کنید.");
 
+                    // بررسی اتصال به قالب‌ها
                     int usedInTemplates = await conn.QuerySingleAsync<int>("SELECT COUNT(1) FROM PAY2_ITEM_TMPL_LINE WHERE ITEM_ID = @id", new { id }, tran);
                     if (usedInTemplates > 0)
                         throw new InvalidOperationException("این آیتم در قالب‌های حکم استفاده شده است.");
 
+                    // بررسی استفاده در فیش‌های حقوقی ماه‌های گذشته (جلوگیری از خطای کلید خارجی و مخدوش شدن داده‌های تاریخی)
+                    int usedInRuns = await conn.QuerySingleAsync<int>("SELECT COUNT(1) FROM PAY2_RUN_DETAIL WHERE ITEM_ID = @id", new { id }, tran);
+                    if (usedInRuns > 0)
+                        throw new InvalidOperationException("این آیتم در ماه‌های گذشته در فیش حقوقی پرسنل محاسبه شده است. به دلیل وجود سوابق مالی، فقط می‌توانید آن را غیرفعال کنید.");
+
+                    // حذف مقادیر متغیر اختصاصی این آیتم در جداول کارکرد و استثناها
                     await conn.ExecuteAsync("DELETE FROM PAY2_ATT_VALUE WHERE ITEM_ID = @id", new { id }, tran);
                     await conn.ExecuteAsync("DELETE FROM PAY2_OVERRIDE WHERE ITEM_ID = @id", new { id }, tran);
+
+                    // حذف نهایی آیتم
                     await conn.ExecuteAsync("DELETE FROM PAY2_ITEM_DEF WHERE ITEM_ID = @id", new { id }, tran);
                 });
                 return Ok();
