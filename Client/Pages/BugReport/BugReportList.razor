@@ -1,0 +1,147 @@
+@page "/bug-reports"
+@using Safir.Shared.Models.BugReport
+@using Safir.Client.Services
+@using MudBlazor
+@inject BugReportApiService BugReportApi
+@inject ISnackbar Snackbar
+@inject NavigationManager NavigationManager
+
+<PageTitle>لیست گزارش‌های خطا</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="mt-8 mb-16">
+    <MudText Typo="Typo.h4" Class="mb-6">لیست گزارش‌های خطا</MudText>
+
+    <MudTable Items="@_bugReports" Dense="true" Hover="true" Loading="@_isLoading" LoadingProgressColor="Color.Info" Striped="true" Filter="new Func<BugReportDto,bool>(FilterFunc)">
+        <ToolBarContent>
+            <MudSpacer />
+            <MudTextField @bind-Value="_searchString" Placeholder="جستجو..." Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search" IconSize="Size.Medium" Class="mt-0"></MudTextField>
+        </ToolBarContent>
+        <HeaderContent>
+            <MudTh>شناسه</MudTh>
+            <MudTh>تاریخ ثبت</MudTh>
+            <MudTh>مشتری / ثبت‌کننده</MudTh>
+            <MudTh>شدت</MudTh>
+            <MudTh>دسته‌بندی</MudTh>
+            <MudTh>وضعیت</MudTh>
+            <MudTh>توضیحات کاربر</MudTh>
+            <MudTh Style="text-align:center">عملیات</MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd DataLabel="شناسه">@context.Id</MudTd>
+            <MudTd DataLabel="تاریخ ثبت">@context.CreatedAt.ToString("yyyy/MM/dd HH:mm")</MudTd>
+            <MudTd DataLabel="مشتری / ثبت‌کننده">
+                @if (!string.IsNullOrWhiteSpace(context.CustomerName))
+                {
+                    @context.CustomerName
+                }
+                else
+                {
+                    @context.CreatedBy
+                }
+            </MudTd>
+            <MudTd DataLabel="شدت">
+                <MudChip Size="Size.Small" Color="@GetSeverityColor(context.Severity)">
+                    @context.Severity
+                </MudChip>
+            </MudTd>
+            <MudTd DataLabel="دسته‌بندی">@context.Category</MudTd>
+            <MudTd DataLabel="وضعیت">
+                <MudChip Size="Size.Small" Color="@GetStatusColor(context.Status)">
+                    @context.Status
+                </MudChip>
+            </MudTd>
+            <MudTd DataLabel="توضیحات کاربر">
+                @if (!string.IsNullOrWhiteSpace(context.UserDescription))
+                {
+                    var snippet = context.UserDescription.Length > 50 ? context.UserDescription.Substring(0, 47) + "..." : context.UserDescription;
+                    @snippet
+                }
+            </MudTd>
+            <MudTd DataLabel="عملیات" Style="text-align:center">
+                <MudIconButton Icon="@Icons.Material.Filled.Visibility" Color="Color.Primary" Size="Size.Small" OnClick="@(() => ViewDetails(context.Id))" Title="مشاهده جزئیات" />
+            </MudTd>
+        </RowTemplate>
+        <PagerContent>
+            <MudTablePager InfoFormat="{first_item}-{last_item} از {all_items}" RowsPerPageString="ردیف در هر صفحه:" />
+        </PagerContent>
+    </MudTable>
+</MudContainer>
+
+@code {
+    private List<BugReportDto> _bugReports = new();
+    private bool _isLoading = true;
+    private string _searchString = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadBugReportsAsync();
+    }
+
+    private async Task LoadBugReportsAsync()
+    {
+        _isLoading = true;
+        try
+        {
+            var reports = await BugReportApi.GetBugReportsAsync();
+            if (reports != null)
+            {
+                _bugReports = reports;
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add("خطا در دریافت لیست گزارش‌های خطا.", Severity.Error);
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private void ViewDetails(int id)
+    {
+        NavigationManager.NavigateTo($"/bug-reports/{id}");
+    }
+
+    private bool FilterFunc(BugReportDto element)
+    {
+        if (string.IsNullOrWhiteSpace(_searchString))
+            return true;
+        if (element.CustomerName != null && element.CustomerName.Contains(_searchString, StringComparison.OrdinalIgnoreCase))
+            return true;
+        if (element.CreatedBy != null && element.CreatedBy.Contains(_searchString, StringComparison.OrdinalIgnoreCase))
+            return true;
+        if (element.UserDescription != null && element.UserDescription.Contains(_searchString, StringComparison.OrdinalIgnoreCase))
+            return true;
+        if (element.Category != null && element.Category.Contains(_searchString, StringComparison.OrdinalIgnoreCase))
+            return true;
+        if (element.Id.ToString().Contains(_searchString))
+            return true;
+        return false;
+    }
+
+    private Color GetSeverityColor(string severity)
+    {
+        return severity switch
+        {
+            "Critical" => Color.Error,
+            "High" => Color.Warning,
+            "Medium" => Color.Info,
+            "Low" => Color.Success,
+            _ => Color.Default
+        };
+    }
+
+    private Color GetStatusColor(string status)
+    {
+        return status switch
+        {
+            "New" => Color.Info,
+            "InReview" => Color.Warning,
+            "Fixed" => Color.Success,
+            "Rejected" => Color.Error,
+            "NeedMoreInfo" => Color.Secondary,
+            _ => Color.Default
+        };
+    }
+}

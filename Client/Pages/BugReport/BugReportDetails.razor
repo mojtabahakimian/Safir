@@ -1,0 +1,177 @@
+@page "/bug-reports/{Id:int}"
+@using Safir.Shared.Models.BugReport
+@using Safir.Client.Services
+@using MudBlazor
+@inject BugReportApiService BugReportApi
+@inject ISnackbar Snackbar
+@inject NavigationManager NavigationManager
+
+<PageTitle>جزئیات گزارش خطا</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.Large" Class="mt-8 mb-16">
+    <div class="d-flex justify-space-between align-center mb-6">
+        <MudText Typo="Typo.h4">جزئیات گزارش خطا #@Id</MudText>
+        <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.ArrowBack" OnClick="GoBack">بازگشت</MudButton>
+    </div>
+
+    @if (_isLoading)
+    {
+        <MudProgressLinear Color="Color.Primary" Indeterminate="true" Class="mb-4" />
+    }
+    else if (_model == null)
+    {
+        <MudAlert Severity="Severity.Error">گزارش یافت نشد.</MudAlert>
+    }
+    else
+    {
+        <MudGrid>
+            <MudItem xs="12" md="6">
+                <MudCard Elevation="3" Class="pa-4 h-100">
+                    <MudCardHeader>
+                        <CardHeaderContent>
+                            <MudText Typo="Typo.h6">اطلاعات عمومی</MudText>
+                        </CardHeaderContent>
+                    </MudCardHeader>
+                    <MudCardContent>
+                        <MudTextField Value="@(_model.CreatedAt.ToString("yyyy/MM/dd HH:mm"))" Label="تاریخ ثبت" ReadOnly="true" Variant="Variant.Outlined" Class="mb-4" />
+                        <MudTextField Value="_model.CreatedBy" Label="ثبت‌کننده" ReadOnly="true" Variant="Variant.Outlined" Class="mb-4" />
+                        <MudTextField Value="_model.CustomerName" Label="نام مشتری" ReadOnly="true" Variant="Variant.Outlined" Class="mb-4" />
+                        <MudTextField Value="_model.ContactInfo" Label="تلفن تماس" ReadOnly="true" Variant="Variant.Outlined" Class="mb-4" />
+
+                        <div class="d-flex align-center gap-4 mt-4">
+                            <MudChip Color="@GetStatusColor(_model.Status)" Label="true">وضعیت: @_model.Status</MudChip>
+                            <MudChip Color="@GetSeverityColor(_model.Severity)" Label="true">شدت: @_model.Severity</MudChip>
+                        </div>
+                    </MudCardContent>
+                </MudCard>
+            </MudItem>
+
+            <MudItem xs="12" md="6">
+                <MudCard Elevation="3" Class="pa-4 h-100">
+                    <MudCardHeader>
+                        <CardHeaderContent>
+                            <MudText Typo="Typo.h6">اطلاعات سیستم و محیط</MudText>
+                        </CardHeaderContent>
+                    </MudCardHeader>
+                    <MudCardContent>
+                        <MudTextField Value="_model.AppVersion" Label="نسخه برنامه" ReadOnly="true" Variant="Variant.Outlined" Class="mb-4" />
+                        <MudTextField Value="_model.FrontendVersion" Label="نسخه کلاینت" ReadOnly="true" Variant="Variant.Outlined" Class="mb-4" />
+                        <MudTextField Value="_model.PageUrl" Label="آدرس صفحه (URL)" ReadOnly="true" Variant="Variant.Outlined" Class="mb-4" />
+                        <MudTextField Value="_model.Category" Label="دسته‌بندی" ReadOnly="true" Variant="Variant.Outlined" Class="mb-4" />
+                    </MudCardContent>
+                </MudCard>
+            </MudItem>
+
+            <MudItem xs="12">
+                <MudCard Elevation="3" Class="pa-4">
+                    <MudCardHeader>
+                        <CardHeaderContent>
+                            <MudText Typo="Typo.h6">توضیحات کاربر و مراحل بازتولید</MudText>
+                        </CardHeaderContent>
+                    </MudCardHeader>
+                    <MudCardContent>
+                        <MudTextField Value="_model.UserDescription" Label="شرح مشکل" ReadOnly="true" Lines="3" Variant="Variant.Outlined" Class="mb-4" />
+                        <MudTextField Value="_model.ReproduceSteps" Label="مراحل بازتولید" ReadOnly="true" Lines="4" Variant="Variant.Outlined" Class="mb-4" />
+                        <MudGrid>
+                            <MudItem xs="12" sm="6">
+                                <MudTextField Value="_model.ExpectedResult" Label="نتیجه مورد انتظار" ReadOnly="true" Lines="3" Variant="Variant.Outlined" />
+                            </MudItem>
+                            <MudItem xs="12" sm="6">
+                                <MudTextField Value="_model.ActualResult" Label="نتیجه واقعی" ReadOnly="true" Lines="3" Variant="Variant.Outlined" />
+                            </MudItem>
+                        </MudGrid>
+                        <div class="d-flex flex-wrap gap-4 mt-4">
+                            <MudCheckBox Value="@_model.HappensAlways" Label="همیشه رخ می‌دهد؟" ReadOnly="true" Color="Color.Primary" />
+                            <MudCheckBox Value="@_model.IsBlocking" Label="توقف کامل کار؟" ReadOnly="true" Color="Color.Error" />
+                            <MudCheckBox Value="@_model.TestedOnAnotherDevice" Label="تست روی دستگاه دیگر؟" ReadOnly="true" Color="Color.Primary" />
+                            <MudCheckBox Value="@_model.HasRecentChanges" Label="تغییرات اخیر؟" ReadOnly="true" Color="Color.Primary" />
+                        </div>
+                    </MudCardContent>
+                </MudCard>
+            </MudItem>
+
+            <MudItem xs="12">
+                <MudExpansionPanels>
+                    <MudExpansionPanel Text="اطلاعات فنی و تشخیص (Diagnostics)">
+                        <MudGrid>
+                            <MudItem xs="12" sm="6">
+                                <MudTextField Value="_model.BrowserInfo" Label="مرورگر" ReadOnly="true" Variant="Variant.Outlined" Class="mb-4" />
+                                <MudTextField Value="_model.OperatingSystem" Label="سیستم‌عامل" ReadOnly="true" Variant="Variant.Outlined" Class="mb-4" />
+                                <MudTextField Value="_model.ScreenSize" Label="اندازه صفحه" ReadOnly="true" Variant="Variant.Outlined" Class="mb-4" />
+                            </MudItem>
+                            <MudItem xs="12" sm="6">
+                                <MudTextField Value="_model.UserAgent" Label="User Agent" ReadOnly="true" Lines="2" Variant="Variant.Outlined" Class="mb-4" />
+                                <MudTextField Value="_model.ApiEndpoint" Label="نقطه پایانی API" ReadOnly="true" Variant="Variant.Outlined" Class="mb-4" />
+                                <MudTextField Value="_model.HttpStatusCode?.ToString()" Label="کد وضعیت HTTP" ReadOnly="true" Variant="Variant.Outlined" Class="mb-4" />
+                            </MudItem>
+                            <MudItem xs="12">
+                                <MudTextField Value="_model.ErrorMessage" Label="پیام خطا" ReadOnly="true" Lines="3" Variant="Variant.Outlined" Class="mb-4" />
+                                <MudTextField Value="_model.StackTrace" Label="Stack Trace" ReadOnly="true" Lines="6" Variant="Variant.Outlined" />
+                            </MudItem>
+                        </MudGrid>
+                    </MudExpansionPanel>
+                </MudExpansionPanels>
+            </MudItem>
+        </MudGrid>
+    }
+</MudContainer>
+
+@code {
+    [Parameter]
+    public int Id { get; set; }
+
+    private BugReportDto? _model;
+    private bool _isLoading = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadBugReportAsync();
+    }
+
+    private async Task LoadBugReportAsync()
+    {
+        _isLoading = true;
+        try
+        {
+            _model = await BugReportApi.GetBugReportDetailsAsync(Id);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add("خطا در دریافت جزئیات گزارش.", Severity.Error);
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private void GoBack()
+    {
+        NavigationManager.NavigateTo("/bug-reports");
+    }
+
+    private Color GetSeverityColor(string severity)
+    {
+        return severity switch
+        {
+            "Critical" => Color.Error,
+            "High" => Color.Warning,
+            "Medium" => Color.Info,
+            "Low" => Color.Success,
+            _ => Color.Default
+        };
+    }
+
+    private Color GetStatusColor(string status)
+    {
+        return status switch
+        {
+            "New" => Color.Info,
+            "InReview" => Color.Warning,
+            "Fixed" => Color.Success,
+            "Rejected" => Color.Error,
+            "NeedMoreInfo" => Color.Secondary,
+            _ => Color.Default
+        };
+    }
+}
