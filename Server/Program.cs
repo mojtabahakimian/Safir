@@ -108,7 +108,8 @@ using (var scope = app.Services.CreateScope())
         string[] scriptsToRun = new string[]
         {
             "001_CreateEvaporationReportsTable.sql",
-            "002_CreateBugReportsTable.sql"
+            "002_CreateBugReportsTable.sql",
+            "003_AlterBugReportsAddMissingColumns.sql"
         };
 
         foreach (var scriptName in scriptsToRun)

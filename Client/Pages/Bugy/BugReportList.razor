@@ -1,0 +1,208 @@
+﻿@page "/bug-report-list"
+@using Microsoft.AspNetCore.Authorization
+@using Safir.Shared.Models.BugReport
+@using Safir.Client.Services
+@using MudBlazor
+@attribute [Authorize]
+@inject BugReportApiService BugReportApi
+@inject NavigationManager NavigationManager
+@inject ISnackbar Snackbar
+
+<PageTitle>لیست گزارش‌های خطا</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="mt-6 mb-16">
+    <MudText Typo="Typo.h5" Class="mb-4">
+        <MudIcon Icon="@Icons.Material.Filled.BugReport" Class="me-2 mb-1" />
+        لیست گزارش‌های خطای دریافتی
+    </MudText>
+
+    <MudPaper Elevation="2" Class="pa-4 mb-4">
+        <MudGrid AlignItems="AlignItems.Center">
+            <MudItem xs="12" sm="3">
+                <MudSelect @bind-Value="_filterStatus" Label="فیلتر بر اساس وضعیت" Variant="Variant.Outlined" Clearable="true" Dense="true">
+                    <MudSelectItem Value="@("")">همه</MudSelectItem>
+                    <MudSelectItem Value="@("New")">جدید</MudSelectItem>
+                    <MudSelectItem Value="@("InReview")">در حال بررسی</MudSelectItem>
+                    <MudSelectItem Value="@("NeedMoreInfo")">نیاز به اطلاعات بیشتر</MudSelectItem>
+                    <MudSelectItem Value="@("Fixed")">رفع شده</MudSelectItem>
+                    <MudSelectItem Value="@("Rejected")">رد شده</MudSelectItem>
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" sm="3">
+                <MudSelect @bind-Value="_filterSeverity" Label="فیلتر بر اساس شدت" Variant="Variant.Outlined" Clearable="true" Dense="true">
+                    <MudSelectItem Value="@("")">همه</MudSelectItem>
+                    <MudSelectItem Value="@("Critical")">بحرانی</MudSelectItem>
+                    <MudSelectItem Value="@("High")">زیاد</MudSelectItem>
+                    <MudSelectItem Value="@("Medium")">متوسط</MudSelectItem>
+                    <MudSelectItem Value="@("Low")">کم</MudSelectItem>
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" sm="4">
+                <MudTextField @bind-Value="_searchText" Label="جستجو" Variant="Variant.Outlined" Dense="true"
+                              Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search"
+                              Clearable="true" />
+            </MudItem>
+            <MudItem xs="12" sm="2" Class="d-flex justify-end">
+                <MudButton Variant="Variant.Outlined" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Refresh"
+                           OnClick="LoadReports" Disabled="_isLoading">
+                    بارگذاری مجدد
+                </MudButton>
+            </MudItem>
+        </MudGrid>
+    </MudPaper>
+
+    @if (_isLoading)
+    {
+        <MudProgressLinear Color="Color.Primary" Indeterminate="true" Class="mb-4" />
+    }
+    else if (_reports == null)
+    {
+        <MudAlert Severity="Severity.Error">خطا در بارگذاری گزارش‌ها. لطفاً دوباره تلاش کنید.</MudAlert>
+    }
+    else
+    {
+        <MudText Typo="Typo.caption" Class="mb-2 text-muted">
+            تعداد کل: @_allReports.Count گزارش | نمایش فعلی: @FilteredReports.Count() مورد
+        </MudText>
+
+        <MudTable Items="@FilteredReports" Hover="true" Striped="true" Dense="true" Breakpoint="Breakpoint.Sm"
+                  OnRowClick="OnRowClick" T="BugReportDto" RowClass="cursor-pointer">
+            <HeaderContent>
+                <MudTh>شناسه</MudTh>
+                <MudTh>تاریخ ثبت</MudTh>
+                <MudTh>مشتری / شرکت</MudTh>
+                <MudTh>دسته‌بندی</MudTh>
+                <MudTh>شدت</MudTh>
+                <MudTh>وضعیت</MudTh>
+                <MudTh>متوقف‌کننده</MudTh>
+                <MudTh>خلاصه مشکل</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd DataLabel="شناسه">@context.Id</MudTd>
+                <MudTd DataLabel="تاریخ ثبت">@context.CreatedAt.ToString("yyyy/MM/dd HH:mm")</MudTd>
+                <MudTd DataLabel="مشتری">@(context.CustomerName ?? "-")</MudTd>
+                <MudTd DataLabel="دسته‌بندی">@(context.Category ?? "-")</MudTd>
+                <MudTd DataLabel="شدت">
+                    <MudChip T="string" Color="@GetSeverityColor(context.Severity)" Size="Size.Small" Label="true">
+                        @GetSeverityLabel(context.Severity)
+                    </MudChip>
+                </MudTd>
+                <MudTd DataLabel="وضعیت">
+                    <MudChip T="string" Color="@GetStatusColor(context.Status)" Variant="Variant.Outlined" Size="Size.Small" Label="true">
+                        @GetStatusLabel(context.Status)
+                    </MudChip>
+                </MudTd>
+                <MudTd DataLabel="متوقف‌کننده">
+                    @if (context.IsBlocking)
+                    {
+                        <MudIcon Icon="@Icons.Material.Filled.Warning" Color="Color.Error" Size="Size.Small" Title="مشکل متوقف‌کننده است" />
+                    }
+                    else
+                    {
+                        <span>-</span>
+                    }
+                </MudTd>
+                <MudTd DataLabel="خلاصه مشکل">
+                    <MudText Typo="Typo.body2" Style="max-width:300px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
+                        @context.UserDescription
+                    </MudText>
+                </MudTd>
+            </RowTemplate>
+            <PagerContent>
+                <MudTablePager PageSizeOptions="new int[] { 10, 25, 50, 100 }" RowsPerPageString="تعداد در هر صفحه:" />
+            </PagerContent>
+            <NoRecordsContent>
+                <MudText Align="Align.Center" Class="pa-4">هیچ گزارشی یافت نشد.</MudText>
+            </NoRecordsContent>
+        </MudTable>
+    }
+</MudContainer>
+
+@code {
+    private List<BugReportDto> _allReports = new();
+    private List<BugReportDto>? _reports;
+    private bool _isLoading = true;
+    private string _filterStatus = "";
+    private string _filterSeverity = "";
+    private string _searchText = "";
+
+    private IEnumerable<BugReportDto> FilteredReports =>
+        (_reports ?? new List<BugReportDto>())
+        .Where(r =>
+            (string.IsNullOrEmpty(_filterStatus) || r.Status == _filterStatus) &&
+            (string.IsNullOrEmpty(_filterSeverity) || r.Severity == _filterSeverity) &&
+            (string.IsNullOrEmpty(_searchText) ||
+                (r.CustomerName?.Contains(_searchText, StringComparison.OrdinalIgnoreCase) ?? false) ||
+                (r.UserDescription?.Contains(_searchText, StringComparison.OrdinalIgnoreCase) ?? false) ||
+                (r.Category?.Contains(_searchText, StringComparison.OrdinalIgnoreCase) ?? false) ||
+                (r.ContactInfo?.Contains(_searchText, StringComparison.OrdinalIgnoreCase) ?? false)));
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadReports();
+    }
+
+    private async Task LoadReports()
+    {
+        _isLoading = true;
+        StateHasChanged();
+        try
+        {
+            var result = await BugReportApi.GetBugReportsAsync();
+            _allReports = result ?? new List<BugReportDto>();
+            _reports = _allReports;
+        }
+        catch
+        {
+            _reports = null;
+            Snackbar.Add("خطا در بارگذاری گزارش‌ها.", Severity.Error);
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private void OnRowClick(TableRowClickEventArgs<BugReportDto> args)
+    {
+        NavigationManager.NavigateTo($"/bug-report-detail/{args.Item.Id}");
+    }
+
+    private Color GetSeverityColor(string severity) => severity switch
+    {
+        "Critical" => Color.Error,
+        "High" => Color.Warning,
+        "Medium" => Color.Info,
+        "Low" => Color.Success,
+        _ => Color.Default
+    };
+
+    private string GetSeverityLabel(string severity) => severity switch
+    {
+        "Critical" => "بحرانی",
+        "High" => "زیاد",
+        "Medium" => "متوسط",
+        "Low" => "کم",
+        _ => severity
+    };
+
+    private Color GetStatusColor(string status) => status switch
+    {
+        "New" => Color.Primary,
+        "InReview" => Color.Warning,
+        "Fixed" => Color.Success,
+        "Rejected" => Color.Error,
+        "NeedMoreInfo" => Color.Info,
+        _ => Color.Default
+    };
+
+    private string GetStatusLabel(string status) => status switch
+    {
+        "New" => "جدید",
+        "InReview" => "در بررسی",
+        "Fixed" => "رفع شده",
+        "Rejected" => "رد شده",
+        "NeedMoreInfo" => "نیاز به اطلاعات",
+        _ => status
+    };
+}

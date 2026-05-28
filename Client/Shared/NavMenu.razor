@@ -1,4 +1,4 @@
-﻿@using MudBlazor
+﻿﻿@using MudBlazor
 @using Microsoft.AspNetCore.Components.Authorization
 @using Safir.Client.Services
 @using Safir.Shared.Interfaces;
@@ -51,6 +51,10 @@
 
             <MudNavLink Href="bug-report" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.BugReport">
                 گزارش خطای نرم‌افزار
+            </MudNavLink>
+
+            <MudNavLink Href="bug-report-list" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.ManageSearch">
+                مشاهده گزارش‌های خطا
             </MudNavLink>
 
             <!-- گروه تنظیمات -->
@@ -142,12 +146,12 @@
     {
         var options = new DialogOptions { CloseButton = false, MaxWidth = MaxWidth.Small };
         var parameters = new DialogParameters
-            {
-                ["Title"] = "حذف وضعیت ذخیره شده",
-                ["ContentText"] = "آیا از پاک شدن وضعیت کاربری مثل سبد خرید و مشتری انتخاب شده و .... اطمینان دارید؟",
-                ["ConfirmButtonText"] = "بله، پاک کن",
-                ["CancelButtonText"] = "خیر"
-            };
+        {
+            ["Title"] = "حذف وضعیت ذخیره شده",
+            ["ContentText"] = "آیا از پاک شدن وضعیت کاربری مثل سبد خرید و مشتری انتخاب شده و .... اطمینان دارید؟",
+            ["ConfirmButtonText"] = "بله، پاک کن",
+            ["CancelButtonText"] = "خیر"
+        };
         var dialog = DialogService.Show<ConfirmDialog>(parameters["Title"]?.ToString()!, parameters, options);
         var result = await dialog.Result;
 
@@ -180,12 +184,12 @@
     {
         var options = new DialogOptions { CloseButton = false, MaxWidth = MaxWidth.ExtraSmall };
         var parameters = new DialogParameters
-            {
-                ["Title"] = "خروج از حساب",
-                ["ContentText"] = "آیا مطمئن هستید می‌خواهید از حساب کاربری خود خارج شوید؟",
-                ["ConfirmButtonText"] = "خارج شو",
-                ["CancelButtonText"] = "منصرف شدم"
-            };
+        {
+            ["Title"] = "خروج از حساب",
+            ["ContentText"] = "آیا مطمئن هستید می‌خواهید از حساب کاربری خود خارج شوید؟",
+            ["ConfirmButtonText"] = "خارج شو",
+            ["CancelButtonText"] = "منصرف شدم"
+        };
         var dialog = DialogService.Show<ConfirmDialog>(parameters["Title"]?.ToString()!, parameters, options);
         var result = await dialog.Result;
         if (!result.Cancelled)
@@ -198,12 +202,12 @@
     {
         var options = new DialogOptions { CloseButton = false, MaxWidth = MaxWidth.Small };
         var parameters = new DialogParameters
-            {
-                ["Title"] = "پاکسازی کامل اطلاعات مرورگر",
-                ["ContentText"] = "آیا مطمئن هستید که می‌خواهید تمامی اطلاعات ذخیره شده این سایت در مرورگر (شامل تنظیمات، کش و داده‌های آفلاین) را پاک کنید؟ این عملیات معادل باز کردن سایت برای اولین بار خواهد بود.",
-                ["ConfirmButtonText"] = "پاکسازی و شروع مجدد",
-                ["CancelButtonText"] = "منصرف شدم"
-            };
+        {
+            ["Title"] = "پاکسازی کامل اطلاعات مرورگر",
+            ["ContentText"] = "آیا مطمئن هستید که می‌خواهید تمامی اطلاعات ذخیره شده این سایت در مرورگر (شامل تنظیمات، کش و داده‌های آفلاین) را پاک کنید؟ این عملیات معادل باز کردن سایت برای اولین بار خواهد بود.",
+            ["ConfirmButtonText"] = "پاکسازی و شروع مجدد",
+            ["CancelButtonText"] = "منصرف شدم"
+        };
         var dialog = DialogService.Show<ConfirmDialog>(parameters["Title"]?.ToString()!, parameters, options);
         var result = await dialog.Result;
 
