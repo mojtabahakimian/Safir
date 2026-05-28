@@ -1,0 +1,347 @@
+@page "/bug-report-detail/{Id:int}"
+@using Safir.Shared.Models.BugReport
+@using Safir.Client.Services
+@using MudBlazor
+@attribute [Authorize]
+@inject BugReportApiService BugReportApi
+@inject NavigationManager NavigationManager
+@inject ISnackbar Snackbar
+
+<PageTitle>جزئیات گزارش خطا</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.Large" Class="mt-6 mb-16">
+    <MudButton Variant="Variant.Text" StartIcon="@Icons.Material.Filled.ArrowBack"
+               OnClick='() => NavigationManager.NavigateTo("/bug-report-list")' Class="mb-4">
+        بازگشت به لیست
+    </MudButton>
+
+    @if (_isLoading)
+    {
+        <MudProgressLinear Color="Color.Primary" Indeterminate="true" />
+    }
+    else if (_report == null)
+    {
+        <MudAlert Severity="Severity.Error">گزارش یافت نشد.</MudAlert>
+    }
+    else
+    {
+        <MudGrid>
+            <!-- Header Card -->
+            <MudItem xs="12">
+                <MudPaper Elevation="3" Class="pa-6">
+                    <MudGrid AlignItems="AlignItems.Center">
+                        <MudItem xs="12" sm="8">
+                            <MudText Typo="Typo.h5">
+                                <MudIcon Icon="@Icons.Material.Filled.BugReport" Class="me-2" />
+                                گزارش شماره #@_report.Id
+                            </MudText>
+                            <MudText Typo="Typo.caption" Class="mt-1">
+                                ثبت‌شده در: @_report.CreatedAt.ToString("yyyy/MM/dd - HH:mm:ss")
+                            </MudText>
+                        </MudItem>
+                        <MudItem xs="12" sm="4" Class="d-flex gap-2 justify-end flex-wrap">
+                            <MudChip T="string" Color="@GetSeverityColor(_report.Severity)" Size="Size.Medium" Label="true">
+                                @GetSeverityLabel(_report.Severity)
+                            </MudChip>
+                            <MudChip T="string" Color="@GetStatusColor(_report.Status)" Variant="Variant.Outlined" Size="Size.Medium" Label="true">
+                                @GetStatusLabel(_report.Status)
+                            </MudChip>
+                            @if (_report.IsBlocking)
+                            {
+                                <MudChip T="string" Color="Color.Error" Size="Size.Medium" Icon="@Icons.Material.Filled.Warning" Label="true">
+                                    متوقف‌کننده
+                                </MudChip>
+                            }
+                        </MudItem>
+                    </MudGrid>
+                </MudPaper>
+            </MudItem>
+
+            <!-- Main Info -->
+            <MudItem xs="12" md="8">
+                <!-- User Info -->
+                <MudPaper Elevation="2" Class="pa-5 mb-4">
+                    <MudText Typo="Typo.h6" Color="Color.Primary" Class="mb-3">اطلاعات کاربر</MudText>
+                    <MudDivider Class="mb-3" />
+                    <MudGrid>
+                        <MudItem xs="12" sm="6">
+                            @InfoRow("نام مشتری / شرکت", _report.CustomerName)
+                        </MudItem>
+                        <MudItem xs="12" sm="6">
+                            @InfoRow("اطلاعات تماس", _report.ContactInfo)
+                        </MudItem>
+                        <MudItem xs="12" sm="6">
+                            @InfoRow("کاربر سیستم", _report.CreatedBy)
+                        </MudItem>
+                        <MudItem xs="12" sm="6">
+                            @InfoRow("دسته‌بندی", _report.Category)
+                        </MudItem>
+                    </MudGrid>
+                </MudPaper>
+
+                <!-- Problem Description -->
+                <MudPaper Elevation="2" Class="pa-5 mb-4">
+                    <MudText Typo="Typo.h6" Color="Color.Primary" Class="mb-3">شرح مشکل</MudText>
+                    <MudDivider Class="mb-3" />
+                    <MudText Typo="Typo.subtitle2" Class="mb-1">توضیح کاربر:</MudText>
+                    <MudText Typo="Typo.body1" Class="mb-4" Style="white-space: pre-wrap;">@_report.UserDescription</MudText>
+
+                    <MudText Typo="Typo.subtitle2" Class="mb-1">مراحل تکرار خطا:</MudText>
+                    <MudText Typo="Typo.body1" Class="mb-4" Style="white-space: pre-wrap;">@_report.ReproduceSteps</MudText>
+
+                    <MudGrid>
+                        <MudItem xs="12" sm="6">
+                            <MudText Typo="Typo.subtitle2" Class="mb-1">نتیجه مورد انتظار:</MudText>
+                            <MudText Typo="Typo.body1" Style="white-space: pre-wrap;">@_report.ExpectedResult</MudText>
+                        </MudItem>
+                        <MudItem xs="12" sm="6">
+                            <MudText Typo="Typo.subtitle2" Class="mb-1">نتیجه واقعی:</MudText>
+                            <MudText Typo="Typo.body1" Style="white-space: pre-wrap;">@_report.ActualResult</MudText>
+                        </MudItem>
+                    </MudGrid>
+                </MudPaper>
+
+                <!-- Flags -->
+                <MudPaper Elevation="2" Class="pa-5 mb-4">
+                    <MudText Typo="Typo.h6" Color="Color.Primary" Class="mb-3">وضعیت بررسی اولیه</MudText>
+                    <MudDivider Class="mb-3" />
+                    <MudGrid>
+                        <MudItem xs="12" sm="6">
+                            @FlagRow("همیشه تکرار می‌شود", _report.HappensAlways, false)
+                        </MudItem>
+                        <MudItem xs="12" sm="6">
+                            @FlagRow("متوقف‌کننده کار است", _report.IsBlocking, true)
+                        </MudItem>
+                        <MudItem xs="12" sm="6">
+                            @FlagRow("روی دستگاه دیگری هم آزمایش شده", _report.TestedOnAnotherDevice, false)
+                        </MudItem>
+                        <MudItem xs="12" sm="6">
+                            @FlagRow("اخیراً تغییراتی داشته", _report.HasRecentChanges, false)
+                        </MudItem>
+                    </MudGrid>
+                </MudPaper>
+
+                <!-- Technical Info -->
+                @if (!string.IsNullOrEmpty(_report.ErrorMessage) || !string.IsNullOrEmpty(_report.StackTrace) || !string.IsNullOrEmpty(_report.ApiEndpoint))
+                {
+                    <MudPaper Elevation="2" Class="pa-5 mb-4">
+                        <MudText Typo="Typo.h6" Color="Color.Primary" Class="mb-3">اطلاعات فنی</MudText>
+                        <MudDivider Class="mb-3" />
+                        <MudGrid>
+                            <MudItem xs="12" sm="6">
+                                @InfoRow("API Endpoint", _report.ApiEndpoint)
+                            </MudItem>
+                            <MudItem xs="12" sm="6">
+                                @InfoRow("HTTP Status Code", _report.HttpStatusCode?.ToString())
+                            </MudItem>
+                            <MudItem xs="12" sm="6">
+                                @InfoRow("Trace ID", _report.TraceId)
+                            </MudItem>
+                        </MudGrid>
+                        @if (!string.IsNullOrEmpty(_report.ErrorMessage))
+                        {
+                            <MudText Typo="Typo.subtitle2" Class="mt-3 mb-1">پیام خطا:</MudText>
+                            <MudPaper Outlined="true" Class="pa-3 mb-3" Style="background:#fff3e0;">
+                                <MudText Typo="Typo.body2" Style="font-family:monospace; white-space:pre-wrap; word-break:break-all;">@_report.ErrorMessage</MudText>
+                            </MudPaper>
+                        }
+                        @if (!string.IsNullOrEmpty(_report.StackTrace))
+                        {
+                            <MudText Typo="Typo.subtitle2" Class="mb-1">Stack Trace:</MudText>
+                            <MudPaper Outlined="true" Class="pa-3" Style="background:#f5f5f5; max-height:200px; overflow-y:auto;">
+                                <MudText Typo="Typo.body2" Style="font-family:monospace; white-space:pre-wrap; word-break:break-all; font-size:0.75rem;">@_report.StackTrace</MudText>
+                            </MudPaper>
+                        }
+                    </MudPaper>
+                }
+            </MudItem>
+
+            <!-- Side Panel -->
+            <MudItem xs="12" md="4">
+                <!-- System Info -->
+                <MudPaper Elevation="2" Class="pa-5 mb-4">
+                    <MudText Typo="Typo.h6" Color="Color.Primary" Class="mb-3">اطلاعات سیستم</MudText>
+                    <MudDivider Class="mb-3" />
+                    @InfoRow("نسخه نرم‌افزار", _report.AppVersion)
+                    @InfoRow("نسخه Frontend", _report.FrontendVersion)
+                    @InfoRow("نسخه Backend", _report.BackendVersion)
+                    @InfoRow("محیط", _report.EnvironmentName)
+                    @InfoRow("پایگاه داده", _report.DatabaseName)
+                    @InfoRow("سرور", _report.ServerName)
+                    @InfoRow("ماژول", _report.ModuleName)
+                    @InfoRow("منوی انتخابی", _report.MenuName)
+                </MudPaper>
+
+                <!-- Browser Info -->
+                <MudPaper Elevation="2" Class="pa-5 mb-4">
+                    <MudText Typo="Typo.h6" Color="Color.Primary" Class="mb-3">اطلاعات مرورگر</MudText>
+                    <MudDivider Class="mb-3" />
+                    @InfoRow("مرورگر", _report.BrowserInfo)
+                    @InfoRow("سیستم‌عامل", _report.OperatingSystem)
+                    @InfoRow("ابعاد صفحه", _report.ScreenSize)
+                    @InfoRow("آدرس صفحه", _report.PageUrl)
+                    @InfoRow("مسیر", _report.Route)
+                </MudPaper>
+
+                <!-- Admin Panel -->
+                <MudPaper Elevation="2" Class="pa-5">
+                    <MudText Typo="Typo.h6" Color="Color.Secondary" Class="mb-3">
+                        <MudIcon Icon="@Icons.Material.Filled.AdminPanelSettings" Class="me-1" />
+                        پنل مدیریت
+                    </MudText>
+                    <MudDivider Class="mb-3" />
+                    <MudSelect @bind-Value="_newStatus" Label="تغییر وضعیت" Variant="Variant.Outlined" Dense="true" Class="mb-3">
+                        <MudSelectItem Value="@("New")">جدید</MudSelectItem>
+                        <MudSelectItem Value="@("InReview")">در حال بررسی</MudSelectItem>
+                        <MudSelectItem Value="@("NeedMoreInfo")">نیاز به اطلاعات بیشتر</MudSelectItem>
+                        <MudSelectItem Value="@("Fixed")">رفع شده</MudSelectItem>
+                        <MudSelectItem Value="@("Rejected")">رد شده</MudSelectItem>
+                    </MudSelect>
+                    <MudTextField @bind-Value="_adminNote" Label="یادداشت مدیر" Variant="Variant.Outlined"
+                                  Lines="3" Class="mb-3" HelperText="یادداشت داخلی یا پیام به کاربر" />
+                    <MudButton Variant="Variant.Filled" Color="Color.Secondary" FullWidth="true"
+                               StartIcon="@Icons.Material.Filled.Save" OnClick="UpdateStatus"
+                               Disabled="_isSaving">
+                        @if (_isSaving)
+                        {
+                            <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="me-2" />
+                        }
+                        ذخیره تغییرات
+                    </MudButton>
+                </MudPaper>
+            </MudItem>
+        </MudGrid>
+    }
+</MudContainer>
+
+@code {
+    [Parameter] public int Id { get; set; }
+
+    private BugReportDto? _report;
+    private bool _isLoading = true;
+    private bool _isSaving = false;
+    private string _newStatus = "New";
+    private string? _adminNote;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadReport();
+    }
+
+    private async Task LoadReport()
+    {
+        _isLoading = true;
+        try
+        {
+            _report = await BugReportApi.GetBugReportByIdAsync(Id);
+            if (_report != null)
+            {
+                _newStatus = _report.Status;
+                _adminNote = _report.AdminNote;
+            }
+        }
+        catch
+        {
+            Snackbar.Add("خطا در بارگذاری گزارش.", Severity.Error);
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private async Task UpdateStatus()
+    {
+        _isSaving = true;
+        try
+        {
+            var response = await BugReportApi.UpdateBugReportStatusAsync(Id, _newStatus, _adminNote);
+            if (response.IsSuccessStatusCode)
+            {
+                _report!.Status = _newStatus;
+                _report.AdminNote = _adminNote;
+                Snackbar.Add("وضعیت گزارش با موفقیت به‌روز شد.", Severity.Success);
+            }
+            else
+            {
+                Snackbar.Add("خطا در به‌روزرسانی وضعیت.", Severity.Error);
+            }
+        }
+        catch
+        {
+            Snackbar.Add("خطای سیستمی در به‌روزرسانی وضعیت.", Severity.Error);
+        }
+        finally
+        {
+            _isSaving = false;
+        }
+    }
+
+    private Color GetSeverityColor(string severity) => severity switch
+    {
+        "Critical" => Color.Error,
+        "High" => Color.Warning,
+        "Medium" => Color.Info,
+        "Low" => Color.Success,
+        _ => Color.Default
+    };
+
+    private string GetSeverityLabel(string severity) => severity switch
+    {
+        "Critical" => "بحرانی",
+        "High" => "زیاد",
+        "Medium" => "متوسط",
+        "Low" => "کم",
+        _ => severity
+    };
+
+    private Color GetStatusColor(string status) => status switch
+    {
+        "New" => Color.Primary,
+        "InReview" => Color.Warning,
+        "Fixed" => Color.Success,
+        "Rejected" => Color.Error,
+        "NeedMoreInfo" => Color.Info,
+        _ => Color.Default
+    };
+
+    private string GetStatusLabel(string status) => status switch
+    {
+        "New" => "جدید",
+        "InReview" => "در بررسی",
+        "Fixed" => "رفع شده",
+        "Rejected" => "رد شده",
+        "NeedMoreInfo" => "نیاز به اطلاعات",
+        _ => status
+    };
+
+    private RenderFragment InfoRow(string label, string? value) => __builder =>
+    {
+        if (!string.IsNullOrWhiteSpace(value))
+        {
+            <div class="mb-2">
+                <MudText Typo="Typo.caption" Style="color:#888;">@label</MudText>
+                <MudText Typo="Typo.body2">@value</MudText>
+            </div>
+        }
+    };
+
+    private RenderFragment FlagRow(string label, bool value, bool isWarning) => __builder =>
+    {
+        <div class="d-flex align-center mb-2">
+            @if (value)
+            {
+                <MudIcon Icon="@Icons.Material.Filled.CheckCircle"
+                         Color="@(isWarning ? Color.Error : Color.Success)"
+                         Size="Size.Small" Class="me-2" />
+            }
+            else
+            {
+                <MudIcon Icon="@Icons.Material.Filled.Cancel"
+                         Color="Color.Default"
+                         Size="Size.Small" Class="me-2" />
+            }
+            <MudText Typo="Typo.body2">@label</MudText>
+        </div>
+    };
+}
