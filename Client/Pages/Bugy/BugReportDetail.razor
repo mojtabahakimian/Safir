@@ -217,36 +217,71 @@
                     </MudPaper>
                 }
 
-                @if (_isBugReporter || !string.IsNullOrEmpty(_report.UserNote))
-                {
-                    <!-- User Note Panel -->
-                    <MudPaper Elevation="2" Class="pa-5">
-                        <MudText Typo="Typo.h6" Color="Color.Primary" Class="mb-3">
-                            <MudIcon Icon="@Icons.Material.Filled.EditNote" Class="me-1" />
-                            پی‌نوشت گزارش‌دهنده
-                        </MudText>
-                        <MudDivider Class="mb-3" />
+                <!-- Comments Chat Panel -->
+                <MudPaper Elevation="2" Class="pa-5 mt-4 d-flex flex-column" Style="height: 600px;">
+                    <MudText Typo="Typo.h6" Color="Color.Primary" Class="mb-3">
+                        <MudIcon Icon="@Icons.Material.Filled.Forum" Class="me-1" />
+                        گفتگو با پشتیبانی
+                    </MudText>
+                    <MudDivider Class="mb-4" />
 
-                        @if (_isBugReporter)
+                    <!-- Chat History Area -->
+                    <div class="flex-grow-1 overflow-y-auto mb-4 px-2" Style="max-height: 500px;">
+                        @if (_comments != null && _comments.Any())
                         {
-                            <MudTextField @bind-Value="_userNote" Label="یادداشت / پی‌نوشت شما" Variant="Variant.Outlined"
-                                          Lines="4" Class="mb-3" HelperText="اطلاعات تکمیلی یا توضیح بیشتر را اینجا بنویسید" />
-                            <MudButton Variant="Variant.Filled" Color="Color.Primary" FullWidth="true"
-                                       StartIcon="@Icons.Material.Filled.Save" OnClick="UpdateUserNote"
-                                       Disabled="_isSavingUserNote">
-                                @if (_isSavingUserNote)
+                            <div class="d-flex flex-column gap-4">
+                                @foreach (var comment in _comments)
                                 {
-                                    <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="me-2" />
+                                    bool isMyComment = (_isBugReporter && !comment.IsAdmin) || (!_isBugReporter && comment.IsAdmin);
+
+                                    <div class="d-flex w-100 @(isMyComment ? "justify-start" : "justify-end")">
+                                        <div class="d-flex flex-column" Style="max-width: 80%;">
+                                            <div class="d-flex align-center mb-1 @(isMyComment ? "" : "flex-row-reverse")">
+                                                <MudText Typo="Typo.caption" Color="Color.Default" Class="text-muted mx-2">
+                                                    @(string.IsNullOrEmpty(comment.UserName) ? (comment.IsAdmin ? "پشتیبان" : "شما") : comment.UserName)
+                                                </MudText>
+                                                <MudText Typo="Typo.caption" Style="font-size: 0.65rem; color: #aaa;">
+                                                    @comment.CreatedAt.ToString("yyyy/MM/dd HH:mm")
+                                                </MudText>
+                                            </div>
+
+                                            <MudPaper Elevation="1"
+                                                      Class="@($"pa-3 {(isMyComment ? "rounded-tr-xl rounded-b-xl" : "rounded-tl-xl rounded-b-xl")}")"
+                                                      Style="@($"background-color: {(isMyComment ? "var(--mud-palette-primary)" : "var(--mud-palette-background-grey)")}; color: {(isMyComment ? "white" : "inherit")};")">
+                                                <MudText Typo="Typo.body2" Style="white-space:pre-wrap;">@comment.CommentText</MudText>
+                                            </MudPaper>
+                                        </div>
+                                    </div>
                                 }
-                                ثبت پی‌نوشت
-                            </MudButton>
+                            </div>
                         }
                         else
                         {
-                            <MudText Typo="Typo.body2" Style="white-space:pre-wrap;">@_report.UserNote</MudText>
+                            <div class="d-flex justify-center align-center h-100">
+                                <MudText Typo="Typo.body2" Color="Color.Default" Class="text-muted">هنوز هیچ گفتگویی ثبت نشده است.</MudText>
+                            </div>
                         }
-                    </MudPaper>
-                }
+                    </div>
+
+                    <!-- Add Comment Area (Chat Input) -->
+                    <div class="d-flex align-end gap-2 mt-auto">
+                        <MudTextField @bind-Value="_newComment" Placeholder="پیام خود را بنویسید..." Variant="Variant.Outlined"
+                                      Lines="2" Class="flex-grow-1" Immediate="true" Margin="Margin.Dense" />
+
+                        <MudButton Variant="Variant.Filled" Color="Color.Primary"
+                                   OnClick="AddComment" Style="height: 52px; min-width: 64px;"
+                                   Disabled="@(_isSavingComment || string.IsNullOrWhiteSpace(_newComment))">
+                            @if (_isSavingComment)
+                            {
+                                <MudProgressCircular Size="Size.Small" Indeterminate="true" />
+                            }
+                            else
+                            {
+                                <MudIcon Icon="@Icons.Material.Filled.Send" />
+                            }
+                        </MudButton>
+                    </div>
+                </MudPaper>
             </MudItem>
         </MudGrid>
     }
@@ -256,12 +291,13 @@
     [Parameter] public int Id { get; set; }
 
     private BugReportDto? _report;
+    private List<BugReportCommentDto>? _comments;
     private bool _isLoading = true;
     private bool _isSaving = false;
-    private bool _isSavingUserNote = false;
+    private bool _isSavingComment = false;
     private string _newStatus = "New";
     private string? _adminNote;
-    private string? _userNote;
+    private string? _newComment;
     private bool _isBugReporter = false;
 
     protected override async Task OnInitializedAsync()
@@ -282,7 +318,7 @@
             {
                 _newStatus = _report.Status;
                 _adminNote = _report.AdminNote;
-                _userNote = _report.UserNote;
+                _comments = await BugReportApi.GetBugReportCommentsAsync(Id) ?? new List<BugReportCommentDto>();
             }
         }
         catch
@@ -322,15 +358,19 @@
         }
     }
 
-    private async Task UpdateUserNote()
+    private async Task AddComment()
     {
-        _isSavingUserNote = true;
+        if (string.IsNullOrWhiteSpace(_newComment)) return;
+
+        _isSavingComment = true;
         try
         {
-            var response = await BugReportApi.UpdateBugReportUserNoteAsync(Id, _userNote ?? string.Empty);
+            var response = await BugReportApi.AddBugReportCommentAsync(Id, _newComment);
             if (response.IsSuccessStatusCode)
             {
-                _report!.UserNote = _userNote;
+                _newComment = string.Empty;
+                // Reload comments
+                _comments = await BugReportApi.GetBugReportCommentsAsync(Id) ?? new List<BugReportCommentDto>();
                 Snackbar.Add("پی‌نوشت با موفقیت ثبت شد.", Severity.Success);
             }
             else
@@ -344,7 +384,7 @@
         }
         finally
         {
-            _isSavingUserNote = false;
+            _isSavingComment = false;
         }
     }
 

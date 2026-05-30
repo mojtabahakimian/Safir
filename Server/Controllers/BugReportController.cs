@@ -162,38 +162,86 @@ namespace Safir.Server.Controllers
             }
         }
 
-        [HttpPatch("{id}/usernote")]
+        [HttpGet("{id}/comments")]
         [Authorize]
-        public async Task<IActionResult> UpdateBugReportUserNote(int id, [FromBody] UpdateUserNoteRequest request)
+        public async Task<IActionResult> GetBugReportComments(int id)
         {
             try
             {
-                // Fetch existing report
+                // Check authorization for Bug Reporters
+                if (User.FindFirst(BaseknowClaimTypes.GRSAL)?.Value == "999")
+                {
+                    string getSql = "SELECT CreatedBy FROM [dbo].[BugReports] WHERE Id = @Id";
+                    var reportCreator = await _dbService.DoGetDataSQLAsyncSingle<string>(getSql, new { Id = id });
+
+                    if (reportCreator == null) return NotFound("گزارش یافت نشد.");
+
+                    string currentUser = User.FindFirst(BaseknowClaimTypes.UUSER)?.Value ?? User.FindFirst(ClaimTypes.Name)?.Value ?? string.Empty;
+                    if (!string.Equals(reportCreator, currentUser, StringComparison.OrdinalIgnoreCase))
+                    {
+                        return StatusCode(StatusCodes.Status403Forbidden, "شما مجاز به مشاهده پی‌نوشت‌های این گزارش نیستید.");
+                    }
+                }
+
+                string sql = "SELECT * FROM [dbo].[BugReportComments] WHERE BugReportId = @Id ORDER BY CreatedAt ASC";
+                var comments = await _dbService.DoGetDataSQLAsync<BugReportCommentDto>(sql, new { Id = id });
+                return Ok(comments);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error fetching comments for bug report ID {Id}.", id);
+                return StatusCode(500, "خطای داخلی سرور هنگام دریافت پی‌نوشت‌ها.");
+            }
+        }
+
+        [HttpPost("{id}/comments")]
+        [Authorize]
+        public async Task<IActionResult> AddBugReportComment(int id, [FromBody] AddCommentRequest request)
+        {
+            if (string.IsNullOrWhiteSpace(request.CommentText))
+                return BadRequest("متن پی‌نوشت نمی‌تواند خالی باشد.");
+
+            try
+            {
                 string getSql = "SELECT CreatedBy FROM [dbo].[BugReports] WHERE Id = @Id";
                 var reportCreator = await _dbService.DoGetDataSQLAsyncSingle<string>(getSql, new { Id = id });
 
                 if (reportCreator == null)
                     return NotFound("گزارش یافت نشد.");
 
+                bool isBugReporter = User.FindFirst(BaseknowClaimTypes.GRSAL)?.Value == "999";
                 string currentUser = User.FindFirst(BaseknowClaimTypes.UUSER)?.Value ?? User.FindFirst(ClaimTypes.Name)?.Value ?? string.Empty;
 
-                if (!string.Equals(reportCreator, currentUser, StringComparison.OrdinalIgnoreCase))
+                if (isBugReporter && !string.Equals(reportCreator, currentUser, StringComparison.OrdinalIgnoreCase))
                 {
-                    return StatusCode(StatusCodes.Status403Forbidden, "شما فقط مجاز به ویرایش پی‌نوشت گزارش‌های خودتان هستید.");
+                    return StatusCode(StatusCodes.Status403Forbidden, "شما فقط مجاز به ثبت پی‌نوشت روی گزارش‌های خودتان هستید.");
                 }
 
-                string updateSql = @"UPDATE [dbo].[BugReports] SET [UserNote] = @UserNote WHERE Id = @Id";
-                int result = await _dbService.DoExecuteSQLAsync(updateSql, new { UserNote = request.UserNote, Id = id });
+                string sql = @"
+                    INSERT INTO [dbo].[BugReportComments] (BugReportId, UserId, UserName, IsAdmin, CommentText)
+                    VALUES (@BugReportId, @UserId, @UserName, @IsAdmin, @CommentText);
+                ";
+
+                var commentParams = new
+                {
+                    BugReportId = id,
+                    UserId = currentUser,
+                    UserName = currentUser,
+                    IsAdmin = !isBugReporter,
+                    CommentText = request.CommentText
+                };
+
+                int result = await _dbService.DoExecuteSQLAsync(sql, commentParams);
 
                 if (result > 0)
                     return Ok(new { Message = "پی‌نوشت با موفقیت ثبت شد." });
 
-                return NotFound("گزارش یافت نشد.");
+                return StatusCode(500, "خطا در ثبت پی‌نوشت.");
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error updating bug report user note for ID {Id}.", id);
-                return StatusCode(500, "خطای داخلی سرور هنگام ثبت پی‌نوشت گزارش.");
+                _logger.LogError(ex, "Error adding comment to bug report ID {Id}.", id);
+                return StatusCode(500, "خطای داخلی سرور هنگام ثبت پی‌نوشت.");
             }
         }
 
@@ -226,9 +274,9 @@ namespace Safir.Server.Controllers
             public string? AdminNote { get; set; }
         }
 
-        public class UpdateUserNoteRequest
+        public class AddCommentRequest
         {
-            public string UserNote { get; set; } = string.Empty;
+            public string CommentText { get; set; } = string.Empty;
         }
     }
 }
