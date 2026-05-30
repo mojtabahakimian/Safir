@@ -13,6 +13,7 @@
 
     <MudTable Items="@_reports" Dense="true" Hover="true" Loading="@_isLoading" LoadingProgressColor="Color.Primary" Striped="true">
         <HeaderContent>
+            <MudTh><MudIcon Icon="@Icons.Material.Filled.ExpandMore" /></MudTh>
             <MudTh>شناسه</MudTh>
             <MudTh>تاریخ ثبت</MudTh>
             <MudTh>دسته‌بندی</MudTh>
@@ -21,6 +22,11 @@
             <MudTh>پیام تیم فنی</MudTh>
         </HeaderContent>
         <RowTemplate>
+            <MudTd>
+                <MudIconButton Icon="@(_expandedRows.Contains(context.Id) ? Icons.Material.Filled.ExpandLess : Icons.Material.Filled.ExpandMore)"
+                               OnClick="@(() => ToggleExpand(context.Id))"
+                               Size="Size.Small" />
+            </MudTd>
             <MudTd DataLabel="شناسه">@context.Id</MudTd>
             <MudTd DataLabel="تاریخ ثبت">@FormatShamsiDateFromDateTime(context.CreatedAt)</MudTd>
             <MudTd DataLabel="دسته‌بندی">@context.Category</MudTd>
@@ -58,6 +64,57 @@
                 </MudText>
             </MudTd>
         </RowTemplate>
+        <ChildRowContent>
+            @if (_expandedRows.Contains(context.Id))
+            {
+                <td colspan="7">
+                    <MudCard Elevation="0" Class="pa-4 ma-2" Style="background-color: var(--mud-palette-background-grey);">
+                        <MudCardContent>
+                            <MudGrid>
+                                @if (!string.IsNullOrWhiteSpace(context.AdminNote))
+                                {
+                                    <MudItem xs="12">
+                                        <MudAlert Severity="Severity.Info" Variant="Variant.Filled" Class="mb-3">
+                                            <MudText Typo="Typo.subtitle2">پیام تیم فنی:</MudText>
+                                            <MudText Typo="Typo.body2" Class="mt-1" Style="white-space: pre-wrap;">@context.AdminNote</MudText>
+                                        </MudAlert>
+                                    </MudItem>
+                                }
+
+                                <MudItem xs="12" md="6">
+                                    <MudText Typo="Typo.subtitle2" Color="Color.Primary" Class="mb-1">شرح کامل مشکل:</MudText>
+                                    <MudPaper Elevation="0" Outlined="true" Class="pa-3 mb-3">
+                                        <MudText Typo="Typo.body2" Style="white-space: pre-wrap;">@context.UserDescription</MudText>
+                                    </MudPaper>
+
+                                    <MudText Typo="Typo.subtitle2" Color="Color.Primary" Class="mb-1">مراحل تکرار خطا:</MudText>
+                                    <MudPaper Elevation="0" Outlined="true" Class="pa-3 mb-3">
+                                        <MudText Typo="Typo.body2" Style="white-space: pre-wrap;">@context.ReproduceSteps</MudText>
+                                    </MudPaper>
+                                </MudItem>
+
+                                <MudItem xs="12" md="6">
+                                    <MudText Typo="Typo.subtitle2" Color="Color.Primary" Class="mb-1">نتیجه مورد انتظار:</MudText>
+                                    <MudPaper Elevation="0" Outlined="true" Class="pa-3 mb-3">
+                                        <MudText Typo="Typo.body2" Style="white-space: pre-wrap;">@context.ExpectedResult</MudText>
+                                    </MudPaper>
+
+                                    <MudText Typo="Typo.subtitle2" Color="Color.Primary" Class="mb-1">نتیجه واقعی:</MudText>
+                                    <MudPaper Elevation="0" Outlined="true" Class="pa-3 mb-3">
+                                        <MudText Typo="Typo.body2" Style="white-space: pre-wrap;">@context.ActualResult</MudText>
+                                    </MudPaper>
+                                </MudItem>
+
+                                <MudItem xs="12">
+                                    <MudText Typo="Typo.subtitle2" Color="Color.Primary" Class="mb-1">شدت مشکل:</MudText>
+                                    <MudText Typo="Typo.body2">@GetSeverityLabel(context.Severity)</MudText>
+                                </MudItem>
+                            </MudGrid>
+                        </MudCardContent>
+                    </MudCard>
+                </td>
+            }
+        </ChildRowContent>
         <NoRecordsContent>
             <MudText>شما تاکنون گزارش خطایی ثبت نکرده‌اید.</MudText>
         </NoRecordsContent>
@@ -73,6 +130,24 @@
 @code {
     private List<BugReportDto>? _reports;
     private bool _isLoading = true;
+    private HashSet<int> _expandedRows = new HashSet<int>();
+
+    private void ToggleExpand(int id)
+    {
+        if (_expandedRows.Contains(id))
+            _expandedRows.Remove(id);
+        else
+            _expandedRows.Add(id);
+    }
+
+    private string GetSeverityLabel(string severity) => severity switch
+    {
+        "Critical" => "بحرانی",
+        "High" => "زیاد",
+        "Medium" => "متوسط",
+        "Low" => "کم",
+        _ => severity
+    };
 
     protected override async Task OnInitializedAsync()
     {

@@ -1,0 +1,55 @@
+﻿@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.AspNetCore.Components.Routing
+@using Safir.Shared.Constants
+@inject NavigationManager NavigationManager
+@inject AuthenticationStateProvider AuthStateProvider
+@implements IDisposable
+
+@code {
+    protected override async Task OnInitializedAsync()
+    {
+        NavigationManager.LocationChanged += OnLocationChanged;
+        // Verify route during initial load so we don't flash unauthorized content
+        await CheckAccessAsync(NavigationManager.Uri);
+    }
+
+    private async void OnLocationChanged(object? sender, LocationChangedEventArgs e)
+    {
+        await CheckAccessAsync(e.Location);
+    }
+
+    private async Task CheckAccessAsync(string location)
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        var user = authState.User;
+
+        if (user.Identity?.IsAuthenticated == true)
+        {
+            var isBugReporter = user.FindFirst(BaseknowClaimTypes.GRSAL)?.Value == "999";
+
+            if (isBugReporter)
+            {
+                var relativeUri = NavigationManager.ToBaseRelativePath(location).Split('?')[0].ToLowerInvariant();
+
+                // Allowed routes for BugReporter
+                bool isAllowed = string.IsNullOrEmpty(relativeUri) || // Home page ("/")
+                                 relativeUri.Equals("bug-report") || // ONLY the exact submit page
+                                 relativeUri.StartsWith("my-bug-reports") ||
+                                 relativeUri.StartsWith("bug-report-detail") ||
+                                 relativeUri.StartsWith("settings") ||
+                                 relativeUri.StartsWith("login");
+
+                if (!isAllowed)
+                {
+                    // Redirect to home if they try to access an unauthorized page
+                    NavigationManager.NavigateTo("/", forceLoad: false);
+                }
+            }
+        }
+    }
+
+    public void Dispose()
+    {
+        NavigationManager.LocationChanged -= OnLocationChanged;
+    }
+}

@@ -87,6 +87,11 @@ namespace Safir.Server.Controllers
         [Authorize] // Example: restrict list access to authorized users
         public async Task<IActionResult> GetBugReports()
         {
+            if (User.FindFirst(BaseknowClaimTypes.GRSAL)?.Value == "999")
+            {
+                return StatusCode(StatusCodes.Status403Forbidden, "دسترسی به لیست کل گزارش‌ها برای این نقش مجاز نیست.");
+            }
+
             try
             {
                 string sql = "SELECT * FROM [dbo].[BugReports] ORDER BY CreatedAt DESC";
@@ -112,6 +117,16 @@ namespace Safir.Server.Controllers
                 if (report == null)
                     return NotFound("گزارش یافت نشد.");
 
+                // Enforce Row-Level Security for Bug Reporters
+                if (User.FindFirst(BaseknowClaimTypes.GRSAL)?.Value == "999")
+                {
+                    string currentUser = User.FindFirst(BaseknowClaimTypes.UUSER)?.Value ?? User.FindFirst(ClaimTypes.Name)?.Value ?? string.Empty;
+                    if (!string.Equals(report.CreatedBy, currentUser, StringComparison.OrdinalIgnoreCase))
+                    {
+                        return StatusCode(StatusCodes.Status403Forbidden, "شما فقط مجاز به مشاهده جزئیات گزارش‌های ثبت شده توسط خودتان هستید.");
+                    }
+                }
+
                 return Ok(report);
             }
             catch (Exception ex)
@@ -125,6 +140,11 @@ namespace Safir.Server.Controllers
         [Authorize]
         public async Task<IActionResult> UpdateBugReportStatus(int id, [FromBody] UpdateStatusRequest request)
         {
+            if (User.FindFirst(BaseknowClaimTypes.GRSAL)?.Value == "999")
+            {
+                return StatusCode(StatusCodes.Status403Forbidden, "شما مجاز به تغییر وضعیت گزارش‌ها نیستید.");
+            }
+
             try
             {
                 string sql = @"UPDATE [dbo].[BugReports] SET [Status] = @Status, [AdminNote] = @AdminNote WHERE Id = @Id";
