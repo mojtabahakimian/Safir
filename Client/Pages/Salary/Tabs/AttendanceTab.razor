@@ -223,11 +223,19 @@
             <Safir.Client.Pages.Salary.Tabs.Pay2Select TItem="Pay2PeriodLookupDto"
                                                        TValue="long"
                                                        Items="PeriodOptions"
-                                                       @bind-Value="SelectedPeriodDate"
+                                                       Value="@SelectedPeriodDate"
+                                                       ValueChanged="OnPeriodChanged"
                                                        TextSelector="x => x.PERIOD_TITLE"
                                                        ValueSelector="x => x.PERIOD_DATE"
-                                                       Clearable="false" />
+                                                       Editable="false"
+                                                       Clearable="false"
+                                                       Placeholder="— انتخاب دوره —" />
         </div>
+
+        <button class="btn-outline-pay2" @onclick="OpenNewPeriodModal" disabled="@IsLoading">
+            <i class="bi bi-calendar-plus"></i> ایجاد دوره جدید
+        </button>
+
         <button class="btn-primary-pay2" @onclick="LoadPeriod" disabled="@IsLoading">
             @if (IsLoading)
             {
@@ -409,31 +417,26 @@
     }
 </div>
 
-@if (ShowDynamicModal)
+@if (ShowNewPeriodModal)
 {
-    <div class="pay2-select-backdrop" style="background: rgba(15,23,42,0.6); z-index: 2999;" @onclick="() => ShowDynamicModal = false"></div>
-    <div class="card-custom pay2-modal-container" style="max-width: 500px; height: 500px;">
+    <div class="pay2-select-backdrop" style="background: rgba(15,23,42,0.6); z-index: 2999;" @onclick="CloseNewPeriodModal"></div>
+    <div class="card-custom pay2-modal-container" style="max-width: 420px; height: auto;">
         <div class="pay2-modal-header p2-card-header" style="margin:0;">
-            <h5 style="margin:0; font-size:16px;">مقادیر متغیر (پویا): <span style="color:var(--p2-primary);">@ActiveEmpName</span></h5>
-            <button class="btn-ghost-pay2" @onclick="() => ShowDynamicModal = false"><i class="bi bi-x-lg"></i></button>
+            <h5 style="margin:0; font-size:16px;">ایجاد دوره کارکرد جدید</h5>
+            <button class="btn-ghost-pay2" @onclick="CloseNewPeriodModal"><i class="bi bi-x-lg"></i></button>
         </div>
-        <div class="pay2-modal-body" style="padding: 15px;">
-            <table class="p2-table" style="width: 100%;">
-                <thead><tr><th>عنوان آیتم حقوقی</th><th style="text-align: left;">مبلغ (ریال)</th></tr></thead>
-                <tbody>
-                    @foreach (var val in DynamicValues)
-                    {
-                        <tr>
-                            <td style="font-weight: bold; color: var(--p2-text-muted);">@val.ITEM_NAME</td>
-                            <td><Safir.Client.Pages.Salary.Tabs.Pay2NumericInput @bind-Value="val.VALUE_STR" IsDigitGroupActive="true" ThreeTwoZero="true" CssClass="pay2-input" Direction="ltr" Disabled="@PeriodData.Period.IsReadOnly" /></td>
-                        </tr>
-                    }
-                </tbody>
-            </table>
+        <div class="pay2-modal-body" style="padding: 20px;">
+            <div class="form-field">
+                <label>ماه دوره (فرمت: سال و ماه + 00) *</label>
+                <Safir.Client.Pages.Salary.Tabs.Pay2NumericInput @bind-Value="NewPeriodDateStr" MaxLength="8" Direction="ltr" Placeholder="مثال: 14040100" />
+                <div class="p2-text-muted" style="font-size:11.5px; margin-top:10px; line-height: 1.6;">
+                    <i class="bi bi-info-circle p2-text-primary"></i> سیستم به صورت خودکار ماه بعدی را پیشنهاد داده است. در صورت نیاز آن را تغییر دهید. دو رقم آخر حتماً باید صفر (00) باشد.
+                </div>
+            </div>
         </div>
         <div class="pay2-modal-footer" style="justify-content: flex-end;">
-            <button class="btn-outline-pay2" @onclick="() => ShowDynamicModal = false" style="margin-left: 10px;">بستن</button>
-            <button class="btn-primary-pay2" @onclick="SaveDynamicValues" disabled="@PeriodData.Period.IsReadOnly">ذخیره مقادیر</button>
+            <button class="btn-outline-pay2" @onclick="CloseNewPeriodModal" style="margin-left: 10px;">انصراف</button>
+            <button class="btn-primary-pay2" @onclick="ConfirmNewPeriod" disabled="@IsLoading">ایجاد و بارگذاری</button>
         </div>
     </div>
 }
@@ -473,35 +476,11 @@
             if (Workshops.Any()) SelectedWsId = Workshops.First().WS_ID;
 
             await LoadPeriodOptionsAsync();
-
         }
-        catch { }
-    }
-
-    async Task LoadPeriod()
-    {
-        if (SelectedWsId <= 0 || SelectedPeriodDate <= 0)
+        catch (Exception ex)
         {
-            Snackbar.Add("کارگاه و ماه را مشخص کنید.", MudBlazor.Severity.Warning); return;
+            Snackbar.Add("خطا در بارگذاری اطلاعات اولیه: " + ex.Message, MudBlazor.Severity.Error);
         }
-
-        IsLoading = true;
-        try
-        {
-            if (SelectedPeriodDate <= 0)
-            {
-                Snackbar.Add("ماه دوره را انتخاب کنید.", MudBlazor.Severity.Warning);
-                return;
-            }
-
-            long pDate = SelectedPeriodDate;
-            PeriodData = await AttApi.InitPeriodAsync(SelectedWsId, pDate);
-
-            FilteredLines = PeriodData.Lines.ToList();
-            _searchTerm = "";
-        }
-        catch (Exception ex) { Snackbar.Add(ex.Message, MudBlazor.Severity.Error); }
-        finally { IsLoading = false; }
     }
 
     void ApplyFilter()
@@ -514,10 +493,10 @@
         }
         else
         {
-            var term = _searchTerm.Trim().ToLower();
+            var term = _searchTerm.Trim();
             FilteredLines = PeriodData.Lines.Where(x =>
-                (x.FULL_NAME != null && x.FULL_NAME.ToLower().Contains(term)) ||
-                (x.EMP_CODE != null && x.EMP_CODE.Contains(term))
+                (x.FULL_NAME != null && x.FULL_NAME.Contains(term, StringComparison.OrdinalIgnoreCase)) ||
+                (x.EMP_CODE != null && x.EMP_CODE.Contains(term, StringComparison.OrdinalIgnoreCase))
             ).ToList();
         }
     }
@@ -559,24 +538,51 @@
         await LoadPeriodOptionsAsync();
     }
 
-    async Task LoadPeriodOptionsAsync()
-    {
-        PeriodOptions = new();
+    string _periodInputText = "";
 
-        if (SelectedWsId <= 0)
+    async Task OnPeriodTextChanged(string? newText)
+    {
+        _periodInputText = newText ?? "";
+
+        if (string.IsNullOrWhiteSpace(_periodInputText))
         {
             SelectedPeriodDate = 0;
             return;
         }
 
-        PeriodOptions = await AttApi.GetPeriodsAsync(SelectedWsId);
-        SelectedPeriodDate = PeriodOptions.Any()
-            ? PeriodOptions.First().PERIOD_DATE
-            : 0;
+        // آیا متنی که وارد شده دقیقاً عنوان یکی از دوره‌های لیست است؟ (یعنی کاربر از لیست کلیک کرده است)
+        var matchedItem = PeriodOptions.FirstOrDefault(x => x.PERIOD_TITLE == _periodInputText);
+        if (matchedItem != null)
+        {
+            SelectedPeriodDate = matchedItem.PERIOD_DATE;
+            return; // خروج سریع، نیازی به Parse کردن و صفر کردن متغیر نیست
+        }
+
+        // --- از اینجا به بعد یعنی کاربر در حال تایپِ دستی است ---
+        SelectedPeriodDate = 0;
+
+        if (TryNormalizePeriodDate(_periodInputText, out long pDate, out _))
+        {
+            if (!PeriodOptions.Any(x => x.PERIOD_DATE == pDate))
+            {
+                PeriodOptions.Insert(0, new Pay2PeriodLookupDto
+                {
+                    PERIOD_DATE = pDate,
+                    PERIOD_TITLE = $"{pDate} (ایجاد دوره جدید)"
+                });
+            }
+            SelectedPeriodDate = pDate;
+        }
     }
+
+    bool IsLoadingDynamic = false;
 
     async Task OpenDynamicValues(int empId, string name)
     {
+        // جلوگیری از کلیک‌های متوالی و تداخل داده ‌ها
+        if (IsLoadingDynamic) return;
+
+        IsLoadingDynamic = true;
         ActiveEmpId = empId;
         ActiveEmpName = name;
         try
@@ -584,7 +590,14 @@
             DynamicValues = await AttApi.GetDynamicValuesAsync(PeriodData!.Period.PER_ID, empId);
             ShowDynamicModal = true;
         }
-        catch (Exception ex) { Snackbar.Add(ex.Message, MudBlazor.Severity.Error); }
+        catch (Exception ex)
+        {
+            Snackbar.Add(ex.Message, MudBlazor.Severity.Error);
+        }
+        finally
+        {
+            IsLoadingDynamic = false;
+        }
     }
 
     async Task SaveDynamicValues()
@@ -634,20 +647,31 @@
     }
 
     List<Pay2PeriodLookupDto> PeriodOptions = new();
+    
     long SelectedPeriodDate;
     static bool TryNormalizePeriodDate(string? input, out long periodDate, out string error)
     {
         periodDate = 0;
         error = string.Empty;
 
-        string raw = (input ?? string.Empty)
-            .Trim()
-            .Replace("/", "")
-            .Replace("-", "");
+        if (string.IsNullOrWhiteSpace(input))
+        {
+            error = "مقدار وارد شده خالی است.";
+            return false;
+        }
+
+        // 🚀 اصلاح حرفه‌ای: تبدیل اعداد فارسی و عربی به انگلیسی + حذف کاراکترهای اضافی
+        var normalizedChars = input.Trim()
+            .Select(c => c >= '۰' && c <= '۹' ? (char)(c - '۰' + '0') :
+                         c >= '٠' && c <= '٩' ? (char)(c - '٠' + '0') : c)
+            .Where(c => c != '/' && c != '-')
+            .ToArray();
+
+        string raw = new string(normalizedChars);
 
         if (raw.Length != 8 || !long.TryParse(raw, out periodDate))
         {
-            error = "ماه باید دقیقاً ۸ رقم باشد. مثال صحیح: 14030700";
+            error = "ماه باید دقیقاً ۸ رقم عدد باشد. مثال صحیح: 14030700";
             return false;
         }
 
@@ -677,5 +701,145 @@
     }
 
 
+    // ====================================================
+    // منطق مدیریت دوره‌ها و لود لیست
+    // ====================================================
 
+    async Task LoadPeriodOptionsAsync()
+    {
+        PeriodOptions = new();
+
+        if (SelectedWsId <= 0)
+        {
+            SelectedPeriodDate = 0;
+            return;
+        }
+
+        PeriodOptions = await AttApi.GetPeriodsAsync(SelectedWsId);
+
+        // اگر از قبل دوره‌ای انتخاب شده بود و در لیست جدید هم هست، همان را حفظ کن
+        if (SelectedPeriodDate > 0 && PeriodOptions.Any(x => x.PERIOD_DATE == SelectedPeriodDate))
+        {
+            // حفظ مقدار فعلی (هیچ کاری نمی‌کنیم)
+        }
+        // در غیر این صورت، اولین گزینه را انتخاب کن
+        else
+        {
+            var firstOpt = PeriodOptions.FirstOrDefault();
+            SelectedPeriodDate = firstOpt != null ? firstOpt.PERIOD_DATE : 0;
+        }
+    }
+
+    async Task OnPeriodChanged(long newVal)
+    {
+        SelectedPeriodDate = newVal;
+        // با تغییر ماه، جدول قبلی پاک شود تا کاربر بداند باید دوباره دکمه بارگذاری را بزند
+        PeriodData = null;
+        FilteredLines.Clear();
+    }
+
+    async Task LoadPeriod()
+    {
+        if (SelectedWsId <= 0)
+        {
+            Snackbar.Add("کارگاه را انتخاب کنید.", MudBlazor.Severity.Warning);
+            return;
+        }
+
+        if (SelectedPeriodDate <= 0)
+        {
+            Snackbar.Add("هیچ دوره‌ای انتخاب نشده است. اگر دوره‌ای وجود ندارد، روی «ایجاد دوره جدید» کلیک کنید.", MudBlazor.Severity.Warning);
+            return;
+        }
+
+        IsLoading = true;
+        try
+        {
+            PeriodData = await AttApi.InitPeriodAsync(SelectedWsId, SelectedPeriodDate);
+            FilteredLines = PeriodData.Lines.ToList();
+            _searchTerm = "";
+
+            // 🚀 حل مشکل UX: بررسی و اطلاع‌رسانی در صورت خالی بودن لیست پرسنل کارگاه
+            if (PeriodData.Lines == null || !PeriodData.Lines.Any())
+            {
+                Snackbar.Add("دوره با موفقیت بارگذاری شد، اما هیچ پرسنل فعالی در این کارگاه یافت نشد. لطفاً ابتدا از تب «پرسنل و احکام» کارمند تعریف کنید.", MudBlazor.Severity.Info);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add(ex.Message, MudBlazor.Severity.Error);
+        }
+        finally
+        {
+            IsLoading = false;
+        }
+    }
+
+    bool ShowNewPeriodModal = false;
+    string NewPeriodDateStr = "";
+
+    void OpenNewPeriodModal()
+    {
+        if (SelectedWsId <= 0)
+        {
+            Snackbar.Add("ابتدا کارگاه را انتخاب کنید.", MudBlazor.Severity.Warning);
+            return;
+        }
+
+        // 🚀 هوش مصنوعی UI: پیشنهاد خودکار ماه بعدی
+        if (PeriodOptions.Any())
+        {
+            long latest = PeriodOptions.Max(x => x.PERIOD_DATE);
+            int year = (int)(latest / 10000);
+            int month = (int)((latest / 100) % 100);
+
+            month++; // ماه بعد
+            if (month > 12)
+            {
+                month = 1;
+                year++;
+            }
+            NewPeriodDateStr = $"{year}{month:D2}00";
+        }
+        else
+        {
+            string currentShamsi = Safir.Shared.Utility.CL_Tarikh.GetCurrentPersianDateAsLong().ToString();
+            NewPeriodDateStr = currentShamsi.Substring(0, 6) + "00";
+        }
+
+        ShowNewPeriodModal = true;
+    }
+
+    void CloseNewPeriodModal()
+    {
+        ShowNewPeriodModal = false;
+    }
+
+    async Task ConfirmNewPeriod()
+    {
+        if (!TryNormalizePeriodDate(NewPeriodDateStr, out long pDate, out string errorMsg))
+        {
+            Snackbar.Add(errorMsg, MudBlazor.Severity.Error);
+            return;
+        }
+
+        if (PeriodOptions.Any(x => x.PERIOD_DATE == pDate))
+        {
+            Snackbar.Add("این دوره از قبل وجود دارد و برای شما بارگذاری شد.", MudBlazor.Severity.Info);
+            SelectedPeriodDate = pDate;
+            ShowNewPeriodModal = false;
+            await LoadPeriod();
+            return;
+        }
+
+        SelectedPeriodDate = pDate;
+        ShowNewPeriodModal = false;
+
+        await LoadPeriod();
+
+        // 🚀 اکنون این متد به لطف اصلاح بالا، انتخاب SelectedPeriodDate را دستکاری نمی‌کند
+        await LoadPeriodOptionsAsync();
+
+        Snackbar.Add($"دوره {pDate} با موفقیت ایجاد و لیست کارکرد آماده شد.", MudBlazor.Severity.Success);
+    }
 }

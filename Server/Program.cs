@@ -109,7 +109,9 @@ using (var scope = app.Services.CreateScope())
         {
             "001_CreateEvaporationReportsTable.sql",
             "002_CreateBugReportsTable.sql",
-            "003_AlterBugReportsAddMissingColumns.sql"
+            "003_AlterBugReportsAddMissingColumns.sql",
+            "004_AlterBugReportsAddUserNote.sql",
+            "005_CreateBugReportCommentsTable.sql"
         };
 
         foreach (var scriptName in scriptsToRun)
@@ -181,6 +183,37 @@ app.UseAuthentication(); // Checks for valid tokens
 app.UseAuthorization(); // Enforces authorization policies ([Authorize] attribute)
 // --- End Authentication/Authorization Middleware ---
 
+// --- BugReporter Global Backend Security Middleware ---
+app.Use(async (context, next) =>
+{
+    if (context.Request.Path.StartsWithSegments("/api"))
+    {
+        var user = context.User;
+        if (user.Identity?.IsAuthenticated == true)
+        {
+            var isBugReporter = user.FindFirst(Safir.Shared.Constants.BaseknowClaimTypes.GRSAL)?.Value == "999";
+            if (isBugReporter)
+            {
+                // Only allow specific APIs for the Bug Reporter role
+                var path = context.Request.Path.Value?.ToLowerInvariant();
+                bool isAllowedApi = path != null && (
+                    path.StartsWith("/api/bugreport") ||
+                    path.StartsWith("/api/auth") ||
+                    path.StartsWith("/api/userstate") // Add any other generic APIs needed
+                );
+
+                if (!isAllowedApi)
+                {
+                    context.Response.StatusCode = StatusCodes.Status403Forbidden;
+                    await context.Response.WriteAsync("You do not have permission to access this resource.");
+                    return; // Short-circuit the pipeline
+                }
+            }
+        }
+    }
+    await next();
+});
+// --- End Backend Security Middleware ---
 
 app.MapRazorPages();
 app.MapControllers(); // Make sure API controllers are mapped

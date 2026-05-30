@@ -3,16 +3,19 @@
 @using Safir.Shared.Models.BugReport
 @using Safir.Client.Services
 @using MudBlazor
+@using Microsoft.AspNetCore.Components.Authorization
+@using Safir.Shared.Constants
 @attribute [Authorize]
 @inject BugReportApiService BugReportApi
 @inject NavigationManager NavigationManager
 @inject ISnackbar Snackbar
+@inject AuthenticationStateProvider AuthStateProvider
 
 <PageTitle>جزئیات گزارش خطا</PageTitle>
 
 <MudContainer MaxWidth="MaxWidth.Large" Class="mt-6 mb-16">
     <MudButton Variant="Variant.Text" StartIcon="@Icons.Material.Filled.ArrowBack"
-               OnClick='() => NavigationManager.NavigateTo("/bug-report-list")' Class="mb-4">
+               OnClick='() => NavigationManager.NavigateTo(_isBugReporter ? "/my-bug-reports" : "/bug-report-list")' Class="mb-4">
         بازگشت به لیست
     </MudButton>
 
@@ -184,31 +187,100 @@
                     @InfoRow("مسیر", _report.Route)
                 </MudPaper>
 
-                <!-- Admin Panel -->
-                <MudPaper Elevation="2" Class="pa-5">
-                    <MudText Typo="Typo.h6" Color="Color.Secondary" Class="mb-3">
-                        <MudIcon Icon="@Icons.Material.Filled.AdminPanelSettings" Class="me-1" />
-                        پنل مدیریت
+                @if (!_isBugReporter)
+                {
+                    <!-- Admin Panel -->
+                    <MudPaper Elevation="2" Class="pa-5 mb-4">
+                        <MudText Typo="Typo.h6" Color="Color.Secondary" Class="mb-3">
+                            <MudIcon Icon="@Icons.Material.Filled.AdminPanelSettings" Class="me-1" />
+                            پنل مدیریت
+                        </MudText>
+                        <MudDivider Class="mb-3" />
+                        <MudSelect @bind-Value="_newStatus" Label="تغییر وضعیت" Variant="Variant.Outlined" Dense="true" Class="mb-3">
+                            <MudSelectItem Value="@("New")">جدید</MudSelectItem>
+                            <MudSelectItem Value="@("InReview")">در حال بررسی</MudSelectItem>
+                            <MudSelectItem Value="@("NeedMoreInfo")">نیاز به اطلاعات بیشتر</MudSelectItem>
+                            <MudSelectItem Value="@("Fixed")">رفع شده</MudSelectItem>
+                            <MudSelectItem Value="@("Rejected")">رد شده</MudSelectItem>
+                        </MudSelect>
+                        <MudTextField @bind-Value="_adminNote" Label="یادداشت مدیر" Variant="Variant.Outlined"
+                                      Lines="3" Class="mb-3" HelperText="یادداشت داخلی یا پیام به کاربر" />
+                        <MudButton Variant="Variant.Filled" Color="Color.Secondary" FullWidth="true"
+                                   StartIcon="@Icons.Material.Filled.Save" OnClick="UpdateStatus"
+                                   Disabled="_isSaving">
+                            @if (_isSaving)
+                            {
+                                <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="me-2" />
+                            }
+                            ذخیره تغییرات
+                        </MudButton>
+                    </MudPaper>
+                }
+
+                <!-- Comments Chat Panel -->
+                <MudPaper Elevation="2" Class="pa-5 mt-4 d-flex flex-column" Style="height: 600px;">
+                    <MudText Typo="Typo.h6" Color="Color.Primary" Class="mb-3">
+                        <MudIcon Icon="@Icons.Material.Filled.Forum" Class="me-1" />
+                        گفتگو با پشتیبانی
                     </MudText>
-                    <MudDivider Class="mb-3" />
-                    <MudSelect @bind-Value="_newStatus" Label="تغییر وضعیت" Variant="Variant.Outlined" Dense="true" Class="mb-3">
-                        <MudSelectItem Value="@("New")">جدید</MudSelectItem>
-                        <MudSelectItem Value="@("InReview")">در حال بررسی</MudSelectItem>
-                        <MudSelectItem Value="@("NeedMoreInfo")">نیاز به اطلاعات بیشتر</MudSelectItem>
-                        <MudSelectItem Value="@("Fixed")">رفع شده</MudSelectItem>
-                        <MudSelectItem Value="@("Rejected")">رد شده</MudSelectItem>
-                    </MudSelect>
-                    <MudTextField @bind-Value="_adminNote" Label="یادداشت مدیر" Variant="Variant.Outlined"
-                                  Lines="3" Class="mb-3" HelperText="یادداشت داخلی یا پیام به کاربر" />
-                    <MudButton Variant="Variant.Filled" Color="Color.Secondary" FullWidth="true"
-                               StartIcon="@Icons.Material.Filled.Save" OnClick="UpdateStatus"
-                               Disabled="_isSaving">
-                        @if (_isSaving)
+                    <MudDivider Class="mb-4" />
+
+                    <!-- Chat History Area -->
+                    <div class="flex-grow-1 overflow-y-auto mb-4 px-2" Style="max-height: 500px;">
+                        @if (_comments != null && _comments.Any())
                         {
-                            <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="me-2" />
+                            <div class="d-flex flex-column gap-4">
+                                @foreach (var comment in _comments)
+                                {
+                                    bool isMyComment = (_isBugReporter && !comment.IsAdmin) || (!_isBugReporter && comment.IsAdmin);
+
+                                    <div class="d-flex w-100 @(isMyComment ? "justify-start" : "justify-end")">
+                                        <div class="d-flex flex-column" Style="max-width: 80%;">
+                                            <div class="d-flex align-center mb-1 @(isMyComment ? "" : "flex-row-reverse")">
+                                                <MudText Typo="Typo.caption" Color="Color.Default" Class="text-muted mx-2">
+                                                    @(string.IsNullOrEmpty(comment.UserName) ? (comment.IsAdmin ? "پشتیبان" : "شما") : comment.UserName)
+                                                </MudText>
+                                                <MudText Typo="Typo.caption" Style="font-size: 0.65rem; color: #aaa;">
+                                                    @comment.CreatedAt.ToString("yyyy/MM/dd HH:mm")
+                                                </MudText>
+                                            </div>
+
+                                            <MudPaper Elevation="1"
+                                                      Class="@($"pa-3 {(isMyComment ? "rounded-tr-xl rounded-b-xl" : "rounded-tl-xl rounded-b-xl")}")"
+                                                      Style="@($"background-color: {(isMyComment ? "var(--mud-palette-primary)" : "var(--mud-palette-background-grey)")}; color: {(isMyComment ? "white" : "inherit")};")">
+                                                <MudText Typo="Typo.body2" Style="white-space:pre-wrap;">@comment.CommentText</MudText>
+                                            </MudPaper>
+                                        </div>
+                                    </div>
+                                }
+                            </div>
                         }
-                        ذخیره تغییرات
-                    </MudButton>
+                        else
+                        {
+                            <div class="d-flex justify-center align-center h-100">
+                                <MudText Typo="Typo.body2" Color="Color.Default" Class="text-muted">هنوز هیچ گفتگویی ثبت نشده است.</MudText>
+                            </div>
+                        }
+                    </div>
+
+                    <!-- Add Comment Area (Chat Input) -->
+                    <div class="d-flex align-end gap-2 mt-auto">
+                        <MudTextField @bind-Value="_newComment" Placeholder="پیام خود را بنویسید..." Variant="Variant.Outlined"
+                                      Lines="2" Class="flex-grow-1" Immediate="true" Margin="Margin.Dense" />
+
+                        <MudButton Variant="Variant.Filled" Color="Color.Primary"
+                                   OnClick="AddComment" Style="height: 52px; min-width: 64px;"
+                                   Disabled="@(_isSavingComment || string.IsNullOrWhiteSpace(_newComment))">
+                            @if (_isSavingComment)
+                            {
+                                <MudProgressCircular Size="Size.Small" Indeterminate="true" />
+                            }
+                            else
+                            {
+                                <MudIcon Icon="@Icons.Material.Filled.Send" />
+                            }
+                        </MudButton>
+                    </div>
                 </MudPaper>
             </MudItem>
         </MudGrid>
@@ -219,13 +291,20 @@
     [Parameter] public int Id { get; set; }
 
     private BugReportDto? _report;
+    private List<BugReportCommentDto>? _comments;
     private bool _isLoading = true;
     private bool _isSaving = false;
+    private bool _isSavingComment = false;
     private string _newStatus = "New";
     private string? _adminNote;
+    private string? _newComment;
+    private bool _isBugReporter = false;
 
     protected override async Task OnInitializedAsync()
     {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        _isBugReporter = authState.User.FindFirst(BaseknowClaimTypes.GRSAL)?.Value == "999";
+
         await LoadReport();
     }
 
@@ -239,6 +318,7 @@
             {
                 _newStatus = _report.Status;
                 _adminNote = _report.AdminNote;
+                _comments = await BugReportApi.GetBugReportCommentsAsync(Id) ?? new List<BugReportCommentDto>();
             }
         }
         catch
@@ -275,6 +355,36 @@
         finally
         {
             _isSaving = false;
+        }
+    }
+
+    private async Task AddComment()
+    {
+        if (string.IsNullOrWhiteSpace(_newComment)) return;
+
+        _isSavingComment = true;
+        try
+        {
+            var response = await BugReportApi.AddBugReportCommentAsync(Id, _newComment);
+            if (response.IsSuccessStatusCode)
+            {
+                _newComment = string.Empty;
+                // Reload comments
+                _comments = await BugReportApi.GetBugReportCommentsAsync(Id) ?? new List<BugReportCommentDto>();
+                Snackbar.Add("پی‌نوشت با موفقیت ثبت شد.", Severity.Success);
+            }
+            else
+            {
+                Snackbar.Add("خطا در ثبت پی‌نوشت.", Severity.Error);
+            }
+        }
+        catch
+        {
+            Snackbar.Add("خطای سیستمی در ثبت پی‌نوشت.", Severity.Error);
+        }
+        finally
+        {
+            _isSavingComment = false;
         }
     }
 

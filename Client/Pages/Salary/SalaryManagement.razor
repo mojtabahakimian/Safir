@@ -287,12 +287,17 @@
             {
                 <Safir.Client.Pages.Salary.Tabs.ItemDefTab />
             }
+            @if (ActiveTab == "payroll")
+            {
+                <Safir.Client.Pages.Salary.Tabs.PayrollTab />
+            }
             @if (ActiveTab != "dashboard" &&
                         ActiveTab != "workshops" &&
                         ActiveTab != "employees" &&
                         ActiveTab != "attendance" &&
                         ActiveTab != "advances" &&
                         ActiveTab != "itemdefs" &&
+                        ActiveTab != "payroll" &&
                         ActiveTab != "settings")
             {
                 <div class="pay2-tab-container"
@@ -350,7 +355,7 @@
         "employees" => "پرسنل و احکام",
         "attendance" => "کارکرد پرسنل",
         "advances" => "مساعده هوشمند",
-        "payroll" => "محاسبه حقوق",
+        "payroll" => "مدیریت اجرای حقوق",
         "settings" => "تنظیمات سیستم",
         "itemdefs" => "آیتم‌های حقوقی",
         _ => "سیستم حقوق و دستمزد"

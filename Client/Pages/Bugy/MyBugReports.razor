@@ -5,13 +5,14 @@
 @using System.Globalization
 @inject BugReportApiService BugReportApi
 @inject ISnackbar Snackbar
+@inject NavigationManager NavigationManager
 
 <PageTitle>گزارش‌های خطای من</PageTitle>
 
 <MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="mt-8 mb-16">
     <MudText Typo="Typo.h4" Class="mb-6">گزارش‌های خطای من</MudText>
 
-    <MudTable Items="@_reports" Dense="true" Hover="true" Loading="@_isLoading" LoadingProgressColor="Color.Primary" Striped="true">
+    <MudTable Items="@_reports" Dense="true" Hover="true" Loading="@_isLoading" LoadingProgressColor="Color.Primary" Striped="true" OnRowClick="OnRowClick" T="BugReportDto" RowClass="cursor-pointer">
         <HeaderContent>
             <MudTh>شناسه</MudTh>
             <MudTh>تاریخ ثبت</MudTh>
@@ -94,6 +95,11 @@
         {
             _isLoading = false;
         }
+    }
+
+    private void OnRowClick(TableRowClickEventArgs<BugReportDto> args)
+    {
+        NavigationManager.NavigateTo($"/bug-report-detail/{args.Item.Id}");
     }
 
     private string FormatShamsiDateFromDateTime(DateTime dt)

@@ -5,10 +5,43 @@
 @using MudBlazor
 @attribute [Authorize]
 @inject BugReportApiService BugReportApi
-@inject NavigationManager NavigationManager
 @inject ISnackbar Snackbar
 
 <PageTitle>لیست گزارش‌های خطا</PageTitle>
+
+<style>
+    .bug-report-link-table tbody .mud-table-cell {
+        padding: 0 !important;
+    }
+
+    .bug-report-link-table thead .mud-table-cell {
+        padding: 16px !important;
+    }
+    .bug-report-row-link {
+        display: block;
+        width: 100%;
+        min-height: 36px;
+        padding: 6px 16px;
+        color: inherit;
+        text-decoration: none;
+    }
+
+        .bug-report-row-link:hover {
+            color: inherit;
+            text-decoration: none;
+        }
+
+    .bug-report-row-link-center {
+        text-align: center;
+    }
+
+    .bug-report-summary-text {
+        max-width: 300px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+</style>
 
 <MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="mt-6 mb-16">
     <MudText Typo="Typo.h5" Class="mb-4">
@@ -66,7 +99,7 @@
         </MudText>
 
         <MudTable Items="@FilteredReports" Hover="true" Striped="true" Dense="true" Breakpoint="Breakpoint.Sm"
-                  OnRowClick="OnRowClick" T="BugReportDto" RowClass="cursor-pointer">
+                  T="BugReportDto" RowClass="cursor-pointer" Class="bug-report-link-table">
             <HeaderContent>
                 <MudTh>شناسه</MudTh>
                 <MudTh>تاریخ ثبت</MudTh>
@@ -78,34 +111,65 @@
                 <MudTh>خلاصه مشکل</MudTh>
             </HeaderContent>
             <RowTemplate>
-                <MudTd DataLabel="شناسه">@context.Id</MudTd>
-                <MudTd DataLabel="تاریخ ثبت">@context.CreatedAt.ToString("yyyy/MM/dd HH:mm")</MudTd>
-                <MudTd DataLabel="مشتری">@(context.CustomerName ?? "-")</MudTd>
-                <MudTd DataLabel="دسته‌بندی">@(context.Category ?? "-")</MudTd>
+                <MudTd DataLabel="شناسه">
+                    <a class="bug-report-row-link bug-report-row-link-center" href="@BugReportDetailUrl(context)">
+                        @context.Id
+                    </a>
+                </MudTd>
+
+                <MudTd DataLabel="تاریخ ثبت">
+                    <a class="bug-report-row-link" href="@BugReportDetailUrl(context)">
+                        @context.CreatedAt.ToString("yyyy/MM/dd HH:mm")
+                    </a>
+                </MudTd>
+
+                <MudTd DataLabel="مشتری">
+                    <a class="bug-report-row-link" href="@BugReportDetailUrl(context)">
+                        @(context.CustomerName ?? "-")
+                    </a>
+                </MudTd>
+
+                <MudTd DataLabel="دسته‌بندی">
+                    <a class="bug-report-row-link" href="@BugReportDetailUrl(context)">
+                        @(context.Category ?? "-")
+                    </a>
+                </MudTd>
+
                 <MudTd DataLabel="شدت">
-                    <MudChip T="string" Color="@GetSeverityColor(context.Severity)" Size="Size.Small" Label="true">
-                        @GetSeverityLabel(context.Severity)
-                    </MudChip>
+                    <a class="bug-report-row-link" href="@BugReportDetailUrl(context)">
+                        <MudChip T="string" Color="@GetSeverityColor(context.Severity)" Size="Size.Small" Label="true">
+                            @GetSeverityLabel(context.Severity)
+                        </MudChip>
+                    </a>
                 </MudTd>
+
                 <MudTd DataLabel="وضعیت">
-                    <MudChip T="string" Color="@GetStatusColor(context.Status)" Variant="Variant.Outlined" Size="Size.Small" Label="true">
-                        @GetStatusLabel(context.Status)
-                    </MudChip>
+                    <a class="bug-report-row-link" href="@BugReportDetailUrl(context)">
+                        <MudChip T="string" Color="@GetStatusColor(context.Status)" Variant="Variant.Outlined" Size="Size.Small" Label="true">
+                            @GetStatusLabel(context.Status)
+                        </MudChip>
+                    </a>
                 </MudTd>
+
                 <MudTd DataLabel="متوقف‌کننده">
-                    @if (context.IsBlocking)
-                    {
-                        <MudIcon Icon="@Icons.Material.Filled.Warning" Color="Color.Error" Size="Size.Small" Title="مشکل متوقف‌کننده است" />
-                    }
-                    else
-                    {
-                        <span>-</span>
-                    }
+                    <a class="bug-report-row-link bug-report-row-link-center" href="@BugReportDetailUrl(context)">
+                        @if (context.IsBlocking)
+                        {
+                            <MudIcon Icon="@Icons.Material.Filled.Warning" Color="Color.Error" Size="Size.Small" Title="مشکل متوقف‌کننده است" />
+                        }
+                        else
+                        {
+                            <span>-</span>
+                        }
+                    </a>
                 </MudTd>
+
                 <MudTd DataLabel="خلاصه مشکل">
-                    <MudText Typo="Typo.body2" Style="max-width:300px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
-                        @context.UserDescription
-                    </MudText>
+                    <a class="bug-report-row-link" href="@BugReportDetailUrl(context)">
+                        <MudText Typo="Typo.body2" Class="bug-report-summary-text">
+                            @context.UserDescription
+                        </MudText>
+                    </a>
                 </MudTd>
             </RowTemplate>
             <PagerContent>
@@ -163,9 +227,9 @@
         }
     }
 
-    private void OnRowClick(TableRowClickEventArgs<BugReportDto> args)
+    private static string BugReportDetailUrl(BugReportDto report)
     {
-        NavigationManager.NavigateTo($"/bug-report-detail/{args.Item.Id}");
+        return $"/bug-report-detail/{report.Id}";
     }
 
     private Color GetSeverityColor(string severity) => severity switch
