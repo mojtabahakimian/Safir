@@ -538,12 +538,8 @@
         await LoadPeriodOptionsAsync();
     }
 
-    // 🚀 اصلاح باگ ۱: همگام‌سازی متن کادر با مقادیر اولیه دریافتی از سرور
-
     string _periodInputText = "";
 
-
-    // 🚀 اصلاح باگ ۳: تفکیک منطق "تایپ دستی" از "انتخاب از لیست"
     async Task OnPeriodTextChanged(string? newText)
     {
         _periodInputText = newText ?? "";
@@ -579,8 +575,14 @@
         }
     }
 
+    bool IsLoadingDynamic = false;
+
     async Task OpenDynamicValues(int empId, string name)
     {
+        // جلوگیری از کلیک‌های متوالی و تداخل داده ‌ها
+        if (IsLoadingDynamic) return;
+
+        IsLoadingDynamic = true;
         ActiveEmpId = empId;
         ActiveEmpName = name;
         try
@@ -588,7 +590,14 @@
             DynamicValues = await AttApi.GetDynamicValuesAsync(PeriodData!.Period.PER_ID, empId);
             ShowDynamicModal = true;
         }
-        catch (Exception ex) { Snackbar.Add(ex.Message, MudBlazor.Severity.Error); }
+        catch (Exception ex)
+        {
+            Snackbar.Add(ex.Message, MudBlazor.Severity.Error);
+        }
+        finally
+        {
+            IsLoadingDynamic = false;
+        }
     }
 
     async Task SaveDynamicValues()
@@ -708,14 +717,16 @@
 
         PeriodOptions = await AttApi.GetPeriodsAsync(SelectedWsId);
 
-        var firstOpt = PeriodOptions.FirstOrDefault();
-        if (firstOpt != null)
+        // اگر از قبل دوره‌ای انتخاب شده بود و در لیست جدید هم هست، همان را حفظ کن
+        if (SelectedPeriodDate > 0 && PeriodOptions.Any(x => x.PERIOD_DATE == SelectedPeriodDate))
         {
-            SelectedPeriodDate = firstOpt.PERIOD_DATE;
+            // حفظ مقدار فعلی (هیچ کاری نمی‌کنیم)
         }
+        // در غیر این صورت، اولین گزینه را انتخاب کن
         else
         {
-            SelectedPeriodDate = 0;
+            var firstOpt = PeriodOptions.FirstOrDefault();
+            SelectedPeriodDate = firstOpt != null ? firstOpt.PERIOD_DATE : 0;
         }
     }
 
@@ -812,7 +823,6 @@
             return;
         }
 
-        // اگر دوره‌ای که وارد کرده از قبل وجود داشت، فقط همان را لود می‌کنیم
         if (PeriodOptions.Any(x => x.PERIOD_DATE == pDate))
         {
             Snackbar.Add("این دوره از قبل وجود دارد و برای شما بارگذاری شد.", MudBlazor.Severity.Info);
@@ -822,15 +832,13 @@
             return;
         }
 
-        // تنظیم تاریخ و ارسال به سرور برای ایجاد
         SelectedPeriodDate = pDate;
         ShowNewPeriodModal = false;
 
-        await LoadPeriod(); // این متد باعث ساخته شدن دوره در دیتابیس می‌شود
+        await LoadPeriod();
 
-        // رفرش کردن دراپ‌داون تا ماه جدید در لیست دیده شود
+        // 🚀 اکنون این متد به لطف اصلاح بالا، انتخاب SelectedPeriodDate را دستکاری نمی‌کند
         await LoadPeriodOptionsAsync();
-        SelectedPeriodDate = pDate; // حفظ انتخاب کاربر
 
         Snackbar.Add($"دوره {pDate} با موفقیت ایجاد و لیست کارکرد آماده شد.", MudBlazor.Severity.Success);
     }
