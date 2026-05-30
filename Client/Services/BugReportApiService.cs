@@ -34,5 +34,9 @@ namespace Safir.Client.Services
         {
             return await _httpClient.PatchAsJsonAsync($"api/BugReport/{id}/status", new { Status = status, AdminNote = adminNote });
         }
+        public async Task<System.Collections.Generic.List<BugReportDto>?> GetMyBugReportsAsync()
+        {
+            return await _httpClient.GetFromJsonAsync<System.Collections.Generic.List<BugReportDto>>("api/BugReport/my-reports");
+        }
     }
 }

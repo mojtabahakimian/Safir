@@ -57,6 +57,10 @@
                 مشاهده گزارش‌های خطا
             </MudNavLink>
 
+            <MudNavLink Href="my-bug-reports" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.ListAlt">
+                گزارش‌های خطای من
+            </MudNavLink>
+
             <!-- گروه تنظیمات -->
             <MudNavGroup Title="تنظیمات" Icon="@Icons.Material.Filled.Settings" Expanded="false">
                 <MudNavLink Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.Person">@context.User.FindFirst(Safir.Shared.Constants.BaseknowClaimTypes.UUSER)?.Value</MudNavLink>

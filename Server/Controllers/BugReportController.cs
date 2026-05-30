@@ -142,6 +142,29 @@ namespace Safir.Server.Controllers
             }
         }
 
+        [HttpGet("my-reports")]
+        [Authorize]
+        public async Task<IActionResult> GetMyBugReports()
+        {
+            try
+            {
+                string currentUser = User.FindFirst(BaseknowClaimTypes.UUSER)?.Value ?? User.FindFirst(ClaimTypes.Name)?.Value;
+
+                if (string.IsNullOrEmpty(currentUser))
+                {
+                    return Unauthorized("نام کاربری یافت نشد.");
+                }
+
+                string sql = "SELECT * FROM [dbo].[BugReports] WHERE CreatedBy = @CreatedBy ORDER BY CreatedAt DESC";
+                var reports = await _dbService.DoGetDataSQLAsync<BugReportDto>(sql, new { CreatedBy = currentUser });
+                return Ok(reports);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error fetching user's bug reports.");
+                return StatusCode(500, "خطای داخلی سرور هنگام دریافت گزارشات شما.");
+            }
+        }
         public class UpdateStatusRequest
         {
             public string Status { get; set; } = "New";
