@@ -15,7 +15,7 @@
 
 <MudContainer MaxWidth="MaxWidth.Large" Class="mt-6 mb-16">
     <MudButton Variant="Variant.Text" StartIcon="@Icons.Material.Filled.ArrowBack"
-               OnClick='() => NavigationManager.NavigateTo("/bug-report-list")' Class="mb-4">
+               OnClick='() => NavigationManager.NavigateTo(_isBugReporter ? "/my-bug-reports" : "/bug-report-list")' Class="mb-4">
         بازگشت به لیست
     </MudButton>
 
