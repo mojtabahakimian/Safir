@@ -1,0 +1,111 @@
+﻿@page "/my-bug-reports"
+@using Safir.Shared.Models.BugReport
+@using Safir.Client.Services
+@using MudBlazor
+@using System.Globalization
+@inject BugReportApiService BugReportApi
+@inject ISnackbar Snackbar
+
+<PageTitle>گزارش‌های خطای من</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="mt-8 mb-16">
+    <MudText Typo="Typo.h4" Class="mb-6">گزارش‌های خطای من</MudText>
+
+    <MudTable Items="@_reports" Dense="true" Hover="true" Loading="@_isLoading" LoadingProgressColor="Color.Primary" Striped="true">
+        <HeaderContent>
+            <MudTh>شناسه</MudTh>
+            <MudTh>تاریخ ثبت</MudTh>
+            <MudTh>دسته‌بندی</MudTh>
+            <MudTh>شرح مشکل</MudTh>
+            <MudTh>وضعیت</MudTh>
+            <MudTh>پیام تیم فنی</MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd DataLabel="شناسه">@context.Id</MudTd>
+            <MudTd DataLabel="تاریخ ثبت">@FormatShamsiDateFromDateTime(context.CreatedAt)</MudTd>
+            <MudTd DataLabel="دسته‌بندی">@context.Category</MudTd>
+            <MudTd DataLabel="شرح مشکل">
+                <MudText Typo="Typo.body2" Style="max-width: 300px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="@context.UserDescription">
+                    @context.UserDescription
+                </MudText>
+            </MudTd>
+            <MudTd DataLabel="وضعیت">
+                @switch (context.Status)
+                {
+                    case "New":
+                        <MudChip Size="Size.Small" Color="Color.Info">جدید</MudChip>
+                        break;
+                    case "InReview":
+                        <MudChip Size="Size.Small" Color="Color.Warning">در حال بررسی</MudChip>
+                        break;
+                    case "Fixed":
+                        <MudChip Size="Size.Small" Color="Color.Success">رفع شده</MudChip>
+                        break;
+                    case "Rejected":
+                        <MudChip Size="Size.Small" Color="Color.Error">رد شده</MudChip>
+                        break;
+                    case "NeedMoreInfo":
+                        <MudChip Size="Size.Small" Color="Color.Secondary">نیاز به اطلاعات بیشتر</MudChip>
+                        break;
+                    default:
+                        <MudChip Size="Size.Small">@context.Status</MudChip>
+                        break;
+                }
+            </MudTd>
+            <MudTd DataLabel="پیام تیم فنی">
+                <MudText Typo="Typo.body2" Style="max-width: 300px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="@context.AdminNote">
+                    @context.AdminNote
+                </MudText>
+            </MudTd>
+        </RowTemplate>
+        <NoRecordsContent>
+            <MudText>شما تاکنون گزارش خطایی ثبت نکرده‌اید.</MudText>
+        </NoRecordsContent>
+        <LoadingContent>
+            <MudText>در حال بارگذاری...</MudText>
+        </LoadingContent>
+        <PagerContent>
+            <MudTablePager RowsPerPageString="تعداد در صفحه" InfoFormat="{first_item}-{last_item} از {all_items}" />
+        </PagerContent>
+    </MudTable>
+</MudContainer>
+
+@code {
+    private List<BugReportDto>? _reports;
+    private bool _isLoading = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadReportsAsync();
+    }
+
+    private async Task LoadReportsAsync()
+    {
+        _isLoading = true;
+        try
+        {
+            _reports = await BugReportApi.GetMyBugReportsAsync();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add("خطا در دریافت لیست گزارش‌ها.", Severity.Error);
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private string FormatShamsiDateFromDateTime(DateTime dt)
+    {
+        try
+        {
+            PersianCalendar pc = new PersianCalendar();
+            return $"{pc.GetYear(dt):D4}/{pc.GetMonth(dt):D2}/{pc.GetDayOfMonth(dt):D2} {dt.ToString("HH:mm")}";
+        }
+        catch
+        {
+            return dt.ToString("yyyy/MM/dd HH:mm");
+        }
+    }
+}

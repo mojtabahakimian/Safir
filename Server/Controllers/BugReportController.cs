@@ -120,5 +120,55 @@ namespace Safir.Server.Controllers
                 return StatusCode(500, "خطای داخلی سرور هنگام دریافت جزئیات گزارش.");
             }
         }
+
+        [HttpPatch("{id}/status")]
+        [Authorize]
+        public async Task<IActionResult> UpdateBugReportStatus(int id, [FromBody] UpdateStatusRequest request)
+        {
+            try
+            {
+                string sql = @"UPDATE [dbo].[BugReports] SET [Status] = @Status, [AdminNote] = @AdminNote WHERE Id = @Id";
+                int result = await _dbService.DoExecuteSQLAsync(sql, new { Status = request.Status, AdminNote = request.AdminNote, Id = id });
+
+                if (result > 0)
+                    return Ok(new { Message = "وضعیت گزارش با موفقیت به‌روز شد." });
+
+                return NotFound("گزارش یافت نشد.");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error updating bug report status for ID {Id}.", id);
+                return StatusCode(500, "خطای داخلی سرور هنگام به‌روز‌رسانی وضعیت گزارش.");
+            }
+        }
+
+        [HttpGet("my-reports")]
+        [Authorize]
+        public async Task<IActionResult> GetMyBugReports()
+        {
+            try
+            {
+                string currentUser = User.FindFirst(BaseknowClaimTypes.UUSER)?.Value ?? User.FindFirst(ClaimTypes.Name)?.Value;
+
+                if (string.IsNullOrEmpty(currentUser))
+                {
+                    return Unauthorized("نام کاربری یافت نشد.");
+                }
+
+                string sql = "SELECT * FROM [dbo].[BugReports] WHERE CreatedBy = @CreatedBy ORDER BY CreatedAt DESC";
+                var reports = await _dbService.DoGetDataSQLAsync<BugReportDto>(sql, new { CreatedBy = currentUser });
+                return Ok(reports);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error fetching user's bug reports.");
+                return StatusCode(500, "خطای داخلی سرور هنگام دریافت گزارشات شما.");
+            }
+        }
+        public class UpdateStatusRequest
+        {
+            public string Status { get; set; } = "New";
+            public string? AdminNote { get; set; }
+        }
     }
 }

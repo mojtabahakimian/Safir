@@ -5,7 +5,6 @@
 @inject BugReportApiService BugReportApi
 @inject IJSRuntime JSRuntime
 @inject ISnackbar Snackbar
-@inject NavigationManager NavigationManager
 
 <PageTitle>گزارش خطای نرم‌افزار</PageTitle>
 
@@ -28,7 +27,7 @@
                     <MudDivider Class="mb-4" />
                 </MudItem>
                 <MudItem xs="12">
-                    <MudTextField @bind-Value="_model.AppVersion" Label="نسخه نرم‌افزار حسابداری (ERP)" Variant="Variant.Outlined" ReadOnly="false" HelperText="مثال: 14.5.2" />
+                    <MudTextField @bind-Value="_model.AppVersion" Label="نسخه نرم‌افزار حسابداری (ERP)" Variant="Variant.Outlined" HelperText="مثال: 14.5.2" />
                 </MudItem>
 
                 <MudItem xs="12">
@@ -119,16 +118,24 @@
     private BugReportDto _model = new();
     private bool _isValid;
     private bool _isSubmitting;
+    private string _frontendVersion = "Unknown";
 
     protected override void OnInitialized()
     {
         try
         {
             var version = System.Reflection.Assembly.GetExecutingAssembly().GetName().Version;
-            _model.FrontendVersion = version?.ToString() ?? "Unknown";
+            _frontendVersion = version?.ToString() ?? "Unknown";
         }
-        catch { }
+        catch (Exception)
+        {
+            _frontendVersion = "Unknown";
+        }
+        _model = CreateFreshModel();
     }
+
+    // Centralises model creation so FrontendVersion is always set — both on init and after reset.
+    private BugReportDto CreateFreshModel() => new BugReportDto { FrontendVersion = _frontendVersion };
 
     private void OnValidChanged(bool isValid)
     {
@@ -137,47 +144,57 @@
 
     private async Task SubmitForm()
     {
-        await _form.Validate();
+        // Guard must be first — before any await — to be truly race-free.
+        if (_isSubmitting) return;
 
+        await _form.Validate();
         if (!_form.IsValid)
         {
             Snackbar.Add("لطفاً فیلدهای الزامی را به درستی تکمیل کنید.", Severity.Warning);
             return;
         }
 
-        if (_isSubmitting) return; // Prevent double submit
-
         _isSubmitting = true;
-        StateHasChanged();
+        StateHasChanged(); // show progress bar before first await
 
         try
         {
-            // Populate technical diagnostics from JS
-            var diagnostics = await JSRuntime.InvokeAsync<DiagnosticsInfo>("appDiagnostics.getDiagnosticsInfo");
-            if (diagnostics != null)
+            // Diagnostics are supplementary metadata; a JS failure must never block the report.
+            try
             {
-                _model.BrowserInfo = diagnostics.BrowserInfo;
-                _model.OperatingSystem = diagnostics.OperatingSystem;
-                _model.ScreenSize = diagnostics.ScreenSize;
-                _model.UserAgent = diagnostics.UserAgent;
-                _model.PageUrl = diagnostics.PageUrl;
-                _model.Route = diagnostics.Route;
+                var diagnostics = await JSRuntime.InvokeAsync<DiagnosticsInfo>("appDiagnostics.getDiagnosticsInfo");
+                if (diagnostics != null)
+                {
+                    _model.BrowserInfo = diagnostics.BrowserInfo;
+                    _model.OperatingSystem = diagnostics.OperatingSystem;
+                    _model.ScreenSize = diagnostics.ScreenSize;
+                    _model.UserAgent = diagnostics.UserAgent;
+                    _model.PageUrl = diagnostics.PageUrl;
+                    _model.Route = diagnostics.Route;
+                }
             }
+            catch { /* proceed without diagnostics */ }
 
             var response = await BugReportApi.SubmitBugReportAsync(_model);
 
             if (response.IsSuccessStatusCode)
             {
                 Snackbar.Add("گزارش خطای شما با موفقیت ثبت شد. از همکاری شما سپاسگزاریم.", Severity.Success);
-                _model = new BugReportDto(); // Reset form
+                _model = CreateFreshModel();
+                _isValid = false; // re-disable button until user fills the fresh form
                 await _form.ResetAsync();
-
-                // Optional: navigate away or stay on page
-                // NavigationManager.NavigateTo("/");
             }
             else
             {
-                Snackbar.Add("متأسفانه خطایی در ثبت گزارش رخ داد. لطفاً مجدداً تلاش کنید.", Severity.Error);
+                string errorMessage = "متأسفانه خطایی در ثبت گزارش رخ داد. لطفاً مجدداً تلاش کنید.";
+                try
+                {
+                    var body = await response.Content.ReadAsStringAsync();
+                    if (!string.IsNullOrWhiteSpace(body))
+                        errorMessage = body.Trim('"');
+                }
+                catch { }
+                Snackbar.Add(errorMessage, Severity.Error);
             }
         }
         catch (Exception ex)
@@ -187,7 +204,6 @@
         finally
         {
             _isSubmitting = false;
-            StateHasChanged();
         }
     }
 
