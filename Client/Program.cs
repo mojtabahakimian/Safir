@@ -73,6 +73,8 @@ builder.Services.AddScoped<Pay2ItemDefApiService>();
 
 builder.Services.AddScoped<BugReportApiService>();
 
+builder.Services.AddScoped<Pay2RunApiService>();
+
 #endregion
 
 

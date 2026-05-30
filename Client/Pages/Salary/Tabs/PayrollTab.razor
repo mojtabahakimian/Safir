@@ -1,0 +1,443 @@
+﻿@using Safir.Shared.Models.Salary
+@using Safir.Shared.Models
+@inject Safir.Client.Services.Pay2RunApiService RunApi
+@inject Safir.Client.Services.Pay2AttendanceApiService AttApi
+@inject Safir.Client.Services.Pay2WorkshopApiService WorkshopApi
+@inject ISnackbar Snackbar
+@inject MudBlazor.IDialogService DialogService
+
+<div class="pay2-tab-container">
+
+    <div class="card-custom" style="padding: 16px; margin-bottom: 16px; display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-end;">
+        
+        <div class="form-field" style="width: 250px;">
+            <label>انتخاب کارگاه *</label>
+            <!-- 🚀 اصلاح Event Binding -->
+            <Safir.Client.Pages.Salary.Tabs.Pay2Select TItem="Pay2WorkshopDto"
+                                                       TValue="int"
+                                                       Items="Workshops"
+                                                       Value="SelectedWsId"
+                                                       ValueChanged="OnWorkshopChangedAsync"
+                                                       TextSelector="x => x.WS_NAME"
+                                                       ValueSelector="x => x.WS_ID"
+                                                       Clearable="false" />
+        </div>
+
+        <div class="form-field" style="width: 240px;">
+            <label>ماه دوره *</label>
+            <!-- 🚀 اصلاح Event Binding -->
+            <Safir.Client.Pages.Salary.Tabs.Pay2Select TItem="Pay2PeriodLookupDto"
+                                                       TValue="long"
+                                                       Items="PeriodOptions"
+                                                       Value="SelectedPeriodDate"
+                                                       ValueChanged="OnPeriodChanged"
+                                                       TextSelector="x => x.PERIOD_TITLE"
+                                                       ValueSelector="x => x.PERIOD_DATE"
+                                                       Editable="false"
+                                                       Clearable="false"
+                                                       Placeholder="— انتخاب دوره —" />
+        </div>
+
+        <button class="btn-primary-pay2" @onclick="LoadRunData" disabled="@IsLoading">
+            @if (IsLoading)
+            {
+                <span class="p2-spinner"></span>
+            }
+            else
+            {
+                <span>فراخوانی دوره محاسباتی</span>
+            }
+        </button>
+    </div>
+
+    @if (IsLoading)
+    {
+        <div style="display:flex; justify-content:center; align-items:center; height:300px; flex-direction:column; gap:15px;">
+            <span class="p2-spinner" style="width:40px; height:40px; border-color:var(--p2-primary); border-top-color:transparent;"></span>
+            <span style="font-size:14px; font-weight:600; color:var(--p2-text-muted);">در حال دریافت وضعیت محاسبات...</span>
+        </div>
+    }
+    else if (CurrentPeriod != null)
+    {
+        <!-- پنل کنترل عملیات (Action Board) -->
+        <div style="background: var(--p2-bg-main); border: 1px solid var(--p2-border); border-radius: var(--p2-radius-md); padding: 18px; margin-bottom: 20px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:16px;">
+                
+                <div style="display:flex; align-items:center; gap: 20px;">
+                    <div>
+                        <div class="p2-text-muted" style="font-size:11px; margin-bottom:4px;">وضعیت کارکرد ماهانه</div>
+                        <div class="p2-badge @(CurrentPeriod.STATUS == 1 ? "p2-badge-warning" : "p2-badge-success")">
+                            @(CurrentPeriod.STATUS == 1 ? "باز (نیازمند بستن کارکرد)" : "بسته شده (آماده محاسبه)")
+                        </div>
+                    </div>
+                    @if (CurrentRun != null)
+                    {
+                        <div style="border-right: 1px solid var(--p2-border); padding-right:20px;">
+                            <div class="p2-text-muted" style="font-size:11px; margin-bottom:4px;">وضعیت فیش‌ها (PAY2_RUN)</div>
+                            <div class="p2-badge @(CurrentRun.STATUS == 1 ? "p2-badge-primary" : (CurrentRun.STATUS == 2 ? "p2-badge-success" : "p2-badge-info"))">
+                                @CurrentRun.StatusText
+                            </div>
+                        </div>
+                    }
+                </div>
+
+                <div style="display:flex; align-items:flex-end; gap: 12px;">
+                    @if (CurrentRun == null || CurrentRun.STATUS == 1)
+                    {
+                        <!-- قبل از محاسبه، باید شماره سند فرضی گرفته شود -->
+                        <div class="form-field" style="width: 180px;">
+                            <label>شماره سند حقوق (اختیاری)</label>
+                            <Safir.Client.Pages.Salary.Tabs.Pay2NumericInput @bind-Value="PayrollNsStr" Direction="ltr" MaxLength="15" Placeholder="برای کسر مساعده" />
+                        </div>
+
+                        <button class="btn-primary-pay2" @onclick="ExecuteCalculation" disabled="@IsProcessing" style="background-color: #6366f1; border-color: #6366f1;">
+                            @if (IsProcessing)
+                            {
+                                <span class="p2-spinner"></span> <span>در حال پردازش سنگین...</span>
+                            }
+                            else
+                            {
+                                <i class="bi bi-gear-fill"></i> <span>@(CurrentRun == null ? "اجرای موتور محاسبه" : "بازمحاسبه حقوق")</span>
+                            }
+                        </button>
+                    }
+
+                    @if (CurrentRun != null)
+                    {
+                        @if (CurrentRun.STATUS == 1)
+                        {
+                            <button class="btn-success-pay2" @onclick="FinalizeRun" disabled="@IsProcessing"><i class="bi bi-check-circle"></i> تأیید نهایی</button>
+                            <button class="btn-danger-pay2" @onclick="RevertRun" disabled="@IsProcessing"><i class="bi bi-arrow-counterclockwise"></i> برگشت محاسبه</button>
+                        }
+                        else if (CurrentRun.STATUS == 2)
+                        {
+                            <button class="btn-primary-pay2" @onclick="GenerateDeed" disabled="@IsProcessing"><i class="bi bi-journal-check"></i> صدور سند حسابداری</button>
+                            <button class="btn-outline-danger-pay2" @onclick="RevertRun" disabled="@IsProcessing"><i class="bi bi-unlock"></i> لغو تأیید (برگشت به پیش‌نویس)</button>
+                        }
+                    }
+                </div>
+            </div>
+        </div>
+
+        @if (CurrentRun == null)
+        {
+            <div class="p2-empty-state card-custom">
+                <i class="bi bi-calculator"></i>
+                <h4>هیچ محاسبه‌ای برای این دوره یافت نشد.</h4>
+                <p>پس از اطمینان از بسته بودن لیست کارکرد، روی دکمه «اجرای موتور محاسبه» کلیک کنید.</p>
+            </div>
+        }
+        else
+        {
+            <div class="card-custom" style="padding: 0; border: none; box-shadow: none;">
+                <div class="pay2-table-responsive" style="max-height: 55vh; overflow-y: auto;">
+                    <table class="p2-table">
+                        <thead style="position: sticky; top: 0; z-index: 10;">
+                            <tr>
+                                <th>پرسنل</th>
+                                <th style="text-align:center;">کارکرد</th>
+                                <th style="text-align:left;">ناخالص حقوق</th>
+                                <th style="text-align:left;">مبنای بیمه</th>
+                                <th style="text-align:left;">بیمه کارگر</th>
+                                <th style="text-align:left;">مالیات</th>
+                                <th style="text-align:left; color:#ef4444;">مساعده/وام/کسورات</th>
+                                <th style="text-align:left; color:#059669; font-size:14px;">خالص پرداختی</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @if (!RunLines.Any())
+                            {
+                                <tr><td colspan="8" style="text-align:center; padding:30px;">رکوردی یافت نشد.</td></tr>
+                            }
+                            <Virtualize Items="RunLines" Context="item" OverscanCount="10">
+                                <tr @key="item.EMP_ID">
+                                    <td>
+                                        <div style="font-weight:700;">@item.FULL_NAME</div>
+                                        <div class="p2-text-muted p2-text-mono" style="font-size:11px;">@item.EMP_CODE</div>
+                                    </td>
+                                    <td class="p2-text-mono" style="text-align:center;">@item.WORK_DAYS.ToString("0.##")</td>
+                                    <td class="p2-text-mono" style="text-align:left; font-weight:bold;">@item.GROSS_PAY.ToString("N0")</td>
+                                    <td class="p2-text-mono p2-text-muted" style="text-align:left;">@item.INS_BASE.ToString("N0")</td>
+                                    <td class="p2-text-mono" style="text-align:left;">@item.INS_WORKER.ToString("N0")</td>
+                                    <td class="p2-text-mono" style="text-align:left;">@item.TAX_AMOUNT.ToString("N0")</td>
+                                    <td class="p2-text-mono p2-text-danger" style="text-align:left;">@item.TOTAL_DED.ToString("N0")</td>
+                                    <td class="p2-text-mono p2-text-success" style="text-align:left; font-weight:900; font-size:15px; background: #f0fdf4;">@item.NET_PAY.ToString("N0")</td>
+                                </tr>
+                            </Virtualize>
+                        </tbody>
+                        <tfoot style="position: sticky; bottom: 0; background: var(--p2-bg-main); font-weight:900; box-shadow: 0 -2px 10px rgba(0,0,0,0.05);">
+                            <tr>
+                                <td colspan="2" style="text-align:left;">جمع کل دوره:</td>
+                                <td class="p2-text-mono" style="text-align:left;">@RunLines.Sum(x => x.GROSS_PAY).ToString("N0")</td>
+                                <td class="p2-text-mono" style="text-align:left;">@RunLines.Sum(x => x.INS_BASE).ToString("N0")</td>
+                                <td class="p2-text-mono" style="text-align:left;">@RunLines.Sum(x => x.INS_WORKER).ToString("N0")</td>
+                                <td class="p2-text-mono" style="text-align:left;">@RunLines.Sum(x => x.TAX_AMOUNT).ToString("N0")</td>
+                                <td class="p2-text-mono p2-text-danger" style="text-align:left;">@RunLines.Sum(x => x.TOTAL_DED).ToString("N0")</td>
+                                <td class="p2-text-mono p2-text-success" style="text-align:left; font-size:16px;">@RunLines.Sum(x => x.NET_PAY).ToString("N0")</td>
+                            </tr>
+                        </tfoot>
+                    </table>
+                </div>
+            </div>
+        }
+    }
+</div>
+
+@code {
+    List<Pay2WorkshopDto> Workshops = new();
+    List<Pay2PeriodLookupDto> PeriodOptions = new();
+    
+    int SelectedWsId;
+    long SelectedPeriodDate;
+    string? PayrollNsStr;
+
+    Pay2PeriodDto? CurrentPeriod;
+    Pay2RunDto? CurrentRun;
+    List<Pay2RunLineDto> RunLines = new();
+
+    bool IsLoading = false;
+    bool IsProcessing = false;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            Workshops = await WorkshopApi.GetWorkshopsAsync() ?? new();
+            if (Workshops.Any()) SelectedWsId = Workshops.First().WS_ID;
+
+            await LoadPeriodOptionsAsync();
+        }
+        catch (Exception ex) { Snackbar.Add("خطا در بارگذاری اولیه: " + ex.Message, MudBlazor.Severity.Error); }
+    }
+
+    async Task LoadPeriodOptionsAsync()
+    {
+        PeriodOptions = new();
+        if (SelectedWsId <= 0)
+        {
+            SelectedPeriodDate = 0;
+            return;
+        }
+
+        PeriodOptions = await AttApi.GetPeriodsAsync(SelectedWsId);
+
+        if (SelectedPeriodDate > 0 && PeriodOptions.Any(x => x.PERIOD_DATE == SelectedPeriodDate)) 
+        { 
+            // نیازی به تغییر SelectedPeriodDate نیست
+        }
+        else
+        {
+            var firstOpt = PeriodOptions.FirstOrDefault();
+            SelectedPeriodDate = firstOpt != null ? firstOpt.PERIOD_DATE : 0;
+        }
+    }
+
+async Task OnWorkshopChangedAsync(int newWsId)
+    {
+        SelectedWsId = newWsId;
+        CurrentPeriod = null;
+        CurrentRun = null;
+        RunLines.Clear();
+        
+        PayrollNsStr = null; 
+        
+        await LoadPeriodOptionsAsync();
+    }
+
+   async Task OnPeriodChanged(long newVal)
+    {
+        SelectedPeriodDate = newVal;
+        CurrentPeriod = null;
+        CurrentRun = null;
+        RunLines.Clear();
+        
+        PayrollNsStr = null; 
+    }
+
+    async Task LoadRunData()
+    {
+        if (SelectedWsId <= 0)
+        {
+            Snackbar.Add("کارگاه را انتخاب کنید.", MudBlazor.Severity.Warning);
+            return;
+        }
+
+        if (SelectedPeriodDate <= 0)
+        {
+            Snackbar.Add("هیچ دوره‌ای انتخاب نشده است. لطفاً ابتدا در تب کارکرد یک دوره ایجاد کنید.", MudBlazor.Severity.Warning);
+            return;
+        }
+
+        IsLoading = true;
+        try
+        {
+            CurrentPeriod = await RunApi.GetPeriodInfoAsync(SelectedWsId, SelectedPeriodDate);
+            
+            if (CurrentPeriod == null)
+            {
+                // این حالت تقریباً رخ نمی‌دهد، اما برای ایمنیِ بیشتر گذاشته شده است
+                Snackbar.Add("دوره‌ای با این مشخصات در سیستم وجود ندارد. لطفاً ابتدا در تب کارکرد آن را ایجاد کنید.", MudBlazor.Severity.Warning);
+                return;
+            }
+
+            CurrentRun = await RunApi.GetLatestRunAsync(CurrentPeriod.PER_ID);
+            
+            if (CurrentRun != null)
+            {
+                RunLines = await RunApi.GetRunLinesAsync(CurrentRun.RUN_ID);
+            }
+            else
+            {
+                RunLines.Clear();
+            }
+        }
+        catch (Exception ex) 
+        { 
+            Snackbar.Add(ex.Message, MudBlazor.Severity.Error); 
+        }
+        finally 
+        { 
+            IsLoading = false; 
+        }
+    }
+
+    async Task ExecuteCalculation()
+    {
+        if (CurrentPeriod == null || CurrentPeriod.STATUS == 1)
+        {
+            Snackbar.Add("دوره کارکرد باز است. برای محاسبه حقوق، ابتدا باید در تب کارکرد دکمه «بستن کارکرد» را بزنید.", MudBlazor.Severity.Warning);
+            return;
+        }
+
+        double? payrollNs = null;
+        if (!string.IsNullOrWhiteSpace(PayrollNsStr))
+        {
+            var normalizedStr = new string(PayrollNsStr.Trim()
+                .Select(c => c >= '۰' && c <= '۹' ? (char)(c - '۰' + '0') :
+                             c >= '٠' && c <= '٩' ? (char)(c - '٠' + '0') : c)
+                .Where(c => c >= '0' && c <= '9') // فقط اعداد را نگه می‌دارد و ممیز/اسلش را حذف می‌کند
+                .ToArray());
+
+            if (long.TryParse(normalizedStr, out long parsed) && parsed > 0)
+            {
+                payrollNs = parsed; // Cast ضمنی به double
+            }
+            else
+            {
+                Snackbar.Add("شماره سند نامعتبر است (فقط اعداد صحیح مجاز است).", MudBlazor.Severity.Warning);
+                return;
+            }
+        }
+
+        IsProcessing = true;
+        try
+        {
+            var req = new Pay2RunCalcRequest
+            {
+                WS_ID = SelectedWsId,
+                PER_ID = CurrentPeriod.PER_ID,
+                PAYROLL_N_S = payrollNs,
+                IsReRun = CurrentRun != null
+            };
+
+            await RunApi.CalculateRunAsync(req);
+            Snackbar.Add("محاسبه حقوق با موفقیت انجام شد.", MudBlazor.Severity.Success);
+            
+            await LoadRunData();
+        }
+        catch (Exception ex) { Snackbar.Add(ex.Message, MudBlazor.Severity.Error); }
+        finally { IsProcessing = false; }
+    }
+
+    async Task RevertRun()
+    {
+        var parameters = new MudBlazor.DialogParameters
+        {
+            ["Title"] = "برگشت محاسبه",
+            ["ContentText"] = "آیا از برگشت (لغو) این محاسبه اطمینان دارید؟ با این کار دوره مجدداً برای ویرایش کارکرد باز خواهد شد.",
+            ["ConfirmButtonText"] = "بله، برگشت محاسبه",
+            ["CancelButtonText"] = "انصراف"
+        };
+        var dialog = DialogService.Show<Safir.Client.Shared.ConfirmDialog>("تایید", parameters, new MudBlazor.DialogOptions { MaxWidth = MudBlazor.MaxWidth.ExtraSmall, CloseButton = false });
+        var result = await dialog.Result;
+
+        if (!result.Cancelled && CurrentRun != null)
+        {
+            IsProcessing = true;
+            try
+            {
+                await RunApi.RevertRunAsync(CurrentRun.RUN_ID);
+                Snackbar.Add("محاسبه با موفقیت لغو شد و دوره باز شد.", MudBlazor.Severity.Success);
+                await LoadRunData();
+            }
+            catch (Exception ex) { Snackbar.Add(ex.Message, MudBlazor.Severity.Error); }
+            finally { IsProcessing = false; }
+        }
+    }
+
+    async Task FinalizeRun()
+    {
+        if (!RunLines.Any())
+        {
+            Snackbar.Add("این محاسبه هیچ ردیف فیش حقوقی ندارد. لطفاً ابتدا روی 'بازمحاسبه حقوق' کلیک کنید.", MudBlazor.Severity.Warning);
+            return;
+        }
+
+        var parameters = new MudBlazor.DialogParameters
+        {
+            ["Title"] = "تأیید نهایی حقوق",
+            ["ContentText"] = "آیا از تأیید نهایی لیست حقوق این ماه اطمینان دارید؟ پس از تأیید، امکان ویرایش یا بازمحاسبه وجود نخواهد داشت.",
+            ["ConfirmButtonText"] = "بله، تأیید نهایی",
+            ["CancelButtonText"] = "انصراف"
+        };
+        var dialog = DialogService.Show<Safir.Client.Shared.ConfirmDialog>("تایید", parameters, new MudBlazor.DialogOptions { MaxWidth = MudBlazor.MaxWidth.ExtraSmall, CloseButton = false });
+        var result = await dialog.Result;
+
+        if (!result.Cancelled && CurrentRun != null)
+        {
+            IsProcessing = true;
+            try
+            {
+                await RunApi.FinalizeRunAsync(CurrentRun.RUN_ID);
+                Snackbar.Add("لیست حقوق با موفقیت نهایی شد.", MudBlazor.Severity.Success);
+                await LoadRunData();
+            }
+            catch (Exception ex) { Snackbar.Add(ex.Message, MudBlazor.Severity.Error); }
+            finally { IsProcessing = false; }
+        }
+    }
+
+    async Task GenerateDeed()
+    {
+        var parameters = new MudBlazor.DialogParameters
+        {
+            ["Title"] = "صدور سند حسابداری",
+            ["ContentText"] = "آیا از صدور قطعی سند حسابداری اطمینان دارید؟ با این کار، دوره کارکرد این ماه برای همیشه قفل (بسته) خواهد شد و هیچ تغییری در آن ممکن نخواهد بود.",
+            ["ConfirmButtonText"] = "بله، صدور سند قطعی",
+            ["CancelButtonText"] = "انصراف"
+        };
+        var dialog = DialogService.Show<Safir.Client.Shared.ConfirmDialog>("تایید", parameters, new MudBlazor.DialogOptions { MaxWidth = MudBlazor.MaxWidth.ExtraSmall, CloseButton = false });
+        var result = await dialog.Result;
+
+        if (!result.Cancelled && CurrentRun != null)
+        {
+            IsProcessing = true;
+            try
+            {
+                await RunApi.GenerateDeedAsync(CurrentRun.RUN_ID);
+                Snackbar.Add("سند حسابداری با موفقیت صادر شد.", MudBlazor.Severity.Success);
+                
+                // رفرش کردن دیتا تا تغییر وضعیت فیش و دوره در UI اعمال شود
+                await LoadRunData(); 
+            }
+            catch (Exception ex) 
+            { 
+                Snackbar.Add(ex.Message, MudBlazor.Severity.Error); 
+            }
+            finally 
+            { 
+                IsProcessing = false; 
+            }
+        }
+    }
+}
