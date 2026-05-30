@@ -3,10 +3,13 @@
 @using Safir.Shared.Models.BugReport
 @using Safir.Client.Services
 @using MudBlazor
+@using Microsoft.AspNetCore.Components.Authorization
+@using Safir.Shared.Constants
 @attribute [Authorize]
 @inject BugReportApiService BugReportApi
 @inject NavigationManager NavigationManager
 @inject ISnackbar Snackbar
+@inject AuthenticationStateProvider AuthStateProvider
 
 <PageTitle>جزئیات گزارش خطا</PageTitle>
 
@@ -184,32 +187,66 @@
                     @InfoRow("مسیر", _report.Route)
                 </MudPaper>
 
-                <!-- Admin Panel -->
-                <MudPaper Elevation="2" Class="pa-5">
-                    <MudText Typo="Typo.h6" Color="Color.Secondary" Class="mb-3">
-                        <MudIcon Icon="@Icons.Material.Filled.AdminPanelSettings" Class="me-1" />
-                        پنل مدیریت
-                    </MudText>
-                    <MudDivider Class="mb-3" />
-                    <MudSelect @bind-Value="_newStatus" Label="تغییر وضعیت" Variant="Variant.Outlined" Dense="true" Class="mb-3">
-                        <MudSelectItem Value="@("New")">جدید</MudSelectItem>
-                        <MudSelectItem Value="@("InReview")">در حال بررسی</MudSelectItem>
-                        <MudSelectItem Value="@("NeedMoreInfo")">نیاز به اطلاعات بیشتر</MudSelectItem>
-                        <MudSelectItem Value="@("Fixed")">رفع شده</MudSelectItem>
-                        <MudSelectItem Value="@("Rejected")">رد شده</MudSelectItem>
-                    </MudSelect>
-                    <MudTextField @bind-Value="_adminNote" Label="یادداشت مدیر" Variant="Variant.Outlined"
-                                  Lines="3" Class="mb-3" HelperText="یادداشت داخلی یا پیام به کاربر" />
-                    <MudButton Variant="Variant.Filled" Color="Color.Secondary" FullWidth="true"
-                               StartIcon="@Icons.Material.Filled.Save" OnClick="UpdateStatus"
-                               Disabled="_isSaving">
-                        @if (_isSaving)
+                @if (!_isBugReporter)
+                {
+                    <!-- Admin Panel -->
+                    <MudPaper Elevation="2" Class="pa-5 mb-4">
+                        <MudText Typo="Typo.h6" Color="Color.Secondary" Class="mb-3">
+                            <MudIcon Icon="@Icons.Material.Filled.AdminPanelSettings" Class="me-1" />
+                            پنل مدیریت
+                        </MudText>
+                        <MudDivider Class="mb-3" />
+                        <MudSelect @bind-Value="_newStatus" Label="تغییر وضعیت" Variant="Variant.Outlined" Dense="true" Class="mb-3">
+                            <MudSelectItem Value="@("New")">جدید</MudSelectItem>
+                            <MudSelectItem Value="@("InReview")">در حال بررسی</MudSelectItem>
+                            <MudSelectItem Value="@("NeedMoreInfo")">نیاز به اطلاعات بیشتر</MudSelectItem>
+                            <MudSelectItem Value="@("Fixed")">رفع شده</MudSelectItem>
+                            <MudSelectItem Value="@("Rejected")">رد شده</MudSelectItem>
+                        </MudSelect>
+                        <MudTextField @bind-Value="_adminNote" Label="یادداشت مدیر" Variant="Variant.Outlined"
+                                      Lines="3" Class="mb-3" HelperText="یادداشت داخلی یا پیام به کاربر" />
+                        <MudButton Variant="Variant.Filled" Color="Color.Secondary" FullWidth="true"
+                                   StartIcon="@Icons.Material.Filled.Save" OnClick="UpdateStatus"
+                                   Disabled="_isSaving">
+                            @if (_isSaving)
+                            {
+                                <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="me-2" />
+                            }
+                            ذخیره تغییرات
+                        </MudButton>
+                    </MudPaper>
+                }
+
+                @if (_isBugReporter || !string.IsNullOrEmpty(_report.UserNote))
+                {
+                    <!-- User Note Panel -->
+                    <MudPaper Elevation="2" Class="pa-5">
+                        <MudText Typo="Typo.h6" Color="Color.Primary" Class="mb-3">
+                            <MudIcon Icon="@Icons.Material.Filled.EditNote" Class="me-1" />
+                            پی‌نوشت گزارش‌دهنده
+                        </MudText>
+                        <MudDivider Class="mb-3" />
+
+                        @if (_isBugReporter)
                         {
-                            <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="me-2" />
+                            <MudTextField @bind-Value="_userNote" Label="یادداشت / پی‌نوشت شما" Variant="Variant.Outlined"
+                                          Lines="4" Class="mb-3" HelperText="اطلاعات تکمیلی یا توضیح بیشتر را اینجا بنویسید" />
+                            <MudButton Variant="Variant.Filled" Color="Color.Primary" FullWidth="true"
+                                       StartIcon="@Icons.Material.Filled.Save" OnClick="UpdateUserNote"
+                                       Disabled="_isSavingUserNote">
+                                @if (_isSavingUserNote)
+                                {
+                                    <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="me-2" />
+                                }
+                                ثبت پی‌نوشت
+                            </MudButton>
                         }
-                        ذخیره تغییرات
-                    </MudButton>
-                </MudPaper>
+                        else
+                        {
+                            <MudText Typo="Typo.body2" Style="white-space:pre-wrap;">@_report.UserNote</MudText>
+                        }
+                    </MudPaper>
+                }
             </MudItem>
         </MudGrid>
     }
@@ -221,11 +258,17 @@
     private BugReportDto? _report;
     private bool _isLoading = true;
     private bool _isSaving = false;
+    private bool _isSavingUserNote = false;
     private string _newStatus = "New";
     private string? _adminNote;
+    private string? _userNote;
+    private bool _isBugReporter = false;
 
     protected override async Task OnInitializedAsync()
     {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        _isBugReporter = authState.User.FindFirst(BaseknowClaimTypes.GRSAL)?.Value == "999";
+
         await LoadReport();
     }
 
@@ -239,6 +282,7 @@
             {
                 _newStatus = _report.Status;
                 _adminNote = _report.AdminNote;
+                _userNote = _report.UserNote;
             }
         }
         catch
@@ -275,6 +319,32 @@
         finally
         {
             _isSaving = false;
+        }
+    }
+
+    private async Task UpdateUserNote()
+    {
+        _isSavingUserNote = true;
+        try
+        {
+            var response = await BugReportApi.UpdateBugReportUserNoteAsync(Id, _userNote ?? string.Empty);
+            if (response.IsSuccessStatusCode)
+            {
+                _report!.UserNote = _userNote;
+                Snackbar.Add("پی‌نوشت با موفقیت ثبت شد.", Severity.Success);
+            }
+            else
+            {
+                Snackbar.Add("خطا در ثبت پی‌نوشت.", Severity.Error);
+            }
+        }
+        catch
+        {
+            Snackbar.Add("خطای سیستمی در ثبت پی‌نوشت.", Severity.Error);
+        }
+        finally
+        {
+            _isSavingUserNote = false;
         }
     }
 

@@ -65,6 +65,7 @@
                                                                                    @bind-Value="cfg.CFG_VALUE"
                                                                                    TextSelector="x => x.Name"
                                                                                    ValueSelector="x => x.Id"
+                                                                                   Editable="false"
                                                                                    Clearable="false" />
                                     }
                                     else if (cfg.DATA_TYPE?.Equals("INT", StringComparison.OrdinalIgnoreCase) == true ||
@@ -124,37 +125,42 @@
         </div>
 
         <div class="pay2-modal-body" style="padding:18px; overflow:auto;">
-            <div style="display:flex; gap:12px; align-items:flex-end; margin-bottom:16px;">
+            <!-- بخش هدایت‌گر و فیلتر سال -->
+            <!-- بخش هدایت‌گر و فیلتر سال -->
+            <div style="background: var(--p2-bg-main); border: 1px solid var(--p2-border-light); border-radius: var(--p2-radius-md); padding: 16px; margin-bottom: 20px;">
+                <div style="display:flex; gap:16px; align-items:flex-end; flex-wrap: wrap;">
 
-                <!-- 🚀 شبیه‌سازی ComboBox سال‌ها (با قابلیت تایپ سال جدید) -->
-                <div class="form-field" style="width:200px;">
-                    <label>فیلتر سال / ایجاد سال جدید</label>
-                    <Safir.Client.Pages.Salary.Tabs.Pay2Select TItem="LookupDto<string>"
-                                                               TValue="string"
-                                                               Items="_availableTaxYears"
-                                                               Value="@SelectedTaxYearStr"
-                                                               ValueChanged="OnTaxYearChanged"
-                                                               TextSelector="x => x.Name"
-                                                               ValueSelector="x => x.Id"
-                                                               Editable="true"
-                                                               Clearable="false"
-                                                               Placeholder="مثال: 1404" />
-                </div>
-
-                <button class="btn-outline-pay2" @onclick="CopyPreviousTaxYearAsync">
-                    <i class="bi bi-copy"></i> کپی از سال قبل
-                </button>
-
-                <div style="flex-grow:1;">
-                    <div class="p2-text-muted" style="font-size:11px; text-align:left; padding-top: 10px;">
-                        ردیف جدید را در آخرین سطر جدول وارد کنید.<br />
-                        مالیات ثابت به صورت خودکار محاسبه می‌شود.
+                    <div class="form-field" style="width:220px;">
+                        <label>فیلتر سال / تایپ سال جدید</label>
+                        <Safir.Client.Pages.Salary.Tabs.Pay2Select TItem="LookupDto<string>"
+                                                                   TValue="string"
+                                                                   Items="_availableTaxYears"
+                                                                   Value="@SelectedTaxYearStr"
+                                                                   ValueChanged="OnTaxYearChanged"
+                                                                   Text="@SelectedTaxYearStr"
+                                                                   TextChanged="OnTaxYearTextChanged"
+                                                                   TextSelector="x => x.Name"
+                                                                   ValueSelector="x => x.Id"
+                                                                   Editable="true"
+                                                                   Clearable="false"
+                                                                   Placeholder="مثلاً: 1405" />
                     </div>
-                </div>
 
-                <button class="btn-primary-pay2" @onclick="AddTaxBracketRow">
-                    + ردیف جدید
-                </button>
+                    <button class="btn-outline-pay2" @onclick="CopyPreviousTaxYearAsync" disabled="@(!CanCopyFromPreviousYear)"
+                            title="@(TaxBrackets.Any() ? "ابتدا باید پله‌های سال جاری خالی باشد" : $"پله‌های سال {SelectedTaxYear - 1} در سیستم وجود ندارد")">
+                        <i class="bi bi-copy"></i> کپی پله‌ها از سال @((SelectedTaxYear - 1).ToString())
+                    </button>
+
+                    <div style="flex-grow:1;">
+                        <div class="p2-text-muted" style="font-size:11px; text-align:left; padding-top: 10px;">
+                            برای ایجاد سال جدید، عدد ۴ رقمی آن را در کادر تایپ کنید.<br />
+                        </div>
+                    </div>
+
+                    <button class="btn-primary-pay2" @onclick="AddTaxBracketRow">
+                        <i class="bi bi-plus-circle"></i> افزودن پله (سطر جدید)
+                    </button>
+                </div>
             </div>
 
             <div class="pay2-table-responsive">
@@ -256,6 +262,11 @@
 
     // کش سال‌های مالیاتی برای Pay2Select
     List<LookupDto<string>> _availableTaxYears = new();
+
+    // 🚀 پراپرتی هوشمند برای بررسی فعال بودن دکمه کپی
+    bool CanCopyFromPreviousYear =>
+        !TaxBrackets.Any() && // شرط اول: جدول سال انتخاب شده باید کاملاً خالی باشد
+        _availableTaxYears.Any(x => x.Id == (SelectedTaxYear - 1).ToString()); // شرط دوم: سالِ قبل باید در دیتابیس وجود داشته باشد
 
     bool IsLoading = true;
     bool IsSaving = false;
@@ -389,7 +400,6 @@
         ShowTaxModal = false;
     }
 
-    // 🚀 واکشی لیست سال‌ها برای نمایش در Pay2Select
     async Task LoadTaxYearsLookupAsync()
     {
         try
@@ -401,7 +411,13 @@
                 Name = $"سال {y}"
             }).ToList();
 
-            // اگر سال انتخابی فعلی در لیست نیست (کاربر تازه تایپ کرده)، آن را اضافه کن
+            // اگر لیست خالی است (دیتابیس صفر است)
+            if (!_availableTaxYears.Any() && SelectedTaxYear > 0)
+            {
+                _availableTaxYears.Add(new LookupDto<string> { Id = SelectedTaxYearStr, Name = $"سال {SelectedTaxYearStr}" });
+            }
+
+            // اگر سالی که الان تایپ شده (مثلا 1405) در دیتابیس نیست، به عنوان "جدید" به لیست اضافه می‌شود
             if (!_availableTaxYears.Any(x => x.Id == SelectedTaxYearStr))
             {
                 _availableTaxYears.Insert(0, new LookupDto<string> { Id = SelectedTaxYearStr, Name = $"سال {SelectedTaxYearStr} (جدید)" });
@@ -415,8 +431,61 @@
 
     async Task OnTaxYearChanged(string newYear)
     {
+        if (string.IsNullOrWhiteSpace(newYear)) return;
+
         SelectedTaxYearStr = newYear;
         await LoadTaxBracketsAsync();
+    }
+
+    async Task OnTaxYearTextChanged(string? newText)
+    {
+        if (string.IsNullOrWhiteSpace(newText)) return;
+
+        // فقط اعداد را استخراج می‌کنیم
+        var cleanText = NormalizeNumericText(newText);
+
+        // اگر کاربر دقیقاً ۴ رقم تایپ کرد (مثلاً 1405)
+        if (cleanText.Length == 4)
+        {
+            if (short.TryParse(cleanText, out short year) && year >= 1300 && year <= 1499)
+            {
+                // جلوگیری از اجرای تکراری اگر همان سال قبلی است
+                if (SelectedTaxYearStr == cleanText) return;
+
+                SelectedTaxYearStr = cleanText;
+
+                // لیست دراپ‌داون را رفرش می‌کنیم تا سال تایپ‌شده با پسوند "(جدید)" اضافه شود
+                await LoadTaxYearsLookupAsync();
+
+                // از دیتابیس اطلاعات را می‌گیریم (چون سال جدید است، طبیعتاً لیست پله‌ها خالی برمی‌گردد که درست است)
+                await LoadTaxBracketsAsync();
+
+                Snackbar.Add($"آماده برای ثبت مالیات سال {cleanText}.", MudBlazor.Severity.Info);
+            }
+        }
+    }
+    async Task CreateNewTaxYear()
+    {
+        // پیدا کردن بالاترین سال موجود
+        short highestYear = SelectedTaxYear;
+
+        if (_availableTaxYears.Any())
+        {
+            var maxStr = _availableTaxYears.Max(x => x.Id);
+            if (short.TryParse(maxStr, out short y))
+                highestYear = y;
+        }
+
+        // یک سال به آن اضافه می‌کنیم
+        SelectedTaxYear = (short)(highestYear + 1);
+
+        // جدول را خالی می‌کنیم تا آماده کار شود
+        TaxBrackets.Clear();
+
+        // لیست دراپ‌داون را رفرش می‌کنیم تا سال جدید با پسوند "در حال ایجاد" نمایش داده شود
+        await LoadTaxYearsLookupAsync();
+
+        Snackbar.Add($"محیط برای ثبت مالیات سال {SelectedTaxYear} آماده شد. می‌توانید از گزینه 'کپی از سال قبل' استفاده کنید.", MudBlazor.Severity.Info);
     }
 
     async Task LoadTaxBracketsAsync()

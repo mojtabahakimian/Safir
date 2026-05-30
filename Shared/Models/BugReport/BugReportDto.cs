@@ -102,5 +102,6 @@ namespace Safir.Shared.Models.BugReport
         public string Status { get; set; } = "New"; // New / InReview / Fixed / Rejected / NeedMoreInfo
 
         public string? AdminNote { get; set; }
+        public string? UserNote { get; set; }
     }
 }

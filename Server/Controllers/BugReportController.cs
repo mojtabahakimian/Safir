@@ -162,6 +162,41 @@ namespace Safir.Server.Controllers
             }
         }
 
+        [HttpPatch("{id}/usernote")]
+        [Authorize]
+        public async Task<IActionResult> UpdateBugReportUserNote(int id, [FromBody] UpdateUserNoteRequest request)
+        {
+            try
+            {
+                // Fetch existing report
+                string getSql = "SELECT CreatedBy FROM [dbo].[BugReports] WHERE Id = @Id";
+                var reportCreator = await _dbService.DoGetDataSQLAsyncSingle<string>(getSql, new { Id = id });
+
+                if (reportCreator == null)
+                    return NotFound("گزارش یافت نشد.");
+
+                string currentUser = User.FindFirst(BaseknowClaimTypes.UUSER)?.Value ?? User.FindFirst(ClaimTypes.Name)?.Value ?? string.Empty;
+
+                if (!string.Equals(reportCreator, currentUser, StringComparison.OrdinalIgnoreCase))
+                {
+                    return StatusCode(StatusCodes.Status403Forbidden, "شما فقط مجاز به ویرایش پی‌نوشت گزارش‌های خودتان هستید.");
+                }
+
+                string updateSql = @"UPDATE [dbo].[BugReports] SET [UserNote] = @UserNote WHERE Id = @Id";
+                int result = await _dbService.DoExecuteSQLAsync(updateSql, new { UserNote = request.UserNote, Id = id });
+
+                if (result > 0)
+                    return Ok(new { Message = "پی‌نوشت با موفقیت ثبت شد." });
+
+                return NotFound("گزارش یافت نشد.");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error updating bug report user note for ID {Id}.", id);
+                return StatusCode(500, "خطای داخلی سرور هنگام ثبت پی‌نوشت گزارش.");
+            }
+        }
+
         [HttpGet("my-reports")]
         [Authorize]
         public async Task<IActionResult> GetMyBugReports()
@@ -189,6 +224,11 @@ namespace Safir.Server.Controllers
         {
             public string Status { get; set; } = "New";
             public string? AdminNote { get; set; }
+        }
+
+        public class UpdateUserNoteRequest
+        {
+            public string UserNote { get; set; } = string.Empty;
         }
     }
 }
