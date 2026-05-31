@@ -20,11 +20,10 @@ namespace Safir.Server.Services
         private readonly string _connectionString;
         private readonly ILogger<DatabaseService> _logger;
 
-        public DatabaseService(IConfiguration configuration, ILogger<DatabaseService> logger)
+        public DatabaseService(IConnectionStringProvider connectionStringProvider, ILogger<DatabaseService> logger)
         {
             // Ensure connection string is not null or empty
-            _connectionString = configuration.GetConnectionString("DefaultConnection")
-                                ?? throw new InvalidOperationException("Database connection string 'DefaultConnection' not found.");
+            _connectionString = connectionStringProvider.GetConnectionString();
             _logger = logger;
         }
 
