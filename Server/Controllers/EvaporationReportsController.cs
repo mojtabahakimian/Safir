@@ -14,9 +14,9 @@ namespace Safir.Server.Controllers
     {
         private readonly string _connectionString;
 
-        public EvaporationReportsController(IConfiguration configuration)
+        public EvaporationReportsController(Safir.Server.Services.IConnectionStringProvider connectionStringProvider)
         {
-            _connectionString = configuration.GetConnectionString("DefaultConnection");
+            _connectionString = connectionStringProvider.GetConnectionString();
         }
 
         [HttpPost]

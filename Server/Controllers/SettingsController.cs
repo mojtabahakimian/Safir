@@ -9,11 +9,13 @@ public class SettingsController : ControllerBase
 {
     private readonly IConfiguration _configuration;
     private readonly IWebHostEnvironment _environment;
+    private readonly Safir.Server.Services.IConnectionStringProvider _connectionStringProvider;
 
-    public SettingsController(IConfiguration configuration, IWebHostEnvironment environment)
+    public SettingsController(IConfiguration configuration, IWebHostEnvironment environment, Safir.Server.Services.IConnectionStringProvider connectionStringProvider)
     {
         _configuration = configuration;
         _environment = environment;
+        _connectionStringProvider = connectionStringProvider;
     }
 
     // DTO to return the data
@@ -23,6 +25,22 @@ public class SettingsController : ControllerBase
         public string? DatabaseServer { get; set; } // Only return non-sensitive parts
         public string? DatabaseName { get; set; }   // Only return non-sensitive parts
         // DO NOT return the full connection string
+    }
+
+    [HttpGet("test-connection")]
+    public async Task<IActionResult> TestConnection()
+    {
+        try
+        {
+            var connectionString = _connectionStringProvider.GetConnectionString();
+            using var connection = new SqlConnection(connectionString);
+            await connection.OpenAsync();
+            return Ok(new { success = true, message = "اتصال به دیتابیس با موفقیت انجام شد." });
+        }
+        catch (Exception ex)
+        {
+            return BadRequest(new { success = false, message = $"خطا در اتصال به دیتابیس: {ex.Message}" });
+        }
     }
 
     [HttpGet("debug-info")]
@@ -36,7 +54,7 @@ public class SettingsController : ControllerBase
         // }
         // --- END WARNING ---
 
-        var connectionString = _configuration.GetConnectionString("DefaultConnection");
+        var connectionString = _connectionStringProvider.GetConnectionString();
         string? dbServer = null;
         string? dbName = null;
 

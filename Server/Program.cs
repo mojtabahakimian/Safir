@@ -17,6 +17,7 @@ builder.Services.AddRazorPages();
 
 #region MineServer
 // --- Add Custom Services ---
+builder.Services.AddScoped<IConnectionStringProvider, ConnectionStringProvider>();
 builder.Services.AddScoped<IDatabaseService, DatabaseService>();
 
 // Register IUserService and its implementation UserService

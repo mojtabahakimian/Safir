@@ -3,18 +3,51 @@
 @using Safir.Shared
 @using Safir.Shared.Interfaces;
 @using Safir.Shared.Models.User_Model;
+@using Safir.Shared.Models;
 @using Microsoft.AspNetCore.Components.Web
+@using System.Net.Http.Json
 @attribute [Microsoft.AspNetCore.Authorization.AllowAnonymous]
 
 @inject IAuthService AuthService
 @inject NavigationManager NavigationManager
 @inject ISnackbar Snackbar
 @inject ConnectivityService Connectivity
+@inject ConnectionManagerService ConnectionManager
 
 <PageTitle>ورود | سفیر</PageTitle>
 
 <MudContainer MaxWidth="MaxWidth.False" Class="d-flex align-center justify-center mud-width-full" Style="min-height: 100vh; background-image: linear-gradient(135deg, var(--mud-palette-background-grey) 0%, var(--mud-palette-drawer-background) 100%);">
     <MudPaper Elevation="8" Class="pa-8 rounded-xl" Style="width:100%; max-width:440px;">
+
+        @* Connection Settings Expansion Panel *@
+        <MudExpansionPanels Class="mb-4">
+            <MudExpansionPanel Text="تنظیمات سرور و دیتابیس" Icon="@Icons.Material.Filled.Storage">
+                <MudForm @ref="dbSettingsForm" @bind-IsValid="isDbSettingsValid">
+                    <MudTextField @bind-Value="dbSettings.Server" Label="سرور (IP/Name)" Required="true" RequiredError="نام سرور الزامی است" Variant="Variant.Outlined" Margin="Margin.Dense" Class="mb-3" />
+                    <MudTextField @bind-Value="dbSettings.Database" Label="نام دیتابیس" Required="true" RequiredError="نام دیتابیس الزامی است" Variant="Variant.Outlined" Margin="Margin.Dense" Class="mb-3" />
+                    <MudCheckBox @bind-Value="dbSettings.IsWindowsAuthentication" Label="Windows Authentication" Color="Color.Primary" Class="mb-3" />
+
+                    @if (!dbSettings.IsWindowsAuthentication)
+                    {
+                        <MudTextField @bind-Value="dbSettings.UserId" Label="نام کاربری دیتابیس" Required="true" RequiredError="نام کاربری الزامی است" Variant="Variant.Outlined" Margin="Margin.Dense" Class="mb-3" />
+                        <MudTextField @bind-Value="dbSettings.Password" Label="رمز عبور دیتابیس" InputType="InputType.Password" Required="true" RequiredError="رمز عبور الزامی است" Variant="Variant.Outlined" Margin="Margin.Dense" Class="mb-3" />
+                    }
+
+                    <MudStack Row="true" Spacing="2" Class="mt-2">
+                        <MudButton OnClick="SaveDbSettings" Variant="Variant.Filled" Color="Color.Primary" FullWidth="true">
+                            ذخیره تنظیمات دیتابیس
+                        </MudButton>
+                        <MudButton OnClick="TestDbConnection" Variant="Variant.Outlined" Color="Color.Info" FullWidth="true" Disabled="@isTestingConnection">
+                            @if (isTestingConnection)
+                            {
+                                <MudProgressCircular Indeterminate="true" Size="Size.Small" Class="me-2" />
+                            }
+                            تست اتصال
+                        </MudButton>
+                    </MudStack>
+                </MudForm>
+            </MudExpansionPanel>
+        </MudExpansionPanels>
 
         @* ... (بخش لوگو و خوش آمد گویی بدون تغییر) ... *@
         <MudStack AlignItems="AlignItems.Center" Spacing="2" Class="mb-4">
@@ -50,7 +83,7 @@
             @* Username Field - اضافه کردن onkeyup و style *@
             <MudTextField T="string"
                           Label="نام کاربری"
-            @bind-Value="loginRequestModel.Username"
+                          @bind-Value="loginRequestModel.Username"
                           Immediate="true"
                           For="@(() => loginRequestModel.Username)"
                           Required="true"
@@ -60,13 +93,13 @@
                           Class="mb-4"
                           Adornment="Adornment.Start"
                           AdornmentIcon="@Icons.Material.Outlined.PersonOutline"
-            @onkeyup="HandleKeyUp"
+                          @onkeyup="HandleKeyUp"
                           Style="min-height: 50px;" /> @* <-- اضافه کردن استایل *@
 
             @* Password Field - اضافه کردن onkeyup و style *@
             <MudTextField T="string"
                           Label="رمز عبور"
-            @bind-Value="loginRequestModel.Password"
+                          @bind-Value="loginRequestModel.Password"
                           Immediate="true"
                           For="@(() => loginRequestModel.Password)"
                           Required="true"
@@ -77,10 +110,10 @@
                           InputType="@passwordInputType"
                           Adornment="Adornment.Start"
                           AdornmentIcon="@Icons.Material.Outlined.Lock"
-                          AdornmentEnd="@(isShowPassword ? Icons.Material.Filled.VisibilityOff : Icons.Material.Filled.Visibility)"
+                          AdornmentEnd="@(isShowPassword? Icons.Material.Filled.VisibilityOff : Icons.Material.Filled.Visibility)"
                           OnAdornmentClick="@TogglePasswordVisibility"
                           AdornmentAriaLabel="@(isShowPassword ? "مخفی کردن رمز" : "نمایش رمز")"
-            @onkeyup="HandleKeyUp"
+                          @onkeyup="HandleKeyUp"
                           Style="min-height: 50px;" /> @* <-- اضافه کردن استایل *@
 
             @* Login Button - بدون تغییر *@
@@ -132,11 +165,94 @@
     private string connectivityMessage = "";
     private bool formDisabled => isProcessing || isCheckingConnectivity || loginDisabledByConnectivity;
 
+    // DB Settings
+    private DbConnectionSettings dbSettings = new();
+    private MudForm? dbSettingsForm;
+    private bool isDbSettingsValid;
+    private bool isTestingConnection = false;
+
+    // We inject HttpClient for the connection test endpoint.
+    [Inject] private HttpClient HttpClient { get; set; } = default!;
 
     protected override async Task OnInitializedAsync()
     {
+        var savedSettings = await ConnectionManager.GetSettingsAsync();
+        if (savedSettings != null)
+        {
+            dbSettings = savedSettings;
+        }
+
         await CheckInitialConnectivity();
 
+    }
+
+    private async Task SaveDbSettings()
+    {
+        if (dbSettingsForm != null)
+        {
+            await dbSettingsForm.Validate();
+            if (isDbSettingsValid)
+            {
+                await ConnectionManager.SaveSettingsAsync(dbSettings);
+                Snackbar.Add("تنظیمات دیتابیس با موفقیت ذخیره شد.", Severity.Success);
+
+                // Re-check connectivity with new settings
+                await CheckInitialConnectivity();
+            }
+        }
+    }
+
+    private class TestConnectionResult
+    {
+        public bool Success { get; set; }
+        public string Message { get; set; } = string.Empty;
+    }
+
+    private async Task TestDbConnection()
+    {
+        if (dbSettingsForm != null)
+        {
+            await dbSettingsForm.Validate();
+            if (isDbSettingsValid)
+            {
+                isTestingConnection = true;
+                StateHasChanged();
+
+                // Save temporarily so the custom header is updated
+                await ConnectionManager.SaveSettingsAsync(dbSettings);
+
+                try
+                {
+                    var response = await HttpClient.GetAsync("api/Settings/test-connection");
+                    if (response.IsSuccessStatusCode)
+                    {
+                        var result = await response.Content.ReadFromJsonAsync<TestConnectionResult>();
+                        if (result?.Success == true)
+                        {
+                            Snackbar.Add(result.Message, Severity.Success);
+                        }
+                        else
+                        {
+                            Snackbar.Add(result?.Message ?? "خطای ناشناخته", Severity.Error);
+                        }
+                    }
+                    else
+                    {
+                        var errorContent = await response.Content.ReadAsStringAsync();
+                        Snackbar.Add($"خطا در ارتباط با سرور: {response.StatusCode} - {errorContent}", Severity.Error);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Snackbar.Add($"خطا: {ex.Message}", Severity.Error);
+                }
+                finally
+                {
+                    isTestingConnection = false;
+                    StateHasChanged();
+                }
+            }
+        }
     }
     private async Task CheckInitialConnectivity()
     {
@@ -197,10 +313,10 @@
         StateHasChanged();
         errorMessage = null;
         var request = new LoginRequest
-            {
-                Username = loginRequestModel.Username.Trim(),
-                Password = loginRequestModel.Password
-            };
+        {
+            Username = loginRequestModel.Username.Trim(),
+            Password = loginRequestModel.Password
+        };
 
         try
         {

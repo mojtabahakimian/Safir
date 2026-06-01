@@ -9,8 +9,22 @@
 @inject ISnackbar Snackbar
 @inject IJSRuntime JSRuntime
 @inject UserStateApiService UserStateApiService
+@inject ConnectionManagerService ConnectionManager
+@inject ClientAppSettingsService ClientAppSettings
 
 <MudNavMenu>
+    @if (activeDbSettings != null)
+    {
+        <MudAlert Severity="Severity.Info" Class="ma-2 text-center" Style="font-size: 0.8rem; padding: 4px;">
+            @if (activeSazmanSettings != null)
+            {
+                <MudText Typo="Typo.caption" Style="display:block; font-weight: bold;">@activeSazmanSettings.NAME (@activeSazmanSettings.YEA)</MudText>
+            }
+            <MudText Typo="Typo.caption" Style="display:block;">سرور: @activeDbSettings.Server</MudText>
+            <MudText Typo="Typo.caption" Style="display:block;">دیتابیس: @activeDbSettings.Database</MudText>
+        </MudAlert>
+    }
+
     <!-- صفحه اصلی -->
     <MudNavLink Href="/" Match="NavLinkMatch.All" Icon="@Icons.Material.Filled.Home">
         صفحه اصلی
@@ -111,10 +125,23 @@
     private string appVersion = "1.0.0"; // می‌توانید این مقدار را مطابق نسخه پروژه در csproj یا منبع دیگر تنظیم کنید
 
     private bool _isCustomerSelected = false;
+    private Safir.Shared.Models.DbConnectionSettings? activeDbSettings;
+    private Safir.Shared.Models.SAZMAN? activeSazmanSettings;
 
     // --- Lifecycle and Event Handling ---
-    protected override void OnInitialized()
+    protected override async Task OnInitializedAsync()
     {
+        activeDbSettings = await ConnectionManager.GetSettingsAsync();
+
+        try
+        {
+            activeSazmanSettings = await ClientAppSettings.GetSettingsAsync();
+        }
+        catch
+        {
+            // Ignore if user isn't authenticated yet or endpoint fails
+        }
+
         // Set initial state based on current cart status
         _isCustomerSelected = CartService.CurrentCustomer != null;
         // Subscribe to the CartChanged event

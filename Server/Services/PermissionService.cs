@@ -10,9 +10,9 @@ namespace Safir.Server.Services
         private readonly string _connectionString;
         private readonly ILogger<PermissionService> _logger; // برای لاگ خطا
 
-        public PermissionService(IConfiguration configuration, ILogger<PermissionService> logger)
+        public PermissionService(IConnectionStringProvider connectionStringProvider, ILogger<PermissionService> logger)
         {
-            _connectionString = configuration.GetConnectionString("DefaultConnection");
+            _connectionString = connectionStringProvider.GetConnectionString();
             _logger = logger;
         }
 

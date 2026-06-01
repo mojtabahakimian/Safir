@@ -82,10 +82,18 @@ builder.Services.AddScoped<Pay2RunApiService>();
 builder.Services.AddBlazoredLocalStorage();
 // --- End Blazored.LocalStorage ---
 
+builder.Services.AddScoped<ConnectionManagerService>();
+
 #if DEBUG
 Console.WriteLine("ایجاد تاخیر عمدی برای تست لودینگ...");
 //await Task.Delay(5000); // 5000 میلی‌ثانیه = 5 ثانیه تاخیر
 Console.WriteLine("پایان تاخیر.");
 #endif
 
-await builder.Build().RunAsync();
+var host = builder.Build();
+
+// Load DB connection settings from local storage and apply to HttpClient
+var connectionManager = host.Services.GetRequiredService<ConnectionManagerService>();
+await connectionManager.LoadSettingsAsync();
+
+await host.RunAsync();

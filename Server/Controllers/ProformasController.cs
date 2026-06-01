@@ -22,6 +22,7 @@ namespace Safir.Server.Controllers
         private readonly IUserService _userService;
         private readonly IAppSettingsService _appSettingsService;
         private readonly IConfiguration _configuration;
+        private readonly Safir.Server.Services.IConnectionStringProvider _connectionStringProvider;
 
         private const int ProformaTag = 20;
         private const int DefaultDepatmanOnError = 20; //واحد های زیر مجموعه سازمان
@@ -38,13 +39,15 @@ namespace Safir.Server.Controllers
             ILogger<ProformasController> logger,
             IUserService userService,
             IAppSettingsService appSettingsService,
-            IConfiguration configuration)
+            IConfiguration configuration,
+            Safir.Server.Services.IConnectionStringProvider connectionStringProvider)
         {
             _dbService = dbService;
             _logger = logger;
             _userService = userService;
             _appSettingsService = appSettingsService;
             _configuration = configuration;
+            _connectionStringProvider = connectionStringProvider;
         }
 
         // --- Helpers (Unchanged) ---
@@ -69,7 +72,7 @@ namespace Safir.Server.Controllers
         private List<string> RunCalculateVisitorPorsant(long number, short tag, string? visitorId = null)
         {
             List<string> messages = new();
-            var connStr = _configuration.GetConnectionString("DefaultConnection");
+            var connStr = _connectionStringProvider.GetConnectionString();
             using (var conn = new SqlConnection(connStr))
             using (var cmd = new SqlCommand("dbo.CalculateVisitorPorsant", conn))
             {
