@@ -5,6 +5,7 @@
 @inject Safir.Client.Services.Pay2WorkshopApiService WorkshopApi
 @inject ISnackbar Snackbar
 @inject MudBlazor.IDialogService DialogService
+@inject ConnectionManagerService ConnectionManager
 
 <div class="pay2-tab-container">
 
@@ -200,6 +201,7 @@
 
     protected override async Task OnInitializedAsync()
     {
+        await ConnectionManager.LoadSettingsAsync();
         try
         {
             Workshops = await WorkshopApi.GetWorkshopsAsync() ?? new();

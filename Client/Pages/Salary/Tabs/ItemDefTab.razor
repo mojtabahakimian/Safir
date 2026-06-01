@@ -3,6 +3,7 @@
 @inject Safir.Client.Services.Pay2ItemDefApiService ItemDefApi
 @inject ISnackbar Snackbar
 @inject MudBlazor.IDialogService DialogService
+@inject ConnectionManagerService ConnectionManager
 
 <div class="pay2-tab-container">
     <div class="pay2-two-panel">
@@ -271,6 +272,7 @@
 
     protected override async Task OnInitializedAsync()
     {
+        await ConnectionManager.LoadSettingsAsync();
         ResetForm();
         await LoadDataAsync();
     }
