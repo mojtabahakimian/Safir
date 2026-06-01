@@ -131,12 +131,14 @@
     // --- Lifecycle and Event Handling ---
     protected override async Task OnInitializedAsync()
     {
-        // هدر X-DB-Connection را روی HttpClient اعمال می‌کنیم تا همه‌ی API ها از دیتابیس انتخابی استفاده کنند
+        // اعمال هدر X-DB-Connection روی HttpClient (پشتیبانی در کنار App.razor)
         await ConnectionManager.LoadSettingsAsync();
         activeDbSettings = await ConnectionManager.GetSettingsAsync();
 
         try
         {
+            // ریست کش تا اطمینان حاصل شود که نام شرکت و سال مالی از دیتابیس جاری خوانده می‌شود
+            ClientAppSettings.Invalidate();
             activeSazmanSettings = await ClientAppSettings.GetSettingsAsync();
         }
         catch

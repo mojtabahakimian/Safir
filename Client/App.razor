@@ -1,5 +1,7 @@
 ﻿@using MudBlazor
+@using Safir.Client.Services
 @inject ThemeService ThemeService
+@inject ConnectionManagerService ConnectionManager
 
 
 <MudThemeProvider Theme="ThemeService.CurrentTheme" @bind-IsDarkMode="ThemeService.IsDarkMode" />
@@ -53,6 +55,12 @@
 
 @code {
     // کد بخش @code بدون تغییر
+    protected override async Task OnInitializedAsync()
+    {
+        // اعمال هدر X-DB-Connection روی HttpClient برای همه‌ی مسیرها از جمله EmptyLayout
+        await ConnectionManager.LoadSettingsAsync();
+    }
+
     protected override void OnInitialized()
     {
         ThemeService.ThemeChanged += OnThemeChanged;

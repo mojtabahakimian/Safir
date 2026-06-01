@@ -19,7 +19,7 @@ namespace Safir.Server.Services
         {
             try
             {
-                _logger.LogInformation("Reading SAZMAN settings from database...");
+                _logger.LogDebug("Reading SAZMAN settings from database...");
                 const string sql = "SELECT TOP (1) NAME, YEA, BEDEHKAR, GHAYM FROM dbo.SAZMAN";
                 var result = await _dbService.DoGetDataSQLAsyncSingle<SAZMAN>(sql);
                 if (result == null)
