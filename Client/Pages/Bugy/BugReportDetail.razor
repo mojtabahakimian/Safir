@@ -10,6 +10,7 @@
 @inject NavigationManager NavigationManager
 @inject ISnackbar Snackbar
 @inject AuthenticationStateProvider AuthStateProvider
+@inject ConnectionManagerService ConnectionManager
 
 <PageTitle>جزئیات گزارش خطا</PageTitle>
 
@@ -302,6 +303,7 @@
 
     protected override async Task OnInitializedAsync()
     {
+        await ConnectionManager.LoadSettingsAsync();
         var authState = await AuthStateProvider.GetAuthenticationStateAsync();
         _isBugReporter = authState.User.FindFirst(BaseknowClaimTypes.GRSAL)?.Value == "999";
 

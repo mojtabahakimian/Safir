@@ -16,6 +16,7 @@
 @inject ISnackbar Snackbar
 @inject IDialogService DialogService
 @inject LookupApiService LookupService
+@inject ConnectionManagerService ConnectionManager
 
 <MudContainer MaxWidth="MaxWidth.Medium" Class="mt-6">
     <MudPaper Class="pa-4" Elevation="3">
@@ -163,6 +164,7 @@
 
     protected override async Task OnInitializedAsync()
     {
+        await ConnectionManager.LoadSettingsAsync();
         CartService.CartChanged += OnCartChanged;
         _isAnbarListLoading = true; // <--- شروع بارگذاری
         await LoadAnbarListAsync();
