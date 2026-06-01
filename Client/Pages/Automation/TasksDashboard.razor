@@ -213,6 +213,7 @@
 @inject NavigationManager NavManager
 @inject LookupApiService LookupService // <-- تزریق مستقیم کلاس سرویس
 @inject AuthenticationStateProvider AuthenticationStateProvider
+@inject ConnectionManagerService ConnectionManager
                                               // ...
 @code {
     private MudTable<TaskModel>? _table;
@@ -242,12 +243,11 @@
     private string UserNameDisplay = string.Empty;
     private string UserHES = string.Empty;
     private bool _isInitialized = false;
-
     private List<LookupDto<string>>? _customerLookup; // این لیست با داده‌های واقعی پر خواهد شد
     private LookupDto<string>? _selectedCustomerForTask;
-
     protected override async Task OnInitializedAsync()
     {
+        await ConnectionManager.LoadSettingsAsync();
         var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
         var currentUserPrincipal = authState.User;
         if (currentUserPrincipal?.Identity?.IsAuthenticated == true)
@@ -315,7 +315,7 @@
     private async Task LoadLookupsAsync()
     {
         //_isLoadingLookups = true; // برای نمایش وضعیت لودینگ (اگر UI جداگانه‌ای برایش دارید)
-                                  // await InvokeAsync(StateHasChanged); // اگر می‌خواهید وضعیت لودینگ فوراً نمایش داده شود
+        // await InvokeAsync(StateHasChanged); // اگر می‌خواهید وضعیت لودینگ فوراً نمایش داده شود
         try
         {
             var personelTask = AutomationService.GetPersonelLookupAsync();
@@ -535,21 +535,21 @@
     private void SelectTaskForEdit(TaskModel task)
     {
         _currentTask = new TaskModel // ایجاد یک نمونه جدید برای جلوگیری از تغییر ناخواسته آیتم در جدول
-            {
-                IDNUM = task.IDNUM,
-                PERSONEL = task.PERSONEL,
-                TASK = task.TASK,
-                PERIORITY = task.PERIORITY,
-                STATUS = task.STATUS,
-                STDATE = task.STDATE,
-                STTIME = task.STTIME,
-                ENDATE = task.ENDATE,
-                ENTIME = task.ENTIME,
-                COMP_COD = task.COMP_COD, // این مقدار مهم است
-                NAME = task.NAME,
-                skid = task.skid,
-                num = task.num
-            };
+        {
+            IDNUM = task.IDNUM,
+            PERSONEL = task.PERSONEL,
+            TASK = task.TASK,
+            PERIORITY = task.PERIORITY,
+            STATUS = task.STATUS,
+            STDATE = task.STDATE,
+            STTIME = task.STTIME,
+            ENDATE = task.ENDATE,
+            ENTIME = task.ENTIME,
+            COMP_COD = task.COMP_COD, // این مقدار مهم است
+            NAME = task.NAME,
+            skid = task.skid,
+            num = task.num
+        };
         // --- مقداردهی اولیه SelectedCustomerForTask بر اساس COMP_COD وظیفه انتخاب شده ---
         if (!string.IsNullOrWhiteSpace(_currentTask.COMP_COD) && _customerLookup != null)
         {
@@ -625,7 +625,6 @@
         _notificationTimer?.Dispose();
         _debounceTimer?.Dispose();
     }
-
     private LookupDto<string>? SelectedCustomerForTask
     {
         get => _selectedCustomerForTask;
@@ -646,26 +645,22 @@
             // StateHasChanged(); // معمولاً لازم نیست چون بایندینگ خودکار انجام می‌شود
         }
     }
-
-        // --- متد جدید برای جستجوی مشتریان در MudAutocomplete ---
+    // --- متد جدید برای جستجوی مشتریان در MudAutocomplete ---
     private async Task<IEnumerable<LookupDto<string>>> SearchCustomersAsync(string value)
     {
         // اگر _customerLookup هنوز بارگذاری نشده یا خالی است، لیست خالی برگردان
         if (_customerLookup == null || !_customerLookup.Any())
             return Enumerable.Empty<LookupDto<string>>();
-
         // اگر ورودی جستجو خالی است، می‌توانیم یک تعداد محدود از ابتدای لیست را برگردانیم
         // یا لیست خالی (بستگی به تجربه کاربری مورد نظر دارد)
         if (string.IsNullOrEmpty(value))
             return await Task.FromResult(_customerLookup.Take(10)); // نمایش ۱۰ مشتری اول یا همه اگر کمتر است
-
-        // فیلتر کردن لیست مشتریان بر اساس نام یا کد (Id)
-        // StringComparison.OrdinalIgnoreCase برای جستجوی غیر حساس به حروف بزرگ و کوچک
+                                                                    // فیلتر کردن لیست مشتریان بر اساس نام یا کد (Id)
+                                                                    // StringComparison.OrdinalIgnoreCase برای جستجوی غیر حساس به حروف بزرگ و کوچک
         var filteredCustomers = _customerLookup
-            .Where(c => (c.Name != null && c.Name.Contains(value, StringComparison.OrdinalIgnoreCase)) ||
-                        (c.Id != null && c.Id.Contains(value, StringComparison.OrdinalIgnoreCase)))
-            .Take(15); // محدود کردن تعداد نتایج نمایش داده شده برای کارایی بهتر
-
+        .Where(c => (c.Name != null && c.Name.Contains(value, StringComparison.OrdinalIgnoreCase)) ||
+        (c.Id != null && c.Id.Contains(value, StringComparison.OrdinalIgnoreCase)))
+        .Take(15); // محدود کردن تعداد نتایج نمایش داده شده برای کارایی بهتر
         return await Task.FromResult(filteredCustomers);
     }
 }

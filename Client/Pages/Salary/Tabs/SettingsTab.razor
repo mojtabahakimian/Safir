@@ -3,6 +3,7 @@
 @using Safir.Shared.Utility
 @inject Safir.Client.Services.Pay2SettingsApiService SettingsApi
 @inject ISnackbar Snackbar
+@inject ConnectionManagerService ConnectionManager
 
 <div class="pay2-tab-container" style="display: flex; flex-direction: column; height: 100%;">
 
@@ -282,6 +283,7 @@
 
     protected override async Task OnInitializedAsync()
     {
+        await ConnectionManager.LoadSettingsAsync();
         await LoadSettingsAsync();
     }
 

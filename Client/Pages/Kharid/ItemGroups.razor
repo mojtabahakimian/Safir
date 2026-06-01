@@ -31,6 +31,7 @@
 @inject NavigationManager NavManager
 @inject PermissionApiService PermissionService
 @inject ClientAppSettingsService AppSettingsService
+@inject ConnectionManagerService ConnectionManager
 
 <MudContainer MaxWidth="MaxWidth.False" Class="mt-4 px-md-4 px-2">
 
@@ -524,6 +525,7 @@
 
     protected override async Task OnInitializedAsync()
     {
+        await ConnectionManager.LoadSettingsAsync();
         Logger.LogInformation("ItemGroups.razor: OnInitializedAsync STARTING.");
         _isHistoricalMode = Mode?.ToLowerInvariant() == "historical";
         Logger.LogInformation($"ItemGroups Mode: {(_isHistoricalMode ? "Historical" : "Standard Group")}");

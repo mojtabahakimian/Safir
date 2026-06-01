@@ -2,6 +2,7 @@
 @inject Safir.Client.Services.Pay2AttendanceApiService AttApi
 @inject Safir.Client.Services.Pay2WorkshopApiService WorkshopApi
 @inject ISnackbar Snackbar
+@inject ConnectionManagerService ConnectionManager
 
 <style>
     .p2-excel-wrapper {
@@ -470,6 +471,7 @@
 
     protected override async Task OnInitializedAsync()
     {
+        await ConnectionManager.LoadSettingsAsync();
         try
         {
             Workshops = await WorkshopApi.GetWorkshopsAsync() ?? new();
@@ -647,7 +649,7 @@
     }
 
     List<Pay2PeriodLookupDto> PeriodOptions = new();
-    
+
     long SelectedPeriodDate;
     static bool TryNormalizePeriodDate(string? input, out long periodDate, out string error)
     {

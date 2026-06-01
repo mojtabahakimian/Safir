@@ -14,6 +14,7 @@
 @inject ISnackbar Snackbar
 @inject ISnackbar Snackbar
 @inject ConnectivityService Connectivity
+@inject ConnectionManagerService ConnectionManager
 
 <MudLayout>
     <MudAppBar Elevation="1" Color="Color.Primary">
@@ -157,6 +158,7 @@
 
     protected override async Task OnInitializedAsync()
     {
+        await ConnectionManager.LoadSettingsAsync();
         await InitialConnectivityCheck();
         // تنظیم تایمر برای بررسی دوره‌ای وضعیت اتصال (مثلاً هر ۱ دقیقه)
         _connectivityCheckTimer = new Timer(async _ => await PeriodicConnectivityCheck(), null, TimeSpan.FromMinutes(1), TimeSpan.FromMinutes(1));

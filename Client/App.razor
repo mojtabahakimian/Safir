@@ -1,5 +1,7 @@
-﻿@using MudBlazor
+﻿﻿@using MudBlazor
+@using Safir.Client.Services
 @inject ThemeService ThemeService
+@inject ConnectionManagerService ConnectionManager
 
 
 <MudThemeProvider Theme="ThemeService.CurrentTheme" @bind-IsDarkMode="ThemeService.IsDarkMode" />
@@ -53,6 +55,12 @@
 
 @code {
     // کد بخش @code بدون تغییر
+    protected override async Task OnInitializedAsync()
+    {
+        // اعمال هدر X-DB-Connection روی HttpClient برای همه‌ی مسیرها از جمله EmptyLayout
+        await ConnectionManager.LoadSettingsAsync();
+    }
+
     protected override void OnInitialized()
     {
         ThemeService.ThemeChanged += OnThemeChanged;
@@ -69,9 +77,4 @@
         ThemeService.ThemeChanged -= OnThemeChanged;
     }
 
-    // (اختیاری) کامپوننت کمکی برای ریدایرکت به صفحه لاگین
-    // اگر از قبل دارید یا از پکیجی استفاده می‌کنید، نیازی به این نیست
-    // یا می‌توانید به سادگی فقط یک پیام نمایش دهید.
-    // [Parameter] public string ReturnUrl { get; set; }
-    // protected override void OnInitialized() => NavigationManager.NavigateTo($"login?returnUrl={Uri.EscapeDataString(NavigationManager.Uri)}");
 }

@@ -2,6 +2,8 @@
 @layout EmptyLayout
 @using Safir.Client.Pages.Salary.Tabs
 @using Safir.Shared.Models.Salary
+@using Safir.Client.Services
+@inject ConnectionManagerService ConnectionManager
 
 @* ══════════════════════════════════════════════════════════
    Toast — نمایش پیام‌های عملیاتی
@@ -25,8 +27,8 @@
         <div class="pay2-brand">
             <div class="pay2-brand-icon">P2</div>
             <div>
-                <div class="pay2-brand-name">مستر کارکت</div>
-                <div class="pay2-brand-version">نسخه PAY2 v6.0</div>
+                <div class="pay2-brand-name">@(_activeDbSettings?.Database ?? "سفیر")</div>
+                <div class="pay2-brand-version">@(_activeDbSettings?.Server ?? "...")</div>
             </div>
         </div>
 
@@ -320,6 +322,7 @@
     // State
     // ══════════════════════════════════════════
 
+    private Safir.Shared.Models.DbConnectionSettings? _activeDbSettings;
     private string ActiveTab = "dashboard";
     private bool IsToastVisible = false;
     private string ToastMessage = string.Empty;
@@ -337,6 +340,16 @@
       new("سارا رضایی",  "ADV_HES / T-1050", "۲۰,۰۰۰,۰۰۰"),
       new("محمد کریمی",  "ADV_HES / T-1050", "۵,۰۰۰,۰۰۰"),
     };
+
+    // ══════════════════════════════════════════
+    // Lifecycle
+    // ══════════════════════════════════════════
+
+    protected override async Task OnInitializedAsync()
+    {
+        await ConnectionManager.LoadSettingsAsync();
+        _activeDbSettings = await ConnectionManager.GetSettingsAsync();
+    }
 
     // ══════════════════════════════════════════
     // ناوبری تب‌ها

@@ -74,6 +74,11 @@ namespace Safir.Client.Services
             return settings?.BEDEHKAR; // نام فیلد را مطابق مدل SAZMAN تنظیم کنید
         }
 
-        // سایر متدهای Get... برای فیلدهای دیگر
+        // ریست کردن کش برای بارگذاری مجدد تنظیمات هنگام تغییر دیتابیس
+        public void Invalidate()
+        {
+            _isLoaded = false;
+            _cachedSettings = null;
+        }
     }
 }
