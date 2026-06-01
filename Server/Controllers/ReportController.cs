@@ -1,8 +1,9 @@
 ﻿using Microsoft.AspNetCore.Mvc;
-using Stimulsoft.Report.Dictionary;
-using Stimulsoft.Report;
+using Safir.Shared.Interfaces;
 using Safir.Shared.Models;
+using Stimulsoft.Report;
 using Stimulsoft.Report.Components;
+using Stimulsoft.Report.Dictionary;
 using Stimulsoft.Report.Export;
 
 namespace Safir.Server.Controllers
@@ -15,10 +16,10 @@ namespace Safir.Server.Controllers
         private readonly string _connString;
         private readonly ILogger<ReportsController> _logger;
 
-        public ReportsController(IWebHostEnvironment env, IConfiguration config, ILogger<ReportsController> logger)
+        public ReportsController(IWebHostEnvironment env, IConnectionStringProvider connectionStringProvider, ILogger<ReportsController> logger)
         {
             _env = env;
-            _connString = config.GetConnectionString("DefaultConnection")!;
+            _connString = connectionStringProvider.GetConnectionString();
             _logger = logger;
         }
 
