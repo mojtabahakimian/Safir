@@ -6,6 +6,7 @@
 @attribute [Authorize]
 @inject BugReportApiService BugReportApi
 @inject ISnackbar Snackbar
+@inject ConnectionManagerService ConnectionManager
 
 <PageTitle>لیست گزارش‌های خطا</PageTitle>
 
@@ -203,6 +204,7 @@
 
     protected override async Task OnInitializedAsync()
     {
+        await ConnectionManager.LoadSettingsAsync();
         await LoadReports();
     }
 

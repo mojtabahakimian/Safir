@@ -1,5 +1,6 @@
 ﻿using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
 using Safir.Shared.Models;
 using System;
 using System.Data.SqlClient;
@@ -12,11 +13,13 @@ namespace Safir.Server.Services
     {
         private readonly IHttpContextAccessor _httpContextAccessor;
         private readonly IConfiguration _configuration;
+        private readonly ILogger<ConnectionStringProvider> _logger;
 
-        public ConnectionStringProvider(IHttpContextAccessor httpContextAccessor, IConfiguration configuration)
+        public ConnectionStringProvider(IHttpContextAccessor httpContextAccessor, IConfiguration configuration, ILogger<ConnectionStringProvider> logger)
         {
             _httpContextAccessor = httpContextAccessor;
             _configuration = configuration;
+            _logger = logger;
         }
 
         public string GetConnectionString()
@@ -55,9 +58,9 @@ namespace Safir.Server.Services
                             return builder.ConnectionString;
                         }
                     }
-                    catch
+                    catch (Exception ex)
                     {
-                        // Fallback to default if parsing fails
+                        _logger.LogWarning(ex, "Failed to parse X-DB-Connection header; falling back to DefaultConnection.");
                     }
                 }
             }

@@ -1,4 +1,4 @@
-﻿﻿@using MudBlazor
+﻿﻿﻿@using MudBlazor
 @using Microsoft.AspNetCore.Components.Authorization
 @using Safir.Client.Services
 @using Safir.Shared.Interfaces;
@@ -131,10 +131,14 @@
     // --- Lifecycle and Event Handling ---
     protected override async Task OnInitializedAsync()
     {
+        // اعمال هدر X-DB-Connection روی HttpClient (پشتیبانی در کنار App.razor)
+        await ConnectionManager.LoadSettingsAsync();
         activeDbSettings = await ConnectionManager.GetSettingsAsync();
 
         try
         {
+            // ریست کش تا اطمینان حاصل شود که نام شرکت و سال مالی از دیتابیس جاری خوانده می‌شود
+            ClientAppSettings.Invalidate();
             activeSazmanSettings = await ClientAppSettings.GetSettingsAsync();
         }
         catch

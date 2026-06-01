@@ -4,6 +4,7 @@
 @using Safir.Shared.Models.Salary
 @using Safir.Client.Pages.Salary.Tabs.EmployeeComponents
 @inject MudBlazor.IDialogService DialogService
+@inject ConnectionManagerService ConnectionManager
 
 <div class="pay2-tab-container">
     <div class="pay2-card-header">
@@ -209,6 +210,7 @@
 
     protected override async Task OnInitializedAsync()
     {
+        await ConnectionManager.LoadSettingsAsync();
         await LoadData();
     }
 

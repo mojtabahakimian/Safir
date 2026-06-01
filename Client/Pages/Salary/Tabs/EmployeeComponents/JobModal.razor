@@ -3,6 +3,7 @@
 @inject Safir.Client.Services.Pay2EmployeeApiService EmployeeApi
 @inject ISnackbar Snackbar
 @inject MudBlazor.IDialogService DialogService
+@implements IDisposable
 
 @if (IsOpen)
 {
@@ -286,4 +287,10 @@
     }
 
     async Task Close() => await OnClose.InvokeAsync();
+
+    public void Dispose()
+    {
+        debounceTimer?.Stop();
+        debounceTimer?.Dispose();
+    }
 }

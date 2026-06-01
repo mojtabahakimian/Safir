@@ -4,6 +4,7 @@
 @inject LookupApiService LookupService
 @implements IDisposable
 @inject MudBlazor.IDialogService DialogService
+@inject ConnectionManagerService ConnectionManager
 
 <div class="pay2-tab-container">
     <div class="pay2-workshop-layout">
@@ -478,6 +479,7 @@
 
     protected override async Task OnInitializedAsync()
     {
+        await ConnectionManager.LoadSettingsAsync();
         NewWorkshop();
         await LoadWorkshopsAsync();
     }

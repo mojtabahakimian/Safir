@@ -5,6 +5,7 @@
 @inject Safir.Client.Services.LookupApiService LookupService
 @inject ISnackbar Snackbar
 @using Safir.Shared.Models
+@inject ConnectionManagerService ConnectionManager
 
 <div class="pay2-tab-container">
 
@@ -408,6 +409,7 @@
 
     protected override async Task OnInitializedAsync()
     {
+        await ConnectionManager.LoadSettingsAsync();
         try
         {
             Workshops = await WorkshopApi.GetWorkshopsAsync() ?? new();

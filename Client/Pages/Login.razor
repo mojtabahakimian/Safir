@@ -176,6 +176,8 @@
 
     protected override async Task OnInitializedAsync()
     {
+        // اعمال هدر X-DB-Connection روی HttpClient قبل از بررسی اتصال
+        await ConnectionManager.LoadSettingsAsync();
         var savedSettings = await ConnectionManager.GetSettingsAsync();
         if (savedSettings != null)
         {
@@ -183,7 +185,6 @@
         }
 
         await CheckInitialConnectivity();
-
     }
 
     private async Task SaveDbSettings()
@@ -218,7 +219,7 @@
                 isTestingConnection = true;
                 StateHasChanged();
 
-                // Save temporarily so the custom header is updated
+                // ذخیره تنظیمات و اعمال هدر X-DB-Connection برای تست اتصال
                 await ConnectionManager.SaveSettingsAsync(dbSettings);
 
                 try
