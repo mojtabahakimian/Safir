@@ -1,10 +1,11 @@
 ﻿// In Safir.Server/Controllers/SettingsController.cs (New File)
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using System.Data.SqlClient;
 
 [Route("api/[controller]")]
 [ApiController]
-// [Authorize(Roles = "Admin")] // <<< IMPORTANT: Add authorization for production!
+[Authorize]
 public class SettingsController : ControllerBase
 {
     private readonly IConfiguration _configuration;

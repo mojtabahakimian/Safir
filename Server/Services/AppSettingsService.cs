@@ -98,10 +98,18 @@ namespace Safir.Server.Services
 
         public void ResetCache()
         {
-            _cachedSazmanSettings = null;
-            _cachedBedehkarKol = null;
-            _isInitialized = false;
-            _logger.LogInformation("AppSettingsService cache has been reset.");
+            _initLock.Wait();
+            try
+            {
+                _cachedSazmanSettings = null;
+                _cachedBedehkarKol = null;
+                _isInitialized = false;
+                _logger.LogInformation("AppSettingsService cache has been reset.");
+            }
+            finally
+            {
+                _initLock.Release();
+            }
         }
     }
 }

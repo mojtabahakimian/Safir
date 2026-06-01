@@ -76,27 +76,45 @@ namespace Safir.Client.Services
 
         public void ResetCache()
         {
-            _cachedSettings = null;
-            _isLoaded = false;
+            _initLock.Wait();
+            try
+            {
+                _cachedSettings = null;
+                _isLoaded = false;
+            }
+            finally
+            {
+                _initLock.Release();
+            }
         }
 
         public async Task<SAZMAN?> RefreshFromServerAsync()
         {
-            ResetCache();
+            SAZMAN? previous = _cachedSettings;
             try
             {
                 var response = await _httpClient.PostAsync("api/appsettings/refresh", null);
                 if (response.IsSuccessStatusCode)
                 {
-                    _cachedSettings = await response.Content.ReadFromJsonAsync<SAZMAN>();
-                    _isLoaded = _cachedSettings != null;
+                    var refreshed = await response.Content.ReadFromJsonAsync<SAZMAN>();
+                    await _initLock.WaitAsync();
+                    try
+                    {
+                        _cachedSettings = refreshed;
+                        _isLoaded = refreshed != null;
+                    }
+                    finally
+                    {
+                        _initLock.Release();
+                    }
+                    return _cachedSettings;
                 }
             }
             catch (Exception ex)
             {
                 _logger?.LogError(ex, "Client: Failed to refresh application settings from API.");
             }
-            return _cachedSettings;
+            return previous;
         }
     }
 }

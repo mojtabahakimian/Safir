@@ -3,6 +3,7 @@
 @using Safir.Client.Services
 @using Safir.Shared.Interfaces;
 @using Safir.Shared.Models
+@implements IDisposable
 @inject NavigationManager NavigationManager
 @inject IAuthService AuthService
 @inject MudBlazor.IDialogService DialogService
@@ -18,22 +19,21 @@
         صفحه اصلی
     </MudNavLink>
 
-    @if (_sazmanSettings != null)
-    {
-        <div class="px-4 py-2" style="border-bottom: 1px solid var(--mud-palette-divider);">
-            @if (!string.IsNullOrEmpty(_sazmanSettings.NAME))
-            {
-                <MudText Typo="Typo.subtitle2" Style="font-weight:700;">@_sazmanSettings.NAME</MudText>
-            }
-            @if (_sazmanSettings.YEA.HasValue)
-            {
-                <MudText Typo="Typo.caption" Color="Color.Secondary">سال مالی: @_sazmanSettings.YEA</MudText>
-            }
-        </div>
-    }
-
     <AuthorizeView>
         <Authorized>
+            @if (_sazmanSettings != null)
+            {
+                <div class="px-4 py-2" style="border-bottom: 1px solid var(--mud-palette-divider);">
+                    @if (!string.IsNullOrEmpty(_sazmanSettings.NAME))
+                    {
+                        <MudText Typo="Typo.subtitle2" Style="font-weight:700;">@_sazmanSettings.NAME</MudText>
+                    }
+                    @if (_sazmanSettings.YEA.HasValue)
+                    {
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">سال مالی: @_sazmanSettings.YEA</MudText>
+                    }
+                </div>
+            }
             <!-- ثبت سفارش -->
             @if (_isCustomerSelected)
             {

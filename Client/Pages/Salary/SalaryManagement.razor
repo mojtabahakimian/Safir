@@ -5,8 +5,11 @@
 @using Safir.Client.Services
 @using Safir.Shared.Constants
 @using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.Extensions.Logging
 @inject ClientAppSettingsService AppSettingsService
 @inject AuthenticationStateProvider AuthenticationStateProvider
+@inject ISnackbar Snackbar
+@inject ILogger<SalaryManagement> Logger
 
 @* ══════════════════════════════════════════════════════════
    Toast — نمایش پیام‌های عملیاتی
@@ -356,7 +359,11 @@
             _companyName = sazman?.NAME;
             _fiscalYear = sazman?.YEA;
         }
-        catch { }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to load SAZMAN settings in SalaryManagement.");
+            Snackbar.Add("خطا در بارگذاری اطلاعات سازمان.", Severity.Warning);
+        }
 
         try
         {
@@ -367,13 +374,15 @@
                 _currentUsername = user.FindFirst(BaseknowClaimTypes.UUSER)?.Value
                                    ?? user.Identity.Name
                                    ?? "کاربر";
-                if (!string.IsNullOrEmpty(_currentUsername) && _currentUsername.Length >= 2)
-                    _userInitials = _currentUsername.Substring(0, 2);
-                else if (!string.IsNullOrEmpty(_currentUsername))
-                    _userInitials = _currentUsername;
+                _userInitials = !string.IsNullOrEmpty(_currentUsername) && _currentUsername.Length >= 2
+                    ? _currentUsername[..2]
+                    : (_currentUsername ?? "کا");
             }
         }
-        catch { }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to load authentication state in SalaryManagement.");
+        }
     }
 
     // ══════════════════════════════════════════
