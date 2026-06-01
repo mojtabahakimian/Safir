@@ -2,6 +2,7 @@
 @using Microsoft.AspNetCore.Components.Authorization
 @using Safir.Client.Services
 @using Safir.Shared.Interfaces;
+@using Safir.Shared.Models
 @inject NavigationManager NavigationManager
 @inject IAuthService AuthService
 @inject MudBlazor.IDialogService DialogService
@@ -9,12 +10,27 @@
 @inject ISnackbar Snackbar
 @inject IJSRuntime JSRuntime
 @inject UserStateApiService UserStateApiService
+@inject ClientAppSettingsService AppSettingsService
 
 <MudNavMenu>
     <!-- صفحه اصلی -->
     <MudNavLink Href="/" Match="NavLinkMatch.All" Icon="@Icons.Material.Filled.Home">
         صفحه اصلی
     </MudNavLink>
+
+    @if (_sazmanSettings != null)
+    {
+        <div class="px-4 py-2" style="border-bottom: 1px solid var(--mud-palette-divider);">
+            @if (!string.IsNullOrEmpty(_sazmanSettings.NAME))
+            {
+                <MudText Typo="Typo.subtitle2" Style="font-weight:700;">@_sazmanSettings.NAME</MudText>
+            }
+            @if (_sazmanSettings.YEA.HasValue)
+            {
+                <MudText Typo="Typo.caption" Color="Color.Secondary">سال مالی: @_sazmanSettings.YEA</MudText>
+            }
+        </div>
+    }
 
     <AuthorizeView>
         <Authorized>
@@ -108,12 +124,14 @@
 @code {
     private bool collapseNavMenu = true;
 
-    private string appVersion = "1.0.0"; // می‌توانید این مقدار را مطابق نسخه پروژه در csproj یا منبع دیگر تنظیم کنید
+    private string appVersion = "1.0.0";
 
     private bool _isCustomerSelected = false;
 
+    private SAZMAN? _sazmanSettings;
+
     // --- Lifecycle and Event Handling ---
-    protected override void OnInitialized()
+    protected override async Task OnInitializedAsync()
     {
         // Set initial state based on current cart status
         _isCustomerSelected = CartService.CurrentCustomer != null;
@@ -125,13 +143,16 @@
             var version = System.Reflection.Assembly.GetExecutingAssembly().GetName().Version;
             if (version != null)
             {
-                // به‌عنوان مثال: "1.0.0.0"
                 appVersion = version.ToString();
             }
         }
         catch { }
 
-        base.OnInitialized();
+        try
+        {
+            _sazmanSettings = await AppSettingsService.GetSettingsAsync();
+        }
+        catch { }
     }
     private void OnCartChanged()
     {

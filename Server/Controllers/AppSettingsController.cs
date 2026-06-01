@@ -21,7 +21,7 @@
             _logger = logger;
         }
 
-        [HttpGet] // متد GET
+        [HttpGet]
         public async Task<ActionResult<SAZMAN>> GetAppSettings()
         {
             _logger.LogInformation("API request received for GetAppSettings");
@@ -29,11 +29,22 @@
             if (settings == null)
             {
                 _logger.LogWarning("SAZMAN settings are not available.");
-                // می‌توانید 500 برگردانید یا یک شیء خالی با کد 200
                 return NotFound("Application settings could not be loaded.");
-                // یا return Ok(new SAZMAN());
             }
             _logger.LogInformation("Returning SAZMAN settings via API.");
+            return Ok(settings);
+        }
+
+        [HttpPost("refresh")]
+        public async Task<ActionResult<SAZMAN>> RefreshAppSettings()
+        {
+            _logger.LogInformation("Cache reset requested for AppSettingsService");
+            _appSettingsService.ResetCache();
+            var settings = await _appSettingsService.GetSazmanSettingsAsync();
+            if (settings == null)
+            {
+                return NotFound("Application settings could not be loaded after refresh.");
+            }
             return Ok(settings);
         }
     }

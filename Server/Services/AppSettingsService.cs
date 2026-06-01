@@ -95,5 +95,13 @@ namespace Safir.Server.Services
             }
             return _cachedBedehkarKol;
         }
+
+        public void ResetCache()
+        {
+            _cachedSazmanSettings = null;
+            _cachedBedehkarKol = null;
+            _isInitialized = false;
+            _logger.LogInformation("AppSettingsService cache has been reset.");
+        }
     }
 }

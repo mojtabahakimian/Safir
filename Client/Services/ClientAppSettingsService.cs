@@ -71,9 +71,32 @@ namespace Safir.Client.Services
         public async Task<int?> Get_BEDEHKAR_Async()
         {
             var settings = await GetSettingsAsync();
-            return settings?.BEDEHKAR; // نام فیلد را مطابق مدل SAZMAN تنظیم کنید
+            return settings?.BEDEHKAR;
         }
 
-        // سایر متدهای Get... برای فیلدهای دیگر
+        public void ResetCache()
+        {
+            _cachedSettings = null;
+            _isLoaded = false;
+        }
+
+        public async Task<SAZMAN?> RefreshFromServerAsync()
+        {
+            ResetCache();
+            try
+            {
+                var response = await _httpClient.PostAsync("api/appsettings/refresh", null);
+                if (response.IsSuccessStatusCode)
+                {
+                    _cachedSettings = await response.Content.ReadFromJsonAsync<SAZMAN>();
+                    _isLoaded = _cachedSettings != null;
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogError(ex, "Client: Failed to refresh application settings from API.");
+            }
+            return _cachedSettings;
+        }
     }
 }

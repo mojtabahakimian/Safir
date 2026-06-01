@@ -2,6 +2,11 @@
 @layout EmptyLayout
 @using Safir.Client.Pages.Salary.Tabs
 @using Safir.Shared.Models.Salary
+@using Safir.Client.Services
+@using Safir.Shared.Constants
+@using Microsoft.AspNetCore.Components.Authorization
+@inject ClientAppSettingsService AppSettingsService
+@inject AuthenticationStateProvider AuthenticationStateProvider
 
 @* ══════════════════════════════════════════════════════════
    Toast — نمایش پیام‌های عملیاتی
@@ -25,17 +30,17 @@
         <div class="pay2-brand">
             <div class="pay2-brand-icon">P2</div>
             <div>
-                <div class="pay2-brand-name">مستر کارکت</div>
+                <div class="pay2-brand-name">@(_companyName ?? "سیستم حقوق")</div>
                 <div class="pay2-brand-version">نسخه PAY2 v6.0</div>
             </div>
         </div>
 
         @* کارت دوره فعال *@
         <div class="pay2-period-card">
-            <div class="pay2-period-label">دوره فعال</div>
+            <div class="pay2-period-label">سال مالی</div>
             <div class="pay2-period-row">
-                <div class="pay2-period-value">۱۴۰۴/۰۱</div>
-                <div class="pay2-period-badge">باز</div>
+                <div class="pay2-period-value">@(_fiscalYear?.ToString() ?? "---")</div>
+                <div class="pay2-period-badge">فعال</div>
             </div>
         </div>
 
@@ -111,9 +116,9 @@
 
         @* فوتر سایدبار *@
         <div class="pay2-sidebar-footer">
-            <div class="pay2-user-avatar">مد</div>
+            <div class="pay2-user-avatar">@_userInitials</div>
             <div>
-                <div class="pay2-user-name">مدیر سیستم</div>
+                <div class="pay2-user-name">@(_currentUsername ?? "کاربر")</div>
                 <div class="pay2-user-role">کارگاه مرکزی</div>
             </div>
         </div>
@@ -325,6 +330,11 @@
     private string ToastMessage = string.Empty;
     private int _toastVersion = 0;
 
+    private string? _companyName;
+    private short? _fiscalYear;
+    private string? _currentUsername;
+    private string _userInitials = "کا";
+
     // ──────────────────────────────────────────
     // داده‌های placeholder داشبورد
     // (بعداً از API واقعی جایگزین می‌شود)
@@ -337,6 +347,34 @@
       new("سارا رضایی",  "ADV_HES / T-1050", "۲۰,۰۰۰,۰۰۰"),
       new("محمد کریمی",  "ADV_HES / T-1050", "۵,۰۰۰,۰۰۰"),
     };
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var sazman = await AppSettingsService.GetSettingsAsync();
+            _companyName = sazman?.NAME;
+            _fiscalYear = sazman?.YEA;
+        }
+        catch { }
+
+        try
+        {
+            var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+            var user = authState.User;
+            if (user.Identity?.IsAuthenticated == true)
+            {
+                _currentUsername = user.FindFirst(BaseknowClaimTypes.UUSER)?.Value
+                                   ?? user.Identity.Name
+                                   ?? "کاربر";
+                if (!string.IsNullOrEmpty(_currentUsername) && _currentUsername.Length >= 2)
+                    _userInitials = _currentUsername.Substring(0, 2);
+                else if (!string.IsNullOrEmpty(_currentUsername))
+                    _userInitials = _currentUsername;
+            }
+        }
+        catch { }
+    }
 
     // ══════════════════════════════════════════
     // ناوبری تب‌ها

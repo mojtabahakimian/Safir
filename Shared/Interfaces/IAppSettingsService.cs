@@ -9,10 +9,8 @@ namespace Safir.Shared.Interfaces
 {
     public interface IAppSettingsService
     {
-        // متد جدید برای دریافت کل تنظیمات سازمان
         Task<SAZMAN?> GetSazmanSettingsAsync();
-
         Task<int?> GetDefaultBedehkarKolAsync();
-        // Add other global settings if needed
+        void ResetCache();
     }
 }

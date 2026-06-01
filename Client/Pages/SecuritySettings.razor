@@ -1,0 +1,158 @@
+@page "/settings/security"
+@using Safir.Client.Services
+@using Safir.Shared.Models
+@using Microsoft.AspNetCore.Authorization
+@attribute [Authorize]
+
+@inject ClientAppSettingsService AppSettingsService
+@inject HttpClient HttpClient
+@inject ISnackbar Snackbar
+
+<PageTitle>تنظیمات امنیتی | سفیر</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.Medium" Class="my-4">
+    <MudText Typo="Typo.h5" Class="mb-4">تنظیمات سرور و پایگاه داده</MudText>
+
+    @if (_isLoading)
+    {
+        <MudProgressLinear Indeterminate="true" Color="Color.Primary" Class="mb-4" />
+    }
+
+    <MudGrid>
+        <MudItem xs="12" md="6">
+            <MudPaper Elevation="2" Class="pa-4 rounded-lg">
+                <MudText Typo="Typo.h6" Class="mb-3">اطلاعات اتصال پایگاه داده</MudText>
+                <MudDivider Class="mb-3" />
+
+                <MudStack Spacing="2">
+                    <div>
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">نام سرور</MudText>
+                        <MudText Typo="Typo.body1" Style="font-family: monospace; direction: ltr; text-align: left;">
+                            @(_dbInfo?.DatabaseServer ?? "---")
+                        </MudText>
+                    </div>
+                    <MudDivider />
+                    <div>
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">نام دیتابیس</MudText>
+                        <MudText Typo="Typo.body1" Style="font-family: monospace; direction: ltr; text-align: left;">
+                            @(_dbInfo?.DatabaseName ?? "---")
+                        </MudText>
+                    </div>
+                    <MudDivider />
+                    <div>
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">محیط اجرا</MudText>
+                        <MudText Typo="Typo.body1">@(_dbInfo?.EnvironmentName ?? "---")</MudText>
+                    </div>
+                </MudStack>
+            </MudPaper>
+        </MudItem>
+
+        <MudItem xs="12" md="6">
+            <MudPaper Elevation="2" Class="pa-4 rounded-lg">
+                <MudText Typo="Typo.h6" Class="mb-3">اطلاعات سازمان (SAZMAN)</MudText>
+                <MudDivider Class="mb-3" />
+
+                <MudStack Spacing="2">
+                    <div>
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">نام شرکت</MudText>
+                        <MudText Typo="Typo.body1">@(_sazman?.NAME ?? "---")</MudText>
+                    </div>
+                    <MudDivider />
+                    <div>
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">سال مالی</MudText>
+                        <MudText Typo="Typo.body1">@(_sazman?.YEA?.ToString() ?? "---")</MudText>
+                    </div>
+                    <MudDivider />
+                    <div>
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">حداکثر بدهکاری</MudText>
+                        <MudText Typo="Typo.body1">@(_sazman?.BEDEHKAR?.ToString("N0") ?? "---")</MudText>
+                    </div>
+                </MudStack>
+            </MudPaper>
+        </MudItem>
+
+        <MudItem xs="12">
+            <MudPaper Elevation="1" Class="pa-4 rounded-lg">
+                <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween">
+                    <div>
+                        <MudText Typo="Typo.subtitle1">بارگذاری مجدد تنظیمات از دیتابیس</MudText>
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">
+                            اطلاعات سازمان را از دیتابیس جاری مجدداً بارگذاری می‌کند.
+                        </MudText>
+                    </div>
+                    <MudButton Variant="Variant.Filled"
+                               Color="Color.Primary"
+                               StartIcon="@Icons.Material.Filled.Refresh"
+                               OnClick="RefreshSettingsAsync"
+                               Disabled="_isRefreshing">
+                        @if (_isRefreshing)
+                        {
+                            <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="me-2" />
+                        }
+                        بارگذاری مجدد
+                    </MudButton>
+                </MudStack>
+            </MudPaper>
+        </MudItem>
+    </MudGrid>
+</MudContainer>
+
+@code {
+    private bool _isLoading = true;
+    private bool _isRefreshing = false;
+    private SAZMAN? _sazman;
+    private DebugInfoDto? _dbInfo;
+
+    private class DebugInfoDto
+    {
+        public string? EnvironmentName { get; set; }
+        public string? DatabaseServer { get; set; }
+        public string? DatabaseName { get; set; }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadDataAsync();
+    }
+
+    private async Task LoadDataAsync()
+    {
+        _isLoading = true;
+        try
+        {
+            _sazman = await AppSettingsService.GetSettingsAsync();
+            _dbInfo = await HttpClient.GetFromJsonAsync<DebugInfoDto>("api/settings/debug-info");
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"خطا در بارگذاری اطلاعات: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private async Task RefreshSettingsAsync()
+    {
+        _isRefreshing = true;
+        StateHasChanged();
+        try
+        {
+            var refreshed = await AppSettingsService.RefreshFromServerAsync();
+            _sazman = refreshed;
+            if (refreshed != null)
+                Snackbar.Add("تنظیمات با موفقیت از دیتابیس بارگذاری شد.", Severity.Success);
+            else
+                Snackbar.Add("بارگذاری انجام شد اما اطلاعاتی دریافت نشد.", Severity.Warning);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"خطا در بارگذاری مجدد: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _isRefreshing = false;
+        }
+    }
+}
