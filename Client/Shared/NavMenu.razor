@@ -131,6 +131,8 @@
     // --- Lifecycle and Event Handling ---
     protected override async Task OnInitializedAsync()
     {
+        // هدر X-DB-Connection را روی HttpClient اعمال می‌کنیم تا همه‌ی API ها از دیتابیس انتخابی استفاده کنند
+        await ConnectionManager.LoadSettingsAsync();
         activeDbSettings = await ConnectionManager.GetSettingsAsync();
 
         try

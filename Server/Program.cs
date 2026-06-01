@@ -26,7 +26,7 @@ builder.Services.AddScoped<IUserService, UserService>();
 builder.Services.AddScoped<IUserStateService, UserStateService>();
 
 // --- End Custom Services ---
-builder.Services.AddSingleton<IAppSettingsService, AppSettingsService>();
+builder.Services.AddScoped<IAppSettingsService, AppSettingsService>();
 
 
 // --- Add JWT Authentication ---
