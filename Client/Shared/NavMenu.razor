@@ -131,19 +131,17 @@
     // --- Lifecycle and Event Handling ---
     protected override async Task OnInitializedAsync()
     {
-        // اعمال هدر X-DB-Connection روی HttpClient (پشتیبانی در کنار App.razor)
         await ConnectionManager.LoadSettingsAsync();
-        activeDbSettings = await ConnectionManager.GetSettingsAsync();
+        // 🚀 اصلاح مهم: استفاده از متد جدید برای دریافت تنظیمات موثر
+        activeDbSettings = await ConnectionManager.GetEffectiveDbSettingsAsync();
 
         try
         {
-            // ریست کش تا اطمینان حاصل شود که نام شرکت و سال مالی از دیتابیس جاری خوانده می‌شود
             ClientAppSettings.Invalidate();
             activeSazmanSettings = await ClientAppSettings.GetSettingsAsync();
         }
         catch
         {
-            // Ignore if user isn't authenticated yet or endpoint fails
         }
 
         // Set initial state based on current cart status

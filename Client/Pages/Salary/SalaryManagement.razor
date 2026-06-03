@@ -274,7 +274,7 @@
     protected override async Task OnInitializedAsync()
     {
         await ConnectionManager.LoadSettingsAsync();
-        _activeDbSettings = await ConnectionManager.GetSettingsAsync();
+        _activeDbSettings = await ConnectionManager.GetEffectiveDbSettingsAsync();
     }
 
     // ══════════════════════════════════════════
