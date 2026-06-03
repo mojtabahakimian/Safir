@@ -33,5 +33,15 @@ namespace Safir.Client.Services
                 throw new Exception(await res.Content.ReadAsStringAsync());
         }
         public async Task<List<Pay2PeriodLookupDto>> GetPeriodsAsync(int wsId) => await _http.GetFromJsonAsync<List<Pay2PeriodLookupDto>>($"api/pay2/attendance/periods?wsId={wsId}") ?? new();
+
+        public async Task DeletePeriodAsync(int perId)
+        {
+            var res = await _http.DeleteAsync($"api/pay2/attendance/period/{perId}");
+            if (!res.IsSuccessStatusCode)
+            {
+                var msg = await res.Content.ReadAsStringAsync();
+                throw new Exception(string.IsNullOrWhiteSpace(msg) ? "خطا در حذف دوره" : msg);
+            }
+        }
     }
 }

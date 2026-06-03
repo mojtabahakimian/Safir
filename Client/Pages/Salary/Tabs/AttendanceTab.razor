@@ -3,6 +3,7 @@
 @inject Safir.Client.Services.Pay2WorkshopApiService WorkshopApi
 @inject ISnackbar Snackbar
 @inject ConnectionManagerService ConnectionManager
+@inject MudBlazor.IDialogService DialogService
 
 <style>
     .p2-excel-wrapper {
@@ -287,6 +288,13 @@
                     disabled="@(PeriodData.Period.IsReadOnly || IsSaving)">
                 <i class="bi bi-lock"></i>
                 بستن کارکرد و آماده‌سازی محاسبه
+            </button>
+
+            <button class="btn-outline-danger-pay2"
+                    @onclick="DeletePeriodConfirm"
+                    disabled="@IsSaving"
+                    title="حذف کامل این دوره و تمامی کارکردهای ثبت شده">
+                <i class="bi bi-trash3"></i>
             </button>
         }
     </div>
@@ -843,5 +851,69 @@
         await LoadPeriodOptionsAsync();
 
         Snackbar.Add($"دوره {pDate} با موفقیت ایجاد و لیست کارکرد آماده شد.", MudBlazor.Severity.Success);
+    }
+
+    // 🚀 متد جدید: حذف دوره ماهانه با اخطار جدی
+    async Task DeletePeriodConfirm()
+    {
+        if (PeriodData == null) return;
+
+        if (PeriodData.Period.STATUS >= 3)
+        {
+            Snackbar.Add("این دوره محاسبه شده است و قابل حذف نیست. ابتدا از تب محاسبه حقوق، عملیات لغو را انجام دهید.", MudBlazor.Severity.Error);
+            return;
+        }
+
+        var parameters = new MudBlazor.DialogParameters
+        {
+            ["Title"] = "هشدار امنیتی: حذف دوره کارکرد",
+            ["ContentText"] = $"آیا از حذف کامل دوره کارکرد «{SelectedPeriodDate}» اطمینان قطعی دارید؟\n\n⚠️ توجه: با این کار تمامی روزهای کارکرد، اضافه‌کارها، غیبت‌ها و مبالغ دستی وارد شده برای تمام پرسنل این کارگاه برای همیشه نابود خواهد شد و قابل بازیابی نیست!",
+            ["ConfirmButtonText"] = "بله، تمام کارکردها را حذف کن",
+            ["CancelButtonText"] = "انصراف"
+        };
+
+        var options = new MudBlazor.DialogOptions { CloseButton = false, MaxWidth = MudBlazor.MaxWidth.Small };
+        var dialog = DialogService.Show<Safir.Client.Shared.ConfirmDialog>("تایید حذف", parameters, options);
+        var result = await dialog.Result;
+
+        if (!result.Cancelled)
+        {
+            IsLoading = true;
+            StateHasChanged();
+
+            try
+            {
+                await AttApi.DeletePeriodAsync(PeriodData.Period.PER_ID);
+
+                Snackbar.Add("دوره کارکرد و تمامی اطلاعات وابسته به آن با موفقیت از سیستم حذف شد.", MudBlazor.Severity.Success);
+
+                // ریست کردن State صفحه
+                PeriodData = null;
+                FilteredLines.Clear();
+                _searchTerm = "";
+
+                // بارگذاری مجدد دراپ‌داون دوره‌ها تا دوره حذف شده از لیست محو شود
+                await LoadPeriodOptionsAsync();
+
+                // 🚀 بهبود UX: اگر دوره‌ی دیگری به صورت خودکار انتخاب شده، جدول آن را برای کاربر لود کن
+                if (SelectedPeriodDate > 0)
+                {
+                    await LoadPeriod();
+                }
+            }
+            catch (Exception ex)
+            {
+                Snackbar.Add(ex.Message, MudBlazor.Severity.Error, config =>
+                {
+                    config.RequireInteraction = true;
+                    config.ShowCloseIcon = true;
+                });
+            }
+            finally
+            {
+                IsLoading = false;
+                StateHasChanged();
+            }
+        }
     }
 }
