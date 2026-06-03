@@ -279,5 +279,55 @@ namespace Safir.Server.Controllers
                 return StatusCode(500, "خطای سیستمی در حذف دوره: " + ex.Message);
             }
         }
+
+        [HttpDelete("period/{perId:int}/employee/{empId:int}")]
+        public async Task<IActionResult> DeleteAttendanceLine(int perId, int empId)
+        {
+            try
+            {
+                await _db.ExecuteInTransactionAsync(async (conn, tran) =>
+                {
+                    // 1. بررسی وضعیت دوره با قفل برای جلوگیری از تغییرات همزمان
+                    var status = await conn.QuerySingleOrDefaultAsync<byte?>(
+                        "SELECT STATUS FROM PAY2_PERIOD WITH (UPDLOCK) WHERE PER_ID = @perId",
+                        new { perId }, tran);
+
+                    if (status == null)
+                        throw new InvalidOperationException("دوره کارکرد یافت نشد.");
+
+                    if (status != 1)
+                        throw new InvalidOperationException("این دوره بسته شده یا محاسبه گردیده است. امکان تغییر یا حذف رکورد وجود ندارد.");
+
+                    // 2. بررسی وابستگی: آیا فیش حقوقی (حتی پیش‌نویس) برای این شخص در این ماه وجود دارد؟
+                    // 🚀 اصلاح پرفورمنس: استفاده از EXISTS برای سرعت بسیار بالاتر
+                    string checkRunSql = @"
+                        IF EXISTS (
+                            SELECT 1 
+                            FROM PAY2_RUN R WITH (NOLOCK)
+                            INNER JOIN PAY2_RUN_LINE RL WITH (NOLOCK) ON R.RUN_ID = RL.RUN_ID
+                            WHERE R.PER_ID = @perId AND RL.EMP_ID = @empId
+                        ) SELECT 1 ELSE SELECT 0";
+
+                    var runExists = await conn.QuerySingleAsync<int>(checkRunSql, new { perId, empId }, tran);
+
+                    if (runExists == 1)
+                        throw new InvalidOperationException("برای این پرسنل در این دوره فیش حقوقی صادر شده است. ابتدا باید از بخش محاسبه حقوق، فیش ایشان را لغو کنید.");
+
+                    // 3. حذف ایمن و آبشاری (اول فرزند، بعد والد)
+                    await conn.ExecuteAsync("DELETE FROM PAY2_ATT_VALUE WHERE PER_ID = @perId AND EMP_ID = @empId", new { perId, empId }, tran);
+                    await conn.ExecuteAsync("DELETE FROM PAY2_ATTENDANCE WHERE PER_ID = @perId AND EMP_ID = @empId", new { perId, empId }, tran);
+                });
+
+                return Ok();
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(ex.Message);
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, "خطای سیستمی: " + ex.Message);
+            }
+        }
     }
 }

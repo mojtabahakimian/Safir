@@ -406,12 +406,22 @@
                                 <td><Safir.Client.Pages.Salary.Tabs.Pay2NumericInput @bind-Value="item.KASR_OTHER_STR" IsDigitGroupActive="true" ThreeTwoZero="true" CssClass="p2-grid-input input-danger" Disabled="@(item.LOCKED || PeriodData.Period.IsReadOnly)" /></td>
 
                                 <td style="text-align: center; padding: 0 5px; width: 100px;">
-                                    <button class="btn-primary-pay2 sm"
-                                            style="background:#6366f1; border-color:#6366f1; height: 28px;"
-                                            @onclick="() => OpenDynamicValues(item.EMP_ID, item.FULL_NAME)"
-                                            disabled="@(item.LOCKED || PeriodData.Period.IsReadOnly)">
-                                        ⊕ پویا
-                                    </button>
+                                    <div style="display:flex; justify-content:center; align-items:center; gap:4px;">
+                                        <button class="btn-primary-pay2 sm"
+                                                style="background:#6366f1; border-color:#6366f1; height: 28px; padding: 0 8px;"
+                                                @onclick="() => OpenDynamicValues(item.EMP_ID, item.FULL_NAME)"
+                                                disabled="@(item.LOCKED || PeriodData.Period.IsReadOnly)"
+                                                title="مقادیر پویا">
+                                            ⊕ پویا
+                                        </button>
+                                        <button class="btn-outline-danger-pay2 sm"
+                                                style="height: 28px; padding: 0 8px; border:none;"
+                                                @onclick="() => DeleteLineConfirm(item)"
+                                                disabled="@(item.LOCKED || PeriodData.Period.IsReadOnly)"
+                                                title="حذف کارکرد این پرسنل در این ماه">
+                                            <i class="bi bi-trash"></i>
+                                        </button>
+                                    </div>
                                 </td>
                             </tr>
                         </Virtualize>
@@ -900,6 +910,56 @@
                 {
                     await LoadPeriod();
                 }
+            }
+            catch (Exception ex)
+            {
+                Snackbar.Add(ex.Message, MudBlazor.Severity.Error, config =>
+                {
+                    config.RequireInteraction = true;
+                    config.ShowCloseIcon = true;
+                });
+            }
+            finally
+            {
+                IsLoading = false;
+                StateHasChanged();
+            }
+        }
+    }
+
+    async Task DeleteLineConfirm(Pay2AttendanceLineDto item)
+    {
+        if (PeriodData == null || PeriodData.Period.IsReadOnly) return;
+
+        var parameters = new MudBlazor.DialogParameters
+        {
+            ["Title"] = "حذف کارکرد پرسنل",
+            ["ContentText"] = $"آیا از حذف اطلاعات کارکرد «{item.FULL_NAME}» در این دوره اطمینان دارید؟\n\nبا این کار، ایشان در محاسبات حقوق این ماه لحاظ نخواهند شد.",
+            ["ConfirmButtonText"] = "بله، حذف کن",
+            ["CancelButtonText"] = "انصراف"
+        };
+
+        var dialog = DialogService.Show<Safir.Client.Shared.ConfirmDialog>("تایید", parameters, new MudBlazor.DialogOptions { MaxWidth = MudBlazor.MaxWidth.ExtraSmall, CloseButton = false });
+        var result = await dialog.Result;
+
+        if (!result.Cancelled)
+        {
+            IsLoading = true;
+            StateHasChanged();
+
+            try
+            {
+                // 1. فراخوانی API حذف سرور
+                await AttApi.DeleteAttendanceLineAsync(PeriodData.Period.PER_ID, item.EMP_ID);
+
+                // 2. 🚀 اصلاح UI: حذف قطعی از هر دو لیست (اصلی و فیلتر شده)
+                PeriodData.Lines?.RemoveAll(x => x.EMP_ID == item.EMP_ID);
+                FilteredLines.RemoveAll(x => x.EMP_ID == item.EMP_ID);
+
+                Snackbar.Add("رکورد کارکرد پرسنل با موفقیت حذف شد.", MudBlazor.Severity.Success);
+
+                // 3. 🚀 اجبار Blazor به رندر مجدد کامپوننت Virtualize
+                await InvokeAsync(StateHasChanged);
             }
             catch (Exception ex)
             {
