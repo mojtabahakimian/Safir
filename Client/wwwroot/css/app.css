@@ -15,11 +15,10 @@
     font-family: 'IRANYekanFN', 'Roboto', Helvetica, Arial, sans-serif !important;
 }
 
-/* Ensure custom font is applied to all text */
-* {
+/* 🚀 اصلاح مهم: فونت اختصاصی روی همه‌چیز اعمال شود به جز آیکون‌ها */
+*:not(i):not([class^="bi-"]):not([class*=" bi-"]):not(.oi):not(.mud-icon-root) {
     font-family: 'IRANYekanFN', 'Roboto', Helvetica, Arial, sans-serif;
 }
-
 
 .mobile-friendly-tabs .mud-tabs-toolbar-wrapper {
     overflow-x: auto !important; /* اجازه اسکرول افقی برای نوار تب ها */
