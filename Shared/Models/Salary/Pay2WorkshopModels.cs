@@ -18,6 +18,13 @@
         public string? POSTAL_CODE { get; set; }
         public string? EMPLOYER_NAME { get; set; }
 
+        public string? PROVINCE { get; set; }
+        public string? CITY { get; set; }
+        public string? REGISTRATION_NUMBER { get; set; }
+        public string? SSO_BRANCH { get; set; }
+        public string? FINANCIAL_MANAGER { get; set; }
+        public string? ADMIN_MANAGER { get; set; }
+
         public string InsModeText => INS_MODE switch
         {
             1 => "معمولی",

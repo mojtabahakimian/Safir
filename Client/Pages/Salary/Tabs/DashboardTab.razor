@@ -1,0 +1,199 @@
+﻿@inject Safir.Client.Services.Pay2DashboardApiService DashboardApi
+@inject Safir.Client.Services.Pay2WorkshopApiService WorkshopApi
+@inject ISnackbar Snackbar
+
+<div class="pay2-tab-container">
+    <div class="card-custom" style="padding: 16px; margin-bottom: 16px; display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-end;">
+        <div class="form-field" style="width: 250px;">
+            <label>نمایش اطلاعات برای کارگاه:</label>
+            <Safir.Client.Pages.Salary.Tabs.Pay2Select TItem="Safir.Shared.Models.Salary.Pay2WorkshopDto"
+                                                       TValue="int"
+                                                       Items="Workshops"
+                                                       Value="SelectedWsId"
+                                                       ValueChanged="OnWorkshopChangedAsync"
+                                                       TextSelector="x => x.WS_NAME"
+                                                       ValueSelector="x => x.WS_ID"
+                                                       Clearable="false" />
+        </div>
+        <button class="btn-outline-pay2" @onclick="LoadDashboardData" disabled="@IsLoading">
+            <i class="bi bi-arrow-clockwise"></i> بروزرسانی آمار
+        </button>
+    </div>
+
+    @if (IsLoading)
+    {
+        <div style="height:300px; display:flex; align-items:center; justify-content:center; flex-direction:column; gap:14px;">
+            <span class="p2-spinner" style="width:38px; height:38px; border-color:var(--p2-primary); border-top-color:transparent;"></span>
+            <span class="p2-text-muted" style="font-weight:700;">در حال جمع‌آوری اطلاعات داشبورد...</span>
+        </div>
+    }
+    else if (DashboardData != null)
+    {
+        <div class="dashboard-top-grid">
+            <div class="card-custom">
+                <div class="stat-icon-box" style="background:var(--p2-primary-light); color:var(--p2-primary);">
+                    <i class="bi bi-people-fill"></i>
+                </div>
+                <div class="p2-stat-label">پرسنل فعال کارگاه</div>
+                <div class="p2-stat-value">@DashboardData.ActiveEmployeesCount نفر</div>
+            </div>
+
+            <div class="card-custom">
+                <div class="stat-icon-box" style="background:var(--p2-success-bg); color:var(--p2-success-text);">
+                    <i class="bi bi-wallet2"></i>
+                </div>
+                <div class="p2-stat-label">تخمین حقوق خالص (@(DashboardData.LatestPeriodDate > 0 ? DashboardData.PeriodTitle : "—"))</div>
+                <div class="p2-stat-value p2-text-mono" style="font-size: 22px;">@DashboardData.EstimatedNetPay.ToString("N0") <span style="font-size:12px;color:var(--p2-text-muted);">ریال</span></div>
+            </div>
+
+            <div class="card-custom">
+                <div class="stat-icon-box" style="background:var(--p2-warning-bg); color:var(--p2-warning-text);">
+                    <i class="bi bi-cash-stack"></i>
+                </div>
+                <div class="p2-stat-label">کل مساعده استخراج شده</div>
+                <div class="p2-stat-value p2-text-mono" style="font-size: 22px;">@DashboardData.TotalAdvances.ToString("N0") <span style="font-size:12px;color:var(--p2-text-muted);">ریال</span></div>
+            </div>
+
+            <div class="card-custom" style="background:var(--p2-primary); border:none; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:16px;">
+                <div style="color:white; font-weight:700; font-size:15px; text-align:center;">
+                    <!-- 🚀 اصلاح مهم: بررسی وجود دوره برای رندر متن صحیح -->
+                    @(DashboardData.LatestPeriodDate > 0 ? $"دوره {DashboardData.PeriodTitle} ({DashboardData.PeriodStatusText})" : "دوره‌ای تعریف نشده است")
+                </div>
+                <button class="btn-outline-white" @onclick="HandleActionClick">
+                    <i class="bi bi-play-circle"></i>
+                    <!-- 🚀 اصلاح مهم: تغییر متن دکمه در صورت نبود دوره -->
+                    @(DashboardData.LatestPeriodDate == 0 ? "ثبت اولین کارکرد" : (DashboardData.PeriodStatus == 1 ? "بستن و محاسبه" : "مشاهده فیش‌ها"))
+                </button>
+            </div>
+        </div>
+
+        <div class="dashboard-bottom-grid">
+            <div class="card-custom" style="padding:0;">
+                <div style="padding:18px 20px; border-bottom:1px solid var(--p2-border-light);">
+                    <span style="font-weight:800; font-size:15px;">
+                        ۵ رکورد برتر مساعده هوشمند (کسر از حسابداری)
+                    </span>
+                </div>
+                <div>
+                    @if (!DashboardData.RecentAdvances.Any())
+                    {
+                        <div class="p2-empty-state" style="padding: 30px;">
+                            <i class="bi bi-check-circle" style="font-size: 2rem; color: var(--p2-success-text); opacity: 0.5;"></i>
+                            <p style="margin-top: 10px;">هیچ مساعده‌ای برای کسر در این دوره یافت نشد.</p>
+                        </div>
+                    }
+                    else
+                    {
+                        @foreach (var row in DashboardData.RecentAdvances)
+                        {
+                            <div class="advance-list-item">
+                                <div style="font-weight:700;">@row.FULL_NAME</div>
+                                <div class="p2-text-mono p2-text-muted" style="text-align: center;">@row.PCODE</div>
+                                <div class="p2-text-mono p2-text-danger" style="font-weight: 800; text-align: left;">@row.ADVANCE_DEDUCTION.ToString("N0")</div>
+                                <div style="display:flex; justify-content:flex-end;">
+                                    <span class="p2-badge-warning">آماده کسر</span>
+                                </div>
+                            </div>
+                        }
+                    }
+                </div>
+            </div>
+
+            <div class="card-custom">
+                <div style="font-weight:800; font-size:15px; margin-bottom:18px;">
+                    منطق مرخصی سیستم (نسخه v6)
+                </div>
+                <div style="background:white; border:1px solid var(--p2-border); border-radius:var(--p2-radius-md); padding:14px; margin-bottom:14px; display:flex; justify-content:space-between; align-items:center;">
+                    <div class="p2-text-muted" style="font-size:13px;">مبنای هر روز مرخصی</div>
+                    <span class="p2-badge-primary" style="font-size:14px; padding:4px 12px; font-family: Consolas;">@DashboardData.LeaveMinsPerDay دقیقه</span>
+                </div>
+                <div class="p2-text-muted" style="line-height:1.9; text-align:justify; font-size:13px;">
+                    طبق معماری جدید، تمام محاسبات استحقاق و مانده مرخصی (PAY2_LEAVE_BAL) به منظور یکپارچگی کامل با سیستم تسویه‌حساب، بر اساس دقیقه‌های واقعی انجام می‌شود.
+                </div>
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter] public EventCallback<string> OnNavigate { get; set; }
+    [Parameter] public EventCallback<Safir.Shared.Models.Salary.Pay2DashboardDataDto> OnDashboardDataLoaded { get; set; }
+
+    List<Safir.Shared.Models.Salary.Pay2WorkshopDto> Workshops = new();
+    int SelectedWsId;
+    bool IsLoading = true;
+    Safir.Shared.Models.Salary.Pay2DashboardDataDto? DashboardData;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            Workshops = await WorkshopApi.GetWorkshopsAsync() ?? new();
+            if (Workshops.Any())
+            {
+                SelectedWsId = Workshops.First().WS_ID;
+                await LoadDashboardData();
+            }
+            else
+            {
+                IsLoading = false;
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add(ex.Message, MudBlazor.Severity.Error);
+            IsLoading = false;
+        }
+    }
+
+    async Task OnWorkshopChangedAsync(int wsId)
+    {
+        SelectedWsId = wsId;
+        await LoadDashboardData();
+    }
+
+    async Task LoadDashboardData()
+    {
+        if (SelectedWsId <= 0) return;
+
+        IsLoading = true;
+        StateHasChanged();
+        try
+        {
+            DashboardData = await DashboardApi.GetDashboardDataAsync(SelectedWsId);
+            // اطلاع به والد (سایدبار) جهت بروزرسانی
+            if (OnDashboardDataLoaded.HasDelegate && DashboardData != null)
+            {
+                await OnDashboardDataLoaded.InvokeAsync(DashboardData);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add(ex.Message, MudBlazor.Severity.Error);
+        }
+        finally
+        {
+            IsLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    // 🚀 اصلاح مهم: هدایت هوشمند کاربر در صورت نبود دوره
+    async Task HandleActionClick()
+    {
+        if (DashboardData?.LatestPeriodDate == 0)
+        {
+            if (OnNavigate.HasDelegate)
+            {
+                await OnNavigate.InvokeAsync("attendance"); // هدایت به ثبت کارکرد برای ایجاد دوره
+            }
+        }
+        else
+        {
+            if (OnNavigate.HasDelegate)
+            {
+                await OnNavigate.InvokeAsync("payroll"); // روند عادی
+            }
+        }
+    }
+}

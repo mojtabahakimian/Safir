@@ -1,10 +1,11 @@
-﻿using System.Security.Claims;
-using System.Text.RegularExpressions;
-using Dapper;
+﻿using Dapper;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Safir.Shared.Interfaces;
 using Safir.Shared.Models.Salary;
+using System.Data;
+using System.Security.Claims;
+using System.Text.RegularExpressions;
 
 namespace Safir.Server.Controllers;
 
@@ -23,11 +24,13 @@ public class Pay2WorkshopsController : ControllerBase
     [HttpGet]
     public async Task<ActionResult<IEnumerable<Pay2WorkshopDto>>> GetAll()
     {
+        // 🚀 فیلدهای جدید به SELECT اضافه شدند
         const string sql = @"
-SELECT WS_ID, WS_CODE, WS_NAME, NATIONAL_ID, SOCIAL_INS_CODE, TAX_CODE,
-ADDRESS, PHONE, POSTAL_CODE, EMPLOYER_NAME, IS_ACTIVE, ISNULL(INS_MODE, 1) AS INS_MODE
-FROM   PAY2_WORKSHOP
-ORDER  BY WS_ID";
+            SELECT WS_ID, WS_CODE, WS_NAME, NATIONAL_ID, SOCIAL_INS_CODE, TAX_CODE,
+                   ADDRESS, PHONE, POSTAL_CODE, EMPLOYER_NAME, IS_ACTIVE, ISNULL(INS_MODE, 1) AS INS_MODE,
+                   PROVINCE, CITY, REGISTRATION_NUMBER, SSO_BRANCH, FINANCIAL_MANAGER, ADMIN_MANAGER
+            FROM   PAY2_WORKSHOP
+            ORDER  BY WS_ID";
 
         var data = await _db.DoGetDataSQLAsync<Pay2WorkshopDto>(sql);
         return Ok(data);
@@ -37,9 +40,9 @@ ORDER  BY WS_ID";
     public async Task<ActionResult<Pay2WorkshopAccDto>> GetAccounts(int wsId)
     {
         const string sql = @"
-SELECT ACC_KEY, ACC_CODE
-FROM   PAY2_WORKSHOP_ACC
-WHERE  WS_ID = @wsId";
+            SELECT ACC_KEY, ACC_CODE
+            FROM   PAY2_WORKSHOP_ACC
+            WHERE  WS_ID = @wsId";
 
         var rows = await _db.DoGetDataSQLAsync<AccRow>(sql, new { wsId });
 
@@ -92,26 +95,28 @@ WHERE  WS_ID = @wsId";
                 int newOrUpdatedWsId = w.WS_ID;
 
                 var duplicateId = await conn.QueryFirstOrDefaultAsync<int?>(@"
-SELECT TOP 1 WS_ID
-FROM   PAY2_WORKSHOP WITH (UPDLOCK, ROWLOCK)
-WHERE  WS_CODE = @WS_CODE
-  AND  WS_ID  <> @WS_ID",
-                    new { w.WS_CODE, w.WS_ID },
-                    tran);
+                    SELECT TOP 1 WS_ID
+                    FROM   PAY2_WORKSHOP WITH (UPDLOCK, ROWLOCK)
+                    WHERE  WS_CODE = @WS_CODE
+                      AND  WS_ID  <> @WS_ID",
+                    new { w.WS_CODE, w.WS_ID }, tran);
 
                 if (duplicateId.HasValue)
                     throw new InvalidOperationException("این کد کارگاه قبلاً برای کارگاه دیگری ثبت شده است.");
 
                 if (w.WS_ID == 0)
                 {
+                    // 🚀 فیلدهای جدید به INSERT اضافه شدند
                     const string insertSql = @"
-INSERT INTO PAY2_WORKSHOP
-(WS_CODE, WS_NAME, NATIONAL_ID, SOCIAL_INS_CODE, TAX_CODE,
-ADDRESS, PHONE, POSTAL_CODE, EMPLOYER_NAME, IS_ACTIVE, INS_MODE, CREATED_BY)
-OUTPUT INSERTED.WS_ID
-VALUES
-(@WS_CODE, @WS_NAME, @NATIONAL_ID, @SOCIAL_INS_CODE, @TAX_CODE,
-@ADDRESS, @PHONE, @POSTAL_CODE, @EMPLOYER_NAME, @IS_ACTIVE, @INS_MODE, @CREATED_BY)";
+                        INSERT INTO PAY2_WORKSHOP
+                        (WS_CODE, WS_NAME, NATIONAL_ID, SOCIAL_INS_CODE, TAX_CODE,
+                         ADDRESS, PHONE, POSTAL_CODE, EMPLOYER_NAME, IS_ACTIVE, INS_MODE, CREATED_BY,
+                         PROVINCE, CITY, REGISTRATION_NUMBER, SSO_BRANCH, FINANCIAL_MANAGER, ADMIN_MANAGER)
+                        OUTPUT INSERTED.WS_ID
+                        VALUES
+                        (@WS_CODE, @WS_NAME, @NATIONAL_ID, @SOCIAL_INS_CODE, @TAX_CODE,
+                         @ADDRESS, @PHONE, @POSTAL_CODE, @EMPLOYER_NAME, @IS_ACTIVE, @INS_MODE, @CREATED_BY,
+                         @PROVINCE, @CITY, @REGISTRATION_NUMBER, @SSO_BRANCH, @FINANCIAL_MANAGER, @ADMIN_MANAGER)";
 
                     newOrUpdatedWsId = await conn.QueryFirstAsync<int>(insertSql, new
                     {
@@ -126,41 +131,54 @@ VALUES
                         w.EMPLOYER_NAME,
                         w.IS_ACTIVE,
                         w.INS_MODE,
-                        CREATED_BY = userCod
+                        CREATED_BY = userCod,
+                        w.PROVINCE,
+                        w.CITY,
+                        w.REGISTRATION_NUMBER,
+                        w.SSO_BRANCH,
+                        w.FINANCIAL_MANAGER,
+                        w.ADMIN_MANAGER
                     }, tran);
                 }
                 else
                 {
+                    // 🚀 فیلدهای جدید به UPDATE اضافه شدند
                     const string updateSql = @"
-UPDATE PAY2_WORKSHOP SET
-WS_CODE         = @WS_CODE,
-WS_NAME         = @WS_NAME,
-NATIONAL_ID     = @NATIONAL_ID,
-SOCIAL_INS_CODE = @SOCIAL_INS_CODE,
-TAX_CODE        = @TAX_CODE,
-ADDRESS         = @ADDRESS,
-PHONE           = @PHONE,
-POSTAL_CODE     = @POSTAL_CODE,
-EMPLOYER_NAME   = @EMPLOYER_NAME,
-IS_ACTIVE       = @IS_ACTIVE,
-INS_MODE        = @INS_MODE
-WHERE WS_ID = @WS_ID";
+                        UPDATE PAY2_WORKSHOP SET
+                        WS_CODE         = @WS_CODE,
+                        WS_NAME         = @WS_NAME,
+                        NATIONAL_ID     = @NATIONAL_ID,
+                        SOCIAL_INS_CODE = @SOCIAL_INS_CODE,
+                        TAX_CODE        = @TAX_CODE,
+                        ADDRESS         = @ADDRESS,
+                        PHONE           = @PHONE,
+                        POSTAL_CODE     = @POSTAL_CODE,
+                        EMPLOYER_NAME   = @EMPLOYER_NAME,
+                        IS_ACTIVE       = @IS_ACTIVE,
+                        INS_MODE        = @INS_MODE,
+                        PROVINCE        = @PROVINCE,
+                        CITY            = @CITY,
+                        REGISTRATION_NUMBER = @REGISTRATION_NUMBER,
+                        SSO_BRANCH      = @SSO_BRANCH,
+                        FINANCIAL_MANAGER = @FINANCIAL_MANAGER,
+                        ADMIN_MANAGER   = @ADMIN_MANAGER
+                        WHERE WS_ID = @WS_ID";
 
                     await conn.ExecuteAsync(updateSql, w, tran);
                 }
 
                 const string accUpsertSql = @"
-IF EXISTS (SELECT 1 FROM PAY2_WORKSHOP_ACC WHERE WS_ID = @WS_ID AND ACC_KEY = @ACC_KEY)
-    UPDATE PAY2_WORKSHOP_ACC
-       SET ACC_CODE = @ACC_CODE
-     WHERE WS_ID = @WS_ID AND ACC_KEY = @ACC_KEY
-ELSE
-    INSERT INTO PAY2_WORKSHOP_ACC (WS_ID, ACC_KEY, ACC_CODE)
-    VALUES (@WS_ID, @ACC_KEY, @ACC_CODE)";
+                    IF EXISTS (SELECT 1 FROM PAY2_WORKSHOP_ACC WHERE WS_ID = @WS_ID AND ACC_KEY = @ACC_KEY)
+                        UPDATE PAY2_WORKSHOP_ACC
+                           SET ACC_CODE = @ACC_CODE
+                         WHERE WS_ID = @WS_ID AND ACC_KEY = @ACC_KEY
+                    ELSE
+                        INSERT INTO PAY2_WORKSHOP_ACC (WS_ID, ACC_KEY, ACC_CODE)
+                        VALUES (@WS_ID, @ACC_KEY, @ACC_CODE)";
 
                 const string accDeleteSql = @"
-DELETE FROM PAY2_WORKSHOP_ACC
-WHERE WS_ID = @WS_ID AND ACC_KEY = @ACC_KEY";
+                    DELETE FROM PAY2_WORKSHOP_ACC
+                    WHERE WS_ID = @WS_ID AND ACC_KEY = @ACC_KEY";
 
                 var accEntries = new[]
                 {
@@ -258,6 +276,7 @@ WHERE WS_ID = @WS_ID AND ACC_KEY = @ACC_KEY";
             return StatusCode(500, "خطای سیستمی در حذف کارگاه: " + ex.Message);
         }
     }
+
     private static string? NormalizeAndValidate(Pay2WorkshopDto w, Pay2WorkshopAccDto a)
     {
         w.WS_CODE = NormalizeRequiredDigits(w.WS_CODE, 10);
@@ -268,6 +287,16 @@ WHERE WS_ID = @WS_ID AND ACC_KEY = @ACC_KEY";
         w.TAX_CODE = CleanText(w.TAX_CODE, 20);
         w.ADDRESS = CleanText(w.ADDRESS, 300);
         w.INS_MODE = w.INS_MODE == 2 ? 2 : 1;
+        w.POSTAL_CODE = NormalizeOptionalDigits(w.POSTAL_CODE, 20);
+        w.EMPLOYER_NAME = CleanText(w.EMPLOYER_NAME, 100);
+
+        // 🚀 نرمال‌سازی فیلدهای جدید
+        w.PROVINCE = CleanText(w.PROVINCE, 50);
+        w.CITY = CleanText(w.CITY, 50);
+        w.REGISTRATION_NUMBER = CleanText(w.REGISTRATION_NUMBER, 20); // شماره ثبت ممکن است ممیز یا حرف داشته باشد
+        w.SSO_BRANCH = CleanText(w.SSO_BRANCH, 50);
+        w.FINANCIAL_MANAGER = CleanText(w.FINANCIAL_MANAGER, 100);
+        w.ADMIN_MANAGER = CleanText(w.ADMIN_MANAGER, 100);
 
         a.ADV_HES = NormalizeAccountCode(a.ADV_HES, 20);
         a.SALARY_EXP = CleanText(a.SALARY_EXP, 20);
@@ -282,9 +311,6 @@ WHERE WS_ID = @WS_ID AND ACC_KEY = @ACC_KEY";
         a.LOAN_HES = NormalizeAccountCode(a.LOAN_HES, 20);
         a.BANK_PAY_HES = NormalizeAccountCode(a.BANK_PAY_HES, 20);
 
-        w.POSTAL_CODE = NormalizeOptionalDigits(w.POSTAL_CODE, 20);
-        w.EMPLOYER_NAME = CleanText(w.EMPLOYER_NAME, 100);
-
         if (!string.IsNullOrWhiteSpace(w.POSTAL_CODE) && !Regex.IsMatch(w.POSTAL_CODE, @"^\d+$"))
             return "کد پستی فقط باید عدد باشد.";
 
@@ -297,7 +323,7 @@ WHERE WS_ID = @WS_ID AND ACC_KEY = @ACC_KEY";
         if (string.IsNullOrWhiteSpace(w.WS_NAME))
             return "نام کارگاه نمی‌تواند خالی باشد.";
 
-        //فعلا کامنت شده چون ممکنه بعدا طولش تغییر کنه
+        // فعلا کامنت شده چون ممکنه بعدا طولش تغییر کنه
         //if (!string.IsNullOrWhiteSpace(w.NATIONAL_ID) &&
         //    !Regex.IsMatch(w.NATIONAL_ID, @"^\d{11}$"))
         //    return "شناسه ملی باید دقیقاً ۱۱ رقم عددی باشد.";

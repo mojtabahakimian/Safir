@@ -1,22 +1,111 @@
-﻿@using Safir.Shared.Models.Salary
-@inject Pay2WorkshopApiService WorkshopApi
+﻿@inject Pay2WorkshopApiService WorkshopApi
 @using Safir.Shared.Models
+@using Safir.Shared.Models.Salary
 @inject LookupApiService LookupService
 @implements IDisposable
 @inject MudBlazor.IDialogService DialogService
 @inject ConnectionManagerService ConnectionManager
 
+<style>
+    .workshop-tab-container {
+        display: flex;
+        flex-direction: row-reverse;
+        gap: 20px;
+        width: 100%;
+        height: 100%;
+        align-items: flex-start;
+    }
+
+    .workshop-list-panel {
+        flex: 0 0 380px;
+        max-width: 380px;
+        background: var(--p2-bg-white);
+        border: 1px solid var(--p2-border-light);
+        border-radius: var(--p2-radius-lg);
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+    }
+
+    .workshop-form-panel {
+        flex: 1;
+        min-width: 0;
+        background: var(--p2-bg-white);
+        border: 1px solid var(--p2-border-light);
+        border-radius: var(--p2-radius-lg);
+        padding: 24px;
+        overflow-y: auto;
+    }
+
+    .workshop-table-wrapper {
+        width: 100%;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+    }
+
+    .workshop-table-custom {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 13px;
+        min-width: max-content;
+    }
+
+        .workshop-table-custom th {
+            color: var(--p2-text-muted);
+            font-weight: 700;
+            font-size: 12px;
+            padding: 12px 16px;
+            border-bottom: 1px solid var(--p2-border);
+            background: var(--p2-bg-main);
+            text-align: right;
+            white-space: nowrap;
+        }
+
+        .workshop-table-custom td {
+            padding: 12px 16px;
+            border-bottom: 1px solid var(--p2-border-light);
+            text-align: right;
+            white-space: nowrap;
+        }
+
+    .workshop-row-custom {
+        cursor: pointer;
+        transition: background 0.15s;
+    }
+
+        .workshop-row-custom:hover {
+            background: var(--p2-bg-main);
+        }
+
+        .workshop-row-custom.active {
+            background: var(--p2-primary-light);
+        }
+
+    @@media (max-width: 1024px) {
+        .workshop-tab-container {
+            flex-direction: column;
+        }
+
+        .workshop-list-panel {
+            flex: none;
+            width: 100%;
+            max-width: 100%;
+        }
+
+        .workshop-form-panel {
+            width: 100%;
+        }
+    }
+</style>
+
 <div class="pay2-tab-container">
-    <div class="pay2-workshop-layout">
+    <div class="workshop-tab-container">
 
-        @* ══════════════════════════════════════════
-           پنل چپ: لیست کارگاه‌ها
-           ══════════════════════════════════════════ *@
-        <div class="pay2-workshop-list">
+        <div class="workshop-list-panel">
 
-            <div class="pay2-card-header">
-                <h5>لیست کارگاه‌ها</h5>
-                <button class="btn-outline-pay2" @onclick="NewWorkshop">
+            <div class="pay2-card-header" style="padding: 16px; margin: 0; border-bottom: 1px solid var(--p2-border-light);">
+                <h5 style="margin: 0; font-size: 15px; font-weight: 800;">لیست کارگاه‌ها</h5>
+                <button class="btn-outline-pay2 sm" @onclick="NewWorkshop">
                     <i class="bi bi-plus-lg"></i> جدید
                 </button>
             </div>
@@ -38,10 +127,8 @@
             }
             else
             {
-                <!-- اضافه شدن div برای کنترل اسکرول افقی در موبایل -->
-                <div style="width: 100%; overflow-x: auto;">
-                    <!-- اضافه شدن min-width: 500px برای جلوگیری از له شدن ستون‌ها در موبایل -->
-                    <table class="workshop-table" style="width: 100%;">
+                <div class="workshop-table-wrapper">
+                    <table class="workshop-table-custom">
                         <thead>
                             <tr>
                                 <th>کد</th>
@@ -53,10 +140,10 @@
                         <tbody>
                             @foreach (var item in Workshops)
                             {
-                                <tr class="workshop-row @(CurrentWorkshop.WS_ID == item.WS_ID ? "active" : "")"
+                                <tr class="workshop-row-custom @(CurrentWorkshop.WS_ID == item.WS_ID ? "active" : "")"
                                     @onclick="() => SelectWorkshop(item)">
-                                    <td class="p2-text-mono">@item.WS_CODE</td>
-                                    <td>@item.WS_NAME</td>
+                                    <td class="p2-text-mono" style="font-weight: 700;">@item.WS_CODE</td>
+                                    <td style="font-weight: 600;">@item.WS_NAME</td>
                                     <td class="p2-text-muted" style="font-size:12px;">@item.InsModeText</td>
                                     <td>
                                         @if (item.IS_ACTIVE)
@@ -76,10 +163,7 @@
             }
         </div>
 
-        @* ══════════════════════════════════════════
-           پنل راست: فرم اطلاعات کارگاه
-           ══════════════════════════════════════════ *@
-        <div class="card-custom pay2-workshop-form">
+        <div class="workshop-form-panel">
 
             <div class="pay2-card-header">
                 <h5>
@@ -99,16 +183,14 @@
                 }
             </div>
 
-            @* ─── بخش ۱: اطلاعات پایه ─── *@
             <div class="p2-sub-card-title">
-                <i class="bi bi-info-circle"></i> اطلاعات پایه
+                <i class="bi bi-info-circle"></i> اطلاعات پایه و سازمانی
             </div>
 
             <div class="form-grid-2">
 
                 <div class="form-field">
-                    <label>کد کارگاه *</label>
-
+                    <label>کد کارگاه (سیستمی) *</label>
                     <Pay2NumericInput @bind-Value="CurrentWorkshop.WS_CODE"
                                       MaxLength="10"
                                       Placeholder="مثال: 1050"
@@ -124,7 +206,6 @@
 
                 <div class="form-field">
                     <label>نام کارگاه *</label>
-
                     <input class="pay2-input @(HasError(nameof(CurrentWorkshop.WS_NAME)) ? "error" : "")"
                            type="text"
                            maxlength="100"
@@ -140,29 +221,7 @@
                 </div>
 
                 <div class="form-field">
-                    <label>کد کارگاه بیمه</label>
-
-                    <Pay2NumericInput @bind-Value="CurrentWorkshop.SOCIAL_INS_CODE"
-                                      MaxLength="20"
-                                      Placeholder="کد تأمین اجتماعی" />
-                </div>
-
-                <div class="form-field">
-                    <label>شناسه مالیاتی</label>
-
-                    <input class="pay2-input"
-                           type="text"
-                           maxlength="20"
-                           placeholder="شناسه مالیاتی"
-                           @bind-value="CurrentWorkshop.TAX_CODE"
-                           @bind-value:event="onchange" />
-                </div>
-
-
-
-                <div class="form-field">
                     <label>شناسه ملی</label>
-
                     <Pay2NumericInput @bind-Value="CurrentWorkshop.NATIONAL_ID"
                                       MaxLength="11"
                                       Placeholder="۱۱ رقم"
@@ -177,21 +236,45 @@
                 </div>
 
                 <div class="form-field">
-                    <label>تلفن</label>
+                    <label>شناسه / کد اقتصادی (مالیات)</label>
+                    <input class="pay2-input"
+                           type="text"
+                           maxlength="20"
+                           placeholder="شناسه مالیاتی"
+                           @bind-value="CurrentWorkshop.TAX_CODE"
+                           @bind-value:event="onchange" />
+                </div>
 
-                    <Pay2NumericInput @bind-Value="CurrentWorkshop.PHONE"
+                <div class="form-field">
+                    <label>شماره ثبت شرکت</label>
+                    <input class="pay2-input"
+                           type="text"
+                           maxlength="20"
+                           placeholder="شماره ثبت"
+                           dir="ltr"
+                           @bind-value="CurrentWorkshop.REGISTRATION_NUMBER"
+                           @bind-value:event="onchange" />
+                </div>
+
+                <div class="form-field">
+                    <label>کد کارگاه (بیمه تامین اجتماعی)</label>
+                    <Pay2NumericInput @bind-Value="CurrentWorkshop.SOCIAL_INS_CODE"
                                       MaxLength="20"
-                                      Placeholder="شماره تماس" />
+                                      Placeholder="کد شعبه" />
                 </div>
 
                 <div class="form-field">
-                    <label>کد پستی</label>
-                    <Pay2NumericInput @bind-Value="CurrentWorkshop.POSTAL_CODE"
-                                      MaxLength="10"
-                                      Placeholder="کد پستی ۱۰ رقمی" />
+                    <label>نام شعبه تامین اجتماعی</label>
+                    <input class="pay2-input"
+                           type="text"
+                           maxlength="50"
+                           placeholder="مثال: شعبه 13 تهران"
+                           @bind-value="CurrentWorkshop.SSO_BRANCH"
+                           @bind-value:event="onchange" />
                 </div>
+
                 <div class="form-field">
-                    <label>نام کارفرما / مدیر</label>
+                    <label>ریاست / کارفرما</label>
                     <input class="pay2-input"
                            type="text"
                            maxlength="100"
@@ -200,25 +283,76 @@
                            @bind-value:event="onchange" />
                 </div>
 
+                <div class="form-field">
+                    <label>معاون اداری و مالی</label>
+                    <input class="pay2-input"
+                           type="text"
+                           maxlength="100"
+                           placeholder="نام معاون"
+                           @bind-value="CurrentWorkshop.ADMIN_MANAGER"
+                           @bind-value:event="onchange" />
+                </div>
+
+                <div class="form-field">
+                    <label>مدیر مالی</label>
+                    <input class="pay2-input"
+                           type="text"
+                           maxlength="100"
+                           placeholder="نام مدیر مالی"
+                           @bind-value="CurrentWorkshop.FINANCIAL_MANAGER"
+                           @bind-value:event="onchange" />
+                </div>
+
+                <div class="form-field">
+                    <label>استان</label>
+                    <input class="pay2-input"
+                           type="text"
+                           maxlength="50"
+                           placeholder="استان"
+                           @bind-value="CurrentWorkshop.PROVINCE"
+                           @bind-value:event="onchange" />
+                </div>
+
+                <div class="form-field">
+                    <label>شهر</label>
+                    <input class="pay2-input"
+                           type="text"
+                           maxlength="50"
+                           placeholder="شهر"
+                           @bind-value="CurrentWorkshop.CITY"
+                           @bind-value:event="onchange" />
+                </div>
+
+                <div class="form-field">
+                    <label>کد پستی</label>
+                    <Pay2NumericInput @bind-Value="CurrentWorkshop.POSTAL_CODE"
+                                      MaxLength="10"
+                                      Placeholder="کد پستی ۱۰ رقمی" />
+                </div>
+
+                <div class="form-field">
+                    <label>تلفن</label>
+                    <Pay2NumericInput @bind-Value="CurrentWorkshop.PHONE"
+                                      MaxLength="20"
+                                      Placeholder="شماره تماس" />
+                </div>
+
             </div>
 
             <div class="form-field p2-mt-8">
-                <label>آدرس</label>
-
+                <label>آدرس کامل</label>
                 <input class="pay2-input"
                        type="text"
                        maxlength="300"
-                       placeholder="آدرس کامل کارگاه"
+                       placeholder="آدرس کارگاه"
                        @bind-value="CurrentWorkshop.ADDRESS"
                        @bind-value:event="onchange" />
             </div>
 
-            @* ─── ردیف وضعیت + نوع بیمه ─── *@
             <div class="form-grid-2 p2-mt-8">
 
                 <div class="form-field">
                     <label>وضعیت کارگاه</label>
-
                     <div class="pay2-wpf-checkbox-box">
                         <label class="pay2-wpf-checkbox-label">
                             <input type="checkbox" @bind="CurrentWorkshop.IS_ACTIVE" />
@@ -229,7 +363,6 @@
 
                 <div class="form-field">
                     <label>نوع محاسبه بیمه</label>
-
                     <Pay2Select TItem="Pay2InsModeOption"
                                 TValue="int"
                                 Items="InsModeOptions"
@@ -245,7 +378,6 @@
 
             </div>
 
-            @* ─── بخش ۲: سرفصل‌های حسابداری ─── *@
             <hr class="p2-divider" />
 
             <div class="p2-sub-card-title">
@@ -410,7 +542,6 @@
 
             </div>
 
-            @* ─── دکمه‌های عملیات ─── *@
             <div style="display:flex; justify-content:space-between; margin-top:28px; flex-wrap:wrap; width: 100%;">
                 <div style="display:flex; gap:10px;">
                     <button class="btn-primary-pay2"
@@ -427,6 +558,7 @@
                             <span>ذخیره اطلاعات کارگاه</span>
                         }
                     </button>
+
                     <button class="btn-outline-pay2"
                             @onclick="NewWorkshop"
                             disabled="@IsSavingWorkshop">
@@ -434,7 +566,6 @@
                     </button>
                 </div>
 
-                <!-- دکمه حذف فقط زمانی نمایش داده شود که کارگاه از قبل وجود دارد -->
                 @if (CurrentWorkshop.WS_ID > 0)
                 {
                     <button class="btn-danger-pay2"
@@ -461,7 +592,6 @@
 
     readonly Dictionary<string, string> _fieldErrors = new();
 
-    // لیست‌های مجزا برای جلوگیری از تداخل دیتا در Dropdown ها
     List<LookupDto<string>> Init_ADV_HES = new();
     List<LookupDto<string>> Init_SALARY_EXP_TOLID = new();
     List<LookupDto<string>> Init_SALARY_EXP_EDARI = new();
@@ -539,16 +669,22 @@
         {
             WS_ID = selected.WS_ID,
             WS_CODE = OnlyDigits(selected.WS_CODE, 10),
-            WS_NAME = CleanText(selected.WS_NAME),
+            WS_NAME = CleanText(selected.WS_NAME, 100),
             NATIONAL_ID = OnlyDigits(selected.NATIONAL_ID, 11),
             SOCIAL_INS_CODE = OnlyDigits(selected.SOCIAL_INS_CODE, 20),
-            TAX_CODE = CleanText(selected.TAX_CODE),
-            ADDRESS = CleanText(selected.ADDRESS),
+            TAX_CODE = CleanText(selected.TAX_CODE, 20),
+            ADDRESS = CleanText(selected.ADDRESS, 300),
             PHONE = OnlyDigits(selected.PHONE, 20),
             POSTAL_CODE = OnlyDigits(selected.POSTAL_CODE, 20),
-            EMPLOYER_NAME = CleanText(selected.EMPLOYER_NAME),
+            EMPLOYER_NAME = CleanText(selected.EMPLOYER_NAME, 100),
             IS_ACTIVE = selected.IS_ACTIVE,
-            INS_MODE = NormalizeInsMode(selected.INS_MODE)
+            INS_MODE = NormalizeInsMode(selected.INS_MODE),
+            PROVINCE = CleanText(selected.PROVINCE, 50),
+            CITY = CleanText(selected.CITY, 50),
+            REGISTRATION_NUMBER = CleanText(selected.REGISTRATION_NUMBER, 20),
+            SSO_BRANCH = CleanText(selected.SSO_BRANCH, 50),
+            FINANCIAL_MANAGER = CleanText(selected.FINANCIAL_MANAGER, 100),
+            ADMIN_MANAGER = CleanText(selected.ADMIN_MANAGER, 100)
         };
 
         _fieldErrors.Clear();
@@ -565,26 +701,17 @@
             CurrentWorkshopAcc.WS_ID = selected.WS_ID;
             NormalizeAccounts();
 
-            // پاک کردن کش‌های نمایشی
-            Init_ADV_HES.Clear();
-            Init_SALARY_EXP_TOLID.Clear();
-            Init_SALARY_EXP_EDARI.Clear();
-            Init_SALARY_EXP_FOROSH.Clear();
-            Init_SALARY_EXP_KHADAMAT.Clear();
-            Init_SALARY_PAYABLE.Clear();
-            Init_LOAN_HES.Clear();
-            Init_INS_EXP.Clear();
-            Init_INS_PAYABLE.Clear();
-            Init_TAX_PAYABLE.Clear();
-            Init_BANK_PAY_HES.Clear();
+            ClearInitialAccountLists();
 
-            // --- تابع محلی باهوشِ شما برای واکشی نام حساب‌ها ---
             async Task LoadAccountNameAsync(string? accCode, List<LookupDto<string>> targetList)
             {
-                if (string.IsNullOrWhiteSpace(accCode)) return;
+                if (string.IsNullOrWhiteSpace(accCode))
+                    return;
 
                 var lookupResult = await LookupService.GetCustomerLookupAsync(accCode, token);
-                if (token.IsCancellationRequested || myVersion != _selectWorkshopVersion) return;
+
+                if (token.IsCancellationRequested || myVersion != _selectWorkshopVersion)
+                    return;
 
                 var matchedItem = lookupResult?.FirstOrDefault(x => x.Id == accCode);
 
@@ -596,11 +723,16 @@
                 else
                 {
                     if (!targetList.Any(x => x.Id == accCode))
-                        targetList.Add(new LookupDto<string>(accCode, "حساب نامشخص"));
+                    {
+                        targetList.Add(new LookupDto<string>
+                        {
+                            Id = accCode,
+                            Name = "حساب نامشخص"
+                        });
+                    }
                 }
             }
 
-            // ایجاد یک لیست از تسک‌ها برای اجرای همزمان (Parallel)
             var tasks = new List<Task>
             {
                 LoadAccountNameAsync(CurrentWorkshopAcc.ADV_HES, Init_ADV_HES),
@@ -616,13 +748,10 @@
                 LoadAccountNameAsync(CurrentWorkshopAcc.BANK_PAY_HES, Init_BANK_PAY_HES)
             };
 
-            // منتظر می‌مانیم تا همه 11 ریکوئست به طور همزمان تمام شوند
             await Task.WhenAll(tasks);
-
         }
         catch (OperationCanceledException)
         {
-            // کاربر سریع کارگاه دیگری را انتخاب کرده؛ این خطا طبیعی است.
         }
         catch (Exception ex)
         {
@@ -647,6 +776,13 @@
 
         CurrentWorkshopAcc = new Pay2WorkshopAccDto();
 
+        ClearInitialAccountLists();
+
+        _fieldErrors.Clear();
+    }
+
+    void ClearInitialAccountLists()
+    {
         Init_ADV_HES.Clear();
         Init_SALARY_EXP_TOLID.Clear();
         Init_SALARY_EXP_EDARI.Clear();
@@ -658,8 +794,6 @@
         Init_INS_PAYABLE.Clear();
         Init_TAX_PAYABLE.Clear();
         Init_BANK_PAY_HES.Clear();
-
-        _fieldErrors.Clear();
     }
 
     async Task SaveWorkshopAsync()
@@ -682,7 +816,6 @@
             _fieldErrors[nameof(CurrentWorkshop.WS_NAME)] = "نام کارگاه نمی‌تواند خالی باشد.";
         }
 
-        // اعتبارسنجی یکپارچه برای تمام ۱۱ حساب قبل از ذخیره
         ValidateAccount(CurrentWorkshopAcc.ADV_HES, nameof(CurrentWorkshopAcc.ADV_HES), "مساعده");
         ValidateAccount(CurrentWorkshopAcc.SALARY_EXP_TOLID, nameof(CurrentWorkshopAcc.SALARY_EXP_TOLID), "حقوق تولید");
         ValidateAccount(CurrentWorkshopAcc.SALARY_EXP_EDARI, nameof(CurrentWorkshopAcc.SALARY_EXP_EDARI), "حقوق اداری");
@@ -721,13 +854,9 @@
             var saved = Workshops.FirstOrDefault(x => x.WS_ID == savedId);
 
             if (saved != null)
-            {
                 await SelectWorkshop(saved);
-            }
             else
-            {
                 NewWorkshop();
-            }
 
             await Toast("اطلاعات کارگاه با موفقیت ذخیره شد.");
         }
@@ -746,7 +875,6 @@
         CurrentWorkshop.WS_CODE = OnlyDigits(CurrentWorkshop.WS_CODE, 10);
     }
 
-    // متد جامع اعتبارسنجی حساب‌ها - نوشته شده توسط شما
     void ValidateAccount(string? value, string fieldName, string fieldLabel)
     {
         var cleanedValue = CleanAccount(value, 20);
@@ -792,19 +920,8 @@
         return value == 2 ? 2 : 1;
     }
 
-    static string GetInsModeText(int value)
-    {
-        return value switch
-        {
-            1 => "معمولی",
-            2 => "ده‌درصدی",
-            _ => "معمولی"
-        };
-    }
-
     async Task DeleteWorkshopAsync()
     {
-        // ۱. نمایش پیام تایید با استفاده از دیالوگ MudBlazor
         var parameters = new MudBlazor.DialogParameters
         {
             ["Title"] = "حذف کارگاه",
@@ -813,33 +930,33 @@
             ["CancelButtonText"] = "انصراف"
         };
 
-        var options = new MudBlazor.DialogOptions { CloseButton = false, MaxWidth = MudBlazor.MaxWidth.ExtraSmall };
+        var options = new MudBlazor.DialogOptions
+        {
+            CloseButton = false,
+            MaxWidth = MudBlazor.MaxWidth.ExtraSmall
+        };
 
-        // فراخوانی دیالوگ مشترک شما (ConfirmDialog)
         var dialog = DialogService.Show<Safir.Client.Shared.ConfirmDialog>("تایید حذف", parameters, options);
         var result = await dialog.Result;
 
-        // ۲. اگر کاربر تایید کرد، عملیات حذف انجام شود
         if (!result.Cancelled)
         {
             IsSavingWorkshop = true;
             StateHasChanged();
+
             try
             {
-                var KargahFullName = CurrentWorkshop.WS_ID + " " + CurrentWorkshop.WS_NAME;
+                var kargahFullName = CurrentWorkshop.WS_ID + " " + CurrentWorkshop.WS_NAME;
 
                 await WorkshopApi.DeleteAsync(CurrentWorkshop.WS_ID);
 
-                // نمایش پیام موفقیت
-                await Toast($"کارگاه [{KargahFullName}] با موفقیت حذف شد.");
+                await Toast($"کارگاه [{kargahFullName}] با موفقیت حذف شد.");
 
-                // ریست کردن فرم و لود مجدد لیست
                 NewWorkshop();
                 await LoadWorkshopsAsync();
             }
             catch (Exception ex)
             {
-                // اگر از سمت سرور خطایی برگشت (مثلا پرسنل داشت)، اینجا نمایش داده میشه
                 await Toast("خطا: " + ex.Message);
             }
             finally
@@ -876,15 +993,22 @@
     void NormalizeWorkshop()
     {
         CurrentWorkshop.WS_CODE = OnlyDigits(CurrentWorkshop.WS_CODE, 10);
-        CurrentWorkshop.WS_NAME = CleanText(CurrentWorkshop.WS_NAME);
+        CurrentWorkshop.WS_NAME = CleanText(CurrentWorkshop.WS_NAME, 100);
         CurrentWorkshop.NATIONAL_ID = OnlyDigits(CurrentWorkshop.NATIONAL_ID, 11);
         CurrentWorkshop.SOCIAL_INS_CODE = OnlyDigits(CurrentWorkshop.SOCIAL_INS_CODE, 20);
-        CurrentWorkshop.TAX_CODE = CleanText(CurrentWorkshop.TAX_CODE);
-        CurrentWorkshop.ADDRESS = CleanText(CurrentWorkshop.ADDRESS);
+        CurrentWorkshop.TAX_CODE = CleanText(CurrentWorkshop.TAX_CODE, 20);
+        CurrentWorkshop.ADDRESS = CleanText(CurrentWorkshop.ADDRESS, 300);
         CurrentWorkshop.PHONE = OnlyDigits(CurrentWorkshop.PHONE, 20);
         CurrentWorkshop.POSTAL_CODE = OnlyDigits(CurrentWorkshop.POSTAL_CODE, 20);
-        CurrentWorkshop.EMPLOYER_NAME = CleanText(CurrentWorkshop.EMPLOYER_NAME);
+        CurrentWorkshop.EMPLOYER_NAME = CleanText(CurrentWorkshop.EMPLOYER_NAME, 100);
         CurrentWorkshop.INS_MODE = NormalizeInsMode(CurrentWorkshop.INS_MODE);
+
+        CurrentWorkshop.PROVINCE = CleanText(CurrentWorkshop.PROVINCE, 50);
+        CurrentWorkshop.CITY = CleanText(CurrentWorkshop.CITY, 50);
+        CurrentWorkshop.REGISTRATION_NUMBER = CleanText(CurrentWorkshop.REGISTRATION_NUMBER, 20);
+        CurrentWorkshop.SSO_BRANCH = CleanText(CurrentWorkshop.SSO_BRANCH, 50);
+        CurrentWorkshop.FINANCIAL_MANAGER = CleanText(CurrentWorkshop.FINANCIAL_MANAGER, 100);
+        CurrentWorkshop.ADMIN_MANAGER = CleanText(CurrentWorkshop.ADMIN_MANAGER, 100);
     }
 
     void NormalizeAccounts()
@@ -907,31 +1031,21 @@
     static string? OnlyDigits(string? value, int maxLength)
     {
         if (string.IsNullOrWhiteSpace(value))
-        {
             return null;
-        }
 
         var result = new List<char>();
 
         foreach (var ch in value)
         {
             if (ch >= '0' && ch <= '9')
-            {
                 result.Add(ch);
-            }
             else if (ch >= '۰' && ch <= '۹')
-            {
                 result.Add((char)('0' + (ch - '۰')));
-            }
             else if (ch >= '٠' && ch <= '٩')
-            {
                 result.Add((char)('0' + (ch - '٠')));
-            }
 
             if (maxLength > 0 && result.Count >= maxLength)
-            {
                 break;
-            }
         }
 
         var text = new string(result.ToArray());
@@ -941,44 +1055,40 @@
     static string? CleanAccount(string? value, int maxLength)
     {
         if (string.IsNullOrWhiteSpace(value))
-        {
             return null;
-        }
 
         var result = new List<char>();
 
         foreach (var ch in value.Trim())
         {
             if (ch >= '0' && ch <= '9')
-            {
                 result.Add(ch);
-            }
             else if (ch >= '۰' && ch <= '۹')
-            {
                 result.Add((char)('0' + (ch - '۰')));
-            }
             else if (ch >= '٠' && ch <= '٩')
-            {
                 result.Add((char)('0' + (ch - '٠')));
-            }
             else if (ch == '-')
-            {
                 result.Add('-');
-            }
 
             if (maxLength > 0 && result.Count >= maxLength)
-            {
                 break;
-            }
         }
 
         var text = new string(result.ToArray());
         return string.IsNullOrWhiteSpace(text) ? null : text;
     }
 
-    static string? CleanText(string? value)
+    static string? CleanText(string? value, int maxLength = 0)
     {
-        return string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+        if (string.IsNullOrWhiteSpace(value))
+            return null;
+
+        var text = value.Trim();
+
+        if (maxLength > 0 && text.Length > maxLength)
+            text = text.Substring(0, maxLength);
+
+        return string.IsNullOrWhiteSpace(text) ? null : text;
     }
 
     void CancelSelectWorkshop()
