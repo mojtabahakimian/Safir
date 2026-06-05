@@ -634,35 +634,50 @@
     {
         if (PeriodData == null)
         {
-            Snackbar.Add("ابتدا دوره کارکرد را بارگذاری کنید.", Severity.Warning);
+            Snackbar.Add("ابتدا دوره کارکرد را بارگذاری کنید.", MudBlazor.Severity.Warning);
             return;
         }
 
         var dirtyLines = PeriodData.Lines.Where(x => x.IsDirty && !x.LOCKED).ToList();
         if (dirtyLines.Any())
         {
-            Snackbar.Add("قبل از بستن دوره، ابتدا تغییرات کارکرد را ذخیره کنید.", Severity.Warning);
+            Snackbar.Add("قبل از بستن دوره، ابتدا تغییرات ذخیره نشده‌ی کارکرد را با دکمه سبز رنگ ذخیره کنید.", MudBlazor.Severity.Warning);
             return;
         }
 
-        IsSaving = true;
-        try
+        var parameters = new MudBlazor.DialogParameters
         {
-            await AttApi.ClosePeriodAsync(PeriodData.Period.PER_ID);
+            ["Title"] = "بستن و قفل‌کردن لیست کارکرد",
+            ["ContentText"] = "آیا از قفل کردن لیست کارکرد این ماه اطمینان دارید؟ با این کار، امکان ویرایش کارکرد پرسنل مسدود شده و سیستم برای محاسبه‌ی حقوق و دستمزد آماده می‌شود.",
+            ["ConfirmButtonText"] = "بله، کارکرد بسته شود",
+            ["CancelButtonText"] = "انصراف"
+        };
 
-            long pDate = SelectedPeriodDate;
-            PeriodData = await AttApi.InitPeriodAsync(SelectedWsId, pDate);
-            FilteredLines = PeriodData.Lines.ToList();
+        var dialog = DialogService.Show<Safir.Client.Shared.ConfirmDialog>("تایید", parameters, new MudBlazor.DialogOptions { MaxWidth = MudBlazor.MaxWidth.ExtraSmall, CloseButton = false });
+        var result = await dialog.Result;
 
-            Snackbar.Add("دوره کارکرد بسته شد و آماده محاسبه حقوق است.", Severity.Success);
-        }
-        catch (Exception ex)
+        if (!result.Cancelled)
         {
-            Snackbar.Add(ex.Message, Severity.Error);
-        }
-        finally
-        {
-            IsSaving = false;
+            IsSaving = true;
+            try
+            {
+                await AttApi.ClosePeriodAsync(PeriodData.Period.PER_ID);
+
+                // بارگذاری مجدد اطلاعات پس از بسته شدن دوره برای اعمال قفل در UI
+                long pDate = SelectedPeriodDate;
+                PeriodData = await AttApi.InitPeriodAsync(SelectedWsId, pDate);
+                FilteredLines = PeriodData.Lines.ToList();
+
+                Snackbar.Add("دوره کارکرد با موفقیت بسته شد. اکنون می‌توانید به تب «محاسبه حقوق» بروید.", MudBlazor.Severity.Success);
+            }
+            catch (Exception ex)
+            {
+                Snackbar.Add(ex.Message, MudBlazor.Severity.Error);
+            }
+            finally
+            {
+                IsSaving = false;
+            }
         }
     }
 
