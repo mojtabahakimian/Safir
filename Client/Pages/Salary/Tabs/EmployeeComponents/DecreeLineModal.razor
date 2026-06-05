@@ -17,108 +17,115 @@
             <button class="btn-ghost-pay2" @onclick="Close"><i class="bi bi-x-lg"></i></button>
         </div>
 
-        <div class="pay2-modal-body">
+        <div class="pay2-modal-body" style="padding: 0; display: flex; flex-direction: column; overflow: hidden; height: 100%;">
 
             @if (!_isDataLoaded)
             {
-                <div style="display:flex; justify-content:center; align-items:center; height:200px; flex-direction:column; gap:15px;">
+                <div style="display:flex; justify-content:center; align-items:center; height:100%; flex-direction:column; gap:15px; padding: 24px;">
                     <span class="p2-spinner" style="width:40px; height:40px; border-color:var(--p2-primary); border-top-color:transparent;"></span>
                     <span style="font-size:14px; color:var(--p2-primary); font-weight:600;">در حال بارگذاری اقلام و تعاریف سیستم...</span>
                 </div>
             }
             else
             {
-                <div class="p2-sub-card-title"><i class="bi bi-cash-stack"></i> افزودن / ویرایش آیتم حقوقی</div>
+                <div style="padding: 20px 24px 16px 24px; flex-shrink: 0; border-bottom: 1px solid var(--p2-border-light); background: var(--p2-bg-main); z-index: 5;">
 
-                <div class="form-grid-2 p2-mb-16">
-                    <div class="form-field">
-                        <label>انتخاب آیتم (PAY2_ITEM_DEF) *</label>
-                        <Pay2Select TItem="LookupDto<int>" TValue="int" Items="ItemDefs"
-                                    @bind-Value="CurrentLine.ITEM_ID"
-                                    TextSelector="x => x.Name" ValueSelector="x => x.Id"
-                                    Placeholder="— انتخاب کنید —" Clearable="false"
-                                    Disabled="@IsEditing" />
-                    </div>
-                    <div class="form-field">
-                        <label>مبلغ در این حکم (ریال) *</label>
-                        <Pay2NumericInput @bind-Value="CurrentAmountStr" MaxLength="16" Direction="ltr" />
-                    </div>
-                </div>
+                    <div class="p2-sub-card-title" style="margin-top: 0;"><i class="bi bi-cash-stack"></i> افزودن / ویرایش آیتم حقوقی</div>
 
-                <div style="background: var(--p2-primary-light); border: 1px solid #bfdbfe; border-radius: var(--p2-radius-md); padding: 16px; margin-bottom: 16px;">
-                    <div class="form-grid-3">
+                    <div class="form-grid-2 p2-mb-16">
                         <div class="form-field">
-                            <label>مشمولیت بیمه (Override)</label>
-                            <Pay2Select TItem="LookupDto<int>" TValue="int" Items="OverrideOptions"
-                                        @bind-Value="CurrentLine.InsCombo" TextSelector="x => x.Name" ValueSelector="x => x.Id" Clearable="false" />
+                            <label>انتخاب آیتم (PAY2_ITEM_DEF) *</label>
+                            <Pay2Select TItem="LookupDto<int>" TValue="int" Items="ItemDefs"
+                                        @bind-Value="CurrentLine.ITEM_ID"
+                                        TextSelector="x => x.Name" ValueSelector="x => x.Id"
+                                        Placeholder="— انتخاب کنید —" Clearable="false"
+                                        Disabled="@IsEditing" />
                         </div>
                         <div class="form-field">
-                            <label>مشمولیت مالیات (Override)</label>
-                            <Pay2Select TItem="LookupDto<int>" TValue="int" Items="OverrideOptions"
-                                        @bind-Value="CurrentLine.TaxCombo" TextSelector="x => x.Name" ValueSelector="x => x.Id" Clearable="false" />
-                        </div>
-                        <div class="form-field">
-                            <label>مبنای محاسبه (Override)</label>
-                            <Pay2Select TItem="LookupDto<int>" TValue="int" Items="BasisOptions"
-                                        @bind-Value="CurrentLine.BasisCombo" TextSelector="x => x.Name" ValueSelector="x => x.Id" Clearable="false" />
+                            <label>مبلغ در این حکم (ریال) *</label>
+                            <!-- جداکننده سه‌رقم فعال شد -->
+                            <Pay2NumericInput @bind-Value="CurrentAmountStr" MaxLength="16" Direction="ltr" IsDigitGroupActive="true" ThreeTwoZero="true" />
                         </div>
                     </div>
-                </div>
 
-                <div style="display:flex; justify-content:flex-end; gap:10px; margin-bottom: 24px;">
-                    @if (IsEditing)
-                    {
-                        <button class="btn-outline-pay2" @onclick="ResetForm">انصراف</button>
-                    }
-                    <button class="btn-primary-pay2" @onclick="SubmitSave" disabled="@IsSaving">
-                        @if (IsSaving)
+                    <!-- کادر دربرگیرنده‌ی تنظیمات مشمولیت -->
+                    <div style="background: var(--p2-bg-white); border: 1px solid var(--p2-border); border-radius: var(--p2-radius-md); padding: 16px; margin-bottom: 16px;">
+                        <div class="form-grid-3">
+                            <div class="form-field">
+                                <label>مشمولیت بیمه (Override)</label>
+                                <Pay2Select TItem="LookupDto<int>" TValue="int" Items="OverrideOptions"
+                                            @bind-Value="CurrentLine.InsCombo" TextSelector="x => x.Name" ValueSelector="x => x.Id" Clearable="false" />
+                            </div>
+                            <div class="form-field">
+                                <label>مشمولیت مالیات (Override)</label>
+                                <Pay2Select TItem="LookupDto<int>" TValue="int" Items="OverrideOptions"
+                                            @bind-Value="CurrentLine.TaxCombo" TextSelector="x => x.Name" ValueSelector="x => x.Id" Clearable="false" />
+                            </div>
+                            <div class="form-field">
+                                <label>مبنای محاسبه (Override)</label>
+                                <Pay2Select TItem="LookupDto<int>" TValue="int" Items="BasisOptions"
+                                            @bind-Value="CurrentLine.BasisCombo" TextSelector="x => x.Name" ValueSelector="x => x.Id" Clearable="false" />
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- دکمه‌های فرم -->
+                    <div style="display:flex; justify-content:flex-end; gap:10px;">
+                        @if (IsEditing)
                         {
-                            <span class="p2-spinner"></span>
+                            <button class="btn-outline-pay2" @onclick="ResetForm">انصراف</button>
                         }
-                        else
-                        {
-                            <span>ذخیره آیتم</span>
-                        }
-                    </button>
-                </div>
-
-                <hr class="p2-divider" />
-
-                <div class="p2-sub-card-title"><i class="bi bi-list-check"></i> لیست اقلام ریالی حکم</div>
-
-                <div class="pay2-table-responsive">
-                    <table class="p2-table">
-                        <thead style="position: sticky; top: 0; z-index: 10;">
-                            <tr>
-                                <th>عنوان آیتم</th>
-                                <th style="text-align:center;">مبلغ (ریال)</th>
-                                <th style="text-align:center;">بیمه</th>
-                                <th style="text-align:center;">مالیات</th>
-                                <th style="text-align:center;">مبنا</th>
-                                <th style="text-align:center;">عملیات</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            @if (!Lines.Any())
+                        <button class="btn-primary-pay2" @onclick="SubmitSave" disabled="@IsSaving">
+                            @if (IsSaving)
                             {
-                                <tr><td colspan="6" style="text-align:center; padding:20px; color:#94a3b8;">هیچ آیتمی برای این حکم ثبت نشده است.</td></tr>
+                                <span class="p2-spinner"></span>
                             }
-                            @foreach (var item in Lines)
+                            else
                             {
-                                <tr style="background: @(CurrentLine.ITEM_ID == item.ITEM_ID ? "var(--p2-bg-hover)" : "transparent")">
-                                    <td><b>@item.ITEM_NAME</b></td>
-                                    <td class="p2-text-mono p2-text-primary" style="text-align:center; font-weight:bold;">@item.AMOUNT.ToString("N0")</td>
-                                    <td style="text-align:center; color: var(--p2-text-muted);">@item.InsText</td>
-                                    <td style="text-align:center; color: var(--p2-text-muted);">@item.TaxText</td>
-                                    <td style="text-align:center; color: var(--p2-text-muted);">@item.BasisText</td>
-                                    <td style="text-align:center; min-width: 150px;">
-                                        <button class="btn-ghost-pay2 p2-text-primary" @onclick="() => EditLine(item)">ویرایش</button>
-                                        <button class="btn-ghost-pay2 p2-text-danger" @onclick="() => DeleteLine(item)">حذف</button>
-                                    </td>
+                                <span>ذخیره آیتم</span>
+                            }
+                        </button>
+                    </div>
+                </div>
+
+                <div style="flex-grow: 1; overflow-y: auto; background: var(--p2-bg-white); padding: 20px 24px;">
+
+                    <div class="p2-sub-card-title" style="margin-top: 0;"><i class="bi bi-list-check"></i> لیست اقلام ریالی حکم</div>
+
+                    <div class="pay2-table-responsive" style="margin-top: 0; border: 1px solid var(--p2-border-light);">
+                        <table class="p2-table">
+                            <thead style="position: sticky; top: 0; z-index: 2; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
+                                <tr>
+                                    <th>عنوان آیتم</th>
+                                    <th style="text-align:center;">مبلغ (ریال)</th>
+                                    <th style="text-align:center;">بیمه</th>
+                                    <th style="text-align:center;">مالیات</th>
+                                    <th style="text-align:center;">مبنا</th>
+                                    <th style="text-align:center;">عملیات</th>
                                 </tr>
-                            }
-                        </tbody>
-                    </table>
+                            </thead>
+                            <tbody>
+                                @if (!Lines.Any())
+                                {
+                                    <tr><td colspan="6" style="text-align:center; padding:20px; color:#94a3b8;">هیچ آیتمی برای این حکم ثبت نشده است.</td></tr>
+                                }
+                                @foreach (var item in Lines)
+                                {
+                                    <tr style="background: @(CurrentLine.ITEM_ID == item.ITEM_ID ? "var(--p2-bg-hover)" : "transparent")">
+                                        <td><b>@item.ITEM_NAME</b></td>
+                                        <td class="p2-text-mono p2-text-primary" style="text-align:center; font-weight:bold;">@item.AMOUNT.ToString("N0")</td>
+                                        <td style="text-align:center; color: var(--p2-text-muted);">@item.InsText</td>
+                                        <td style="text-align:center; color: var(--p2-text-muted);">@item.TaxText</td>
+                                        <td style="text-align:center; color: var(--p2-text-muted);">@item.BasisText</td>
+                                        <td style="text-align:center; min-width: 150px;">
+                                            <button class="btn-ghost-pay2 p2-text-primary" @onclick="() => EditLine(item)">ویرایش</button>
+                                            <button class="btn-ghost-pay2 p2-text-danger" @onclick="() => DeleteLine(item)">حذف</button>
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
                 </div>
             }
         </div>
