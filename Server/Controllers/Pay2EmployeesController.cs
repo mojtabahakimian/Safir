@@ -155,14 +155,31 @@ namespace Safir.Server.Controllers
                 {
                     int currentDecId = decree.DEC_ID;
 
-                    // منطق هوشمند: بستن تاریخ پایان حکم قبلی
-                    if (decree.DEC_ID == 0)
+                    // 🚀 گارد امنیتی سطح ۱: آیا این حکم با فیش حقوقی گره خورده است؟
+                    if (currentDecId > 0)
                     {
+                        string checkUsageSql = @"
+                            SELECT COUNT(1) 
+                            FROM PAY2_RUN R
+                            INNER JOIN PAY2_PERIOD P ON R.PER_ID = P.PER_ID
+                            WHERE R.STATUS >= 2 
+                              AND P.PERIOD_DATE >= (SELECT EFF_FROM FROM PAY2_DECREE WHERE DEC_ID = @DEC_ID)
+                              AND R.RUN_ID IN (SELECT RUN_ID FROM PAY2_RUN_LINE WHERE EMP_ID = @EMP_ID)";
+
+                        int usedInFinalRun = await conn.QuerySingleAsync<int>(checkUsageSql, new { DEC_ID = currentDecId, EMP_ID = decree.EMP_ID }, tran);
+
+                        if (usedInFinalRun > 0)
+                            throw new InvalidOperationException("این حکم در ماه‌های گذشته جهت صدور حقوق قطعی استفاده شده است. امکان ویرایش یا لغو تایید آن به هیچ وجه وجود ندارد. برای تغییر حقوق، باید یک حکم جدید صادر کنید.");
+                    }
+
+                    if (currentDecId == 0) // درج جدید
+                    {
+                        // بستن هوشمند تاریخ حکم قبلی
                         string closePrevSql = @"
                             UPDATE PAY2_DECREE 
                             SET EFF_TO = @PrevTo 
                             WHERE DEC_ID = (SELECT TOP 1 DEC_ID FROM PAY2_DECREE WHERE EMP_ID = @EmpId AND IS_CONFIRMED = 1 AND EFF_TO IS NULL AND EFF_FROM < @NewFrom ORDER BY EFF_FROM DESC)";
-                        // محاسبه روز قبل (ساده‌سازی شده، برای نسخه دقیق از تابع شمسی سمت سرور استفاده کنید)
+
                         long prevTo = DecrementShamsiDate(decree.EFF_FROM);
                         await conn.ExecuteAsync(closePrevSql, new { PrevTo = prevTo, EmpId = decree.EMP_ID, NewFrom = decree.EFF_FROM }, tran);
 
@@ -175,7 +192,7 @@ namespace Safir.Server.Controllers
                         p.Add("User", userCod);
                         currentDecId = await conn.QueryFirstAsync<int>(insertSql, p, tran);
 
-                        // تولید اقلام از روی قالب
+                        // درج اتوماتیک اقلام ریالی از روی قالب
                         if (decree.TMPL_ID.HasValue && decree.TMPL_ID > 0)
                         {
                             string sqlLines = @"
@@ -185,22 +202,37 @@ namespace Safir.Server.Controllers
                             await conn.ExecuteAsync(sqlLines, new { NewDecId = currentDecId, TmplId = decree.TMPL_ID.Value }, tran);
                         }
                     }
-                    else
+                    else // ویرایش
                     {
-                        const string updateSql = @"
-                            UPDATE PAY2_DECREE SET ISSUED_DATE=@ISSUED_DATE, EFF_FROM=@EFF_FROM, EFF_TO=@EFF_TO, EDU_LEVEL=@EDU_LEVEL, MARITAL=@MARITAL, IS_MANAGER=@IS_MANAGER, IS_CONFIRMED=@IS_CONFIRMED, NOTES=@NOTES
-                            WHERE DEC_ID=@DEC_ID";
-                        await conn.ExecuteAsync(updateSql, decree, tran);
+                        // 🚀 حفاظت بک‌اند: اگر حکم قبلاً تایید شده است، فقط یادداشت قابل تغییر است
+                        bool wasConfirmed = await conn.QuerySingleAsync<bool>("SELECT IS_CONFIRMED FROM PAY2_DECREE WHERE DEC_ID = @DEC_ID", new { decree.DEC_ID }, tran);
+
+                        if (wasConfirmed)
+                        {
+                            const string updateNotesOnlySql = "UPDATE PAY2_DECREE SET NOTES=@NOTES WHERE DEC_ID=@DEC_ID";
+                            await conn.ExecuteAsync(updateNotesOnlySql, new { decree.NOTES, decree.DEC_ID }, tran);
+                        }
+                        else
+                        {
+                            const string updateSql = @"
+                                UPDATE PAY2_DECREE 
+                                SET ISSUED_DATE=@ISSUED_DATE, EFF_FROM=@EFF_FROM, EFF_TO=@EFF_TO, 
+                                    EDU_LEVEL=@EDU_LEVEL, MARITAL=@MARITAL, IS_MANAGER=@IS_MANAGER, 
+                                    IS_CONFIRMED=@IS_CONFIRMED, NOTES=@NOTES
+                                WHERE DEC_ID=@DEC_ID";
+                            await conn.ExecuteAsync(updateSql, decree, tran);
+                        }
                     }
-                    return currentDecId;
+
+                    return currentDecId; // اکنون با اطمینان کامل مقدار صحیح برمی‌گردد
                 });
+
                 return Ok(decId);
             }
-            catch (Exception ex)
-            {
-                return BadRequest(ex.Message);
-            }
+            catch (InvalidOperationException ex) { return BadRequest(ex.Message); }
+            catch (Exception ex) { return StatusCode(500, "خطای سیستمی: " + ex.Message); }
         }
+
 
         // اضافه کردن به فایل Pay2EmployeesController.cs
 
@@ -219,16 +251,18 @@ namespace Safir.Server.Controllers
             {
                 await _db.ExecuteInTransactionAsync(async (conn, tran) =>
                 {
-                    // اول اقلام ریالی حذف می‌شوند، سپس خود هدر حکم
+                    // 🚀 گارد امنیتی سطح ۳: حکم تایید شده قابل حذف فیزیکی نیست!
+                    bool isConfirmed = await conn.QuerySingleAsync<bool>("SELECT IS_CONFIRMED FROM PAY2_DECREE WHERE DEC_ID = @decId", new { decId }, tran);
+                    if (isConfirmed)
+                        throw new InvalidOperationException("این حکم تأیید نهایی شده است. برای حذف آن، ابتدا باید آن را از حالت تایید خارج کنید.");
+
                     await conn.ExecuteAsync("DELETE FROM PAY2_DECREE_LINE WHERE DEC_ID = @decId", new { decId }, tran);
                     await conn.ExecuteAsync("DELETE FROM PAY2_DECREE WHERE DEC_ID = @decId", new { decId }, tran);
                 });
                 return Ok();
             }
-            catch (Exception ex)
-            {
-                return BadRequest(ex.Message);
-            }
+            catch (InvalidOperationException ex) { return BadRequest(ex.Message); }
+            catch (Exception ex) { return StatusCode(500, ex.Message); }
         }
 
 
@@ -251,11 +285,11 @@ namespace Safir.Server.Controllers
         public async Task<ActionResult<IEnumerable<Pay2DecreeLineDto>>> GetDecreeLines(int decId)
         {
             const string sql = @"
-        SELECT L.DEC_ID, L.ITEM_ID, I.ITEM_NAME, L.AMOUNT, L.INS_OV, L.TAX_OV, L.BASIS_OV
-        FROM PAY2_DECREE_LINE L
-        INNER JOIN PAY2_ITEM_DEF I ON L.ITEM_ID = I.ITEM_ID
-        WHERE L.DEC_ID = @decId
-        ORDER BY I.SORT_ORDER";
+                SELECT L.DEC_ID, L.ITEM_ID, I.ITEM_NAME, L.AMOUNT, L.INS_OV, L.TAX_OV, L.BASIS_OV
+                FROM PAY2_DECREE_LINE L
+                INNER JOIN PAY2_ITEM_DEF I ON L.ITEM_ID = I.ITEM_ID
+                WHERE L.DEC_ID = @decId
+                ORDER BY I.SORT_ORDER";
 
             return Ok(await _db.DoGetDataSQLAsync<Pay2DecreeLineDto>(sql, new { decId }));
         }
@@ -267,21 +301,23 @@ namespace Safir.Server.Controllers
             {
                 await _db.ExecuteInTransactionAsync(async (conn, tran) =>
                 {
-                    // اول چک می‌کنیم آیا این آیتم قبلا برای این حکم ثبت شده یا خیر
+                    // 🚀 گارد امنیتی سطح ۲: آیا هدر این حکم قفل است؟
+                    bool isConfirmed = await conn.QuerySingleAsync<bool>("SELECT IS_CONFIRMED FROM PAY2_DECREE WHERE DEC_ID = @DEC_ID", new { line.DEC_ID }, tran);
+                    if (isConfirmed)
+                        throw new InvalidOperationException("این حکم قفل (تأیید نهایی) شده است! برای افزودن یا تغییر مبالغ، باید ابتدا در صفحه قبل، تیک تایید این حکم را بردارید.");
+
                     int count = await conn.QuerySingleAsync<int>(
                         "SELECT COUNT(1) FROM PAY2_DECREE_LINE WHERE DEC_ID=@DEC_ID AND ITEM_ID=@ITEM_ID",
                         new { line.DEC_ID, line.ITEM_ID }, tran);
 
                     if (count == 0)
                     {
-                        // درج جدید
                         const string insertSql = @"INSERT INTO PAY2_DECREE_LINE (DEC_ID, ITEM_ID, AMOUNT, INS_OV, TAX_OV, BASIS_OV)
                                            VALUES (@DEC_ID, @ITEM_ID, @AMOUNT, @INS_OV, @TAX_OV, @BASIS_OV)";
                         await conn.ExecuteAsync(insertSql, line, tran);
                     }
                     else
                     {
-                        // آپدیت قلم موجود
                         const string updateSql = @"UPDATE PAY2_DECREE_LINE 
                                            SET AMOUNT=@AMOUNT, INS_OV=@INS_OV, TAX_OV=@TAX_OV, BASIS_OV=@BASIS_OV
                                            WHERE DEC_ID=@DEC_ID AND ITEM_ID=@ITEM_ID";
@@ -290,25 +326,30 @@ namespace Safir.Server.Controllers
                 });
                 return Ok();
             }
-            catch (Exception ex)
-            {
-                return BadRequest(ex.Message);
-            }
+            catch (InvalidOperationException ex) { return BadRequest(ex.Message); }
+            catch (Exception ex) { return StatusCode(500, ex.Message); }
         }
+
 
         [HttpDelete("decree/{decId:int}/line/{itemId:int}")]
         public async Task<IActionResult> DeleteDecreeLine(int decId, int itemId)
         {
             try
             {
-                const string sql = "DELETE FROM PAY2_DECREE_LINE WHERE DEC_ID=@decId AND ITEM_ID=@itemId";
-                await _db.DoExecuteSQLAsync(sql, new { decId, itemId });
+                await _db.ExecuteInTransactionAsync(async (conn, tran) =>
+                {
+                    // 🚀 گارد امنیتی سطح ۲: آیا هدر این حکم قفل است؟
+                    bool isConfirmed = await conn.QuerySingleAsync<bool>("SELECT IS_CONFIRMED FROM PAY2_DECREE WHERE DEC_ID = @decId", new { decId }, tran);
+                    if (isConfirmed)
+                        throw new InvalidOperationException("این حکم قفل (تأیید نهایی) شده است! اجازه حذف مبالغ آن را ندارید.");
+
+                    const string sql = "DELETE FROM PAY2_DECREE_LINE WHERE DEC_ID=@decId AND ITEM_ID=@itemId";
+                    await conn.ExecuteAsync(sql, new { decId, itemId }, tran);
+                });
                 return Ok();
             }
-            catch (Exception ex)
-            {
-                return BadRequest(ex.Message);
-            }
+            catch (InvalidOperationException ex) { return BadRequest(ex.Message); }
+            catch (Exception ex) { return StatusCode(500, ex.Message); }
         }
 
         [HttpGet("lookup")]
@@ -368,10 +409,23 @@ namespace Safir.Server.Controllers
         {
             try
             {
-                await _db.DoExecuteSQLAsync("DELETE FROM PAY2_LEAVE WHERE LEV_ID = @levId", new { levId });
+                await _db.ExecuteInTransactionAsync(async (conn, tran) =>
+                {
+                    // 🚀 گارد امنیتی: جلوگیری از حذف مرخصی‌های تایید شده یا در جریان
+                    var status = await conn.QuerySingleOrDefaultAsync<byte?>("SELECT STATUS FROM PAY2_LEAVE WHERE LEV_ID = @levId", new { levId }, tran);
+
+                    if (status == null)
+                        throw new InvalidOperationException("مرخصی یافت نشد.");
+
+                    if (status > 1)
+                        throw new InvalidOperationException("این مرخصی تأیید شده است یا در جریان می‌باشد و امکان حذف فیزیکی آن وجود ندارد.");
+
+                    await conn.ExecuteAsync("DELETE FROM PAY2_LEAVE WHERE LEV_ID = @levId", new { levId }, tran);
+                });
                 return Ok();
             }
-            catch (Exception ex) { return BadRequest(ex.Message); }
+            catch (InvalidOperationException ex) { return BadRequest(ex.Message); }
+            catch (Exception ex) { return StatusCode(500, ex.Message); }
         }
 
         [HttpGet("{empId:int}/contracts")]
@@ -787,58 +841,43 @@ namespace Safir.Server.Controllers
             {
                 await _db.ExecuteInTransactionAsync(async (conn, tran) =>
                 {
-                    // ۱. بررسی بسیار دقیق تمام وابستگی‌های عملیاتی، مالی و رسمی
+                    // ۱. 🚀 مهار باگ Dynamic Casting + بهینه‌سازی پرفورمنس با اجرای تمام چک‌ها در یک کوئری سریع سمت SQL
                     string checkSql = @"
-                SELECT 
-                    (SELECT COUNT(1) FROM PAY2_RUN_LINE WHERE EMP_ID = @empId) AS RunCount,
-                    (SELECT COUNT(1) FROM PAY2_ATTENDANCE WHERE EMP_ID = @empId) AS AttCount,
-                    (SELECT COUNT(1) FROM PAY2_SETTLEMENT WHERE EMP_ID = @empId) AS SetCount,
-                    (SELECT COUNT(1) FROM PAY2_LOAN WHERE EMP_ID = @empId) AS LoanCount,
-                    (SELECT COUNT(1) FROM PAY2_DECREE WHERE EMP_ID = @empId AND IS_CONFIRMED = 1) AS ConfirmedDecreeCount,
-                    (SELECT COUNT(1) FROM PAY2_LEAVE WHERE EMP_ID = @empId AND STATUS > 1) AS ApprovedLeaveCount";
+                        IF EXISTS (SELECT 1 FROM PAY2_RUN_LINE WHERE EMP_ID = @empId)
+                            SELECT 1 AS ErrorCode, N'این پرسنل دارای محاسبه حقوق (فیش صادر شده) است و قابل حذف نیست.' AS ErrorMessage
+                        ELSE IF EXISTS (SELECT 1 FROM PAY2_ATTENDANCE WHERE EMP_ID = @empId)
+                            SELECT 2, N'برای این پرسنل کارکرد ماهیانه ثبت شده است و قابل حذف نیست.'
+                        ELSE IF EXISTS (SELECT 1 FROM PAY2_SETTLEMENT WHERE EMP_ID = @empId)
+                            SELECT 3, N'این پرسنل دارای سابقه تسویه حساب است و قابل حذف نیست.'
+                        ELSE IF EXISTS (SELECT 1 FROM PAY2_LOAN WHERE EMP_ID = @empId)
+                            SELECT 4, N'این پرسنل دارای سابقه وام است (حتی تسویه شده). به دلیل سوابق مالی، حذف فیزیکی ممنوع است.'
+                        ELSE IF EXISTS (SELECT 1 FROM PAY2_DECREE WHERE EMP_ID = @empId AND IS_CONFIRMED = 1)
+                            SELECT 5, N'این پرسنل دارای احکام کارگزینی تأیید شده است. مدارک رسمی قابل حذف نیستند.'
+                        ELSE IF EXISTS (SELECT 1 FROM PAY2_LEAVE WHERE EMP_ID = @empId AND STATUS > 1)
+                            SELECT 6, N'این پرسنل دارای مرخصی تأیید شده است و سوابق آن قابل حذف نیست.'
+                        ELSE 
+                            SELECT 0, N'OK'";
 
-                    var checks = await conn.QuerySingleAsync<dynamic>(checkSql, new { empId }, tran);
+                    var validationResult = await conn.QuerySingleAsync(checkSql, new { empId }, tran);
 
-                    // ۲. اعتبارسنجی خطوط قرمز (Red Lines)
-                    if (checks.RunCount > 0)
-                        throw new InvalidOperationException("این پرسنل دارای محاسبه حقوق (فیش صادر شده) است و قابل حذف نیست.");
+                    // بررسی خطوط قرمز (Red Lines)
+                    if (validationResult.ErrorCode != 0)
+                        throw new InvalidOperationException((string)validationResult.ErrorMessage);
 
-                    if (checks.AttCount > 0)
-                        throw new InvalidOperationException("برای این پرسنل کارکرد ماهیانه ثبت شده است و قابل حذف نیست.");
-
-                    if (checks.SetCount > 0)
-                        throw new InvalidOperationException("این پرسنل دارای سابقه تسویه حساب است و قابل حذف نیست.");
-
-                    if (checks.LoanCount > 0)
-                        throw new InvalidOperationException("این پرسنل دارای سابقه وام است (حتی تسویه شده). به دلیل سوابق مالی، حذف فیزیکی ممنوع است.");
-
-                    if (checks.ConfirmedDecreeCount > 0)
-                        throw new InvalidOperationException("این پرسنل دارای احکام کارگزینی تأیید شده است. مدارک رسمی قابل حذف نیستند.");
-
-                    if (checks.ApprovedLeaveCount > 0)
-                        throw new InvalidOperationException("این پرسنل دارای مرخصی تأیید شده است و سوابق آن قابل حذف نیست.");
-
-                    // ۳. اگر به این مرحله رسید، یعنی پرسنل به صورت آزمایشی/اشتباهی ثبت شده 
-                    // و فقط رکوردهای پیش‌نویس (Draft) دارد. حالا با خیال راحت زباله‌ها را پاک می‌کنیم.
-
-                    // پاک کردن اقلام احکامِ پیش‌نویس
+                    // ۲. پاک‌سازی ایمن زباله‌های پیش‌نویس (Drafts)
                     await conn.ExecuteAsync("DELETE FROM PAY2_DECREE_LINE WHERE DEC_ID IN (SELECT DEC_ID FROM PAY2_DECREE WHERE EMP_ID = @empId)", new { empId }, tran);
                     await conn.ExecuteAsync("DELETE FROM PAY2_DECREE WHERE EMP_ID = @empId", new { empId }, tran);
-
-                    // پاک کردن سایر سوابق بی‌اهمیت
                     await conn.ExecuteAsync("DELETE FROM PAY2_CONTRACT WHERE EMP_ID = @empId", new { empId }, tran);
                     await conn.ExecuteAsync("DELETE FROM PAY2_LEAVE_BAL WHERE EMP_ID = @empId", new { empId }, tran);
                     await conn.ExecuteAsync("DELETE FROM PAY2_LEAVE WHERE EMP_ID = @empId", new { empId }, tran); // فقط پیش‌نویس‌ها مانده‌اند
                     await conn.ExecuteAsync("DELETE FROM PAY2_OVERRIDE WHERE EMP_ID = @empId", new { empId }, tran);
                     await conn.ExecuteAsync("DELETE FROM PAY2_ADVANCE_EXCL WHERE EMP_ID = @empId", new { empId }, tran);
 
-                    // ۴. حذف فیزیکی خود پرسنل
+                    // ۳. حذف فیزیکی خود پرسنل
                     int deletedRows = await conn.ExecuteAsync("DELETE FROM PAY2_EMPLOYEE WHERE EMP_ID = @empId", new { empId }, tran);
 
                     if (deletedRows == 0)
-                    {
                         throw new InvalidOperationException("پرسنل مورد نظر در سیستم یافت نشد.");
-                    }
                 });
 
                 return Ok();
