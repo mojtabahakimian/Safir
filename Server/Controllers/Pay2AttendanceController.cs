@@ -178,6 +178,31 @@ namespace Safir.Server.Controllers
                 return BadRequest(ex.Message);
             }
         }
+
+        [HttpPut("reopen-period/{perId:int}")]
+        public async Task<IActionResult> ReopenPeriod(int perId)
+        {
+            try
+            {
+                await _db.ExecuteInTransactionAsync(async (conn, tran) =>
+                {
+                    // 🚀 مهار باگ امنیتی: فقط دوره‌ای که "بسته" است (نه محاسبه شده) اجازه باز شدن دارد
+                    var status = await conn.QuerySingleOrDefaultAsync<byte?>("SELECT STATUS FROM PAY2_PERIOD WHERE PER_ID=@perId", new { perId }, tran);
+
+                    if (status == null)
+                        throw new InvalidOperationException("دوره یافت نشد.");
+
+                    if (status >= 3)
+                        throw new InvalidOperationException("این دوره محاسبه شده است و قابل بازگشت نیست. ابتدا از تب محاسبه حقوق، عملیات لغو را انجام دهید.");
+
+                    await conn.ExecuteAsync("UPDATE PAY2_PERIOD SET STATUS = 1, CLOSED_AT = NULL WHERE PER_ID = @perId", new { perId }, tran);
+                });
+
+                return Ok();
+            }
+            catch (InvalidOperationException ex) { return BadRequest(ex.Message); }
+            catch (Exception ex) { return StatusCode(500, "خطای سیستمی: " + ex.Message); }
+        }
         private static bool IsValidPayrollPeriodDate(long periodDate)
         {
             int year = (int)(periodDate / 10000);
