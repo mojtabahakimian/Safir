@@ -43,7 +43,6 @@ namespace Safir.Client.Services
                 throw new Exception(string.IsNullOrWhiteSpace(msg) ? "خطا در حذف دوره" : msg);
             }
         }
-
         public async Task DeleteAttendanceLineAsync(int perId, int empId)
         {
             var res = await _http.DeleteAsync($"api/pay2/attendance/period/{perId}/employee/{empId}");
@@ -52,6 +51,12 @@ namespace Safir.Client.Services
                 var msg = await res.Content.ReadAsStringAsync();
                 throw new Exception(string.IsNullOrWhiteSpace(msg) ? "خطا در حذف رکورد کارکرد" : msg);
             }
+        }
+        public async Task ReopenPeriodAsync(int perId)
+        {
+            var res = await _http.PutAsync($"api/pay2/attendance/reopen-period/{perId}", null);
+            if (!res.IsSuccessStatusCode)
+                throw new Exception(await res.Content.ReadAsStringAsync());
         }
     }
 }

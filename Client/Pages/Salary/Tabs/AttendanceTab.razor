@@ -277,25 +277,41 @@
                 }
                 else
                 {
-
                     <span><i class="bi bi-floppy"></i> ذخیره کارکرد</span>
                 }
             </button>
 
-            <button class="btn-primary-pay2"
-                    style="background:#2563eb; border-color:#2563eb;"
-                    @onclick="ClosePeriod"
-                    disabled="@(PeriodData.Period.IsReadOnly || IsSaving)">
-                <i class="bi bi-lock"></i>
-                بستن کارکرد و آماده‌سازی محاسبه
-            </button>
+            @if (PeriodData.Period.STATUS == 1)
+            {
+                <button class="btn-primary-pay2"
+                        style="background:#2563eb; border-color:#2563eb;"
+                        @onclick="ClosePeriod"
+                        disabled="@IsSaving">
+                    <i class="bi bi-lock"></i> بستن کارکرد و آماده‌سازی محاسبه
+                </button>
+            }
+            else if (PeriodData.Period.STATUS == 2)
+            {
+                <!-- دکمه باز کردن مجدد دوره برای ویرایش -->
+                <button class="btn-outline-pay2"
+                        style="color:#d97706; border-color:#fde68a;"
+                        @onclick="ReopenPeriod"
+                        disabled="@IsSaving">
+                    <i class="bi bi-unlock"></i> باز کردن مجدد برای ویرایش
+                </button>
+            }
 
-            <button class="btn-outline-danger-pay2"
-                    @onclick="DeletePeriodConfirm"
-                    disabled="@IsSaving"
-                    title="حذف کامل این دوره و تمامی کارکردهای ثبت شده">
-                <i class="bi bi-trash3"></i>
-            </button>
+            <!-- دکمه سطل زباله برای حذف فیزیکی دوره -->
+            @if (PeriodData.Period.STATUS <= 2)
+            {
+                <button class="btn-outline-danger-pay2"
+                        @onclick="DeletePeriodConfirm"
+                        disabled="@IsSaving"
+                        title="حذف کامل این دوره و تمامی کارکردهای ثبت شده">
+                    <i class="bi bi-trash3"></i>
+                </button>
+            }
+     
         }
     </div>
 
@@ -634,35 +650,50 @@
     {
         if (PeriodData == null)
         {
-            Snackbar.Add("ابتدا دوره کارکرد را بارگذاری کنید.", Severity.Warning);
+            Snackbar.Add("ابتدا دوره کارکرد را بارگذاری کنید.", MudBlazor.Severity.Warning);
             return;
         }
 
         var dirtyLines = PeriodData.Lines.Where(x => x.IsDirty && !x.LOCKED).ToList();
         if (dirtyLines.Any())
         {
-            Snackbar.Add("قبل از بستن دوره، ابتدا تغییرات کارکرد را ذخیره کنید.", Severity.Warning);
+            Snackbar.Add("قبل از بستن دوره، ابتدا تغییرات ذخیره نشده‌ی کارکرد را با دکمه سبز رنگ ذخیره کنید.", MudBlazor.Severity.Warning);
             return;
         }
 
-        IsSaving = true;
-        try
+        var parameters = new MudBlazor.DialogParameters
         {
-            await AttApi.ClosePeriodAsync(PeriodData.Period.PER_ID);
+            ["Title"] = "بستن و قفل‌کردن لیست کارکرد",
+            ["ContentText"] = "آیا از قفل کردن لیست کارکرد این ماه اطمینان دارید؟ با این کار، امکان ویرایش کارکرد پرسنل مسدود شده و سیستم برای محاسبه‌ی حقوق و دستمزد آماده می‌شود.",
+            ["ConfirmButtonText"] = "بله، کارکرد بسته شود",
+            ["CancelButtonText"] = "انصراف"
+        };
 
-            long pDate = SelectedPeriodDate;
-            PeriodData = await AttApi.InitPeriodAsync(SelectedWsId, pDate);
-            FilteredLines = PeriodData.Lines.ToList();
+        var dialog = DialogService.Show<Safir.Client.Shared.ConfirmDialog>("تایید", parameters, new MudBlazor.DialogOptions { MaxWidth = MudBlazor.MaxWidth.ExtraSmall, CloseButton = false });
+        var result = await dialog.Result;
 
-            Snackbar.Add("دوره کارکرد بسته شد و آماده محاسبه حقوق است.", Severity.Success);
-        }
-        catch (Exception ex)
+        if (!result.Cancelled)
         {
-            Snackbar.Add(ex.Message, Severity.Error);
-        }
-        finally
-        {
-            IsSaving = false;
+            IsSaving = true;
+            try
+            {
+                await AttApi.ClosePeriodAsync(PeriodData.Period.PER_ID);
+
+                // بارگذاری مجدد اطلاعات پس از بسته شدن دوره برای اعمال قفل در UI
+                long pDate = SelectedPeriodDate;
+                PeriodData = await AttApi.InitPeriodAsync(SelectedWsId, pDate);
+                FilteredLines = PeriodData.Lines.ToList();
+
+                Snackbar.Add("دوره کارکرد با موفقیت بسته شد. اکنون می‌توانید به تب «محاسبه حقوق» بروید.", MudBlazor.Severity.Success);
+            }
+            catch (Exception ex)
+            {
+                Snackbar.Add(ex.Message, MudBlazor.Severity.Error);
+            }
+            finally
+            {
+                IsSaving = false;
+            }
         }
     }
 
@@ -863,7 +894,6 @@
         Snackbar.Add($"دوره {pDate} با موفقیت ایجاد و لیست کارکرد آماده شد.", MudBlazor.Severity.Success);
     }
 
-    // 🚀 متد جدید: حذف دوره ماهانه با اخطار جدی
     async Task DeletePeriodConfirm()
     {
         if (PeriodData == null) return;
@@ -897,15 +927,17 @@
 
                 Snackbar.Add("دوره کارکرد و تمامی اطلاعات وابسته به آن با موفقیت از سیستم حذف شد.", MudBlazor.Severity.Success);
 
-                // ریست کردن State صفحه
+                // 🚀 پاک‌سازیِ قطعی تمام State های مرتبط با دوره حذف شده
                 PeriodData = null;
                 FilteredLines.Clear();
                 _searchTerm = "";
+                _periodInputText = ""; // پاک کردن متن دراپ‌داون
+                SelectedPeriodDate = 0; // ریست کردن تاریخ انتخاب شده
 
-                // بارگذاری مجدد دراپ‌داون دوره‌ها تا دوره حذف شده از لیست محو شود
+                // بارگذاری مجدد دراپ‌داون دوره‌ها
                 await LoadPeriodOptionsAsync();
 
-                // 🚀 بهبود UX: اگر دوره‌ی دیگری به صورت خودکار انتخاب شده، جدول آن را برای کاربر لود کن
+                // اگر پس از حذف، دوره دیگری (مثلاً دوره ماه قبل) در لیست وجود داشت، آن را به صورت خودکار برای کاربر لود کن
                 if (SelectedPeriodDate > 0)
                 {
                     await LoadPeriod();
@@ -976,4 +1008,38 @@
             }
         }
     }
+
+    async Task ReopenPeriod()
+    {
+        if (PeriodData == null) return;
+
+        var parameters = new MudBlazor.DialogParameters
+        {
+            ["Title"] = "باز کردن مجدد دوره",
+            ["ContentText"] = "آیا می‌خواهید این دوره را برای ویرایش کارکردها دوباره باز کنید؟ (پس از ویرایش باید مجدداً آن را قفل کنید).",
+            ["ConfirmButtonText"] = "بله، باز شود",
+            ["CancelButtonText"] = "انصراف"
+        };
+        var dialog = DialogService.Show<Safir.Client.Shared.ConfirmDialog>("تایید", parameters, new MudBlazor.DialogOptions { MaxWidth = MudBlazor.MaxWidth.ExtraSmall, CloseButton = false });
+        var result = await dialog.Result;
+
+        if (!result.Cancelled)
+        {
+            IsSaving = true;
+            try
+            {
+                await AttApi.ReopenPeriodAsync(PeriodData.Period.PER_ID);
+
+                // رفرش کردن صفحه برای باز شدن فیلدها
+                long pDate = SelectedPeriodDate;
+                PeriodData = await AttApi.InitPeriodAsync(SelectedWsId, pDate);
+                FilteredLines = PeriodData.Lines.ToList();
+
+                Snackbar.Add("دوره برای ویرایش باز شد.", MudBlazor.Severity.Info);
+            }
+            catch (Exception ex) { Snackbar.Add(ex.Message, MudBlazor.Severity.Error); }
+            finally { IsSaving = false; }
+        }
+    }
+
 }
