@@ -84,15 +84,22 @@
             set => TAX_OV = value == 3 ? (bool?)null : (value == 1);
         }
 
+        // 👇 شناسه 9 برای "طبق تعریف پایه" (null) — مقادیر 1=روزانه، 2=ماهیانه، 3=ساعتی مستقیماً ذخیره می‌شوند
         public int BasisCombo
         {
-            get => BASIS_OV == null ? 3 : (BASIS_OV == 1 ? 1 : 2);
-            set => BASIS_OV = value == 3 ? (byte?)null : (byte)value;
+            get => BASIS_OV == null ? 9 : BASIS_OV.Value;
+            set => BASIS_OV = value == 9 ? (byte?)null : (byte)value;
         }
 
         public string InsText => INS_OV == null ? "پایه" : (INS_OV == true ? "مشمول" : "معاف");
         public string TaxText => TAX_OV == null ? "پایه" : (TAX_OV == true ? "مشمول" : "معاف");
-        public string BasisText => BASIS_OV == null ? "پایه" : (BASIS_OV == 1 ? "روزانه" : "ماهیانه");
+        public string BasisText => BASIS_OV switch
+        {
+            null => "پایه",
+            1 => "روزانه",
+            3 => "ساعتی",
+            _ => "ماهیانه"
+        };
     }
 
     public class Pay2LeaveDto
@@ -113,6 +120,10 @@
         public int? REFER_TO { get; set; }
         public byte STATUS { get; set; } = 1;
 
+        // نوع مرخصی ساعتی + سقف مجاز آن (۳ ساعت و ۲۰ دقیقه = ۲۰۰ دقیقه)
+        public const byte HOURLY_TYPE = 6;
+        public const int HOURLY_MAX_MINUTES = 200;
+
         // --- پراپرتی‌های محاسباتی و نمایشی ---
         public int TotalMinutes => (REQ_DAYS * 440) + (REQ_HOURS * 60) + REQ_MINUTES;
 
@@ -123,6 +134,7 @@
             3 => "بدون حقوق",
             4 => "زایمان",
             5 => "مأموریت",
+            6 => "ساعتی",
             _ => "نامشخص"
         };
 
@@ -229,16 +241,23 @@
             set => TAX_OV = value == 3 ? (bool?)null : (value == 1);
         }
 
+        // 👇 شناسه 9 برای "بدون تغییر" (null) — مقادیر 1=روزانه، 2=ماهیانه، 3=ساعتی مستقیماً ذخیره می‌شوند
         public int BasisCombo
         {
-            get => BASIS_OV == null ? 3 : (BASIS_OV == 1 ? 1 : 2);
-            set => BASIS_OV = value == 3 ? (byte?)null : (byte)value;
+            get => BASIS_OV == null ? 9 : BASIS_OV.Value;
+            set => BASIS_OV = value == 9 ? (byte?)null : (byte)value;
         }
 
         // --- برای نمایش در جدول گرید ---
         public string InsText => INS_OV == null ? "بدون تغییر" : (INS_OV == true ? "مشمول" : "معاف");
         public string TaxText => TAX_OV == null ? "بدون تغییر" : (TAX_OV == true ? "مشمول" : "معاف");
-        public string BasisText => BASIS_OV == null ? "بدون تغییر" : (BASIS_OV == 1 ? "روزانه" : "ماهیانه");
+        public string BasisText => BASIS_OV switch
+        {
+            null => "بدون تغییر",
+            1 => "روزانه",
+            3 => "ساعتی",
+            _ => "ماهیانه"
+        };
     }
     public class Pay2AdvanceExclDto
     {
@@ -323,11 +342,18 @@
         // پراپرتی‌های کمکی برای بایندینگ به کامبوباکسِ Pay2Select در UI
         public int InsCombo { get => INS_OV == null ? 3 : (INS_OV == true ? 1 : 2); set => INS_OV = value == 3 ? (bool?)null : (value == 1); }
         public int TaxCombo { get => TAX_OV == null ? 3 : (TAX_OV == true ? 1 : 2); set => TAX_OV = value == 3 ? (bool?)null : (value == 1); }
-        public int BasisCombo { get => BASIS_OV == null ? 3 : (BASIS_OV == 1 ? 1 : 2); set => BASIS_OV = value == 3 ? (byte?)null : (byte)value; }
+        // 👇 شناسه 9 برای "طبق تعریف پایه" (null) — مقادیر 1=روزانه، 2=ماهیانه، 3=ساعتی مستقیماً ذخیره می‌شوند
+        public int BasisCombo { get => BASIS_OV == null ? 9 : BASIS_OV.Value; set => BASIS_OV = value == 9 ? (byte?)null : (byte)value; }
 
         public string InsText => INS_OV == null ? "پایه" : (INS_OV == true ? "مشمول" : "معاف");
         public string TaxText => TAX_OV == null ? "پایه" : (TAX_OV == true ? "مشمول" : "معاف");
-        public string BasisText => BASIS_OV == null ? "پایه" : (BASIS_OV == 1 ? "روزانه" : "ماهیانه");
+        public string BasisText => BASIS_OV switch
+        {
+            null => "پایه",
+            1 => "روزانه",
+            3 => "ساعتی",
+            _ => "ماهیانه"
+        };
     }
     public class Pay2JobDto
     {

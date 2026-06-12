@@ -40,18 +40,18 @@ namespace Safir.Server.Controllers
         {
             try
             {
+                // ⚠️ بدون TOP: محدودیت قبلی (TOP 50) باعث می‌شد بخشی از مشاغل (مثل «کارمند اداری») هرگز در لیست ظاهر نشوند
                 string sql = @"
-            SELECT TOP 50 
-                   JOB_ID AS Id, 
-                   JOB_NAME AS Name 
-            FROM   PAY2_JOB 
+            SELECT JOB_ID AS Id,
+                   JOB_NAME AS Name
+            FROM   PAY2_JOB
             WHERE  IS_ACTIVE = 1";
 
                 object? parameters = null;
 
                 if (!string.IsNullOrWhiteSpace(searchTerm))
                 {
-                    sql += " AND JOB_NAME LIKE @Search";
+                    sql += " AND (JOB_NAME LIKE @Search OR JOB_CODE LIKE @Search)";
                     parameters = new { Search = $"%{searchTerm.Trim()}%" };
                 }
 
@@ -379,6 +379,19 @@ namespace Safir.Server.Controllers
         {
             var userIdString = User.FindFirstValue(ClaimTypes.NameIdentifier);
             if (!int.TryParse(userIdString, out int userCod)) return Unauthorized();
+
+            // 🚀 اعتبارسنجی مرخصی ساعتی: روز ممنوع و حداکثر ۳:۲۰ (۲۰۰ دقیقه)
+            if (leave.LEV_TYPE == Pay2LeaveDto.HOURLY_TYPE)
+            {
+                if (leave.REQ_DAYS > 0)
+                    return BadRequest("در مرخصی ساعتی امکان ثبت روز وجود ندارد.");
+
+                if ((leave.REQ_HOURS * 60) + leave.REQ_MINUTES > Pay2LeaveDto.HOURLY_MAX_MINUTES)
+                    return BadRequest("مرخصی ساعتی نمی‌تواند بیشتر از ۳ ساعت و ۲۰ دقیقه (۳:۲۰) باشد.");
+            }
+
+            if (leave.REQ_MINUTES >= 60)
+                return BadRequest("دقیقه باید کمتر از ۶۰ باشد.");
 
             try
             {

@@ -54,9 +54,42 @@ namespace Safir.Shared.Models.Salary
         public string DAYS_KHADAMAT_STR { get => DAYS_KHADAMAT.ToString("0.##"); set { _ = decimal.TryParse(value?.Replace("/", "."), out decimal v); if (DAYS_KHADAMAT != v) { DAYS_KHADAMAT = v; IsDirty = true; } } }
         public string DAYS_FOROSH_STR { get => DAYS_FOROSH.ToString("0.##"); set { _ = decimal.TryParse(value?.Replace("/", "."), out decimal v); if (DAYS_FOROSH != v) { DAYS_FOROSH = v; IsDirty = true; } } }
 
-        public string OT_NORMAL_H_STR { get => OT_NORMAL_H.ToString("0.##"); set { _ = decimal.TryParse(value?.Replace("/", "."), out decimal v); if (OT_NORMAL_H != v) { OT_NORMAL_H = v; IsDirty = true; } } }
-        public string OT_HOLIDAY_H_STR { get => OT_HOLIDAY_H.ToString("0.##"); set { _ = decimal.TryParse(value?.Replace("/", "."), out decimal v); if (OT_HOLIDAY_H != v) { OT_HOLIDAY_H = v; IsDirty = true; } } }
-        public string OT_ADMIN_H_STR { get => OT_ADMIN_H.ToString("0.##"); set { _ = decimal.TryParse(value?.Replace("/", "."), out decimal v); if (OT_ADMIN_H != v) { OT_ADMIN_H = v; IsDirty = true; } } }
+        // اضافه‌کاری: پشتیبانی از فرمت «ساعت:دقیقه» (مثال 32:35) و عدد اعشاری (مثال 32.5) مانند نرم‌افزار قبلی
+        public string OT_NORMAL_H_STR { get => FormatHours(OT_NORMAL_H); set { decimal v = ParseHours(value); if (OT_NORMAL_H != v) { OT_NORMAL_H = v; IsDirty = true; } } }
+        public string OT_HOLIDAY_H_STR { get => FormatHours(OT_HOLIDAY_H); set { decimal v = ParseHours(value); if (OT_HOLIDAY_H != v) { OT_HOLIDAY_H = v; IsDirty = true; } } }
+        public string OT_ADMIN_H_STR { get => FormatHours(OT_ADMIN_H); set { decimal v = ParseHours(value); if (OT_ADMIN_H != v) { OT_ADMIN_H = v; IsDirty = true; } } }
+
+        // تبدیل «32:35» به 32.58 ساعت (دقیقه ÷ 60) و پذیرش ورودی اعشاری «32.5» یا «32/5»
+        public static decimal ParseHours(string? value)
+        {
+            if (string.IsNullOrWhiteSpace(value)) return 0m;
+
+            value = value.Trim();
+
+            if (value.Contains(':'))
+            {
+                var parts = value.Split(':');
+                _ = decimal.TryParse(parts[0], out decimal hours);
+                decimal minutes = 0m;
+                if (parts.Length > 1) _ = decimal.TryParse(parts[1], out minutes);
+                return hours + (minutes / 60m);
+            }
+
+            _ = decimal.TryParse(value.Replace("/", "."), System.Globalization.NumberStyles.Number,
+                System.Globalization.CultureInfo.InvariantCulture, out decimal v);
+            return v;
+        }
+
+        // نمایش ساعت اعشاری به صورت «ساعت:دقیقه» — اعداد صحیح بدون تغییر نمایش داده می‌شوند
+        public static string FormatHours(decimal hours)
+        {
+            if (hours == decimal.Truncate(hours)) return hours.ToString("0");
+
+            int h = (int)decimal.Truncate(hours);
+            int m = (int)Math.Round((hours - h) * 60m, MidpointRounding.AwayFromZero);
+            if (m >= 60) { h++; m -= 60; }
+            return $"{h}:{m:D2}";
+        }
 
         public string LEAVE_DAYS_STR { get => LEAVE_DAYS.ToString("0.##"); set { _ = decimal.TryParse(value?.Replace("/", "."), out decimal v); if (LEAVE_DAYS != v) { LEAVE_DAYS = v; IsDirty = true; } } }
         public string ABSENT_DAYS_STR { get => ABSENT_DAYS.ToString("0.##"); set { _ = decimal.TryParse(value?.Replace("/", "."), out decimal v); if (ABSENT_DAYS != v) { ABSENT_DAYS = v; IsDirty = true; } } }

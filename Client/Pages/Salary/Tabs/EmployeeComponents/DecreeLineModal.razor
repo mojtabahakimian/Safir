@@ -1,6 +1,7 @@
 ﻿@using Safir.Shared.Models.Salary
 @using Safir.Shared.Models
 @inject Safir.Client.Services.Pay2EmployeeApiService EmployeeApi
+@inject Safir.Client.Services.Pay2ItemDefApiService ItemDefApi
 @inject ISnackbar Snackbar
 @inject MudBlazor.IDialogService DialogService
 
@@ -47,7 +48,7 @@
                         <i class="bi bi-cash-stack"></i> افزودن / ویرایش آیتم حقوقی
                     </div>
 
-                    <div class="form-grid-2 p2-mb-16">
+                    <div class="form-grid-3 p2-mb-16">
                         <div class="form-field">
                             <label>انتخاب آیتم (PAY2_ITEM_DEF) *</label>
                             <!-- 🚀 قفل شدن فرم در صورت تایید حکم -->
@@ -59,7 +60,20 @@
                         </div>
                         <div class="form-field">
                             <label>مبلغ در این حکم (ریال) *</label>
-                            <Pay2NumericInput @bind-Value="CurrentAmountStr" MaxLength="16" Direction="ltr" IsDigitGroupActive="true" ThreeTwoZero="true" Disabled="@IsDecreeConfirmed" />
+                            <Pay2NumericInput @bind-Value="CurrentAmountStr" @bind-Value:after="OnAmountManuallyChanged" MaxLength="16" Direction="ltr" IsDigitGroupActive="true" ThreeTwoZero="true" Disabled="@IsDecreeConfirmed" />
+                        </div>
+                        <div class="form-field">
+                            <label>درصد از حقوق ماهیانه (٪)</label>
+                            <Pay2NumericInput @bind-Value="CurrentPercentStr" @bind-Value:after="ApplyPercentToAmount"
+                                              InputMode="Pay2NumericInput.NumericInputMode.Percentage"
+                                              MaxLength="3" MaxDecimalPlaces="2" Direction="ltr"
+                                              Placeholder="مثال: 10"
+                                              ToolTip="با وارد کردن درصد، مبلغ به صورت خودکار از روی حقوق پایه ماهیانه این حکم محاسبه می‌شود (مناسب حق شیفت / نوبت‌کاری)"
+                                              Disabled="@IsDecreeConfirmed" />
+                            @if (!string.IsNullOrWhiteSpace(PercentHint))
+                            {
+                                <div style="font-size:11px; color:var(--p2-text-muted); margin-top:4px;">@PercentHint</div>
+                            }
                         </div>
                     </div>
 
@@ -169,9 +183,12 @@
 
     List<Pay2DecreeLineDto> Lines = new();
     List<LookupDto<int>> ItemDefs = new();
+    List<Pay2ItemDefDto> FullItemDefs = new();
     Pay2DecreeLineDto CurrentLine = new();
 
     string? CurrentAmountStr;
+    string? CurrentPercentStr;
+    string? PercentHint;
     bool IsSaving = false;
     bool IsEditing = false;
 
@@ -185,7 +202,7 @@
         new(3, "طبق تعریف پایه"), new(1, "مشمول"), new(2, "معاف")
     };
     List<LookupDto<int>> BasisOptions = new() {
-        new(3, "طبق تعریف پایه"), new(1, "روزانه"), new(2, "ماهیانه")
+        new(9, "طبق تعریف پایه"), new(1, "روزانه"), new(2, "ماهیانه"), new(3, "ساعتی")
     };
 
     protected override async Task OnParametersSetAsync()
@@ -214,6 +231,7 @@
             // منتظر می‌مانیم تا هم لیست تعاریف آیتم‌ها و هم اقلام ریالی این حکم به طور کامل لود شوند
             ItemDefs = await EmployeeApi.GetItemDefsLookupAsync();
             Lines = await EmployeeApi.GetDecreeLinesAsync(DecreeId);
+            FullItemDefs = await ItemDefApi.GetItemDefsAsync();
         }
         catch (Exception ex)
         {
@@ -231,7 +249,53 @@
     {
         CurrentLine = new Pay2DecreeLineDto();
         CurrentAmountStr = null;
+        CurrentPercentStr = null;
+        PercentHint = null;
         IsEditing = false;
+    }
+
+    // محاسبه «حقوق ماهیانه پایه» این حکم از روی آیتم حقوق پایه (BASE_SAL)
+    // اگر مبنای آیتم پایه روزانه باشد، مبلغ در ۳۰ ضرب می‌شود تا ماهیانه به دست آید
+    long? GetMonthlyBaseSalary()
+    {
+        var baseDef = FullItemDefs.FirstOrDefault(d => d.ITEM_CODE == "BASE_SAL")
+                   ?? FullItemDefs.FirstOrDefault(d => d.ITEM_CODE == "BASE_SAL_B");
+        if (baseDef == null) return null;
+
+        var baseLine = Lines.FirstOrDefault(l => l.ITEM_ID == baseDef.ITEM_ID);
+        if (baseLine == null || baseLine.AMOUNT <= 0) return null;
+
+        byte effectiveBasis = baseLine.BASIS_OV ?? baseDef.CALC_BASIS;
+        return effectiveBasis == 1 ? baseLine.AMOUNT * 30 : baseLine.AMOUNT;
+    }
+
+    void ApplyPercentToAmount()
+    {
+        PercentHint = null;
+
+        if (string.IsNullOrWhiteSpace(CurrentPercentStr)) return;
+
+        if (!decimal.TryParse(CurrentPercentStr, System.Globalization.NumberStyles.Number,
+                System.Globalization.CultureInfo.InvariantCulture, out decimal pct) || pct <= 0)
+            return;
+
+        var monthlyBase = GetMonthlyBaseSalary();
+        if (monthlyBase == null)
+        {
+            PercentHint = "آیتم «حقوق پایه» در اقلام این حکم یافت نشد؛ ابتدا حقوق پایه را ثبت کنید.";
+            return;
+        }
+
+        long computed = (long)Math.Round(monthlyBase.Value * pct / 100m, MidpointRounding.AwayFromZero);
+        CurrentAmountStr = computed.ToString();
+        PercentHint = $"{pct:0.##}٪ × حقوق ماهیانه {monthlyBase.Value:N0} = {computed:N0} ریال";
+    }
+
+    void OnAmountManuallyChanged()
+    {
+        // اگر کاربر مبلغ را دستی تغییر داد، درصد قبلی دیگر معتبر نیست
+        CurrentPercentStr = null;
+        PercentHint = null;
     }
 
     void EditLine(Pay2DecreeLineDto item)
@@ -250,6 +314,8 @@
         };
 
         CurrentAmountStr = CurrentLine.AMOUNT.ToString();
+        CurrentPercentStr = null;
+        PercentHint = null;
         IsEditing = true;
 
         StateHasChanged();
