@@ -23,7 +23,7 @@
        @onkeydown="HandleKeyDownAsync" />
 
 @code {
-    public enum NumericInputMode { None, Amount, PersianDate, Percentage }
+    public enum NumericInputMode { None, Amount, PersianDate, Percentage, HoursMinutes }
 
     private ElementReference _inputRef;
     private IJSObjectReference? _module;
@@ -66,7 +66,7 @@
         ? "pay2-input"
         : $"pay2-input {CssClass}";
 
-    private string InputModeValue => InputMode == NumericInputMode.Percentage ? "decimal" : "numeric";
+    private string InputModeValue => InputMode is NumericInputMode.Percentage or NumericInputMode.HoursMinutes ? "decimal" : "numeric";
 
     private int? EffectiveMaxLength => InputMode switch
     {
@@ -101,7 +101,8 @@
         {
             try
             {
-                _module = await JS.InvokeAsync<IJSObjectReference>("import", "./js/pay2-input-guards.js");
+                // نسخه‌گذاری برای ابطال کش مرورگر پس از تغییر گارد ورودی (پشتیبانی از «:»)
+                _module = await JS.InvokeAsync<IJSObjectReference>("import", "./js/pay2-input-guards.js?v=14050323-1");
                 _jsGuardLoaded = true;
             }
             catch (Exception ex)
@@ -138,7 +139,8 @@
             await _module.InvokeVoidAsync("attachInputGuard", _inputRef, new
             {
                 maxLength = EffectiveMaxLength ?? 0,
-                allowDecimal = InputMode == NumericInputMode.Percentage,
+                allowDecimal = InputMode is NumericInputMode.Percentage or NumericInputMode.HoursMinutes,
+                allowTime = InputMode == NumericInputMode.HoursMinutes,
                 maxDecimalPlaces = SafeMaxDecimalPlaces,
                 threeTwoZero = ThreeTwoZero && InputMode != NumericInputMode.PersianDate,
                 persianDate = InputMode == NumericInputMode.PersianDate
@@ -157,7 +159,7 @@
         if (InputMode == NumericInputMode.PersianDate && normalized?.Length > 8)
             normalized = normalized[..8];
 
-        if (InputMode == NumericInputMode.Percentage)
+        if (InputMode is NumericInputMode.Percentage or NumericInputMode.HoursMinutes)
             normalized = LimitDecimalPlaces(normalized, SafeMaxDecimalPlaces);
 
         _displayText = normalized;
@@ -239,10 +241,38 @@
             NumericInputMode.Percentage when decimal.TryParse(value, NumberStyles.Number, inv, out var pct)
                 => TruncateDecimal(pct, SafeMaxDecimalPlaces).ToString(inv),
 
+            NumericInputMode.HoursMinutes => NormalizeHoursMinutes(value),
+
             NumericInputMode.None => value,
 
             _ => null
         };
+    }
+
+    // اعتبارسنجی فرمت «ساعت:دقیقه» (مثال 32:35) یا عدد اعشاری (مثال 32.5)
+    private static string? NormalizeHoursMinutes(string value)
+    {
+        var inv = CultureInfo.InvariantCulture;
+
+        if (value.Contains(':'))
+        {
+            var parts = value.Split(':');
+            if (parts.Length != 2) return null;
+
+            if (!int.TryParse(parts[0], NumberStyles.None, inv, out var h)) return null;
+
+            // «32:» را معادل «32» در نظر می‌گیریم
+            if (string.IsNullOrEmpty(parts[1])) return h.ToString(inv);
+
+            if (!int.TryParse(parts[1], NumberStyles.None, inv, out var m)) return null;
+            if (m > 59) return null;
+            return $"{h}:{m:D2}";
+        }
+
+        if (decimal.TryParse(value, NumberStyles.Number, inv, out var dec))
+            return TruncateDecimal(dec, 2).ToString(inv);
+
+        return null;
     }
 
     private bool IsValidFinalValue(string? value)
@@ -305,18 +335,25 @@
                 continue;
             }
 
-            if (InputMode == NumericInputMode.Percentage &&
+            if (InputMode is NumericInputMode.Percentage or NumericInputMode.HoursMinutes &&
                 (ch == '.' || ch == '/' || ch == '٫' || ch == ',') &&
                 !hasDot)
             {
                 sb.Append('.');
                 hasDot = true;
             }
+
+            // در حالت ساعت:دقیقه، کاراکتر «:» به عنوان جداکننده دقیقه مجاز است
+            if (InputMode == NumericInputMode.HoursMinutes && ch == ':' && !hasDot)
+            {
+                sb.Append(':');
+                hasDot = true;
+            }
         }
 
         var result = sb.ToString();
 
-        if (InputMode == NumericInputMode.Percentage)
+        if (InputMode is NumericInputMode.Percentage or NumericInputMode.HoursMinutes)
             result = LimitDecimalPlaces(result, SafeMaxDecimalPlaces);
 
         if (InputMode == NumericInputMode.PersianDate && result.Length > 8)
@@ -348,6 +385,14 @@
     {
         if (string.IsNullOrWhiteSpace(value))
             return value;
+
+        // در فرمت ساعت:دقیقه حداکثر دو رقم بعد از «:» مجاز است
+        var colonIndex = value.IndexOf(':');
+        if (colonIndex >= 0)
+        {
+            var allowedColonLength = colonIndex + 1 + 2;
+            return value.Length > allowedColonLength ? value[..allowedColonLength] : value;
+        }
 
         var dotIndex = value.IndexOf('.');
         if (dotIndex < 0)

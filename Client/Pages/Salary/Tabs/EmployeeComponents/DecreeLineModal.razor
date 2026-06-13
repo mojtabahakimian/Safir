@@ -1,6 +1,8 @@
 ﻿@using Safir.Shared.Models.Salary
 @using Safir.Shared.Models
 @inject Safir.Client.Services.Pay2EmployeeApiService EmployeeApi
+@inject Safir.Client.Services.Pay2ItemDefApiService ItemDefApi
+@inject Safir.Client.Services.Pay2SettingsApiService SettingsApi
 @inject ISnackbar Snackbar
 @inject MudBlazor.IDialogService DialogService
 
@@ -47,20 +49,46 @@
                         <i class="bi bi-cash-stack"></i> افزودن / ویرایش آیتم حقوقی
                     </div>
 
-                    <div class="form-grid-2 p2-mb-16">
+                    <div class="form-grid-3 p2-mb-16">
                         <div class="form-field">
                             <label>انتخاب آیتم (PAY2_ITEM_DEF) *</label>
                             <!-- 🚀 قفل شدن فرم در صورت تایید حکم -->
                             <Pay2Select TItem="LookupDto<int>" TValue="int" Items="ItemDefs"
                                         @bind-Value="CurrentLine.ITEM_ID"
+                                        @bind-Value:after="OnItemChanged"
                                         TextSelector="x => x.Name" ValueSelector="x => x.Id"
                                         Placeholder="— انتخاب کنید —" Clearable="false"
                                         Disabled="@(IsEditing || IsDecreeConfirmed)" />
                         </div>
                         <div class="form-field">
-                            <label>مبلغ در این حکم (ریال) *</label>
-                            <Pay2NumericInput @bind-Value="CurrentAmountStr" MaxLength="16" Direction="ltr" IsDigitGroupActive="true" ThreeTwoZero="true" Disabled="@IsDecreeConfirmed" />
+                            <label>@(IsShiftPctItem ? "درصد از حقوق پایه ماهیانه (٪) *" : "مبلغ در این حکم (ریال) *")</label>
+                            <Pay2NumericInput @bind-Value="CurrentAmountStr" @bind-Value:after="OnAmountManuallyChanged"
+                                              MaxLength="@(IsShiftPctItem ? 3 : 16)" Direction="ltr"
+                                              IsDigitGroupActive="@(!IsShiftPctItem)" ThreeTwoZero="@(!IsShiftPctItem)"
+                                              Placeholder="@(IsShiftPctItem ? "مثال: 10" : null)"
+                                              ToolTip="@(IsShiftPctItem ? "حق شیفت به صورت درصدی از حقوق پایه ماهیانه (نرخ روزانه × ۳۰) محاسبه می‌شود — مانند حکم قبلی فقط عدد درصد را وارد کنید" : null)"
+                                              Disabled="@IsDecreeConfirmed" />
+                            @if (IsShiftPctItem && !string.IsNullOrWhiteSpace(ShiftHint))
+                            {
+                                <div style="font-size:11px; color:var(--p2-text-muted); margin-top:4px;">@ShiftHint</div>
+                            }
                         </div>
+                        @if (!IsShiftPctItem && IsMonthlyBasisSelected)
+                        {
+                            <div class="form-field">
+                                <label>درصد از حقوق ماهیانه (٪)</label>
+                                <Pay2NumericInput @bind-Value="CurrentPercentStr" @bind-Value:after="ApplyPercentToAmount"
+                                                  InputMode="Pay2NumericInput.NumericInputMode.Percentage"
+                                                  MaxLength="3" MaxDecimalPlaces="2" Direction="ltr"
+                                                  Placeholder="مثال: 10"
+                                                  ToolTip="با وارد کردن درصد، مبلغ به صورت خودکار از روی حقوق پایه ماهیانه این حکم محاسبه و در فیلد مبلغ قرار می‌گیرد"
+                                                  Disabled="@IsDecreeConfirmed" />
+                                @if (!string.IsNullOrWhiteSpace(PercentHint))
+                                {
+                                    <div style="font-size:11px; color:var(--p2-text-muted); margin-top:4px;">@PercentHint</div>
+                                }
+                            </div>
+                        }
                     </div>
 
                     <div style="background: var(--p2-bg-white); border: 1px solid var(--p2-border); border-radius: var(--p2-radius-md); padding: 16px; margin-bottom: 16px;">
@@ -128,7 +156,16 @@
                                 {
                                     <tr style="background: @(CurrentLine.ITEM_ID == item.ITEM_ID ? "var(--p2-primary-light)" : "transparent")">
                                         <td><b>@item.ITEM_NAME</b></td>
-                                        <td class="p2-text-mono p2-text-primary" style="text-align:center; font-weight:bold;">@item.AMOUNT.ToString("N0")</td>
+                                        <td class="p2-text-mono p2-text-primary" style="text-align:center; font-weight:bold;">
+                                            @if (IsShiftPctLine(item))
+                                            {
+                                                <span>@item.AMOUNT٪</span>
+                                            }
+                                            else
+                                            {
+                                                <span>@item.AMOUNT.ToString("N0")</span>
+                                            }
+                                        </td>
                                         <td style="text-align:center; color: var(--p2-text-muted);">@item.InsText</td>
                                         <td style="text-align:center; color: var(--p2-text-muted);">@item.TaxText</td>
                                         <td style="text-align:center; color: var(--p2-text-muted);">@item.BasisText</td>
@@ -169,11 +206,24 @@
 
     List<Pay2DecreeLineDto> Lines = new();
     List<LookupDto<int>> ItemDefs = new();
+    List<Pay2ItemDefDto> FullItemDefs = new();
     Pay2DecreeLineDto CurrentLine = new();
 
     string? CurrentAmountStr;
+    string? CurrentPercentStr;
+    string? PercentHint;
+    string? ShiftHint;
+    string _shiftMode = "PCT"; // SHIFT_MODE از PAY2_CONFIG: PCT=درصدی | FIXED=مبلغ ثابت
     bool IsSaving = false;
     bool IsEditing = false;
+
+    Pay2ItemDefDto? SelectedDef => FullItemDefs.FirstOrDefault(d => d.ITEM_ID == CurrentLine.ITEM_ID);
+
+    // در حالت PCT، موتور محاسبه (SP_PAY2_CALC_RUN) مبلغ آیتم SHIFT را «درصد» تفسیر می‌کند
+    bool IsShiftPctItem => IsShiftPctLine(CurrentLine);
+
+    // کمک‌محاسبه درصد فقط برای آیتم‌هایی که مبنای مؤثرشان ماهیانه است (مبلغ = ریالِ کامل ماه)
+    bool IsMonthlyBasisSelected => SelectedDef != null && (CurrentLine.BASIS_OV ?? SelectedDef.CALC_BASIS) == 2;
 
     private int _lastProcessedDecId = -1;
     private bool _lastOpenState = false;
@@ -185,7 +235,7 @@
         new(3, "طبق تعریف پایه"), new(1, "مشمول"), new(2, "معاف")
     };
     List<LookupDto<int>> BasisOptions = new() {
-        new(3, "طبق تعریف پایه"), new(1, "روزانه"), new(2, "ماهیانه")
+        new(9, "طبق تعریف پایه"), new(1, "روزانه"), new(2, "ماهیانه"), new(3, "ساعتی")
     };
 
     protected override async Task OnParametersSetAsync()
@@ -212,8 +262,18 @@
         try
         {
             // منتظر می‌مانیم تا هم لیست تعاریف آیتم‌ها و هم اقلام ریالی این حکم به طور کامل لود شوند
-            ItemDefs = await EmployeeApi.GetItemDefsLookupAsync();
-            Lines = await EmployeeApi.GetDecreeLinesAsync(DecreeId);
+            // چهار فراخوانی مستقل به صورت موازی اجرا می‌شوند تا باز شدن مودال سریع‌تر باشد
+            var itemDefsTask = EmployeeApi.GetItemDefsLookupAsync();
+            var linesTask = EmployeeApi.GetDecreeLinesAsync(DecreeId);
+            var fullDefsTask = ItemDefApi.GetItemDefsAsync();
+            var shiftModeTask = LoadShiftModeAsync();
+
+            await Task.WhenAll(itemDefsTask, linesTask, fullDefsTask, shiftModeTask);
+
+            ItemDefs = itemDefsTask.Result;
+            Lines = linesTask.Result;
+            FullItemDefs = fullDefsTask.Result;
+            _shiftMode = shiftModeTask.Result;
         }
         catch (Exception ex)
         {
@@ -231,7 +291,100 @@
     {
         CurrentLine = new Pay2DecreeLineDto();
         CurrentAmountStr = null;
+        CurrentPercentStr = null;
+        PercentHint = null;
+        ShiftHint = null;
         IsEditing = false;
+    }
+
+    // محاسبه «حقوق پایه ماهیانه» این حکم از روی آیتم حقوق پایه
+    // موتور محاسبه برای حق شیفت از BASE_SAL_B (حقوق روزانه رسمی) استفاده می‌کند؛
+    // مبنای روزانه در ۳۰ ضرب می‌شود تا مبلغ ماهیانه به دست آید
+    long? GetMonthlyBaseSalary()
+    {
+        var baseDef = FullItemDefs.FirstOrDefault(d => d.ITEM_CODE == "BASE_SAL_B")
+                   ?? FullItemDefs.FirstOrDefault(d => d.ITEM_CODE == "BASE_SAL");
+        if (baseDef == null) return null;
+
+        var baseLine = Lines.FirstOrDefault(l => l.ITEM_ID == baseDef.ITEM_ID);
+        if (baseLine == null || baseLine.AMOUNT <= 0) return null;
+
+        byte effectiveBasis = baseLine.BASIS_OV ?? baseDef.CALC_BASIS;
+        return effectiveBasis == 1 ? baseLine.AMOUNT * 30 : baseLine.AMOUNT;
+    }
+
+    void OnItemChanged()
+    {
+        CurrentPercentStr = null;
+        PercentHint = null;
+        ShiftHint = null;
+    }
+
+    bool IsShiftPctLine(Pay2DecreeLineDto line)
+    {
+        if (string.Equals(_shiftMode, "FIXED", StringComparison.OrdinalIgnoreCase)) return false;
+        var def = FullItemDefs.FirstOrDefault(d => d.ITEM_ID == line.ITEM_ID);
+        return string.Equals(def?.ITEM_CODE, "SHIFT", StringComparison.OrdinalIgnoreCase);
+    }
+
+    async Task<string> LoadShiftModeAsync()
+    {
+        try
+        {
+            var configs = await SettingsApi.GetConfigsAsync();
+            return configs.FirstOrDefault(c => c.CFG_KEY == "SHIFT_MODE")?.CFG_VALUE ?? "PCT";
+        }
+        catch { return "PCT"; }
+    }
+
+    // منطق مشترک «درصد × حقوق پایه ماهیانه» برای هر دو کمک‌محاسبه (شیفت و عمومی)
+    (long? Computed, string Hint) CalcPercentOfMonthly(decimal pct)
+    {
+        var monthlyBase = GetMonthlyBaseSalary();
+        if (monthlyBase == null)
+            return (null, "آیتم «حقوق پایه» در اقلام این حکم یافت نشد؛ ابتدا حقوق پایه را ثبت کنید.");
+
+        long computed = (long)Math.Round(monthlyBase.Value * pct / 100m, MidpointRounding.AwayFromZero);
+        return (computed, $"{pct:0.##}٪ × حقوق پایه ماهیانه {monthlyBase.Value:N0} = {computed:N0} ریال");
+    }
+
+    void ApplyPercentToAmount()
+    {
+        PercentHint = null;
+
+        if (string.IsNullOrWhiteSpace(CurrentPercentStr)) return;
+
+        if (!decimal.TryParse(CurrentPercentStr, System.Globalization.NumberStyles.Number,
+                System.Globalization.CultureInfo.InvariantCulture, out decimal pct) || pct <= 0)
+            return;
+
+        var (computed, hint) = CalcPercentOfMonthly(pct);
+        PercentHint = hint;
+        if (computed.HasValue) CurrentAmountStr = computed.Value.ToString();
+    }
+
+    void OnAmountManuallyChanged()
+    {
+        if (IsShiftPctItem)
+        {
+            UpdateShiftHint();
+            return;
+        }
+
+        // اگر کاربر مبلغ را دستی تغییر داد، درصد قبلی دیگر معتبر نیست
+        CurrentPercentStr = null;
+        PercentHint = null;
+    }
+
+    void UpdateShiftHint()
+    {
+        ShiftHint = null;
+
+        if (!long.TryParse(CurrentAmountStr?.Replace(",", ""), out long pct) || pct <= 0)
+            return;
+
+        var (computed, hint) = CalcPercentOfMonthly(pct);
+        ShiftHint = computed.HasValue ? hint + " (برای ماه کامل)" : hint;
     }
 
     void EditLine(Pay2DecreeLineDto item)
@@ -250,6 +403,10 @@
         };
 
         CurrentAmountStr = CurrentLine.AMOUNT.ToString();
+        CurrentPercentStr = null;
+        PercentHint = null;
+        ShiftHint = null;
+        if (IsShiftPctItem) UpdateShiftHint();
         IsEditing = true;
 
         StateHasChanged();

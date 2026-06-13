@@ -30,7 +30,7 @@
                 <div class="form-grid-3 p2-mb-16">
                     <div class="form-field">
                         <label>نوع مرخصی *</label>
-                        <Pay2Select TItem="LookupDto<byte>" TValue="byte" Items="LeaveTypeOptions" @bind-Value="CurrentLeave.LEV_TYPE" TextSelector="x => x.Name" ValueSelector="x => x.Id" Clearable="false" />
+                        <Pay2Select TItem="LookupDto<byte>" TValue="byte" Items="LeaveTypeOptions" @bind-Value="CurrentLeave.LEV_TYPE" @bind-Value:after="OnLeaveTypeChanged" TextSelector="x => x.Name" ValueSelector="x => x.Id" Clearable="false" />
                     </div>
                     <div class="form-field">
                         <label>تاریخ شروع (شمسی) *</label>
@@ -44,8 +44,9 @@
 
                 <div class="form-grid-3 p2-mb-16">
                     <div class="form-field">
-                        <label>روز *</label>
-                        <Pay2NumericInput @bind-Value="ReqDaysStr" MaxLength="3" Direction="ltr" />
+                        <label>روز @(IsHourlyLeave ? "" : "*")</label>
+                        <Pay2NumericInput @bind-Value="ReqDaysStr" MaxLength="3" Direction="ltr" Disabled="@IsHourlyLeave"
+                                          ToolTip="@(IsHourlyLeave ? "در مرخصی ساعتی، روز قابل ثبت نیست" : null)" />
                     </div>
                     <div class="form-field">
                         <label>ساعت</label>
@@ -56,6 +57,14 @@
                         <Pay2NumericInput @bind-Value="ReqMinsStr" MaxLength="2" Direction="ltr" />
                     </div>
                 </div>
+
+                @if (IsHourlyLeave)
+                {
+                    <div style="background: var(--p2-info-bg); border: 1px solid var(--p2-info-border); border-radius: var(--p2-radius-md); padding: 10px 14px; margin-bottom: 16px; font-size: 12.5px; color: var(--p2-text-main);">
+                        <i class="bi bi-clock" style="color: var(--p2-primary);"></i>
+                        حداکثر مرخصی ساعتی قابل ثبت در هر درخواست <b>۳ ساعت و ۲۰ دقیقه</b> است.
+                    </div>
+                }
 
                 <div class="form-grid-3 p2-mb-16">
                     <div class="form-field" style="grid-column: span 2;">
@@ -183,8 +192,20 @@
     private bool _isDataLoaded = false;
 
     List<LookupDto<byte>> LeaveTypeOptions = new() {
-        new(1, "استحقاقی"), new(2, "استعلاجی"), new(3, "بدون حقوق"), new(4, "زایمان"), new(5, "مأموریت")
+        new(1, "استحقاقی"), new(2, "استعلاجی"), new(3, "بدون حقوق"), new(4, "زایمان"), new(5, "مأموریت"), new(Pay2LeaveDto.HOURLY_TYPE, "ساعتی")
     };
+
+    bool IsHourlyLeave => CurrentLeave.LEV_TYPE == Pay2LeaveDto.HOURLY_TYPE;
+
+    void OnLeaveTypeChanged()
+    {
+        if (IsHourlyLeave)
+        {
+            // در مرخصی ساعتی روز معنا ندارد و تاریخ پایان همان روز شروع است
+            ReqDaysStr = "0";
+            EndDateStr = StartDateStr;
+        }
+    }
     List<LookupDto<byte>> StatusOptions = new() {
         new(1, "ثبت اولیه"), new(2, "تأیید درخواست"), new(3, "تأیید مدیر واحد"), new(4, "تأیید مدیرعامل")
     };
@@ -282,6 +303,13 @@
         byte.TryParse(ReqHoursStr, out byte h);
         byte.TryParse(ReqMinsStr, out byte m);
 
+        if (IsHourlyLeave)
+        {
+            // مرخصی ساعتی همیشه تک‌روزه است؛ تاریخ پایان با شروع یکسان می‌شود
+            eDate = sDate;
+            EndDateStr = StartDateStr;
+        }
+
         if (sDate <= 13000000 || eDate <= 13000000)
         {
             Snackbar.Add("تاریخ شروع و پایان نامعتبر است.", MudBlazor.Severity.Warning); return;
@@ -289,6 +317,21 @@
         if (d == 0 && h == 0 && m == 0)
         {
             Snackbar.Add("مدت مرخصی (روز/ساعت/دقیقه) نمی‌تواند صفر باشد.", MudBlazor.Severity.Warning); return;
+        }
+        if (m >= 60)
+        {
+            Snackbar.Add("دقیقه باید کمتر از ۶۰ باشد.", MudBlazor.Severity.Warning); return;
+        }
+        if (IsHourlyLeave)
+        {
+            if (d > 0)
+            {
+                Snackbar.Add("در مرخصی ساعتی امکان ثبت روز وجود ندارد.", MudBlazor.Severity.Warning); return;
+            }
+            if ((h * 60) + m > Pay2LeaveDto.HOURLY_MAX_MINUTES)
+            {
+                Snackbar.Add("مرخصی ساعتی نمی‌تواند بیشتر از ۳ ساعت و ۲۰ دقیقه (۳:۲۰) باشد.", MudBlazor.Severity.Warning); return;
+            }
         }
 
         CurrentLeave.EMP_ID = EmployeeId;
