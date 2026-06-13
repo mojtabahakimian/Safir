@@ -28,6 +28,11 @@
             _ => "نامشخص"
         };
 
-        public string CalcBasisText => CALC_BASIS == 1 ? "روزانه" : "ماهیانه";
+        public string CalcBasisText => CALC_BASIS switch
+        {
+            1 => "روزانه",
+            3 => "ساعتی",
+            _ => "ماهیانه"
+        };
     }
 }

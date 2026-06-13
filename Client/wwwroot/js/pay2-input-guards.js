@@ -19,6 +19,7 @@ function normalizeText(text, options, currentValue, selectionStart, selectionEnd
     if (!text) return "";
 
     const allowDecimal = options.allowDecimal === true;
+    const allowTime = options.allowTime === true;
     const maxDecimalPlaces = Math.max(0, options.maxDecimalPlaces ?? 0);
     const persianDate = options.persianDate === true;
 
@@ -29,7 +30,8 @@ function normalizeText(text, options, currentValue, selectionStart, selectionEnd
     const valueAfterSelectionRemoved =
         safeCurrent.substring(0, start) + safeCurrent.substring(end);
 
-    let hasDecimal = valueAfterSelectionRemoved.includes(".");
+    let hasDecimal = valueAfterSelectionRemoved.includes(".") ||
+        (allowTime && valueAfterSelectionRemoved.includes(":"));
     let result = "";
 
     for (const ch of text) {
@@ -43,6 +45,13 @@ function normalizeText(text, options, currentValue, selectionStart, selectionEnd
         if (!persianDate && allowDecimal && (ch === "." || ch === "/" || ch === "٫" || ch === ",")) {
             if (!hasDecimal) {
                 result += ".";
+                hasDecimal = true;
+            }
+        }
+
+        if (!persianDate && allowTime && ch === ":") {
+            if (!hasDecimal) {
+                result += ":";
                 hasDecimal = true;
             }
         }
@@ -76,6 +85,14 @@ function limitByMaxLength(current, start, end, insertText, maxLength) {
 }
 
 function fixDecimalPlaces(value, maxDecimalPlaces) {
+    // در فرمت ساعت:دقیقه حداکثر دو رقم بعد از «:» مجاز است
+    const colonIndex = value.indexOf(":");
+    if (colonIndex >= 0) {
+        const intPart = value.substring(0, colonIndex);
+        const minPart = value.substring(colonIndex + 1).replace(/[:.]/g, "");
+        return intPart + ":" + minPart.substring(0, 2);
+    }
+
     const dotIndex = value.indexOf(".");
     if (dotIndex < 0) return value;
 
@@ -135,6 +152,7 @@ export function attachInputGuard(el, options) {
     const safeOptions = {
         maxLength: Math.max(0, options?.maxLength ?? 0),
         allowDecimal: options?.allowDecimal === true,
+        allowTime: options?.allowTime === true,
         maxDecimalPlaces: Math.max(0, options?.maxDecimalPlaces ?? 0),
         threeTwoZero: options?.threeTwoZero === true,
         persianDate: options?.persianDate === true

@@ -404,9 +404,9 @@
                                 <td><Safir.Client.Pages.Salary.Tabs.Pay2NumericInput @bind-Value="item.DAYS_KHADAMAT_STR" CssClass="p2-grid-input" Disabled="@(item.LOCKED || PeriodData.Period.IsReadOnly)" /></td>
                                 <td><Safir.Client.Pages.Salary.Tabs.Pay2NumericInput @bind-Value="item.DAYS_FOROSH_STR" CssClass="p2-grid-input" Disabled="@(item.LOCKED || PeriodData.Period.IsReadOnly)" /></td>
 
-                                <td><Safir.Client.Pages.Salary.Tabs.Pay2NumericInput @bind-Value="item.OT_NORMAL_H_STR" CssClass="p2-grid-input" Disabled="@(item.LOCKED || PeriodData.Period.IsReadOnly)" /></td>
-                                <td><Safir.Client.Pages.Salary.Tabs.Pay2NumericInput @bind-Value="item.OT_HOLIDAY_H_STR" CssClass="p2-grid-input" Disabled="@(item.LOCKED || PeriodData.Period.IsReadOnly)" /></td>
-                                <td><Safir.Client.Pages.Salary.Tabs.Pay2NumericInput @bind-Value="item.OT_ADMIN_H_STR" CssClass="p2-grid-input" Disabled="@(item.LOCKED || PeriodData.Period.IsReadOnly)" /></td>
+                                <td><Safir.Client.Pages.Salary.Tabs.Pay2NumericInput @bind-Value="item.OT_NORMAL_H_STR" InputMode="Pay2NumericInput.NumericInputMode.HoursMinutes" ToolTip="ساعت:دقیقه (مثال 32:35) یا عدد اعشاری (مثال 32.5)" CssClass="p2-grid-input" Disabled="@(item.LOCKED || PeriodData.Period.IsReadOnly)" /></td>
+                                <td><Safir.Client.Pages.Salary.Tabs.Pay2NumericInput @bind-Value="item.OT_HOLIDAY_H_STR" InputMode="Pay2NumericInput.NumericInputMode.HoursMinutes" ToolTip="ساعت:دقیقه (مثال 32:35) یا عدد اعشاری (مثال 32.5)" CssClass="p2-grid-input" Disabled="@(item.LOCKED || PeriodData.Period.IsReadOnly)" /></td>
+                                <td><Safir.Client.Pages.Salary.Tabs.Pay2NumericInput @bind-Value="item.OT_ADMIN_H_STR" InputMode="Pay2NumericInput.NumericInputMode.HoursMinutes" ToolTip="ساعت:دقیقه (مثال 32:35) یا عدد اعشاری (مثال 32.5)" CssClass="p2-grid-input" Disabled="@(item.LOCKED || PeriodData.Period.IsReadOnly)" /></td>
 
                                 <td><Safir.Client.Pages.Salary.Tabs.Pay2NumericInput @bind-Value="item.LEAVE_DAYS_STR" CssClass="p2-grid-input" Disabled="@(item.LOCKED || PeriodData.Period.IsReadOnly)" /></td>
                                 <td><Safir.Client.Pages.Salary.Tabs.Pay2NumericInput @bind-Value="item.ABSENT_DAYS_STR" CssClass="p2-grid-input" Disabled="@(item.LOCKED || PeriodData.Period.IsReadOnly)" /></td>
