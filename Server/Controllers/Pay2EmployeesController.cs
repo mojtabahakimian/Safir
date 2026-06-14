@@ -382,14 +382,23 @@ namespace Safir.Server.Controllers
             var userIdString = User.FindFirstValue(ClaimTypes.NameIdentifier);
             if (!int.TryParse(userIdString, out int userCod)) return Unauthorized();
 
-            // 🚀 اعتبارسنجی مرخصی ساعتی: روز ممنوع و حداکثر ۳:۲۰ (۲۰۰ دقیقه)
+            // 🚀 فراخوانی سقف مرخصی ساعتی از تنظیمات داینامیک (پیش‌فرض 200 دقیقه)
+            int maxHourlyMins = await _db.DoGetDataSQLAsyncSingle<int?>(
+                "SELECT TRY_CAST(CFG_VALUE AS INT) FROM PAY2_CONFIG WHERE CFG_KEY = 'LEAVE_HOURLY_MAX_MINS'") ?? 200;
+
+            // 🚀 اعتبارسنجی مرخصی ساعتی
             if (leave.LEV_TYPE == Pay2LeaveDto.HOURLY_TYPE)
             {
                 if (leave.REQ_DAYS > 0)
                     return BadRequest("در مرخصی ساعتی امکان ثبت روز وجود ندارد.");
 
-                if ((leave.REQ_HOURS * 60) + leave.REQ_MINUTES > Pay2LeaveDto.HOURLY_MAX_MINUTES)
-                    return BadRequest("مرخصی ساعتی نمی‌تواند بیشتر از ۳ ساعت و ۲۰ دقیقه (۳:۲۰) باشد.");
+                int requestedMins = (leave.REQ_HOURS * 60) + leave.REQ_MINUTES;
+                if (requestedMins > maxHourlyMins)
+                {
+                    int maxH = maxHourlyMins / 60;
+                    int maxM = maxHourlyMins % 60;
+                    return BadRequest($"مرخصی ساعتی نمی‌تواند بیشتر از {maxH} ساعت و {maxM} دقیقه ({maxHourlyMins} دقیقه) باشد.");
+                }
 
                 // مرخصی ساعتی همیشه تک‌روزه است
                 leave.END_DATE = leave.START_DATE;
