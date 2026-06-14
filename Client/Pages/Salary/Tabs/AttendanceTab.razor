@@ -6,11 +6,12 @@
 @inject MudBlazor.IDialogService DialogService
 
 <style>
+    /* ========== استایل‌های گرید اکسلی ========== */
     .p2-excel-wrapper {
         width: 100%;
         overflow-x: auto;
         overflow-y: auto;
-        max-height: 65vh;
+        max-height: 68vh;
         border: 1px solid var(--p2-border);
         border-radius: 8px;
         position: relative;
@@ -197,301 +198,394 @@
         .p2-col-resizer:hover, .p2-col-resizer:active {
             background-color: var(--p2-primary);
         }
-</style>
 
-<style>
     body.p2-resizing * {
         user-select: none !important;
         cursor: col-resize !important;
     }
+
+    /* ========== استایل لیست دوره‌ها (Master View) ========== */
+    .period-card-list {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+        gap: 16px;
+        margin-top: 16px;
+    }
+
+    .period-card-item {
+        background: var(--p2-bg-white);
+        border: 1px solid var(--p2-border-light);
+        border-radius: var(--p2-radius-md);
+        padding: 18px;
+        transition: all 0.2s ease;
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+        box-shadow: var(--p2-shadow-sm);
+    }
+
+        .period-card-item:hover {
+            border-color: var(--p2-primary-border);
+            box-shadow: var(--p2-shadow-md);
+            transform: translateY(-2px);
+        }
 </style>
 
 <div class="pay2-tab-container">
 
-    <div class="card-custom" style="padding: 16px; margin-bottom: 16px; display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-end;">
-        <div class="form-field" style="width: 250px;">
-            <label>انتخاب کارگاه *</label>
-            <Safir.Client.Pages.Salary.Tabs.Pay2Select TItem="Pay2WorkshopDto"
-                                                       TValue="int"
-                                                       Items="Workshops"
-                                                       @bind-Value="SelectedWsId"
-                                                       @bind-Value:after="OnWorkshopChangedAsync"
-                                                       TextSelector="x => x.WS_NAME"
-                                                       ValueSelector="x => x.WS_ID"
-                                                       Clearable="false" />
-        </div>
-        <div class="form-field" style="width: 220px;">
-            <label>ماه دوره *</label>
-            <Safir.Client.Pages.Salary.Tabs.Pay2Select TItem="Pay2PeriodLookupDto"
-                                                       TValue="long"
-                                                       Items="PeriodOptions"
-                                                       Value="@SelectedPeriodDate"
-                                                       ValueChanged="OnPeriodChanged"
-                                                       TextSelector="x => x.PERIOD_TITLE"
-                                                       ValueSelector="x => x.PERIOD_DATE"
-                                                       Editable="false"
-                                                       Clearable="false"
-                                                       Placeholder="— انتخاب دوره —" />
-        </div>
+    @if (CurrentView == ViewMode.PeriodList)
+    {
+        <!-- ========================================================================= -->
+        <!-- VIEW 1: لیست دوره‌ها (Master) -->
+        <!-- ========================================================================= -->
 
-        <button class="btn-outline-pay2" @onclick="OpenNewPeriodModal" disabled="@IsLoading">
-            <i class="bi bi-calendar-plus"></i> ایجاد دوره جدید
-        </button>
+        <div class="card-custom" style="padding: 16px; margin-bottom: 16px; display: flex; flex-wrap: wrap; gap: 16px; align-items: center; justify-content: space-between;">
 
-        <button class="btn-primary-pay2" @onclick="LoadPeriod" disabled="@IsLoading">
-            @if (IsLoading)
-            {
-                <span class="p2-spinner"></span>
-            }
-            else
-            {
-
-                <span>بارگذاری لیست کارکرد</span>
-            }
-        </button>
-
-        <div style="flex-grow:1;"></div>
-
-        @if (PeriodData != null)
-        {
-            <div class="pay2-search-wrapper" style="width: 220px;">
-                <i class="bi bi-search"></i>
-                <input type="text" class="pay2-search-input" style="width: 100%;" placeholder="جستجوی کد یا نام..." @bind="SearchTerm" @bind:event="oninput" />
+            <!-- سمت راست: انتخاب کارگاه -->
+            <div class="form-field" style="width: 250px;">
+                <label>انتخاب کارگاه *</label>
+                <Safir.Client.Pages.Salary.Tabs.Pay2Select TItem="Pay2WorkshopDto"
+                                                           TValue="int"
+                                                           Items="Workshops"
+                                                           @bind-Value="SelectedWsId"
+                                                           @bind-Value:after="OnWorkshopChangedAsync"
+                                                           TextSelector="x => x.WS_NAME"
+                                                           ValueSelector="x => x.WS_ID"
+                                                           Clearable="false" />
             </div>
 
-            <div style="display:flex; align-items:center; gap: 15px; background: var(--p2-bg-main); padding: 8px 16px; border-radius: var(--p2-radius-sm); border: 1px solid var(--p2-border);">
-                <div style="display:flex; align-items:center; gap: 6px;">
-                    <label style="margin:0; font-size: 12px; font-weight: bold; color: var(--p2-text-muted);">تعطیلات:</label>
-                    <input type="number" class="pay2-input" style="width: 60px; height: 30px; text-align: center; border: 1px solid #cbd5e1;" @bind="PeriodData.Period.HOLIDAY_DAYS" disabled="@PeriodData.Period.IsReadOnly" />
+            <!-- وسط: سرچ و تغییر نما -->
+            <div style="display:flex; align-items:center; gap: 12px; flex-grow: 1; max-width: 450px;">
+
+                <div class="pay2-search-wrapper" style="flex-grow: 1;">
+                    <i class="bi bi-search"></i>
+                    <input type="text" class="pay2-search-input" style="width: 100%;" placeholder="جستجوی دوره (مثلاً: خرداد یا 1403)..." @bind="PeriodSearchTerm" @bind:event="oninput" />
                 </div>
-                <label style="margin:0; font-size: 12px; font-weight: bold; cursor:pointer;">
-                    <input type="checkbox" @bind="PeriodData.Period.TENDAR_APPLY" disabled="@PeriodData.Period.IsReadOnly" style="vertical-align: middle; margin-left:4px;" /> اعمال ۱۰٪
-                </label>
-                <span class="p2-badge @(PeriodData.Period.STATUS == 1 ? "p2-badge-success" : "p2-badge-warning")">@PeriodData.Period.StatusText</span>
+
+                <!-- کنترل تغییر نما (Segmented Control) -->
+                <div style="display:flex; background: var(--p2-bg-main); border: 1px solid var(--p2-border); border-radius: var(--p2-radius-sm); padding: 4px;">
+                    <button class="btn-ghost-pay2 sm @(!IsListView ? "p2-text-primary" : "p2-text-muted")"
+                            style="padding: 6px 12px; border-radius: 4px; background: @(!IsListView ? "var(--p2-bg-white)" : "transparent"); box-shadow: @(!IsListView ? "0 1px 3px rgba(0,0,0,0.1)" : "none");"
+                            @onclick="() => IsListView = false" title="نمایش کارتی">
+                        <i class="bi bi-grid-fill" style="font-size: 16px;"></i>
+                    </button>
+                    <button class="btn-ghost-pay2 sm @(IsListView ? "p2-text-primary" : "p2-text-muted")"
+                            style="padding: 6px 12px; border-radius: 4px; background: @(IsListView ? "var(--p2-bg-white)" : "transparent"); box-shadow: @(IsListView ? "0 1px 3px rgba(0,0,0,0.1)" : "none");"
+                            @onclick="() => IsListView = true" title="نمایش لیستی">
+                        <i class="bi bi-list-ul" style="font-size: 16px;"></i>
+                    </button>
+                </div>
             </div>
 
-            <button class="btn-success-pay2" style="background-color: var(--p2-success-text);" @onclick="SaveBulk" disabled="@(PeriodData.Period.IsReadOnly || IsSaving)">
-                @if (IsSaving)
-                {
-                    <span class="p2-spinner"></span>
-                }
-                else
-                {
-                    <span><i class="bi bi-floppy"></i> ذخیره کارکرد</span>
-                }
+            <!-- سمت چپ: دکمه ایجاد -->
+            <button class="btn-primary-pay2" @onclick="OpenNewPeriodModal" disabled="@(SelectedWsId <= 0 || IsLoading)">
+                <i class="bi bi-calendar-plus"></i> ایجاد دوره جدید
             </button>
+        </div>
 
-            @if (PeriodData.Period.STATUS == 1)
-            {
-                <button class="btn-primary-pay2"
-                        style="background:#2563eb; border-color:#2563eb;"
-                        @onclick="ClosePeriod"
-                        disabled="@IsSaving">
-                    <i class="bi bi-lock"></i> بستن کارکرد و آماده‌سازی محاسبه
-                </button>
-            }
-            else if (PeriodData.Period.STATUS == 2)
-            {
-                <!-- دکمه باز کردن مجدد دوره برای ویرایش -->
-                <button class="btn-outline-pay2"
-                        style="color:#d97706; border-color:#fde68a;"
-                        @onclick="ReopenPeriod"
-                        disabled="@IsSaving">
-                    <i class="bi bi-unlock"></i> باز کردن مجدد برای ویرایش
-                </button>
-            }
-
-            <!-- دکمه سطل زباله برای حذف فیزیکی دوره -->
-            @if (PeriodData.Period.STATUS <= 2)
-            {
-                <button class="btn-outline-danger-pay2"
-                        @onclick="DeletePeriodConfirm"
-                        disabled="@IsSaving"
-                        title="حذف کامل این دوره و تمامی کارکردهای ثبت شده">
-                    <i class="bi bi-trash3"></i>
-                </button>
-            }
-
+        @if (IsLoading)
+        {
+            <div style="display:flex; justify-content:center; align-items:center; height:300px; flex-direction:column; gap:15px;">
+                <span class="p2-spinner" style="width:40px; height:40px; border-color:var(--p2-primary); border-top-color:transparent;"></span>
+                <span style="font-size:14px; font-weight:600; color:var(--p2-text-muted);">در حال بارگذاری لیست دوره‌ها...</span>
+            </div>
         }
-    </div>
-
-    @if (IsLoading)
-    {
-        <div style="display:flex; justify-content:center; align-items:center; height:300px; flex-direction:column; gap:15px;">
-            <span class="p2-spinner" style="width:40px; height:40px; border-color:var(--p2-primary); border-top-color:transparent;"></span>
-            <span style="font-size:14px; font-weight:600; color:var(--p2-text-muted);">در حال دریافت و پردازش لیست کارکرد...</span>
-        </div>
-    }
-    else if (PeriodData != null)
-    {
-        <div class="card-custom" style="padding: 0; border: none; box-shadow: none;">
-            <div class="p2-excel-wrapper">
-                <table class="p2-excel-table">
-                    <colgroup>
-                        <col style="width: var(--c0, 80px);" /> <!-- 0 -->
-                        <col style="width: var(--c1, 180px);" /> <!-- 1 -->
-
-                        <col style="width: var(--c2, 100px);" /> <!-- 2 -->
-                        <col style="width: var(--c3, 90px);" /> <!-- 3 -->
-                        <col style="width: var(--c4, 90px);" /> <!-- 4 -->
-                        <col style="width: var(--c5, 90px);" /> <!-- 5 -->
-                        <col style="width: var(--c6, 90px);" /> <!-- 6 -->
-
-                        <col style="width: var(--c7, 120px);" /> <!-- 7 -->
-                        <col style="width: var(--c8, 110px);" /> <!-- 8 -->
-                        <col style="width: var(--c9, 110px);" /> <!-- 9 -->
-
-                        <col style="width: var(--c10, 90px);" /> <!-- 10 -->
-                        <col style="width: var(--c11, 90px);" /> <!-- 11 -->
-                        <col style="width: var(--c12, 100px);" /> <!-- 12 -->
-
-                        <col style="width: var(--c13, 110px);" /> <!-- 13 -->
-                        <col style="width: var(--c14, 110px);" /> <!-- 14 -->
-                        <col style="width: var(--c15, 100px);" /> <!-- 15 -->
-                        <col style="width: var(--c16, 90px);" /> <!-- 16 -->
-
-                        <col style="width: var(--c17, 140px);" /> <!-- 17 -->
-                        <col style="width: var(--c18, 140px);" /> <!-- 18 -->
-                        <col style="width: var(--c19, 140px);" /> <!-- 19 -->
-
-                        <col style="width: var(--c20, 100px);" /> <!-- 20 -->
-                    </colgroup>
-                    <thead>
-                        <tr>
-                            <th class="p2-sticky-col-1">کد پرسنلی<div class="p2-col-resizer" onmousedown="startP2Resize(event, this, 0, true)"></div></th>
-                            <th class="p2-sticky-col-2">نام و نام خانوادگی<div class="p2-col-resizer" onmousedown="startP2Resize(event, this, 1, false)"></div></th>
-
-                            <th class="bg-group-1" style="color:var(--p2-primary);">کل کارکرد<div class="p2-col-resizer" onmousedown="startP2Resize(event, this, 2, false)"></div></th>
-                            <th class="bg-group-1">روز تولید<div class="p2-col-resizer" onmousedown="startP2Resize(event, this, 3, false)"></div></th>
-                            <th class="bg-group-1">روز اداری<div class="p2-col-resizer" onmousedown="startP2Resize(event, this, 4, false)"></div></th>
-                            <th class="bg-group-1">روز خدمات<div class="p2-col-resizer" onmousedown="startP2Resize(event, this, 5, false)"></div></th>
-                            <th class="bg-group-1">روز فروش<div class="p2-col-resizer" onmousedown="startP2Resize(event, this, 6, false)"></div></th>
-
-                            <th class="bg-group-2" style="color:#d97706;">اضافه‌کار عادی<div class="p2-col-resizer" onmousedown="startP2Resize(event, this, 7, false)"></div></th>
-                            <th class="bg-group-2" style="color:#d97706;">اضافه‌کار تعطیل<div class="p2-col-resizer" onmousedown="startP2Resize(event, this, 8, false)"></div></th>
-                            <th class="bg-group-2" style="color:#d97706;">اضافه‌کار اداری<div class="p2-col-resizer" onmousedown="startP2Resize(event, this, 9, false)"></div></th>
-
-                            <th class="bg-group-3">روز مرخصی<div class="p2-col-resizer" onmousedown="startP2Resize(event, this, 10, false)"></div></th>
-                            <th class="bg-group-3">روز غیبت<div class="p2-col-resizer" onmousedown="startP2Resize(event, this, 11, false)"></div></th>
-                            <th class="bg-group-3">روز مأموریت<div class="p2-col-resizer" onmousedown="startP2Resize(event, this, 12, false)"></div></th>
-
-                            <th class="bg-group-4" style="color:#059669;">کارکرد اسمی<div class="p2-col-resizer" onmousedown="startP2Resize(event, this, 13, false)"></div></th>
-                            <th class="bg-group-4" style="color:#059669;">کارکرد رسمی<div class="p2-col-resizer" onmousedown="startP2Resize(event, this, 14, false)"></div></th>
-                            <th class="bg-group-3">تعطیلات رسمی<div class="p2-col-resizer" onmousedown="startP2Resize(event, this, 15, false)"></div></th>
-                            <th class="bg-group-3">تعداد جمعه<div class="p2-col-resizer" onmousedown="startP2Resize(event, this, 16, false)"></div></th>
-
-                            <th class="bg-group-5">پاداش/راندمان (ریال)<div class="p2-col-resizer" onmousedown="startP2Resize(event, this, 17, false)"></div></th>
-                            <th class="bg-group-5">حق ایاب‌وذهاب (ریال)<div class="p2-col-resizer" onmousedown="startP2Resize(event, this, 18, false)"></div></th>
-                            <th class="bg-group-5" style="color:#ef4444;">سایر کسورات (ریال)<div class="p2-col-resizer" onmousedown="startP2Resize(event, this, 19, false)"></div></th>
-
-                            <th class="bg-group-5">عملیات<div class="p2-col-resizer" onmousedown="startP2Resize(event, this, 20, false)"></div></th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        @if (!FilteredLines.Any())
-                        {
-                            <tr><td colspan="21" style="text-align:center; padding:30px; color:var(--p2-text-muted);">رکوردی یافت نشد.</td></tr>
-                        }
-
-                        <Virtualize Items="FilteredLines" Context="item" OverscanCount="10">
-                            <tr class="@(item.LOCKED ? "row-locked" : (item.IsDirty ? "row-dirty" : ""))" @key="item.EMP_ID">
-                                <td class="p2-sticky-col-1"><div class="p2-cell-text" style="font-family:Consolas; font-weight:bold; color:var(--p2-text-muted);">@item.EMP_CODE</div></td>
-                                <td class="p2-sticky-col-2"><div class="p2-cell-text" style="font-weight:bold; font-size:12px; justify-content: flex-start;" title="@item.FULL_NAME">@item.FULL_NAME</div></td>
-
-                                <td><Safir.Client.Pages.Salary.Tabs.Pay2NumericInput @bind-Value="item.WORK_DAYS_STR" CssClass="p2-grid-input input-primary" Disabled="@(item.LOCKED || PeriodData.Period.IsReadOnly)" /></td>
-                                <td><Safir.Client.Pages.Salary.Tabs.Pay2NumericInput @bind-Value="item.DAYS_TOLID_STR" CssClass="p2-grid-input" Disabled="@(item.LOCKED || PeriodData.Period.IsReadOnly)" /></td>
-                                <td><Safir.Client.Pages.Salary.Tabs.Pay2NumericInput @bind-Value="item.DAYS_EDARI_STR" CssClass="p2-grid-input" Disabled="@(item.LOCKED || PeriodData.Period.IsReadOnly)" /></td>
-                                <td><Safir.Client.Pages.Salary.Tabs.Pay2NumericInput @bind-Value="item.DAYS_KHADAMAT_STR" CssClass="p2-grid-input" Disabled="@(item.LOCKED || PeriodData.Period.IsReadOnly)" /></td>
-                                <td><Safir.Client.Pages.Salary.Tabs.Pay2NumericInput @bind-Value="item.DAYS_FOROSH_STR" CssClass="p2-grid-input" Disabled="@(item.LOCKED || PeriodData.Period.IsReadOnly)" /></td>
-
-                                <td><Safir.Client.Pages.Salary.Tabs.Pay2NumericInput @bind-Value="item.OT_NORMAL_H_STR" InputMode="Pay2NumericInput.NumericInputMode.HoursMinutes" ToolTip="ساعت:دقیقه (مثال 32:35) یا عدد اعشاری (مثال 32.5)" CssClass="p2-grid-input" Disabled="@(item.LOCKED || PeriodData.Period.IsReadOnly)" /></td>
-                                <td><Safir.Client.Pages.Salary.Tabs.Pay2NumericInput @bind-Value="item.OT_HOLIDAY_H_STR" InputMode="Pay2NumericInput.NumericInputMode.HoursMinutes" ToolTip="ساعت:دقیقه (مثال 32:35) یا عدد اعشاری (مثال 32.5)" CssClass="p2-grid-input" Disabled="@(item.LOCKED || PeriodData.Period.IsReadOnly)" /></td>
-                                <td><Safir.Client.Pages.Salary.Tabs.Pay2NumericInput @bind-Value="item.OT_ADMIN_H_STR" InputMode="Pay2NumericInput.NumericInputMode.HoursMinutes" ToolTip="ساعت:دقیقه (مثال 32:35) یا عدد اعشاری (مثال 32.5)" CssClass="p2-grid-input" Disabled="@(item.LOCKED || PeriodData.Period.IsReadOnly)" /></td>
-
-                                <td><Safir.Client.Pages.Salary.Tabs.Pay2NumericInput @bind-Value="item.LEAVE_DAYS_STR" CssClass="p2-grid-input" Disabled="@(item.LOCKED || PeriodData.Period.IsReadOnly)" /></td>
-                                <td><Safir.Client.Pages.Salary.Tabs.Pay2NumericInput @bind-Value="item.ABSENT_DAYS_STR" CssClass="p2-grid-input" Disabled="@(item.LOCKED || PeriodData.Period.IsReadOnly)" /></td>
-                                <td><Safir.Client.Pages.Salary.Tabs.Pay2NumericInput @bind-Value="item.MISSION_DAYS_STR" CssClass="p2-grid-input" Disabled="@(item.LOCKED || PeriodData.Period.IsReadOnly)" /></td>
-
-                                <td><Safir.Client.Pages.Salary.Tabs.Pay2NumericInput @bind-Value="item.DAYS_STR" CssClass="p2-grid-input input-success" Disabled="@(item.LOCKED || PeriodData.Period.IsReadOnly)" /></td>
-                                <td><Safir.Client.Pages.Salary.Tabs.Pay2NumericInput @bind-Value="item.DAYSB_STR" CssClass="p2-grid-input input-success" Disabled="@(item.LOCKED || PeriodData.Period.IsReadOnly)" /></td>
-                                <td><Safir.Client.Pages.Salary.Tabs.Pay2NumericInput @bind-Value="item.TDAYS_STR" CssClass="p2-grid-input" Disabled="@(item.LOCKED || PeriodData.Period.IsReadOnly)" /></td>
-                                <td><Safir.Client.Pages.Salary.Tabs.Pay2NumericInput @bind-Value="item.FRID_COUNT_STR" CssClass="p2-grid-input" Disabled="@(item.LOCKED || PeriodData.Period.IsReadOnly)" /></td>
-
-                                <td><Safir.Client.Pages.Salary.Tabs.Pay2NumericInput @bind-Value="item.PERF_AMOUNT_STR" IsDigitGroupActive="true" ThreeTwoZero="true" CssClass="p2-grid-input" Disabled="@(item.LOCKED || PeriodData.Period.IsReadOnly)" /></td>
-                                <td><Safir.Client.Pages.Salary.Tabs.Pay2NumericInput @bind-Value="item.TRANSP_AMOUNT_STR" IsDigitGroupActive="true" ThreeTwoZero="true" CssClass="p2-grid-input" Disabled="@(item.LOCKED || PeriodData.Period.IsReadOnly)" /></td>
-                                <td><Safir.Client.Pages.Salary.Tabs.Pay2NumericInput @bind-Value="item.KASR_OTHER_STR" IsDigitGroupActive="true" ThreeTwoZero="true" CssClass="p2-grid-input input-danger" Disabled="@(item.LOCKED || PeriodData.Period.IsReadOnly)" /></td>
-
-                                <td style="text-align: center; padding: 0 5px; width: 100px;">
-                                    <div style="display:flex; justify-content:center; align-items:center; gap:4px;">
-                                        <button class="btn-primary-pay2 sm"
-                                                style="background:#6366f1; border-color:#6366f1; height: 28px; padding: 0 8px;"
-                                                @onclick="() => OpenDynamicValues(item.EMP_ID, item.FULL_NAME)"
-                                                disabled="@(item.LOCKED || PeriodData.Period.IsReadOnly)"
-                                                title="مقادیر پویا">
-                                            ⊕ پویا
-                                        </button>
-                                        <button class="btn-outline-danger-pay2 sm"
-                                                style="height: 28px; padding: 0 8px; border:none;"
-                                                @onclick="() => DeleteLineConfirm(item)"
-                                                disabled="@(item.LOCKED || PeriodData.Period.IsReadOnly)"
-                                                title="حذف کارکرد این پرسنل در این ماه">
-                                            <i class="bi bi-trash"></i>
-                                        </button>
-                                    </div>
-                                </td>
-                            </tr>
-                        </Virtualize>
-                    </tbody>
-                </table>
+        else if (!PeriodOptions.Any())
+        {
+            <div class="p2-empty-state card-custom">
+                <i class="bi bi-calendar-x"></i>
+                <h4 style="margin-top:16px;">هیچ دوره‌ای برای این کارگاه یافت نشد</h4>
+                <p>برای شروع ثبت کارکرد پرسنل، روی دکمه «ایجاد دوره جدید» کلیک کنید.</p>
             </div>
-            <div style="padding: 10px 16px; border-top: 1px solid var(--p2-border-light); font-size: 12px; color: var(--p2-text-muted);">
-                تعداد کل پرسنل: <b>@(PeriodData.Lines?.Count ?? 0)</b> |
-                تعداد نمایش داده شده: <b>@FilteredLines.Count</b>
+        }
+        else if (!FilteredPeriodOptions.Any())
+        {
+            <div class="p2-empty-state card-custom" style="padding: 40px;">
+                <i class="bi bi-search" style="font-size: 2rem;"></i>
+                <p style="margin-top: 10px; font-weight: bold;">دوره‌ای با عبارت «@PeriodSearchTerm» یافت نشد.</p>
             </div>
-        </div>
-    }
-</div>
-
-@if (ShowDynamicModal)
-{
-    <div class="pay2-select-backdrop" style="background: rgba(15,23,42,0.6); z-index: 2999;" @onclick="() => ShowDynamicModal = false"></div>
-    <div class="card-custom pay2-modal-container" style="max-width: 500px; height: auto;">
-        <div class="pay2-modal-header p2-card-header" style="margin:0;">
-            <h5 style="margin:0; font-size:16px;">مقادیر پویای حقوق — @ActiveEmpName</h5>
-            <button class="btn-ghost-pay2" @onclick="() => ShowDynamicModal = false"><i class="bi bi-x-lg"></i></button>
-        </div>
-        <div class="pay2-modal-body" style="padding: 20px; max-height: 400px; overflow-y: auto;">
-            @if (DynamicValues == null || !DynamicValues.Any())
+        }
+        else
+        {
+            if (!IsListView)
             {
-                <div style="text-align:center; padding: 20px; color: var(--p2-text-muted);">
-                    هیچ آیتم پویایی در سیستم تعریف نشده است.
-                </div>
-            }
-            else
-            {
-                <div style="display: flex; flex-direction: column; gap: 12px;">
-                    @foreach (var val in DynamicValues)
+                <!-- نمایش کارتی (Card View) -->
+                <div class="period-card-list">
+                    @foreach (var p in FilteredPeriodOptions)
                     {
-                        <div style="display: flex; align-items: center; justify-content: space-between; border-bottom: 1px dashed var(--p2-border-light); padding-bottom: 8px;">
-                            <span style="font-size: 13px; font-weight: 600; color: var(--p2-text-main);">@val.ITEM_NAME</span>
-                            <div style="width: 150px;">
-                                <Safir.Client.Pages.Salary.Tabs.Pay2NumericInput @bind-Value="val.VALUE_STR" IsDigitGroupActive="true" ThreeTwoZero="true" Placeholder="0" Direction="ltr" />
+                        <div class="period-card-item">
+                            <div style="display:flex; justify-content:space-between; align-items:flex-start;">
+                                <span style="font-size: 18px; font-weight: 800; color: var(--p2-text-main);">@p.PERIOD_TITLE</span>
+                                <span class="p2-badge @(p.STATUS == 1 ? "p2-badge-warning" : (p.STATUS == 2 ? "p2-badge-success" : "p2-badge-primary"))">@p.StatusText</span>
+                            </div>
+
+                            <div style="display:flex; justify-content:space-between; align-items:center; margin-top: auto; padding-top: 12px; border-top: 1px dashed var(--p2-border-light);">
+                                <button class="btn-ghost-pay2 p2-text-danger p2-btn-sm"
+                                        @onclick="() => DeletePeriodConfirm(p.PERIOD_DATE)"
+                                        disabled="@(p.STATUS >= 3)">
+                                    <i class="bi bi-trash"></i> حذف
+                                </button>
+
+                                <button class="btn-primary-pay2 p2-btn-sm"
+                                        @onclick="() => EnterPeriod(p.PERIOD_DATE)"
+                                        style="border-radius: 20px; padding: 6px 16px;">
+                                    ورود به لیست <i class="bi bi-arrow-left-short" style="margin-right:4px;"></i>
+                                </button>
                             </div>
                         </div>
                     }
                 </div>
-                <div class="p2-text-muted" style="font-size:11.5px; margin-top:15px; line-height: 1.6;">
-                    <i class="bi bi-info-circle p2-text-primary"></i> مبالغ وارد شده در اینجا (به ریال) صرفاً برای همین ماه محاسبه شده و روی حقوق این شخص اعمال می‌گردد.
+            }
+            else
+            {
+                <!-- نمایش لیستی (List/Table View) -->
+                <div class="card-custom" style="padding: 0; overflow: hidden; margin-top: 16px;">
+                    <div class="pay2-table-responsive" style="margin: 0; border: none;">
+                        <table class="p2-table">
+                            <thead style="background: var(--p2-bg-main);">
+                                <tr>
+                                    <th>عنوان دوره</th>
+                                    <th style="text-align:center;">وضعیت</th>
+                                    <th style="text-align:center;">عملیات</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var p in FilteredPeriodOptions)
+                                {
+                                    <tr>
+                                        <td>
+                                            <span style="font-weight:800; font-size: 14px; color: var(--p2-primary-dark);">@p.PERIOD_TITLE</span>
+                                            <div class="p2-text-mono p2-text-muted" style="font-size: 11px;">تاریخ سیستمی: @p.PERIOD_DATE</div>
+                                        </td>
+                                        <td style="text-align:center;">
+                                            <span class="p2-badge @(p.STATUS == 1 ? "p2-badge-warning" : (p.STATUS == 2 ? "p2-badge-success" : "p2-badge-primary"))">
+                                                @p.StatusText
+                                            </span>
+                                        </td>
+                                        <td style="text-align:center; min-width: 250px;">
+                                            <button class="btn-primary-pay2 p2-btn-sm" @onclick="() => EnterPeriod(p.PERIOD_DATE)">
+                                                ورود به لیست کارکرد
+                                            </button>
+                                            <button class="btn-ghost-pay2 p2-text-danger p2-btn-sm" @onclick="() => DeletePeriodConfirm(p.PERIOD_DATE)" disabled="@(p.STATUS >= 3)">
+                                                حذف
+                                            </button>
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            }
+        }
+    }
+    else
+    {
+        <!-- ========================================================================= -->
+        <!-- VIEW 2: گرید اکسلی کارکرد (Detail) -->
+        <!-- ========================================================================= -->
+
+        <div class="card-custom" style="padding: 12px 16px; margin-bottom: 16px; display: flex; flex-wrap: wrap; gap: 16px; align-items: center; justify-content: space-between; background: var(--p2-bg-white);">
+
+            <div style="display:flex; align-items:center; gap: 16px;">
+                <button class="btn-outline-pay2" @onclick="BackToList" style="border-radius: 20px;" disabled="@IsSaving">
+                    <i class="bi bi-arrow-right"></i> بازگشت
+                </button>
+                <div style="border-right: 1px solid var(--p2-border); height: 30px;"></div>
+                <div>
+                    <div class="p2-text-muted" style="font-size:11px;">کارکرد در حال ویرایش</div>
+                    <div style="font-size: 16px; font-weight: 800; color: var(--p2-primary);">@PeriodOptions.FirstOrDefault(x => x.PERIOD_DATE == SelectedPeriodDate)?.PERIOD_TITLE</div>
+                </div>
+            </div>
+
+            @if (PeriodData != null && !IsLoading)
+            {
+                <div style="display:flex; align-items:center; gap: 15px; background: var(--p2-bg-main); padding: 8px 16px; border-radius: var(--p2-radius-md); border: 1px solid var(--p2-border-light);">
+                    <div style="display:flex; align-items:center; gap: 6px;">
+                        <label style="margin:0; font-size: 12px; font-weight: bold; color: var(--p2-text-muted);">تعطیلات:</label>
+                        <input type="number" class="pay2-input" style="width: 55px; height: 28px; text-align: center; border: 1px solid #cbd5e1;" @bind="PeriodData.Period.HOLIDAY_DAYS" disabled="@PeriodData.Period.IsReadOnly" />
+                    </div>
+                    <label style="margin:0; font-size: 12px; font-weight: bold; cursor:pointer;">
+                        <input type="checkbox" @bind="PeriodData.Period.TENDAR_APPLY" disabled="@PeriodData.Period.IsReadOnly" style="vertical-align: middle; margin-left:4px;" /> اعمال ۱۰٪
+                    </label>
+                    <span class="p2-badge @(PeriodData.Period.STATUS == 1 ? "p2-badge-success" : "p2-badge-warning")">@PeriodData.Period.StatusText</span>
+                </div>
+
+                <div style="display:flex; align-items:center; gap: 8px;">
+                    <div class="pay2-search-wrapper" style="width: 200px;">
+                        <i class="bi bi-search"></i>
+                        <input type="text" class="pay2-search-input" style="width: 100%; height: 38px;" placeholder="جستجوی کد یا نام..." @bind="SearchTerm" @bind:event="oninput" />
+                    </div>
+
+                    <button class="btn-success-pay2" style="background-color: var(--p2-success-text); height: 38px;" @onclick="SaveBulk" disabled="@(PeriodData.Period.IsReadOnly || IsSaving)">
+                        @if (IsSaving)
+                        {
+                            <span class="p2-spinner"></span>
+                        }
+                        else
+                        {
+
+                            <span><i class="bi bi-floppy"></i> ذخیره کارکرد</span>
+                        }
+                    </button>
+
+                    @if (PeriodData.Period.STATUS == 1)
+                    {
+                        <button class="btn-primary-pay2" style="background:#2563eb; border-color:#2563eb; height: 38px;" @onclick="ClosePeriod" disabled="@IsSaving">
+                            <i class="bi bi-lock"></i> بستن دوره
+                        </button>
+                    }
+                    else if (PeriodData.Period.STATUS == 2)
+                    {
+                        <button class="btn-outline-pay2" style="color:#d97706; border-color:#fde68a; height: 38px;" @onclick="ReopenPeriod" disabled="@IsSaving">
+                            <i class="bi bi-unlock"></i> باز کردن مجدد
+                        </button>
+                    }
                 </div>
             }
         </div>
-        <div class="pay2-modal-footer" style="justify-content: flex-end;">
-            <button class="btn-outline-pay2" @onclick="() => ShowDynamicModal = false" style="margin-left: 10px;">انصراف</button>
-            <button class="btn-primary-pay2" @onclick="SaveDynamicValues" disabled="@(PeriodData?.Period.IsReadOnly ?? false)">ذخیره مبالغ پویا</button>
-        </div>
-    </div>
-}
 
+        @if (IsLoading)
+        {
+            <div style="display:flex; justify-content:center; align-items:center; height:400px; flex-direction:column; gap:15px;">
+                <span class="p2-spinner" style="width:40px; height:40px; border-color:var(--p2-primary); border-top-color:transparent;"></span>
+                <span style="font-size:14px; font-weight:600; color:var(--p2-text-muted);">در حال دریافت و پردازش لیست کارکرد...</span>
+            </div>
+        }
+        else if (PeriodData != null)
+        {
+            <div class="card-custom" style="padding: 0; border: none; box-shadow: none;">
+                <div class="p2-excel-wrapper">
+                    <table class="p2-excel-table">
+                        <colgroup>
+                            <col style="width: var(--c0, 80px);" /> <!-- 0 -->
+                            <col style="width: var(--c1, 180px);" /> <!-- 1 -->
+
+                            <col style="width: var(--c2, 100px);" /> <!-- 2 -->
+                            <col style="width: var(--c3, 90px);" /> <!-- 3 -->
+                            <col style="width: var(--c4, 90px);" /> <!-- 4 -->
+                            <col style="width: var(--c5, 90px);" /> <!-- 5 -->
+                            <col style="width: var(--c6, 90px);" /> <!-- 6 -->
+
+                            <col style="width: var(--c7, 120px);" /> <!-- 7 -->
+                            <col style="width: var(--c8, 110px);" /> <!-- 8 -->
+                            <col style="width: var(--c9, 110px);" /> <!-- 9 -->
+
+                            <col style="width: var(--c10, 90px);" /> <!-- 10 -->
+                            <col style="width: var(--c11, 90px);" /> <!-- 11 -->
+                            <col style="width: var(--c12, 100px);" /> <!-- 12 -->
+
+                            <col style="width: var(--c13, 110px);" /> <!-- 13 -->
+                            <col style="width: var(--c14, 110px);" /> <!-- 14 -->
+                            <col style="width: var(--c15, 100px);" /> <!-- 15 -->
+                            <col style="width: var(--c16, 90px);" /> <!-- 16 -->
+
+                            <col style="width: var(--c17, 140px);" /> <!-- 17 -->
+                            <col style="width: var(--c18, 140px);" /> <!-- 18 -->
+                            <col style="width: var(--c19, 140px);" /> <!-- 19 -->
+
+                            <col style="width: var(--c20, 100px);" /> <!-- 20 -->
+                        </colgroup>
+                        <thead>
+                            <tr>
+                                <th class="p2-sticky-col-1">کد پرسنلی<div class="p2-col-resizer" onmousedown="startP2Resize(event, this, 0, true)"></div></th>
+                                <th class="p2-sticky-col-2">نام و نام خانوادگی<div class="p2-col-resizer" onmousedown="startP2Resize(event, this, 1, false)"></div></th>
+
+                                <th class="bg-group-1" style="color:var(--p2-primary);">کل کارکرد<div class="p2-col-resizer" onmousedown="startP2Resize(event, this, 2, false)"></div></th>
+                                <th class="bg-group-1">روز تولید<div class="p2-col-resizer" onmousedown="startP2Resize(event, this, 3, false)"></div></th>
+                                <th class="bg-group-1">روز اداری<div class="p2-col-resizer" onmousedown="startP2Resize(event, this, 4, false)"></div></th>
+                                <th class="bg-group-1">روز خدمات<div class="p2-col-resizer" onmousedown="startP2Resize(event, this, 5, false)"></div></th>
+                                <th class="bg-group-1">روز فروش<div class="p2-col-resizer" onmousedown="startP2Resize(event, this, 6, false)"></div></th>
+
+                                <th class="bg-group-2" style="color:#d97706;">اضافه‌کار عادی<div class="p2-col-resizer" onmousedown="startP2Resize(event, this, 7, false)"></div></th>
+                                <th class="bg-group-2" style="color:#d97706;">اضافه‌کار تعطیل<div class="p2-col-resizer" onmousedown="startP2Resize(event, this, 8, false)"></div></th>
+                                <th class="bg-group-2" style="color:#d97706;">اضافه‌کار اداری<div class="p2-col-resizer" onmousedown="startP2Resize(event, this, 9, false)"></div></th>
+
+                                <th class="bg-group-3">روز مرخصی<div class="p2-col-resizer" onmousedown="startP2Resize(event, this, 10, false)"></div></th>
+                                <th class="bg-group-3">روز غیبت<div class="p2-col-resizer" onmousedown="startP2Resize(event, this, 11, false)"></div></th>
+                                <th class="bg-group-3">روز مأموریت<div class="p2-col-resizer" onmousedown="startP2Resize(event, this, 12, false)"></div></th>
+
+                                <th class="bg-group-4" style="color:#059669;">کارکرد اسمی<div class="p2-col-resizer" onmousedown="startP2Resize(event, this, 13, false)"></div></th>
+                                <th class="bg-group-4" style="color:#059669;">کارکرد رسمی<div class="p2-col-resizer" onmousedown="startP2Resize(event, this, 14, false)"></div></th>
+                                <th class="bg-group-3">تعطیلات رسمی<div class="p2-col-resizer" onmousedown="startP2Resize(event, this, 15, false)"></div></th>
+                                <th class="bg-group-3">تعداد جمعه<div class="p2-col-resizer" onmousedown="startP2Resize(event, this, 16, false)"></div></th>
+
+                                <th class="bg-group-5">پاداش/راندمان (ریال)<div class="p2-col-resizer" onmousedown="startP2Resize(event, this, 17, false)"></div></th>
+                                <th class="bg-group-5">حق ایاب‌وذهاب (ریال)<div class="p2-col-resizer" onmousedown="startP2Resize(event, this, 18, false)"></div></th>
+                                <th class="bg-group-5" style="color:#ef4444;">سایر کسورات (ریال)<div class="p2-col-resizer" onmousedown="startP2Resize(event, this, 19, false)"></div></th>
+
+                                <th class="bg-group-5">عملیات<div class="p2-col-resizer" onmousedown="startP2Resize(event, this, 20, false)"></div></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @if (!FilteredLines.Any())
+                            {
+                                <tr><td colspan="21" style="text-align:center; padding:30px; color:var(--p2-text-muted);">رکوردی یافت نشد.</td></tr>
+                            }
+
+                            <Virtualize Items="FilteredLines" Context="item" OverscanCount="10">
+                                <tr class="@(item.LOCKED ? "row-locked" : (item.IsDirty ? "row-dirty" : ""))" @key="item.EMP_ID">
+                                    <td class="p2-sticky-col-1"><div class="p2-cell-text" style="font-family:Consolas; font-weight:bold; color:var(--p2-text-muted);">@item.EMP_CODE</div></td>
+                                    <td class="p2-sticky-col-2"><div class="p2-cell-text" style="font-weight:bold; font-size:12px; justify-content: flex-start;" title="@item.FULL_NAME">@item.FULL_NAME</div></td>
+
+                                    <td><Safir.Client.Pages.Salary.Tabs.Pay2NumericInput @bind-Value="item.WORK_DAYS_STR" CssClass="p2-grid-input input-primary" Disabled="@(item.LOCKED || PeriodData.Period.IsReadOnly)" /></td>
+                                    <td><Safir.Client.Pages.Salary.Tabs.Pay2NumericInput @bind-Value="item.DAYS_TOLID_STR" CssClass="p2-grid-input" Disabled="@(item.LOCKED || PeriodData.Period.IsReadOnly)" /></td>
+                                    <td><Safir.Client.Pages.Salary.Tabs.Pay2NumericInput @bind-Value="item.DAYS_EDARI_STR" CssClass="p2-grid-input" Disabled="@(item.LOCKED || PeriodData.Period.IsReadOnly)" /></td>
+                                    <td><Safir.Client.Pages.Salary.Tabs.Pay2NumericInput @bind-Value="item.DAYS_KHADAMAT_STR" CssClass="p2-grid-input" Disabled="@(item.LOCKED || PeriodData.Period.IsReadOnly)" /></td>
+                                    <td><Safir.Client.Pages.Salary.Tabs.Pay2NumericInput @bind-Value="item.DAYS_FOROSH_STR" CssClass="p2-grid-input" Disabled="@(item.LOCKED || PeriodData.Period.IsReadOnly)" /></td>
+
+                                    <td><Safir.Client.Pages.Salary.Tabs.Pay2NumericInput @bind-Value="item.OT_NORMAL_H_STR" InputMode="Pay2NumericInput.NumericInputMode.HoursMinutes" ToolTip="ساعت:دقیقه (مثال 32:35) یا عدد اعشاری (مثال 32.5)" CssClass="p2-grid-input" Disabled="@(item.LOCKED || PeriodData.Period.IsReadOnly)" /></td>
+                                    <td><Safir.Client.Pages.Salary.Tabs.Pay2NumericInput @bind-Value="item.OT_HOLIDAY_H_STR" InputMode="Pay2NumericInput.NumericInputMode.HoursMinutes" ToolTip="ساعت:دقیقه (مثال 32:35) یا عدد اعشاری (مثال 32.5)" CssClass="p2-grid-input" Disabled="@(item.LOCKED || PeriodData.Period.IsReadOnly)" /></td>
+                                    <td><Safir.Client.Pages.Salary.Tabs.Pay2NumericInput @bind-Value="item.OT_ADMIN_H_STR" InputMode="Pay2NumericInput.NumericInputMode.HoursMinutes" ToolTip="ساعت:دقیقه (مثال 32:35) یا عدد اعشاری (مثال 32.5)" CssClass="p2-grid-input" Disabled="@(item.LOCKED || PeriodData.Period.IsReadOnly)" /></td>
+
+                                    <td><Safir.Client.Pages.Salary.Tabs.Pay2NumericInput @bind-Value="item.LEAVE_DAYS_STR" CssClass="p2-grid-input" Disabled="@(item.LOCKED || PeriodData.Period.IsReadOnly)" /></td>
+                                    <td><Safir.Client.Pages.Salary.Tabs.Pay2NumericInput @bind-Value="item.ABSENT_DAYS_STR" CssClass="p2-grid-input" Disabled="@(item.LOCKED || PeriodData.Period.IsReadOnly)" /></td>
+                                    <td><Safir.Client.Pages.Salary.Tabs.Pay2NumericInput @bind-Value="item.MISSION_DAYS_STR" CssClass="p2-grid-input" Disabled="@(item.LOCKED || PeriodData.Period.IsReadOnly)" /></td>
+
+                                    <td><Safir.Client.Pages.Salary.Tabs.Pay2NumericInput @bind-Value="item.DAYS_STR" CssClass="p2-grid-input input-success" Disabled="@(item.LOCKED || PeriodData.Period.IsReadOnly)" /></td>
+                                    <td><Safir.Client.Pages.Salary.Tabs.Pay2NumericInput @bind-Value="item.DAYSB_STR" CssClass="p2-grid-input input-success" Disabled="@(item.LOCKED || PeriodData.Period.IsReadOnly)" /></td>
+                                    <td><Safir.Client.Pages.Salary.Tabs.Pay2NumericInput @bind-Value="item.TDAYS_STR" CssClass="p2-grid-input" Disabled="@(item.LOCKED || PeriodData.Period.IsReadOnly)" /></td>
+                                    <td><Safir.Client.Pages.Salary.Tabs.Pay2NumericInput @bind-Value="item.FRID_COUNT_STR" CssClass="p2-grid-input" Disabled="@(item.LOCKED || PeriodData.Period.IsReadOnly)" /></td>
+
+                                    <td><Safir.Client.Pages.Salary.Tabs.Pay2NumericInput @bind-Value="item.PERF_AMOUNT_STR" IsDigitGroupActive="true" ThreeTwoZero="true" CssClass="p2-grid-input" Disabled="@(item.LOCKED || PeriodData.Period.IsReadOnly)" /></td>
+                                    <td><Safir.Client.Pages.Salary.Tabs.Pay2NumericInput @bind-Value="item.TRANSP_AMOUNT_STR" IsDigitGroupActive="true" ThreeTwoZero="true" CssClass="p2-grid-input" Disabled="@(item.LOCKED || PeriodData.Period.IsReadOnly)" /></td>
+                                    <td><Safir.Client.Pages.Salary.Tabs.Pay2NumericInput @bind-Value="item.KASR_OTHER_STR" IsDigitGroupActive="true" ThreeTwoZero="true" CssClass="p2-grid-input input-danger" Disabled="@(item.LOCKED || PeriodData.Period.IsReadOnly)" /></td>
+
+                                    <td style="text-align: center; padding: 0 5px; width: 100px;">
+                                        <div style="display:flex; justify-content:center; align-items:center; gap:4px;">
+                                            <button class="btn-primary-pay2 sm"
+                                                    style="background:#6366f1; border-color:#6366f1; height: 28px; padding: 0 8px;"
+                                                    @onclick="() => OpenDynamicValues(item.EMP_ID, item.FULL_NAME)"
+                                                    disabled="@(item.LOCKED || PeriodData.Period.IsReadOnly)"
+                                                    title="مقادیر پویا">
+                                                ⊕ پویا
+                                            </button>
+                                            <button class="btn-outline-danger-pay2 sm"
+                                                    style="height: 28px; padding: 0 8px; border:none;"
+                                                    @onclick="() => DeleteLineConfirm(item)"
+                                                    disabled="@(item.LOCKED || PeriodData.Period.IsReadOnly)"
+                                                    title="حذف کارکرد این پرسنل در این ماه">
+                                                <i class="bi bi-trash"></i>
+                                            </button>
+                                        </div>
+                                    </td>
+                                </tr>
+                            </Virtualize>
+                        </tbody>
+                    </table>
+                </div>
+                <div style="padding: 10px 16px; border-top: 1px solid var(--p2-border-light); font-size: 12px; color: var(--p2-text-muted);">
+                    تعداد کل پرسنل: <b>@(PeriodData.Lines?.Count ?? 0)</b> |
+                    تعداد نمایش داده شده: <b>@FilteredLines.Count</b>
+                </div>
+            </div>
+        }
+    }
+</div>
+
+@* ------------------------------------------------------------------------- *@
+@* مودال ایجاد دوره جدید *@
+@* ------------------------------------------------------------------------- *@
 @if (ShowNewPeriodModal)
 {
     <div class="pay2-select-backdrop" style="background: rgba(15,23,42,0.6); z-index: 2999;" @onclick="CloseNewPeriodModal"></div>
@@ -511,18 +605,96 @@
         </div>
         <div class="pay2-modal-footer" style="justify-content: flex-end;">
             <button class="btn-outline-pay2" @onclick="CloseNewPeriodModal" style="margin-left: 10px;">انصراف</button>
-            <button class="btn-primary-pay2" @onclick="ConfirmNewPeriod" disabled="@IsLoading">ایجاد و بارگذاری</button>
+            <button class="btn-primary-pay2" @onclick="ConfirmNewPeriod" disabled="@IsLoading">ایجاد و ورود</button>
+        </div>
+    </div>
+}
+
+@* ------------------------------------------------------------------------- *@
+@* مودال مقادیر متغیر (پویا) *@
+@* ------------------------------------------------------------------------- *@
+@if (ShowDynamicModal)
+{
+    <div class="pay2-select-backdrop" style="background: rgba(15,23,42,0.6); z-index: 2999;" @onclick="() => ShowDynamicModal = false"></div>
+
+    <div class="card-custom pay2-modal-container" style="max-width: 450px; height: auto; max-height: 85vh;">
+        <div class="pay2-modal-header p2-card-header" style="margin:0;">
+            <h5 style="margin:0; font-size:16px;">
+                مقادیر متغیر (پویا): <span class="p2-text-primary">@ActiveEmpName</span>
+            </h5>
+            <button class="btn-ghost-pay2" @onclick="() => ShowDynamicModal = false"><i class="bi bi-x-lg"></i></button>
+        </div>
+
+        <div class="pay2-modal-body" style="padding: 20px;">
+            @if (DynamicValues == null || !DynamicValues.Any())
+            {
+                <div class="p2-empty-state">
+                    <i class="bi bi-inbox"></i>
+                    <h4 style="margin-top:10px;">آیتم پویایی یافت نشد</h4>
+                    <p style="margin-top:8px;">هیچ آیتم متغیری (که سیستمی نباشد) در تنظیمات تعریف نشده است.</p>
+                    <span style="font-size:11px; margin-top:8px;">برای استفاده از این بخش، ابتدا در تب «آیتم‌های حقوقی» یک آیتم از نوع پرداختی/کسور متغیر تعریف کنید.</span>
+                </div>
+            }
+            else
+            {
+                <div style="background: var(--p2-info-bg); border: 1px solid var(--p2-info-border); border-radius: var(--p2-radius-sm); padding: 10px; margin-bottom: 16px; font-size: 11.5px; color: var(--p2-text-main);">
+                    <i class="bi bi-info-circle p2-text-primary"></i> این مبالغ فقط در <b>همین ماه</b> و فقط برای <b>همین شخص</b> در محاسبه حقوق لحاظ خواهند شد.
+                </div>
+
+                <div style="display:flex; flex-direction:column; gap:16px;">
+                    @foreach (var val in DynamicValues)
+                    {
+                        <div class="form-field">
+                            <label>@val.ITEM_NAME (ریال)</label>
+                            <Safir.Client.Pages.Salary.Tabs.Pay2NumericInput @bind-Value="val.VALUE_STR"
+                                                                             Direction="ltr"
+                                                                             IsDigitGroupActive="true"
+                                                                             ThreeTwoZero="true"
+                                                                             Placeholder="0" />
+                        </div>
+                    }
+                </div>
+            }
+        </div>
+
+        <div class="pay2-modal-footer" style="justify-content: flex-end;">
+            <button class="btn-outline-pay2" @onclick="() => ShowDynamicModal = false" style="margin-left: 10px;">انصراف</button>
+            <button class="btn-primary-pay2" @onclick="SaveDynamicValues" disabled="@(!DynamicValues.Any())">
+                <i class="bi bi-floppy" style="margin-left: 4px;"></i> ذخیره مقادیر
+            </button>
         </div>
     </div>
 }
 
 @code {
+    // متغیرهای نمای لیست دوره‌ها
+    bool IsListView = false; // false = Card View, true = List View
+
+    string _periodSearchTerm = "";
+    string PeriodSearchTerm
+    {
+        get => _periodSearchTerm;
+        set { _periodSearchTerm = value; StateHasChanged(); }
+    }
+
+    // فیلتر زنده (بدون تخصیص حافظه اضافی با ToLower)
+    IEnumerable<Pay2PeriodLookupDto> FilteredPeriodOptions =>
+        string.IsNullOrWhiteSpace(_periodSearchTerm)
+            ? PeriodOptions
+            : PeriodOptions.Where(x => x.PERIOD_TITLE.Contains(_periodSearchTerm, StringComparison.OrdinalIgnoreCase));
+
+    // === مدیریت ویو (Drill-Down) ===
+    enum ViewMode { PeriodList, AttendanceGrid }
+    ViewMode CurrentView = ViewMode.PeriodList;
+
     List<Pay2WorkshopDto> Workshops = new();
     int SelectedWsId;
-    string PeriodDateStr = "14030100";
+    List<Pay2PeriodLookupDto> PeriodOptions = new();
 
     Pay2AttendanceSaveRequest? PeriodData;
     List<Pay2AttendanceLineDto> FilteredLines = new();
+
+    long SelectedPeriodDate; // ماهی که برای ورود به گرید انتخاب شده
 
     bool IsLoading = false;
     bool IsSaving = false;
@@ -534,7 +706,7 @@
         set
         {
             _searchTerm = value;
-            ApplyFilter(); // جستجوی لایو بدون تایمر
+            ApplyFilter();
         }
     }
 
@@ -556,6 +728,78 @@
         catch (Exception ex)
         {
             Snackbar.Add("خطا در بارگذاری اطلاعات اولیه: " + ex.Message, MudBlazor.Severity.Error);
+        }
+    }
+
+    async Task LoadPeriodOptionsAsync()
+    {
+        PeriodOptions = new();
+        if (SelectedWsId <= 0) return;
+
+        IsLoading = true;
+        try
+        {
+            PeriodOptions = await AttApi.GetPeriodsAsync(SelectedWsId);
+        }
+        finally
+        {
+            IsLoading = false;
+        }
+    }
+
+    async Task OnWorkshopChangedAsync()
+    {
+        CurrentView = ViewMode.PeriodList;
+        PeriodData = null;
+        FilteredLines.Clear();
+        _searchTerm = "";
+        await LoadPeriodOptionsAsync();
+    }
+
+    // ورود به گرید اکسلی
+    async Task EnterPeriod(long periodDate)
+    {
+        SelectedPeriodDate = periodDate;
+        CurrentView = ViewMode.AttendanceGrid;
+        await LoadPeriodDataAsync();
+    }
+
+    // بازگشت به لیست دوره‌ها
+    async Task BackToList()
+    {
+        // در صورت نیاز به اخطار بابت تغییرات ذخیره نشده، می‌توان اینجا چک کرد
+        CurrentView = ViewMode.PeriodList;
+        PeriodData = null;
+        FilteredLines.Clear();
+        _searchTerm = "";
+        SelectedPeriodDate = 0;
+        await LoadPeriodOptionsAsync(); // رفرش لیست برای دریافت آخرین وضعیت (Status)
+    }
+
+    async Task LoadPeriodDataAsync()
+    {
+        if (SelectedWsId <= 0 || SelectedPeriodDate <= 0) return;
+
+        IsLoading = true;
+        try
+        {
+            PeriodData = await AttApi.InitPeriodAsync(SelectedWsId, SelectedPeriodDate);
+            FilteredLines = PeriodData.Lines.ToList();
+            _searchTerm = "";
+
+            if (PeriodData.Lines == null || !PeriodData.Lines.Any())
+            {
+                Snackbar.Add("دوره با موفقیت باز شد، اما هیچ پرسنل فعالی در این کارگاه یافت نشد.", MudBlazor.Severity.Info);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add(ex.Message, MudBlazor.Severity.Error);
+            await BackToList(); // اگر خطا داد برگرده به لیست
+        }
+        finally
+        {
+            IsLoading = false;
         }
     }
 
@@ -606,56 +850,10 @@
         finally { IsSaving = false; }
     }
 
-    async Task OnWorkshopChangedAsync()
-    {
-        PeriodData = null;
-        FilteredLines.Clear();
-        _searchTerm = "";
-        await LoadPeriodOptionsAsync();
-    }
-
-    string _periodInputText = "";
-
-    async Task OnPeriodTextChanged(string? newText)
-    {
-        _periodInputText = newText ?? "";
-
-        if (string.IsNullOrWhiteSpace(_periodInputText))
-        {
-            SelectedPeriodDate = 0;
-            return;
-        }
-
-        // آیا متنی که وارد شده دقیقاً عنوان یکی از دوره‌های لیست است؟ (یعنی کاربر از لیست کلیک کرده است)
-        var matchedItem = PeriodOptions.FirstOrDefault(x => x.PERIOD_TITLE == _periodInputText);
-        if (matchedItem != null)
-        {
-            SelectedPeriodDate = matchedItem.PERIOD_DATE;
-            return; // خروج سریع، نیازی به Parse کردن و صفر کردن متغیر نیست
-        }
-
-        // --- از اینجا به بعد یعنی کاربر در حال تایپِ دستی است ---
-        SelectedPeriodDate = 0;
-
-        if (TryNormalizePeriodDate(_periodInputText, out long pDate, out _))
-        {
-            if (!PeriodOptions.Any(x => x.PERIOD_DATE == pDate))
-            {
-                PeriodOptions.Insert(0, new Pay2PeriodLookupDto
-                {
-                    PERIOD_DATE = pDate,
-                    PERIOD_TITLE = $"{pDate} (ایجاد دوره جدید)"
-                });
-            }
-            SelectedPeriodDate = pDate;
-        }
-    }
-
     bool IsLoadingDynamic = false;
 
     async Task OpenDynamicValues(int empId, string name)
     {
-        // جلوگیری از کلیک‌های متوالی و تداخل داده ‌ها
         if (IsLoadingDynamic) return;
 
         IsLoadingDynamic = true;
@@ -686,13 +884,10 @@
         }
         catch (Exception ex) { Snackbar.Add(ex.Message, MudBlazor.Severity.Error); }
     }
+
     async Task ClosePeriod()
     {
-        if (PeriodData == null)
-        {
-            Snackbar.Add("ابتدا دوره کارکرد را بارگذاری کنید.", MudBlazor.Severity.Warning);
-            return;
-        }
+        if (PeriodData == null) return;
 
         var dirtyLines = PeriodData.Lines.Where(x => x.IsDirty && !x.LOCKED).ToList();
         if (dirtyLines.Any())
@@ -704,7 +899,7 @@
         var parameters = new MudBlazor.DialogParameters
         {
             ["Title"] = "بستن و قفل‌کردن لیست کارکرد",
-            ["ContentText"] = "آیا از قفل کردن لیست کارکرد این ماه اطمینان دارید؟ با این کار، امکان ویرایش کارکرد پرسنل مسدود شده و سیستم برای محاسبه‌ی حقوق و دستمزد آماده می‌شود.",
+            ["ContentText"] = "آیا از قفل کردن لیست کارکرد این ماه اطمینان دارید؟ با این کار، امکان ویرایش مسدود شده و سیستم آماده محاسبه حقوق می‌شود.",
             ["ConfirmButtonText"] = "بله، کارکرد بسته شود",
             ["CancelButtonText"] = "انصراف"
         };
@@ -718,151 +913,11 @@
             try
             {
                 await AttApi.ClosePeriodAsync(PeriodData.Period.PER_ID);
-
-                // بارگذاری مجدد اطلاعات پس از بسته شدن دوره برای اعمال قفل در UI
-                long pDate = SelectedPeriodDate;
-                PeriodData = await AttApi.InitPeriodAsync(SelectedWsId, pDate);
-                FilteredLines = PeriodData.Lines.ToList();
-
-                Snackbar.Add("دوره کارکرد با موفقیت بسته شد. اکنون می‌توانید به تب «محاسبه حقوق» بروید.", MudBlazor.Severity.Success);
+                await LoadPeriodDataAsync(); // ریلود برای اعمال قفل UI
+                Snackbar.Add("دوره کارکرد بسته شد. اکنون به تب «محاسبه حقوق» بروید.", MudBlazor.Severity.Success);
             }
-            catch (Exception ex)
-            {
-                Snackbar.Add(ex.Message, MudBlazor.Severity.Error);
-            }
-            finally
-            {
-                IsSaving = false;
-            }
-        }
-    }
-
-    List<Pay2PeriodLookupDto> PeriodOptions = new();
-
-    long SelectedPeriodDate;
-    static bool TryNormalizePeriodDate(string? input, out long periodDate, out string error)
-    {
-        periodDate = 0;
-        error = string.Empty;
-
-        if (string.IsNullOrWhiteSpace(input))
-        {
-            error = "مقدار وارد شده خالی است.";
-            return false;
-        }
-
-        // 🚀 اصلاح حرفه‌ای: تبدیل اعداد فارسی و عربی به انگلیسی + حذف کاراکترهای اضافی
-        var normalizedChars = input.Trim()
-            .Select(c => c >= '۰' && c <= '۹' ? (char)(c - '۰' + '0') :
-                         c >= '٠' && c <= '٩' ? (char)(c - '٠' + '0') : c)
-            .Where(c => c != '/' && c != '-')
-            .ToArray();
-
-        string raw = new string(normalizedChars);
-
-        if (raw.Length != 8 || !long.TryParse(raw, out periodDate))
-        {
-            error = "ماه باید دقیقاً ۸ رقم عدد باشد. مثال صحیح: 14030700";
-            return false;
-        }
-
-        int year = (int)(periodDate / 10000);
-        int month = (int)((periodDate / 100) % 100);
-        int day = (int)(periodDate % 100);
-
-        if (year < 1300 || year > 1499)
-        {
-            error = "سال دوره نامعتبر است.";
-            return false;
-        }
-
-        if (month < 1 || month > 12)
-        {
-            error = "ماه دوره باید بین 01 تا 12 باشد.";
-            return false;
-        }
-
-        if (day != 0)
-        {
-            error = "برای دوره حقوق، دو رقم آخر باید 00 باشد. مثال: 14030700";
-            return false;
-        }
-
-        return true;
-    }
-
-
-    // ====================================================
-    // منطق مدیریت دوره‌ها و لود لیست
-    // ====================================================
-
-    async Task LoadPeriodOptionsAsync()
-    {
-        PeriodOptions = new();
-
-        if (SelectedWsId <= 0)
-        {
-            SelectedPeriodDate = 0;
-            return;
-        }
-
-        PeriodOptions = await AttApi.GetPeriodsAsync(SelectedWsId);
-
-        // اگر از قبل دوره‌ای انتخاب شده بود و در لیست جدید هم هست، همان را حفظ کن
-        if (SelectedPeriodDate > 0 && PeriodOptions.Any(x => x.PERIOD_DATE == SelectedPeriodDate))
-        {
-            // حفظ مقدار فعلی (هیچ کاری نمی‌کنیم)
-        }
-        // در غیر این صورت، اولین گزینه را انتخاب کن
-        else
-        {
-            var firstOpt = PeriodOptions.FirstOrDefault();
-            SelectedPeriodDate = firstOpt != null ? firstOpt.PERIOD_DATE : 0;
-        }
-    }
-
-    async Task OnPeriodChanged(long newVal)
-    {
-        SelectedPeriodDate = newVal;
-        // با تغییر ماه، جدول قبلی پاک شود تا کاربر بداند باید دوباره دکمه بارگذاری را بزند
-        PeriodData = null;
-        FilteredLines.Clear();
-    }
-
-    async Task LoadPeriod()
-    {
-        if (SelectedWsId <= 0)
-        {
-            Snackbar.Add("کارگاه را انتخاب کنید.", MudBlazor.Severity.Warning);
-            return;
-        }
-
-        if (SelectedPeriodDate <= 0)
-        {
-            Snackbar.Add("هیچ دوره‌ای انتخاب نشده است. اگر دوره‌ای وجود ندارد، روی «ایجاد دوره جدید» کلیک کنید.", MudBlazor.Severity.Warning);
-            return;
-        }
-
-        IsLoading = true;
-        try
-        {
-            PeriodData = await AttApi.InitPeriodAsync(SelectedWsId, SelectedPeriodDate);
-            FilteredLines = PeriodData.Lines.ToList();
-            _searchTerm = "";
-
-            // 🚀 حل مشکل UX: بررسی و اطلاع‌رسانی در صورت خالی بودن لیست پرسنل کارگاه
-            if (PeriodData.Lines == null || !PeriodData.Lines.Any())
-            {
-                Snackbar.Add("دوره با موفقیت بارگذاری شد، اما هیچ پرسنل فعالی در این کارگاه یافت نشد. لطفاً ابتدا از تب «پرسنل و احکام» کارمند تعریف کنید.", MudBlazor.Severity.Info);
-            }
-        }
-        catch (Exception ex)
-        {
-            Snackbar.Add(ex.Message, MudBlazor.Severity.Error);
-        }
-        finally
-        {
-            IsLoading = false;
+            catch (Exception ex) { Snackbar.Add(ex.Message, MudBlazor.Severity.Error); }
+            finally { IsSaving = false; }
         }
     }
 
@@ -877,19 +932,14 @@
             return;
         }
 
-        // 🚀 هوش مصنوعی UI: پیشنهاد خودکار ماه بعدی
         if (PeriodOptions.Any())
         {
             long latest = PeriodOptions.Max(x => x.PERIOD_DATE);
             int year = (int)(latest / 10000);
             int month = (int)((latest / 100) % 100);
 
-            month++; // ماه بعد
-            if (month > 12)
-            {
-                month = 1;
-                year++;
-            }
+            month++;
+            if (month > 12) { month = 1; year++; }
             NewPeriodDateStr = $"{year}{month:D2}00";
         }
         else
@@ -916,85 +966,54 @@
 
         if (PeriodOptions.Any(x => x.PERIOD_DATE == pDate))
         {
-            Snackbar.Add("این دوره از قبل وجود دارد و برای شما بارگذاری شد.", MudBlazor.Severity.Info);
-            SelectedPeriodDate = pDate;
+            Snackbar.Add("این دوره از قبل وجود دارد و برای شما باز شد.", MudBlazor.Severity.Info);
             ShowNewPeriodModal = false;
-            await LoadPeriod();
+            await EnterPeriod(pDate); // ورود مستقیم به گرید
             return;
         }
 
-        SelectedPeriodDate = pDate;
         ShowNewPeriodModal = false;
-
-        await LoadPeriod();
-
-        // 🚀 اکنون این متد به لطف اصلاح بالا، انتخاب SelectedPeriodDate را دستکاری نمی‌کند
-        await LoadPeriodOptionsAsync();
-
-        Snackbar.Add($"دوره {pDate} با موفقیت ایجاد و لیست کارکرد آماده شد.", MudBlazor.Severity.Success);
+        await EnterPeriod(pDate); // وقتی دوره در سرور ساخته شد، مستقیم وارد آن می‌شویم
+        Snackbar.Add($"دوره {pDate} ایجاد و لیست کارکرد آماده شد.", MudBlazor.Severity.Success);
     }
 
-    async Task DeletePeriodConfirm()
+    async Task DeletePeriodConfirm(long pDate)
     {
-        if (PeriodData == null) return;
-
-        if (PeriodData.Period.STATUS >= 3)
-        {
-            Snackbar.Add("این دوره محاسبه شده است و قابل حذف نیست. ابتدا از تب محاسبه حقوق، عملیات لغو را انجام دهید.", MudBlazor.Severity.Error);
-            return;
-        }
-
         var parameters = new MudBlazor.DialogParameters
         {
-            ["Title"] = "هشدار امنیتی: حذف دوره کارکرد",
-            ["ContentText"] = $"آیا از حذف کامل دوره کارکرد «{SelectedPeriodDate}» اطمینان قطعی دارید؟\n\n⚠️ توجه: با این کار تمامی روزهای کارکرد، اضافه‌کارها، غیبت‌ها و مبالغ دستی وارد شده برای تمام پرسنل این کارگاه برای همیشه حذف خواهد شد و قابل بازیابی نیست",
-            ["ConfirmButtonText"] = "بله، تمام کارکردها را حذف کن",
+            ["Title"] = "حذف دوره کارکرد",
+            ["ContentText"] = $"آیا از حذف کامل دوره کارکرد «{pDate}» اطمینان دارید؟ تمام کارکردها برای همیشه حذف خواهند شد.",
+            ["ConfirmButtonText"] = "بله، حذف کن",
             ["CancelButtonText"] = "انصراف"
         };
 
-        var options = new MudBlazor.DialogOptions { CloseButton = false, MaxWidth = MudBlazor.MaxWidth.Small };
-        var dialog = DialogService.Show<Safir.Client.Shared.ConfirmDialog>("تایید حذف", parameters, options);
+        var dialog = DialogService.Show<Safir.Client.Shared.ConfirmDialog>("تایید حذف", parameters, new MudBlazor.DialogOptions { CloseButton = false, MaxWidth = MudBlazor.MaxWidth.Small });
         var result = await dialog.Result;
 
         if (!result.Cancelled)
         {
             IsLoading = true;
-            StateHasChanged();
-
             try
             {
-                await AttApi.DeletePeriodAsync(PeriodData.Period.PER_ID);
+                // برای حذف نیاز به PER_ID داریم
+                var target = PeriodOptions.FirstOrDefault(x => x.PERIOD_DATE == pDate);
+                // چون در DTO Lookup ما PER_ID را نداریم اما سرور با PER_ID پاک میکنه
+                // 🚀 نکته: برای راحتی، می‌توانید متد DeletePeriod را در سرور طوری بنویسید که با WS_ID و PERIOD_DATE هم پاک کند
+                // یا PER_ID را به LookupDTO اضافه کنید.
+                // با فرض اینکه سرور با PER_ID پاک میکند: باید PER_ID را بگیریم:
+                var pData = await AttApi.InitPeriodAsync(SelectedWsId, pDate);
+                await AttApi.DeletePeriodAsync(pData.Period.PER_ID);
 
-                Snackbar.Add("دوره کارکرد و تمامی اطلاعات وابسته به آن با موفقیت از سیستم حذف شد.", MudBlazor.Severity.Success);
-
-                // 🚀 پاک‌سازیِ قطعی تمام State های مرتبط با دوره حذف شده
-                PeriodData = null;
-                FilteredLines.Clear();
-                _searchTerm = "";
-                _periodInputText = ""; // پاک کردن متن دراپ‌داون
-                SelectedPeriodDate = 0; // ریست کردن تاریخ انتخاب شده
-
-                // بارگذاری مجدد دراپ‌داون دوره‌ها
-                await LoadPeriodOptionsAsync();
-
-                // اگر پس از حذف، دوره دیگری (مثلاً دوره ماه قبل) در لیست وجود داشت، آن را به صورت خودکار برای کاربر لود کن
-                if (SelectedPeriodDate > 0)
-                {
-                    await LoadPeriod();
-                }
+                Snackbar.Add("دوره با موفقیت حذف شد.", MudBlazor.Severity.Success);
+                await LoadPeriodOptionsAsync(); // رفرش لیست
             }
             catch (Exception ex)
             {
-                Snackbar.Add(ex.Message, MudBlazor.Severity.Error, config =>
-                {
-                    config.RequireInteraction = true;
-                    config.ShowCloseIcon = true;
-                });
+                Snackbar.Add(ex.Message, MudBlazor.Severity.Error);
             }
             finally
             {
                 IsLoading = false;
-                StateHasChanged();
             }
         }
     }
@@ -1006,7 +1025,7 @@
         var parameters = new MudBlazor.DialogParameters
         {
             ["Title"] = "حذف کارکرد پرسنل",
-            ["ContentText"] = $"آیا از حذف اطلاعات کارکرد «{item.FULL_NAME}» در این دوره اطمینان دارید؟\n\nبا این کار، ایشان در محاسبات حقوق این ماه لحاظ نخواهند شد.",
+            ["ContentText"] = $"آیا از حذف اطلاعات کارکرد «{item.FULL_NAME}» اطمینان دارید؟",
             ["ConfirmButtonText"] = "بله، حذف کن",
             ["CancelButtonText"] = "انصراف"
         };
@@ -1017,35 +1036,15 @@
         if (!result.Cancelled)
         {
             IsLoading = true;
-            StateHasChanged();
-
             try
             {
-                // 1. فراخوانی API حذف سرور
                 await AttApi.DeleteAttendanceLineAsync(PeriodData.Period.PER_ID, item.EMP_ID);
-
-                // 2. 🚀 اصلاح UI: حذف قطعی از هر دو لیست (اصلی و فیلتر شده)
                 PeriodData.Lines?.RemoveAll(x => x.EMP_ID == item.EMP_ID);
                 FilteredLines.RemoveAll(x => x.EMP_ID == item.EMP_ID);
-
-                Snackbar.Add("رکورد کارکرد پرسنل با موفقیت حذف شد.", MudBlazor.Severity.Success);
-
-                // 3. 🚀 اجبار Blazor به رندر مجدد کامپوننت Virtualize
-                await InvokeAsync(StateHasChanged);
+                Snackbar.Add("رکورد کارکرد با موفقیت حذف شد.", MudBlazor.Severity.Success);
             }
-            catch (Exception ex)
-            {
-                Snackbar.Add(ex.Message, MudBlazor.Severity.Error, config =>
-                {
-                    config.RequireInteraction = true;
-                    config.ShowCloseIcon = true;
-                });
-            }
-            finally
-            {
-                IsLoading = false;
-                StateHasChanged();
-            }
+            catch (Exception ex) { Snackbar.Add(ex.Message, MudBlazor.Severity.Error); }
+            finally { IsLoading = false; }
         }
     }
 
@@ -1056,7 +1055,7 @@
         var parameters = new MudBlazor.DialogParameters
         {
             ["Title"] = "باز کردن مجدد دوره",
-            ["ContentText"] = "آیا می‌خواهید این دوره را برای ویرایش کارکردها دوباره باز کنید؟ (پس از ویرایش باید مجدداً آن را قفل کنید).",
+            ["ContentText"] = "آیا می‌خواهید این دوره را برای ویرایش کارکردها دوباره باز کنید؟",
             ["ConfirmButtonText"] = "بله، باز شود",
             ["CancelButtonText"] = "انصراف"
         };
@@ -1069,12 +1068,7 @@
             try
             {
                 await AttApi.ReopenPeriodAsync(PeriodData.Period.PER_ID);
-
-                // رفرش کردن صفحه برای باز شدن فیلدها
-                long pDate = SelectedPeriodDate;
-                PeriodData = await AttApi.InitPeriodAsync(SelectedWsId, pDate);
-                FilteredLines = PeriodData.Lines.ToList();
-
+                await LoadPeriodDataAsync();
                 Snackbar.Add("دوره برای ویرایش باز شد.", MudBlazor.Severity.Info);
             }
             catch (Exception ex) { Snackbar.Add(ex.Message, MudBlazor.Severity.Error); }
@@ -1082,4 +1076,33 @@
         }
     }
 
+    static bool TryNormalizePeriodDate(string? input, out long periodDate, out string error)
+    {
+        periodDate = 0;
+        error = string.Empty;
+        if (string.IsNullOrWhiteSpace(input)) { error = "مقدار وارد شده خالی است."; return false; }
+
+        var normalizedChars = input.Trim()
+            .Select(c => c >= '۰' && c <= '۹' ? (char)(c - '۰' + '0') :
+                         c >= '٠' && c <= '٩' ? (char)(c - '٠' + '0') : c)
+            .Where(c => c != '/' && c != '-')
+            .ToArray();
+
+        string raw = new string(normalizedChars);
+
+        if (raw.Length != 8 || !long.TryParse(raw, out periodDate))
+        {
+            error = "ماه باید دقیقاً ۸ رقم عدد باشد. مثال: 14030700"; return false;
+        }
+
+        int year = (int)(periodDate / 10000);
+        int month = (int)((periodDate / 100) % 100);
+        int day = (int)(periodDate % 100);
+
+        if (year < 1300 || year > 1499) { error = "سال دوره نامعتبر است."; return false; }
+        if (month < 1 || month > 12) { error = "ماه دوره باید بین 01 تا 12 باشد."; return false; }
+        if (day != 0) { error = "برای دوره حقوق، دو رقم آخر باید 00 باشد."; return false; }
+
+        return true;
+    }
 }
