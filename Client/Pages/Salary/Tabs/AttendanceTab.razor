@@ -320,7 +320,9 @@
                             </div>
 
                             <div style="display:flex; justify-content:space-between; align-items:center; margin-top: auto; padding-top: 12px; border-top: 1px dashed var(--p2-border-light);">
-                                <button class="btn-ghost-pay2 p2-text-danger p2-btn-sm"
+                                <button class="btn-ghost-pay2 p2-btn-sm @(p.STATUS >= 3 ? "p2-text-light" : "p2-text-danger")"
+                                        style="@(p.STATUS >= 3 ? "cursor: not-allowed; opacity: 0.6;" : "")"
+                                        title="@(p.STATUS >= 3 ? "دوره محاسبه شده و قابل حذف نیست" : "حذف دوره")"
                                         @onclick="() => DeletePeriodConfirm(p.PERIOD_DATE)"
                                         disabled="@(p.STATUS >= 3)">
                                     <i class="bi bi-trash"></i> حذف
@@ -366,7 +368,11 @@
                                             <button class="btn-primary-pay2 p2-btn-sm" @onclick="() => EnterPeriod(p.PERIOD_DATE)">
                                                 ورود به لیست کارکرد
                                             </button>
-                                            <button class="btn-ghost-pay2 p2-text-danger p2-btn-sm" @onclick="() => DeletePeriodConfirm(p.PERIOD_DATE)" disabled="@(p.STATUS >= 3)">
+                                            <button class="btn-ghost-pay2 p2-btn-sm @(p.STATUS >= 3 ? "p2-text-light" : "p2-text-danger")"
+                                                    style="@(p.STATUS >= 3 ? "cursor: not-allowed; opacity: 0.6;" : "")"
+                                                    title="@(p.STATUS >= 3 ? "دوره محاسبه شده و قابل حذف نیست" : "حذف دوره")"
+                                                    @onclick="() => DeletePeriodConfirm(p.PERIOD_DATE)"
+                                                    disabled="@(p.STATUS >= 3)">
                                                 حذف
                                             </button>
                                         </td>
