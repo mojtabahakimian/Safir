@@ -285,9 +285,9 @@
 
         @if (IsLoading)
         {
-            <div style="display:flex; justify-content:center; align-items:center; height:300px; flex-direction:column; gap:15px;">
+            <div class="p2-loading-deferred">
                 <span class="p2-spinner" style="width:40px; height:40px; border-color:var(--p2-primary); border-top-color:transparent;"></span>
-                <span style="font-size:14px; font-weight:600; color:var(--p2-text-muted);">در حال بارگذاری لیست دوره‌ها...</span>
+                <span style="font-size:14px; font-weight:600; color:var(--p2-text-muted); margin-top:14px;">در حال بارگذاری لیست دوره‌ها...</span>
             </div>
         }
         else if (!PeriodOptions.Any())
@@ -307,82 +307,84 @@
         }
         else
         {
-            if (!IsListView)
-            {
-                <!-- نمایش کارتی (Card View) -->
-                <div class="period-card-list">
-                    @foreach (var p in FilteredPeriodOptions)
-                    {
-                        <div class="period-card-item">
-                            <div style="display:flex; justify-content:space-between; align-items:flex-start;">
-                                <span style="font-size: 18px; font-weight: 800; color: var(--p2-text-main);">@p.PERIOD_TITLE</span>
-                                <span class="p2-badge @(p.STATUS == 1 ? "p2-badge-warning" : (p.STATUS == 2 ? "p2-badge-success" : "p2-badge-primary"))">@p.StatusText</span>
-                            </div>
+            <div class="p2-fade-content">
+                @if (!IsListView)
+                {
+                    <!-- نمایش کارتی (Card View) -->
+                    <div class="period-card-list">
+                        @foreach (var p in FilteredPeriodOptions)
+                        {
+                            <div class="period-card-item">
+                                <div style="display:flex; justify-content:space-between; align-items:flex-start;">
+                                    <span style="font-size: 18px; font-weight: 800; color: var(--p2-text-main);">@p.PERIOD_TITLE</span>
+                                    <span class="p2-badge @(p.STATUS == 1 ? "p2-badge-warning" : (p.STATUS == 2 ? "p2-badge-success" : "p2-badge-primary"))">@p.StatusText</span>
+                                </div>
 
-                            <div style="display:flex; justify-content:space-between; align-items:center; margin-top: auto; padding-top: 12px; border-top: 1px dashed var(--p2-border-light);">
-                                <button class="btn-ghost-pay2 p2-btn-sm @(p.STATUS >= 3 ? "p2-text-light" : "p2-text-danger")"
-                                        style="@(p.STATUS >= 3 ? "cursor: not-allowed; opacity: 0.6;" : "")"
-                                        title="@(p.STATUS >= 3 ? "دوره محاسبه شده و قابل حذف نیست" : "حذف دوره")"
-                                        @onclick="() => DeletePeriodConfirm(p.PERIOD_DATE)"
-                                        disabled="@(p.STATUS >= 3)">
-                                    <i class="bi bi-trash"></i> حذف
-                                </button>
+                                <div style="display:flex; justify-content:space-between; align-items:center; margin-top: auto; padding-top: 12px; border-top: 1px dashed var(--p2-border-light);">
+                                    <button class="btn-ghost-pay2 p2-btn-sm @(p.STATUS >= 3 ? "p2-text-light" : "p2-text-danger")"
+                                            style="@(p.STATUS >= 3 ? "cursor: not-allowed; opacity: 0.6;" : "")"
+                                            title="@(p.STATUS >= 3 ? "دوره محاسبه شده و قابل حذف نیست" : "حذف دوره")"
+                                            @onclick="() => DeletePeriodConfirm(p.PERIOD_DATE)"
+                                            disabled="@(p.STATUS >= 3)">
+                                        <i class="bi bi-trash"></i> حذف
+                                    </button>
 
-                                <button class="btn-primary-pay2 p2-btn-sm"
-                                        @onclick="() => EnterPeriod(p.PERIOD_DATE)"
-                                        style="border-radius: 20px; padding: 6px 16px;">
-                                    ورود به لیست <i class="bi bi-arrow-left-short" style="margin-right:4px;"></i>
-                                </button>
+                                    <button class="btn-primary-pay2 p2-btn-sm"
+                                            @onclick="() => EnterPeriod(p.PERIOD_DATE)"
+                                            style="border-radius: 20px; padding: 6px 16px;">
+                                        ورود به لیست <i class="bi bi-arrow-left-short" style="margin-right:4px;"></i>
+                                    </button>
+                                </div>
                             </div>
-                        </div>
-                    }
-                </div>
-            }
-            else
-            {
-                <!-- نمایش لیستی (List/Table View) -->
-                <div class="card-custom" style="padding: 0; overflow: hidden; margin-top: 16px;">
-                    <div class="pay2-table-responsive" style="margin: 0; border: none;">
-                        <table class="p2-table">
-                            <thead style="background: var(--p2-bg-main);">
-                                <tr>
-                                    <th>عنوان دوره</th>
-                                    <th style="text-align:center;">وضعیت</th>
-                                    <th style="text-align:center;">عملیات</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                @foreach (var p in FilteredPeriodOptions)
-                                {
-                                    <tr>
-                                        <td>
-                                            <span style="font-weight:800; font-size: 14px; color: var(--p2-primary-dark);">@p.PERIOD_TITLE</span>
-                                            <div class="p2-text-mono p2-text-muted" style="font-size: 11px;">تاریخ سیستمی: @p.PERIOD_DATE</div>
-                                        </td>
-                                        <td style="text-align:center;">
-                                            <span class="p2-badge @(p.STATUS == 1 ? "p2-badge-warning" : (p.STATUS == 2 ? "p2-badge-success" : "p2-badge-primary"))">
-                                                @p.StatusText
-                                            </span>
-                                        </td>
-                                        <td style="text-align:center; min-width: 250px;">
-                                            <button class="btn-primary-pay2 p2-btn-sm" @onclick="() => EnterPeriod(p.PERIOD_DATE)">
-                                                ورود به لیست کارکرد
-                                            </button>
-                                            <button class="btn-ghost-pay2 p2-btn-sm @(p.STATUS >= 3 ? "p2-text-light" : "p2-text-danger")"
-                                                    style="@(p.STATUS >= 3 ? "cursor: not-allowed; opacity: 0.6;" : "")"
-                                                    title="@(p.STATUS >= 3 ? "دوره محاسبه شده و قابل حذف نیست" : "حذف دوره")"
-                                                    @onclick="() => DeletePeriodConfirm(p.PERIOD_DATE)"
-                                                    disabled="@(p.STATUS >= 3)">
-                                                حذف
-                                            </button>
-                                        </td>
-                                    </tr>
-                                }
-                            </tbody>
-                        </table>
+                        }
                     </div>
-                </div>
-            }
+                }
+                else
+                {
+                    <!-- نمایش لیستی (List/Table View) -->
+                    <div class="card-custom" style="padding: 0; overflow: hidden; margin-top: 16px;">
+                        <div class="pay2-table-responsive" style="margin: 0; border: none;">
+                            <table class="p2-table">
+                                <thead style="background: var(--p2-bg-main);">
+                                    <tr>
+                                        <th>عنوان دوره</th>
+                                        <th style="text-align:center;">وضعیت</th>
+                                        <th style="text-align:center;">عملیات</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var p in FilteredPeriodOptions)
+                                    {
+                                        <tr>
+                                            <td>
+                                                <span style="font-weight:800; font-size: 14px; color: var(--p2-primary-dark);">@p.PERIOD_TITLE</span>
+                                                <div class="p2-text-mono p2-text-muted" style="font-size: 11px;">تاریخ سیستمی: @p.PERIOD_DATE</div>
+                                            </td>
+                                            <td style="text-align:center;">
+                                                <span class="p2-badge @(p.STATUS == 1 ? "p2-badge-warning" : (p.STATUS == 2 ? "p2-badge-success" : "p2-badge-primary"))">
+                                                    @p.StatusText
+                                                </span>
+                                            </td>
+                                            <td style="text-align:center; min-width: 250px;">
+                                                <button class="btn-primary-pay2 p2-btn-sm" @onclick="() => EnterPeriod(p.PERIOD_DATE)">
+                                                    ورود به لیست کارکرد
+                                                </button>
+                                                <button class="btn-ghost-pay2 p2-btn-sm @(p.STATUS >= 3 ? "p2-text-light" : "p2-text-danger")"
+                                                        style="@(p.STATUS >= 3 ? "cursor: not-allowed; opacity: 0.6;" : "")"
+                                                        title="@(p.STATUS >= 3 ? "دوره محاسبه شده و قابل حذف نیست" : "حذف دوره")"
+                                                        @onclick="() => DeletePeriodConfirm(p.PERIOD_DATE)"
+                                                        disabled="@(p.STATUS >= 3)">
+                                                    حذف
+                                                </button>
+                                            </td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                }
+            </div>
         }
     }
     else
@@ -453,14 +455,14 @@
 
         @if (IsLoading)
         {
-            <div style="display:flex; justify-content:center; align-items:center; height:400px; flex-direction:column; gap:15px;">
+            <div class="p2-loading-deferred" style="height: 400px;">
                 <span class="p2-spinner" style="width:40px; height:40px; border-color:var(--p2-primary); border-top-color:transparent;"></span>
-                <span style="font-size:14px; font-weight:600; color:var(--p2-text-muted);">در حال دریافت و پردازش لیست کارکرد...</span>
+                <span style="font-size:14px; font-weight:600; color:var(--p2-text-muted); margin-top:14px;">در حال دریافت و پردازش لیست کارکرد...</span>
             </div>
-        }
+        }      
         else if (PeriodData != null)
         {
-            <div class="card-custom" style="padding: 0; border: none; box-shadow: none;">
+            <div class="card-custom p2-fade-content" style="padding: 0; border: none; box-shadow: none;">
                 <div class="p2-excel-wrapper">
                     <table class="p2-excel-table">
                         <colgroup>

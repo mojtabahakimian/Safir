@@ -2176,3 +2176,45 @@
         grid-template-columns: 1fr !important;
     }
 }
+
+/* ========================================================
+   انیمیشن‌های لودینگ هوشمند و Fade In
+   ======================================================== */
+
+/* تاخیر در نمایش اسپینر (جلوگیری از پرش در لودهای زیر 250 میلی‌ثانیه) */
+.p2-loading-deferred {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 300px;
+    width: 100%;
+    opacity: 0; /* در ابتدا کاملا نامرئی */
+    /* بعد از 250 میلی ثانیه تاخیر، در عرض 300 میلی ثانیه ظاهر میشود */
+    animation: pay2DeferredShow 0.3s ease forwards 0.25s;
+}
+
+@keyframes pay2DeferredShow {
+    to {
+        opacity: 1;
+    }
+}
+
+/* انیمیشن نرم برای ورود محتوای جدید */
+.p2-fade-content {
+    width: 100%;
+    opacity: 0;
+    animation: pay2ContentFadeIn 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes pay2ContentFadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(8px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
