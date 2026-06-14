@@ -224,8 +224,9 @@ namespace Safir.Server.Controllers
 
             const string sql = @"
      SELECT 
+            PER_ID, -- 🚀 فیلد PER_ID اضافه شد
             (PERIOD_DATE / 100) * 100 AS PERIOD_DATE,
-            STATUS, -- 🚀 فیلد وضعیت برای نمایش در لیست اضافه شد
+            STATUS,
             CAST(PERIOD_DATE / 10000 AS NVARCHAR(4)) 
             + N' - ' +
             RIGHT(N'00' + CAST((PERIOD_DATE / 100) % 100 AS NVARCHAR(2)), 2)

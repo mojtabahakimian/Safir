@@ -2,6 +2,7 @@
 {
     public class Pay2PeriodLookupDto
     {
+        public int PER_ID { get; set; }
         public long PERIOD_DATE { get; set; }
         public string PERIOD_TITLE { get; set; } = string.Empty;
         public byte STATUS { get; set; }

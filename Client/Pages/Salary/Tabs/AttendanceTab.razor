@@ -995,14 +995,16 @@
             IsLoading = true;
             try
             {
-                // برای حذف نیاز به PER_ID داریم
+                // 🚀 بهینه‌سازی عالی: دریافت PER_ID از حافظه کلاینت به جای ریکوئست اضافی به سرور
                 var target = PeriodOptions.FirstOrDefault(x => x.PERIOD_DATE == pDate);
-                // چون در DTO Lookup ما PER_ID را نداریم اما سرور با PER_ID پاک میکنه
-                // 🚀 نکته: برای راحتی، می‌توانید متد DeletePeriod را در سرور طوری بنویسید که با WS_ID و PERIOD_DATE هم پاک کند
-                // یا PER_ID را به LookupDTO اضافه کنید.
-                // با فرض اینکه سرور با PER_ID پاک میکند: باید PER_ID را بگیریم:
-                var pData = await AttApi.InitPeriodAsync(SelectedWsId, pDate);
-                await AttApi.DeletePeriodAsync(pData.Period.PER_ID);
+
+                if (target == null || target.PER_ID <= 0)
+                {
+                    Snackbar.Add("خطا در یافتن شناسه دوره در حافظه.", MudBlazor.Severity.Error);
+                    return;
+                }
+
+                await AttApi.DeletePeriodAsync(target.PER_ID);
 
                 Snackbar.Add("دوره با موفقیت حذف شد.", MudBlazor.Severity.Success);
                 await LoadPeriodOptionsAsync(); // رفرش لیست
