@@ -155,16 +155,17 @@ namespace Safir.Server.Controllers
                 {
                     int currentDecId = decree.DEC_ID;
 
-                    // 🚀 گارد امنیتی سطح ۱: آیا این حکم با فیش حقوقی گره خورده است؟
+                    // 🚀 گارد امنیتی سطح ۱: بررسی تداخل با فیش‌های قطعی‌شده
                     if (currentDecId > 0)
                     {
                         string checkUsageSql = @"
-                            SELECT COUNT(1) 
-                            FROM PAY2_RUN R
-                            INNER JOIN PAY2_PERIOD P ON R.PER_ID = P.PER_ID
-                            WHERE R.STATUS >= 2 
-                              AND P.PERIOD_DATE >= (SELECT EFF_FROM FROM PAY2_DECREE WHERE DEC_ID = @DEC_ID)
-                              AND R.RUN_ID IN (SELECT RUN_ID FROM PAY2_RUN_LINE WHERE EMP_ID = @EMP_ID)";
+                    SELECT COUNT(1) 
+                    FROM PAY2_RUN R
+                    INNER JOIN PAY2_PERIOD P ON R.PER_ID = P.PER_ID
+                    WHERE R.STATUS >= 2 
+                      -- 🛠 رفع باگ مقایسه تاریخ: تبدیل هر دو تاریخ به YYYYMM
+                      AND (P.PERIOD_DATE / 100) >= (SELECT (EFF_FROM / 100) FROM PAY2_DECREE WHERE DEC_ID = @DEC_ID)
+                      AND R.RUN_ID IN (SELECT RUN_ID FROM PAY2_RUN_LINE WHERE EMP_ID = @EMP_ID)";
 
                         int usedInFinalRun = await conn.QuerySingleAsync<int>(checkUsageSql, new { DEC_ID = currentDecId, EMP_ID = decree.EMP_ID }, tran);
 
@@ -176,17 +177,17 @@ namespace Safir.Server.Controllers
                     {
                         // بستن هوشمند تاریخ حکم قبلی
                         string closePrevSql = @"
-                            UPDATE PAY2_DECREE 
-                            SET EFF_TO = @PrevTo 
-                            WHERE DEC_ID = (SELECT TOP 1 DEC_ID FROM PAY2_DECREE WHERE EMP_ID = @EmpId AND IS_CONFIRMED = 1 AND EFF_TO IS NULL AND EFF_FROM < @NewFrom ORDER BY EFF_FROM DESC)";
+                    UPDATE PAY2_DECREE 
+                    SET EFF_TO = @PrevTo 
+                    WHERE DEC_ID = (SELECT TOP 1 DEC_ID FROM PAY2_DECREE WHERE EMP_ID = @EmpId AND IS_CONFIRMED = 1 AND EFF_TO IS NULL AND EFF_FROM < @NewFrom ORDER BY EFF_FROM DESC)";
 
                         long prevTo = DecrementShamsiDate(decree.EFF_FROM);
                         await conn.ExecuteAsync(closePrevSql, new { PrevTo = prevTo, EmpId = decree.EMP_ID, NewFrom = decree.EFF_FROM }, tran);
 
                         const string insertSql = @"
-                            INSERT INTO PAY2_DECREE (EMP_ID, WS_ID, ISSUED_DATE, EFF_FROM, EFF_TO, EDU_LEVEL, MARITAL, IS_MANAGER, TMPL_ID, IS_CONFIRMED, CREATED_AT, CREATED_BY, NOTES)
-                            OUTPUT INSERTED.DEC_ID
-                            VALUES (@EMP_ID, @WS_ID, @ISSUED_DATE, @EFF_FROM, @EFF_TO, @EDU_LEVEL, @MARITAL, @IS_MANAGER, @TMPL_ID, @IS_CONFIRMED, GETDATE(), @User, @NOTES)";
+                    INSERT INTO PAY2_DECREE (EMP_ID, WS_ID, ISSUED_DATE, EFF_FROM, EFF_TO, EDU_LEVEL, MARITAL, IS_MANAGER, TMPL_ID, IS_CONFIRMED, CREATED_AT, CREATED_BY, NOTES)
+                    OUTPUT INSERTED.DEC_ID
+                    VALUES (@EMP_ID, @WS_ID, @ISSUED_DATE, @EFF_FROM, @EFF_TO, @EDU_LEVEL, @MARITAL, @IS_MANAGER, @TMPL_ID, @IS_CONFIRMED, GETDATE(), @User, @NOTES)";
 
                         var p = new DynamicParameters(decree);
                         p.Add("User", userCod);
@@ -196,18 +197,19 @@ namespace Safir.Server.Controllers
                         if (decree.TMPL_ID.HasValue && decree.TMPL_ID > 0)
                         {
                             string sqlLines = @"
-                                INSERT INTO PAY2_DECREE_LINE (DEC_ID, ITEM_ID, AMOUNT, INS_OV, TAX_OV, BASIS_OV)
-                                SELECT @NewDecId, ITEM_ID, DEF_AMOUNT, INS_OV, TAX_OV, BASIS_OV
-                                FROM PAY2_ITEM_TMPL_LINE WHERE TMPL_ID = @TmplId";
+                        INSERT INTO PAY2_DECREE_LINE (DEC_ID, ITEM_ID, AMOUNT, INS_OV, TAX_OV, BASIS_OV)
+                        SELECT @NewDecId, ITEM_ID, DEF_AMOUNT, INS_OV, TAX_OV, BASIS_OV
+                        FROM PAY2_ITEM_TMPL_LINE WHERE TMPL_ID = @TmplId";
                             await conn.ExecuteAsync(sqlLines, new { NewDecId = currentDecId, TmplId = decree.TMPL_ID.Value }, tran);
                         }
                     }
                     else // ویرایش
                     {
-                        // 🚀 حفاظت بک‌اند: اگر حکم قبلاً تایید شده است، فقط یادداشت قابل تغییر است
                         bool wasConfirmed = await conn.QuerySingleAsync<bool>("SELECT IS_CONFIRMED FROM PAY2_DECREE WHERE DEC_ID = @DEC_ID", new { decree.DEC_ID }, tran);
 
-                        if (wasConfirmed)
+                        // 🛠 رفع بن‌بست منطقی: فقط زمانی آپدیت را به NOTES محدود کن که کاربر هنوز می‌خواهد حکم تایید شده بماند.
+                        // اگر کاربر تیک تایید را در UI برداشته باشد (decree.IS_CONFIRMED == false)، باید اجازه دهیم کل حکم از قفل خارج شود.
+                        if (wasConfirmed && decree.IS_CONFIRMED)
                         {
                             const string updateNotesOnlySql = "UPDATE PAY2_DECREE SET NOTES=@NOTES WHERE DEC_ID=@DEC_ID";
                             await conn.ExecuteAsync(updateNotesOnlySql, new { decree.NOTES, decree.DEC_ID }, tran);
@@ -215,16 +217,16 @@ namespace Safir.Server.Controllers
                         else
                         {
                             const string updateSql = @"
-                                UPDATE PAY2_DECREE 
-                                SET ISSUED_DATE=@ISSUED_DATE, EFF_FROM=@EFF_FROM, EFF_TO=@EFF_TO, 
-                                    EDU_LEVEL=@EDU_LEVEL, MARITAL=@MARITAL, IS_MANAGER=@IS_MANAGER, 
-                                    IS_CONFIRMED=@IS_CONFIRMED, NOTES=@NOTES
-                                WHERE DEC_ID=@DEC_ID";
+                        UPDATE PAY2_DECREE 
+                        SET ISSUED_DATE=@ISSUED_DATE, EFF_FROM=@EFF_FROM, EFF_TO=@EFF_TO, 
+                            EDU_LEVEL=@EDU_LEVEL, MARITAL=@MARITAL, IS_MANAGER=@IS_MANAGER, 
+                            IS_CONFIRMED=@IS_CONFIRMED, NOTES=@NOTES
+                        WHERE DEC_ID=@DEC_ID";
                             await conn.ExecuteAsync(updateSql, decree, tran);
                         }
                     }
 
-                    return currentDecId; // اکنون با اطمینان کامل مقدار صحیح برمی‌گردد
+                    return currentDecId;
                 });
 
                 return Ok(decId);
