@@ -250,27 +250,63 @@
     }
 
     // اعتبارسنجی فرمت «ساعت:دقیقه» (مثال 32:35) یا عدد اعشاری (مثال 32.5)
+    // 🚀 اعتبارسنجی و تبدیل هوشمند UI برای فرمت «ساعت:دقیقه»
     private static string? NormalizeHoursMinutes(string value)
     {
-        var inv = CultureInfo.InvariantCulture;
+        if (string.IsNullOrWhiteSpace(value)) return null;
 
+        var inv = CultureInfo.InvariantCulture;
+        value = value.Replace("/", ".");
+
+        // حالت اول: کاربر خودش ":" گذاشته است
         if (value.Contains(':'))
         {
             var parts = value.Split(':');
-            if (parts.Length != 2) return null;
-
-            if (!int.TryParse(parts[0], NumberStyles.None, inv, out var h)) return null;
-
-            // «32:» را معادل «32» در نظر می‌گیریم
-            if (string.IsNullOrEmpty(parts[1])) return h.ToString(inv);
-
-            if (!int.TryParse(parts[1], NumberStyles.None, inv, out var m)) return null;
-            if (m > 59) return null;
+            if (!int.TryParse(parts[0], out var h)) return null;
+            if (string.IsNullOrEmpty(parts[1])) return $"{h}:00";
+            if (!int.TryParse(parts[1], out var m)) return null;
+            if (m > 59) m = 59;
             return $"{h}:{m:D2}";
         }
 
-        if (decimal.TryParse(value, NumberStyles.Number, inv, out var dec))
-            return TruncateDecimal(dec, 2).ToString(inv);
+        // حالت دوم: کاربر از "." استفاده کرده (مثال: 12.5) -> تبدیل ظاهری به 12:30
+        if (value.Contains('.'))
+        {
+            if (decimal.TryParse(value, NumberStyles.Number, inv, out var dec))
+            {
+                int h = (int)Math.Truncate(dec);
+                int m = (int)Math.Round((dec - h) * 60m, MidpointRounding.AwayFromZero);
+                if (m >= 60) { h++; m -= 60; }
+                return $"{h}:{m:D2}";
+            }
+            return null;
+        }
+
+        // حالت سوم: جادوی Numpad (ورود عدد خام بدون هیچ علامتی)
+        if (int.TryParse(value, out int intVal))
+        {
+            if (value.Length <= 2)
+            {
+                // کاربر زده 5 -> تبدیل میشه به 5:00
+                return $"{intVal}:00";
+            }
+            else if (value.Length == 3)
+            {
+                // کاربر زده 130 -> تبدیل میشه به 1:30
+                int h = int.Parse(value.Substring(0, 1));
+                int m = int.Parse(value.Substring(1, 2));
+                if (m > 59) m = 59;
+                return $"{h}:{m:D2}";
+            }
+            else if (value.Length >= 4)
+            {
+                // کاربر زده 1235 -> تبدیل میشه به 12:35
+                int h = int.Parse(value.Substring(0, 2));
+                int m = int.Parse(value.Substring(2, 2));
+                if (m > 59) m = 59;
+                return $"{h}:{m:D2}";
+            }
+        }
 
         return null;
     }

@@ -505,9 +505,9 @@
                                 <th class="bg-group-1">روز خدمات<div class="p2-col-resizer" onmousedown="startP2Resize(event, this, 5, false)"></div></th>
                                 <th class="bg-group-1">روز فروش<div class="p2-col-resizer" onmousedown="startP2Resize(event, this, 6, false)"></div></th>
 
-                                <th class="bg-group-2" style="color:#d97706;">اضافه‌کار عادی<div class="p2-col-resizer" onmousedown="startP2Resize(event, this, 7, false)"></div></th>
-                                <th class="bg-group-2" style="color:#d97706;">اضافه‌کار تعطیل<div class="p2-col-resizer" onmousedown="startP2Resize(event, this, 8, false)"></div></th>
-                                <th class="bg-group-2" style="color:#d97706;">اضافه‌کار اداری<div class="p2-col-resizer" onmousedown="startP2Resize(event, this, 9, false)"></div></th>
+                                <th class="bg-group-2" style="color:#d97706; line-height: 1.2;">اضافه‌کار عادی<br /><span style="font-size:10px; font-weight:normal; opacity:0.8;">(ساعت:دقیقه)</span><div class="p2-col-resizer" onmousedown="startP2Resize(event, this, 7, false)"></div></th>
+                                <th class="bg-group-2" style="color:#d97706; line-height: 1.2;">اضافه‌کار تعطیل<br /><span style="font-size:10px; font-weight:normal; opacity:0.8;">(ساعت:دقیقه)</span><div class="p2-col-resizer" onmousedown="startP2Resize(event, this, 8, false)"></div></th>
+                                <th class="bg-group-2" style="color:#d97706; line-height: 1.2;">اضافه‌کار اداری<br /><span style="font-size:10px; font-weight:normal; opacity:0.8;">(ساعت:دقیقه)</span><div class="p2-col-resizer" onmousedown="startP2Resize(event, this, 9, false)"></div></th>
 
                                 <th class="bg-group-3">روز مرخصی<div class="p2-col-resizer" onmousedown="startP2Resize(event, this, 10, false)"></div></th>
                                 <th class="bg-group-3">روز غیبت<div class="p2-col-resizer" onmousedown="startP2Resize(event, this, 11, false)"></div></th>
@@ -542,9 +542,9 @@
                                     <td><Safir.Client.Pages.Salary.Tabs.Pay2NumericInput @bind-Value="item.DAYS_KHADAMAT_STR" CssClass="p2-grid-input" Disabled="@(item.LOCKED || PeriodData.Period.IsReadOnly)" /></td>
                                     <td><Safir.Client.Pages.Salary.Tabs.Pay2NumericInput @bind-Value="item.DAYS_FOROSH_STR" CssClass="p2-grid-input" Disabled="@(item.LOCKED || PeriodData.Period.IsReadOnly)" /></td>
 
-                                    <td><Safir.Client.Pages.Salary.Tabs.Pay2NumericInput @bind-Value="item.OT_NORMAL_H_STR" InputMode="Pay2NumericInput.NumericInputMode.HoursMinutes" ToolTip="ساعت:دقیقه (مثال 32:35) یا عدد اعشاری (مثال 32.5)" CssClass="p2-grid-input" Disabled="@(item.LOCKED || PeriodData.Period.IsReadOnly)" /></td>
-                                    <td><Safir.Client.Pages.Salary.Tabs.Pay2NumericInput @bind-Value="item.OT_HOLIDAY_H_STR" InputMode="Pay2NumericInput.NumericInputMode.HoursMinutes" ToolTip="ساعت:دقیقه (مثال 32:35) یا عدد اعشاری (مثال 32.5)" CssClass="p2-grid-input" Disabled="@(item.LOCKED || PeriodData.Period.IsReadOnly)" /></td>
-                                    <td><Safir.Client.Pages.Salary.Tabs.Pay2NumericInput @bind-Value="item.OT_ADMIN_H_STR" InputMode="Pay2NumericInput.NumericInputMode.HoursMinutes" ToolTip="ساعت:دقیقه (مثال 32:35) یا عدد اعشاری (مثال 32.5)" CssClass="p2-grid-input" Disabled="@(item.LOCKED || PeriodData.Period.IsReadOnly)" /></td>
+                                    <td><Safir.Client.Pages.Salary.Tabs.Pay2NumericInput @bind-Value="item.OT_NORMAL_H_STR" Placeholder="00:00" InputMode="Pay2NumericInput.NumericInputMode.HoursMinutes" ToolTip="ساعت:دقیقه (مثال 32:35) یا عدد اعشاری (مثال 32.5)" CssClass="p2-grid-input" Disabled="@(item.LOCKED || PeriodData.Period.IsReadOnly)" /></td>
+                                    <td><Safir.Client.Pages.Salary.Tabs.Pay2NumericInput @bind-Value="item.OT_HOLIDAY_H_STR" Placeholder="00:00" InputMode="Pay2NumericInput.NumericInputMode.HoursMinutes" ToolTip="ساعت:دقیقه (مثال 32:35) یا عدد اعشاری (مثال 32.5)" CssClass="p2-grid-input" Disabled="@(item.LOCKED || PeriodData.Period.IsReadOnly)" /></td>
+                                    <td><Safir.Client.Pages.Salary.Tabs.Pay2NumericInput @bind-Value="item.OT_ADMIN_H_STR" Placeholder="00:00" InputMode="Pay2NumericInput.NumericInputMode.HoursMinutes" ToolTip="ساعت:دقیقه (مثال 32:35) یا عدد اعشاری (مثال 32.5)" CssClass="p2-grid-input" Disabled="@(item.LOCKED || PeriodData.Period.IsReadOnly)" /></td>
 
                                     <td><Safir.Client.Pages.Salary.Tabs.Pay2NumericInput @bind-Value="item.LEAVE_DAYS_STR" CssClass="p2-grid-input" Disabled="@(item.LOCKED || PeriodData.Period.IsReadOnly)" /></td>
                                     <td><Safir.Client.Pages.Salary.Tabs.Pay2NumericInput @bind-Value="item.ABSENT_DAYS_STR" CssClass="p2-grid-input" Disabled="@(item.LOCKED || PeriodData.Period.IsReadOnly)" /></td>
