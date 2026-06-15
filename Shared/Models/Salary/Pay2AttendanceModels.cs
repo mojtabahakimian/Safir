@@ -60,34 +60,76 @@ namespace Safir.Shared.Models.Salary
         public string OT_ADMIN_H_STR { get => FormatHours(OT_ADMIN_H); set { decimal v = ParseHours(value); if (OT_ADMIN_H != v) { OT_ADMIN_H = v; IsDirty = true; } } }
 
         // تبدیل «32:35» به 32.58 ساعت (دقیقه ÷ 60) و پذیرش ورودی اعشاری «32.5» یا «32/5»
+        // تبدیل هوشمند انواع ورودی (ساعت:دقیقه، اعشاری، و عدد خام Numpad) به عدد اعشاری برای دیتابیس
         public static decimal ParseHours(string? value)
         {
             if (string.IsNullOrWhiteSpace(value)) return 0m;
 
-            value = value.Trim();
+            value = value.Trim().Replace("/", ".");
 
+            // حالت اول: کاربر صریحاً از دو نقطه استفاده کرده است (مثال: 12:30)
             if (value.Contains(':'))
             {
                 var parts = value.Split(':');
-                _ = decimal.TryParse(parts[0], out decimal hours);
-                decimal minutes = 0m;
-                if (parts.Length > 1) _ = decimal.TryParse(parts[1], out minutes);
-                return hours + (minutes / 60m);
+                _ = decimal.TryParse(parts[0], out decimal h);
+                decimal m = 0m;
+                if (parts.Length > 1)
+                {
+                    _ = decimal.TryParse(parts[1], out m);
+                    if (m > 59) m = 59; // اصلاح خودکار دقیقه اشتباه به ۵۹
+                }
+                return h + (m / 60m);
             }
 
-            _ = decimal.TryParse(value.Replace("/", "."), System.Globalization.NumberStyles.Number,
-                System.Globalization.CultureInfo.InvariantCulture, out decimal v);
-            return v;
+            // حالت دوم: کاربر از ممیز یا نقطه استفاده کرده است (مثال: 12.5)
+            if (value.Contains('.'))
+            {
+                _ = decimal.TryParse(value, System.Globalization.NumberStyles.Number, System.Globalization.CultureInfo.InvariantCulture, out decimal v);
+                return v;
+            }
+
+            // حالت سوم 🚀 جادوی Numpad: کاربر فقط عدد خام تایپ کرده (مثال: 1230 یا 5)
+            if (int.TryParse(value, out int intVal))
+            {
+                if (value.Length <= 2)
+                {
+                    // مثال: 5 یا 12 -> یعنی ساعت رند
+                    return intVal;
+                }
+                else if (value.Length == 3)
+                {
+                    // مثال: 130 -> یعنی 1 ساعت و 30 دقیقه
+                    int h = int.Parse(value.Substring(0, 1));
+                    int m = int.Parse(value.Substring(1, 2));
+                    if (m > 59) m = 59;
+                    return h + (m / 60m);
+                }
+                else if (value.Length >= 4)
+                {
+                    // مثال: 1230 -> یعنی 12 ساعت و 30 دقیقه
+                    int h = int.Parse(value.Substring(0, 2));
+                    int m = int.Parse(value.Substring(2, 2));
+                    if (m > 59) m = 59;
+                    return h + (m / 60m);
+                }
+            }
+
+            return 0m;
         }
 
         // نمایش ساعت اعشاری به صورت «ساعت:دقیقه» — اعداد صحیح بدون تغییر نمایش داده می‌شوند
+        // نمایش ساعت اعشاری به صورت «ساعت:دقیقه»
         public static string FormatHours(decimal hours)
         {
-            if (hours == decimal.Truncate(hours)) return hours.ToString("0");
+            // 🚀 جادوی UX: اگر صفر است، رشته خالی برگردان تا Placeholder (00:00) ظاهر شود
+            if (hours == 0) return "";
 
             int h = (int)decimal.Truncate(hours);
             int m = (int)Math.Round((hours - h) * 60m, MidpointRounding.AwayFromZero);
+
             if (m >= 60) { h++; m -= 60; }
+
+            // 🚀 همیشه با فرمت دقیق نمایش بده (حتی برای اعداد صحیح مثل 12:00)
             return $"{h}:{m:D2}";
         }
 

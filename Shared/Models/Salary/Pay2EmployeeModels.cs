@@ -120,9 +120,8 @@
         public int? REFER_TO { get; set; }
         public byte STATUS { get; set; } = 1;
 
-        // نوع مرخصی ساعتی + سقف مجاز آن (۳ ساعت و ۲۰ دقیقه = ۲۰۰ دقیقه)
+        // نوع مرخصی ساعتی
         public const byte HOURLY_TYPE = 6;
-        public const int HOURLY_MAX_MINUTES = 200;
 
         // --- پراپرتی‌های محاسباتی و نمایشی ---
         public int TotalMinutes => (REQ_DAYS * 440) + (REQ_HOURS * 60) + REQ_MINUTES;
