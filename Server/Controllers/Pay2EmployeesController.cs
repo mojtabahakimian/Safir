@@ -1044,8 +1044,20 @@ namespace Safir.Server.Controllers
 
                 if (!string.IsNullOrWhiteSpace(search))
                 {
-                    whereClause = "WHERE JOB_CODE LIKE @Search OR JOB_NAME LIKE @Search";
-                    parameters.Add("Search", $"%{search.Trim()}%");
+                    // ۱. استفاده از متد قدرتمند شما برای پاکسازی کامل کاراکترهای نامرئی، ی/ک و فاصله‌های اضافه
+                    string cleanSearch = Safir.Shared.Utility.CL_METHODS.ToStandardSearchText(search);
+
+                    // ۲. ترفند طلایی: فاصله‌های استاندارد شده را به % تبدیل می‌کنیم
+                    // اگر کاربر بنویسد "مهندس مکانیک" تبدیل می‌شود به "%مهندس%مکانیک%"
+                    string searchPattern = "%" + cleanSearch.Replace(" ", "%") + "%";
+
+                    // ۳. در سمت SQL، حروف عربیِ داخل دیتابیس را در لحظه‌ی جستجو به فارسی تبدیل می‌کنیم
+                    // این کار باعث می‌شود دیتای کثیفِ دیتابیس، با متنِ تمیزِ کاربر تطابق پیدا کند
+                    whereClause = @"
+                WHERE JOB_CODE LIKE @Search 
+                OR REPLACE(REPLACE(JOB_NAME, N'ي', N'ی'), N'ك', N'ک') LIKE @Search";
+
+                    parameters.Add("Search", searchPattern);
                 }
 
                 string countSql = $"SELECT COUNT(1) FROM PAY2_JOB {whereClause}";
@@ -1072,7 +1084,10 @@ namespace Safir.Server.Controllers
 
                 return Ok(result);
             }
-            catch (Exception ex) { return StatusCode(500, ex.Message); }
+            catch (Exception ex)
+            {
+                return StatusCode(500, ex.Message);
+            }
         }
 
         [HttpPost("jobs/save")]
