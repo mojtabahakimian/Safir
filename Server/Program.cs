@@ -16,6 +16,8 @@ builder.Services.AddControllersWithViews();
 builder.Services.AddRazorPages();
 
 #region MineServer
+builder.Services.AddMemoryCache();
+
 // --- Add Custom Services ---
 builder.Services.AddScoped<IConnectionStringProvider, ConnectionStringProvider>();
 builder.Services.AddScoped<IDatabaseService, DatabaseService>();
@@ -112,9 +114,9 @@ using (var scope = app.Services.CreateScope())
             "002_CreateBugReportsTable.sql",
             "003_AlterBugReportsAddMissingColumns.sql",
             "004_AlterBugReportsAddUserNote.sql",
-            "005_CreateBugReportCommentsTable.sql",
-            "006_Pay2_HourlyCalcBasis.sql",
-            "007_Pay2_HourlyLeaveType.sql",
+            //"005_CreateBugReportCommentsTable.sql",
+            //"006_Pay2_HourlyCalcBasis.sql",
+            //"007_Pay2_HourlyLeaveType.sql",
         };
 
         foreach (var scriptName in scriptsToRun)

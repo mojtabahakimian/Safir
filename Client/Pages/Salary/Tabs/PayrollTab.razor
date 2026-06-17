@@ -274,45 +274,80 @@
                             <tr>
                                 <th>پرسنل</th>
                                 <th style="text-align:center;">کارکرد</th>
-                                <th style="text-align:left;">ناخالص حقوق</th>
+                                
+                                <!-- 🚀 رندر پویای ستون‌های آیتم‌های حقوقی -->
+                                @if (RunData != null && RunData.Columns != null)
+                                {
+                                    foreach (var col in RunData.Columns)
+                                    {
+                                        <th style="text-align:left; color:#2563eb;">@col.ITEM_NAME</th>
+                                    }
+                                }
+
+                                <th style="text-align:left; border-right: 2px solid var(--p2-border-light);">ناخالص حقوق</th>
                                 <th style="text-align:left;">مبنای بیمه</th>
                                 <th style="text-align:left;">بیمه کارگر</th>
                                 <th style="text-align:left;">مالیات</th>
-                                <th style="text-align:left; color:#ef4444;">مساعده/وام/کسورات</th>
-                                <th style="text-align:left; color:#059669; font-size:14px;">خالص پرداختی</th>
+                                <th style="text-align:left; color:#ef4444;">مساعده/وام/سایر کسورات</th>
+                                <th style="text-align:left; color:#059669; font-size:14px; border-right: 2px solid var(--p2-border-light);">خالص پرداختی</th>
                             </tr>
                         </thead>
                         <tbody>
-                            @if (!RunLines.Any())
+                            @if (RunData == null || !RunData.Lines.Any())
                             {
-                                <tr><td colspan="8" style="text-align:center; padding:30px;">رکوردی یافت نشد.</td></tr>
+                                <tr><td colspan="100%" style="text-align:center; padding:30px;">رکوردی یافت نشد.</td></tr>
                             }
-                            <Virtualize Items="RunLines" Context="item" OverscanCount="10">
-                                <tr @key="item.EMP_ID">
-                                    <td>
-                                        <div style="font-weight:700;">@item.FULL_NAME</div>
-                                        <div class="p2-text-muted p2-text-mono" style="font-size:11px;">@item.EMP_CODE</div>
-                                    </td>
-                                    <td class="p2-text-mono" style="text-align:center;">@item.WORK_DAYS.ToString("0.##")</td>
-                                    <td class="p2-text-mono" style="text-align:left; font-weight:bold;">@item.GROSS_PAY.ToString("N0")</td>
-                                    <td class="p2-text-mono p2-text-muted" style="text-align:left;">@item.INS_BASE.ToString("N0")</td>
-                                    <td class="p2-text-mono" style="text-align:left;">@item.INS_WORKER.ToString("N0")</td>
-                                    <td class="p2-text-mono" style="text-align:left;">@item.TAX_AMOUNT.ToString("N0")</td>
-                                    <td class="p2-text-mono p2-text-danger" style="text-align:left;">@item.TOTAL_DED.ToString("N0")</td>
-                                    <td class="p2-text-mono p2-text-success" style="text-align:left; font-weight:900; font-size:15px; background: #f0fdf4;">@item.NET_PAY.ToString("N0")</td>
-                                </tr>
-                            </Virtualize>
+                            else
+                            {
+                                <Virtualize Items="RunData.Lines" Context="item" OverscanCount="10">
+                                    <tr @key="item.EMP_ID">
+                                        <td>
+                                            <div style="font-weight:700;">@item.FULL_NAME</div>
+                                            <div class="p2-text-muted p2-text-mono" style="font-size:11px;">@item.EMP_CODE</div>
+                                        </td>
+                                        <td class="p2-text-mono" style="text-align:center;">@item.WORK_DAYS.ToString("0.##")</td>
+                                        
+                                        <!-- 🚀 رندر پویای مقادیر داخل سلول‌ها -->
+                                        @foreach (var col in RunData.Columns)
+                                        {
+                                            long val = item.Details.GetValueOrDefault(col.ITEM_CODE, 0);
+                                            <td class="p2-text-mono" style="text-align:left; color: @(val == 0 ? "var(--p2-border)" : "inherit");">
+                                                @(val == 0 ? "-" : val.ToString("N0"))
+                                            </td>
+                                        }
+
+                                        <td class="p2-text-mono" style="text-align:left; font-weight:bold; border-right: 2px solid var(--p2-border-light);">@item.GROSS_PAY.ToString("N0")</td>
+                                        <td class="p2-text-mono p2-text-muted" style="text-align:left;">@item.INS_BASE.ToString("N0")</td>
+                                        <td class="p2-text-mono" style="text-align:left;">@item.INS_WORKER.ToString("N0")</td>
+                                        <td class="p2-text-mono" style="text-align:left;">@item.TAX_AMOUNT.ToString("N0")</td>
+                                        <td class="p2-text-mono p2-text-danger" style="text-align:left;">@item.TOTAL_DED.ToString("N0")</td>
+                                        <td class="p2-text-mono p2-text-success" style="text-align:left; font-weight:900; font-size:15px; background: #f0fdf4; border-right: 2px solid var(--p2-border-light);">@item.NET_PAY.ToString("N0")</td>
+                                    </tr>
+                                </Virtualize>
+                            }
                         </tbody>
                         <tfoot style="position: sticky; bottom: 0; background: var(--p2-bg-main); font-weight:900; box-shadow: 0 -2px 10px rgba(0,0,0,0.05); z-index: 10;">
-                            <tr>
-                                <td colspan="2" style="text-align:left;">جمع کل دوره:</td>
-                                <td class="p2-text-mono" style="text-align:left;">@RunLines.Sum(x => x.GROSS_PAY).ToString("N0")</td>
-                                <td class="p2-text-mono" style="text-align:left;">@RunLines.Sum(x => x.INS_BASE).ToString("N0")</td>
-                                <td class="p2-text-mono" style="text-align:left;">@RunLines.Sum(x => x.INS_WORKER).ToString("N0")</td>
-                                <td class="p2-text-mono" style="text-align:left;">@RunLines.Sum(x => x.TAX_AMOUNT).ToString("N0")</td>
-                                <td class="p2-text-mono p2-text-danger" style="text-align:left;">@RunLines.Sum(x => x.TOTAL_DED).ToString("N0")</td>
-                                <td class="p2-text-mono p2-text-success" style="text-align:left; font-size:16px;">@RunLines.Sum(x => x.NET_PAY).ToString("N0")</td>
-                            </tr>
+                            @if (RunData != null && RunData.Lines.Any())
+                            {
+                                <tr>
+                                    <td colspan="2" style="text-align:left;">جمع کل دوره:</td>
+                                    
+                                    <!-- 🚀 جمع مقادیر ستون‌های پویا در پایین جدول -->
+                                    @foreach (var col in RunData.Columns)
+                                    {
+                                        <td class="p2-text-mono" style="text-align:left; color:#2563eb;">
+                                            @RunData.Lines.Sum(x => x.Details.GetValueOrDefault(col.ITEM_CODE, 0)).ToString("N0")
+                                        </td>
+                                    }
+
+                                    <td class="p2-text-mono" style="text-align:left; border-right: 2px solid var(--p2-border-light);">@RunData.Lines.Sum(x => x.GROSS_PAY).ToString("N0")</td>
+                                    <td class="p2-text-mono" style="text-align:left;">@RunData.Lines.Sum(x => x.INS_BASE).ToString("N0")</td>
+                                    <td class="p2-text-mono" style="text-align:left;">@RunData.Lines.Sum(x => x.INS_WORKER).ToString("N0")</td>
+                                    <td class="p2-text-mono" style="text-align:left;">@RunData.Lines.Sum(x => x.TAX_AMOUNT).ToString("N0")</td>
+                                    <td class="p2-text-mono p2-text-danger" style="text-align:left;">@RunData.Lines.Sum(x => x.TOTAL_DED).ToString("N0")</td>
+                                    <td class="p2-text-mono p2-text-success" style="text-align:left; font-size:16px; border-right: 2px solid var(--p2-border-light);">@RunData.Lines.Sum(x => x.NET_PAY).ToString("N0")</td>
+                                </tr>
+                            }
                         </tfoot>
                     </table>
                 </div>
@@ -350,7 +385,7 @@
 
     Pay2PeriodDto? CurrentPeriod;
     Pay2RunDto? CurrentRun;
-    List<Pay2RunLineDto> RunLines = new();
+    Pay2RunResultDto RunData = new();
 
     bool IsLoading = false;
     bool IsProcessing = false;
@@ -390,7 +425,7 @@
         CurrentView = ViewMode.PeriodList;
         CurrentPeriod = null;
         CurrentRun = null;
-        RunLines.Clear();
+        RunData = new Pay2RunResultDto(); // 🟢 جایگزین RunLines.Clear(); شد
         PayrollNsStr = null; 
         _periodSearchTerm = "";
         
@@ -411,7 +446,7 @@
         CurrentView = ViewMode.PeriodList;
         CurrentPeriod = null;
         CurrentRun = null;
-        RunLines.Clear();
+        RunData = new Pay2RunResultDto(); // 🟢 جایگزین RunLines.Clear(); شد
         PayrollNsStr = null;
         _periodSearchTerm = "";
         SelectedPeriodDate = 0;
@@ -436,13 +471,13 @@
 
             CurrentRun = await RunApi.GetLatestRunAsync(CurrentPeriod.PER_ID);
             
-            if (CurrentRun != null)
+          if (CurrentRun != null)
             {
-                RunLines = await RunApi.GetRunLinesAsync(CurrentRun.RUN_ID);
+                RunData = await RunApi.GetRunLinesAsync(CurrentRun.RUN_ID);
             }
             else
             {
-                RunLines.Clear();
+                RunData = new Pay2RunResultDto();
             }
         }
         catch (Exception ex) 
@@ -532,11 +567,11 @@
 
     async Task FinalizeRun()
     {
-        if (!RunLines.Any())
-        {
+       if (RunData == null || !RunData.Lines.Any())
+       {
             Snackbar.Add("این محاسبه هیچ ردیف فیش حقوقی ندارد. لطفاً ابتدا روی 'بازمحاسبه حقوق' کلیک کنید.", MudBlazor.Severity.Warning);
             return;
-        }
+       }
 
         var parameters = new MudBlazor.DialogParameters
         {

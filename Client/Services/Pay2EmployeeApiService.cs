@@ -265,9 +265,9 @@ namespace Safir.Client.Services
             if (!res.IsSuccessStatusCode) throw new Exception(await res.Content.ReadAsStringAsync());
         }
 
-        public async Task<PagedResult<Pay2JobDto>> GetPagedJobsAsync(int page, int pageSize, string? search)
+        public async Task<PagedResult<Pay2JobDto>> GetPagedJobsAsync(int page, int pageSize, string? search, bool isFuzzy = false)
         {
-            string url = $"api/pay2/employees/jobs/paged?page={page}&pageSize={pageSize}";
+            string url = $"api/pay2/employees/jobs/paged?page={page}&pageSize={pageSize}&isFuzzy={isFuzzy}";
             if (!string.IsNullOrWhiteSpace(search)) url += $"&search={Uri.EscapeDataString(search)}";
 
             return await _http.GetFromJsonAsync<PagedResult<Pay2JobDto>>(url) ?? new PagedResult<Pay2JobDto>();

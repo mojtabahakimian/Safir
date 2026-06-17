@@ -1,6 +1,8 @@
 ﻿using Dapper;
+using FuzzySharp;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Caching.Memory;
 using Safir.Shared.Interfaces;
 using Safir.Shared.Models;
 using Safir.Shared.Models.Salary;
@@ -16,7 +18,12 @@ namespace Safir.Server.Controllers
     public class Pay2EmployeesController : ControllerBase
     {
         private readonly IDatabaseService _db;
-        public Pay2EmployeesController(IDatabaseService db) => _db = db;
+        private readonly IMemoryCache _cache;
+        public Pay2EmployeesController(IDatabaseService db, IMemoryCache cache)
+        {
+            _db = db;
+            _cache = cache;
+        }
 
         private long DecrementShamsiDate(long shamsiDate)
         {
@@ -1035,44 +1042,100 @@ namespace Safir.Server.Controllers
         }
 
         [HttpGet("jobs/paged")]
-        public async Task<ActionResult<PagedResult<Pay2JobDto>>> GetPagedJobs([FromQuery] int page = 1, [FromQuery] int pageSize = 50, [FromQuery] string? search = null)
+        public async Task<ActionResult<PagedResult<Pay2JobDto>>> GetPagedJobs([FromQuery] int page = 1, [FromQuery] int pageSize = 50, [FromQuery] string? search = null, [FromQuery] bool isFuzzy = false)
         {
             try
             {
-                var parameters = new DynamicParameters();
-                string whereClause = "";
-
-                if (!string.IsNullOrWhiteSpace(search))
+                if (isFuzzy && !string.IsNullOrWhiteSpace(search))
                 {
-                    whereClause = "WHERE JOB_CODE LIKE @Search OR JOB_NAME LIKE @Search";
-                    parameters.Add("Search", $"%{search.Trim()}%");
+                    // --- 🚀 جستجوی هوشمند (Fuzzy) بر بستر Cache سرور ---
+
+                    // 1. نرم‌ال‌سازی متن کاربر
+                    string lowerTerm = Safir.Shared.Utility.CL_METHODS.ToStandardSearchText(search).ToLowerInvariant();
+
+                    // 2. واکشی از کش (یا دیتابیس در صورت خالی بودن کش)
+                    if (!_cache.TryGetValue("AllJobsCache", out List<Pay2JobDto>? allJobs) || allJobs == null)
+                    {
+                        allJobs = (await _db.DoGetDataSQLAsync<Pay2JobDto>("SELECT JOB_ID, JOB_CODE, JOB_NAME, JOB_GROUP, IS_ACTIVE FROM PAY2_JOB")).ToList();
+                        _cache.Set("AllJobsCache", allJobs, TimeSpan.FromMinutes(30)); // 30 دقیقه اعتبار
+                    }
+
+                    const int MinimumScoreThreshold = 50;
+
+                    // 3. پردازش موازی در RAM سرور
+                    var matches = allJobs
+                        .AsParallel()
+                        .WithDegreeOfParallelism(Environment.ProcessorCount)
+                        .Select(job => new
+                        {
+                            Item = job,
+                            Score = Math.Max(
+                                Fuzz.PartialTokenSetRatio(lowerTerm, job.JOB_NAME?.ToLowerInvariant() ?? ""),
+                                Fuzz.PartialTokenSetRatio(lowerTerm, job.JOB_CODE?.ToLowerInvariant() ?? "")
+                            )
+                        })
+                        .Where(x => x.Score >= MinimumScoreThreshold)
+                        .OrderByDescending(x => x.Score)
+                        .Select(x => x.Item)
+                        .ToList();
+
+                    var pagedItems = matches.Skip((page - 1) * pageSize).Take(pageSize).ToList();
+
+                    return Ok(new PagedResult<Pay2JobDto>
+                    {
+                        Items = pagedItems,
+                        TotalCount = matches.Count,
+                        PageNumber = page,
+                        PageSize = pageSize
+                    });
                 }
-
-                string countSql = $"SELECT COUNT(1) FROM PAY2_JOB {whereClause}";
-                string dataSql = $@"
-            SELECT JOB_ID, JOB_CODE, JOB_NAME, JOB_GROUP, IS_ACTIVE 
-            FROM PAY2_JOB 
-            {whereClause}
-            ORDER BY JOB_NAME
-            OFFSET @Offset ROWS FETCH NEXT @PageSize ROWS ONLY";
-
-                parameters.Add("Offset", (page - 1) * pageSize);
-                parameters.Add("PageSize", pageSize);
-
-                int totalCount = await _db.DoGetDataSQLAsyncSingle<int>(countSql, parameters);
-                var items = await _db.DoGetDataSQLAsync<Pay2JobDto>(dataSql, parameters);
-
-                var result = new PagedResult<Pay2JobDto>
+                else
                 {
-                    Items = items?.ToList() ?? new List<Pay2JobDto>(),
-                    TotalCount = totalCount,
-                    PageNumber = page,
-                    PageSize = pageSize
-                };
+                    // --- 🚀 جستجوی استاندارد (SQL) ---
+                    var parameters = new DynamicParameters();
+                    string whereClause = "";
 
-                return Ok(result);
+                    if (!string.IsNullOrWhiteSpace(search))
+                    {
+                        string cleanSearch = Safir.Shared.Utility.CL_METHODS.ToStandardSearchText(search);
+
+                        if (!string.IsNullOrWhiteSpace(cleanSearch))
+                        {
+                            string searchPattern = "%" + cleanSearch.Replace(" ", "%") + "%";
+                            whereClause = @"
+                        WHERE JOB_CODE LIKE @Search 
+                        OR REPLACE(REPLACE(JOB_NAME, N'ي', N'ی'), N'ك', N'ک') LIKE @Search";
+                            parameters.Add("Search", searchPattern);
+                        }
+                    }
+
+                    string countSql = $"SELECT COUNT(1) FROM PAY2_JOB {whereClause}";
+                    string dataSql = $@"
+                SELECT JOB_ID, JOB_CODE, JOB_NAME, JOB_GROUP, IS_ACTIVE 
+                FROM PAY2_JOB 
+                {whereClause}
+                ORDER BY JOB_NAME
+                OFFSET @Offset ROWS FETCH NEXT @PageSize ROWS ONLY";
+
+                    parameters.Add("Offset", (page - 1) * pageSize);
+                    parameters.Add("PageSize", pageSize);
+
+                    int totalCount = await _db.DoGetDataSQLAsyncSingle<int>(countSql, parameters);
+                    var items = await _db.DoGetDataSQLAsync<Pay2JobDto>(dataSql, parameters);
+
+                    return Ok(new PagedResult<Pay2JobDto>
+                    {
+                        Items = items?.ToList() ?? new List<Pay2JobDto>(),
+                        TotalCount = totalCount,
+                        PageNumber = page,
+                        PageSize = pageSize
+                    });
+                }
             }
-            catch (Exception ex) { return StatusCode(500, ex.Message); }
+            catch (Exception ex)
+            {
+                return StatusCode(500, ex.Message);
+            }
         }
 
         [HttpPost("jobs/save")]
@@ -1099,6 +1162,7 @@ namespace Safir.Server.Controllers
                         await conn.ExecuteAsync(updateSql, job, tran);
                     }
                 });
+                _cache.Remove("AllJobsCache"); // پاک کردن کش پس از ذخیره
                 return Ok();
             }
             catch (InvalidOperationException ex) { return BadRequest(ex.Message); }
@@ -1125,6 +1189,7 @@ namespace Safir.Server.Controllers
                         await conn.ExecuteAsync("DELETE FROM PAY2_JOB WHERE JOB_ID = @Id", new { Id = id }, tran);
                     }
                 });
+                _cache.Remove("AllJobsCache"); // پاک کردن کش پس از حذف
                 return Ok();
             }
             catch (Exception ex) { return BadRequest(ex.Message); }

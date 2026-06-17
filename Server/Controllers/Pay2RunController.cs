@@ -32,15 +32,65 @@ namespace Safir.Server.Controllers
         }
 
         [HttpGet("{runId:int}/lines")]
-        public async Task<ActionResult<IEnumerable<Pay2RunLineDto>>> GetRunLines(int runId)
+        public async Task<ActionResult<Pay2RunResultDto>> GetRunLines(int runId)
         {
-            var sql = @"
+            var result = new Pay2RunResultDto();
+
+            // 1. استخراج ستون‌های پویا (فقط آیتم‌هایی که در این ماه برای حداقل یک نفر محاسبه شده‌اند)
+            string colSql = @"
+                SELECT DISTINCT D.ITEM_ID, I.ITEM_CODE, I.ITEM_NAME, I.SORT_ORDER
+                FROM PAY2_RUN_DETAIL D WITH (NOLOCK)
+                INNER JOIN PAY2_ITEM_DEF I WITH (NOLOCK) ON D.ITEM_ID = I.ITEM_ID
+                WHERE D.RUN_ID = @runId
+                ORDER BY I.SORT_ORDER";
+
+            result.Columns = (await _db.DoGetDataSQLAsync<Pay2RunColumnDto>(colSql, new { runId })).ToList();
+
+            // 2. استخراج ردیف‌های اصلی فیش حقوقی
+            string lineSql = @"
                 SELECT L.*, E.EMP_CODE, E.LAST_NAME + ' ' + E.FIRST_NAME AS FULL_NAME
-                FROM PAY2_RUN_LINE L
-                INNER JOIN PAY2_EMPLOYEE E ON L.EMP_ID = E.EMP_ID
+                FROM PAY2_RUN_LINE L WITH (NOLOCK)
+                INNER JOIN PAY2_EMPLOYEE E WITH (NOLOCK) ON L.EMP_ID = E.EMP_ID
                 WHERE L.RUN_ID = @runId
                 ORDER BY E.LAST_NAME, E.FIRST_NAME";
-            return Ok(await _db.DoGetDataSQLAsync<Pay2RunLineDto>(sql, new { runId }));
+
+            result.Lines = (await _db.DoGetDataSQLAsync<Pay2RunLineDto>(lineSql, new { runId })).ToList();
+
+            // 3. استخراج مبالغ ریز (Details) و اتصال آن‌ها به ردیف‌ها
+            string detSql = @"
+                SELECT D.EMP_ID, I.ITEM_CODE, D.AMOUNT
+                FROM PAY2_RUN_DETAIL D WITH (NOLOCK)
+                INNER JOIN PAY2_ITEM_DEF I WITH (NOLOCK) ON D.ITEM_ID = I.ITEM_ID
+                WHERE D.RUN_ID = @runId";
+
+            // استفاده از یک کلاس داخلی موقت برای خواندن سریع داده‌ها از Dapper
+            var details = await _db.DoGetDataSQLAsync<RunDetailFlat>(detSql, new { runId });
+
+            // گروه‌بندی داده‌ها بر اساس شناسه پرسنل برای پردازش سریع در RAM
+            var groupedDetails = details
+                .GroupBy(x => x.EMP_ID)
+                .ToDictionary(
+                    g => g.Key,
+                    g => g.ToDictionary(x => x.ITEM_CODE, x => x.AMOUNT)
+                );
+
+            foreach (var line in result.Lines)
+            {
+                if (groupedDetails.TryGetValue(line.EMP_ID, out var empDetails))
+                {
+                    line.Details = empDetails;
+                }
+            }
+
+            return Ok(result);
+        }
+
+        // کلاس کمکی برای Dapper
+        private class RunDetailFlat
+        {
+            public int EMP_ID { get; set; }
+            public string ITEM_CODE { get; set; } = "";
+            public long AMOUNT { get; set; }
         }
 
         [HttpPost("calculate")]

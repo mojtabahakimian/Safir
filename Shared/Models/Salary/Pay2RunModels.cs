@@ -28,6 +28,18 @@
         };
     }
 
+    public class Pay2RunColumnDto
+    {
+        public string ITEM_CODE { get; set; } = "";
+        public string ITEM_NAME { get; set; } = "";
+    }
+
+    public class Pay2RunResultDto
+    {
+        public List<Pay2RunColumnDto> Columns { get; set; } = new();
+        public List<Pay2RunLineDto> Lines { get; set; } = new();
+    }
+
     public class Pay2RunLineDto
     {
         public int RUN_ID { get; set; }
@@ -46,5 +58,8 @@
         public long OTHER_DED { get; set; }
         public long TOTAL_DED { get; set; }
         public long NET_PAY { get; set; }
+
+        // 🚀 دیکشنری جدید برای نگهداری مقادیر ریزِ هر آیتم بر اساس ITEM_CODE
+        public Dictionary<string, long> Details { get; set; } = new();
     }
 }
