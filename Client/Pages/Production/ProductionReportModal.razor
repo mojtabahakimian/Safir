@@ -1,0 +1,138 @@
+﻿@using Safir.Shared.Models.Production
+@using MudBlazor
+@inject ISnackbar Snackbar
+@inject Safir.Client.Services.IProductionReportApiService ApiService
+
+<MudDialog Class="pay2-modal-container" DisableSidePadding="true">
+    <DialogContent>
+        <div class="px-6 py-4" style="max-height: 70vh; overflow-y: auto;">
+            <MudGrid>
+                @* اطلاعات پایه *@
+                <MudItem xs="12" md="6">
+                    <MudDatePicker Label="تاریخ گزارش" @bind-Date="Model.ReportDate" Required="true" />
+                </MudItem>
+                <MudItem xs="12" md="6">
+                    <MudSelect T="string" Label="شرکت آب‌پنیر" @bind-Value="Model.WheyCompany" Required="true" Strict="false">
+                        <MudSelectItem Value="@("کاله (Kalleh)")" />
+                        <MudSelectItem Value="@("پگاه (Pegah)")" />
+                        <MudSelectItem Value="@("دامداران (Damdaran)")" />
+                        <MudSelectItem Value="@("سایر")" />
+                    </MudSelect>
+                </MudItem>
+
+                @* بخش تغلیظ *@
+                <MudItem xs="12">
+                    <MudText Typo="Typo.subtitle2" Color="Color.Info" Class="mt-4 mb-2">بخش تغلیظ (Concentration Unit)</MudText>
+                    <MudDivider />
+                </MudItem>
+                <MudItem xs="12" md="4">
+                    <MudTimePicker Label="شروع فرآیند" @bind-Time="Model.ConcentrationStart" />
+                </MudItem>
+                <MudItem xs="12" md="4">
+                    <MudTimePicker Label="پایان فرآیند" @bind-Time="Model.ConcentrationEnd" />
+                </MudItem>
+                <MudItem xs="12" md="4">
+                    <MudNumericField @bind-Value="Model.ConcentrationWheyQty" Label="مقدار آبپنیر (لیتر)" Variant="Variant.Outlined" Min="0" />
+                </MudItem>
+
+                @* بخش اسپری *@
+                <MudItem xs="12">
+                    <MudText Typo="Typo.subtitle2" Color="Color.Success" Class="mt-4 mb-2">بخش اسپری (Spray Dryer Unit)</MudText>
+                    <MudDivider />
+                </MudItem>
+                <MudItem xs="12" md="4">
+                    <MudTimePicker Label="شروع اسپری" @bind-Time="Model.SprayStart" />
+                </MudItem>
+                <MudItem xs="12" md="4">
+                    <MudTimePicker Label="پایان اسپری" @bind-Time="Model.SprayEnd" />
+                </MudItem>
+                <MudItem xs="12" md="4">
+                    <MudNumericField @bind-Value="Model.SprayPowderQty" Label="مقدار پودر خروجی (کیلوگرم)" Variant="Variant.Outlined" Min="0" />
+                </MudItem>
+
+                @* توضیحات و کنتور *@
+                <MudItem xs="12" md="4">
+                    <MudTextField @bind-Value="Model.CounterNumber" Label="عدد کنتور نهایی" Variant="Variant.Outlined" />
+                </MudItem>
+                <MudItem xs="12" md="8">
+                    <MudTextField @bind-Value="Model.Description" Label="توضیحات و گزارش شیفت" Lines="2" Variant="Variant.Outlined" />
+                </MudItem>
+            </MudGrid>
+        </div>
+    </DialogContent>
+    <DialogActions>
+        <div class="px-4 pb-4 w-100 d-flex justify-end gap-2">
+            <MudButton OnClick="Cancel" Variant="Variant.Text">انصراف</MudButton>
+            <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="Submit" Disabled="_isProcessing">
+                @if (_isProcessing)
+                {
+                    <MudProgressCircular Class="ms-n1" Size="Size.Small" Indeterminate="true" />
+                }
+                else
+                {
+                    <span>تأیید و ذخیره</span>
+                }
+            </MudButton>
+        </div>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] MudDialogInstance MudDialog { get; set; }
+
+    [Parameter] public ProductionReportDto InputModel { get; set; }
+
+    // Deep Copy برای جلوگیری از نشت وضعیت به گرید اصلی در صورت لغو
+    private ProductionReportDto Model = new();
+    private bool _isProcessing = false;
+
+    protected override void OnInitialized()
+    {
+        // ایمنی در Binding (کپی مستقیم)
+        if (InputModel != null)
+        {
+            Model = new ProductionReportDto
+            {
+                Id = InputModel.Id,
+                ReportDate = InputModel.ReportDate,
+                WheyCompany = InputModel.WheyCompany,
+                ConcentrationStart = InputModel.ConcentrationStart,
+                ConcentrationEnd = InputModel.ConcentrationEnd,
+                ConcentrationWheyQty = InputModel.ConcentrationWheyQty,
+                SprayStart = InputModel.SprayStart,
+                SprayEnd = InputModel.SprayEnd,
+                SprayPowderQty = InputModel.SprayPowderQty,
+                CounterNumber = InputModel.CounterNumber,
+                Description = InputModel.Description
+            };
+        }
+    }
+
+    private async Task Submit()
+    {
+        if (string.IsNullOrWhiteSpace(Model.WheyCompany) || Model.ReportDate == null)
+        {
+            Snackbar.Add("تکمیل فیلدهای تاریخ و شرکت اجباری است.", Severity.Warning);
+            return;
+        }
+
+        try
+        {
+            _isProcessing = true;
+            await ApiService.SaveReportAsync(Model);
+            Snackbar.Add("گزارش با موفقیت ذخیره شد.", Severity.Success);
+            MudDialog.Close(DialogResult.Ok(true));
+        }
+        catch (Exception ex)
+        {
+            // بلعیدن خطاها ممنوع - نمایش دقیق با اسنک‌بار
+            Snackbar.Add($"خطا در ذخیره‌سازی: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _isProcessing = false;
+        }
+    }
+
+    private void Cancel() => MudDialog.Cancel();
+}

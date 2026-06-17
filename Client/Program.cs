@@ -77,6 +77,8 @@ builder.Services.AddScoped<Pay2RunApiService>();
 
 builder.Services.AddScoped<Pay2DashboardApiService>();
 
+builder.Services.AddScoped<IProductionReportApiService, ProductionReportApiService>();
+
 #endregion
 
 
