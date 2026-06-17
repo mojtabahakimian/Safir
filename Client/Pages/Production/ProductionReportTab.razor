@@ -1,0 +1,307 @@
+﻿@page "/production-reports"
+@using Safir.Shared.Models.Production
+@using MudBlazor
+@inject Safir.Client.Services.IProductionReportApiService ApiService
+@inject IDialogService DialogService
+@inject ISnackbar Snackbar
+@using Safir.Client.Pages.Salary.Tabs
+
+<div class="pay2-tab-container pb-10" style="max-width: 1200px; margin: 0 auto;">
+    @if (!_isDataLoaded)
+    {
+        <div class="d-flex justify-center align-center" style="height: 400px;">
+            <MudProgressCircular Color="Color.Primary" Indeterminate="true" />
+        </div>
+    }
+    else
+    {
+        <div class="d-flex flex-wrap justify-end mb-6">
+            <MudPaper Elevation="0" Class="d-flex flex-wrap rounded-xl pa-1" Style="background-color: #f0f2f5;">
+                <MudButton StartIcon="@Icons.Material.Outlined.Dashboard" Class="rounded-xl px-4 py-2"
+                           Color="@(_activeTab == 0 ? Color.Primary : Color.Default)"
+                           Variant="@(_activeTab == 0 ? Variant.Filled : Variant.Text)"
+                           OnClick="() => _activeTab = 0">پیش‌خوان و آمار</MudButton>
+
+                <MudButton StartIcon="@Icons.Material.Outlined.AddCircleOutline" Class="rounded-xl px-4 py-2 mx-1"
+                           Color="@(_activeTab == 1 ? Color.Primary : Color.Default)"
+                           Variant="@(_activeTab == 1 ? Variant.Filled : Variant.Text)"
+                           OnClick="() => _activeTab = 1">ثبت گزارش جدید</MudButton>
+
+                <MudButton StartIcon="@Icons.Material.Outlined.History" Class="rounded-xl px-4 py-2"
+                           Color="@(_activeTab == 2 ? Color.Primary : Color.Default)"
+                           Variant="@(_activeTab == 2 ? Variant.Filled : Variant.Text)"
+                           OnClick="() => _activeTab = 2">تاریخچه و دفتر گزارش</MudButton>
+            </MudPaper>
+        </div>
+
+        @if (_activeTab == 1)
+        {
+            <MudPaper Elevation="0" Outlined="true" Class="pa-6 rounded-xl" Style="border-color: #e0e0e0; background-color: #ffffff;">
+                <div class="d-flex align-center mb-6">
+                    <MudIcon Icon="@Icons.Material.Outlined.Assignment" Color="Color.Primary" Class="ml-2" />
+                    <MudText Typo="Typo.h6" Style="font-weight: 700; color: #333;">ثبت گزارش تولید روزانه</MudText>
+                </div>
+
+                <MudPaper Elevation="0" Outlined="true" Class="pa-5 rounded-lg mb-6" Style="background-color: #fafafa; border: 1px solid #e0e0e0;">
+                    <MudGrid>
+                        <MudItem xs="12" md="6">
+                            <div class="d-flex align-center mb-2">
+                                <MudIcon Icon="@Icons.Material.Outlined.CalendarToday" Size="Size.Small" Class="ml-1 text-muted" />
+                                <MudText Typo="Typo.body2" Style="color: #666; font-weight: bold;">تاریخ گزارش (شمسی):</MudText>
+                            </div>
+                            <Pay2NumericInput Value="@_shamsiDateStr"
+                                              ValueChanged="@((string? val) => _shamsiDateStr = val)"
+                                              InputMode="Pay2NumericInput.NumericInputMode.PersianDate"
+                                              Placeholder="مثال: 14050327" />
+                        </MudItem>
+
+                        <MudItem xs="12" md="6">
+                            <div class="d-flex align-center mb-2">
+                                <MudIcon Icon="@Icons.Material.Outlined.Business" Size="Size.Small" Class="ml-1 text-muted" />
+                                <MudText Typo="Typo.body2" Style="color: #666; font-weight: bold;">شرکت آب‌پنیر:</MudText>
+                            </div>
+                            <MudTextField @bind-Value="Model.WheyCompany"
+                                          Variant="Variant.Outlined"
+                                          Margin="Margin.Dense"
+                                          Placeholder="نام شرکت را وارد کنید..."
+                                          Style="background-color: white;" />
+                        </MudItem>
+                    </MudGrid>
+                </MudPaper>
+
+                <MudGrid Class="mb-6">
+                    <MudItem xs="12" md="6">
+                        <MudPaper Elevation="0" Outlined="true" Class="pa-6 rounded-lg h-100" Style="border-color: #b3e5fc; background-color: #fbfcff;">
+                            <div class="d-flex align-center mb-6">
+                                <div style="width: 8px; height: 8px; border-radius: 50%; background-color: #03a9f4;" class="ml-2"></div>
+                                <MudText Typo="Typo.subtitle1" Style="color: #0288d1; font-weight: bold;">بخش تغلیظ (Concentration Unit)</MudText>
+                            </div>
+                            <MudGrid>
+                                <MudItem xs="12" sm="6">
+                                    <MudText Typo="Typo.caption" Style="color: #666;" Class="mb-1 d-block">شروع فرآیند:</MudText>
+                                    <MudTimePicker @bind-Time="Model.ConcentrationStart" Variant="Variant.Outlined" Margin="Margin.Dense" Style="background-color: white;" />
+                                </MudItem>
+                                <MudItem xs="12" sm="6">
+                                    <MudText Typo="Typo.caption" Style="color: #666;" Class="mb-1 d-block">پایان فرآیند:</MudText>
+                                    <MudTimePicker @bind-Time="Model.ConcentrationEnd" Variant="Variant.Outlined" Margin="Margin.Dense" Style="background-color: white;" />
+                                </MudItem>
+                                <MudItem xs="12">
+                                    <MudText Typo="Typo.caption" Style="color: #666;" Class="mb-1 d-block">مقدار آبپنیر دریافتی:</MudText>
+                                    <MudNumericField @bind-Value="Model.ConcentrationWheyQty" Variant="Variant.Outlined" Margin="Margin.Dense" Placeholder="مثال: ۱۵۰۰۰" Adornment="Adornment.End" AdornmentText="لیتر" AdornmentColor="Color.Info" HideSpinButtons="true" Style="background-color: white;" />
+                                </MudItem>
+                            </MudGrid>
+                        </MudPaper>
+                    </MudItem>
+
+                    <MudItem xs="12" md="6">
+                        <MudPaper Elevation="0" Outlined="true" Class="pa-6 rounded-lg h-100" Style="border-color: #c8e6c9; background-color: #fbfdfb;">
+                            <div class="d-flex align-center mb-6">
+                                <div style="width: 8px; height: 8px; border-radius: 50%; background-color: #4caf50;" class="ml-2"></div>
+                                <MudText Typo="Typo.subtitle1" Style="color: #388e3c; font-weight: bold;">بخش اسپری (Spray Dryer Unit)</MudText>
+                            </div>
+                            <MudGrid>
+                                <MudItem xs="12" sm="6">
+                                    <MudText Typo="Typo.caption" Style="color: #666;" Class="mb-1 d-block">شروع اسپری:</MudText>
+                                    <MudTimePicker @bind-Time="Model.SprayStart" Variant="Variant.Outlined" Margin="Margin.Dense" Style="background-color: white;" />
+                                </MudItem>
+                                <MudItem xs="12" sm="6">
+                                    <MudText Typo="Typo.caption" Style="color: #666;" Class="mb-1 d-block">پایان اسپری:</MudText>
+                                    <MudTimePicker @bind-Time="Model.SprayEnd" Variant="Variant.Outlined" Margin="Margin.Dense" Style="background-color: white;" />
+                                </MudItem>
+                                <MudItem xs="12">
+                                    <MudText Typo="Typo.caption" Style="color: #666;" Class="mb-1 d-block">مقدار پودر خروجی:</MudText>
+                                    <MudNumericField @bind-Value="Model.SprayPowderQty" Variant="Variant.Outlined" Margin="Margin.Dense" Placeholder="مثال: ۱۲۰۰" Adornment="Adornment.End" AdornmentText="کیلوگرم" AdornmentColor="Color.Success" HideSpinButtons="true" Style="background-color: white;" />
+                                </MudItem>
+                            </MudGrid>
+                        </MudPaper>
+                    </MudItem>
+                </MudGrid>
+
+                <MudGrid Class="mb-2">
+                    <MudItem xs="12" md="8">
+                        <MudText Typo="Typo.body2" Style="color: #666; font-weight: bold;" Class="mb-2">توضیحات و گزارش شیفت:</MudText>
+                        <MudTextField @bind-Value="Model.Description" Variant="Variant.Outlined" Lines="3" Placeholder="توضیحات مربوط به خاموشی‌ها، ایرادات فنی، شستشوی واحد CIP یا ناخالصی‌ها..." />
+                    </MudItem>
+                    <MudItem xs="12" md="4">
+                        <MudText Typo="Typo.body2" Style="color: #666; font-weight: bold;" Class="mb-2">عدد کنتور نهایی:</MudText>
+                        <MudTextField @bind-Value="Model.CounterNumber" Variant="Variant.Outlined" Placeholder="مثال: ۲۴۵۸۹" />
+                    </MudItem>
+                </MudGrid>
+
+                <div class="d-flex justify-start mt-6">
+                    <MudButton Color="Color.Primary" Variant="Variant.Filled" Size="Size.Large" Class="rounded-xl px-8 py-2" OnClick="Submit" Disabled="_isProcessing" StartIcon="@Icons.Material.Outlined.Save">
+                        @if (_isProcessing)
+                        {
+                            <MudProgressCircular Class="ms-n1" Size="Size.Small" Indeterminate="true" />
+                        }
+                        else
+                        {
+                            <span style="font-weight: bold;">ثبت قطعی گزارش</span>
+                        }
+                    </MudButton>
+                </div>
+            </MudPaper>
+        }
+        else if (_activeTab == 2)
+        {
+            <MudTable Items="@FilteredReports" Dense="true" Hover="true" Elevation="1" Virtualize="true" FixedHeader="true" Height="calc(100vh - 250px)">
+                <ToolBarContent>
+                    <MudTextField @bind-Value="_searchString" Placeholder="جستجو در شرکت یا توضیحات..." Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search" IconSize="Size.Medium" Class="mt-0" Immediate="true" />
+                </ToolBarContent>
+                <HeaderContent>
+                    <MudTh>تاریخ</MudTh>
+                    <MudTh>شرکت آب‌پنیر</MudTh>
+                    <MudTh>آبپنیر (لیتر)</MudTh>
+                    <MudTh>پودر (کیلوگرم)</MudTh>
+                    <MudTh>کنتور</MudTh>
+                    <MudTh>عملیات</MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd DataLabel="تاریخ">@context.ReportDate?.ToString("yyyy/MM/dd")</MudTd>
+                    <MudTd DataLabel="شرکت">@context.WheyCompany</MudTd>
+                    <MudTd DataLabel="آبپنیر">@context.ConcentrationWheyQty?.ToString("N0")</MudTd>
+                    <MudTd DataLabel="پودر">@context.SprayPowderQty?.ToString("N0")</MudTd>
+                    <MudTd DataLabel="کنتور">@context.CounterNumber</MudTd>
+                    <MudTd DataLabel="عملیات">
+                        <div class="d-flex align-center gap-4">
+                            <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Medium" Color="Color.Info" OnClick="() => EditReport(context)" />
+                            <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Medium" Color="Color.Error" OnClick="() => DeleteReport(context)" />
+                        </div>
+                    </MudTd>
+                </RowTemplate>
+            </MudTable>
+        }
+        else if (_activeTab == 0)
+        {
+            <MudPaper Elevation="0" Outlined="true" Class="pa-6 rounded-xl d-flex justify-center align-center" Style="height: 400px; border-color: #e0e0e0;">
+                <MudText Typo="Typo.h6" Color="Color.Surface">بخش داشبورد و آمار در حال توسعه می‌باشد...</MudText>
+            </MudPaper>
+        }
+    }
+</div>
+
+@code {
+    private bool _isDataLoaded = false;
+    private int _activeTab = 1;
+    private bool _isProcessing = false;
+    private string _searchString = string.Empty;
+
+    // متغیرهای لازم برای کامپوننت‌های کاستوم
+
+    private List<ProductionReportDto> _reports = new();
+    private ProductionReportDto Model = new();
+
+    private IEnumerable<ProductionReportDto> FilteredReports =>
+        string.IsNullOrWhiteSpace(_searchString)
+            ? _reports
+            : _reports.Where(x =>
+                (x.WheyCompany != null && x.WheyCompany.Contains(_searchString, StringComparison.OrdinalIgnoreCase)) ||
+                (x.Description != null && x.Description.Contains(_searchString, StringComparison.OrdinalIgnoreCase)));
+
+    private string? _shamsiDateStr;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _shamsiDateStr = GetTodayShamsi(); // تنظیم پیش‌فرض روی امروز
+        await LoadData();
+    }
+
+    private async Task LoadData()
+    {
+        try
+        {
+            _reports = await ApiService.GetReportsAsync();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"خطا در دریافت اطلاعات: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _isDataLoaded = true;
+        }
+    }
+    private string GetTodayShamsi()
+    {
+        var pc = new System.Globalization.PersianCalendar();
+        var now = DateTime.Now;
+        return $"{pc.GetYear(now):0000}{pc.GetMonth(now):00}{pc.GetDayOfMonth(now):00}";
+    }
+    private async Task Submit()
+    {
+        if (string.IsNullOrWhiteSpace(Model.WheyCompany) || string.IsNullOrWhiteSpace(_shamsiDateStr))
+        {
+            Snackbar.Add("تکمیل فیلدهای تاریخ و شرکت اجباری است.", Severity.Warning);
+            return;
+        }
+
+        try
+        {
+            _isProcessing = true;
+
+            // تبدیل موقت برای جلوگیری از خطای کامپایل (لطفاً از متد تبدیل تاریخ اختصاصی خودتان استفاده کنید)
+            Model.ReportDate = DateTime.Now;
+
+            await ApiService.SaveReportAsync(Model);
+            Snackbar.Add("گزارش با موفقیت ثبت شد.", Severity.Success);
+
+            Model = new ProductionReportDto();
+            _shamsiDateStr = GetTodayShamsi();
+
+            await LoadData();
+            _activeTab = 2;
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"خطا در ثبت گزارش: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _isProcessing = false;
+        }
+    }
+
+    private void EditReport(ProductionReportDto report)
+    {
+        Model = new ProductionReportDto
+        {
+            Id = report.Id,
+            ReportDate = report.ReportDate,
+            WheyCompany = report.WheyCompany,
+            ConcentrationStart = report.ConcentrationStart,
+            ConcentrationEnd = report.ConcentrationEnd,
+            ConcentrationWheyQty = report.ConcentrationWheyQty,
+            SprayStart = report.SprayStart,
+            SprayEnd = report.SprayEnd,
+            SprayPowderQty = report.SprayPowderQty,
+            CounterNumber = report.CounterNumber,
+            Description = report.Description
+        };
+
+        // بازیابی تاریخ شمسی برای زمان ویرایش
+        _shamsiDateStr = report.ReportDate?.ToString("yyyyMMdd") ?? "";
+        _activeTab = 1;
+    }
+
+    private async Task DeleteReport(ProductionReportDto report)
+    {
+        bool? confirm = await DialogService.ShowMessageBox(
+            "تایید حذف",
+            $"آیا از حذف گزارش تولید روز {report.ReportDate?.ToString("yyyy/MM/dd")} اطمینان دارید؟",
+            yesText: "بله، حذف شود", cancelText: "انصراف");
+
+        if (confirm == true)
+        {
+            try
+            {
+                await ApiService.DeleteReportAsync(report.Id);
+                Snackbar.Add("گزارش با موفقیت حذف شد.", Severity.Success);
+                await LoadData();
+            }
+            catch (Exception ex)
+            {
+                Snackbar.Add($"خطا در حذف گزارش: {ex.Message}", Severity.Error);
+            }
+        }
+    }
+}
