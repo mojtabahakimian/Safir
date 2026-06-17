@@ -43,19 +43,19 @@ namespace Safir.Client.Services
             }
         }
 
-        public async Task<List<Pay2RunLineDto>> GetRunLinesAsync(int runId)
+        public async Task<Pay2RunResultDto> GetRunLinesAsync(int runId)
         {
             var res = await _http.GetAsync($"api/pay2/run/{runId}/lines");
             if (!res.IsSuccessStatusCode || res.StatusCode == System.Net.HttpStatusCode.NoContent)
-                return new List<Pay2RunLineDto>();
+                return new Pay2RunResultDto();
 
             try
             {
-                return await res.Content.ReadFromJsonAsync<List<Pay2RunLineDto>>() ?? new List<Pay2RunLineDto>();
+                return await res.Content.ReadFromJsonAsync<Pay2RunResultDto>() ?? new Pay2RunResultDto();
             }
             catch (System.Text.Json.JsonException)
             {
-                return new List<Pay2RunLineDto>();
+                return new Pay2RunResultDto();
             }
         }
 
@@ -83,5 +83,7 @@ namespace Safir.Client.Services
             var res = await _http.PostAsync($"api/pay2/run/{runId}/generate-deed", null);
             if (!res.IsSuccessStatusCode) throw new Exception(await res.Content.ReadAsStringAsync());
         }
+
+
     }
 }
