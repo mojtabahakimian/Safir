@@ -36,18 +36,18 @@
 
         @if (_activeTab == 1)
         {
-            <MudPaper Elevation="0" Outlined="true" Class="pa-6 rounded-xl" Style="border-color: #e0e0e0; background-color: #ffffff;">
+            <MudPaper Elevation="0" Outlined="true" Class="pa-6 rounded-xl pay2-form-card">
                 <div class="d-flex align-center mb-6">
                     <MudIcon Icon="@Icons.Material.Outlined.Assignment" Color="Color.Primary" Class="ml-2" />
-                    <MudText Typo="Typo.h6" Style="font-weight: 700; color: #333;">ثبت گزارش تولید روزانه</MudText>
+                    <MudText Typo="Typo.h6" Style="font-weight: 700;">ثبت گزارش تولید روزانه</MudText>
                 </div>
 
-                <MudPaper Elevation="0" Outlined="true" Class="pa-5 rounded-lg mb-6" Style="background-color: #fafafa; border: 1px solid #e0e0e0;">
+                <MudPaper Elevation="0" Outlined="true" Class="pa-5 rounded-lg mb-6 pay2-input-group-bg">
                     <MudGrid>
                         <MudItem xs="12" md="6">
                             <div class="d-flex align-center mb-2">
                                 <MudIcon Icon="@Icons.Material.Outlined.CalendarToday" Size="Size.Small" Class="ml-1 text-muted" />
-                                <MudText Typo="Typo.body2" Style="color: #666; font-weight: bold;">تاریخ گزارش (شمسی):</MudText>
+                                <MudText Typo="Typo.body2" Class="text-muted" Style="font-weight: bold;">تاریخ گزارش (شمسی):</MudText>
                             </div>
                             <Pay2NumericInput Value="@_shamsiDateStr"
                                               ValueChanged="@((string? val) => _shamsiDateStr = val)"
@@ -58,59 +58,58 @@
                         <MudItem xs="12" md="6">
                             <div class="d-flex align-center mb-2">
                                 <MudIcon Icon="@Icons.Material.Outlined.Business" Size="Size.Small" Class="ml-1 text-muted" />
-                                <MudText Typo="Typo.body2" Style="color: #666; font-weight: bold;">شرکت آب‌پنیر:</MudText>
+                                <MudText Typo="Typo.body2" Class="text-muted" Style="font-weight: bold;">شرکت آب‌پنیر:</MudText>
                             </div>
                             <MudTextField @bind-Value="Model.WheyCompany"
                                           Variant="Variant.Outlined"
                                           Margin="Margin.Dense"
-                                          Placeholder="نام شرکت را وارد کنید..."
-                                          Style="background-color: white;" />
+                                          Placeholder="نام شرکت را وارد کنید..." />
                         </MudItem>
                     </MudGrid>
                 </MudPaper>
 
                 <MudGrid Class="mb-6">
                     <MudItem xs="12" md="6">
-                        <MudPaper Elevation="0" Outlined="true" Class="pa-6 rounded-lg h-100" Style="border-color: #b3e5fc; background-color: #fbfcff;">
+                        <MudPaper Elevation="0" Outlined="true" Class="pa-6 rounded-lg h-100 pay2-card-blue">
                             <div class="d-flex align-center mb-6">
-                                <div style="width: 8px; height: 8px; border-radius: 50%; background-color: #03a9f4;" class="ml-2"></div>
-                                <MudText Typo="Typo.subtitle1" Style="color: #0288d1; font-weight: bold;">بخش تغلیظ (Concentration Unit)</MudText>
+                                <div style="width: 8px; height: 8px; border-radius: 50%; background-color: var(--mud-palette-info);" class="ml-2"></div>
+                                <MudText Typo="Typo.subtitle1" Color="Color.Info" Style="font-weight: bold;">بخش تغلیظ (Concentration Unit)</MudText>
                             </div>
                             <MudGrid>
                                 <MudItem xs="12" sm="6">
-                                    <MudText Typo="Typo.caption" Style="color: #666;" Class="mb-1 d-block">شروع فرآیند:</MudText>
-                                    <MudTimePicker @bind-Time="Model.ConcentrationStart" Variant="Variant.Outlined" Margin="Margin.Dense" Style="background-color: white;" />
+                                    <MudText Typo="Typo.caption" Class="text-muted mb-1 d-block">شروع فرآیند:</MudText>
+                                    <MudTimePicker @bind-Time="Model.ConcentrationStart" Variant="Variant.Outlined" Margin="Margin.Dense" />
                                 </MudItem>
                                 <MudItem xs="12" sm="6">
-                                    <MudText Typo="Typo.caption" Style="color: #666;" Class="mb-1 d-block">پایان فرآیند:</MudText>
-                                    <MudTimePicker @bind-Time="Model.ConcentrationEnd" Variant="Variant.Outlined" Margin="Margin.Dense" Style="background-color: white;" />
+                                    <MudText Typo="Typo.caption" Class="text-muted mb-1 d-block">پایان فرآیند:</MudText>
+                                    <MudTimePicker @bind-Time="Model.ConcentrationEnd" Variant="Variant.Outlined" Margin="Margin.Dense" />
                                 </MudItem>
                                 <MudItem xs="12">
-                                    <MudText Typo="Typo.caption" Style="color: #666;" Class="mb-1 d-block">مقدار آبپنیر دریافتی:</MudText>
-                                    <MudNumericField @bind-Value="Model.ConcentrationWheyQty" Variant="Variant.Outlined" Margin="Margin.Dense" Placeholder="مثال: ۱۵۰۰۰" Adornment="Adornment.End" AdornmentText="لیتر" AdornmentColor="Color.Info" HideSpinButtons="true" Style="background-color: white;" />
+                                    <MudText Typo="Typo.caption" Class="text-muted mb-1 d-block">مقدار آبپنیر دریافتی:</MudText>
+                                    <MudNumericField @bind-Value="Model.ConcentrationWheyQty" Variant="Variant.Outlined" Margin="Margin.Dense" Placeholder="مثال: ۱۵۰۰۰" Adornment="Adornment.End" AdornmentText="لیتر" AdornmentColor="Color.Info" HideSpinButtons="true" />
                                 </MudItem>
                             </MudGrid>
                         </MudPaper>
                     </MudItem>
 
                     <MudItem xs="12" md="6">
-                        <MudPaper Elevation="0" Outlined="true" Class="pa-6 rounded-lg h-100" Style="border-color: #c8e6c9; background-color: #fbfdfb;">
+                        <MudPaper Elevation="0" Outlined="true" Class="pa-6 rounded-lg h-100 pay2-card-green">
                             <div class="d-flex align-center mb-6">
-                                <div style="width: 8px; height: 8px; border-radius: 50%; background-color: #4caf50;" class="ml-2"></div>
-                                <MudText Typo="Typo.subtitle1" Style="color: #388e3c; font-weight: bold;">بخش اسپری (Spray Dryer Unit)</MudText>
+                                <div style="width: 8px; height: 8px; border-radius: 50%; background-color: var(--mud-palette-success);" class="ml-2"></div>
+                                <MudText Typo="Typo.subtitle1" Color="Color.Success" Style="font-weight: bold;">بخش اسپری (Spray Dryer Unit)</MudText>
                             </div>
                             <MudGrid>
                                 <MudItem xs="12" sm="6">
-                                    <MudText Typo="Typo.caption" Style="color: #666;" Class="mb-1 d-block">شروع اسپری:</MudText>
-                                    <MudTimePicker @bind-Time="Model.SprayStart" Variant="Variant.Outlined" Margin="Margin.Dense" Style="background-color: white;" />
+                                    <MudText Typo="Typo.caption" Class="text-muted mb-1 d-block">شروع اسپری:</MudText>
+                                    <MudTimePicker @bind-Time="Model.SprayStart" Variant="Variant.Outlined" Margin="Margin.Dense" />
                                 </MudItem>
                                 <MudItem xs="12" sm="6">
-                                    <MudText Typo="Typo.caption" Style="color: #666;" Class="mb-1 d-block">پایان اسپری:</MudText>
-                                    <MudTimePicker @bind-Time="Model.SprayEnd" Variant="Variant.Outlined" Margin="Margin.Dense" Style="background-color: white;" />
+                                    <MudText Typo="Typo.caption" Class="text-muted mb-1 d-block">پایان اسپری:</MudText>
+                                    <MudTimePicker @bind-Time="Model.SprayEnd" Variant="Variant.Outlined" Margin="Margin.Dense" />
                                 </MudItem>
                                 <MudItem xs="12">
-                                    <MudText Typo="Typo.caption" Style="color: #666;" Class="mb-1 d-block">مقدار پودر خروجی:</MudText>
-                                    <MudNumericField @bind-Value="Model.SprayPowderQty" Variant="Variant.Outlined" Margin="Margin.Dense" Placeholder="مثال: ۱۲۰۰" Adornment="Adornment.End" AdornmentText="کیلوگرم" AdornmentColor="Color.Success" HideSpinButtons="true" Style="background-color: white;" />
+                                    <MudText Typo="Typo.caption" Class="text-muted mb-1 d-block">مقدار پودر خروجی:</MudText>
+                                    <MudNumericField @bind-Value="Model.SprayPowderQty" Variant="Variant.Outlined" Margin="Margin.Dense" Placeholder="مثال: ۱۲۰۰" Adornment="Adornment.End" AdornmentText="کیلوگرم" AdornmentColor="Color.Success" HideSpinButtons="true" />
                                 </MudItem>
                             </MudGrid>
                         </MudPaper>
@@ -119,11 +118,11 @@
 
                 <MudGrid Class="mb-2">
                     <MudItem xs="12" md="8">
-                        <MudText Typo="Typo.body2" Style="color: #666; font-weight: bold;" Class="mb-2">توضیحات و گزارش شیفت:</MudText>
+                        <MudText Typo="Typo.body2" Style="font-weight: bold;" Class="mb-2 text-muted">توضیحات و گزارش شیفت:</MudText>
                         <MudTextField @bind-Value="Model.Description" Variant="Variant.Outlined" Lines="3" Placeholder="توضیحات مربوط به خاموشی‌ها، ایرادات فنی، شستشوی واحد CIP یا ناخالصی‌ها..." />
                     </MudItem>
                     <MudItem xs="12" md="4">
-                        <MudText Typo="Typo.body2" Style="color: #666; font-weight: bold;" Class="mb-2">عدد کنتور نهایی:</MudText>
+                        <MudText Typo="Typo.body2" Style="font-weight: bold;" Class="mb-2 text-muted">عدد کنتور نهایی:</MudText>
                         <MudTextField @bind-Value="Model.CounterNumber" Variant="Variant.Outlined" Placeholder="مثال: ۲۴۵۸۹" />
                     </MudItem>
                 </MudGrid>
@@ -173,7 +172,7 @@
         }
         else if (_activeTab == 0)
         {
-            <MudPaper Elevation="0" Outlined="true" Class="pa-6 rounded-xl d-flex justify-center align-center" Style="height: 400px; border-color: #e0e0e0;">
+            <MudPaper Elevation="0" Outlined="true" Class="pa-6 rounded-xl d-flex justify-center align-center pay2-form-card" Style="height: 400px; border-color: #e0e0e0;">
                 <MudText Typo="Typo.h6" Color="Color.Surface">بخش داشبورد و آمار در حال توسعه می‌باشد...</MudText>
             </MudPaper>
         }
@@ -186,8 +185,7 @@
     private bool _isProcessing = false;
     private string _searchString = string.Empty;
 
-    // متغیرهای لازم برای کامپوننت‌های کاستوم
-
+    private string? _shamsiDateStr;
     private List<ProductionReportDto> _reports = new();
     private ProductionReportDto Model = new();
 
@@ -198,11 +196,9 @@
                 (x.WheyCompany != null && x.WheyCompany.Contains(_searchString, StringComparison.OrdinalIgnoreCase)) ||
                 (x.Description != null && x.Description.Contains(_searchString, StringComparison.OrdinalIgnoreCase)));
 
-    private string? _shamsiDateStr;
-
     protected override async Task OnInitializedAsync()
     {
-        _shamsiDateStr = GetTodayShamsi(); // تنظیم پیش‌فرض روی امروز
+        _shamsiDateStr = GetTodayShamsi();
         await LoadData();
     }
 
@@ -221,12 +217,14 @@
             _isDataLoaded = true;
         }
     }
+
     private string GetTodayShamsi()
     {
         var pc = new System.Globalization.PersianCalendar();
         var now = DateTime.Now;
         return $"{pc.GetYear(now):0000}{pc.GetMonth(now):00}{pc.GetDayOfMonth(now):00}";
     }
+
     private async Task Submit()
     {
         if (string.IsNullOrWhiteSpace(Model.WheyCompany) || string.IsNullOrWhiteSpace(_shamsiDateStr))
@@ -238,8 +236,6 @@
         try
         {
             _isProcessing = true;
-
-            // تبدیل موقت برای جلوگیری از خطای کامپایل (لطفاً از متد تبدیل تاریخ اختصاصی خودتان استفاده کنید)
             Model.ReportDate = DateTime.Now;
 
             await ApiService.SaveReportAsync(Model);
@@ -305,3 +301,27 @@
         }
     }
 }
+
+<style>
+    .pay2-form-card {
+        background-color: var(--mud-palette-surface) !important;
+    }
+
+    .pay2-input-group-bg {
+        background-color: var(--mud-palette-background) !important;
+    }
+
+    .pay2-card-blue {
+        border-color: rgba(3, 169, 244, 0.3) !important;
+        background-color: rgba(3, 169, 244, 0.02) !important;
+    }
+
+    .pay2-card-green {
+        border-color: rgba(76, 175, 80, 0.3) !important;
+        background-color: rgba(76, 175, 80, 0.02) !important;
+    }
+
+    .text-muted {
+        color: var(--mud-palette-text-secondary) !important;
+    }
+</style>
