@@ -65,11 +65,18 @@
                     <span style="color: var(--p2-text-main);">لیست مشاغل (کل: @TotalCount)</span>
                 </div>
 
-                <div class="pay2-search-wrapper" style="width: 300px;">
-                    <i class="bi bi-search"></i>
-                    <input type="text" class="pay2-search-input" style="width: 100%;"
-                           placeholder="جستجوی عنوان یا کد شغل..."
-                           @bind="SearchTerm" @bind:event="oninput" @onkeyup="HandleSearch" />
+                <div style="display: flex; align-items: center; gap: 12px;">
+                    <label style="display:flex; align-items:center; gap:4px; font-size:12px; font-weight:600; cursor:pointer; color:var(--p2-text-main); user-select:none;">
+                        <input type="checkbox" style="width:16px; height:16px;" @bind="IsFuzzySearch" @bind:after="OnFuzzyChanged" />
+                        جستجوی هوشمند
+                    </label>
+
+                    <div class="pay2-search-wrapper" style="width: 250px;">
+                        <i class="bi bi-search"></i>
+                        <input type="text" class="pay2-search-input" style="width: 100%;"
+                               placeholder="جستجوی عنوان یا کد شغل..."
+                               @bind="SearchTerm" @bind:event="oninput" @onkeyup="HandleSearch" />
+                    </div>
                 </div>
             </div>
 
@@ -153,7 +160,6 @@
     bool _lastOpenState = false;
 
     // متغیرهای صفحه‌بندی و جستجو
-    int CurrentPage = 1;
     int PageSize = 10;
     int TotalCount = 0;
     int TotalPages => TotalCount == 0 ? 1 : (int)Math.Ceiling((double)TotalCount / PageSize);
@@ -162,6 +168,9 @@
 
     string SearchTerm = "";
     System.Timers.Timer? debounceTimer;
+
+    bool IsFuzzySearch = false; // پیش‌فرض خاموش
+    int CurrentPage = 1;
 
     protected override async Task OnParametersSetAsync()
     {
@@ -179,13 +188,20 @@
         }
     }
 
+    async Task OnFuzzyChanged()
+    {
+        CurrentPage = 1;
+        await LoadDataAsync();
+    }
+
     async Task LoadDataAsync()
     {
         IsLoadingGrid = true;
         StateHasChanged();
         try
         {
-            var result = await EmployeeApi.GetPagedJobsAsync(CurrentPage, PageSize, SearchTerm);
+            // ارسال IsFuzzySearch به سرویس
+            var result = await EmployeeApi.GetPagedJobsAsync(CurrentPage, PageSize, SearchTerm, IsFuzzySearch);
             PagedJobs = result.Items;
             TotalCount = result.TotalCount;
         }
@@ -196,6 +212,7 @@
             StateHasChanged();
         }
     }
+
 
     // منطق Debounce استاندارد برای سرچ زنده
     void HandleSearch(KeyboardEventArgs e)

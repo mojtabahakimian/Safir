@@ -16,6 +16,8 @@ builder.Services.AddControllersWithViews();
 builder.Services.AddRazorPages();
 
 #region MineServer
+builder.Services.AddMemoryCache();
+
 // --- Add Custom Services ---
 builder.Services.AddScoped<IConnectionStringProvider, ConnectionStringProvider>();
 builder.Services.AddScoped<IDatabaseService, DatabaseService>();

@@ -5,45 +5,61 @@ namespace Safir.Shared.Utility
 {
     public static class CL_METHODS
     {
+        /// <summary>
+        /// متد جامع برای تمیز کردن متن جهت جستجوی دقیق در دیتابیس
+        /// </summary>
         public static string ToStandardSearchText(this string? input)
         {
             if (string.IsNullOrWhiteSpace(input))
                 return string.Empty;
 
+            // ترتیب اصولی: ابتدا کاراکترهای عجیب حذف شوند، سپس حروف فارسی اصلاح شوند،
+            // سپس فاصله‌های اضافه پاک شوند و در نهایت متن یکدست شود.
             return input
                 .RemoveInvisibleChars()
                 .FixPersianChars()
                 .NormalizeSpaces()
                 .ToLowerInvariant();
         }
-        public static string FixPersianChars(this string str)
+        public static string FixPersianChars(this string? str)
         {
-            if (string.IsNullOrWhiteSpace(str)) return str;
+            if (string.IsNullOrWhiteSpace(str))
+                return string.Empty;
 
-            return str.Replace("ﮎ", "ک")
-                .Replace("ﮏ", "ک")
-                .Replace("ﮐ", "ک")
-                .Replace("ﮑ", "ک")
-                .Replace("ك", "ک")
-                .Replace("ي", "ی")
-                .Replace("ھ", "ه")
-                .Replace('\u064A', 'ی') // Arabic Yeh
-                .Replace('\u0643', 'ک') // Arabic Kaf
-                .Replace('\u06C0', 'ه') // Heh with Yeh Above
-                .Replace('۰', '0')
-                .Replace('۱', '1')
-                .Replace('۲', '2')
-                .Replace('۳', '3')
-                .Replace('۴', '4')
-                .Replace('۵', '5')
-                .Replace('۶', '6')
-                .Replace('۷', '7')
-                .Replace('۸', '8')
-                .Replace('۹', '9');
+            // بهینه‌سازی: تبدیل مستقیم به یک استرینگ بیلدِر برای جلوگیری از تخصیص اضافی حافظه (String Allocation)
+            // در حالت عادی، هر .Replace یک کپی جدید از String در مموری می‌سازد.
+            // استفاده از StringBuilder برای بیش از ۵ جایگزینی، پرفورمنس را به شدت بالا می‌برد.
+            var sb = new StringBuilder(str);
+
+            sb.Replace("ﮎ", "ک")
+              .Replace("ﮏ", "ک")
+              .Replace("ﮐ", "ک")
+              .Replace("ﮑ", "ک")
+              .Replace("ك", "ک")
+              .Replace("ي", "ی")
+              .Replace("ھ", "ه")
+              .Replace('\u064A', 'ی') // Arabic Yeh
+              .Replace('\u0643', 'ک') // Arabic Kaf
+              .Replace('\u06C0', 'ه') // Heh with Yeh Above
+              .Replace('۰', '0')
+              .Replace('۱', '1')
+              .Replace('۲', '2')
+              .Replace('۳', '3')
+              .Replace('۴', '4')
+              .Replace('۵', '5')
+              .Replace('۶', '6')
+              .Replace('۷', '7')
+              .Replace('۸', '8')
+              .Replace('۹', '9');
+
+            return sb.ToString();
         }
-        public static string RemoveInvisibleChars(this string input)
+        public static string RemoveInvisibleChars(this string? input)
         {
-            if (string.IsNullOrWhiteSpace(input)) return input;
+            if (string.IsNullOrWhiteSpace(input))
+                return string.Empty;
+
+            var sb = new StringBuilder(input);
 
             char[] invisibleChars = new char[]
             {
@@ -57,23 +73,27 @@ namespace Safir.Shared.Utility
 
             foreach (char c in invisibleChars)
             {
-                // به جای حذف کامل نیم‌فاصله، آن را تبدیل به فاصله عادی می‌کنیم تا کلماتی مثل "آی‌تی" تبدیل به "آی تی" شوند نه "آیتی"
-                input = input.Replace(c, ' ');
+                // جایگزینی کاراکترهای نامرئی با یک فاصله ساده
+                sb.Replace(c, ' ');
             }
 
-            input = input
-                .Replace('\t', ' ')
-                .Replace('\n', ' ')
-                .Replace('\r', ' ')
-                .Replace('\f', ' ')
-                .Replace('\v', ' ');
+            // جایگزینی کاراکترهای قالب‌بندی با فاصله
+            sb.Replace('\t', ' ')
+              .Replace('\n', ' ')
+              .Replace('\r', ' ')
+              .Replace('\f', ' ')
+              .Replace('\v', ' ');
 
-            input = new string(input.Where(ch => !char.IsControl(ch)).ToArray());
-            return input.Trim();
+            // فیلتر کردن نهایی با LINQ (حذف کاراکترهای کنترلی باقی‌مانده)
+            string cleanStr = new string(sb.ToString().Where(ch => !char.IsControl(ch)).ToArray());
+
+            return cleanStr.Trim();
         }
-        public static string NormalizeSpaces(this string text)
+        public static string NormalizeSpaces(this string? text)
         {
-            if (string.IsNullOrWhiteSpace(text)) return string.Empty;
+            if (string.IsNullOrWhiteSpace(text))
+                return string.Empty;
+
             return Regex.Replace(text, @"\s+", " ").Trim();
         }
         public static string DECODEUN(string cody)
