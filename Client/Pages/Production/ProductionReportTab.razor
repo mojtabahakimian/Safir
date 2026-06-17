@@ -34,7 +34,89 @@
             </MudPaper>
         </div>
 
-        @if (_activeTab == 1)
+        @if (_activeTab == 0)
+        {
+            <div class="animate-fade-in">
+                <MudGrid Class="mb-6">
+                    <MudItem xs="12" sm="6" md="4">
+                        <MudPaper Elevation="0" Outlined="true" Class="pa-5 rounded-xl d-flex align-center pay2-form-card" Style="border-left: 6px solid var(--mud-palette-info) !important;">
+                            <div class="pa-3 rounded-lg ml-4" style="background-color: rgba(3, 169, 244, 0.1);">
+                                <MudIcon Icon="@Icons.Material.Outlined.WaterDrop" Color="Color.Info" Size="Size.Large" />
+                            </div>
+                            <div>
+                                <MudText Typo="Typo.caption" Class="text-muted d-block mb-1" Style="font-weight: bold;">کل آب‌پنیر دریافتی (تغلیظ)</MudText>
+                                <MudText Typo="Typo.h5" Style="font-weight: 900; letter-spacing: 0.5px;">@TotalWheyQty.ToString("N0") <span style="font-size: 14px; font-weight: normal;" class="text-muted">لیتر</span></MudText>
+                            </div>
+                        </MudPaper>
+                    </MudItem>
+
+                    <MudItem xs="12" sm="6" md="4">
+                        <MudPaper Elevation="0" Outlined="true" Class="pa-5 rounded-xl d-flex align-center pay2-form-card" Style="border-left: 6px solid var(--mud-palette-success) !important;">
+                            <div class="pa-3 rounded-lg ml-4" style="background-color: rgba(76, 175, 80, 0.1);">
+                                <MudIcon Icon="@Icons.Material.Outlined.Inventory2" Color="Color.Success" Size="Size.Large" />
+                            </div>
+                            <div>
+                                <MudText Typo="Typo.caption" Class="text-muted d-block mb-1" Style="font-weight: bold;">کل پودر خروجی (اسپری)</MudText>
+                                <MudText Typo="Typo.h5" Style="font-weight: 900; letter-spacing: 0.5px;">@TotalPowderQty.ToString("N0") <span style="font-size: 14px; font-weight: normal;" class="text-muted">کیلوگرم</span></MudText>
+                            </div>
+                        </MudPaper>
+                    </MudItem>
+
+                    <MudItem xs="12" sm="12" md="4">
+                        <MudPaper Elevation="0" Outlined="true" Class="pa-5 rounded-xl d-flex align-center pay2-form-card" Style="border-left: 6px solid var(--mud-palette-primary) !important;">
+                            <div class="pa-3 rounded-lg ml-4" style="background-color: rgba(var(--mud-palette-primary-rgb), 0.1);">
+                                <MudIcon Icon="@Icons.Material.Outlined.Assessment" Color="Color.Primary" Size="Size.Large" />
+                            </div>
+                            <div>
+                                <MudText Typo="Typo.caption" Class="text-muted d-block mb-1" Style="font-weight: bold;">تعداد کل گزارشات ثبت‌شده</MudText>
+                                <MudText Typo="Typo.h5" Style="font-weight: 900; letter-spacing: 0.5px;">@_reports.Count <span style="font-size: 14px; font-weight: normal;" class="text-muted">روز رکورد</span></MudText>
+                            </div>
+                        </MudPaper>
+                    </MudItem>
+                </MudGrid>
+
+                <MudGrid>
+                    <MudItem xs="12" md="7">
+                        <MudPaper Elevation="0" Outlined="true" Class="pa-6 rounded-xl pay2-form-card">
+                            <MudText Typo="Typo.subtitle1" Style="font-weight: 700;" Class="mb-4">نمودار حجم تولید روزهای اخیر</MudText>
+                            @if (_chartSeries.Any() && _chartSeries[0].Data.Any(v => v > 0))
+                            {
+                                <MudChart ChartType="ChartType.Bar" ChartSeries="@_chartSeries" XAxisLabels="@_chartXLabels" Width="100%" Height="300px" ChartOptions="@_chartOptions" />
+                            }
+                            else
+                            {
+                                <div class="d-flex align-center justify-center text-muted" style="height: 300px;">
+                                    <MudText Typo="Typo.body2">داده‌ای برای نمایش نمودار میله‌ای وجود ندارد.</MudText>
+                                </div>
+                            }
+                        </MudPaper>
+                    </MudItem>
+
+                    <MudItem xs="12" md="5">
+                        <MudPaper Elevation="0" Outlined="true" Class="pa-6 rounded-xl pay2-form-card d-flex flex-column justify-space-between h-100">
+                            <div>
+                                <MudText Typo="Typo.subtitle1" Style="font-weight: 700;" Class="mb-4">نسبت بهره‌وری واحد شیر خشک</MudText>
+                                <MudText Typo="Typo.body2" Class="text-muted mb-6">درصد تبدیل مایع به پودر بر اساس کل ورودی دیتابیس کارخانه.</MudText>
+                            </div>
+                            <div class="d-flex justify-center align-center mb-4">
+                                @if (TotalWheyQty > 0)
+                                {
+                                    <MudChart ChartType="ChartType.Donut" Width="220px" Height="220px" InputData="@_donutData" InputLabels="@_donutLabels" ChartOptions="@_chartOptions" />
+                                }
+                                else
+                                {
+                                    <div class="d-flex align-center justify-center text-muted" style="height: 220px;">
+                                        <MudText Typo="Typo.body2">داده‌ای برای تحلیل نسبت تبدیل وجود ندارد.</MudText>
+                                    </div>
+                                }
+                            </div>
+                        </MudPaper>
+                    </MudItem>
+                </MudGrid>
+            </div>
+        }
+
+        else if (_activeTab == 1)
         {
             <MudPaper Elevation="0" Outlined="true" Class="pa-6 rounded-xl pay2-form-card">
                 <div class="d-flex align-center mb-6">
@@ -170,12 +252,6 @@
                 </RowTemplate>
             </MudTable>
         }
-        else if (_activeTab == 0)
-        {
-            <MudPaper Elevation="0" Outlined="true" Class="pa-6 rounded-xl d-flex justify-center align-center pay2-form-card" Style="height: 400px; border-color: #e0e0e0;">
-                <MudText Typo="Typo.h6" Color="Color.Surface">بخش داشبورد و آمار در حال توسعه می‌باشد...</MudText>
-            </MudPaper>
-        }
     }
 </div>
 
@@ -188,6 +264,16 @@
     private string? _shamsiDateStr;
     private List<ProductionReportDto> _reports = new();
     private ProductionReportDto Model = new();
+
+    // متغیرهای داشبورد آماری
+    private decimal TotalWheyQty => _reports.Sum(x => x.ConcentrationWheyQty ?? 0);
+    private decimal TotalPowderQty => _reports.Sum(x => x.SprayPowderQty ?? 0);
+
+    private List<ChartSeries> _chartSeries = new();
+    private string[] _chartXLabels = Array.Empty<string>();
+    private double[] _donutData = Array.Empty<double>();
+    private string[] _donutLabels = new[] { "پودر تولیدی (کیلوگرم)", "آب‌پنیر تبخیر شده (لیتر)" };
+    private ChartOptions _chartOptions = new();
 
     private IEnumerable<ProductionReportDto> FilteredReports =>
         string.IsNullOrWhiteSpace(_searchString)
@@ -207,6 +293,7 @@
         try
         {
             _reports = await ApiService.GetReportsAsync();
+            CalculateDashboardStats(); // متد آمار بعد از دریافت داده‌ها
         }
         catch (Exception ex)
         {
@@ -215,6 +302,26 @@
         finally
         {
             _isDataLoaded = true;
+        }
+    }
+
+    private void CalculateDashboardStats()
+    {
+        if (_reports == null || !_reports.Any()) return;
+
+        var topReports = _reports.OrderBy(x => x.ReportDate).TakeLast(5).ToList();
+        _chartXLabels = topReports.Select(x => x.ReportDate?.ToString("MM/dd") ?? "").ToArray();
+
+        _chartSeries = new List<ChartSeries>
+        {
+            new() { Name = "آبپنیر دریافتی (لیتر)", Data = topReports.Select(x => (double)(x.ConcentrationWheyQty ?? 0)).ToArray() },
+            new() { Name = "پودر خروجی (کیلوگرم)", Data = topReports.Select(x => (double)(x.SprayPowderQty ?? 0)).ToArray() }
+        };
+
+        if (TotalWheyQty > 0)
+        {
+            double remainingLiquid = (double)TotalWheyQty - (double)TotalPowderQty;
+            _donutData = new double[] { (double)TotalPowderQty, remainingLiquid > 0 ? remainingLiquid : 0 };
         }
     }
 
