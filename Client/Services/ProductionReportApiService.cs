@@ -35,13 +35,25 @@ namespace Safir.Client.Services
             else
                 response = await _http.PutAsJsonAsync($"api/ProductionReports/{report.Id}", report);
 
-            response.EnsureSuccessStatusCode();
+            if (!response.IsSuccessStatusCode)
+            {
+                var errorContent = await response.Content.ReadAsStringAsync();
+                throw new Exception(string.IsNullOrWhiteSpace(errorContent)
+                    ? $"خطای سرور: {(int)response.StatusCode}"
+                    : errorContent);
+            }
         }
 
         public async Task DeleteReportAsync(int id)
         {
             var response = await _http.DeleteAsync($"api/ProductionReports/{id}");
-            response.EnsureSuccessStatusCode();
+            if (!response.IsSuccessStatusCode)
+            {
+                var errorContent = await response.Content.ReadAsStringAsync();
+                throw new Exception(string.IsNullOrWhiteSpace(errorContent)
+                    ? $"خطای سرور: {(int)response.StatusCode}"
+                    : errorContent);
+            }
         }
     }
 }
