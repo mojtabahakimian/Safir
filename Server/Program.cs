@@ -117,6 +117,7 @@ using (var scope = app.Services.CreateScope())
             //"005_CreateBugReportCommentsTable.sql",
             //"006_Pay2_HourlyCalcBasis.sql",
             //"007_Pay2_HourlyLeaveType.sql",
+            "008_DecreeLineAmountDecimal.sql",
         };
 
         foreach (var scriptName in scriptsToRun)
