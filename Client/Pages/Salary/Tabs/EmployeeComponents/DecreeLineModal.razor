@@ -63,7 +63,7 @@
                         <div class="form-field">
                             <label>@(IsShiftPctItem ? "درصد از حقوق پایه ماهیانه (٪) *" : "مبلغ در این حکم (ریال) *")</label>
                             <Pay2NumericInput @bind-Value="CurrentAmountStr" @bind-Value:after="OnAmountManuallyChanged"
-                                              MaxLength="@(IsShiftPctItem ? 6 : 16)" Direction="ltr"
+                                              MaxLength="@(IsShiftPctItem ? 3 : 16)" Direction="ltr"
                                               InputMode="@(IsShiftPctItem ? Pay2NumericInput.NumericInputMode.Percentage : Pay2NumericInput.NumericInputMode.None)"
                                               MaxDecimalPlaces="@(IsShiftPctItem ? 2 : 0)"
                                               IsDigitGroupActive="@(!IsShiftPctItem)" ThreeTwoZero="@(!IsShiftPctItem)"
