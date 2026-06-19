@@ -63,10 +63,12 @@
                         <div class="form-field">
                             <label>@(IsShiftPctItem ? "درصد از حقوق پایه ماهیانه (٪) *" : "مبلغ در این حکم (ریال) *")</label>
                             <Pay2NumericInput @bind-Value="CurrentAmountStr" @bind-Value:after="OnAmountManuallyChanged"
-                                              MaxLength="@(IsShiftPctItem ? 3 : 16)" Direction="ltr"
+                                              MaxLength="@(IsShiftPctItem ? 6 : 16)" Direction="ltr"
+                                              InputMode="@(IsShiftPctItem ? Pay2NumericInput.NumericInputMode.Percentage : Pay2NumericInput.NumericInputMode.None)"
+                                              MaxDecimalPlaces="@(IsShiftPctItem ? 2 : 0)"
                                               IsDigitGroupActive="@(!IsShiftPctItem)" ThreeTwoZero="@(!IsShiftPctItem)"
-                                              Placeholder="@(IsShiftPctItem ? "مثال: 10" : null)"
-                                              ToolTip="@(IsShiftPctItem ? "حق شیفت به صورت درصدی از حقوق پایه ماهیانه (نرخ روزانه × ۳۰) محاسبه می‌شود — مانند حکم قبلی فقط عدد درصد را وارد کنید" : null)"
+                                              Placeholder="@(IsShiftPctItem ? "مثال: 10.5" : null)"
+                                              ToolTip="@(IsShiftPctItem ? "حق شیفت به صورت درصدی از حقوق پایه ماهیانه (نرخ روزانه × ۳۰) محاسبه می‌شود — عدد درصد را وارد کنید (اعشار هم مجاز است)" : null)"
                                               Disabled="@IsDecreeConfirmed" />
                             @if (IsShiftPctItem && !string.IsNullOrWhiteSpace(ShiftHint))
                             {
@@ -380,7 +382,10 @@
     {
         ShiftHint = null;
 
-        if (!long.TryParse(CurrentAmountStr?.Replace(",", ""), out long pct) || pct <= 0)
+        if (!decimal.TryParse(CurrentAmountStr?.Replace(",", ""),
+                System.Globalization.NumberStyles.Number,
+                System.Globalization.CultureInfo.InvariantCulture,
+                out decimal pct) || pct <= 0)
             return;
 
         var (computed, hint) = CalcPercentOfMonthly(pct);
@@ -402,7 +407,7 @@
             BASIS_OV = item.BASIS_OV
         };
 
-        CurrentAmountStr = CurrentLine.AMOUNT.ToString();
+        CurrentAmountStr = CurrentLine.AMOUNT.ToString(System.Globalization.CultureInfo.InvariantCulture);
         CurrentPercentStr = null;
         PercentHint = null;
         ShiftHint = null;
@@ -419,7 +424,10 @@
             Snackbar.Add("انتخاب آیتم حقوقی الزامی است.", MudBlazor.Severity.Warning); return;
         }
 
-        long.TryParse(CurrentAmountStr?.Replace(",", ""), out long amt);
+        decimal.TryParse(CurrentAmountStr?.Replace(",", ""),
+            System.Globalization.NumberStyles.Number,
+            System.Globalization.CultureInfo.InvariantCulture,
+            out decimal amt);
 
         CurrentLine.DEC_ID = DecreeId;
         CurrentLine.AMOUNT = amt;
