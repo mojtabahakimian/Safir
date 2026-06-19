@@ -13,7 +13,7 @@ IF EXISTS (
       AND t.name = 'bigint'
 )
 BEGIN
-    IF EXISTS (SELECT 1 FROM sys.default_constraints WHERE name = 'DF_DL_AMT')
+    IF EXISTS (SELECT 1 FROM sys.default_constraints WHERE name = 'DF_DL_AMT' AND parent_object_id = OBJECT_ID('dbo.PAY2_DECREE_LINE'))
         ALTER TABLE [dbo].[PAY2_DECREE_LINE] DROP CONSTRAINT [DF_DL_AMT];
 
     ALTER TABLE [dbo].[PAY2_DECREE_LINE]
@@ -37,7 +37,7 @@ IF EXISTS (
       AND t.name = 'bigint'
 )
 BEGIN
-    IF EXISTS (SELECT 1 FROM sys.default_constraints WHERE name = 'DF_TL_AMT')
+    IF EXISTS (SELECT 1 FROM sys.default_constraints WHERE name = 'DF_TL_AMT' AND parent_object_id = OBJECT_ID('dbo.PAY2_ITEM_TMPL_LINE'))
         ALTER TABLE [dbo].[PAY2_ITEM_TMPL_LINE] DROP CONSTRAINT [DF_TL_AMT];
 
     ALTER TABLE [dbo].[PAY2_ITEM_TMPL_LINE]

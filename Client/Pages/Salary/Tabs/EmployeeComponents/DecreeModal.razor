@@ -123,10 +123,19 @@
                                         <i class="bi bi-square" style="color:var(--p2-text-light); font-size:16px;"></i>
                                     }
                                 </td>
-                                <td style="text-align:center; min-width: 250px;">
+                                <td style="text-align:center; min-width: 280px;">
                                     <button class="btn-ghost-pay2" style="color:#8b5cf6;" @onclick="() => OpenDecreeLines(dec)">آیتم‌های ریالی</button>
-                                    <button class="btn-ghost-pay2 p2-text-primary" @onclick="() => EditDecree(dec)">ویرایش</button>
-                                    <button class="btn-ghost-pay2 p2-text-danger" @onclick="() => DeleteDecree(dec)">حذف</button>
+                                    @if (dec.IS_CONFIRMED)
+                                    {
+                                        <button class="btn-ghost-pay2" style="color: var(--p2-warning-text);" @onclick="() => UnlockDecree(dec)" title="لغو تأیید نهایی — فقط اگر حقوق قطعی نشده باشد">
+                                            <i class="bi bi-unlock"></i> لغو تأیید
+                                        </button>
+                                    }
+                                    else
+                                    {
+                                        <button class="btn-ghost-pay2 p2-text-primary" @onclick="() => EditDecree(dec)">ویرایش</button>
+                                        <button class="btn-ghost-pay2 p2-text-danger" @onclick="() => DeleteDecree(dec)">حذف</button>
+                                    }
                                 </td>
                             </tr>
                         }
@@ -195,8 +204,11 @@
     {
         try
         {
-            Templates = await EmployeeApi.GetTemplatesLookupAsync();
-            Decrees = await EmployeeApi.GetDecreesAsync(EmployeeId);
+            var templatesTask = EmployeeApi.GetTemplatesLookupAsync();
+            var decreesTask = EmployeeApi.GetDecreesAsync(EmployeeId);
+            await Task.WhenAll(templatesTask, decreesTask);
+            Templates = templatesTask.Result;
+            Decrees = decreesTask.Result;
         }
         catch (Exception ex) { Snackbar.Add(ex.Message, MudBlazor.Severity.Error); }
     }
@@ -283,6 +295,38 @@
     async Task CloseDecreeLineModal()
     {
         ShowDecreeLineModal = false;
+    }
+
+    async Task UnlockDecree(Pay2DecreeDto dec)
+    {
+        var parameters = new MudBlazor.DialogParameters
+        {
+            ["Title"] = "لغو تأیید حکم",
+            ["ContentText"] = $"آیا از لغو تأیید حکم (شروع اجرا: {dec.EFF_FROM}) اطمینان دارید؟\nدر صورتی که حقوق این دوره قطعی نشده باشد، حکم برای ویرایش باز می‌شود.",
+            ["ConfirmButtonText"] = "بله، لغو تأیید",
+            ["CancelButtonText"] = "انصراف"
+        };
+        var options = new MudBlazor.DialogOptions { CloseButton = false, MaxWidth = MudBlazor.MaxWidth.ExtraSmall };
+        var dialog = DialogService.Show<Safir.Client.Shared.ConfirmDialog>("لغو تأیید", parameters, options);
+        var result = await dialog.Result;
+
+        if (!result.Cancelled)
+        {
+            try
+            {
+                var toUnlock = new Pay2DecreeDto
+                {
+                    DEC_ID = dec.DEC_ID, EMP_ID = dec.EMP_ID, WS_ID = dec.WS_ID,
+                    ISSUED_DATE = dec.ISSUED_DATE, EFF_FROM = dec.EFF_FROM, EFF_TO = dec.EFF_TO,
+                    EDU_LEVEL = dec.EDU_LEVEL, MARITAL = dec.MARITAL, IS_MANAGER = dec.IS_MANAGER,
+                    TMPL_ID = dec.TMPL_ID, NOTES = dec.NOTES, IS_CONFIRMED = false
+                };
+                await EmployeeApi.SaveDecreeAsync(toUnlock);
+                Snackbar.Add("تأیید حکم با موفقیت لغو شد. اکنون می‌توانید آیتم‌های ریالی را ویرایش کنید.", MudBlazor.Severity.Success);
+                await LoadData();
+            }
+            catch (Exception ex) { Snackbar.Add(ex.Message, MudBlazor.Severity.Error); }
+        }
     }
 
     async Task Close() => await OnClose.InvokeAsync();
