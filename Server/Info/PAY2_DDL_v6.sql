@@ -576,7 +576,7 @@ CREATE TABLE [dbo].[PAY2_DECREE_LINE]
 (
     [DEC_ID]   INT      NOT NULL,
     [ITEM_ID]  INT      NOT NULL,
-    [AMOUNT]   BIGINT   NOT NULL CONSTRAINT DF_DL_AMT DEFAULT(0),
+    [AMOUNT]   DECIMAL(18,2) NOT NULL CONSTRAINT DF_DL_AMT DEFAULT(0),
     [INS_OV]   BIT      NULL,                                                -- NULL=از PAY2_ITEM_DEF
     [TAX_OV]   BIT      NULL,
     [BASIS_OV] TINYINT  NULL,

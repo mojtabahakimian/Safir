@@ -65,7 +65,7 @@
         public int DEC_ID { get; set; }
         public int ITEM_ID { get; set; }
         public string? ITEM_NAME { get; set; }
-        public long AMOUNT { get; set; }
+        public decimal AMOUNT { get; set; }
 
         public bool? INS_OV { get; set; }
         public bool? TAX_OV { get; set; }
