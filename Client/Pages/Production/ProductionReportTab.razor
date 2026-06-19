@@ -116,8 +116,8 @@
 
                                     <div class="mt-4 text-center">
                                         @{
-                                            var efficiency = TotalWheyQty > 0 ? (TotalPowderQty / TotalWheyQty * 100) : 0;
-                                            var ratio = TotalPowderQty > 0 ? (TotalWheyQty / TotalPowderQty) : 0;
+                                            var efficiency = TotalWheyQty > 0 ? ((decimal)TotalPowderQty / (decimal)TotalWheyQty * 100) : 0;
+                                            var ratio = TotalPowderQty > 0 ? ((decimal)TotalWheyQty / (decimal)TotalPowderQty) : 0;
                                         }
                                         <MudText Typo="Typo.h6" Color="Color.Success" Style="font-weight: bold;">
                                             راندمان: @efficiency.ToString("N2")٪
@@ -279,12 +279,12 @@
                     <MudTd DataLabel="کنتور">@context.CounterNumber</MudTd>
                     <MudTd DataLabel="راندمان">
                         @{
-                            var ratioRow = context.SprayPowderQty > 0 ? (context.ConcentrationWheyQty / context.SprayPowderQty) : 0;
-                            var efficiencyRow = context.ConcentrationWheyQty > 0 ? (context.SprayPowderQty / context.ConcentrationWheyQty * 100) : 0;
+                            var ratioRow = context.SprayPowderQty > 0 ? ((decimal)(context.ConcentrationWheyQty ?? 0) / (decimal)(context.SprayPowderQty ?? 0)) : 0;
+                            var efficiencyRow = context.ConcentrationWheyQty > 0 ? ((decimal)(context.SprayPowderQty ?? 0) / (decimal)(context.ConcentrationWheyQty ?? 0) * 100) : 0;
                         }
                         @if (ratioRow > 0)
                         {
-                            <span>@ratioRow?.ToString("N1") (@efficiencyRow?.ToString("N1")٪)</span>
+                            <span>@ratioRow.ToString("N1") (@efficiencyRow.ToString("N1")٪)</span>
                         }
                         else
                         {
@@ -384,6 +384,11 @@
         {
             double remainingLiquid = (double)TotalWheyQty - (double)TotalPowderQty;
             _donutData = new double[] { (double)TotalPowderQty, remainingLiquid > 0 ? remainingLiquid : 0 };
+            _donutLabels = new[]
+            {
+                $"پودر تولیدی ({TotalPowderQty.ToString("N0")} کیلوگرم)",
+                $"آب‌پنیر تبخیر شده ({(remainingLiquid > 0 ? remainingLiquid : 0).ToString("N0")} لیتر)"
+            };
         }
     }
 
@@ -422,7 +427,7 @@
 
             // تبدیل تاریخ شمسی ورودی (به فرمت yyyyMMdd یا مشابه) به میلادی
             DateTime parsedDate = DateTime.Now;
-            var cleanShamsi = (_shamsiDateStr ?? "").Replace("/", "").Replace("-", "");
+            var cleanShamsi = Safir.Shared.Utility.CL_METHODS.FixPersianChars((_shamsiDateStr ?? "").Replace("/", "").Replace("-", ""));
             if (cleanShamsi.Length == 8 && int.TryParse(cleanShamsi.Substring(0, 4), out int year) &&
                 int.TryParse(cleanShamsi.Substring(4, 2), out int month) &&
                 int.TryParse(cleanShamsi.Substring(6, 2), out int day))
