@@ -315,6 +315,14 @@ namespace Safir.Server.Controllers
                     if (isConfirmed)
                         throw new InvalidOperationException("این حکم قفل (تأیید نهایی) شده است! برای افزودن یا تغییر مبالغ، باید ابتدا در صفحه قبل، تیک تایید این حکم را بردارید.");
 
+                    // اعتبارسنجی: مقدار اعشاری فقط برای آیتم حق شیفت درصدی مجاز است
+                    if (line.AMOUNT != Math.Truncate(line.AMOUNT))
+                    {
+                        bool isShiftPct = await IsShiftPctItemAsync(conn, tran, line.ITEM_ID);
+                        if (!isShiftPct)
+                            throw new InvalidOperationException("مبلغ اعشاری فقط برای آیتم «حق شیفت درصدی» مجاز است.");
+                    }
+
                     int count = await conn.QuerySingleAsync<int>(
                         "SELECT COUNT(1) FROM PAY2_DECREE_LINE WHERE DEC_ID=@DEC_ID AND ITEM_ID=@ITEM_ID",
                         new { line.DEC_ID, line.ITEM_ID }, tran);
@@ -1009,6 +1017,14 @@ namespace Safir.Server.Controllers
             {
                 await _db.ExecuteInTransactionAsync(async (conn, tran) =>
                 {
+                    // اعتبارسنجی: مقدار اعشاری فقط برای آیتم حق شیفت درصدی مجاز است
+                    if (line.DEF_AMOUNT != Math.Truncate(line.DEF_AMOUNT))
+                    {
+                        bool isShiftPct = await IsShiftPctItemAsync(conn, tran, line.ITEM_ID);
+                        if (!isShiftPct)
+                            throw new InvalidOperationException("مبلغ اعشاری فقط برای آیتم «حق شیفت درصدی» مجاز است.");
+                    }
+
                     int count = await conn.QuerySingleAsync<int>("SELECT COUNT(1) FROM PAY2_ITEM_TMPL_LINE WHERE TMPL_ID=@TMPL_ID AND ITEM_ID=@ITEM_ID", new { line.TMPL_ID, line.ITEM_ID }, tran);
 
                     if (count == 0)
@@ -1193,6 +1209,18 @@ namespace Safir.Server.Controllers
                 return Ok();
             }
             catch (Exception ex) { return BadRequest(ex.Message); }
+        }
+
+        private static async Task<bool> IsShiftPctItemAsync(IDbConnection conn, IDbTransaction tran, int itemId)
+        {
+            string? itemCode = await conn.QuerySingleOrDefaultAsync<string>(
+                "SELECT ITEM_CODE FROM PAY2_ITEM_DEF WHERE ITEM_ID = @itemId", new { itemId }, tran);
+            if (!string.Equals(itemCode, "SHIFT", StringComparison.OrdinalIgnoreCase))
+                return false;
+
+            string? shiftMode = await conn.QuerySingleOrDefaultAsync<string>(
+                "SELECT CFG_VALUE FROM PAY2_CONFIG WHERE CFG_KEY = 'SHIFT_MODE'", null, tran);
+            return !string.Equals(shiftMode, "FIXED", StringComparison.OrdinalIgnoreCase);
         }
 
     }
