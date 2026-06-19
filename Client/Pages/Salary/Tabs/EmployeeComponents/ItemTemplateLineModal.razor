@@ -196,7 +196,7 @@
             TAX_OV = item.TAX_OV,
             BASIS_OV = item.BASIS_OV
         };
-        AmountStr = CurrentLine.DEF_AMOUNT.ToString();
+        AmountStr = ((long)decimal.Truncate(CurrentLine.DEF_AMOUNT)).ToString();
         IsEditing = true;
     }
 
@@ -206,7 +206,10 @@
         {
             Snackbar.Add("انتخاب آیتم حقوقی الزامی است.", MudBlazor.Severity.Warning); return;
         }
-        long.TryParse(AmountStr?.Replace(",", ""), out long amt);
+        decimal.TryParse(AmountStr?.Replace(",", ""),
+            System.Globalization.NumberStyles.Number,
+            System.Globalization.CultureInfo.InvariantCulture,
+            out decimal amt);
         CurrentLine.TMPL_ID = MasterTemplateId;
         CurrentLine.DEF_AMOUNT = amt;
         IsSaving = true;

@@ -333,7 +333,7 @@
         public int TMPL_ID { get; set; }
         public int ITEM_ID { get; set; }
         public string? ITEM_NAME { get; set; }
-        public long DEF_AMOUNT { get; set; }
+        public decimal DEF_AMOUNT { get; set; }
         public bool? INS_OV { get; set; }
         public bool? TAX_OV { get; set; }
         public byte? BASIS_OV { get; set; }
