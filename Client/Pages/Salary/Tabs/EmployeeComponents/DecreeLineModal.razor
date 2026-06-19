@@ -159,7 +159,7 @@
                                         <td class="p2-text-mono p2-text-primary" style="text-align:center; font-weight:bold;">
                                             @if (IsShiftPctLine(item))
                                             {
-                                                <span>@item.AMOUNT٪</span>
+                                                <span>@item.AMOUNT.ToString("G")٪</span>
                                             }
                                             else
                                             {
@@ -310,7 +310,7 @@
         if (baseLine == null || baseLine.AMOUNT <= 0) return null;
 
         byte effectiveBasis = baseLine.BASIS_OV ?? baseDef.CALC_BASIS;
-        return effectiveBasis == 1 ? baseLine.AMOUNT * 30 : baseLine.AMOUNT;
+        return effectiveBasis == 1 ? (long)baseLine.AMOUNT * 30 : (long)baseLine.AMOUNT;
     }
 
     void OnItemChanged()
@@ -380,7 +380,7 @@
     {
         ShiftHint = null;
 
-        if (!long.TryParse(CurrentAmountStr?.Replace(",", ""), out long pct) || pct <= 0)
+        if (!decimal.TryParse(CurrentAmountStr?.Replace(",", ""), out decimal pct) || pct <= 0)
             return;
 
         var (computed, hint) = CalcPercentOfMonthly(pct);
@@ -402,7 +402,7 @@
             BASIS_OV = item.BASIS_OV
         };
 
-        CurrentAmountStr = CurrentLine.AMOUNT.ToString();
+        CurrentAmountStr = IsShiftPctItem ? CurrentLine.AMOUNT.ToString("G") : CurrentLine.AMOUNT.ToString("0");
         CurrentPercentStr = null;
         PercentHint = null;
         ShiftHint = null;
@@ -419,7 +419,7 @@
             Snackbar.Add("انتخاب آیتم حقوقی الزامی است.", MudBlazor.Severity.Warning); return;
         }
 
-        long.TryParse(CurrentAmountStr?.Replace(",", ""), out long amt);
+        decimal.TryParse(CurrentAmountStr?.Replace(",", ""), out decimal amt);
 
         CurrentLine.DEC_ID = DecreeId;
         CurrentLine.AMOUNT = amt;

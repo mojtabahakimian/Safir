@@ -596,7 +596,7 @@ CREATE TABLE [dbo].[PAY2_ITEM_TMPL_LINE]
 (
     [TMPL_ID]   INT      NOT NULL,
     [ITEM_ID]   INT      NOT NULL,
-    [DEF_AMOUNT] BIGINT  NOT NULL CONSTRAINT DF_TL_AMT DEFAULT(0),
+    [DEF_AMOUNT] DECIMAL(18,2)  NOT NULL CONSTRAINT DF_TL_AMT DEFAULT(0),
     [INS_OV]    BIT      NULL,                                               -- NULL=از تعریف آیتم
     [TAX_OV]    BIT      NULL,
     [BASIS_OV]  TINYINT  NULL,
@@ -657,7 +657,7 @@ CREATE TABLE [dbo].[PAY2_DECREE_LINE]
 (
     [DEC_ID]   INT      NOT NULL,
     [ITEM_ID]  INT      NOT NULL,
-    [AMOUNT]   BIGINT   NOT NULL CONSTRAINT DF_DL_AMT DEFAULT(0),
+    [AMOUNT]   DECIMAL(18,2)   NOT NULL CONSTRAINT DF_DL_AMT DEFAULT(0),
     [INS_OV]   BIT      NULL,                                                -- NULL=از PAY2_ITEM_DEF
     [TAX_OV]   BIT      NULL,
     [BASIS_OV] TINYINT  NULL,
@@ -1391,7 +1391,7 @@ BEGIN
         BEGIN
             -- گام ۵ — محاسبه هر آیتم حکم
             DECLARE
-                @ITEM_ID INT, @ITEM_CODE NVARCHAR(30), @ITEM_TYPE TINYINT, @ITEM_AMOUNT BIGINT,
+                @ITEM_ID INT, @ITEM_CODE NVARCHAR(30), @ITEM_TYPE TINYINT, @ITEM_AMOUNT DECIMAL(18,2),
                 @ITEM_BASIS TINYINT, @ITEM_INS BIT, @ITEM_TAX BIT, @ITEM_PBD TINYINT,  
                 @OV_INS BIT, @OV_TAX BIT, @OV_BASIS TINYINT, @CALC_AMOUNT BIGINT = 0;
 
