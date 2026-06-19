@@ -1,6 +1,8 @@
 ﻿@using Safir.Shared.Models
 @using Safir.Shared.Models.Salary
 @inject Safir.Client.Services.Pay2EmployeeApiService EmployeeApi
+@inject Safir.Client.Services.Pay2ItemDefApiService ItemDefApi
+@inject Safir.Client.Services.Pay2SettingsApiService SettingsApi
 @inject ISnackbar Snackbar
 @inject MudBlazor.IDialogService DialogService
 
@@ -34,13 +36,19 @@
                         <Safir.Client.Pages.Salary.Tabs.Pay2Select TItem="LookupDto<int>" TValue="int"
                                                                    Items="ItemDefs"
                                                                    @bind-Value="CurrentLine.ITEM_ID"
+                                                                   @bind-Value:after="OnItemChanged"
                                                                    TextSelector="x => x.Name" ValueSelector="x => x.Id"
                                                                    Placeholder="— انتخاب کنید —" Clearable="false"
                                                                    Disabled="@IsEditing" />
                     </div>
                     <div class="form-field">
-                        <label>مبلغ پیش‌فرض (DEF_AMOUNT)</label>
-                        <Safir.Client.Pages.Salary.Tabs.Pay2NumericInput @bind-Value="AmountStr" MaxLength="16" Direction="ltr" IsDigitGroupActive="true" ThreeTwoZero="true" />
+                        <label>@(IsShiftPctItem ? "درصد از حقوق پایه (٪)" : "مبلغ پیش‌فرض (DEF_AMOUNT)")</label>
+                        <Safir.Client.Pages.Salary.Tabs.Pay2NumericInput @bind-Value="AmountStr"
+                            MaxLength="@(IsShiftPctItem ? 3 : 16)" Direction="ltr"
+                            InputMode="@(IsShiftPctItem ? Pay2NumericInput.NumericInputMode.Percentage : Pay2NumericInput.NumericInputMode.None)"
+                            MaxDecimalPlaces="@(IsShiftPctItem ? 2 : 0)"
+                            IsDigitGroupActive="@(!IsShiftPctItem)" ThreeTwoZero="@(!IsShiftPctItem)"
+                            Placeholder="@(IsShiftPctItem ? "مثال: 7.5" : null)" />
                     </div>
                 </div>
 
@@ -105,7 +113,16 @@
                             {
                                 <tr style="background: @(CurrentLine.ITEM_ID == item.ITEM_ID ? "var(--p2-bg-hover)" : "transparent")">
                                     <td><b>@item.ITEM_NAME</b></td>
-                                    <td class="p2-text-mono p2-text-primary" style="text-align:center; font-weight:bold;">@item.DEF_AMOUNT.ToString("N0")</td>
+                                    <td class="p2-text-mono p2-text-primary" style="text-align:center; font-weight:bold;">
+                                        @if (IsShiftPctLine(item))
+                                        {
+                                            <span>@item.DEF_AMOUNT٪</span>
+                                        }
+                                        else
+                                        {
+                                            <span>@item.DEF_AMOUNT.ToString("N0")</span>
+                                        }
+                                    </td>
                                     <td style="text-align:center; color: var(--p2-text-muted);">@item.InsText</td>
                                     <td style="text-align:center; color: var(--p2-text-muted);">@item.TaxText</td>
                                     <td style="text-align:center; color: var(--p2-text-muted);">@item.BasisText</td>
@@ -134,14 +151,25 @@
 
     List<Pay2ItemTmplLineDto> Lines = new();
     List<LookupDto<int>> ItemDefs = new();
+    List<Pay2ItemDefDto> FullItemDefs = new();
     Pay2ItemTmplLineDto CurrentLine = new();
 
     string? AmountStr;
+    string _shiftMode = "PCT";
     bool IsSaving = false;
     bool IsEditing = false;
     int _lastProcessedId = -1;
     bool _isDataLoaded = false;
     bool _lastOpenState = false;
+
+    bool IsShiftPctItem => IsShiftPctLine(CurrentLine);
+
+    bool IsShiftPctLine(Pay2ItemTmplLineDto line)
+    {
+        if (string.Equals(_shiftMode, "FIXED", StringComparison.OrdinalIgnoreCase)) return false;
+        var def = FullItemDefs.FirstOrDefault(d => d.ITEM_ID == line.ITEM_ID);
+        return string.Equals(def?.ITEM_CODE, "SHIFT", StringComparison.OrdinalIgnoreCase);
+    }
 
     List<LookupDto<int>> OverrideOptions = new() { new(3, "طبق تعریف پایه"), new(1, "مشمول"), new(2, "معاف") };
     List<LookupDto<int>> BasisOptions = new() { new(9, "طبق تعریف پایه"), new(1, "روزانه"), new(2, "ماهیانه"), new(3, "ساعتی") };
@@ -166,8 +194,17 @@
     {
         try
         {
-            ItemDefs = await EmployeeApi.GetItemDefsLookupAsync();
-            Lines = await EmployeeApi.GetTemplateLinesAsync(MasterTemplateId);
+            var itemDefsTask = EmployeeApi.GetItemDefsLookupAsync();
+            var linesTask = EmployeeApi.GetTemplateLinesAsync(MasterTemplateId);
+            var fullDefsTask = ItemDefApi.GetItemDefsAsync();
+            var shiftModeTask = LoadShiftModeAsync();
+
+            await Task.WhenAll(itemDefsTask, linesTask, fullDefsTask, shiftModeTask);
+
+            ItemDefs = itemDefsTask.Result;
+            Lines = linesTask.Result;
+            FullItemDefs = fullDefsTask.Result;
+            _shiftMode = shiftModeTask.Result;
         }
         catch (Exception ex) { Console.WriteLine(ex.Message); }
         finally
@@ -177,11 +214,26 @@
         }
     }
 
+    async Task<string> LoadShiftModeAsync()
+    {
+        try
+        {
+            var configs = await SettingsApi.GetConfigsAsync();
+            return configs.FirstOrDefault(c => c.CFG_KEY == "SHIFT_MODE")?.CFG_VALUE ?? "PCT";
+        }
+        catch { return "PCT"; }
+    }
+
     void ResetForm()
     {
         CurrentLine = new Pay2ItemTmplLineDto();
         AmountStr = null;
         IsEditing = false;
+    }
+
+    void OnItemChanged()
+    {
+        AmountStr = null;
     }
 
     void EditLine(Pay2ItemTmplLineDto item)
@@ -196,7 +248,9 @@
             TAX_OV = item.TAX_OV,
             BASIS_OV = item.BASIS_OV
         };
-        AmountStr = ((long)decimal.Truncate(CurrentLine.DEF_AMOUNT)).ToString();
+        AmountStr = IsShiftPctItem
+            ? CurrentLine.DEF_AMOUNT.ToString(System.Globalization.CultureInfo.InvariantCulture)
+            : ((long)decimal.Truncate(CurrentLine.DEF_AMOUNT)).ToString();
         IsEditing = true;
     }
 
