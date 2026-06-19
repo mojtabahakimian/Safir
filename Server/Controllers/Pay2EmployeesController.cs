@@ -162,16 +162,17 @@ namespace Safir.Server.Controllers
                 {
                     int currentDecId = decree.DEC_ID;
 
-                    // 🚀 گارد امنیتی سطح ۱: بررسی تداخل با فیش‌های قطعی‌شده
+                    // گارد امنیتی: بررسی تداخل با فیش‌های قطعی‌شده در بازه اجرای همین حکم
                     if (currentDecId > 0)
                     {
                         string checkUsageSql = @"
-                    SELECT COUNT(1) 
+                    SELECT COUNT(1)
                     FROM PAY2_RUN R
                     INNER JOIN PAY2_PERIOD P ON R.PER_ID = P.PER_ID
-                    WHERE R.STATUS >= 2 
-                      -- 🛠 رفع باگ مقایسه تاریخ: تبدیل هر دو تاریخ به YYYYMM
-                      AND (P.PERIOD_DATE / 100) >= (SELECT (EFF_FROM / 100) FROM PAY2_DECREE WHERE DEC_ID = @DEC_ID)
+                    INNER JOIN PAY2_DECREE D ON D.DEC_ID = @DEC_ID
+                    WHERE R.STATUS >= 2
+                      AND (P.PERIOD_DATE / 100) >= (D.EFF_FROM / 100)
+                      AND (D.EFF_TO IS NULL OR (P.PERIOD_DATE / 100) <= (D.EFF_TO / 100))
                       AND R.RUN_ID IN (SELECT RUN_ID FROM PAY2_RUN_LINE WHERE EMP_ID = @EMP_ID)";
 
                         int usedInFinalRun = await conn.QuerySingleAsync<int>(checkUsageSql, new { DEC_ID = currentDecId, EMP_ID = decree.EMP_ID }, tran);
@@ -223,20 +224,6 @@ namespace Safir.Server.Controllers
                         }
                         else
                         {
-                            if (wasConfirmed && !decree.IS_CONFIRMED)
-                            {
-                                const string checkRunSql = @"
-                            SELECT COUNT(1) FROM PAY2_RUN R
-                            JOIN PAY2_PERIOD P ON R.PER_ID = P.PER_ID
-                            JOIN PAY2_RUN_LINE RL ON R.RUN_ID = RL.RUN_ID
-                            JOIN PAY2_DECREE D ON D.DEC_ID = @DEC_ID AND RL.EMP_ID = D.EMP_ID
-                            WHERE R.STATUS >= 2
-                            AND P.PERIOD_DATE >= (D.EFF_FROM / 100) * 100";
-                                int finalRunCount = await conn.QuerySingleAsync<int>(checkRunSql, new { decree.DEC_ID }, tran);
-                                if (finalRunCount > 0)
-                                    throw new InvalidOperationException("این حکم در محاسبه حقوق قطعی‌شده استفاده شده است. جهت اصلاح، باید حکم جدید اصلاحی صادر کنید.");
-                            }
-
                             const string updateSql = @"
                         UPDATE PAY2_DECREE
                         SET ISSUED_DATE=@ISSUED_DATE, EFF_FROM=@EFF_FROM, EFF_TO=@EFF_TO,
