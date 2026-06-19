@@ -82,6 +82,17 @@
                             @if (_chartSeries.Any() && _chartSeries[0].Data.Any(v => v > 0))
                             {
                                 <MudChart ChartType="ChartType.Bar" ChartSeries="@_chartSeries" XAxisLabels="@_chartXLabels" Width="100%" Height="300px" ChartOptions="@_chartOptions" />
+
+                                <div class="d-flex flex-wrap gap-2 mt-4 justify-center">
+                                    @foreach (var report in _reports.OrderBy(x => x.ReportDate).TakeLast(5))
+                                    {
+                                        <MudChip T="string" Color="Color.Default" Variant="Variant.Outlined" Size="Size.Small">
+                                            @GetShamsiDateString(report.ReportDate):
+                                            آب‌پنیر @(report.ConcentrationWheyQty?.ToString("N0") ?? "0") -
+                                            پودر @(report.SprayPowderQty?.ToString("N0") ?? "0")
+                                        </MudChip>
+                                    }
+                                </div>
                             }
                             else
                             {
@@ -98,10 +109,23 @@
                                 <MudText Typo="Typo.subtitle1" Style="font-weight: 700;" Class="mb-4">نسبت بهره‌وری واحد شیر خشک</MudText>
                                 <MudText Typo="Typo.body2" Class="text-muted mb-6">درصد تبدیل مایع به پودر بر اساس کل ورودی دیتابیس کارخانه.</MudText>
                             </div>
-                            <div class="d-flex justify-center align-center mb-4">
+                            <div class="d-flex flex-column justify-center align-center mb-4">
                                 @if (TotalWheyQty > 0)
                                 {
                                     <MudChart ChartType="ChartType.Donut" Width="220px" Height="220px" InputData="@_donutData" InputLabels="@_donutLabels" ChartOptions="@_chartOptions" />
+
+                                    <div class="mt-4 text-center">
+                                        @{
+                                            var efficiency = TotalWheyQty > 0 ? ((decimal)TotalPowderQty / (decimal)TotalWheyQty * 100) : 0;
+                                            var ratio = TotalPowderQty > 0 ? ((decimal)TotalWheyQty / (decimal)TotalPowderQty) : 0;
+                                        }
+                                        <MudText Typo="Typo.h6" Color="Color.Success" Style="font-weight: bold;">
+                                            راندمان: @efficiency.ToString("N2")٪
+                                        </MudText>
+                                        <MudText Typo="Typo.body2" Class="text-muted">
+                                            (هر @ratio.ToString("N2") لیتر آب‌پنیر = ۱ کیلوگرم پودر)
+                                        </MudText>
+                                    </div>
                                 }
                                 else
                                 {
@@ -233,16 +257,54 @@
                     <MudTh>تاریخ</MudTh>
                     <MudTh>شرکت آب‌پنیر</MudTh>
                     <MudTh>آبپنیر (لیتر)</MudTh>
+                    <MudTh>زمان تغلیظ</MudTh>
                     <MudTh>پودر (کیلوگرم)</MudTh>
+                    <MudTh>زمان اسپری</MudTh>
                     <MudTh>کنتور</MudTh>
+                    <MudTh>راندمان</MudTh>
+                    <MudTh>توضیحات</MudTh>
                     <MudTh>عملیات</MudTh>
                 </HeaderContent>
                 <RowTemplate>
-                    <MudTd DataLabel="تاریخ">@context.ReportDate?.ToString("yyyy/MM/dd")</MudTd>
+                    <MudTd DataLabel="تاریخ">@GetShamsiDateString(context.ReportDate)</MudTd>
                     <MudTd DataLabel="شرکت">@context.WheyCompany</MudTd>
                     <MudTd DataLabel="آبپنیر">@context.ConcentrationWheyQty?.ToString("N0")</MudTd>
+                    <MudTd DataLabel="زمان تغلیظ">
+                        <span dir="ltr">@(context.ConcentrationStart?.ToString(@"hh\:mm") ?? "-")</span> تا <span dir="ltr">@(context.ConcentrationEnd?.ToString(@"hh\:mm") ?? "-")</span>
+                    </MudTd>
                     <MudTd DataLabel="پودر">@context.SprayPowderQty?.ToString("N0")</MudTd>
+                    <MudTd DataLabel="زمان اسپری">
+                        <span dir="ltr">@(context.SprayStart?.ToString(@"hh\:mm") ?? "-")</span> تا <span dir="ltr">@(context.SprayEnd?.ToString(@"hh\:mm") ?? "-")</span>
+                    </MudTd>
                     <MudTd DataLabel="کنتور">@context.CounterNumber</MudTd>
+                    <MudTd DataLabel="راندمان">
+                        @{
+                            var ratioRow = context.SprayPowderQty > 0 ? ((decimal)(context.ConcentrationWheyQty ?? 0) / (decimal)(context.SprayPowderQty ?? 0)) : 0;
+                            var efficiencyRow = context.ConcentrationWheyQty > 0 ? ((decimal)(context.SprayPowderQty ?? 0) / (decimal)(context.ConcentrationWheyQty ?? 0) * 100) : 0;
+                        }
+                        @if (ratioRow > 0)
+                        {
+                            <span>@ratioRow.ToString("N1") (@efficiencyRow.ToString("N1")٪)</span>
+                        }
+                        else
+                        {
+                            <span>-</span>
+                        }
+                    </MudTd>
+                    <MudTd DataLabel="توضیحات">
+                        @if (!string.IsNullOrWhiteSpace(context.Description))
+                        {
+                            <MudTooltip Text="@context.Description">
+                                <div class="text-truncate" style="max-width: 150px;">
+                                    @context.Description
+                                </div>
+                            </MudTooltip>
+                        }
+                        else
+                        {
+                            <span>-</span>
+                        }
+                    </MudTd>
                     <MudTd DataLabel="عملیات">
                         <div class="d-flex align-center gap-4">
                             <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Medium" Color="Color.Info" OnClick="() => EditReport(context)" />
@@ -310,7 +372,7 @@
         if (_reports == null || !_reports.Any()) return;
 
         var topReports = _reports.OrderBy(x => x.ReportDate).TakeLast(5).ToList();
-        _chartXLabels = topReports.Select(x => x.ReportDate?.ToString("MM/dd") ?? "").ToArray();
+        _chartXLabels = topReports.Select(x => GetShamsiDateStringShort(x.ReportDate)).ToArray();
 
         _chartSeries = new List<ChartSeries>
         {
@@ -322,7 +384,26 @@
         {
             double remainingLiquid = (double)TotalWheyQty - (double)TotalPowderQty;
             _donutData = new double[] { (double)TotalPowderQty, remainingLiquid > 0 ? remainingLiquid : 0 };
+            _donutLabels = new[]
+            {
+                $"پودر تولیدی ({TotalPowderQty.ToString("N0")} کیلوگرم)",
+                $"آب‌پنیر تبخیر شده ({(remainingLiquid > 0 ? remainingLiquid : 0).ToString("N0")} لیتر)"
+            };
         }
+    }
+
+    private string GetShamsiDateString(DateTime? date)
+    {
+        if (!date.HasValue) return "-";
+        var pc = new System.Globalization.PersianCalendar();
+        return $"{pc.GetYear(date.Value):0000}/{pc.GetMonth(date.Value):00}/{pc.GetDayOfMonth(date.Value):00}";
+    }
+
+    private string GetShamsiDateStringShort(DateTime? date)
+    {
+        if (!date.HasValue) return "";
+        var pc = new System.Globalization.PersianCalendar();
+        return $"{pc.GetMonth(date.Value):00}/{pc.GetDayOfMonth(date.Value):00}";
     }
 
     private string GetTodayShamsi()
@@ -343,7 +424,25 @@
         try
         {
             _isProcessing = true;
-            Model.ReportDate = DateTime.Now;
+
+            // تبدیل تاریخ شمسی ورودی (به فرمت yyyyMMdd یا مشابه) به میلادی
+            DateTime parsedDate = DateTime.Now;
+            var cleanShamsi = Safir.Shared.Utility.CL_METHODS.FixPersianChars((_shamsiDateStr ?? "").Replace("/", "").Replace("-", ""));
+            if (cleanShamsi.Length == 8 && int.TryParse(cleanShamsi.Substring(0, 4), out int year) &&
+                int.TryParse(cleanShamsi.Substring(4, 2), out int month) &&
+                int.TryParse(cleanShamsi.Substring(6, 2), out int day))
+            {
+                var pc = new System.Globalization.PersianCalendar();
+                try
+                {
+                    parsedDate = pc.ToDateTime(year, month, day, 0, 0, 0, 0);
+                }
+                catch
+                {
+                    // اگر تاریخ نامعتبر بود، از همان تاریخ فعلی استفاده کن
+                }
+            }
+            Model.ReportDate = parsedDate;
 
             await ApiService.SaveReportAsync(Model);
             Snackbar.Add("گزارش با موفقیت ثبت شد.", Severity.Success);
@@ -382,7 +481,15 @@
         };
 
         // بازیابی تاریخ شمسی برای زمان ویرایش
-        _shamsiDateStr = report.ReportDate?.ToString("yyyyMMdd") ?? "";
+        if (report.ReportDate.HasValue)
+        {
+            var pc = new System.Globalization.PersianCalendar();
+            _shamsiDateStr = $"{pc.GetYear(report.ReportDate.Value):0000}{pc.GetMonth(report.ReportDate.Value):00}{pc.GetDayOfMonth(report.ReportDate.Value):00}";
+        }
+        else
+        {
+            _shamsiDateStr = "";
+        }
         _activeTab = 1;
     }
 
