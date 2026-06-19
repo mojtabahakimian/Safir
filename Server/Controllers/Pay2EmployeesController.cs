@@ -194,7 +194,11 @@ namespace Safir.Server.Controllers
                     }
                     else // ویرایش
                     {
-                        bool wasConfirmed = await conn.QuerySingleAsync<bool>("SELECT IS_CONFIRMED FROM PAY2_DECREE WHERE DEC_ID = @DEC_ID", new { decree.DEC_ID }, tran);
+                        var dbDecree = await conn.QuerySingleAsync(
+                            "SELECT IS_CONFIRMED, EMP_ID FROM PAY2_DECREE WHERE DEC_ID = @DEC_ID",
+                            new { decree.DEC_ID }, tran);
+                        bool wasConfirmed = (bool)dbDecree.IS_CONFIRMED;
+                        int dbEmpId = (int)dbDecree.EMP_ID;
 
                         // فقط احکام تأییدشده مسدود می‌شوند — احکام تأییدنشده هرگز در حقوق استفاده نشده‌اند
                         // از تاریخ‌های ذخیره‌شده در DB استفاده می‌شود تا bypass از طریق دستکاری تاریخ ممکن نباشد
@@ -208,10 +212,10 @@ namespace Safir.Server.Controllers
                         WHERE R.STATUS >= 2
                           AND (P.PERIOD_DATE / 100) >= (D.EFF_FROM / 100)
                           AND (D.EFF_TO IS NULL OR (P.PERIOD_DATE / 100) <= (D.EFF_TO / 100))
-                          AND R.RUN_ID IN (SELECT RUN_ID FROM PAY2_RUN_LINE WHERE EMP_ID = @EMP_ID)";
+                          AND R.RUN_ID IN (SELECT RUN_ID FROM PAY2_RUN_LINE WHERE EMP_ID = D.EMP_ID)";
 
                             int usedInFinalRun = await conn.QuerySingleAsync<int>(
-                                checkUsageSql, new { DEC_ID = currentDecId, EMP_ID = decree.EMP_ID }, tran);
+                                checkUsageSql, new { DEC_ID = currentDecId }, tran);
 
                             if (usedInFinalRun > 0)
                                 throw new InvalidOperationException("این حکم در ماه‌های گذشته جهت صدور حقوق قطعی استفاده شده است. امکان ویرایش یا لغو تایید آن به هیچ وجه وجود ندارد. برای تغییر حقوق، باید یک حکم جدید صادر کنید.");
@@ -241,7 +245,7 @@ namespace Safir.Server.Controllers
 
                                 int reconfirmConflict = await conn.QuerySingleAsync<int>(
                                     checkReconfirmSql,
-                                    new { EFF_FROM = decree.EFF_FROM, EFF_TO = (long?)decree.EFF_TO, EMP_ID = decree.EMP_ID },
+                                    new { EFF_FROM = decree.EFF_FROM, EFF_TO = (long?)decree.EFF_TO, EMP_ID = dbEmpId },
                                     tran);
 
                                 if (reconfirmConflict > 0)

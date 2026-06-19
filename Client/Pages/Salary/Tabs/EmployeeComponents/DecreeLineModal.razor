@@ -278,7 +278,11 @@
             Lines = linesTask.Result;
             FullItemDefs = fullDefsTask.Result;
             _shiftMode = shiftModeTask.Result;
-            ItemDefs = FullItemDefs.Select(d => new LookupDto<int>(d.ITEM_ID, d.ITEM_NAME ?? "")).ToList();
+            var _deductionCodes = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "INS_DED", "TAX_DED", "LOAN_DED", "ADVANCE_DED" };
+            ItemDefs = FullItemDefs
+                .Where(d => d.IS_ACTIVE && (d.ITEM_TYPE == 1 || d.ITEM_TYPE == 2) && !_deductionCodes.Contains(d.ITEM_CODE ?? ""))
+                .Select(d => new LookupDto<int>(d.ITEM_ID, d.ITEM_NAME ?? ""))
+                .ToList();
         }
         catch (Exception ex)
         {
