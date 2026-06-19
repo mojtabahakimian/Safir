@@ -302,7 +302,7 @@
     // محاسبه «حقوق پایه ماهیانه» این حکم از روی آیتم حقوق پایه
     // موتور محاسبه برای حق شیفت از BASE_SAL_B (حقوق روزانه رسمی) استفاده می‌کند؛
     // مبنای روزانه در ۳۰ ضرب می‌شود تا مبلغ ماهیانه به دست آید
-    long? GetMonthlyBaseSalary()
+    decimal? GetMonthlyBaseSalary()
     {
         var baseDef = FullItemDefs.FirstOrDefault(d => d.ITEM_CODE == "BASE_SAL_B")
                    ?? FullItemDefs.FirstOrDefault(d => d.ITEM_CODE == "BASE_SAL");
