@@ -412,7 +412,9 @@
             BASIS_OV = item.BASIS_OV
         };
 
-        CurrentAmountStr = CurrentLine.AMOUNT.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        CurrentAmountStr = IsShiftPctItem
+            ? CurrentLine.AMOUNT.ToString(System.Globalization.CultureInfo.InvariantCulture)
+            : ((long)decimal.Truncate(CurrentLine.AMOUNT)).ToString();
         CurrentPercentStr = null;
         PercentHint = null;
         ShiftHint = null;
