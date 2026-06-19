@@ -223,10 +223,24 @@ namespace Safir.Server.Controllers
                         }
                         else
                         {
+                            if (wasConfirmed && !decree.IS_CONFIRMED)
+                            {
+                                const string checkRunSql = @"
+                            SELECT COUNT(1) FROM PAY2_RUN R
+                            JOIN PAY2_PERIOD P ON R.PER_ID = P.PER_ID
+                            JOIN PAY2_RUN_LINE RL ON R.RUN_ID = RL.RUN_ID
+                            JOIN PAY2_DECREE D ON D.DEC_ID = @DEC_ID AND RL.EMP_ID = D.EMP_ID
+                            WHERE R.STATUS >= 2
+                            AND P.PERIOD_DATE >= (D.EFF_FROM / 100) * 100";
+                                int finalRunCount = await conn.QuerySingleAsync<int>(checkRunSql, new { decree.DEC_ID }, tran);
+                                if (finalRunCount > 0)
+                                    throw new InvalidOperationException("این حکم در محاسبه حقوق قطعی‌شده استفاده شده است. جهت اصلاح، باید حکم جدید اصلاحی صادر کنید.");
+                            }
+
                             const string updateSql = @"
-                        UPDATE PAY2_DECREE 
-                        SET ISSUED_DATE=@ISSUED_DATE, EFF_FROM=@EFF_FROM, EFF_TO=@EFF_TO, 
-                            EDU_LEVEL=@EDU_LEVEL, MARITAL=@MARITAL, IS_MANAGER=@IS_MANAGER, 
+                        UPDATE PAY2_DECREE
+                        SET ISSUED_DATE=@ISSUED_DATE, EFF_FROM=@EFF_FROM, EFF_TO=@EFF_TO,
+                            EDU_LEVEL=@EDU_LEVEL, MARITAL=@MARITAL, IS_MANAGER=@IS_MANAGER,
                             IS_CONFIRMED=@IS_CONFIRMED, NOTES=@NOTES
                         WHERE DEC_ID=@DEC_ID";
                             await conn.ExecuteAsync(updateSql, decree, tran);
