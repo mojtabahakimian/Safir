@@ -164,12 +164,8 @@
 
     bool IsShiftPctItem => IsShiftPctLine(CurrentLine);
 
-    bool IsShiftPctLine(Pay2ItemTmplLineDto line)
-    {
-        if (string.Equals(_shiftMode, "FIXED", StringComparison.OrdinalIgnoreCase)) return false;
-        var def = FullItemDefs.FirstOrDefault(d => d.ITEM_ID == line.ITEM_ID);
-        return string.Equals(def?.ITEM_CODE, "SHIFT", StringComparison.OrdinalIgnoreCase);
-    }
+    bool IsShiftPctLine(Pay2ItemTmplLineDto line) =>
+        Pay2SettingsApiService.IsShiftPctItem(_shiftMode, FullItemDefs, line.ITEM_ID);
 
     List<LookupDto<int>> OverrideOptions = new() { new(3, "طبق تعریف پایه"), new(1, "مشمول"), new(2, "معاف") };
     List<LookupDto<int>> BasisOptions = new() { new(9, "طبق تعریف پایه"), new(1, "روزانه"), new(2, "ماهیانه"), new(3, "ساعتی") };
@@ -194,17 +190,16 @@
     {
         try
         {
-            var itemDefsTask = EmployeeApi.GetItemDefsLookupAsync();
             var linesTask = EmployeeApi.GetTemplateLinesAsync(MasterTemplateId);
             var fullDefsTask = ItemDefApi.GetItemDefsAsync();
-            var shiftModeTask = LoadShiftModeAsync();
+            var shiftModeTask = SettingsApi.GetShiftModeAsync();
 
-            await Task.WhenAll(itemDefsTask, linesTask, fullDefsTask, shiftModeTask);
+            await Task.WhenAll(linesTask, fullDefsTask, shiftModeTask);
 
-            ItemDefs = itemDefsTask.Result;
             Lines = linesTask.Result;
             FullItemDefs = fullDefsTask.Result;
             _shiftMode = shiftModeTask.Result;
+            ItemDefs = FullItemDefs.Select(d => new LookupDto<int>(d.ITEM_ID, d.ITEM_NAME ?? "")).ToList();
         }
         catch (Exception ex) { Console.WriteLine(ex.Message); }
         finally
@@ -212,16 +207,6 @@
             _isDataLoaded = true;
             StateHasChanged();
         }
-    }
-
-    async Task<string> LoadShiftModeAsync()
-    {
-        try
-        {
-            var configs = await SettingsApi.GetConfigsAsync();
-            return configs.FirstOrDefault(c => c.CFG_KEY == "SHIFT_MODE")?.CFG_VALUE ?? "PCT";
-        }
-        catch { return "PCT"; }
     }
 
     void ResetForm()
@@ -250,7 +235,7 @@
         };
         AmountStr = IsShiftPctItem
             ? CurrentLine.DEF_AMOUNT.ToString(System.Globalization.CultureInfo.InvariantCulture)
-            : ((long)decimal.Truncate(CurrentLine.DEF_AMOUNT)).ToString();
+            : CurrentLine.DEF_AMOUNT.ToString("0", System.Globalization.CultureInfo.InvariantCulture);
         IsEditing = true;
     }
 
@@ -260,10 +245,13 @@
         {
             Snackbar.Add("انتخاب آیتم حقوقی الزامی است.", MudBlazor.Severity.Warning); return;
         }
-        decimal.TryParse(AmountStr?.Replace(",", ""),
-            System.Globalization.NumberStyles.Number,
-            System.Globalization.CultureInfo.InvariantCulture,
-            out decimal amt);
+        if (!decimal.TryParse(AmountStr?.Replace(",", ""),
+                System.Globalization.NumberStyles.Number,
+                System.Globalization.CultureInfo.InvariantCulture,
+                out decimal amt) || amt <= 0)
+        {
+            Snackbar.Add("مبلغ وارد شده معتبر نیست.", MudBlazor.Severity.Warning); return;
+        }
         CurrentLine.TMPL_ID = MasterTemplateId;
         CurrentLine.DEF_AMOUNT = amt;
         IsSaving = true;

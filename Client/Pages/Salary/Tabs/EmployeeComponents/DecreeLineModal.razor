@@ -269,18 +269,16 @@
         try
         {
             // منتظر می‌مانیم تا هم لیست تعاریف آیتم‌ها و هم اقلام ریالی این حکم به طور کامل لود شوند
-            // چهار فراخوانی مستقل به صورت موازی اجرا می‌شوند تا باز شدن مودال سریع‌تر باشد
-            var itemDefsTask = EmployeeApi.GetItemDefsLookupAsync();
             var linesTask = EmployeeApi.GetDecreeLinesAsync(DecreeId);
             var fullDefsTask = ItemDefApi.GetItemDefsAsync();
-            var shiftModeTask = LoadShiftModeAsync();
+            var shiftModeTask = SettingsApi.GetShiftModeAsync();
 
-            await Task.WhenAll(itemDefsTask, linesTask, fullDefsTask, shiftModeTask);
+            await Task.WhenAll(linesTask, fullDefsTask, shiftModeTask);
 
-            ItemDefs = itemDefsTask.Result;
             Lines = linesTask.Result;
             FullItemDefs = fullDefsTask.Result;
             _shiftMode = shiftModeTask.Result;
+            ItemDefs = FullItemDefs.Select(d => new LookupDto<int>(d.ITEM_ID, d.ITEM_NAME ?? "")).ToList();
         }
         catch (Exception ex)
         {
@@ -327,22 +325,8 @@
         ShiftHint = null;
     }
 
-    bool IsShiftPctLine(Pay2DecreeLineDto line)
-    {
-        if (string.Equals(_shiftMode, "FIXED", StringComparison.OrdinalIgnoreCase)) return false;
-        var def = FullItemDefs.FirstOrDefault(d => d.ITEM_ID == line.ITEM_ID);
-        return string.Equals(def?.ITEM_CODE, "SHIFT", StringComparison.OrdinalIgnoreCase);
-    }
-
-    async Task<string> LoadShiftModeAsync()
-    {
-        try
-        {
-            var configs = await SettingsApi.GetConfigsAsync();
-            return configs.FirstOrDefault(c => c.CFG_KEY == "SHIFT_MODE")?.CFG_VALUE ?? "PCT";
-        }
-        catch { return "PCT"; }
-    }
+    bool IsShiftPctLine(Pay2DecreeLineDto line) =>
+        Pay2SettingsApiService.IsShiftPctItem(_shiftMode, FullItemDefs, line.ITEM_ID);
 
     // منطق مشترک «درصد × حقوق پایه ماهیانه» برای هر دو کمک‌محاسبه (شیفت و عمومی)
     (long? Computed, string Hint) CalcPercentOfMonthly(decimal pct)
@@ -431,10 +415,13 @@
             Snackbar.Add("انتخاب آیتم حقوقی الزامی است.", MudBlazor.Severity.Warning); return;
         }
 
-        decimal.TryParse(CurrentAmountStr?.Replace(",", ""),
-            System.Globalization.NumberStyles.Number,
-            System.Globalization.CultureInfo.InvariantCulture,
-            out decimal amt);
+        if (!decimal.TryParse(CurrentAmountStr?.Replace(",", ""),
+                System.Globalization.NumberStyles.Number,
+                System.Globalization.CultureInfo.InvariantCulture,
+                out decimal amt) || amt <= 0)
+        {
+            Snackbar.Add("مبلغ وارد شده معتبر نیست.", MudBlazor.Severity.Warning); return;
+        }
 
         CurrentLine.DEC_ID = DecreeId;
         CurrentLine.AMOUNT = amt;

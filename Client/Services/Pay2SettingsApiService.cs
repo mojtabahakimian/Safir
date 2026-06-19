@@ -1,4 +1,5 @@
 ﻿using System.Net.Http.Json;
+using Safir.Shared.Models;
 using Safir.Shared.Models.Salary;
 
 namespace Safir.Client.Services
@@ -46,6 +47,23 @@ namespace Safir.Client.Services
             var res = await _http.PostAsJsonAsync("api/pay2/settings/tax/brackets/copy-year", request);
             if (!res.IsSuccessStatusCode)
                 throw new Exception(await res.Content.ReadAsStringAsync());
+        }
+
+        public async Task<string> GetShiftModeAsync()
+        {
+            try
+            {
+                var configs = await GetConfigsAsync();
+                return configs.FirstOrDefault(c => c.CFG_KEY == "SHIFT_MODE")?.CFG_VALUE ?? "PCT";
+            }
+            catch { return "PCT"; }
+        }
+
+        public static bool IsShiftPctItem(string shiftMode, IEnumerable<Pay2ItemDefDto> defs, int itemId)
+        {
+            if (string.Equals(shiftMode, "FIXED", StringComparison.OrdinalIgnoreCase)) return false;
+            var def = defs.FirstOrDefault(d => d.ITEM_ID == itemId);
+            return string.Equals(def?.ITEM_CODE, "SHIFT", StringComparison.OrdinalIgnoreCase);
         }
     }
 }

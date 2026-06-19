@@ -226,6 +226,28 @@ namespace Safir.Server.Controllers
                         }
                         else
                         {
+                            // گارد تأیید مجدد: احکامی که پس از unlock دوباره تأیید می‌شوند
+                            // باید تاریخ‌های ورودی بررسی شود تا مانع backdating به ماه‌های قطعی‌شده شویم
+                            if (!wasConfirmed && decree.IS_CONFIRMED)
+                            {
+                                const string checkReconfirmSql = @"
+                        SELECT COUNT(1)
+                        FROM PAY2_RUN R
+                        INNER JOIN PAY2_PERIOD P ON R.PER_ID = P.PER_ID
+                        WHERE R.STATUS >= 2
+                          AND (P.PERIOD_DATE / 100) >= (@EFF_FROM / 100)
+                          AND (@EFF_TO IS NULL OR (P.PERIOD_DATE / 100) <= (@EFF_TO / 100))
+                          AND R.RUN_ID IN (SELECT RUN_ID FROM PAY2_RUN_LINE WHERE EMP_ID = @EMP_ID)";
+
+                                int reconfirmConflict = await conn.QuerySingleAsync<int>(
+                                    checkReconfirmSql,
+                                    new { EFF_FROM = decree.EFF_FROM, EFF_TO = (long?)decree.EFF_TO, EMP_ID = decree.EMP_ID },
+                                    tran);
+
+                                if (reconfirmConflict > 0)
+                                    throw new InvalidOperationException("بازه زمانی این حکم با ماه‌هایی که حقوق آنها قطعی شده تداخل دارد. لطفاً بازه تاریخی را اصلاح کنید یا با دوره‌های تأیید نشده کار کنید.");
+                            }
+
                             const string updateSql = @"
                         UPDATE PAY2_DECREE
                         SET ISSUED_DATE=@ISSUED_DATE, EFF_FROM=@EFF_FROM, EFF_TO=@EFF_TO,

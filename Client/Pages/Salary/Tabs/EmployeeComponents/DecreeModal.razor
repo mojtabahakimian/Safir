@@ -314,9 +314,13 @@
         {
             try
             {
-                var toUnlock = System.Text.Json.JsonSerializer.Deserialize<Pay2DecreeDto>(
-                    System.Text.Json.JsonSerializer.Serialize(dec))!;
-                toUnlock.IS_CONFIRMED = false;
+                var toUnlock = new Pay2DecreeDto
+                {
+                    DEC_ID = dec.DEC_ID, EMP_ID = dec.EMP_ID, WS_ID = dec.WS_ID,
+                    ISSUED_DATE = dec.ISSUED_DATE, EFF_FROM = dec.EFF_FROM, EFF_TO = dec.EFF_TO,
+                    EDU_LEVEL = dec.EDU_LEVEL, MARITAL = dec.MARITAL, IS_MANAGER = dec.IS_MANAGER,
+                    TMPL_ID = dec.TMPL_ID, NOTES = dec.NOTES, IS_CONFIRMED = false
+                };
                 await EmployeeApi.SaveDecreeAsync(toUnlock);
                 Snackbar.Add("تأیید حکم با موفقیت لغو شد. اکنون می‌توانید آیتم‌های ریالی را ویرایش کنید.", MudBlazor.Severity.Success);
                 await LoadData();
