@@ -262,6 +262,7 @@
                     <MudTh>زمان اسپری</MudTh>
                     <MudTh>کنتور</MudTh>
                     <MudTh>راندمان</MudTh>
+                    <MudTh>نسبت زمانی</MudTh>
                     <MudTh>توضیحات</MudTh>
                     <MudTh>عملیات</MudTh>
                 </HeaderContent>
@@ -270,11 +271,21 @@
                     <MudTd DataLabel="شرکت">@context.WheyCompany</MudTd>
                     <MudTd DataLabel="آبپنیر">@context.ConcentrationWheyQty?.ToString("N0")</MudTd>
                     <MudTd DataLabel="زمان تغلیظ">
-                        <span dir="ltr">@(context.ConcentrationStart?.ToString(@"hh\:mm") ?? "-")</span> تا <span dir="ltr">@(context.ConcentrationEnd?.ToString(@"hh\:mm") ?? "-")</span>
+                        <div><span dir="ltr">@(context.ConcentrationStart?.ToString(@"hh\:mm") ?? "-")</span> تا <span dir="ltr">@(context.ConcentrationEnd?.ToString(@"hh\:mm") ?? "-")</span></div>
+                        @{ var concElapsed = GetElapsedTime(context.ConcentrationStart, context.ConcentrationEnd); }
+                        @if (concElapsed.HasValue)
+                        {
+                            <div class="mud-typography-caption" style="color: var(--mud-palette-text-secondary);">مدت: <span dir="ltr">@FormatElapsedTime(concElapsed)</span> ساعت</div>
+                        }
                     </MudTd>
                     <MudTd DataLabel="پودر">@context.SprayPowderQty?.ToString("N0")</MudTd>
                     <MudTd DataLabel="زمان اسپری">
-                        <span dir="ltr">@(context.SprayStart?.ToString(@"hh\:mm") ?? "-")</span> تا <span dir="ltr">@(context.SprayEnd?.ToString(@"hh\:mm") ?? "-")</span>
+                        <div><span dir="ltr">@(context.SprayStart?.ToString(@"hh\:mm") ?? "-")</span> تا <span dir="ltr">@(context.SprayEnd?.ToString(@"hh\:mm") ?? "-")</span></div>
+                        @{ var sprayElapsed = GetElapsedTime(context.SprayStart, context.SprayEnd); }
+                        @if (sprayElapsed.HasValue)
+                        {
+                            <div class="mud-typography-caption" style="color: var(--mud-palette-text-secondary);">مدت: <span dir="ltr">@FormatElapsedTime(sprayElapsed)</span> ساعت</div>
+                        }
                     </MudTd>
                     <MudTd DataLabel="کنتور">@context.CounterNumber</MudTd>
                     <MudTd DataLabel="راندمان">
@@ -287,6 +298,30 @@
                             <span>@ratioRow.ToString("N1") (@efficiencyRow.ToString("N1")٪)</span>
                         }
                         else
+                        {
+                            <span>-</span>
+                        }
+                    </MudTd>
+                    <MudTd DataLabel="نسبت زمانی">
+                        @{
+                            var _concE = GetElapsedTime(context.ConcentrationStart, context.ConcentrationEnd);
+                            var _sprayE = GetElapsedTime(context.SprayStart, context.SprayEnd);
+                            var wheyPerHour = _concE.HasValue && _concE.Value.TotalHours > 0 && context.ConcentrationWheyQty > 0
+                                ? context.ConcentrationWheyQty!.Value / (decimal)_concE.Value.TotalHours
+                                : (decimal?)null;
+                            var powderPerHour = _sprayE.HasValue && _sprayE.Value.TotalHours > 0 && context.SprayPowderQty > 0
+                                ? context.SprayPowderQty!.Value / (decimal)_sprayE.Value.TotalHours
+                                : (decimal?)null;
+                        }
+                        @if (wheyPerHour.HasValue)
+                        {
+                            <div>آب‌پنیر: <span dir="ltr">@wheyPerHour.Value.ToString("N0")</span> ل/ساعت</div>
+                        }
+                        @if (powderPerHour.HasValue)
+                        {
+                            <div>پودر: <span dir="ltr">@powderPerHour.Value.ToString("N0")</span> ک/ساعت</div>
+                        }
+                        @if (!wheyPerHour.HasValue && !powderPerHour.HasValue)
                         {
                             <span>-</span>
                         }
@@ -390,6 +425,23 @@
                 $"آب‌پنیر تبخیر شده ({(remainingLiquid > 0 ? remainingLiquid : 0).ToString("N0")} لیتر)"
             };
         }
+    }
+
+    private TimeSpan? GetElapsedTime(TimeSpan? start, TimeSpan? end)
+    {
+        if (!start.HasValue || !end.HasValue) return null;
+        var elapsed = end.Value - start.Value;
+        if (elapsed < TimeSpan.Zero)
+            elapsed = elapsed.Add(TimeSpan.FromHours(24));
+        return elapsed;
+    }
+
+    private string FormatElapsedTime(TimeSpan? elapsed)
+    {
+        if (!elapsed.HasValue) return "-";
+        int hours = (int)elapsed.Value.TotalHours;
+        int minutes = elapsed.Value.Minutes;
+        return $"{hours}:{minutes:00}";
     }
 
     private string GetShamsiDateString(DateTime? date)
