@@ -21,6 +21,7 @@ namespace Safir.Client.Services
             var res = await _http.PostAsJsonAsync("api/pay2/settings/configs/save", request);
             if (!res.IsSuccessStatusCode)
                 throw new Exception(await res.Content.ReadAsStringAsync());
+            _cachedShiftMode = null;
         }
 
         public async Task<List<short>> GetTaxYearsAsync()
