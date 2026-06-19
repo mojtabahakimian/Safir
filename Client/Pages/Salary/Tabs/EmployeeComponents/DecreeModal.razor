@@ -204,8 +204,11 @@
     {
         try
         {
-            Templates = await EmployeeApi.GetTemplatesLookupAsync();
-            Decrees = await EmployeeApi.GetDecreesAsync(EmployeeId);
+            var templatesTask = EmployeeApi.GetTemplatesLookupAsync();
+            var decreesTask = EmployeeApi.GetDecreesAsync(EmployeeId);
+            await Task.WhenAll(templatesTask, decreesTask);
+            Templates = templatesTask.Result;
+            Decrees = decreesTask.Result;
         }
         catch (Exception ex) { Snackbar.Add(ex.Message, MudBlazor.Severity.Error); }
     }

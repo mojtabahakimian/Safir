@@ -162,25 +162,6 @@ namespace Safir.Server.Controllers
                 {
                     int currentDecId = decree.DEC_ID;
 
-                    // گارد امنیتی: بررسی تداخل با فیش‌های قطعی‌شده در بازه اجرای پیشنهادی حکم
-                    // از مقادیر ورودی (نه DB) استفاده می‌شود تا extend کردن EFF_TO به ماه‌های قطعی نیز بلاک شود
-                    if (currentDecId > 0)
-                    {
-                        string checkUsageSql = @"
-                    SELECT COUNT(1)
-                    FROM PAY2_RUN R
-                    INNER JOIN PAY2_PERIOD P ON R.PER_ID = P.PER_ID
-                    WHERE R.STATUS >= 2
-                      AND (P.PERIOD_DATE / 100) >= (@EFF_FROM / 100)
-                      AND (@EFF_TO IS NULL OR (P.PERIOD_DATE / 100) <= (@EFF_TO / 100))
-                      AND R.RUN_ID IN (SELECT RUN_ID FROM PAY2_RUN_LINE WHERE EMP_ID = @EMP_ID)";
-
-                        int usedInFinalRun = await conn.QuerySingleAsync<int>(checkUsageSql, new { decree.EFF_FROM, EFF_TO = (long?)decree.EFF_TO, EMP_ID = decree.EMP_ID }, tran);
-
-                        if (usedInFinalRun > 0)
-                            throw new InvalidOperationException("این حکم در ماه‌های گذشته جهت صدور حقوق قطعی استفاده شده است. امکان ویرایش یا لغو تایید آن به هیچ وجه وجود ندارد. برای تغییر حقوق، باید یک حکم جدید صادر کنید.");
-                    }
-
                     if (currentDecId == 0) // درج جدید
                     {
                         // بستن هوشمند تاریخ حکم قبلی
@@ -214,6 +195,27 @@ namespace Safir.Server.Controllers
                     else // ویرایش
                     {
                         bool wasConfirmed = await conn.QuerySingleAsync<bool>("SELECT IS_CONFIRMED FROM PAY2_DECREE WHERE DEC_ID = @DEC_ID", new { decree.DEC_ID }, tran);
+
+                        // فقط احکام تأییدشده مسدود می‌شوند — احکام تأییدنشده هرگز در حقوق استفاده نشده‌اند
+                        // از تاریخ‌های ذخیره‌شده در DB استفاده می‌شود تا bypass از طریق دستکاری تاریخ ممکن نباشد
+                        if (wasConfirmed)
+                        {
+                            const string checkUsageSql = @"
+                        SELECT COUNT(1)
+                        FROM PAY2_RUN R
+                        INNER JOIN PAY2_PERIOD P ON R.PER_ID = P.PER_ID
+                        INNER JOIN PAY2_DECREE D ON D.DEC_ID = @DEC_ID
+                        WHERE R.STATUS >= 2
+                          AND (P.PERIOD_DATE / 100) >= (D.EFF_FROM / 100)
+                          AND (D.EFF_TO IS NULL OR (P.PERIOD_DATE / 100) <= (D.EFF_TO / 100))
+                          AND R.RUN_ID IN (SELECT RUN_ID FROM PAY2_RUN_LINE WHERE EMP_ID = @EMP_ID)";
+
+                            int usedInFinalRun = await conn.QuerySingleAsync<int>(
+                                checkUsageSql, new { DEC_ID = currentDecId, EMP_ID = decree.EMP_ID }, tran);
+
+                            if (usedInFinalRun > 0)
+                                throw new InvalidOperationException("این حکم در ماه‌های گذشته جهت صدور حقوق قطعی استفاده شده است. امکان ویرایش یا لغو تایید آن به هیچ وجه وجود ندارد. برای تغییر حقوق، باید یک حکم جدید صادر کنید.");
+                        }
 
                         // 🛠 رفع بن‌بست منطقی: فقط زمانی آپدیت را به NOTES محدود کن که کاربر هنوز می‌خواهد حکم تایید شده بماند.
                         // اگر کاربر تیک تایید را در UI برداشته باشد (decree.IS_CONFIRMED == false)، باید اجازه دهیم کل حکم از قفل خارج شود.
