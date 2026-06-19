@@ -25,6 +25,9 @@ namespace Safir.Server.Controllers
             _cache = cache;
         }
 
+        private static readonly HashSet<string> _autoDeductionCodes = new(StringComparer.OrdinalIgnoreCase)
+            { "INS_DED", "TAX_DED", "LOAN_DED", "ADVANCE_DED" };
+
         private long DecrementShamsiDate(long shamsiDate)
         {
             int y = (int)(shamsiDate / 10000);
@@ -194,11 +197,14 @@ namespace Safir.Server.Controllers
                     }
                     else // ویرایش
                     {
-                        var dbDecree = await conn.QuerySingleAsync(
+                        var dbDecree = await conn.QuerySingleOrDefaultAsync(
                             "SELECT IS_CONFIRMED, EMP_ID FROM PAY2_DECREE WHERE DEC_ID = @DEC_ID",
-                            new { decree.DEC_ID }, tran);
+                            new { decree.DEC_ID }, tran)
+                            ?? throw new KeyNotFoundException();
                         bool wasConfirmed = (bool)dbDecree.IS_CONFIRMED;
                         int dbEmpId = (int)dbDecree.EMP_ID;
+                        if (dbEmpId != decree.EMP_ID)
+                            throw new UnauthorizedAccessException();
 
                         // فقط احکام تأییدشده مسدود می‌شوند — احکام تأییدنشده هرگز در حقوق استفاده نشده‌اند
                         // از تاریخ‌های ذخیره‌شده در DB استفاده می‌شود تا bypass از طریق دستکاری تاریخ ممکن نباشد
@@ -267,6 +273,8 @@ namespace Safir.Server.Controllers
 
                 return Ok(decId);
             }
+            catch (KeyNotFoundException) { return NotFound("حکم مورد نظر یافت نشد."); }
+            catch (UnauthorizedAccessException) { return Forbid(); }
             catch (InvalidOperationException ex) { return BadRequest(ex.Message); }
             catch (Exception ex) { return StatusCode(500, "خطای سیستمی: " + ex.Message); }
         }
@@ -289,9 +297,10 @@ namespace Safir.Server.Controllers
             {
                 await _db.ExecuteInTransactionAsync(async (conn, tran) =>
                 {
-                    // 🚀 گارد امنیتی سطح ۳: حکم تایید شده قابل حذف فیزیکی نیست!
-                    bool isConfirmed = await conn.QuerySingleAsync<bool>("SELECT IS_CONFIRMED FROM PAY2_DECREE WHERE DEC_ID = @decId", new { decId }, tran);
-                    if (isConfirmed)
+                    var decRow = await conn.QuerySingleOrDefaultAsync(
+                        "SELECT IS_CONFIRMED FROM PAY2_DECREE WHERE DEC_ID = @decId", new { decId }, tran)
+                        ?? throw new KeyNotFoundException();
+                    if ((bool)decRow.IS_CONFIRMED)
                         throw new InvalidOperationException("این حکم تأیید نهایی شده است. برای حذف آن، ابتدا باید آن را از حالت تایید خارج کنید.");
 
                     await conn.ExecuteAsync("DELETE FROM PAY2_DECREE_LINE WHERE DEC_ID = @decId", new { decId }, tran);
@@ -299,6 +308,7 @@ namespace Safir.Server.Controllers
                 });
                 return Ok();
             }
+            catch (KeyNotFoundException) { return NotFound("حکم مورد نظر یافت نشد."); }
             catch (InvalidOperationException ex) { return BadRequest(ex.Message); }
             catch (Exception ex) { return StatusCode(500, ex.Message); }
         }
@@ -339,10 +349,25 @@ namespace Safir.Server.Controllers
             {
                 await _db.ExecuteInTransactionAsync(async (conn, tran) =>
                 {
-                    // 🚀 گارد امنیتی سطح ۲: آیا هدر این حکم قفل است؟
-                    bool isConfirmed = await conn.QuerySingleAsync<bool>("SELECT IS_CONFIRMED FROM PAY2_DECREE WHERE DEC_ID = @DEC_ID", new { line.DEC_ID }, tran);
-                    if (isConfirmed)
+                    var decHeader = await conn.QuerySingleOrDefaultAsync(
+                        "SELECT IS_CONFIRMED FROM PAY2_DECREE WHERE DEC_ID = @DEC_ID", new { line.DEC_ID }, tran)
+                        ?? throw new KeyNotFoundException();
+                    if ((bool)decHeader.IS_CONFIRMED)
                         throw new InvalidOperationException("این حکم قفل (تأیید نهایی) شده است! برای افزودن یا تغییر مبالغ، باید ابتدا در صفحه قبل، تیک تایید این حکم را بردارید.");
+
+                    // اعتبارسنجی آیتم: فعال بودن، نوع پرداختی، عدم کسر اتوماتیک
+                    var itemInfo = await conn.QuerySingleOrDefaultAsync(
+                        "SELECT ITEM_TYPE, ITEM_CODE, IS_ACTIVE FROM PAY2_ITEM_DEF WHERE ITEM_ID = @ITEM_ID",
+                        new { line.ITEM_ID }, tran)
+                        ?? throw new InvalidOperationException("آیتم حقوقی مورد نظر یافت نشد.");
+                    if (!(bool)itemInfo.IS_ACTIVE)
+                        throw new InvalidOperationException("آیتم حقوقی مورد نظر غیرفعال است.");
+                    byte itemType = (byte)itemInfo.ITEM_TYPE;
+                    if (itemType != 1 && itemType != 2)
+                        throw new InvalidOperationException("فقط آیتم‌های پرداختی (نوع ۱ و ۲) در احکام مجاز هستند.");
+                    string? itemCode = (string?)itemInfo.ITEM_CODE;
+                    if (itemCode != null && _autoDeductionCodes.Contains(itemCode))
+                        throw new InvalidOperationException("آیتم‌های کسر اتوماتیک را نمی‌توان به صورت دستی به حکم اضافه کرد.");
 
                     // اعتبارسنجی: مقدار اعشاری فقط برای آیتم حق شیفت درصدی مجاز است
                     if (line.AMOUNT != Math.Truncate(line.AMOUNT))
@@ -372,6 +397,7 @@ namespace Safir.Server.Controllers
                 });
                 return Ok();
             }
+            catch (KeyNotFoundException) { return NotFound("حکم مورد نظر یافت نشد."); }
             catch (InvalidOperationException ex) { return BadRequest(ex.Message); }
             catch (Exception ex) { return StatusCode(500, ex.Message); }
         }
@@ -384,9 +410,10 @@ namespace Safir.Server.Controllers
             {
                 await _db.ExecuteInTransactionAsync(async (conn, tran) =>
                 {
-                    // 🚀 گارد امنیتی سطح ۲: آیا هدر این حکم قفل است؟
-                    bool isConfirmed = await conn.QuerySingleAsync<bool>("SELECT IS_CONFIRMED FROM PAY2_DECREE WHERE DEC_ID = @decId", new { decId }, tran);
-                    if (isConfirmed)
+                    var decRow = await conn.QuerySingleOrDefaultAsync(
+                        "SELECT IS_CONFIRMED FROM PAY2_DECREE WHERE DEC_ID = @decId", new { decId }, tran)
+                        ?? throw new KeyNotFoundException();
+                    if ((bool)decRow.IS_CONFIRMED)
                         throw new InvalidOperationException("این حکم قفل (تأیید نهایی) شده است! اجازه حذف مبالغ آن را ندارید.");
 
                     const string sql = "DELETE FROM PAY2_DECREE_LINE WHERE DEC_ID=@decId AND ITEM_ID=@itemId";
@@ -394,6 +421,7 @@ namespace Safir.Server.Controllers
                 });
                 return Ok();
             }
+            catch (KeyNotFoundException) { return NotFound("حکم مورد نظر یافت نشد."); }
             catch (InvalidOperationException ex) { return BadRequest(ex.Message); }
             catch (Exception ex) { return StatusCode(500, ex.Message); }
         }

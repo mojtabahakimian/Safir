@@ -49,14 +49,18 @@ namespace Safir.Client.Services
                 throw new Exception(await res.Content.ReadAsStringAsync());
         }
 
+        private string? _cachedShiftMode;
+
         public async Task<string> GetShiftModeAsync()
         {
+            if (_cachedShiftMode is not null) return _cachedShiftMode;
             try
             {
                 var configs = await GetConfigsAsync();
-                return configs.FirstOrDefault(c => c.CFG_KEY == "SHIFT_MODE")?.CFG_VALUE ?? "PCT";
+                _cachedShiftMode = configs.FirstOrDefault(c => c.CFG_KEY == "SHIFT_MODE")?.CFG_VALUE ?? "PCT";
             }
-            catch { return "PCT"; }
+            catch { _cachedShiftMode = "PCT"; }
+            return _cachedShiftMode;
         }
 
         public static bool IsShiftPctItem(string shiftMode, IEnumerable<Pay2ItemDefDto> defs, int itemId)
@@ -65,5 +69,15 @@ namespace Safir.Client.Services
             var def = defs.FirstOrDefault(d => d.ITEM_ID == itemId);
             return string.Equals(def?.ITEM_CODE, "SHIFT", StringComparison.OrdinalIgnoreCase);
         }
+
+        private static readonly HashSet<string> _editableItemFilter = new(StringComparer.OrdinalIgnoreCase)
+            { "INS_DED", "TAX_DED", "LOAN_DED", "ADVANCE_DED" };
+
+        public static List<LookupDto<int>> FilterEditableItemDefs(IEnumerable<Pay2ItemDefDto> defs) =>
+            defs.Where(d => d.IS_ACTIVE
+                         && (d.ITEM_TYPE == 1 || d.ITEM_TYPE == 2)
+                         && !_editableItemFilter.Contains(d.ITEM_CODE ?? ""))
+                .Select(d => new LookupDto<int>(d.ITEM_ID, d.ITEM_NAME ?? ""))
+                .ToList();
     }
 }
