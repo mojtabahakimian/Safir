@@ -1,4 +1,5 @@
-﻿using System.Net.Http.Json;
+﻿
+using System.Net.Http.Json;
 using Safir.Shared.Models.Salary;
 
 namespace Safir.Client.Services
@@ -34,24 +35,6 @@ namespace Safir.Client.Services
                 throw new Exception(await res.Content.ReadAsStringAsync());
 
             return await res.Content.ReadFromJsonAsync<List<Pay2SmartAdvanceRowDto>>() ?? new();
-        }
-
-        public async Task<List<Pay2AdvanceExclDto>> GetEmployeeExclsAsync(int empId)
-            => await _http.GetFromJsonAsync<List<Pay2AdvanceExclDto>>(
-                $"api/pay2/advances/employee/{empId}/excls") ?? new();
-
-        public async Task SaveExclAsync(Pay2AdvanceExclDto excl)
-        {
-            var res = await _http.PostAsJsonAsync("api/pay2/advances/excl/save", excl);
-            if (!res.IsSuccessStatusCode)
-                throw new Exception(await res.Content.ReadAsStringAsync());
-        }
-
-        public async Task DeleteExclAsync(int exclId)
-        {
-            var res = await _http.DeleteAsync($"api/pay2/advances/excl/{exclId}");
-            if (!res.IsSuccessStatusCode)
-                throw new Exception(await res.Content.ReadAsStringAsync());
         }
     }
 }
