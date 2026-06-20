@@ -12,9 +12,20 @@
             <h5 class="pay2-section-title">مدیریت پرسنل (PAY2_EMPLOYEE)</h5>
             <div class="pay2-section-subtitle">لیست پرسنل، اطلاعات پایه و ارتباط با حسابداری.</div>
         </div>
-        <button class="btn-primary-pay2" @onclick="OpenNewEmpModal">
-            <i class="bi bi-plus-lg"></i> پرسنل جدید
-        </button>
+
+        <div style="display:flex; gap:12px; align-items:center;">
+            <!-- کادر جستجوی اضافه شده -->
+            <div class="pay2-search-wrapper" style="width: 280px;">
+                <i class="bi bi-search"></i>
+                <input type="text" class="pay2-search-input" style="width: 100%;"
+                       placeholder="جستجوی نام، کدملی یا پرسنلی..."
+                       @bind="SearchTerm" @bind:event="oninput" />
+            </div>
+
+            <button class="btn-primary-pay2" @onclick="OpenNewEmpModal">
+                <i class="bi bi-plus-lg"></i> پرسنل جدید
+            </button>
+        </div>
     </div>
 
     @if (IsLoading)
@@ -38,7 +49,7 @@
                         </tr>
                     </thead>
                     <tbody>
-                        <Virtualize Items="Employees" Context="emp">
+                        <Virtualize Items="FilteredEmployees.ToList()" Context="emp">
                             <tr>
                                 <td class="p2-text-mono p2-text-muted">@emp.EMP_CODE</td>
                                 <td><strong>@emp.FIRST_NAME @emp.LAST_NAME</strong><br /><span style="font-size:10px; color:#94a3b8">@emp.NATIONAL_CODE</span></td>
@@ -207,6 +218,27 @@
     List<Pay2EmployeeDto> Employees = new();
     List<Pay2WorkshopDto> Workshops = new();
     Pay2EmployeeDto CurrentEmp = new();
+
+    // متغیرهای جستجو
+    string _searchTerm = "";
+    string SearchTerm
+    {
+        get => _searchTerm;
+        set
+        {
+            _searchTerm = value;
+            StateHasChanged();
+        }
+    }
+
+    // فیلتر کردن بدون تخصیص حافظه (Memory Allocation) مخرب با StringComparison
+    IEnumerable<Pay2EmployeeDto> FilteredEmployees => string.IsNullOrWhiteSpace(_searchTerm)
+        ? Employees
+        : Employees.Where(x =>
+            (x.FIRST_NAME != null && x.FIRST_NAME.Contains(_searchTerm, StringComparison.OrdinalIgnoreCase)) ||
+            (x.LAST_NAME != null && x.LAST_NAME.Contains(_searchTerm, StringComparison.OrdinalIgnoreCase)) ||
+            (x.EMP_CODE != null && x.EMP_CODE.Contains(_searchTerm, StringComparison.OrdinalIgnoreCase)) ||
+            (x.NATIONAL_CODE != null && x.NATIONAL_CODE.Contains(_searchTerm, StringComparison.OrdinalIgnoreCase)));
 
     protected override async Task OnInitializedAsync()
     {
