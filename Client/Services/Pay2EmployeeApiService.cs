@@ -231,6 +231,13 @@ namespace Safir.Client.Services
                 throw new Exception(await res.Content.ReadAsStringAsync());
         }
 
+        public async Task GenerateDeedForSettlementAsync(int setId)
+        {
+            var res = await _http.PostAsync($"api/pay2/employees/settlement/{setId}/generate-deed", null);
+            if (!res.IsSuccessStatusCode)
+                throw new Exception(await res.Content.ReadAsStringAsync());
+        }
+
         public async Task DeleteEmployeeAsync(int empId)
         {
             var res = await _http.DeleteAsync($"api/pay2/employees/{empId}");

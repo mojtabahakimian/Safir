@@ -909,6 +909,43 @@ namespace Safir.Server.Controllers
             catch (Exception ex) { return BadRequest(ex.Message); }
         }
 
+        // صدور سند حسابداری تسویه (قفل دائمی): STATUS 2 → 3
+        [HttpPost("settlement/{setId:int}/generate-deed")]
+        public async Task<IActionResult> GenerateDeedForSettlement(int setId)
+        {
+            var userIdString = User.FindFirstValue(ClaimTypes.NameIdentifier);
+            if (!int.TryParse(userIdString, out int userCod)) return Unauthorized();
+
+            try
+            {
+                await _db.ExecuteInTransactionAsync(async (conn, tran) =>
+                {
+                    // قفل رکورد برای جلوگیری از عملیات همزمان (Race Condition)
+                    var status = await conn.QuerySingleOrDefaultAsync<byte?>(
+                        "SELECT STATUS FROM PAY2_SETTLEMENT WITH (UPDLOCK) WHERE SET_ID = @setId",
+                        new { setId }, tran);
+
+                    if (status == null)
+                        throw new InvalidOperationException("تسویه حساب مورد نظر در سیستم یافت نشد.");
+
+                    if (status != 2)
+                        throw new InvalidOperationException("تسویه حساب باید در وضعیت 'تأیید نهایی' باشد تا سند صادر شود.");
+
+                    // تغییر وضعیت به «سند صادر شده» (3) و قفل دائمی رکورد
+                    await conn.ExecuteAsync("UPDATE PAY2_SETTLEMENT SET STATUS = 3 WHERE SET_ID = @setId", new { setId }, tran);
+                });
+                return Ok();
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(ex.Message);
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, "خطای سیستمی: " + ex.Message);
+            }
+        }
+
         [HttpDelete("settlement/{setId:int}")]
         public async Task<IActionResult> DeleteSettlement(int setId)
         {

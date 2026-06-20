@@ -313,6 +313,8 @@
         public string StatusText => STATUS == 1 ? "پیش‌نویس" : (STATUS == 2 ? "تأیید نهایی" : "سند صادر شده");
         public string StatusColor => STATUS == 1 ? "#d97706" : (STATUS == 2 ? "#059669" : "#2563eb");
         public bool CanEdit => STATUS == 1; // فقط پیش‌نویس‌ها قابل حذف یا تایید هستند
+        public bool CanGenerateDeed => STATUS == 2; // نهایی شده و آماده صدور سند
+        public bool IsDeedGenerated => STATUS == 3; // سند صادر و رکورد قفل شده
     }
 
     public class Pay2ItemTemplateDto

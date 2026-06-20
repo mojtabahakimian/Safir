@@ -108,9 +108,15 @@
                                             <button class="btn-ghost-pay2 p2-text-primary" @onclick="() => FinalizeSettlement(set)"><i class="bi bi-check2-all"></i> تأیید نهایی</button>
                                             <button class="btn-ghost-pay2 p2-text-danger" @onclick="() => DeleteSettlement(set)"><i class="bi bi-trash"></i> حذف</button>
                                         }
-                                        else
+                                        else if (set.CanGenerateDeed)
                                         {
-                                            <span style="color: #94a3b8; font-size: 11px;">غیرقابل تغییر</span>
+                                            <button class="btn-ghost-pay2 p2-text-success" @onclick="() => GenerateDeed(set)" title="اعلام صدور سند و قفل دائمی">
+                                                <i class="bi bi-journal-check"></i> صدور سند
+                                            </button>
+                                        }
+                                        else if (set.IsDeedGenerated)
+                                        {
+                                            <span style="color: #2563eb; font-size: 11px; font-weight:bold;"><i class="bi bi-file-earmark-lock"></i> سند صادر شده</span>
                                         }
                                     </td>
                                 </tr>
@@ -249,6 +255,32 @@
                 Settlements = await EmployeeApi.GetSettlementsAsync(EmployeeId);
             }
             catch (Exception ex) { Snackbar.Add("خطا در نهایی‌سازی: " + ex.Message, MudBlazor.Severity.Error); }
+        }
+    }
+
+    async Task GenerateDeed(Pay2SettlementDto item)
+    {
+        var parameters = new MudBlazor.DialogParameters
+        {
+            ["Title"] = "صدور سند حسابداری تسویه",
+            ["ContentText"] = "آیا از صدور قطعی سند حسابداری برای این تسویه حساب اطمینان دارید؟ با این کار رکورد برای همیشه قفل خواهد شد.",
+            ["ConfirmButtonText"] = "بله، صدور سند قطعی",
+            ["CancelButtonText"] = "انصراف"
+        };
+        var options = new MudBlazor.DialogOptions { CloseButton = false, MaxWidth = MudBlazor.MaxWidth.ExtraSmall };
+
+        var dialog = DialogService.Show<Safir.Client.Shared.ConfirmDialog>("تایید", parameters, options);
+        var result = await dialog.Result;
+
+        if (!result.Cancelled)
+        {
+            try
+            {
+                await EmployeeApi.GenerateDeedForSettlementAsync(item.SET_ID);
+                Snackbar.Add("سند حسابداری با موفقیت صادر و رکورد قفل شد.", MudBlazor.Severity.Success);
+                Settlements = await EmployeeApi.GetSettlementsAsync(EmployeeId);
+            }
+            catch (Exception ex) { Snackbar.Add("خطا در صدور سند: " + ex.Message, MudBlazor.Severity.Error); }
         }
     }
 
