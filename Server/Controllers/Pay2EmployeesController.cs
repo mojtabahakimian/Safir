@@ -657,7 +657,7 @@ namespace Safir.Server.Controllers
 
                     if (loan.LOAN_ID == 0)
                     {
-                        // درج وام جدید
+                        // 🟢 درج وام جدید
                         const string insertSql = @"
                     INSERT INTO PAY2_LOAN (EMP_ID, WS_ID, LOAN_TYPE, LOAN_DATE, AMOUNT, INSTALLMENT, TOTAL_INST, PAID_INST, FIRST_PAY, PURPOSE, IS_ACTIVE, CREATED_AT, CREATED_BY)
                     OUTPUT INSERTED.LOAN_ID
@@ -666,20 +666,38 @@ namespace Safir.Server.Controllers
                         var p = new DynamicParameters(loan);
                         p.Add("User", userCod);
                         savedLoanId = await conn.QuerySingleAsync<int>(insertSql, p, tran);
+
+                        // فراخوانی SP تولید اقساط فقط برای وام جدید
+                        await conn.ExecuteAsync("SP_PAY2_LOAN_GEN_SCHED", new { LOAN_ID = savedLoanId }, tran, commandType: CommandType.StoredProcedure);
                     }
                     else
                     {
-                        // آپدیت وام موجود (فقط مقادیر هدر تغییر می‌کند)
-                        const string updateSql = @"
-                    UPDATE PAY2_LOAN 
-                    SET LOAN_TYPE=@LOAN_TYPE, LOAN_DATE=@LOAN_DATE, AMOUNT=@AMOUNT, INSTALLMENT=@INSTALLMENT, TOTAL_INST=@TOTAL_INST, FIRST_PAY=@FIRST_PAY, PURPOSE=@PURPOSE, IS_ACTIVE=@IS_ACTIVE
-                    WHERE LOAN_ID=@LOAN_ID";
-                        await conn.ExecuteAsync(updateSql, loan, tran);
-                    }
+                        // 🟢 بررسی وضعیت اقساط پرداخت شده قبل از آپدیت
+                        int paidInst = await conn.QuerySingleAsync<int>("SELECT PAID_INST FROM PAY2_LOAN WHERE LOAN_ID = @LOAN_ID", new { loan.LOAN_ID }, tran);
 
-                    // 🔴 جادوی سیستم: تولید اتوماتیک یا آپدیت اقساط 🔴
-                    // این SP که در دیتابیس شما وجود دارد، اقساط باقی‌مانده را بر اساس تاریخ FIRST_PAY می‌سازد
-                    await conn.ExecuteAsync("SP_PAY2_LOAN_GEN_SCHED", new { LOAN_ID = savedLoanId }, tran, commandType: CommandType.StoredProcedure);
+                        if (paidInst > 0)
+                        {
+                            // 🚀 اگر وامی در جریان پرداخت است، مقادیر مالیاتی قفل هستند و فقط توضیحات و وضعیت فعال بودن آپدیت می‌شود
+                            const string updatePartialSql = @"
+                        UPDATE PAY2_LOAN 
+                        SET PURPOSE=@PURPOSE, IS_ACTIVE=@IS_ACTIVE
+                        WHERE LOAN_ID=@LOAN_ID";
+                            await conn.ExecuteAsync(updatePartialSql, loan, tran);
+                            // ⚠️ فراخوانی SP لغو می‌شود تا اقساط پرداخت شده تخریب نشوند و خطای UNIQUE رخ ندهد.
+                        }
+                        else
+                        {
+                            // اگر هیچ قسطی پرداخت نشده، کاربر مجاز است کل ساختار وام را تغییر دهد
+                            const string updateFullSql = @"
+                        UPDATE PAY2_LOAN 
+                        SET LOAN_TYPE=@LOAN_TYPE, LOAN_DATE=@LOAN_DATE, AMOUNT=@AMOUNT, INSTALLMENT=@INSTALLMENT, TOTAL_INST=@TOTAL_INST, FIRST_PAY=@FIRST_PAY, PURPOSE=@PURPOSE, IS_ACTIVE=@IS_ACTIVE
+                        WHERE LOAN_ID=@LOAN_ID";
+                            await conn.ExecuteAsync(updateFullSql, loan, tran);
+
+                            // بازتولید اقساط چون مقادیر مالی تغییر کرده است
+                            await conn.ExecuteAsync("SP_PAY2_LOAN_GEN_SCHED", new { LOAN_ID = savedLoanId }, tran, commandType: CommandType.StoredProcedure);
+                        }
+                    }
                 });
 
                 return Ok();
@@ -697,15 +715,26 @@ namespace Safir.Server.Controllers
             {
                 await _db.ExecuteInTransactionAsync(async (conn, tran) =>
                 {
+                    // 🚀 گارد امنیتی بک‌اند: جلوگیری از حذف وامی که در حقوق پرسنل کسر شده است
+                    int paidInst = await conn.QuerySingleAsync<int>("SELECT PAID_INST FROM PAY2_LOAN WHERE LOAN_ID = @loanId", new { loanId }, tran);
+
+                    if (paidInst > 0)
+                        throw new InvalidOperationException("این وام دارای اقساط کسر شده در فیش حقوقی است و به دلیل حفظ سوابق مالی، غیرقابل حذف می‌باشد. در صورت لزوم می‌توانید وضعیت آن را غیرفعال کنید.");
+
                     // برای جلوگیری از خطای کلید خارجی، ابتدا اقساط (جدول فرزند) پاک می‌شوند
                     await conn.ExecuteAsync("DELETE FROM PAY2_LOAN_SCHED WHERE LOAN_ID = @loanId", new { loanId }, tran);
                     await conn.ExecuteAsync("DELETE FROM PAY2_LOAN WHERE LOAN_ID = @loanId", new { loanId }, tran);
                 });
                 return Ok();
             }
+            catch (InvalidOperationException ex)
+            {
+                // پیام خطای فارسی ما مستقیماً به کلاینت منتقل می‌شود
+                return BadRequest(ex.Message);
+            }
             catch (Exception ex)
             {
-                return BadRequest("خطا در حذف وام (ممکن است اقساطی از آن در ماه قبل کسر شده باشد). " + ex.Message);
+                return StatusCode(500, "خطای سیستمی: " + ex.Message);
             }
         }
 
