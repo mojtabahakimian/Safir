@@ -1309,5 +1309,51 @@ namespace Safir.Server.Controllers
             return !string.Equals(shiftMode, "FIXED", StringComparison.OrdinalIgnoreCase);
         }
 
+        [HttpPut("settlement/{setId:int}/revert")]
+        public async Task<IActionResult> RevertSettlement(int setId)
+        {
+            var userIdString = User.FindFirstValue(ClaimTypes.NameIdentifier);
+            if (!int.TryParse(userIdString, out int userCod)) return Unauthorized();
+
+            try
+            {
+                await _db.ExecuteInTransactionAsync(async (conn, tran) =>
+                {
+                    // فقط تسویه‌هایی که تایید نهایی (۲) شده‌اند قابل برگشت به پیش‌نویس (۱) هستند
+                    int rows = await conn.ExecuteAsync(
+                        "UPDATE PAY2_SETTLEMENT SET STATUS = 1, APPROVED_BY = NULL, APPROVED_AT = NULL WHERE SET_ID = @setId AND STATUS = 2",
+                        new { setId }, tran);
+
+                    if (rows == 0)
+                        throw new InvalidOperationException("تسویه حساب یافت نشد یا در وضعیتی نیست که قابل برگشت باشد.");
+                });
+                return Ok();
+            }
+            catch (Exception ex) { return BadRequest(ex.Message); }
+        }
+
+        [HttpPost("settlement/{setId:int}/generate-deed")]
+        public async Task<IActionResult> GenerateSettlementDeed(int setId)
+        {
+            var userIdString = User.FindFirstValue(ClaimTypes.NameIdentifier);
+            if (!int.TryParse(userIdString, out int userCod)) return Unauthorized();
+
+            try
+            {
+                await _db.ExecuteInTransactionAsync(async (conn, tran) =>
+                {
+                    // تغییر وضعیت به سند صادر شده (۳)
+                    int rows = await conn.ExecuteAsync(
+                        "UPDATE PAY2_SETTLEMENT SET STATUS = 3 WHERE SET_ID = @setId AND STATUS = 2",
+                        new { setId }, tran);
+
+                    if (rows == 0)
+                        throw new InvalidOperationException("تسویه حساب یافت نشد یا تأیید نهایی نشده است.");
+                });
+                return Ok();
+            }
+            catch (Exception ex) { return BadRequest(ex.Message); }
+        }
+
     }
 }

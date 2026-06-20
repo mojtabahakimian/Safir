@@ -102,15 +102,20 @@
                                     <td class="p2-text-mono" style="text-align:center;">@set.SANAVAT.ToString("N0")</td>
                                     <td class="p2-text-mono" style="text-align:center;">@set.LEAVE_PAY.ToString("N0")</td>
                                     <td class="p2-text-mono p2-text-danger" style="text-align:center;">@set.TOTAL_DED.ToString("N0")</td>
-                                    <td style="text-align:center; min-width: 150px;">
-                                        @if (set.CanEdit)
+                                    <td style="text-align:center; min-width: 220px;">
+                                        @if (set.STATUS == 1)
                                         {
-                                            <button class="btn-ghost-pay2 p2-text-primary" @onclick="() => FinalizeSettlement(set)"><i class="bi bi-check2-all"></i> تأیید نهایی</button>
-                                            <button class="btn-ghost-pay2 p2-text-danger" @onclick="() => DeleteSettlement(set)"><i class="bi bi-trash"></i> حذف</button>
+                                            <button class="btn-ghost-pay2 p2-text-primary" @onclick="() => FinalizeSettlement(set)" title="تأیید نهایی"><i class="bi bi-check2-all"></i> تأیید</button>
+                                            <button class="btn-ghost-pay2 p2-text-danger" @onclick="() => DeleteSettlement(set)" title="حذف پیش‌نویس"><i class="bi bi-trash"></i> حذف</button>
                                         }
-                                        else
+                                        else if (set.STATUS == 2)
                                         {
-                                            <span style="color: #94a3b8; font-size: 11px;">غیرقابل تغییر</span>
+                                            <button class="btn-ghost-pay2 p2-text-success" @onclick="() => GenerateDeed(set)" title="صدور قطعی سند"><i class="bi bi-journal-check"></i> صدور سند</button>
+                                            <button class="btn-ghost-pay2 p2-text-warning" @onclick="() => RevertSettlement(set)" title="برگشت به حالت پیش‌نویس"><i class="bi bi-unlock"></i> لغو تأیید</button>
+                                        }
+                                        else if (set.STATUS == 3)
+                                        {
+                                            <span style="color: var(--p2-primary); font-size: 12px; font-weight:bold;"><i class="bi bi-file-earmark-lock"></i> سند حسابداری صادر شده</span>
                                         }
                                     </td>
                                 </tr>
@@ -275,6 +280,53 @@
                 Settlements = await EmployeeApi.GetSettlementsAsync(EmployeeId);
             }
             catch (Exception ex) { Snackbar.Add("خطا در حذف: " + ex.Message, MudBlazor.Severity.Error); }
+        }
+    }
+    async Task RevertSettlement(Pay2SettlementDto item)
+    {
+        var parameters = new MudBlazor.DialogParameters
+        {
+            ["Title"] = "لغو تأیید تسویه",
+            ["ContentText"] = "آیا از لغو تأیید این تسویه‌حساب اطمینان دارید؟ با این کار وضعیت به پیش‌نویس برگشته و قابل حذف خواهد بود.",
+            ["ConfirmButtonText"] = "بله، لغو تأیید",
+            ["CancelButtonText"] = "انصراف"
+        };
+        var dialog = DialogService.Show<Safir.Client.Shared.ConfirmDialog>("تایید", parameters, new MudBlazor.DialogOptions { CloseButton = false, MaxWidth = MudBlazor.MaxWidth.ExtraSmall });
+        var result = await dialog.Result;
+
+        if (!result.Cancelled)
+        {
+            try
+            {
+                await EmployeeApi.RevertSettlementAsync(item.SET_ID);
+                Snackbar.Add("تسویه حساب با موفقیت به حالت پیش‌نویس بازگشت.", MudBlazor.Severity.Success);
+                Settlements = await EmployeeApi.GetSettlementsAsync(EmployeeId);
+            }
+            catch (Exception ex) { Snackbar.Add("خطا در لغو تأیید: " + ex.Message, MudBlazor.Severity.Error); }
+        }
+    }
+
+    async Task GenerateDeed(Pay2SettlementDto item)
+    {
+        var parameters = new MudBlazor.DialogParameters
+        {
+            ["Title"] = "صدور سند تسویه حساب",
+            ["ContentText"] = "آیا از صدور قطعی سند حسابداری اطمینان دارید؟ با این کار تسویه‌حساب قفل شده و غیرقابل برگشت خواهد بود.",
+            ["ConfirmButtonText"] = "بله، صدور سند قطعی",
+            ["CancelButtonText"] = "انصراف"
+        };
+        var dialog = DialogService.Show<Safir.Client.Shared.ConfirmDialog>("تایید", parameters, new MudBlazor.DialogOptions { CloseButton = false, MaxWidth = MudBlazor.MaxWidth.ExtraSmall });
+        var result = await dialog.Result;
+
+        if (!result.Cancelled)
+        {
+            try
+            {
+                await EmployeeApi.GenerateSettlementDeedAsync(item.SET_ID);
+                Snackbar.Add("سند حسابداری با موفقیت صادر شد و تسویه حساب قفل گردید.", MudBlazor.Severity.Success);
+                Settlements = await EmployeeApi.GetSettlementsAsync(EmployeeId);
+            }
+            catch (Exception ex) { Snackbar.Add("خطا در صدور سند: " + ex.Message, MudBlazor.Severity.Error); }
         }
     }
 
