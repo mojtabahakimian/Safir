@@ -103,17 +103,23 @@ namespace Safir.Server.Controllers
             {
                 int newRunId = await _db.ExecuteInTransactionAsync(async (conn, tran) =>
                 {
-                    // ۱. بررسی وضعیت دوره
-                    var periodStatus = await conn.QuerySingleOrDefaultAsync<byte?>("SELECT STATUS FROM PAY2_PERIOD WHERE PER_ID = @PER_ID", new { request.PER_ID }, tran);
+                    // ۱. 🚀 استفاده از UPDLOCK برای جلوگیری قطعی از Race Condition در کلیک‌های همزمان
+                    var periodStatus = await conn.QuerySingleOrDefaultAsync<byte?>(
+                        "SELECT STATUS FROM PAY2_PERIOD WITH (UPDLOCK) WHERE PER_ID = @PER_ID",
+                        new { request.PER_ID }, tran);
+
                     if (periodStatus == null || periodStatus == 1)
                         throw new InvalidOperationException("دوره کارکرد هنوز باز است. لطفاً ابتدا در تب کارکرد، دکمه 'بستن کارکرد' را بزنید.");
 
-                    // ۲. 🚀 مهار باگ امنیتی: بررسی وضعیت آخرین فیش (نباید تایید نهایی شده باشد)
-                    var latestRunStatus = await conn.QuerySingleOrDefaultAsync<byte?>("SELECT STATUS FROM PAY2_RUN WHERE PER_ID = @PER_ID AND IS_LATEST = 1", new { request.PER_ID }, tran);
+                    // ۲. بررسی وضعیت آخرین فیش با UPDLOCK
+                    var latestRunStatus = await conn.QuerySingleOrDefaultAsync<byte?>(
+                        "SELECT STATUS FROM PAY2_RUN WITH (UPDLOCK) WHERE PER_ID = @PER_ID AND IS_LATEST = 1",
+                        new { request.PER_ID }, tran);
+
                     if (latestRunStatus >= 2)
                         throw new InvalidOperationException("برای این دوره فیش حقوقیِ تأیید شده وجود دارد. امکان بازمحاسبه نیست.");
 
-                    // ۳. فراخوانی SP محاسبات
+                    // ۳. فراخوانی SP محاسبات (با افزایش Timeout به ۱۸۰ ثانیه برای کارگاه‌های بزرگ)
                     var sql = @"
                         DECLARE @NewId INT;
                         EXEC SP_PAY2_CALC_RUN 
@@ -128,7 +134,8 @@ namespace Safir.Server.Controllers
                     var p = new DynamicParameters(request);
                     p.Add("UserCod", userCod);
 
-                    return await conn.QuerySingleAsync<int>(sql, p, tran);
+                    // 🚀 اعمال Command Timeout
+                    return await conn.QuerySingleAsync<int>(sql, p, tran, commandTimeout: 180);
                 });
 
                 return Ok(newRunId);
@@ -176,25 +183,93 @@ namespace Safir.Server.Controllers
         {
             var userIdString = User.FindFirstValue(ClaimTypes.NameIdentifier);
             if (!int.TryParse(userIdString, out int userCod)) return Unauthorized();
+            var userName = User.Identity?.Name ?? "System";
 
             try
             {
                 await _db.ExecuteInTransactionAsync(async (conn, tran) =>
                 {
-                    var status = await conn.QuerySingleAsync<byte>("SELECT STATUS FROM PAY2_RUN WHERE RUN_ID = @runId", new { runId }, tran);
-                    if (status != 2) throw new InvalidOperationException("اجرا باید در وضعیت 'تأیید نهایی' باشد تا سند صادر شود.");
+                    // ۱. کنترل وضعیت با قفل انحصاری
+                    var runInfo = await conn.QuerySingleAsync(
+                        "SELECT STATUS, PER_ID FROM PAY2_RUN WITH (UPDLOCK) WHERE RUN_ID = @runId",
+                        new { runId }, tran);
 
-                    // 🚀 مهار باگ State Desync: همگام‌سازی وضعیت در هر دو جدول
-                    var sql = @"
-                        UPDATE PAY2_RUN SET STATUS = 3 WHERE RUN_ID = @runId;
-                        UPDATE PAY2_PERIOD SET STATUS = 4 WHERE PER_ID = (SELECT PER_ID FROM PAY2_RUN WHERE RUN_ID = @runId);";
+                    if ((byte)runInfo.STATUS != 2)
+                        throw new InvalidOperationException("اجرا باید در وضعیت 'تأیید نهایی' باشد تا سند صادر شود.");
 
-                    await conn.ExecuteAsync(sql, new { runId }, tran);
+                    int perId = (int)runInfo.PER_ID;
+
+                    // ۲. گرفتن تاریخ دوره برای ثبت در هدر سند
+                    long periodDate = await conn.QuerySingleAsync<long>(
+                        "SELECT PERIOD_DATE FROM PAY2_PERIOD WHERE PER_ID = @perId",
+                        new { perId }, tran);
+
+                    // ۳. گرفتن شماره سند جدید از سیستم حسابداری (DEED_HED)
+                    double nextNs = (await conn.QuerySingleOrDefaultAsync<double?>(
+                        "SELECT MAX(N_S) FROM DEED_HED WITH (UPDLOCK)", null, tran) ?? 0) + 1;
+
+                    // ۴. ایجاد هدر سند حقوق در حسابداری
+                    string hedSharh = $"سند حقوق و دستمزد دوره {periodDate}";
+                    await conn.ExecuteAsync(@"
+                        INSERT INTO DEED_HED (N_S, DATE_S, SHARH_S, NO_S, USER_NAME, OKF, CRT, UID)
+                        VALUES (@N_S, @DATE_S, @SHARH, 2, @USER, 1, GETDATE(), @UID)",
+                        new { N_S = nextNs, DATE_S = periodDate, SHARH = hedSharh, USER = userName, UID = userCod }, tran);
+
+                    // ۵. فراخوانی SP تولید آرتیکل‌های سند
+                    var articles = await conn.QueryAsync(
+                        "EXEC SP_PAY2_GEN_DEED @RUN_ID = @runId, @CALC_BY = @userCod",
+                        new { runId, userCod }, tran, commandTimeout: 120);
+
+                    // ۶. درج آرتیکل‌ها در ریز سند (DEED_DTL)
+                    int radif = 1;
+                    foreach (var art in articles)
+                    {
+                        string hesCode = (string)art.HES_CODE;
+                        var parts = hesCode.Split('-');
+
+                        int hesK = int.Parse(parts[0]);
+                        int hesM = int.Parse(parts[1]);
+                        int? hesT = null;
+
+                        // اگر SP پرسنل را مشخص کرده (مثلاً برای مساعده)، کد تفصیلی او را از جدول پرسنل استخراج می‌کنیم
+                        if (art.EMP_ID != null)
+                        {
+                            string? accT = await conn.QuerySingleOrDefaultAsync<string>(
+                                "SELECT ACC_T FROM PAY2_EMPLOYEE WHERE EMP_ID = @empId",
+                                new { empId = (int)art.EMP_ID }, tran);
+
+                            if (!string.IsNullOrWhiteSpace(accT) && int.TryParse(accT, out int tValue))
+                                hesT = tValue;
+                        }
+
+                        await conn.ExecuteAsync(@"
+                            INSERT INTO DEED_DTL (N_S, RADIF, HES_K, HES_M, HES_T, SHARH, BED, BES, CRT, UID)
+                            VALUES (@N_S, @RADIF, @HES_K, @HES_M, @HES_T, @SHARH, @BED, @BES, GETDATE(), @UID)",
+                            new
+                            {
+                                N_S = nextNs,
+                                RADIF = radif++,
+                                HES_K = hesK,
+                                HES_M = hesM,
+                                HES_T = hesT,
+                                SHARH = (string)art.SHARH,
+                                BED = (double)art.BED,
+                                BES = (double)art.BES,
+                                UID = userCod
+                            }, tran);
+                    }
+
+                    // ۷. آپدیت وضعیت‌های سیستم حقوق
+                    await conn.ExecuteAsync(@"
+                        UPDATE PAY2_RUN SET STATUS = 3, DEED_ID_SAL = @deedId WHERE RUN_ID = @runId;
+                        UPDATE PAY2_PERIOD SET STATUS = 4, DEED_N_S_PAY = @nextNs WHERE PER_ID = @perId;",
+                        new { runId, deedId = (int)nextNs, nextNs, perId }, tran);
                 });
+
                 return Ok();
             }
             catch (InvalidOperationException ex) { return BadRequest(ex.Message); }
-            catch (Exception ex) { return StatusCode(500, ex.Message); }
+            catch (Exception ex) { return StatusCode(500, "خطا در صدور سند: " + ex.Message); }
         }
     }
 }
