@@ -84,6 +84,18 @@ namespace Safir.Client.Services
             if (!res.IsSuccessStatusCode) throw new Exception(await res.Content.ReadAsStringAsync());
         }
 
-
+        // دریافت بایت‌های PDF فیش حقوقی یک پرسنل (برای نمایش در نمایشگر داخلی مرورگر)
+        public async Task<byte[]> GetPayslipPdfAsync(int runId, int empId)
+        {
+            var res = await _http.GetAsync($"api/pay2/run/{runId}/employee/{empId}/payslip");
+            if (!res.IsSuccessStatusCode)
+            {
+                var err = await res.Content.ReadAsStringAsync();
+                throw new Exception(string.IsNullOrWhiteSpace(err)
+                    ? $"خطا در دریافت فیش حقوقی (کد {(int)res.StatusCode})."
+                    : err);
+            }
+            return await res.Content.ReadAsByteArrayAsync();
+        }
     }
 }
