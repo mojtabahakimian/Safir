@@ -70,3 +70,13 @@ window.startP2Resize = function (e, resizerElement, colIndex, isCol1) {
     document.addEventListener('mousemove', mouseMove);
     document.addEventListener('mouseup', mouseUp);
 };
+window.createPdfBlobUrl = (byteArray) => {
+    const blob = new Blob([new Uint8Array(byteArray)], { type: 'application/pdf' });
+    return URL.createObjectURL(blob);
+};
+
+window.revokePdfBlobUrl = (url) => {
+    if (url) {
+        URL.revokeObjectURL(url);
+    }
+};

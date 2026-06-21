@@ -1,0 +1,102 @@
+@using Microsoft.JSInterop
+@inject IJSRuntime JS
+@implements IAsyncDisposable
+
+<MudDialog DisableSidePadding="true">
+    <DialogContent>
+        <div style="height: 75vh; width: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; position: relative;">
+            @if (_isLoading)
+            {
+                <MudProgressCircular Color="Color.Primary" Indeterminate="true" Size="Size.Large" />
+                <div class="mt-4 p2-text-muted">در حال آماده‌سازی گزارش...</div>
+            }
+            else if (!string.IsNullOrEmpty(_errorMessage))
+            {
+                <div class="p2-text-danger p2-text-center">
+                    <MudIcon Icon="@Icons.Material.Filled.Error" Size="Size.Large" Class="mb-2" />
+                    <div>@_errorMessage</div>
+                </div>
+            }
+            else if (!string.IsNullOrEmpty(_pdfUrl))
+            {
+                <iframe src="@_pdfUrl" style="width: 100%; height: 100%; border: none;" allowfullscreen></iframe>
+            }
+        </div>
+    </DialogContent>
+    <DialogActions>
+        @if (!string.IsNullOrEmpty(_pdfUrl))
+        {
+            <MudButton Variant="Variant.Outlined" Color="Color.Primary" OnClick="OpenInNewTab" Class="me-2">باز کردن در صفحه جدید</MudButton>
+        }
+        <MudButton Variant="Variant.Filled" Color="Color.Default" OnClick="CloseDialog">بستن</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] MudDialogInstance MudDialog { get; set; } = null!;
+
+    [Parameter]
+    public Func<Task<byte[]>> PdfTask { get; set; } = null!;
+
+    private bool _isLoading = true;
+    private string? _errorMessage;
+    private string? _pdfUrl;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadPdfAsync();
+    }
+
+    private async Task LoadPdfAsync()
+    {
+        try
+        {
+            _isLoading = true;
+            StateHasChanged();
+
+            if (PdfTask == null) throw new Exception("منبع داده پی‌دی‌اف مشخص نشده است.");
+
+            var bytes = await PdfTask.Invoke();
+            if (bytes == null || bytes.Length == 0) throw new Exception("داده پی‌دی‌اف خالی است.");
+
+            _pdfUrl = await JS.InvokeAsync<string>("createPdfBlobUrl", bytes);
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = ex.Message;
+        }
+        finally
+        {
+            _isLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task OpenInNewTab()
+    {
+        if (!string.IsNullOrEmpty(_pdfUrl))
+        {
+            await JS.InvokeVoidAsync("window.open", _pdfUrl, "_blank");
+        }
+    }
+
+    private void CloseDialog()
+    {
+        MudDialog.Close(DialogResult.Ok(true));
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (!string.IsNullOrEmpty(_pdfUrl))
+        {
+            try
+            {
+                await JS.InvokeVoidAsync("revokePdfBlobUrl", _pdfUrl);
+            }
+            catch
+            {
+                // Ignore JS errors during cleanup
+            }
+        }
+    }
+}

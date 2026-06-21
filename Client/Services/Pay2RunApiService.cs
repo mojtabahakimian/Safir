@@ -84,6 +84,11 @@ namespace Safir.Client.Services
             if (!res.IsSuccessStatusCode) throw new Exception(await res.Content.ReadAsStringAsync());
         }
 
-
+        public async Task<byte[]> GetPayslipPdfAsync(int runId, int empId)
+        {
+            var res = await _http.GetAsync($"api/pay2/run/{runId}/payslip/{empId}/pdf");
+            if (!res.IsSuccessStatusCode) throw new Exception(await res.Content.ReadAsStringAsync());
+            return await res.Content.ReadAsByteArrayAsync();
+        }
     }
 }

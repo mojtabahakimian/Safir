@@ -290,6 +290,7 @@
                                 <th style="text-align:left;">مالیات</th>
                                 <th style="text-align:left; color:#ef4444;">مساعده/وام/سایر کسورات</th>
                                 <th style="text-align:left; color:#059669; font-size:14px; border-right: 2px solid var(--p2-border-light);">خالص پرداختی</th>
+                                <th style="text-align:center;">عملیات</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -322,6 +323,11 @@
                                         <td class="p2-text-mono" style="text-align:left;">@item.TAX_AMOUNT.ToString("N0")</td>
                                         <td class="p2-text-mono p2-text-danger" style="text-align:left;">@item.TOTAL_DED.ToString("N0")</td>
                                         <td class="p2-text-mono p2-text-success" style="text-align:left; font-weight:900; font-size:15px; background: #f0fdf4; border-right: 2px solid var(--p2-border-light);">@item.NET_PAY.ToString("N0")</td>
+                                        <td style="text-align:center;">
+                                            <MudTooltip Text="چاپ فیش حقوقی">
+                                                <MudIconButton Icon="@Icons.Material.Filled.Print" Color="Color.Primary" Size="Size.Small" OnClick="() => PrintPayslip(item.EMP_ID)" />
+                                            </MudTooltip>
+                                        </td>
                                     </tr>
                                 </Virtualize>
                             }
@@ -595,6 +601,18 @@
             catch (Exception ex) { Snackbar.Add(ex.Message, MudBlazor.Severity.Error); }
             finally { IsProcessing = false; }
         }
+    }
+
+    async Task PrintPayslip(int empId)
+    {
+        if (CurrentRun == null) return;
+
+        var parameters = new MudBlazor.DialogParameters
+        {
+            { "PdfTask", (Func<Task<byte[]>>)(() => RunApi.GetPayslipPdfAsync(CurrentRun.RUN_ID, empId)) }
+        };
+        var options = new MudBlazor.DialogOptions { MaxWidth = MudBlazor.MaxWidth.Medium, FullWidth = true, CloseButton = true, DisableBackdropClick = true };
+        DialogService.Show<Safir.Client.Components.Reports.PdfPreviewDialog>("چاپ فیش حقوقی", parameters, options);
     }
 
     async Task GenerateDeed()
