@@ -699,6 +699,7 @@
                     var recent = dash.OrderBy(x => x.ReportDate).TakeLast(8).ToList();
                     var maxWhey = recent.Count > 0 ? recent.Max(x => x.ConcentrationWheyQty ?? 0) : 0m;
                     var maxPowder = recent.Count > 0 ? recent.Max(x => x.SprayPowderQty ?? 0) : 0m;
+                    var chartMax = Math.Max(maxWhey, maxPowder);
                 }
 
                 <div class="d-flex flex-wrap align-center justify-space-between gap-3 mb-5">
@@ -788,8 +789,8 @@
                                             {
                                                 var wv = rep.ConcentrationWheyQty ?? 0;
                                                 var pv = rep.SprayPowderQty ?? 0;
-                                                var wPct = maxWhey > 0 ? (int)((double)(wv / maxWhey) * 82) : 0;
-                                                var pPct = maxPowder > 0 ? (int)((double)(pv / maxPowder) * 82) : 0;
+                                                var wPct = chartMax > 0 ? (int)((double)(wv / chartMax) * 82) : 0;
+                                                var pPct = chartMax > 0 ? (int)((double)(pv / chartMax) * 82) : 0;
                                                 <div class="prod-day">
                                                     <div class="prod-day-bars">
                                                         <div class="prod-bar-col">
