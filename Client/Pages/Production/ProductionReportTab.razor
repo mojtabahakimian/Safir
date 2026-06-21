@@ -37,106 +37,283 @@
         @if (_activeTab == 0)
         {
             <div class="animate-fade-in">
-                <MudGrid Class="mb-6">
-                    <MudItem xs="12" sm="6" md="4">
-                        <MudPaper Elevation="0" Outlined="true" Class="pa-5 rounded-xl d-flex align-center pay2-form-card" Style="border-left: 6px solid var(--mud-palette-info) !important;">
-                            <div class="pa-3 rounded-lg ml-4" style="background-color: rgba(3, 169, 244, 0.1);">
-                                <MudIcon Icon="@Icons.Material.Outlined.WaterDrop" Color="Color.Info" Size="Size.Large" />
-                            </div>
-                            <div>
-                                <MudText Typo="Typo.caption" Class="text-muted d-block mb-1" Style="font-weight: bold;">کل آب‌پنیر دریافتی (تغلیظ)</MudText>
-                                <MudText Typo="Typo.h5" Style="font-weight: 900; letter-spacing: 0.5px;">@TotalWheyQty.ToString("N0") <span style="font-size: 14px; font-weight: normal;" class="text-muted">لیتر</span></MudText>
-                            </div>
-                        </MudPaper>
-                    </MudItem>
+                @{
+                    var periods = new (int Value, string Label)[] { (0, "همه"), (7, "۷ روز"), (30, "۳۰ روز"), (90, "۹۰ روز") };
+                    var dash = DashboardReports.ToList();
+                    var dashDays = Math.Max(1, DashDaysCount);
+                    var overallEff = OverallEfficiency(dash);
+                    var overallRatio = TotalPowderQty > 0 ? TotalWheyQty / TotalPowderQty : 0m;
+                    var trend = EfficiencyTrend;
+                    var suppliers = SupplierStats;
+                    var maxSupplierEff = suppliers.Count > 0 ? suppliers.Max(s => s.Efficiency) : 0m;
+                    var bestEff = BestEfficiencyReport;
+                    var topPow = TopPowderReport;
+                    var topWhey = TopWheyReport;
+                }
 
-                    <MudItem xs="12" sm="6" md="4">
-                        <MudPaper Elevation="0" Outlined="true" Class="pa-5 rounded-xl d-flex align-center pay2-form-card" Style="border-left: 6px solid var(--mud-palette-success) !important;">
-                            <div class="pa-3 rounded-lg ml-4" style="background-color: rgba(76, 175, 80, 0.1);">
-                                <MudIcon Icon="@Icons.Material.Outlined.Inventory2" Color="Color.Success" Size="Size.Large" />
-                            </div>
-                            <div>
-                                <MudText Typo="Typo.caption" Class="text-muted d-block mb-1" Style="font-weight: bold;">کل پودر خروجی (اسپری)</MudText>
-                                <MudText Typo="Typo.h5" Style="font-weight: 900; letter-spacing: 0.5px;">@TotalPowderQty.ToString("N0") <span style="font-size: 14px; font-weight: normal;" class="text-muted">کیلوگرم</span></MudText>
-                            </div>
-                        </MudPaper>
-                    </MudItem>
+                @* ===== سربرگ و فیلتر بازه زمانی ===== *@
+                <div class="d-flex flex-wrap align-center justify-space-between gap-3 mb-5">
+                    <div class="d-flex align-center gap-2">
+                        <MudIcon Icon="@Icons.Material.Outlined.QueryStats" Color="Color.Primary" />
+                        <MudText Typo="Typo.h6" Style="font-weight: 800;">پیشخوان مدیریتی</MudText>
+                    </div>
+                    <MudPaper Elevation="0" Class="d-flex flex-wrap rounded-xl pa-1" Style="background-color: #f0f2f5;">
+                        @foreach (var p in periods)
+                        {
+                            <MudButton Class="rounded-xl px-3"
+                                       Color="@(_dashboardPeriod == p.Value ? Color.Primary : Color.Default)"
+                                       Variant="@(_dashboardPeriod == p.Value ? Variant.Filled : Variant.Text)"
+                                       OnClick="@(() => OnPeriodChanged(p.Value))">@p.Label</MudButton>
+                        }
+                    </MudPaper>
+                </div>
 
-                    <MudItem xs="12" sm="12" md="4">
-                        <MudPaper Elevation="0" Outlined="true" Class="pa-5 rounded-xl d-flex align-center pay2-form-card" Style="border-left: 6px solid var(--mud-palette-primary) !important;">
-                            <div class="pa-3 rounded-lg ml-4" style="background-color: rgba(var(--mud-palette-primary-rgb), 0.1);">
-                                <MudIcon Icon="@Icons.Material.Outlined.Assessment" Color="Color.Primary" Size="Size.Large" />
-                            </div>
-                            <div>
-                                <MudText Typo="Typo.caption" Class="text-muted d-block mb-1" Style="font-weight: bold;">تعداد کل گزارشات ثبت‌شده</MudText>
-                                <MudText Typo="Typo.h5" Style="font-weight: 900; letter-spacing: 0.5px;">@_reports.Count <span style="font-size: 14px; font-weight: normal;" class="text-muted">روز رکورد</span></MudText>
-                            </div>
-                        </MudPaper>
-                    </MudItem>
-                </MudGrid>
-
-                <MudGrid>
-                    <MudItem xs="12" md="7">
-                        <MudPaper Elevation="0" Outlined="true" Class="pa-6 rounded-xl pay2-form-card">
-                            <MudText Typo="Typo.subtitle1" Style="font-weight: 700;" Class="mb-4">نمودار حجم تولید روزهای اخیر</MudText>
-                            @if (_chartSeries.Any() && _chartSeries[0].Data.Any(v => v > 0))
-                            {
-                                <MudChart ChartType="ChartType.Bar" ChartSeries="@_chartSeries" XAxisLabels="@_chartXLabels" Width="100%" Height="300px" ChartOptions="@_chartOptions" />
-
-                                <div class="d-flex flex-wrap gap-2 mt-4 justify-center">
-                                    @foreach (var report in _reports.OrderBy(x => x.ReportDate).TakeLast(5))
-                                    {
-                                        <MudChip T="string" Color="Color.Default" Variant="Variant.Outlined" Size="Size.Small">
-                                            @GetShamsiDateString(report.ReportDate):
-                                            آب‌پنیر @(report.ConcentrationWheyQty?.ToString("N0") ?? "0") -
-                                            پودر @(report.SprayPowderQty?.ToString("N0") ?? "0")
-                                        </MudChip>
-                                    }
+                @if (dash.Count == 0)
+                {
+                    <MudPaper Elevation="0" Outlined="true" Class="pa-10 rounded-xl pay2-form-card d-flex flex-column align-center justify-center" Style="min-height: 280px;">
+                        <MudIcon Icon="@Icons.Material.Outlined.Insights" Class="text-muted mb-3" Style="font-size: 56px;" />
+                        <MudText Typo="Typo.h6" Class="text-muted">داده‌ای در این بازه زمانی وجود ندارد</MudText>
+                        <MudText Typo="Typo.body2" Class="text-muted mt-1">بازه دیگری را انتخاب کنید یا گزارش جدیدی ثبت نمایید.</MudText>
+                    </MudPaper>
+                }
+                else
+                {
+                    @* ===== کارت‌های شاخص کلیدی (KPI) ===== *@
+                    <MudGrid Class="mb-2">
+                        <MudItem xs="12" sm="6" md="3">
+                            <MudPaper Elevation="0" Outlined="true" Class="pa-4 rounded-xl pay2-form-card h-100" Style="border-left: 6px solid var(--mud-palette-info) !important;">
+                                <div class="d-flex align-center mb-2">
+                                    <div class="pa-2 rounded-lg ml-2" style="background-color: rgba(3, 169, 244, 0.1);">
+                                        <MudIcon Icon="@Icons.Material.Outlined.WaterDrop" Color="Color.Info" />
+                                    </div>
+                                    <MudText Typo="Typo.caption" Class="text-muted" Style="font-weight: bold;">کل آب‌پنیر دریافتی</MudText>
                                 </div>
-                            }
-                            else
-                            {
-                                <div class="d-flex align-center justify-center text-muted" style="height: 300px;">
-                                    <MudText Typo="Typo.body2">داده‌ای برای نمایش نمودار میله‌ای وجود ندارد.</MudText>
-                                </div>
-                            }
-                        </MudPaper>
-                    </MudItem>
+                                <MudText Typo="Typo.h5" Style="font-weight: 900;">@TotalWheyQty.ToString("N0") <span style="font-size: 13px; font-weight: normal;" class="text-muted">لیتر</span></MudText>
+                                <MudText Typo="Typo.caption" Class="text-muted">میانگین روزانه: <span dir="ltr">@((TotalWheyQty / dashDays).ToString("N0"))</span> لیتر</MudText>
+                            </MudPaper>
+                        </MudItem>
 
-                    <MudItem xs="12" md="5">
-                        <MudPaper Elevation="0" Outlined="true" Class="pa-6 rounded-xl pay2-form-card d-flex flex-column justify-space-between h-100">
-                            <div>
-                                <MudText Typo="Typo.subtitle1" Style="font-weight: 700;" Class="mb-4">نسبت بهره‌وری واحد شیر خشک</MudText>
-                                <MudText Typo="Typo.body2" Class="text-muted mb-6">درصد تبدیل مایع به پودر بر اساس کل ورودی دیتابیس کارخانه.</MudText>
-                            </div>
-                            <div class="d-flex flex-column justify-center align-center mb-4">
-                                @if (TotalWheyQty > 0)
+                        <MudItem xs="12" sm="6" md="3">
+                            <MudPaper Elevation="0" Outlined="true" Class="pa-4 rounded-xl pay2-form-card h-100" Style="border-left: 6px solid var(--mud-palette-success) !important;">
+                                <div class="d-flex align-center mb-2">
+                                    <div class="pa-2 rounded-lg ml-2" style="background-color: rgba(76, 175, 80, 0.1);">
+                                        <MudIcon Icon="@Icons.Material.Outlined.Inventory2" Color="Color.Success" />
+                                    </div>
+                                    <MudText Typo="Typo.caption" Class="text-muted" Style="font-weight: bold;">کل پودر تولیدی</MudText>
+                                </div>
+                                <MudText Typo="Typo.h5" Style="font-weight: 900;">@TotalPowderQty.ToString("N0") <span style="font-size: 13px; font-weight: normal;" class="text-muted">کیلوگرم</span></MudText>
+                                <MudText Typo="Typo.caption" Class="text-muted">میانگین روزانه: <span dir="ltr">@((TotalPowderQty / dashDays).ToString("N0"))</span> کیلوگرم</MudText>
+                            </MudPaper>
+                        </MudItem>
+
+                        <MudItem xs="12" sm="6" md="3">
+                            <MudPaper Elevation="0" Outlined="true" Class="pa-4 rounded-xl pay2-form-card h-100" Style="border-left: 6px solid var(--mud-palette-primary) !important;">
+                                <div class="d-flex align-center mb-2">
+                                    <div class="pa-2 rounded-lg ml-2" style="background-color: rgba(var(--mud-palette-primary-rgb), 0.1);">
+                                        <MudIcon Icon="@Icons.Material.Outlined.Speed" Color="Color.Primary" />
+                                    </div>
+                                    <MudText Typo="Typo.caption" Class="text-muted" Style="font-weight: bold;">راندمان کلی تبدیل</MudText>
+                                </div>
+                                <MudText Typo="Typo.h5" Style="font-weight: 900;">@overallEff.ToString("N2")<span style="font-size: 13px; font-weight: normal;" class="text-muted">٪</span></MudText>
+                                @if (trend.HasValue)
                                 {
-                                    <MudChart ChartType="ChartType.Donut" Width="220px" Height="220px" InputData="@_donutData" InputLabels="@_donutLabels" ChartOptions="@_chartOptions" />
-
-                                    <div class="mt-4 text-center">
-                                        @{
-                                            var efficiency = TotalWheyQty > 0 ? ((decimal)TotalPowderQty / (decimal)TotalWheyQty * 100) : 0;
-                                            var ratio = TotalPowderQty > 0 ? ((decimal)TotalWheyQty / (decimal)TotalPowderQty) : 0;
-                                        }
-                                        <MudText Typo="Typo.h6" Color="Color.Success" Style="font-weight: bold;">
-                                            راندمان: @efficiency.ToString("N2")٪
-                                        </MudText>
-                                        <MudText Typo="Typo.body2" Class="text-muted">
-                                            (هر @ratio.ToString("N2") لیتر آب‌پنیر = ۱ کیلوگرم پودر)
-                                        </MudText>
+                                    <div class="d-flex align-center gap-1">
+                                        <MudIcon Icon="@(trend.Value >= 0 ? Icons.Material.Filled.TrendingUp : Icons.Material.Filled.TrendingDown)" Color="@(trend.Value >= 0 ? Color.Success : Color.Error)" Size="Size.Small" />
+                                        <MudText Typo="Typo.caption" Style="@($"font-weight:bold; color: var(--mud-palette-{(trend.Value >= 0 ? "success" : "error")});")">@(trend.Value >= 0 ? "+" : "")@trend.Value.ToString("N1") واحد</MudText>
+                                        <MudText Typo="Typo.caption" Class="text-muted">نسبت به دوره قبل</MudText>
                                     </div>
                                 }
                                 else
                                 {
-                                    <div class="d-flex align-center justify-center text-muted" style="height: 220px;">
-                                        <MudText Typo="Typo.body2">داده‌ای برای تحلیل نسبت تبدیل وجود ندارد.</MudText>
+                                    <MudText Typo="Typo.caption" Class="text-muted">هر <span dir="ltr">@overallRatio.ToString("N1")</span> لیتر = ۱ کیلو</MudText>
+                                }
+                            </MudPaper>
+                        </MudItem>
+
+                        <MudItem xs="12" sm="6" md="3">
+                            <MudPaper Elevation="0" Outlined="true" Class="pa-4 rounded-xl pay2-form-card h-100" Style="border-left: 6px solid var(--mud-palette-secondary) !important;">
+                                <div class="d-flex align-center mb-2">
+                                    <div class="pa-2 rounded-lg ml-2" style="background-color: rgba(var(--mud-palette-secondary-rgb), 0.1);">
+                                        <MudIcon Icon="@Icons.Material.Outlined.EventAvailable" Color="Color.Secondary" />
+                                    </div>
+                                    <MudText Typo="Typo.caption" Class="text-muted" Style="font-weight: bold;">روزهای تولید</MudText>
+                                </div>
+                                <MudText Typo="Typo.h5" Style="font-weight: 900;">@DashDaysCount <span style="font-size: 13px; font-weight: normal;" class="text-muted">روز</span></MudText>
+                                <MudText Typo="Typo.caption" Class="text-muted">@DashSupplierCount تأمین‌کننده فعال</MudText>
+                            </MudPaper>
+                        </MudItem>
+                    </MudGrid>
+
+                    @* ===== نمودارها ===== *@
+                    <MudGrid>
+                        <MudItem xs="12" md="7">
+                            <MudPaper Elevation="0" Outlined="true" Class="pa-6 rounded-xl pay2-form-card">
+                                <MudText Typo="Typo.subtitle1" Style="font-weight: 700;" Class="mb-4">نمودار حجم تولید روزهای اخیر</MudText>
+                                @if (_chartSeries.Any() && _chartSeries[0].Data.Any(v => v > 0))
+                                {
+                                    <MudChart ChartType="ChartType.Bar" ChartSeries="@_chartSeries" XAxisLabels="@_chartXLabels" Width="100%" Height="300px" ChartOptions="@_chartOptions" />
+
+                                    <div class="d-flex flex-wrap gap-2 mt-4 justify-center">
+                                        @foreach (var report in dash.OrderBy(x => x.ReportDate).TakeLast(5))
+                                        {
+                                            <MudChip T="string" Color="Color.Default" Variant="Variant.Outlined" Size="Size.Small">
+                                                @GetShamsiDateString(report.ReportDate):
+                                                آب‌پنیر @(report.ConcentrationWheyQty?.ToString("N0") ?? "0") -
+                                                پودر @(report.SprayPowderQty?.ToString("N0") ?? "0")
+                                            </MudChip>
+                                        }
                                     </div>
                                 }
-                            </div>
-                        </MudPaper>
-                    </MudItem>
-                </MudGrid>
+                                else
+                                {
+                                    <div class="d-flex align-center justify-center text-muted" style="height: 300px;">
+                                        <MudText Typo="Typo.body2">داده‌ای برای نمایش نمودار میله‌ای وجود ندارد.</MudText>
+                                    </div>
+                                }
+                            </MudPaper>
+                        </MudItem>
+
+                        <MudItem xs="12" md="5">
+                            <MudPaper Elevation="0" Outlined="true" Class="pa-6 rounded-xl pay2-form-card d-flex flex-column justify-space-between h-100">
+                                <div>
+                                    <MudText Typo="Typo.subtitle1" Style="font-weight: 700;" Class="mb-4">نسبت بهره‌وری واحد شیر خشک</MudText>
+                                    <MudText Typo="Typo.body2" Class="text-muted mb-6">درصد تبدیل مایع به پودر در بازه انتخابی.</MudText>
+                                </div>
+                                <div class="d-flex flex-column justify-center align-center mb-4">
+                                    @if (TotalWheyQty > 0)
+                                    {
+                                        <MudChart ChartType="ChartType.Donut" Width="220px" Height="220px" InputData="@_donutData" InputLabels="@_donutLabels" ChartOptions="@_chartOptions" />
+
+                                        <div class="mt-4 text-center">
+                                            <MudText Typo="Typo.h6" Color="Color.Success" Style="font-weight: bold;">
+                                                راندمان: @overallEff.ToString("N2")٪
+                                            </MudText>
+                                            <MudText Typo="Typo.body2" Class="text-muted">
+                                                (هر @overallRatio.ToString("N2") لیتر آب‌پنیر = ۱ کیلوگرم پودر)
+                                            </MudText>
+                                        </div>
+                                    }
+                                    else
+                                    {
+                                        <div class="d-flex align-center justify-center text-muted" style="height: 220px;">
+                                            <MudText Typo="Typo.body2">داده‌ای برای تحلیل نسبت تبدیل وجود ندارد.</MudText>
+                                        </div>
+                                    }
+                                </div>
+                            </MudPaper>
+                        </MudItem>
+                    </MudGrid>
+
+                    @* ===== تحلیل تأمین‌کنندگان و رکوردها ===== *@
+                    <MudGrid Class="mt-1">
+                        <MudItem xs="12" md="7">
+                            <MudPaper Elevation="0" Outlined="true" Class="pa-5 rounded-xl pay2-form-card h-100">
+                                <div class="d-flex align-center justify-space-between mb-4">
+                                    <MudText Typo="Typo.subtitle1" Style="font-weight: 700;">عملکرد تأمین‌کنندگان آب‌پنیر</MudText>
+                                    <MudIcon Icon="@Icons.Material.Outlined.Factory" Class="text-muted" />
+                                </div>
+                                <div class="d-flex flex-column gap-3">
+                                    @foreach (var s in suppliers.Take(6))
+                                    {
+                                        <div class="pr-supplier-row">
+                                            <div class="d-flex align-center justify-space-between flex-wrap gap-1">
+                                                <div class="d-flex align-center gap-2">
+                                                    <MudText Style="font-weight: 700;">@s.Name</MudText>
+                                                    <span class="text-muted" style="font-size: 0.75rem;">(@s.Count تحویل)</span>
+                                                </div>
+                                                <MudChip T="string" Size="Size.Small" Variant="Variant.Filled" Color="@SupplierEffColor(s.Efficiency, overallEff)" Class="pr-eff-chip">@s.Efficiency.ToString("N1")٪</MudChip>
+                                            </div>
+                                            <div class="d-flex align-center gap-4 mb-1" style="font-size: 0.78rem;">
+                                                <span class="text-muted">آب‌پنیر: <b dir="ltr">@s.Whey.ToString("N0")</b> لیتر</span>
+                                                <span class="text-muted">پودر: <b dir="ltr">@s.Powder.ToString("N0")</b> کیلوگرم</span>
+                                            </div>
+                                            <MudProgressLinear Color="@SupplierEffColor(s.Efficiency, overallEff)" Rounded="true" Value="@((double)(maxSupplierEff > 0 ? (s.Efficiency / maxSupplierEff * 100m) : 0m))" Class="pr-supplier-bar" />
+                                        </div>
+                                    }
+                                    @if (suppliers.Count > 6)
+                                    {
+                                        <MudText Typo="Typo.caption" Class="text-muted text-center mt-1">و @(suppliers.Count - 6) تأمین‌کننده دیگر…</MudText>
+                                    }
+                                </div>
+                            </MudPaper>
+                        </MudItem>
+
+                        <MudItem xs="12" md="5">
+                            <MudPaper Elevation="0" Outlined="true" Class="pa-5 rounded-xl pay2-form-card h-100">
+                                <MudText Typo="Typo.subtitle1" Style="font-weight: 700;" Class="mb-4">رکوردها و کیفیت داده</MudText>
+                                <div class="d-flex flex-column gap-3">
+                                    <div class="pr-record-row">
+                                        <div class="pr-record-icon" style="background-color: rgba(255, 193, 7, 0.15); color: var(--mud-palette-warning);">
+                                            <MudIcon Icon="@Icons.Material.Filled.EmojiEvents" Size="Size.Small" />
+                                        </div>
+                                        <div class="flex-grow-1">
+                                            <div class="pr-record-label">بهترین راندمان روز</div>
+                                            @if (bestEff != null)
+                                            {
+                                                <div><span class="pr-record-val">@ReportEff(bestEff).ToString("N1")٪</span> <span class="text-muted" style="font-size: 0.78rem;">— @GetShamsiDateString(bestEff.ReportDate)</span></div>
+                                            }
+                                            else
+                                            {
+                                                <span class="text-muted">—</span>
+                                            }
+                                        </div>
+                                    </div>
+
+                                    <div class="pr-record-row">
+                                        <div class="pr-record-icon" style="background-color: rgba(76, 175, 80, 0.15); color: var(--mud-palette-success);">
+                                            <MudIcon Icon="@Icons.Material.Filled.Inventory2" Size="Size.Small" />
+                                        </div>
+                                        <div class="flex-grow-1">
+                                            <div class="pr-record-label">بیشترین تولید پودر</div>
+                                            @if (topPow != null)
+                                            {
+                                                <div><span class="pr-record-val" dir="ltr">@((topPow.SprayPowderQty ?? 0).ToString("N0"))</span> <span class="text-muted" style="font-size: 0.78rem;">کیلوگرم — @GetShamsiDateString(topPow.ReportDate)</span></div>
+                                            }
+                                            else
+                                            {
+                                                <span class="text-muted">—</span>
+                                            }
+                                        </div>
+                                    </div>
+
+                                    <div class="pr-record-row">
+                                        <div class="pr-record-icon" style="background-color: rgba(3, 169, 244, 0.15); color: var(--mud-palette-info);">
+                                            <MudIcon Icon="@Icons.Material.Filled.WaterDrop" Size="Size.Small" />
+                                        </div>
+                                        <div class="flex-grow-1">
+                                            <div class="pr-record-label">بیشترین دریافت آب‌پنیر</div>
+                                            @if (topWhey != null)
+                                            {
+                                                <div><span class="pr-record-val" dir="ltr">@((topWhey.ConcentrationWheyQty ?? 0).ToString("N0"))</span> <span class="text-muted" style="font-size: 0.78rem;">لیتر — @GetShamsiDateString(topWhey.ReportDate)</span></div>
+                                            }
+                                            else
+                                            {
+                                                <span class="text-muted">—</span>
+                                            }
+                                        </div>
+                                    </div>
+
+                                    <MudDivider Class="my-1" />
+
+                                    @if (IncompleteCount > 0)
+                                    {
+                                        <div class="d-flex align-center gap-2">
+                                            <MudIcon Icon="@Icons.Material.Filled.Warning" Color="Color.Warning" Size="Size.Small" />
+                                            <MudText Typo="Typo.body2" Class="text-muted"><b>@IncompleteCount</b> گزارش ناقص (بدون آب‌پنیر یا پودر) در این بازه</MudText>
+                                        </div>
+                                    }
+                                    else
+                                    {
+                                        <div class="d-flex align-center gap-2">
+                                            <MudIcon Icon="@Icons.Material.Filled.CheckCircle" Color="Color.Success" Size="Size.Small" />
+                                            <MudText Typo="Typo.body2" Class="text-muted">همه گزارش‌های این بازه کامل هستند.</MudText>
+                                        </div>
+                                    }
+                                </div>
+                            </MudPaper>
+                        </MudItem>
+                    </MudGrid>
+                }
             </div>
         }
 
@@ -249,105 +426,266 @@
         }
         else if (_activeTab == 2)
         {
-            <MudTable Items="@FilteredReports" Dense="true" Hover="true" Elevation="1" Virtualize="true" FixedHeader="true" Height="calc(100vh - 250px)">
-                <ToolBarContent>
-                    <MudTextField @bind-Value="_searchString" Placeholder="جستجو در شرکت یا توضیحات..." Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search" IconSize="Size.Medium" Class="mt-0" Immediate="true" />
-                </ToolBarContent>
-                <HeaderContent>
-                    <MudTh>تاریخ</MudTh>
-                    <MudTh>شرکت آب‌پنیر</MudTh>
-                    <MudTh>آبپنیر (لیتر)</MudTh>
-                    <MudTh>زمان تغلیظ</MudTh>
-                    <MudTh>پودر (کیلوگرم)</MudTh>
-                    <MudTh>زمان اسپری</MudTh>
-                    <MudTh>کنتور</MudTh>
-                    <MudTh>راندمان</MudTh>
-                    <MudTh>نسبت زمانی</MudTh>
-                    <MudTh>توضیحات</MudTh>
-                    <MudTh>عملیات</MudTh>
-                </HeaderContent>
-                <RowTemplate>
-                    <MudTd DataLabel="تاریخ">@GetShamsiDateString(context.ReportDate)</MudTd>
-                    <MudTd DataLabel="شرکت">@context.WheyCompany</MudTd>
-                    <MudTd DataLabel="آبپنیر">@context.ConcentrationWheyQty?.ToString("N0")</MudTd>
-                    <MudTd DataLabel="زمان تغلیظ">
-                        <div><span dir="ltr">@(context.ConcentrationStart?.ToString(@"hh\:mm") ?? "-")</span> تا <span dir="ltr">@(context.ConcentrationEnd?.ToString(@"hh\:mm") ?? "-")</span></div>
-                        @{ var concElapsed = GetElapsedTime(context.ConcentrationStart, context.ConcentrationEnd); }
-                        @if (concElapsed.HasValue)
-                        {
-                            <div class="mud-typography-caption" style="color: var(--mud-palette-text-secondary);">مدت: <span dir="ltr">@FormatElapsedTime(concElapsed)</span> ساعت</div>
-                        }
-                    </MudTd>
-                    <MudTd DataLabel="پودر">@context.SprayPowderQty?.ToString("N0")</MudTd>
-                    <MudTd DataLabel="زمان اسپری">
-                        <div><span dir="ltr">@(context.SprayStart?.ToString(@"hh\:mm") ?? "-")</span> تا <span dir="ltr">@(context.SprayEnd?.ToString(@"hh\:mm") ?? "-")</span></div>
-                        @{ var sprayElapsed = GetElapsedTime(context.SprayStart, context.SprayEnd); }
-                        @if (sprayElapsed.HasValue)
-                        {
-                            <div class="mud-typography-caption" style="color: var(--mud-palette-text-secondary);">مدت: <span dir="ltr">@FormatElapsedTime(sprayElapsed)</span> ساعت</div>
-                        }
-                    </MudTd>
-                    <MudTd DataLabel="کنتور">@context.CounterNumber</MudTd>
-                    <MudTd DataLabel="راندمان">
-                        @{
-                            var ratioRow = context.SprayPowderQty > 0 ? ((decimal)(context.ConcentrationWheyQty ?? 0) / (decimal)(context.SprayPowderQty ?? 0)) : 0;
-                            var efficiencyRow = context.ConcentrationWheyQty > 0 ? ((decimal)(context.SprayPowderQty ?? 0) / (decimal)(context.ConcentrationWheyQty ?? 0) * 100) : 0;
-                        }
-                        @if (ratioRow > 0)
-                        {
-                            <span>@ratioRow.ToString("N1") (@efficiencyRow.ToString("N1")٪)</span>
-                        }
-                        else
-                        {
-                            <span>-</span>
-                        }
-                    </MudTd>
-                    <MudTd DataLabel="نسبت زمانی">
-                        @{
-                            var _concE = GetElapsedTime(context.ConcentrationStart, context.ConcentrationEnd);
-                            var _sprayE = GetElapsedTime(context.SprayStart, context.SprayEnd);
-                            var wheyPerHour = _concE.HasValue && _concE.Value.TotalHours > 0 && context.ConcentrationWheyQty > 0
-                                ? context.ConcentrationWheyQty!.Value / (decimal)_concE.Value.TotalHours
-                                : (decimal?)null;
-                            var powderPerHour = _sprayE.HasValue && _sprayE.Value.TotalHours > 0 && context.SprayPowderQty > 0
-                                ? context.SprayPowderQty!.Value / (decimal)_sprayE.Value.TotalHours
-                                : (decimal?)null;
-                        }
-                        @if (wheyPerHour.HasValue)
-                        {
-                            <div>آب‌پنیر: <span dir="ltr">@wheyPerHour.Value.ToString("N0")</span> ل/ساعت</div>
-                        }
-                        @if (powderPerHour.HasValue)
-                        {
-                            <div>پودر: <span dir="ltr">@powderPerHour.Value.ToString("N0")</span> ک/ساعت</div>
-                        }
-                        @if (!wheyPerHour.HasValue && !powderPerHour.HasValue)
-                        {
-                            <span>-</span>
-                        }
-                    </MudTd>
-                    <MudTd DataLabel="توضیحات">
-                        @if (!string.IsNullOrWhiteSpace(context.Description))
-                        {
-                            <MudTooltip Text="@context.Description">
-                                <div class="text-truncate" style="max-width: 150px;">
-                                    @context.Description
-                                </div>
+            <div class="animate-fade-in">
+                @{
+                    var vms = DisplayedVms.ToList();
+                    var totalReports = _reports.Count;
+                    var shownReports = vms.Count;
+                }
+
+                @* ===== نوار ابزار: جستجو، مرتب‌سازی و شمارش ===== *@
+                <MudPaper Elevation="0" Outlined="true" Class="pa-3 rounded-xl mb-4 pay2-form-card">
+                    <div class="d-flex flex-wrap align-center gap-3">
+                        <MudTextField T="string" Value="@_searchString" ValueChanged="OnSearchChanged" Immediate="true"
+                                      Placeholder="جستجو در شرکت یا توضیحات..."
+                                      Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search"
+                                      Variant="Variant.Outlined" Margin="Margin.Dense" Clearable="true"
+                                      Class="flex-grow-1 pr-search" Style="min-width: 220px;" />
+
+                        <div class="d-flex align-center gap-2">
+                            <MudSelect T="ReportSort" Value="_sortBy" ValueChanged="OnSortChanged"
+                                       ToStringFunc="@(s => SortLabel(s))"
+                                       Variant="Variant.Outlined" Margin="Margin.Dense" Dense="true"
+                                       Label="مرتب‌سازی بر اساس" Style="min-width: 150px;"
+                                       AdornmentIcon="@Icons.Material.Outlined.SwapVert" Adornment="Adornment.Start">
+                                <MudSelectItem Value="@(ReportSort.Date)">@SortLabel(ReportSort.Date)</MudSelectItem>
+                                <MudSelectItem Value="@(ReportSort.Efficiency)">@SortLabel(ReportSort.Efficiency)</MudSelectItem>
+                                <MudSelectItem Value="@(ReportSort.Whey)">@SortLabel(ReportSort.Whey)</MudSelectItem>
+                                <MudSelectItem Value="@(ReportSort.Powder)">@SortLabel(ReportSort.Powder)</MudSelectItem>
+                            </MudSelect>
+                            <MudTooltip Text="@(_sortDesc ? "نزولی (بزرگ به کوچک)" : "صعودی (کوچک به بزرگ)")">
+                                <MudIconButton Icon="@(_sortDesc ? Icons.Material.Filled.ArrowDownward : Icons.Material.Filled.ArrowUpward)"
+                                               Variant="Variant.Outlined" Size="Size.Medium" OnClick="ToggleSortDir" />
                             </MudTooltip>
-                        }
-                        else
-                        {
-                            <span>-</span>
-                        }
-                    </MudTd>
-                    <MudTd DataLabel="عملیات">
-                        <div class="d-flex align-center gap-4">
-                            <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Medium" Color="Color.Info" OnClick="() => EditReport(context)" />
-                            <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Medium" Color="Color.Error" OnClick="() => DeleteReport(context)" />
                         </div>
-                    </MudTd>
-                </RowTemplate>
-            </MudTable>
+
+                        <div class="d-flex align-center text-muted ms-auto" style="font-size: 0.85rem; white-space: nowrap;">
+                            <MudIcon Icon="@Icons.Material.Outlined.Assignment" Size="Size.Small" Class="ml-1" />
+                            @if (!string.IsNullOrWhiteSpace(_searchString))
+                            {
+                                <span>@shownReports از @totalReports گزارش</span>
+                            }
+                            else
+                            {
+                                <span>@totalReports گزارش ثبت‌شده</span>
+                            }
+                        </div>
+                    </div>
+                </MudPaper>
+
+                @if (shownReports == 0)
+                {
+                    <MudPaper Elevation="0" Outlined="true" Class="pa-10 rounded-xl pay2-form-card d-flex flex-column align-center justify-center" Style="min-height: 280px;">
+                        <MudIcon Icon="@Icons.Material.Outlined.SearchOff" Class="text-muted mb-3" Style="font-size: 56px;" />
+                        <MudText Typo="Typo.h6" Class="text-muted">گزارشی یافت نشد</MudText>
+                        <MudText Typo="Typo.body2" Class="text-muted mt-1">
+                            @(totalReports == 0 ? "هنوز هیچ گزارش تولیدی ثبت نشده است." : "نتیجه‌ای برای جستجوی شما پیدا نشد.")
+                        </MudText>
+                    </MudPaper>
+                }
+                else
+                {
+                    @* ===================== نمای دسکتاپ (جدول) ===================== *@
+                    <MudHidden Breakpoint="Breakpoint.SmAndDown">
+                        <MudPaper Elevation="0" Outlined="true" Class="rounded-xl pay2-form-card overflow-hidden">
+                            <MudTable T="ReportVm" Items="@vms" Hover="true" Dense="true" Elevation="0"
+                                      FixedHeader="true" Height="calc(100vh - 340px)" Class="pr-table"
+                                      Breakpoint="Breakpoint.None">
+                                <HeaderContent>
+                                    <MudTh>تاریخ</MudTh>
+                                    <MudTh>شرکت آب‌پنیر</MudTh>
+                                    <MudTh Style="text-align:center;">واحد تغلیظ</MudTh>
+                                    <MudTh Style="text-align:center;">واحد اسپری</MudTh>
+                                    <MudTh Style="text-align:center;">راندمان تبدیل</MudTh>
+                                    <MudTh Style="text-align:center;">بهره‌وری ساعتی</MudTh>
+                                    <MudTh Style="text-align:center;">کنتور</MudTh>
+                                    <MudTh>توضیحات</MudTh>
+                                    <MudTh Style="text-align:center;">عملیات</MudTh>
+                                </HeaderContent>
+                                <RowTemplate>
+                                    <MudTd>
+                                        <div class="pr-date-main">@context.DateStr</div>
+                                        @if (!string.IsNullOrEmpty(context.Weekday))
+                                        {
+                                            <div class="pr-date-sub">@context.Weekday</div>
+                                        }
+                                    </MudTd>
+                                    <MudTd>
+                                        <span class="pr-company">@(string.IsNullOrWhiteSpace(context.Report.WheyCompany) ? "—" : context.Report.WheyCompany)</span>
+                                    </MudTd>
+                                    <MudTd Style="text-align:center;">
+                                        <div class="pr-unit pr-unit-blue">
+                                            <div class="pr-unit-qty">@((context.Report.ConcentrationWheyQty ?? 0).ToString("N0")) <span class="pr-unit-uom">لیتر</span></div>
+                                            <div class="pr-unit-time" dir="ltr">@context.ConcRange</div>
+                                            @if (context.ConcDuration != null)
+                                            {
+                                                <div class="pr-unit-dur">مدت <span dir="ltr">@context.ConcDuration</span> ساعت</div>
+                                            }
+                                        </div>
+                                    </MudTd>
+                                    <MudTd Style="text-align:center;">
+                                        <div class="pr-unit pr-unit-green">
+                                            <div class="pr-unit-qty">@((context.Report.SprayPowderQty ?? 0).ToString("N0")) <span class="pr-unit-uom">کیلوگرم</span></div>
+                                            <div class="pr-unit-time" dir="ltr">@context.SprayRange</div>
+                                            @if (context.SprayDuration != null)
+                                            {
+                                                <div class="pr-unit-dur">مدت <span dir="ltr">@context.SprayDuration</span> ساعت</div>
+                                            }
+                                        </div>
+                                    </MudTd>
+                                    <MudTd Style="text-align:center;">
+                                        @if (context.HasRatio)
+                                        {
+                                            <MudTooltip Text="@($"میانگین راندمان کل: {_avgEfficiency.ToString("N1")}٪")">
+                                                <MudChip T="string" Color="@GetEfficiencyColor(context)" Variant="Variant.Filled" Size="Size.Small" Class="pr-eff-chip">@context.Efficiency.ToString("N1")٪</MudChip>
+                                            </MudTooltip>
+                                            <div class="pr-eff-sub">هر <span dir="ltr">@context.Ratio.ToString("N1")</span> لیتر = ۱ کیلو</div>
+                                        }
+                                        else
+                                        {
+                                            <span class="text-muted">—</span>
+                                        }
+                                    </MudTd>
+                                    <MudTd Style="text-align:center;">
+                                        @if (context.WheyPerHour.HasValue)
+                                        {
+                                            <div class="pr-rate"><span class="pr-dot pr-dot-blue"></span><span dir="ltr">@context.WheyPerHour.Value.ToString("N0")</span> ل/ساعت</div>
+                                        }
+                                        @if (context.PowderPerHour.HasValue)
+                                        {
+                                            <div class="pr-rate"><span class="pr-dot pr-dot-green"></span><span dir="ltr">@context.PowderPerHour.Value.ToString("N0")</span> ک/ساعت</div>
+                                        }
+                                        @if (!context.WheyPerHour.HasValue && !context.PowderPerHour.HasValue)
+                                        {
+                                            <span class="text-muted">—</span>
+                                        }
+                                    </MudTd>
+                                    <MudTd Style="text-align:center;">
+                                        @(string.IsNullOrWhiteSpace(context.Report.CounterNumber) ? "—" : context.Report.CounterNumber)
+                                    </MudTd>
+                                    <MudTd>
+                                        @if (!string.IsNullOrWhiteSpace(context.Report.Description))
+                                        {
+                                            <MudTooltip Text="@context.Report.Description">
+                                                <div class="pr-desc">@context.Report.Description</div>
+                                            </MudTooltip>
+                                        }
+                                        else
+                                        {
+                                            <span class="text-muted">—</span>
+                                        }
+                                    </MudTd>
+                                    <MudTd Style="text-align:center;">
+                                        <div class="d-flex align-center justify-center">
+                                            <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small" Color="Color.Primary" OnClick="() => EditReport(context.Report)" />
+                                            <MudIconButton Icon="@Icons.Material.Filled.DeleteOutline" Size="Size.Small" Color="Color.Error" OnClick="() => DeleteReport(context.Report)" />
+                                        </div>
+                                    </MudTd>
+                                </RowTemplate>
+                                <PagerContent>
+                                    <MudTablePager PageSizeOptions="new int[] { 10, 25, 50, 100 }" RowsPerPageString="تعداد در هر صفحه:" InfoFormat="{first_item}-{last_item} از {all_items}" />
+                                </PagerContent>
+                            </MudTable>
+                        </MudPaper>
+                    </MudHidden>
+
+                    @* ===================== نمای موبایل (کارت‌ها) ===================== *@
+                    <MudHidden Breakpoint="Breakpoint.MdAndUp">
+                        <div class="d-flex flex-column gap-3">
+                            @foreach (var vm in vms.Take(_mobileTake))
+                            {
+                                <MudPaper Elevation="0" Outlined="true" Class="rounded-xl pa-4 pr-card pay2-form-card">
+                                    @* سربرگ کارت *@
+                                    <div class="d-flex align-center justify-space-between gap-2 mb-3">
+                                        <div class="d-flex align-center gap-2">
+                                            <div class="pr-card-datebox">
+                                                <MudIcon Icon="@Icons.Material.Outlined.CalendarMonth" Size="Size.Small" />
+                                            </div>
+                                            <div>
+                                                <div class="pr-date-main">@vm.DateStr</div>
+                                                <div class="pr-card-company-line">
+                                                    @if (!string.IsNullOrEmpty(vm.Weekday))
+                                                    {
+                                                        <span class="pr-date-sub">@vm.Weekday</span>
+                                                    }
+                                                    <span class="pr-company">@(string.IsNullOrWhiteSpace(vm.Report.WheyCompany) ? "—" : vm.Report.WheyCompany)</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        @if (vm.HasRatio)
+                                        {
+                                            <div class="text-center">
+                                                <MudChip T="string" Color="@GetEfficiencyColor(vm)" Variant="Variant.Filled" Size="Size.Small" Class="pr-eff-chip">راندمان @vm.Efficiency.ToString("N1")٪</MudChip>
+                                                <div class="pr-eff-sub">هر <span dir="ltr">@vm.Ratio.ToString("N1")</span> لیتر = ۱ کیلو</div>
+                                            </div>
+                                        }
+                                    </div>
+
+                                    @* دو واحد تغلیظ و اسپری *@
+                                    <div class="pr-units-grid">
+                                        <div class="pr-unit-card pr-unit-blue">
+                                            <div class="pr-unit-head">تغلیظ</div>
+                                            <div class="pr-unit-qty">@((vm.Report.ConcentrationWheyQty ?? 0).ToString("N0")) <span class="pr-unit-uom">لیتر</span></div>
+                                            <div class="pr-unit-time" dir="ltr">@vm.ConcRange</div>
+                                            <div class="pr-unit-foot">
+                                                @if (vm.ConcDuration != null)
+                                                {
+                                                    <span>مدت <span dir="ltr">@vm.ConcDuration</span> ساعت</span>
+                                                }
+                                                @if (vm.WheyPerHour.HasValue)
+                                                {
+                                                    <span><span dir="ltr">@vm.WheyPerHour.Value.ToString("N0")</span> ل/ساعت</span>
+                                                }
+                                            </div>
+                                        </div>
+                                        <div class="pr-unit-card pr-unit-green">
+                                            <div class="pr-unit-head">اسپری</div>
+                                            <div class="pr-unit-qty">@((vm.Report.SprayPowderQty ?? 0).ToString("N0")) <span class="pr-unit-uom">کیلوگرم</span></div>
+                                            <div class="pr-unit-time" dir="ltr">@vm.SprayRange</div>
+                                            <div class="pr-unit-foot">
+                                                @if (vm.SprayDuration != null)
+                                                {
+                                                    <span>مدت <span dir="ltr">@vm.SprayDuration</span> ساعت</span>
+                                                }
+                                                @if (vm.PowderPerHour.HasValue)
+                                                {
+                                                    <span><span dir="ltr">@vm.PowderPerHour.Value.ToString("N0")</span> ک/ساعت</span>
+                                                }
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    @if (!string.IsNullOrWhiteSpace(vm.Report.CounterNumber) || !string.IsNullOrWhiteSpace(vm.Report.Description))
+                                    {
+                                        <div class="pr-card-meta mt-3">
+                                            @if (!string.IsNullOrWhiteSpace(vm.Report.CounterNumber))
+                                            {
+                                                <div class="pr-meta-row"><MudIcon Icon="@Icons.Material.Outlined.Speed" Size="Size.Small" Class="ml-1" /><span>کنتور:</span> <span class="pr-meta-val" dir="ltr">@vm.Report.CounterNumber</span></div>
+                                            }
+                                            @if (!string.IsNullOrWhiteSpace(vm.Report.Description))
+                                            {
+                                                <div class="pr-meta-row pr-meta-desc"><MudIcon Icon="@Icons.Material.Outlined.Notes" Size="Size.Small" Class="ml-1" /><span>@vm.Report.Description</span></div>
+                                            }
+                                        </div>
+                                    }
+
+                                    <div class="d-flex justify-end gap-2 mt-3">
+                                        <MudButton Variant="Variant.Outlined" Color="Color.Primary" Size="Size.Small" StartIcon="@Icons.Material.Filled.Edit" OnClick="() => EditReport(vm.Report)">ویرایش</MudButton>
+                                        <MudButton Variant="Variant.Outlined" Color="Color.Error" Size="Size.Small" StartIcon="@Icons.Material.Filled.DeleteOutline" OnClick="() => DeleteReport(vm.Report)">حذف</MudButton>
+                                    </div>
+                                </MudPaper>
+                            }
+
+                            @if (shownReports > _mobileTake)
+                            {
+                                <MudButton Variant="Variant.Outlined" Color="Color.Primary" FullWidth="true" Class="rounded-xl py-2" OnClick="ShowMoreMobile" StartIcon="@Icons.Material.Outlined.ExpandMore">
+                                    نمایش بیشتر (@(shownReports - _mobileTake) مورد دیگر)
+                                </MudButton>
+                            }
+                        </div>
+                    </MudHidden>
+                }
+            </div>
         }
     }
 </div>
@@ -363,8 +701,90 @@
     private ProductionReportDto Model = new();
 
     // متغیرهای داشبورد آماری
-    private decimal TotalWheyQty => _reports.Sum(x => x.ConcentrationWheyQty ?? 0);
-    private decimal TotalPowderQty => _reports.Sum(x => x.SprayPowderQty ?? 0);
+    // بازه زمانی فعال داشبورد (0 = همه، در غیر این صورت تعداد روز اخیر)
+    private int _dashboardPeriod = 0;
+
+    private IEnumerable<ProductionReportDto> DashboardReports =>
+        _dashboardPeriod <= 0
+            ? _reports
+            : _reports.Where(r => r.ReportDate.HasValue && r.ReportDate.Value.Date > DateTime.Today.AddDays(-_dashboardPeriod));
+
+    private IEnumerable<ProductionReportDto> PrevPeriodReports =>
+        _dashboardPeriod <= 0
+            ? Enumerable.Empty<ProductionReportDto>()
+            : _reports.Where(r => r.ReportDate.HasValue
+                && r.ReportDate.Value.Date > DateTime.Today.AddDays(-2 * _dashboardPeriod)
+                && r.ReportDate.Value.Date <= DateTime.Today.AddDays(-_dashboardPeriod));
+
+    private decimal TotalWheyQty => DashboardReports.Sum(x => x.ConcentrationWheyQty ?? 0);
+    private decimal TotalPowderQty => DashboardReports.Sum(x => x.SprayPowderQty ?? 0);
+
+    private int DashDaysCount => DashboardReports.Where(r => r.ReportDate.HasValue).Select(r => r.ReportDate!.Value.Date).Distinct().Count();
+    private int DashSupplierCount => DashboardReports.Where(r => !string.IsNullOrWhiteSpace(r.WheyCompany)).Select(r => r.WheyCompany!.Trim()).Distinct().Count();
+    private int IncompleteCount => DashboardReports.Count(r => (r.ConcentrationWheyQty ?? 0) <= 0 || (r.SprayPowderQty ?? 0) <= 0);
+
+    private decimal OverallEfficiency(IEnumerable<ProductionReportDto> set)
+    {
+        decimal w = set.Sum(x => x.ConcentrationWheyQty ?? 0);
+        decimal p = set.Sum(x => x.SprayPowderQty ?? 0);
+        return w > 0 ? p / w * 100m : 0m;
+    }
+
+    private decimal? EfficiencyTrend
+    {
+        get
+        {
+            if (_dashboardPeriod <= 0) return null;
+            var prev = PrevPeriodReports.ToList();
+            if (prev.Count == 0) return null;
+            return OverallEfficiency(DashboardReports) - OverallEfficiency(prev);
+        }
+    }
+
+    private decimal ReportEff(ProductionReportDto r)
+    {
+        decimal w = r.ConcentrationWheyQty ?? 0;
+        decimal p = r.SprayPowderQty ?? 0;
+        return w > 0 ? p / w * 100m : 0m;
+    }
+
+    private ProductionReportDto? BestEfficiencyReport =>
+        DashboardReports.Where(r => (r.ConcentrationWheyQty ?? 0) > 0 && (r.SprayPowderQty ?? 0) > 0)
+            .OrderByDescending(ReportEff).FirstOrDefault();
+
+    private ProductionReportDto? TopPowderReport =>
+        DashboardReports.Where(r => (r.SprayPowderQty ?? 0) > 0).OrderByDescending(r => r.SprayPowderQty ?? 0).FirstOrDefault();
+
+    private ProductionReportDto? TopWheyReport =>
+        DashboardReports.Where(r => (r.ConcentrationWheyQty ?? 0) > 0).OrderByDescending(r => r.ConcentrationWheyQty ?? 0).FirstOrDefault();
+
+    private List<SupplierStat> SupplierStats =>
+        DashboardReports
+            .GroupBy(r => string.IsNullOrWhiteSpace(r.WheyCompany) ? "نامشخص" : r.WheyCompany.Trim())
+            .Select(g =>
+            {
+                decimal whey = g.Sum(x => x.ConcentrationWheyQty ?? 0);
+                decimal powder = g.Sum(x => x.SprayPowderQty ?? 0);
+                return new SupplierStat(g.Key, g.Count(), whey, powder, whey > 0 ? powder / whey * 100m : 0m);
+            })
+            .OrderByDescending(s => s.Efficiency)
+            .ToList();
+
+    private Color SupplierEffColor(decimal eff, decimal baseline)
+    {
+        if (baseline <= 0) return Color.Default;
+        if (eff >= baseline * 1.02m) return Color.Success;
+        if (eff <= baseline * 0.98m) return Color.Warning;
+        return Color.Info;
+    }
+
+    private void OnPeriodChanged(int period)
+    {
+        _dashboardPeriod = period;
+        CalculateDashboardStats();
+    }
+
+    private sealed record SupplierStat(string Name, int Count, decimal Whey, decimal Powder, decimal Efficiency);
 
     private List<ChartSeries> _chartSeries = new();
     private string[] _chartXLabels = Array.Empty<string>();
@@ -372,12 +792,146 @@
     private string[] _donutLabels = new[] { "پودر تولیدی (کیلوگرم)", "آب‌پنیر تبخیر شده (لیتر)" };
     private ChartOptions _chartOptions = new();
 
-    private IEnumerable<ProductionReportDto> FilteredReports =>
-        string.IsNullOrWhiteSpace(_searchString)
-            ? _reports
-            : _reports.Where(x =>
-                (x.WheyCompany != null && x.WheyCompany.Contains(_searchString, StringComparison.OrdinalIgnoreCase)) ||
-                (x.Description != null && x.Description.Contains(_searchString, StringComparison.OrdinalIgnoreCase)));
+    // ===== وضعیت مرتب‌سازی و نمایش لیست گزارش‌ها =====
+    private enum ReportSort { Date, Efficiency, Whey, Powder }
+    private ReportSort _sortBy = ReportSort.Date;
+    private bool _sortDesc = true;
+    private const int InitialMobileTake = 8;
+    private int _mobileTake = InitialMobileTake;
+
+    private List<ReportVm> _vms = new();
+    private decimal _avgEfficiency;
+
+    private IEnumerable<ReportVm> DisplayedVms
+    {
+        get
+        {
+            IEnumerable<ReportVm> query = _vms;
+
+            if (!string.IsNullOrWhiteSpace(_searchString))
+            {
+                var s = _searchString.Trim();
+                query = query.Where(v =>
+                    (v.Report.WheyCompany?.Contains(s, StringComparison.OrdinalIgnoreCase) ?? false) ||
+                    (v.Report.Description?.Contains(s, StringComparison.OrdinalIgnoreCase) ?? false));
+            }
+
+            Func<ReportVm, IComparable> keySelector = _sortBy switch
+            {
+                ReportSort.Efficiency => v => v.HasRatio ? v.Efficiency : decimal.MinValue,
+                ReportSort.Whey => v => v.Report.ConcentrationWheyQty ?? 0m,
+                ReportSort.Powder => v => v.Report.SprayPowderQty ?? 0m,
+                _ => v => v.Report.ReportDate ?? DateTime.MinValue
+            };
+
+            return _sortDesc ? query.OrderByDescending(keySelector) : query.OrderBy(keySelector);
+        }
+    }
+
+    private static string SortLabel(ReportSort sort) => sort switch
+    {
+        ReportSort.Efficiency => "راندمان تبدیل",
+        ReportSort.Whey => "آب‌پنیر (لیتر)",
+        ReportSort.Powder => "پودر (کیلوگرم)",
+        _ => "تاریخ"
+    };
+
+    private void OnSearchChanged(string value)
+    {
+        _searchString = value ?? string.Empty;
+        _mobileTake = InitialMobileTake;
+    }
+
+    private void OnSortChanged(ReportSort value)
+    {
+        _sortBy = value;
+        _mobileTake = InitialMobileTake;
+    }
+
+    private void ToggleSortDir()
+    {
+        _sortDesc = !_sortDesc;
+        _mobileTake = InitialMobileTake;
+    }
+
+    private void ShowMoreMobile() => _mobileTake += InitialMobileTake;
+
+    private Color GetEfficiencyColor(ReportVm v)
+    {
+        if (!v.HasRatio || _avgEfficiency <= 0) return Color.Default;
+        if (v.Efficiency >= _avgEfficiency * 1.02m) return Color.Success;
+        if (v.Efficiency <= _avgEfficiency * 0.98m) return Color.Warning;
+        return Color.Info;
+    }
+
+    private void BuildViewModels()
+    {
+        _vms = _reports.Select(BuildVm).ToList();
+        var effs = _vms.Where(v => v.HasRatio).Select(v => v.Efficiency).ToList();
+        _avgEfficiency = effs.Count > 0 ? effs.Average() : 0m;
+    }
+
+    private ReportVm BuildVm(ProductionReportDto r)
+    {
+        var concElapsed = GetElapsedTime(r.ConcentrationStart, r.ConcentrationEnd);
+        var sprayElapsed = GetElapsedTime(r.SprayStart, r.SprayEnd);
+
+        decimal whey = r.ConcentrationWheyQty ?? 0m;
+        decimal powder = r.SprayPowderQty ?? 0m;
+        bool hasRatio = whey > 0 && powder > 0;
+
+        decimal? wheyPerHour = (concElapsed.HasValue && concElapsed.Value.TotalHours > 0 && whey > 0)
+            ? whey / (decimal)concElapsed.Value.TotalHours : (decimal?)null;
+        decimal? powderPerHour = (sprayElapsed.HasValue && sprayElapsed.Value.TotalHours > 0 && powder > 0)
+            ? powder / (decimal)sprayElapsed.Value.TotalHours : (decimal?)null;
+
+        return new ReportVm
+        {
+            Report = r,
+            DateStr = GetShamsiDateString(r.ReportDate),
+            Weekday = r.ReportDate.HasValue ? GetPersianWeekday(r.ReportDate.Value) : string.Empty,
+            ConcRange = FormatRange(r.ConcentrationStart, r.ConcentrationEnd),
+            ConcDuration = concElapsed.HasValue ? FormatElapsedTime(concElapsed) : null,
+            SprayRange = FormatRange(r.SprayStart, r.SprayEnd),
+            SprayDuration = sprayElapsed.HasValue ? FormatElapsedTime(sprayElapsed) : null,
+            WheyPerHour = wheyPerHour,
+            PowderPerHour = powderPerHour,
+            HasRatio = hasRatio,
+            Ratio = hasRatio ? whey / powder : 0m,
+            Efficiency = whey > 0 ? powder / whey * 100m : 0m
+        };
+    }
+
+    private static string FormatRange(TimeSpan? start, TimeSpan? end)
+        => $"{(start?.ToString(@"hh\:mm") ?? "—")} – {(end?.ToString(@"hh\:mm") ?? "—")}";
+
+    private static string GetPersianWeekday(DateTime date) => date.DayOfWeek switch
+    {
+        DayOfWeek.Saturday => "شنبه",
+        DayOfWeek.Sunday => "یکشنبه",
+        DayOfWeek.Monday => "دوشنبه",
+        DayOfWeek.Tuesday => "سه‌شنبه",
+        DayOfWeek.Wednesday => "چهارشنبه",
+        DayOfWeek.Thursday => "پنجشنبه",
+        DayOfWeek.Friday => "جمعه",
+        _ => string.Empty
+    };
+
+    private sealed class ReportVm
+    {
+        public ProductionReportDto Report { get; init; } = default!;
+        public string DateStr { get; init; } = "—";
+        public string Weekday { get; init; } = string.Empty;
+        public string ConcRange { get; init; } = "—";
+        public string? ConcDuration { get; init; }
+        public string SprayRange { get; init; } = "—";
+        public string? SprayDuration { get; init; }
+        public decimal? WheyPerHour { get; init; }
+        public decimal? PowderPerHour { get; init; }
+        public bool HasRatio { get; init; }
+        public decimal Ratio { get; init; }
+        public decimal Efficiency { get; init; }
+    }
 
     protected override async Task OnInitializedAsync()
     {
@@ -390,6 +944,7 @@
         try
         {
             _reports = await ApiService.GetReportsAsync();
+            BuildViewModels();
             CalculateDashboardStats(); // متد آمار بعد از دریافت داده‌ها
         }
         catch (Exception ex)
@@ -404,9 +959,16 @@
 
     private void CalculateDashboardStats()
     {
-        if (_reports == null || !_reports.Any()) return;
+        var allDash = DashboardReports.ToList();
+        if (allDash.Count == 0)
+        {
+            _chartSeries = new();
+            _chartXLabels = Array.Empty<string>();
+            _donutData = Array.Empty<double>();
+            return;
+        }
 
-        var topReports = _reports.OrderBy(x => x.ReportDate).TakeLast(5).ToList();
+        var topReports = allDash.OrderBy(x => x.ReportDate).TakeLast(8).ToList();
         _chartXLabels = topReports.Select(x => GetShamsiDateStringShort(x.ReportDate)).ToArray();
 
         _chartSeries = new List<ChartSeries>
@@ -589,5 +1151,226 @@
 
     .text-muted {
         color: var(--mud-palette-text-secondary) !important;
+    }
+
+    /* ===================== گزارش تولید: نمای جدول دسکتاپ ===================== */
+    .pr-table thead th {
+        font-weight: 700 !important;
+        white-space: nowrap;
+        background-color: var(--mud-palette-background-grey) !important;
+    }
+
+    .pr-date-main {
+        font-weight: 800;
+        font-size: 0.95rem;
+        white-space: nowrap;
+    }
+
+    .pr-date-sub {
+        font-size: 0.72rem;
+        color: var(--mud-palette-text-secondary);
+    }
+
+    .pr-company {
+        font-weight: 600;
+    }
+
+    .pr-unit {
+        display: inline-flex;
+        flex-direction: column;
+        gap: 2px;
+        padding: 5px 12px;
+        border-radius: 10px;
+        text-align: center;
+        min-width: 116px;
+    }
+
+    .pr-unit-blue {
+        background-color: rgba(3, 169, 244, 0.08);
+        border-inline-start: 3px solid var(--mud-palette-info);
+    }
+
+    .pr-unit-green {
+        background-color: rgba(76, 175, 80, 0.08);
+        border-inline-start: 3px solid var(--mud-palette-success);
+    }
+
+    .pr-unit-qty {
+        font-weight: 800;
+        font-size: 0.98rem;
+        line-height: 1.25;
+    }
+
+    .pr-unit-uom {
+        font-weight: 400;
+        font-size: 0.7rem;
+        color: var(--mud-palette-text-secondary);
+    }
+
+    .pr-unit-time {
+        font-size: 0.78rem;
+        color: var(--mud-palette-text-secondary);
+        font-variant-numeric: tabular-nums;
+    }
+
+    .pr-unit-dur {
+        font-size: 0.72rem;
+        color: var(--mud-palette-text-secondary);
+    }
+
+    .pr-eff-chip {
+        font-weight: 800 !important;
+        min-width: 62px;
+        justify-content: center;
+    }
+
+    .pr-eff-sub {
+        font-size: 0.7rem;
+        color: var(--mud-palette-text-secondary);
+        margin-top: 3px;
+        white-space: nowrap;
+    }
+
+    .pr-rate {
+        font-size: 0.8rem;
+        white-space: nowrap;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 5px;
+    }
+
+    .pr-dot {
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        display: inline-block;
+        flex-shrink: 0;
+    }
+
+    .pr-dot-blue { background-color: var(--mud-palette-info); }
+    .pr-dot-green { background-color: var(--mud-palette-success); }
+
+    .pr-desc {
+        max-width: 220px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        font-size: 0.82rem;
+        color: var(--mud-palette-text-secondary);
+    }
+
+    /* ===================== گزارش تولید: نمای کارت موبایل ===================== */
+    .pr-card-datebox {
+        width: 40px;
+        height: 40px;
+        border-radius: 12px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+        background-color: rgba(var(--mud-palette-primary-rgb), 0.12);
+        color: var(--mud-palette-primary);
+    }
+
+    .pr-card-company-line {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        flex-wrap: wrap;
+    }
+
+    .pr-units-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 10px;
+    }
+
+    .pr-unit-card {
+        padding: 10px 12px;
+        border-radius: 12px;
+    }
+
+    .pr-unit-card .pr-unit-qty { font-size: 1.05rem; }
+
+    .pr-unit-head {
+        font-size: 0.72rem;
+        font-weight: 700;
+        margin-bottom: 3px;
+    }
+
+    .pr-unit-blue .pr-unit-head { color: var(--mud-palette-info); }
+    .pr-unit-green .pr-unit-head { color: var(--mud-palette-success); }
+
+    .pr-unit-foot {
+        display: flex;
+        flex-direction: column;
+        gap: 1px;
+        margin-top: 5px;
+        font-size: 0.72rem;
+        color: var(--mud-palette-text-secondary);
+    }
+
+    .pr-card-meta {
+        background-color: var(--mud-palette-background-grey);
+        border-radius: 12px;
+        padding: 8px 12px;
+        display: flex;
+        flex-direction: column;
+        gap: 5px;
+    }
+
+    .pr-meta-row {
+        display: flex;
+        align-items: center;
+        font-size: 0.82rem;
+        color: var(--mud-palette-text-secondary);
+    }
+
+    .pr-meta-val {
+        font-weight: 700;
+        color: var(--mud-palette-text-primary);
+        margin-inline-start: 4px;
+    }
+
+    .pr-meta-desc { align-items: flex-start; line-height: 1.6; }
+
+    @@media (max-width: 430px) {
+        .pr-units-grid { grid-template-columns: 1fr; }
+    }
+
+    /* ===================== پیشخوان مدیریتی ===================== */
+    .pr-supplier-row { padding: 2px 0; }
+
+    .pr-supplier-bar {
+        height: 6px !important;
+        border-radius: 6px;
+        margin-top: 3px;
+    }
+
+    .pr-record-row {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+    }
+
+    .pr-record-icon {
+        width: 38px;
+        height: 38px;
+        border-radius: 11px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+    }
+
+    .pr-record-label {
+        font-size: 0.78rem;
+        color: var(--mud-palette-text-secondary);
+    }
+
+    .pr-record-val {
+        font-weight: 800;
+        font-size: 1rem;
     }
 </style>
