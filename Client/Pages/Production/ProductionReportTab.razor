@@ -436,7 +436,7 @@
                 @* ===== نوار ابزار: جستجو، مرتب‌سازی و شمارش ===== *@
                 <MudPaper Elevation="0" Outlined="true" Class="pa-3 rounded-xl mb-4 pay2-form-card">
                     <div class="d-flex flex-wrap align-center gap-3">
-                        <MudTextField Value="@_searchString" ValueChanged="OnSearchChanged" Immediate="true"
+                        <MudTextField T="string" Value="@_searchString" ValueChanged="OnSearchChanged" Immediate="true"
                                       Placeholder="جستجو در شرکت یا توضیحات..."
                                       Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search"
                                       Variant="Variant.Outlined" Margin="Margin.Dense" Clearable="true"
