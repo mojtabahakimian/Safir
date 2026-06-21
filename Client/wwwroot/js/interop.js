@@ -70,3 +70,13 @@ window.startP2Resize = function (e, resizerElement, colIndex, isCol1) {
     document.addEventListener('mousemove', mouseMove);
     document.addEventListener('mouseup', mouseUp);
 };
+
+
+// ساخت Blob URL از بایت‌های PDF برای نمایش داخل iframe (نمایشگر داخلی مرورگر)
+window.createPdfBlobUrl = (byteArray) => {
+    const blob = new Blob([byteArray], { type: 'application/pdf' });
+    return URL.createObjectURL(blob);
+};
+
+// آزادسازی Blob URL هنگام بسته شدن نمایشگر (جلوگیری از نشت حافظه)
+window.revokePdfBlobUrl = (url) => { if (url) URL.revokeObjectURL(url); };

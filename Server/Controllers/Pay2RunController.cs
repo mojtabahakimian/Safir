@@ -1,8 +1,12 @@
 ﻿using Dapper;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using QuestPDF.Fluent;
+using Safir.Server.Reports;
 using Safir.Shared.Interfaces;
 using Safir.Shared.Models.Salary;
+using Safir.Shared.Models.Salary.Reports;
+using Safir.Shared.Utility;
 using System.Security.Claims;
 
 namespace Safir.Server.Controllers
@@ -91,6 +95,146 @@ namespace Safir.Server.Controllers
             public int EMP_ID { get; set; }
             public string ITEM_CODE { get; set; } = "";
             public long AMOUNT { get; set; }
+        }
+
+        // ===================================================================
+        // فیش حقوقی (PDF) — یک پرسنل در یک اجرا
+        // داده آماده می‌شود، PayslipReportDto پر می‌شود و با QuestPDF رندر می‌گردد.
+        // قرارداد داده: مزایا از آیتم‌های نوع ۱و۲ (= GROSS_PAY) و کسورات از فیلدهای
+        // صریح (= TOTAL_DED) تا هیچ آیتمی دوبار شمرده نشود و جمع مزایا − جمع کسورات = خالص.
+        // ===================================================================
+        [HttpGet("{runId:int}/employee/{empId:int}/payslip")]
+        public async Task<IActionResult> GetPayslip(int runId, int empId)
+        {
+            // ۱. هدر فیش (مشخصات پرسنل/دوره/کارگاه + جمع‌های صریح)
+            const string headSql = @"
+                SELECT
+                    RL.RUN_ID, RL.EMP_ID, RL.WORK_DAYS,
+                    RL.GROSS_PAY, RL.INS_BASE, RL.INS_WORKER, RL.TAX_AMOUNT,
+                    RL.LOAN_DED, RL.ADVANCE_DED, RL.OTHER_DED, RL.TOTAL_DED, RL.NET_PAY,
+                    RL.LEAVE_BAL_DAYS, RL.LOAN_BALANCE,
+                    E.EMP_CODE, (E.LAST_NAME + N' ' + E.FIRST_NAME) AS FULL_NAME, E.NATIONAL_CODE,
+                    J.JOB_NAME,
+                    P.PERIOD_DATE,
+                    W.WS_NAME
+                FROM PAY2_RUN_LINE RL WITH (NOLOCK)
+                INNER JOIN PAY2_RUN      R WITH (NOLOCK) ON RL.RUN_ID = R.RUN_ID
+                INNER JOIN PAY2_PERIOD   P WITH (NOLOCK) ON R.PER_ID  = P.PER_ID
+                INNER JOIN PAY2_WORKSHOP W WITH (NOLOCK) ON P.WS_ID   = W.WS_ID
+                INNER JOIN PAY2_EMPLOYEE E WITH (NOLOCK) ON RL.EMP_ID = E.EMP_ID
+                LEFT  JOIN PAY2_JOB      J WITH (NOLOCK) ON E.JOB_ID  = J.JOB_ID
+                WHERE RL.RUN_ID = @runId AND RL.EMP_ID = @empId";
+
+            var head = await _db.DoGetDataSQLAsyncSingle<PayslipHeadRow>(headSql, new { runId, empId });
+            if (head == null)
+                return NotFound("فیش حقوقی برای این پرسنل در این اجرا یافت نشد.");
+
+            // ۲. مزایا = فقط آیتم‌های نوع پرداختی (ITEM_TYPE 1,2)؛ مجموع آن‌ها = GROSS_PAY
+            const string earnSql = @"
+                SELECT I.ITEM_NAME AS Title, D.AMOUNT AS Amount
+                FROM PAY2_RUN_DETAIL D WITH (NOLOCK)
+                INNER JOIN PAY2_ITEM_DEF I WITH (NOLOCK) ON D.ITEM_ID = I.ITEM_ID
+                WHERE D.RUN_ID = @runId AND D.EMP_ID = @empId
+                  AND I.ITEM_TYPE IN (1, 2)
+                  AND D.AMOUNT <> 0
+                ORDER BY I.SORT_ORDER";
+
+            var earnings = (await _db.DoGetDataSQLAsync<PayslipLineDto>(earnSql, new { runId, empId })).ToList();
+
+            // ۳. ساخت DTO آمادهٔ چاپ
+            var dto = new PayslipReportDto
+            {
+                EmployeeName = head.FULL_NAME ?? "",
+                EmployeeCode = head.EMP_CODE ?? "",
+                NationalCode = head.NATIONAL_CODE,
+                JobTitle = head.JOB_NAME,
+                PeriodDate = head.PERIOD_DATE,
+                PeriodTitle = BuildPeriodTitle(head.PERIOD_DATE),
+                WorkshopName = head.WS_NAME ?? "",
+                WorkDays = head.WORK_DAYS,
+                Earnings = earnings,
+                InsBase = head.INS_BASE,
+                LeaveBalanceDays = head.LEAVE_BAL_DAYS,
+                LoanBalance = head.LOAN_BALANCE,
+                NetPay = head.NET_PAY,
+                PrintDate = FormatShamsi(CL_Tarikh.GetCurrentPersianDateAsLong())
+            };
+
+            // کسورات از فیلدهای صریح (مجموعشان = TOTAL_DED) — فقط اقلام غیرصفر
+            void AddDed(string title, long amount)
+            {
+                if (amount != 0)
+                    dto.Deductions.Add(new PayslipLineDto { Title = title, Amount = amount });
+            }
+            AddDed("کسر بیمه کارگر", head.INS_WORKER);
+            AddDed("کسر مالیات", head.TAX_AMOUNT);
+            AddDed("قسط وام", head.LOAN_DED);
+            AddDed("مساعده", head.ADVANCE_DED);
+            AddDed("سایر کسورات", head.OTHER_DED);
+
+            // تعدیلِ گرد کردنِ خالص (اعمال ROUND_MODE در موتور محاسبه) تا اتحاد
+            // «جمع مزایا − جمع کسورات = خالص پرداختیِ رسمی» همیشه دقیق بماند.
+            long rounding = head.NET_PAY - (head.GROSS_PAY - head.TOTAL_DED);
+            if (rounding > 0)
+                dto.Earnings.Add(new PayslipLineDto { Title = "تعدیل (گرد کردن)", Amount = rounding });
+            else if (rounding < 0)
+                dto.Deductions.Add(new PayslipLineDto { Title = "تعدیل (گرد کردن)", Amount = -rounding });
+
+            dto.NetPayInWords = CL_HESABDARI.ALPHANUM(head.NET_PAY) + " ریال";
+
+            // ۴. تولید PDF
+            var env = HttpContext.RequestServices.GetRequiredService<IWebHostEnvironment>();
+            byte[] pdfBytes = new PayslipDocument(dto, env).GeneratePdf();
+
+            return File(pdfBytes, "application/pdf", $"Payslip_{dto.EmployeeCode}.pdf");
+        }
+
+        // کلاس کمکی Dapper برای هدر فیش
+        private class PayslipHeadRow
+        {
+            public int RUN_ID { get; set; }
+            public int EMP_ID { get; set; }
+            public decimal WORK_DAYS { get; set; }
+            public long GROSS_PAY { get; set; }
+            public long INS_BASE { get; set; }
+            public long INS_WORKER { get; set; }
+            public long TAX_AMOUNT { get; set; }
+            public long LOAN_DED { get; set; }
+            public long ADVANCE_DED { get; set; }
+            public long OTHER_DED { get; set; }
+            public long TOTAL_DED { get; set; }
+            public long NET_PAY { get; set; }
+            public decimal? LEAVE_BAL_DAYS { get; set; }
+            public long? LOAN_BALANCE { get; set; }
+            public string? EMP_CODE { get; set; }
+            public string? FULL_NAME { get; set; }
+            public string? NATIONAL_CODE { get; set; }
+            public string? JOB_NAME { get; set; }
+            public long PERIOD_DATE { get; set; }
+            public string? WS_NAME { get; set; }
+        }
+
+        private static readonly string[] PersianMonthNames =
+        {
+            "فروردین", "اردیبهشت", "خرداد", "تیر", "مرداد", "شهریور",
+            "مهر", "آبان", "آذر", "دی", "بهمن", "اسفند"
+        };
+
+        // periodDate به فرم YYYYMM00 ⇒ «نام‌ماه YYYY»
+        private static string BuildPeriodTitle(long periodDate)
+        {
+            long year = periodDate / 10000;
+            int month = (int)((periodDate / 100) % 100);
+            string monthName = (month >= 1 && month <= 12) ? PersianMonthNames[month - 1] : "";
+            return string.IsNullOrEmpty(monthName) ? year.ToString() : $"{monthName} {year}";
+        }
+
+        // YYYYMMDD ⇒ «YYYY/MM/DD»
+        private static string FormatShamsi(long dateLong)
+        {
+            if (dateLong <= 0) return string.Empty;
+            string d = dateLong.ToString();
+            return d.Length == 8 ? $"{d[..4]}/{d.Substring(4, 2)}/{d.Substring(6, 2)}" : d;
         }
 
         [HttpPost("calculate")]

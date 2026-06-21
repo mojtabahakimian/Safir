@@ -1,0 +1,108 @@
+@implements IAsyncDisposable
+@inject IJSRuntime JS
+
+@*
+    دیالوگ عمومی و قابل استفادهٔ مجدد برای پیش‌نمایش/چاپ PDF.
+    بایت‌ها را از طریق FetchPdfBytes می‌گیرد، با createPdfBlobUrl به Blob URL تبدیل
+    و در یک iframe نمایش می‌دهد؛ خودِ مرورگر دکمه‌های Print/Zoom/Download را دارد.
+    چون احراز هویت JWT Bearer است، هرگز src مستقیم به api نمی‌دهیم.
+*@
+
+<MudDialog>
+    <TitleContent>
+        <MudText Typo="Typo.h6">
+            <MudIcon Icon="@Icons.Material.Filled.PictureAsPdf" Class="mr-2 mb-n1" Color="Color.Error" />
+            @Title
+        </MudText>
+    </TitleContent>
+    <DialogContent>
+        @if (_isLoading)
+        {
+            <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:75vh;gap:14px;">
+                <MudProgressCircular Indeterminate="true" Size="Size.Large" Color="Color.Primary" />
+                <MudText Typo="Typo.body2">در حال آماده‌سازی فایل PDF...</MudText>
+            </div>
+        }
+        else if (_error != null)
+        {
+            <div style="min-height:30vh;display:flex;align-items:center;justify-content:center;">
+                <MudAlert Severity="Severity.Error" Variant="Variant.Filled" Class="my-4">@_error</MudAlert>
+            </div>
+        }
+        else if (_blobUrl != null)
+        {
+            <iframe src="@_blobUrl" style="width:100%;height:75vh;border:none;" title="@Title"></iframe>
+        }
+    </DialogContent>
+    <DialogActions>
+        @if (_error != null)
+        {
+            <MudButton OnClick="ReloadAsync" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Refresh">تلاش مجدد</MudButton>
+        }
+        <MudButton OnClick="Close">بستن</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] MudDialogInstance MudDialog { get; set; } = default!;
+
+    /// <summary>تابعی که بایت‌های PDF را تأمین می‌کند (مثلاً فراخوانی API با توکن).</summary>
+    [Parameter] public Func<Task<byte[]>>? FetchPdfBytes { get; set; }
+
+    /// <summary>عنوان دیالوگ.</summary>
+    [Parameter] public string Title { get; set; } = "پیش‌نمایش گزارش";
+
+    private bool _isLoading = true;
+    private string? _error;
+    private string? _blobUrl;
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    private async Task ReloadAsync()
+    {
+        await LoadAsync();
+        StateHasChanged();
+    }
+
+    private async Task LoadAsync()
+    {
+        _isLoading = true;
+        _error = null;
+        await RevokeAsync(); // اگر قبلاً URL ساخته شده بود آزاد کن
+
+        try
+        {
+            if (FetchPdfBytes == null)
+                throw new InvalidOperationException("منبع داده‌ای برای نمایش PDF تعیین نشده است.");
+
+            var bytes = await FetchPdfBytes();
+            if (bytes == null || bytes.Length == 0)
+                throw new InvalidOperationException("فایل PDF خالی است.");
+
+            // byte[] در Blazor به‌صورت Uint8Array به JS منتقل می‌شود
+            _blobUrl = await JS.InvokeAsync<string>("createPdfBlobUrl", bytes);
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private async Task RevokeAsync()
+    {
+        if (_blobUrl != null)
+        {
+            try { await JS.InvokeVoidAsync("revokePdfBlobUrl", _blobUrl); }
+            catch { /* در زمان teardown ممکن است JS در دسترس نباشد */ }
+            _blobUrl = null;
+        }
+    }
+
+    private void Close() => MudDialog.Close(DialogResult.Ok(true));
+
+    public async ValueTask DisposeAsync() => await RevokeAsync();
+}
