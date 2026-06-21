@@ -1,4 +1,4 @@
-﻿@page "/production-reports"
+@page "/production-reports"
 @using Safir.Shared.Models.Production
 @using MudBlazor
 @inject Safir.Client.Services.IProductionReportApiService ApiService
@@ -249,105 +249,126 @@
         }
         else if (_activeTab == 2)
         {
-            <MudTable Items="@FilteredReports" Dense="true" Hover="true" Elevation="1" Virtualize="true" FixedHeader="true" Height="calc(100vh - 250px)">
-                <ToolBarContent>
-                    <MudTextField @bind-Value="_searchString" Placeholder="جستجو در شرکت یا توضیحات..." Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search" IconSize="Size.Medium" Class="mt-0" Immediate="true" />
-                </ToolBarContent>
-                <HeaderContent>
-                    <MudTh>تاریخ</MudTh>
-                    <MudTh>شرکت آب‌پنیر</MudTh>
-                    <MudTh>آبپنیر (لیتر)</MudTh>
-                    <MudTh>زمان تغلیظ</MudTh>
-                    <MudTh>پودر (کیلوگرم)</MudTh>
-                    <MudTh>زمان اسپری</MudTh>
-                    <MudTh>کنتور</MudTh>
-                    <MudTh>راندمان</MudTh>
-                    <MudTh>نسبت زمانی</MudTh>
-                    <MudTh>توضیحات</MudTh>
-                    <MudTh>عملیات</MudTh>
-                </HeaderContent>
-                <RowTemplate>
-                    <MudTd DataLabel="تاریخ">@GetShamsiDateString(context.ReportDate)</MudTd>
-                    <MudTd DataLabel="شرکت">@context.WheyCompany</MudTd>
-                    <MudTd DataLabel="آبپنیر">@context.ConcentrationWheyQty?.ToString("N0")</MudTd>
-                    <MudTd DataLabel="زمان تغلیظ">
-                        <div><span dir="ltr">@(context.ConcentrationStart?.ToString(@"hh\:mm") ?? "-")</span> تا <span dir="ltr">@(context.ConcentrationEnd?.ToString(@"hh\:mm") ?? "-")</span></div>
-                        @{ var concElapsed = GetElapsedTime(context.ConcentrationStart, context.ConcentrationEnd); }
-                        @if (concElapsed.HasValue)
-                        {
-                            <div class="mud-typography-caption" style="color: var(--mud-palette-text-secondary);">مدت: <span dir="ltr">@FormatElapsedTime(concElapsed)</span> ساعت</div>
-                        }
-                    </MudTd>
-                    <MudTd DataLabel="پودر">@context.SprayPowderQty?.ToString("N0")</MudTd>
-                    <MudTd DataLabel="زمان اسپری">
-                        <div><span dir="ltr">@(context.SprayStart?.ToString(@"hh\:mm") ?? "-")</span> تا <span dir="ltr">@(context.SprayEnd?.ToString(@"hh\:mm") ?? "-")</span></div>
-                        @{ var sprayElapsed = GetElapsedTime(context.SprayStart, context.SprayEnd); }
-                        @if (sprayElapsed.HasValue)
-                        {
-                            <div class="mud-typography-caption" style="color: var(--mud-palette-text-secondary);">مدت: <span dir="ltr">@FormatElapsedTime(sprayElapsed)</span> ساعت</div>
-                        }
-                    </MudTd>
-                    <MudTd DataLabel="کنتور">@context.CounterNumber</MudTd>
-                    <MudTd DataLabel="راندمان">
-                        @{
-                            var ratioRow = context.SprayPowderQty > 0 ? ((decimal)(context.ConcentrationWheyQty ?? 0) / (decimal)(context.SprayPowderQty ?? 0)) : 0;
-                            var efficiencyRow = context.ConcentrationWheyQty > 0 ? ((decimal)(context.SprayPowderQty ?? 0) / (decimal)(context.ConcentrationWheyQty ?? 0) * 100) : 0;
-                        }
-                        @if (ratioRow > 0)
-                        {
-                            <span>@ratioRow.ToString("N1") (@efficiencyRow.ToString("N1")٪)</span>
-                        }
-                        else
-                        {
-                            <span>-</span>
-                        }
-                    </MudTd>
-                    <MudTd DataLabel="نسبت زمانی">
-                        @{
-                            var _concE = GetElapsedTime(context.ConcentrationStart, context.ConcentrationEnd);
-                            var _sprayE = GetElapsedTime(context.SprayStart, context.SprayEnd);
-                            var wheyPerHour = _concE.HasValue && _concE.Value.TotalHours > 0 && context.ConcentrationWheyQty > 0
-                                ? context.ConcentrationWheyQty!.Value / (decimal)_concE.Value.TotalHours
-                                : (decimal?)null;
-                            var powderPerHour = _sprayE.HasValue && _sprayE.Value.TotalHours > 0 && context.SprayPowderQty > 0
-                                ? context.SprayPowderQty!.Value / (decimal)_sprayE.Value.TotalHours
-                                : (decimal?)null;
-                        }
-                        @if (wheyPerHour.HasValue)
-                        {
-                            <div>آب‌پنیر: <span dir="ltr">@wheyPerHour.Value.ToString("N0")</span> ل/ساعت</div>
-                        }
-                        @if (powderPerHour.HasValue)
-                        {
-                            <div>پودر: <span dir="ltr">@powderPerHour.Value.ToString("N0")</span> ک/ساعت</div>
-                        }
-                        @if (!wheyPerHour.HasValue && !powderPerHour.HasValue)
-                        {
-                            <span>-</span>
-                        }
-                    </MudTd>
-                    <MudTd DataLabel="توضیحات">
-                        @if (!string.IsNullOrWhiteSpace(context.Description))
-                        {
-                            <MudTooltip Text="@context.Description">
-                                <div class="text-truncate" style="max-width: 150px;">
-                                    @context.Description
-                                </div>
-                            </MudTooltip>
-                        }
-                        else
-                        {
-                            <span>-</span>
-                        }
-                    </MudTd>
-                    <MudTd DataLabel="عملیات">
-                        <div class="d-flex align-center gap-4">
-                            <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Medium" Color="Color.Info" OnClick="() => EditReport(context)" />
-                            <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Medium" Color="Color.Error" OnClick="() => DeleteReport(context)" />
+            <div class="production-ledger animate-fade-in">
+                <MudPaper Elevation="0" Outlined="true" Class="production-ledger-hero rounded-xl mb-4">
+                    <div class="production-ledger-hero__content">
+                        <div class="d-flex align-center gap-3">
+                            <div class="production-ledger-hero__icon">
+                                <MudIcon Icon="@Icons.Material.Outlined.FactCheck" Size="Size.Large" />
+                            </div>
+                            <div>
+                                <MudText Typo="Typo.h5" Class="production-ledger-hero__title">دفتر مدیریتی گزارش تولید</MudText>
+                                <MudText Typo="Typo.body2" Class="production-ledger-hero__subtitle">نمای سریع، خوانا و قابل پیگیری برای کنترل روزانه تولید آب‌پنیر و پودر</MudText>
+                            </div>
                         </div>
-                    </MudTd>
-                </RowTemplate>
-            </MudTable>
+
+                        <MudTextField @bind-Value="_searchString"
+                                      Placeholder="جستجو در شرکت یا توضیحات..."
+                                      Adornment="Adornment.Start"
+                                      AdornmentIcon="@Icons.Material.Filled.Search"
+                                      IconSize="Size.Medium"
+                                      Class="production-ledger-search"
+                                      Variant="Variant.Outlined"
+                                      Margin="Margin.Dense"
+                                      Immediate="true" />
+                    </div>
+                </MudPaper>
+
+                <MudGrid Class="mb-4 production-ledger-kpis">
+                    <MudItem xs="12" sm="6" md="3">
+                        <MudPaper Elevation="0" Outlined="true" Class="production-ledger-kpi rounded-xl">
+                            <MudIcon Icon="@Icons.Material.Outlined.Article" Color="Color.Primary" />
+                            <div>
+                                <MudText Typo="Typo.caption" Class="text-muted">گزارش‌های قابل نمایش</MudText>
+                                <MudText Typo="Typo.h6" Class="production-ledger-kpi__value">@FilteredReports.Count().ToString("N0")</MudText>
+                            </div>
+                        </MudPaper>
+                    </MudItem>
+                    <MudItem xs="12" sm="6" md="3">
+                        <MudPaper Elevation="0" Outlined="true" Class="production-ledger-kpi rounded-xl">
+                            <MudIcon Icon="@Icons.Material.Outlined.WaterDrop" Color="Color.Info" />
+                            <div>
+                                <MudText Typo="Typo.caption" Class="text-muted">آب‌پنیر در نتایج</MudText>
+                                <MudText Typo="Typo.h6" Class="production-ledger-kpi__value">@FilteredTotalWheyQty.ToString("N0") <span>لیتر</span></MudText>
+                            </div>
+                        </MudPaper>
+                    </MudItem>
+                    <MudItem xs="12" sm="6" md="3">
+                        <MudPaper Elevation="0" Outlined="true" Class="production-ledger-kpi rounded-xl">
+                            <MudIcon Icon="@Icons.Material.Outlined.Inventory2" Color="Color.Success" />
+                            <div>
+                                <MudText Typo="Typo.caption" Class="text-muted">پودر در نتایج</MudText>
+                                <MudText Typo="Typo.h6" Class="production-ledger-kpi__value">@FilteredTotalPowderQty.ToString("N0") <span>کیلوگرم</span></MudText>
+                            </div>
+                        </MudPaper>
+                    </MudItem>
+                    <MudItem xs="12" sm="6" md="3">
+                        <MudPaper Elevation="0" Outlined="true" Class="production-ledger-kpi rounded-xl">
+                            <MudIcon Icon="@Icons.Material.Outlined.Percent" Color="Color.Warning" />
+                            <div>
+                                <MudText Typo="Typo.caption" Class="text-muted">میانگین راندمان</MudText>
+                                <MudText Typo="Typo.h6" Class="production-ledger-kpi__value">@FilteredEfficiency.ToString("N1")٪</MudText>
+                            </div>
+                        </MudPaper>
+                    </MudItem>
+                </MudGrid>
+
+                <MudPaper Elevation="0" Outlined="true" Class="production-ledger-table rounded-xl">
+                    <MudTable Items="@FilteredReports" Dense="false" Hover="true" Elevation="0" Breakpoint="Breakpoint.Sm" Class="production-report-table">
+                        <NoRecordsContent>
+                            <div class="production-ledger-empty">
+                                <MudIcon Icon="@Icons.Material.Outlined.SearchOff" Size="Size.Large" />
+                                <MudText Typo="Typo.subtitle1">گزارشی با این جستجو پیدا نشد.</MudText>
+                            </div>
+                        </NoRecordsContent>
+                        <HeaderContent>
+                            <MudTh>گزارش</MudTh>
+                            <MudTh>تغلیظ</MudTh>
+                            <MudTh>اسپری</MudTh>
+                            <MudTh>شاخص‌ها</MudTh>
+                            <MudTh>توضیحات</MudTh>
+                            <MudTh>عملیات</MudTh>
+                        </HeaderContent>
+                        <RowTemplate>
+                            @{ var concElapsed = GetElapsedTime(context.ConcentrationStart, context.ConcentrationEnd); var sprayElapsed = GetElapsedTime(context.SprayStart, context.SprayEnd); var ratioRow = context.SprayPowderQty > 0 ? ((decimal)(context.ConcentrationWheyQty ?? 0) / (decimal)(context.SprayPowderQty ?? 0)) : 0; var efficiencyRow = context.ConcentrationWheyQty > 0 ? ((decimal)(context.SprayPowderQty ?? 0) / (decimal)(context.ConcentrationWheyQty ?? 0) * 100) : 0; }
+                            <MudTd DataLabel="گزارش">
+                                <div class="production-report-main">
+                                    <MudText Typo="Typo.subtitle2" Class="production-report-date">@GetShamsiDateString(context.ReportDate)</MudText>
+                                    <MudText Typo="Typo.body2" Class="production-report-company">@(string.IsNullOrWhiteSpace(context.WheyCompany) ? "بدون نام شرکت" : context.WheyCompany)</MudText>
+                                    <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined" Color="Color.Default">کنتور: @(string.IsNullOrWhiteSpace(context.CounterNumber) ? "-" : context.CounterNumber)</MudChip>
+                                </div>
+                            </MudTd>
+                            <MudTd DataLabel="تغلیظ">
+                                <div class="production-report-metric production-report-metric--blue">
+                                    <b>@(context.ConcentrationWheyQty?.ToString("N0") ?? "0")</b><span>لیتر آب‌پنیر</span>
+                                    <small><span dir="ltr">@(context.ConcentrationStart?.ToString(@"hh\:mm") ?? "-")</span> تا <span dir="ltr">@(context.ConcentrationEnd?.ToString(@"hh\:mm") ?? "-")</span> • مدت <span dir="ltr">@FormatElapsedTime(concElapsed)</span></small>
+                                </div>
+                            </MudTd>
+                            <MudTd DataLabel="اسپری">
+                                <div class="production-report-metric production-report-metric--green">
+                                    <b>@(context.SprayPowderQty?.ToString("N0") ?? "0")</b><span>کیلوگرم پودر</span>
+                                    <small><span dir="ltr">@(context.SprayStart?.ToString(@"hh\:mm") ?? "-")</span> تا <span dir="ltr">@(context.SprayEnd?.ToString(@"hh\:mm") ?? "-")</span> • مدت <span dir="ltr">@FormatElapsedTime(sprayElapsed)</span></small>
+                                </div>
+                            </MudTd>
+                            <MudTd DataLabel="شاخص‌ها">
+                                <div class="production-report-insights">
+                                    <MudChip T="string" Size="Size.Small" Color="Color.Success" Variant="Variant.Outlined">راندمان @efficiencyRow.ToString("N1")٪</MudChip>
+                                    <MudChip T="string" Size="Size.Small" Color="Color.Info" Variant="Variant.Outlined">نسبت @((ratioRow > 0 ? ratioRow.ToString("N1") : "-"))</MudChip>
+                                </div>
+                            </MudTd>
+                            <MudTd DataLabel="توضیحات">
+                                <MudText Typo="Typo.body2" Class="production-report-description">@(string.IsNullOrWhiteSpace(context.Description) ? "—" : context.Description)</MudText>
+                            </MudTd>
+                            <MudTd DataLabel="عملیات">
+                                <div class="production-report-actions">
+                                    <MudButton Variant="Variant.Filled" Color="Color.Info" Size="Size.Small" StartIcon="@Icons.Material.Filled.Edit" OnClick="() => EditReport(context)">ویرایش</MudButton>
+                                    <MudButton Variant="Variant.Outlined" Color="Color.Error" Size="Size.Small" StartIcon="@Icons.Material.Filled.Delete" OnClick="() => DeleteReport(context)">حذف</MudButton>
+                                </div>
+                            </MudTd>
+                        </RowTemplate>
+                    </MudTable>
+                </MudPaper>
+            </div>
         }
     }
 </div>
@@ -365,6 +386,9 @@
     // متغیرهای داشبورد آماری
     private decimal TotalWheyQty => _reports.Sum(x => x.ConcentrationWheyQty ?? 0);
     private decimal TotalPowderQty => _reports.Sum(x => x.SprayPowderQty ?? 0);
+    private decimal FilteredTotalWheyQty => FilteredReports.Sum(x => x.ConcentrationWheyQty ?? 0);
+    private decimal FilteredTotalPowderQty => FilteredReports.Sum(x => x.SprayPowderQty ?? 0);
+    private decimal FilteredEfficiency => FilteredTotalWheyQty > 0 ? FilteredTotalPowderQty / FilteredTotalWheyQty * 100 : 0;
 
     private List<ChartSeries> _chartSeries = new();
     private string[] _chartXLabels = Array.Empty<string>();
@@ -589,5 +613,198 @@
 
     .text-muted {
         color: var(--mud-palette-text-secondary) !important;
+    }
+
+    .production-ledger {
+        direction: rtl;
+    }
+
+    .production-ledger-hero {
+        overflow: hidden;
+        border: 1px solid rgba(var(--mud-palette-primary-rgb), 0.18) !important;
+        background: linear-gradient(135deg, rgba(var(--mud-palette-primary-rgb), 0.12), rgba(76, 175, 80, 0.08)) !important;
+    }
+
+    .production-ledger-hero__content {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 24px;
+        padding: 22px;
+    }
+
+    .production-ledger-hero__icon {
+        display: grid;
+        place-items: center;
+        width: 58px;
+        height: 58px;
+        flex: 0 0 58px;
+        border-radius: 20px;
+        color: white;
+        background: linear-gradient(135deg, var(--mud-palette-primary), #13b66b);
+        box-shadow: 0 14px 35px rgba(var(--mud-palette-primary-rgb), 0.25);
+    }
+
+    .production-ledger-hero__title {
+        font-weight: 900 !important;
+        color: var(--mud-palette-text-primary);
+    }
+
+    .production-ledger-hero__subtitle {
+        color: var(--mud-palette-text-secondary);
+        margin-top: 4px;
+    }
+
+    .production-ledger-search {
+        min-width: 320px;
+        max-width: 430px;
+        flex: 1;
+        background: var(--mud-palette-surface);
+        border-radius: 16px;
+    }
+
+    .production-ledger-kpi {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        height: 100%;
+        padding: 16px 18px;
+        background: var(--mud-palette-surface) !important;
+        border-color: rgba(0, 0, 0, 0.08) !important;
+    }
+
+    .production-ledger-kpi__value {
+        font-weight: 900 !important;
+        margin-top: 3px;
+    }
+
+    .production-ledger-kpi__value span {
+        font-size: 0.78rem;
+        color: var(--mud-palette-text-secondary);
+        font-weight: 600;
+    }
+
+    .production-ledger-table {
+        overflow: hidden;
+        background: var(--mud-palette-surface) !important;
+    }
+
+    .production-report-table .mud-table-head .mud-table-cell {
+        background: rgba(var(--mud-palette-primary-rgb), 0.06);
+        color: var(--mud-palette-text-secondary);
+        font-weight: 800;
+        white-space: nowrap;
+    }
+
+    .production-report-table .mud-table-row {
+        vertical-align: top;
+    }
+
+    .production-report-date, .production-report-company, .production-report-metric b {
+        font-weight: 900 !important;
+    }
+
+    .production-report-company {
+        margin: 4px 0 10px;
+    }
+
+    .production-report-metric {
+        display: grid;
+        gap: 3px;
+        min-width: 150px;
+        padding: 12px;
+        border-radius: 16px;
+    }
+
+    .production-report-metric--blue {
+        background: rgba(3, 169, 244, 0.08);
+        border: 1px solid rgba(3, 169, 244, 0.18);
+    }
+
+    .production-report-metric--green {
+        background: rgba(76, 175, 80, 0.08);
+        border: 1px solid rgba(76, 175, 80, 0.18);
+    }
+
+    .production-report-metric span, .production-report-metric small {
+        color: var(--mud-palette-text-secondary);
+    }
+
+    .production-report-insights, .production-report-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+    }
+
+    .production-report-actions {
+        min-width: 150px;
+    }
+
+    .production-report-description {
+        max-width: 260px;
+        line-height: 1.9;
+        color: var(--mud-palette-text-secondary);
+    }
+
+    .production-ledger-empty {
+        display: grid;
+        place-items: center;
+        gap: 10px;
+        min-height: 180px;
+        color: var(--mud-palette-text-secondary);
+    }
+
+    @media (max-width: 600px) {
+        .pay2-tab-container {
+            padding-inline: 10px;
+        }
+
+        .production-ledger-hero__content {
+            align-items: stretch;
+            flex-direction: column;
+            padding: 16px;
+            gap: 16px;
+        }
+
+        .production-ledger-search {
+            min-width: 0;
+            max-width: none;
+            width: 100%;
+        }
+
+        .production-ledger-kpis .mud-grid-item {
+            padding-top: 6px;
+            padding-bottom: 6px;
+        }
+
+        .production-report-table .mud-table-row {
+            display: block;
+            margin: 12px;
+            padding: 4px 0;
+            border: 1px solid rgba(0, 0, 0, 0.08);
+            border-radius: 22px;
+            background: var(--mud-palette-surface);
+            box-shadow: 0 10px 30px rgba(15, 23, 42, 0.06);
+        }
+
+        .production-report-table .mud-table-cell {
+            display: block;
+            padding: 12px 16px !important;
+            border-bottom: 1px dashed rgba(0, 0, 0, 0.08);
+        }
+
+        .production-report-table .mud-table-cell:last-child {
+            border-bottom: 0;
+        }
+
+        .production-report-metric, .production-report-description, .production-report-actions {
+            min-width: 0;
+            max-width: none;
+            width: 100%;
+        }
+
+        .production-report-actions .mud-button-root {
+            flex: 1;
+        }
     }
 </style>
