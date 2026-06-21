@@ -615,7 +615,7 @@
                                         @if (vm.HasRatio)
                                         {
                                             <div class="text-center">
-                                                <MudChip T="string" Color="@GetEfficiencyColor(vm)" Variant="Variant.Filled" Size="Size.Small" Class="pr-eff-chip">راندمان @vm.Efficiency.ToString("N1")٪</MudChip>
+                                                <MudChip T="string" Color="@GetEfficiencyColor(vm)" Variant="Variant.Filled" Size="Size.Medium" Class="pr-eff-chip">راندمان @vm.Efficiency.ToString("N1")٪</MudChip>
                                                 <div class="pr-eff-sub">هر <span dir="ltr">@vm.Ratio.ToString("N1")</span> لیتر = ۱ کیلو</div>
                                             </div>
                                         }
@@ -632,10 +632,6 @@
                                                 {
                                                     <span>مدت <span dir="ltr">@vm.ConcDuration</span> ساعت</span>
                                                 }
-                                                @if (vm.WheyPerHour.HasValue)
-                                                {
-                                                    <span><span dir="ltr">@vm.WheyPerHour.Value.ToString("N0")</span> ل/ساعت</span>
-                                                }
                                             </div>
                                         </div>
                                         <div class="pr-unit-card pr-unit-green">
@@ -647,13 +643,27 @@
                                                 {
                                                     <span>مدت <span dir="ltr">@vm.SprayDuration</span> ساعت</span>
                                                 }
-                                                @if (vm.PowderPerHour.HasValue)
-                                                {
-                                                    <span><span dir="ltr">@vm.PowderPerHour.Value.ToString("N0")</span> ک/ساعت</span>
-                                                }
                                             </div>
                                         </div>
                                     </div>
+
+                                    @if (vm.WheyPerHour.HasValue || vm.PowderPerHour.HasValue)
+                                    {
+                                        <div class="pr-hourly mt-3">
+                                            <div class="pr-hourly-title"><MudIcon Icon="@Icons.Material.Outlined.Schedule" Size="Size.Small" Class="ml-1" />نرخ تبدیل در هر ساعت کارکرد</div>
+                                            <div class="pr-hourly-body">
+                                                <div class="pr-hourly-item">
+                                                    <span class="pr-hourly-num" dir="ltr">@(vm.WheyPerHour?.ToString("N0") ?? "—")</span>
+                                                    <span class="pr-hourly-uom">لیتر آب‌پنیر</span>
+                                                </div>
+                                                <MudIcon Icon="@Icons.Material.Filled.ArrowBack" Class="pr-hourly-arrow" />
+                                                <div class="pr-hourly-item">
+                                                    <span class="pr-hourly-num pr-hourly-num-green" dir="ltr">@(vm.PowderPerHour?.ToString("N0") ?? "—")</span>
+                                                    <span class="pr-hourly-uom">کیلو پودر</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    }
 
                                     @if (!string.IsNullOrWhiteSpace(vm.Report.CounterNumber) || !string.IsNullOrWhiteSpace(vm.Report.Description))
                                     {
@@ -1382,8 +1392,79 @@
 
     .pr-card-sep {
         color: var(--mud-palette-text-secondary);
-        font-size: 0.7rem;
+        font-size: 0.85rem;
     }
+
+    /* ===== نرخ تبدیل ساعتی ترکیبی (کارت موبایل) ===== */
+    .pr-hourly {
+        background-color: rgba(var(--mud-palette-primary-rgb), 0.06);
+        border: 1px solid rgba(var(--mud-palette-primary-rgb), 0.18);
+        border-radius: 12px;
+        padding: 10px 14px;
+    }
+
+    .pr-hourly-title {
+        display: flex;
+        align-items: center;
+        font-size: 0.92rem;
+        font-weight: 700;
+        color: var(--mud-palette-primary);
+        margin-bottom: 8px;
+    }
+
+    .pr-hourly-body {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 18px;
+    }
+
+    .pr-hourly-item {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        line-height: 1.15;
+    }
+
+    .pr-hourly-num {
+        font-size: 1.7rem;
+        font-weight: 900;
+        color: var(--mud-palette-info);
+        font-variant-numeric: tabular-nums;
+    }
+
+    .pr-hourly-num-green { color: var(--mud-palette-success); }
+
+    .pr-hourly-uom {
+        font-size: 0.9rem;
+        color: var(--mud-palette-text-secondary);
+        margin-top: 3px;
+    }
+
+    .pr-hourly-arrow { color: var(--mud-palette-text-secondary); }
+
+    /* ===== خوانایی: بزرگ‌تر کردن اعداد و متن‌ها ===== */
+    .pr-eff-sub { font-size: 0.85rem; }
+    .pr-company { font-size: 1rem; }
+    .pr-date-main { font-size: 1.05rem; }
+    .pr-date-sub { font-size: 0.85rem; }
+    .pr-unit-qty { font-size: 1.1rem; }
+    .pr-unit-uom { font-size: 0.8rem; }
+    .pr-unit-time { font-size: 0.9rem; }
+    .pr-unit-dur, .pr-unit-foot { font-size: 0.85rem; }
+    .pr-rate { font-size: 0.92rem; }
+    .pr-meta-row { font-size: 0.95rem; }
+
+    /* روی موبایل، اعداد کارت را درشت‌تر می‌کنیم */
+    .pr-card .pr-date-main { font-size: 1.25rem; }
+    .pr-card .pr-company { font-size: 1.12rem; }
+    .pr-card .pr-eff-sub { font-size: 0.9rem; }
+    .pr-card .pr-unit-head { font-size: 0.88rem; }
+    .pr-card .pr-unit-qty { font-size: 1.55rem; }
+    .pr-card .pr-unit-uom { font-size: 0.9rem; }
+    .pr-card .pr-unit-time { font-size: 1.02rem; }
+    .pr-card .pr-unit-foot { font-size: 0.95rem; }
+    .pr-card .pr-meta-row { font-size: 1.02rem; }
 
     @@media (max-width: 600px) {
         .pr-tabbar { width: 100%; }
