@@ -16,7 +16,7 @@
     else
     {
         <div class="d-flex flex-wrap justify-end mb-6">
-            <MudPaper Elevation="0" Class="d-flex flex-wrap rounded-xl pa-1" Style="background-color: #f0f2f5;">
+            <MudPaper Elevation="0" Class="d-flex flex-wrap rounded-xl pa-1 pr-tabbar" Style="background-color: #f0f2f5;">
                 <MudButton StartIcon="@Icons.Material.Outlined.Dashboard" Class="rounded-xl px-4 py-2"
                            Color="@(_activeTab == 0 ? Color.Primary : Color.Default)"
                            Variant="@(_activeTab == 0 ? Variant.Filled : Variant.Text)"
@@ -516,7 +516,7 @@
                                     <MudTd Style="text-align:center;">
                                         <div class="pr-unit pr-unit-blue">
                                             <div class="pr-unit-qty">@((context.Report.ConcentrationWheyQty ?? 0).ToString("N0")) <span class="pr-unit-uom">لیتر</span></div>
-                                            <div class="pr-unit-time" dir="ltr">@context.ConcRange</div>
+                                            <div class="pr-unit-time"><span dir="ltr">@context.ConcStart</span> تا <span dir="ltr">@context.ConcEnd</span></div>
                                             @if (context.ConcDuration != null)
                                             {
                                                 <div class="pr-unit-dur">مدت <span dir="ltr">@context.ConcDuration</span> ساعت</div>
@@ -526,7 +526,7 @@
                                     <MudTd Style="text-align:center;">
                                         <div class="pr-unit pr-unit-green">
                                             <div class="pr-unit-qty">@((context.Report.SprayPowderQty ?? 0).ToString("N0")) <span class="pr-unit-uom">کیلوگرم</span></div>
-                                            <div class="pr-unit-time" dir="ltr">@context.SprayRange</div>
+                                            <div class="pr-unit-time"><span dir="ltr">@context.SprayStart</span> تا <span dir="ltr">@context.SprayEnd</span></div>
                                             @if (context.SprayDuration != null)
                                             {
                                                 <div class="pr-unit-dur">مدت <span dir="ltr">@context.SprayDuration</span> ساعت</div>
@@ -606,7 +606,7 @@
                                                 <div class="pr-card-company-line">
                                                     @if (!string.IsNullOrEmpty(vm.Weekday))
                                                     {
-                                                        <span class="pr-date-sub">@vm.Weekday</span>
+                                                        <span class="pr-date-sub">@vm.Weekday</span><span class="pr-card-sep">•</span>
                                                     }
                                                     <span class="pr-company">@(string.IsNullOrWhiteSpace(vm.Report.WheyCompany) ? "—" : vm.Report.WheyCompany)</span>
                                                 </div>
@@ -626,7 +626,7 @@
                                         <div class="pr-unit-card pr-unit-blue">
                                             <div class="pr-unit-head">تغلیظ</div>
                                             <div class="pr-unit-qty">@((vm.Report.ConcentrationWheyQty ?? 0).ToString("N0")) <span class="pr-unit-uom">لیتر</span></div>
-                                            <div class="pr-unit-time" dir="ltr">@vm.ConcRange</div>
+                                            <div class="pr-unit-time"><span dir="ltr">@vm.ConcStart</span> تا <span dir="ltr">@vm.ConcEnd</span></div>
                                             <div class="pr-unit-foot">
                                                 @if (vm.ConcDuration != null)
                                                 {
@@ -641,7 +641,7 @@
                                         <div class="pr-unit-card pr-unit-green">
                                             <div class="pr-unit-head">اسپری</div>
                                             <div class="pr-unit-qty">@((vm.Report.SprayPowderQty ?? 0).ToString("N0")) <span class="pr-unit-uom">کیلوگرم</span></div>
-                                            <div class="pr-unit-time" dir="ltr">@vm.SprayRange</div>
+                                            <div class="pr-unit-time"><span dir="ltr">@vm.SprayStart</span> تا <span dir="ltr">@vm.SprayEnd</span></div>
                                             <div class="pr-unit-foot">
                                                 @if (vm.SprayDuration != null)
                                                 {
@@ -801,6 +801,7 @@
 
     private List<ReportVm> _vms = new();
     private decimal _avgEfficiency;
+    private int _ratioCount;
 
     private IEnumerable<ReportVm> DisplayedVms
     {
@@ -859,6 +860,7 @@
     private Color GetEfficiencyColor(ReportVm v)
     {
         if (!v.HasRatio || _avgEfficiency <= 0) return Color.Default;
+        if (_ratioCount <= 1) return Color.Success;
         if (v.Efficiency >= _avgEfficiency * 1.02m) return Color.Success;
         if (v.Efficiency <= _avgEfficiency * 0.98m) return Color.Warning;
         return Color.Info;
@@ -868,6 +870,7 @@
     {
         _vms = _reports.Select(BuildVm).ToList();
         var effs = _vms.Where(v => v.HasRatio).Select(v => v.Efficiency).ToList();
+        _ratioCount = effs.Count;
         _avgEfficiency = effs.Count > 0 ? effs.Average() : 0m;
     }
 
@@ -890,9 +893,11 @@
             Report = r,
             DateStr = GetShamsiDateString(r.ReportDate),
             Weekday = r.ReportDate.HasValue ? GetPersianWeekday(r.ReportDate.Value) : string.Empty,
-            ConcRange = FormatRange(r.ConcentrationStart, r.ConcentrationEnd),
+            ConcStart = FmtTime(r.ConcentrationStart),
+            ConcEnd = FmtTime(r.ConcentrationEnd),
             ConcDuration = concElapsed.HasValue ? FormatElapsedTime(concElapsed) : null,
-            SprayRange = FormatRange(r.SprayStart, r.SprayEnd),
+            SprayStart = FmtTime(r.SprayStart),
+            SprayEnd = FmtTime(r.SprayEnd),
             SprayDuration = sprayElapsed.HasValue ? FormatElapsedTime(sprayElapsed) : null,
             WheyPerHour = wheyPerHour,
             PowderPerHour = powderPerHour,
@@ -902,8 +907,7 @@
         };
     }
 
-    private static string FormatRange(TimeSpan? start, TimeSpan? end)
-        => $"{(start?.ToString(@"hh\:mm") ?? "—")} – {(end?.ToString(@"hh\:mm") ?? "—")}";
+    private static string FmtTime(TimeSpan? t) => t?.ToString(@"hh\:mm") ?? "—";
 
     private static string GetPersianWeekday(DateTime date) => date.DayOfWeek switch
     {
@@ -922,9 +926,11 @@
         public ProductionReportDto Report { get; init; } = default!;
         public string DateStr { get; init; } = "—";
         public string Weekday { get; init; } = string.Empty;
-        public string ConcRange { get; init; } = "—";
+        public string ConcStart { get; init; } = "—";
+        public string ConcEnd { get; init; } = "—";
         public string? ConcDuration { get; init; }
-        public string SprayRange { get; init; } = "—";
+        public string SprayStart { get; init; } = "—";
+        public string SprayEnd { get; init; } = "—";
         public string? SprayDuration { get; init; }
         public decimal? WheyPerHour { get; init; }
         public decimal? PowderPerHour { get; init; }
@@ -1372,5 +1378,19 @@
     .pr-record-val {
         font-weight: 800;
         font-size: 1rem;
+    }
+
+    .pr-card-sep {
+        color: var(--mud-palette-text-secondary);
+        font-size: 0.7rem;
+    }
+
+    @@media (max-width: 600px) {
+        .pr-tabbar { width: 100%; }
+
+        .pr-tabbar .mud-button-root {
+            flex: 1 1 100%;
+            margin: 2px 0 !important;
+        }
     }
 </style>
