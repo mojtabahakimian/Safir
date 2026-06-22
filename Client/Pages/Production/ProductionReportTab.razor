@@ -4,6 +4,7 @@
 @inject Safir.Client.Services.IProductionReportApiService ApiService
 @inject IDialogService DialogService
 @inject ISnackbar Snackbar
+@inject IJSRuntime JS
 @using Safir.Client.Pages.Salary.Tabs
 
 <style>
@@ -673,7 +674,7 @@
             <button class="p2-tab-btn @(_activeTab == 0 ? "active" : "")" @onclick="() => _activeTab = 0">
                 <MudIcon Icon="@Icons.Material.Outlined.Dashboard" Class="p2-tab-icon" /> پیش‌خوان و آمار
             </button>
-            <button class="p2-tab-btn @(_activeTab == 1 ? "active" : "")" @onclick="() => _activeTab = 1">
+            <button class="p2-tab-btn @(_activeTab == 1 ? "active" : "")" @onclick="StartNewReport">
                 <MudIcon Icon="@Icons.Material.Outlined.AddCircleOutline" Class="p2-tab-icon" /> ثبت گزارش جدید
             </button>
             <button class="p2-tab-btn @(_activeTab == 2 ? "active" : "")" @onclick="() => _activeTab = 2">
@@ -978,10 +979,27 @@
         {
             <div class="animate-fade-in">
                 <MudPaper Elevation="0" Outlined="true" Class="pa-6 rounded-xl pay2-form-card">
-                    <div class="d-flex align-center mb-6">
-                        <MudIcon Icon="@Icons.Material.Outlined.Assignment" Color="Color.Primary" Class="ml-2" />
-                        <MudText Typo="Typo.h6" Style="font-weight: 800;">ثبت گزارش تولید روزانه</MudText>
+                    <div class="d-flex align-center justify-space-between flex-wrap gap-2 mb-6">
+                        <div class="d-flex align-center">
+                            <MudIcon Icon="@(_isEditing ? Icons.Material.Outlined.Edit : Icons.Material.Outlined.Assignment)" Color="Color.Primary" Class="ml-2" />
+                            <MudText Typo="Typo.h6" Style="font-weight: 800;">@(_isEditing ? "ویرایش گزارش تولید" : "ثبت گزارش تولید روزانه")</MudText>
+                        </div>
+                        @if (_isEditing)
+                        {
+                            <MudButton Variant="Variant.Outlined" Color="Color.Default" Size="Size.Small"
+                                       StartIcon="@Icons.Material.Outlined.Close" OnClick="CancelEdit" Class="rounded-xl">
+                                انصراف از ویرایش
+                            </MudButton>
+                        }
                     </div>
+
+                    @if (_isEditing)
+                    {
+                        <MudAlert Severity="Severity.Info" Variant="Variant.Outlined" Dense="true" Class="mb-6">
+                            در حال ویرایش گزارش <b>@(string.IsNullOrWhiteSpace(Model.WheyCompany) ? "بدون نام شرکت" : Model.WheyCompany)</b>
+                            <span class="mx-1">—</span> تاریخ <span dir="ltr">@GetShamsiDateString(Model.ReportDate)</span>. پس از اعمال تغییرات، دکمه «ذخیره تغییرات» را بزنید.
+                        </MudAlert>
+                    }
 
                     <MudPaper Elevation="0" Outlined="true" Class="pa-5 rounded-lg mb-6" Style="background: var(--mud-palette-background-grey); border: 1px solid var(--mud-palette-lines-default);">
                         <MudGrid>
@@ -1076,7 +1094,7 @@
                             }
                             else
                             {
-                                <span style="font-weight: bold;">ثبت قطعی گزارش</span>
+                                <span style="font-weight: bold;">@(_isEditing ? "ذخیره تغییرات" : "ثبت قطعی گزارش")</span>
                             }
                         </MudButton>
                     </div>
@@ -1301,8 +1319,9 @@
 
 @code {
     private bool _isDataLoaded = false;
-    private int _activeTab = 0;
+    private int _activeTab = 1;
     private bool _isProcessing = false;
+    private bool _isEditing = false;
     private string _searchString = string.Empty;
 
     private string? _shamsiDateStr;
@@ -1598,11 +1617,13 @@
             }
             Model.ReportDate = parsedDate;
 
+            bool isUpdate = Model.Id != 0;
             await ApiService.SaveReportAsync(Model);
-            Snackbar.Add("گزارش با موفقیت ثبت شد.", Severity.Success);
+            Snackbar.Add(isUpdate ? "تغییرات گزارش با موفقیت ذخیره شد." : "گزارش با موفقیت ثبت شد.", Severity.Success);
 
             Model = new ProductionReportDto();
             _shamsiDateStr = GetTodayShamsi();
+            _isEditing = false;
 
             await LoadData();
             _activeTab = 2;
@@ -1617,7 +1638,7 @@
         }
     }
 
-    private void EditReport(ProductionReportDto report)
+    private async Task EditReport(ProductionReportDto report)
     {
         Model = new ProductionReportDto
         {
@@ -1643,7 +1664,44 @@
         {
             _shamsiDateStr = "";
         }
+
+        _isEditing = true;
         _activeTab = 1;
+        StateHasChanged();
+        await ScrollToTopAsync();
+    }
+
+    // شروع یک گزارش جدید (پاک‌سازی فرم در صورتی که در حالت ویرایش بوده‌ایم)
+    private void StartNewReport()
+    {
+        if (_isEditing || Model.Id != 0)
+        {
+            Model = new ProductionReportDto();
+            _shamsiDateStr = GetTodayShamsi();
+            _isEditing = false;
+        }
+        _activeTab = 1;
+    }
+
+    // انصراف از ویرایش و بازگشت به دفتر گزارشات
+    private void CancelEdit()
+    {
+        Model = new ProductionReportDto();
+        _shamsiDateStr = GetTodayShamsi();
+        _isEditing = false;
+        _activeTab = 2;
+    }
+
+    private async Task ScrollToTopAsync()
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("scrollTo", 0, 0);
+        }
+        catch
+        {
+            // در صورت عدم دسترسی به JS (مثلاً در حین prerender) نادیده گرفته می‌شود
+        }
     }
 
     private async Task DeleteReport(ProductionReportDto report)
