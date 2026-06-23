@@ -675,12 +675,11 @@ BEGIN
         END
     END;
 
+    -- معافیت مالیات عیدی طبق قانون: معادل «یک ماه» معافیت کامل، بدون پروریت بر حسب روزهای کارکرد
     DECLARE @EIDI_TAX BIGINT = 0;
-    DECLARE @PRORATED_EIDI_EXEMPTION BIGINT = CAST((@TAX_EXEMPT_MONTHLY * CAST(@WORKED_DAYS_FOR_EIDI AS FLOAT)) / 365.0 AS BIGINT);
-
-    IF @EIDI > @PRORATED_EIDI_EXEMPTION
+    IF @EIDI > @TAX_EXEMPT_MONTHLY
     BEGIN
-        SET @EIDI_TAX = [dbo].[FN_PAY2_CALC_TAX]((@EIDI - @PRORATED_EIDI_EXEMPTION) * 12, @TAX_YEAR) / 12;
+        SET @EIDI_TAX = [dbo].[FN_PAY2_CALC_TAX]((@EIDI - @TAX_EXEMPT_MONTHLY) * 12, @TAX_YEAR) / 12;
     END
 
     DECLARE @SANAVAT BIGINT = CASE
