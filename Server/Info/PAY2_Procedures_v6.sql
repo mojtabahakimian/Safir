@@ -83,7 +83,7 @@ BEGIN
     -- محاسبه طول ماه + تشخیص سال کبیسه شمسی (فقط در حالت MONTH_DAYS_MODE=REAL فعال است)
     SET @PERIOD_MONTH = (@PERIOD_DATE / 100) % 100;
     SET @PERIOD_YEAR  = @PERIOD_DATE / 10000;
-    DECLARE @IS_LEAP_YEAR BIT = CASE WHEN ((@PERIOD_YEAR + 38) * 31 % 128) <= 30 THEN 1 ELSE 0 END;
+    DECLARE @IS_LEAP_YEAR BIT = CASE WHEN ((25 * @PERIOD_YEAR + 11) % 33) < 8 THEN 1 ELSE 0 END; -- چرخه ۳۳ ساله (صحیح برای ۱۳۷۰..۱۴۳۶)
 
     SET @MONTH_DAYS = CASE
         WHEN @MONTH_DAYS_MODE = '30' THEN 30
@@ -582,8 +582,8 @@ BEGIN
     SELECT
         @BONUS_MODE          = ISNULL(MAX(CASE WHEN CFG_KEY='BONUS_MODE'          THEN CFG_VALUE END), 'MIN_WAGE'),
         @BONUS_CUSTOM_DAYS   = ISNULL(MAX(CASE WHEN CFG_KEY='BONUS_CUSTOM_DAYS'   THEN CAST(CFG_VALUE AS INT) END), 60),
-        @MIN_WAGE_DAILY      = ISNULL(MAX(CASE WHEN CFG_KEY='MIN_WAGE_DAILY'      THEN CAST(CFG_VALUE AS BIGINT) END), 732000),
-        @MIN_WAGE_MONTHLY    = ISNULL(MAX(CASE WHEN CFG_KEY='MIN_WAGE_MONTHLY'    THEN CAST(CFG_VALUE AS BIGINT) END), 21960000),
+        @MIN_WAGE_DAILY      = ISNULL(MAX(CASE WHEN CFG_KEY='MIN_WAGE_DAILY'      THEN CAST(CFG_VALUE AS BIGINT) END), 73200),
+        @MIN_WAGE_MONTHLY    = ISNULL(MAX(CASE WHEN CFG_KEY='MIN_WAGE_MONTHLY'    THEN CAST(CFG_VALUE AS BIGINT) END), 2196000),
         @EIDI_MIN_DAYS       = ISNULL(MAX(CASE WHEN CFG_KEY='EIDI_MIN_DAYS'       THEN CAST(CFG_VALUE AS INT) END), 60),
         @EIDI_MAX_DAYS       = ISNULL(MAX(CASE WHEN CFG_KEY='EIDI_MAX_DAYS'       THEN CAST(CFG_VALUE AS INT) END), 90),
         @SENIORITY_MODE      = ISNULL(MAX(CASE WHEN CFG_KEY='SENIORITY_MODE'      THEN CFG_VALUE END), 'LAST_SAL'),
@@ -804,6 +804,11 @@ CREATE OR ALTER PROCEDURE [dbo].[SP_PAY2_REVERT_RUN]
 AS
 BEGIN
     SET NOCOUNT ON;
+    -- این پروسیجر همیشه داخل تراکنشِ لایه‌ی C# (ExecuteInTransactionAsync) اجرا می‌شود،
+    -- چه مستقیم و چه از طریق SP_PAY2_CALC_RUN. پس تراکنش داخلی نمی‌گذاریم تا تداخلِ
+    -- تراکنش تو‌در‌تو (ROLLBACK داخلی که تراکنش بیرونی را می‌کشد) رخ ندهد. XACT_ABORT
+    -- تضمین می‌کند در صورت خطا، تراکنش بیرونی doomed و توسط C# رول‌بک شود.
+    SET XACT_ABORT ON;
 
     DECLARE @STATUS TINYINT;
     DECLARE @PER_ID INT;
@@ -813,7 +818,6 @@ BEGIN
     SELECT @STATUS = R.STATUS, @PER_ID = R.PER_ID, @IS_LATEST = R.IS_LATEST, @PERIOD_DATE = P.PERIOD_DATE
     FROM PAY2_RUN R INNER JOIN PAY2_PERIOD P ON R.PER_ID = P.PER_ID WHERE R.RUN_ID = @RUN_ID;
 
-    -- جلوگیری از سکوت مرگبار در صورت آیدی نامعتبر
     IF @PER_ID IS NULL
     BEGIN
         RAISERROR(N'SP_PAY2_REVERT_RUN: محاسبه‌ای با این شناسه یافت نشد.', 16, 1);
@@ -832,49 +836,42 @@ BEGIN
         RETURN;
     END;
 
-    BEGIN TRANSACTION;
-    BEGIN TRY
-        -- بازگرداندن دقیق تعداد اقساط کسر شده در این RUN (فقط وام‌های درگیر همین RUN)
-        UPDATE L SET L.PAID_INST = L.PAID_INST - (
-            SELECT COUNT(1) FROM PAY2_LOAN_SCHED LS
-            WHERE LS.LOAN_ID = L.LOAN_ID AND LS.RUN_ID = @RUN_ID
-        )
-        FROM PAY2_LOAN L
-        WHERE EXISTS (SELECT 1 FROM PAY2_LOAN_SCHED LS WHERE LS.LOAN_ID = L.LOAN_ID AND LS.RUN_ID = @RUN_ID);
+    -- 1. بازگرداندن دقیق تعداد اقساط کسر شده در این RUN (فقط وام‌های درگیر همین RUN)
+    UPDATE L SET L.PAID_INST = L.PAID_INST - (
+        SELECT COUNT(1) FROM PAY2_LOAN_SCHED LS
+        WHERE LS.LOAN_ID = L.LOAN_ID AND LS.RUN_ID = @RUN_ID
+    )
+    FROM PAY2_LOAN L
+    WHERE EXISTS (SELECT 1 FROM PAY2_LOAN_SCHED LS WHERE LS.LOAN_ID = L.LOAN_ID AND LS.RUN_ID = @RUN_ID);
 
-        UPDATE PAY2_LOAN_SCHED
-        SET RUN_ID = NULL, PAID_AT = NULL
-        WHERE RUN_ID = @RUN_ID;
+    UPDATE PAY2_LOAN_SCHED
+    SET RUN_ID = NULL, PAID_AT = NULL
+    WHERE RUN_ID = @RUN_ID;
 
-        -- بازگرداندن دقیقه‌های مرخصی کسر شده (محافظت در برابر اعداد منفی)
-        UPDATE LB
-        SET LB.USED_MIN = CASE
-                            WHEN LB.USED_MIN - CAST(A.LEAVE_DAYS * 440 AS INT) < 0 THEN 0
-                            ELSE LB.USED_MIN - CAST(A.LEAVE_DAYS * 440 AS INT)
-                          END,
-            LB.UPDATED_AT = GETDATE()
-        FROM PAY2_LEAVE_BAL LB
-        INNER JOIN PAY2_ATTENDANCE A ON LB.EMP_ID = A.EMP_ID
-        WHERE A.PER_ID = @PER_ID AND LB.YEAR = (@PERIOD_DATE / 10000)
-          AND A.LEAVE_DAYS > 0;
+    -- 2. بازگرداندن دقیقه‌های مرخصی کسر شده (محافظت در برابر اعداد منفی)
+    UPDATE LB
+    SET LB.USED_MIN = CASE
+                        WHEN LB.USED_MIN - CAST(A.LEAVE_DAYS * 440 AS INT) < 0 THEN 0
+                        ELSE LB.USED_MIN - CAST(A.LEAVE_DAYS * 440 AS INT)
+                      END,
+        LB.UPDATED_AT = GETDATE()
+    FROM PAY2_LEAVE_BAL LB
+    INNER JOIN PAY2_ATTENDANCE A ON LB.EMP_ID = A.EMP_ID
+    WHERE A.PER_ID = @PER_ID AND LB.YEAR = (@PERIOD_DATE / 10000)
+      AND A.LEAVE_DAYS > 0;
 
-        DELETE FROM PAY2_RUN_DETAIL WHERE RUN_ID = @RUN_ID;
-        DELETE FROM PAY2_RUN_LINE    WHERE RUN_ID = @RUN_ID;
+    -- 3. حذف فیش‌ها
+    DELETE FROM PAY2_RUN_DETAIL WHERE RUN_ID = @RUN_ID;
+    DELETE FROM PAY2_RUN_LINE    WHERE RUN_ID = @RUN_ID;
 
-        UPDATE PAY2_RUN
-        SET STATUS = 1,
-            NOTES = SUBSTRING(ISNULL(NOTES,'') + N' | Reverted by ' + CAST(ISNULL(@REVERT_BY,0) AS NVARCHAR), 1, 300)
-        WHERE RUN_ID = @RUN_ID;
+    -- 4. باز کردن دوره و ثبت لاگ
+    UPDATE PAY2_RUN
+    SET STATUS = 1,
+        NOTES = SUBSTRING(ISNULL(NOTES,'') + N' | Reverted by ' + CAST(ISNULL(@REVERT_BY,0) AS NVARCHAR), 1, 300)
+    WHERE RUN_ID = @RUN_ID;
 
-        UPDATE PAY2_PERIOD SET STATUS = 2 WHERE PER_ID = @PER_ID;
+    UPDATE PAY2_PERIOD SET STATUS = 2 WHERE PER_ID = @PER_ID;
 
-        COMMIT TRANSACTION;
-    END TRY
-    BEGIN CATCH
-        ROLLBACK TRANSACTION;
-        DECLARE @ERR_MSG NVARCHAR(4000) = ERROR_MESSAGE();
-        RAISERROR(N'خطا در عملیات لغو محاسبه: %s', 16, 1, @ERR_MSG);
-    END CATCH;
 END;
 GO
 
