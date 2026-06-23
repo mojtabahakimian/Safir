@@ -52,7 +52,8 @@ BEGIN
         @TAX_YEAR          SMALLINT,     @TAX_EXEMPT        BIGINT,
         @TAX_DEDUCT_INS    BIT,          @TAX_DEP_APPLY     BIT,
         @ADV_ENABLED       BIT,          @PERIOD_DATE       BIGINT,
-        @PERIOD_MONTH      INT,          @PERIOD_YEAR       INT;
+        @PERIOD_MONTH      INT,          @PERIOD_YEAR       INT,
+        @MONTHLY_PRORATE   BIT;
 
     SELECT
         @MONTH_DAYS_MODE   = ISNULL(MAX(CASE WHEN CFG_KEY='MONTH_DAYS_MODE'    THEN CFG_VALUE END), '30'),
@@ -70,7 +71,8 @@ BEGIN
         @INS_CEILING_APPLY = ISNULL(CAST(MAX(CASE WHEN CFG_KEY='INS_CEILING_APPLY'  THEN CAST(CFG_VALUE AS INT) END) AS BIT), 1),
         @TAX_DEDUCT_INS    = ISNULL(CAST(MAX(CASE WHEN CFG_KEY='TAX_DEDUCT_INS'     THEN CAST(CFG_VALUE AS INT) END) AS BIT), 1),
         @TAX_DEP_APPLY     = ISNULL(CAST(MAX(CASE WHEN CFG_KEY='TAX_DEPRIVATION_APPLY' THEN CAST(CFG_VALUE AS INT) END) AS BIT), 0),
-        @ADV_ENABLED       = ISNULL(CAST(MAX(CASE WHEN CFG_KEY='ADV_ENABLED'        THEN CAST(CFG_VALUE AS INT) END) AS BIT), 0)
+        @ADV_ENABLED       = ISNULL(CAST(MAX(CASE WHEN CFG_KEY='ADV_ENABLED'        THEN CAST(CFG_VALUE AS INT) END) AS BIT), 0),
+        @MONTHLY_PRORATE   = ISNULL(CAST(MAX(CASE WHEN CFG_KEY='MONTHLY_ITEM_PRORATE' THEN CAST(CFG_VALUE AS INT) END) AS BIT), 0)
     FROM PAY2_CONFIG;
 
     SELECT @PERIOD_DATE = PERIOD_DATE FROM PAY2_PERIOD WHERE PER_ID = @PER_ID;
@@ -274,8 +276,14 @@ BEGIN
                                 ELSE CAST(@ITEM_AMOUNT * @PAY_DAYS * @OT_HOUR_BASE AS BIGINT)
                             END;
 
+                    -- آیتم‌های ماهیانه (basis=2): کسر به‌نسبت غیبت اختیاری است (کلید MONTHLY_ITEM_PRORATE)
+                    -- PRORATE=1: کاهش با غیبت و تسهیم تغییر حکم وسط ماه | PRORATE=0: فقط تسهیم تغییر حکم، بدون اثر غیبت
                     ELSE IF @ITEM_BASIS = 2
-                        SET @CALC_AMOUNT = CAST(@ITEM_AMOUNT * (@PAY_DAYS / CAST(@MONTH_DAYS AS DECIMAL(5,2))) AS BIGINT);
+                        SET @CALC_AMOUNT = CASE
+                            WHEN @MONTHLY_PRORATE = 1
+                                THEN CAST(@ITEM_AMOUNT * (@PAY_DAYS / CAST(@MONTH_DAYS AS DECIMAL(5,2))) AS BIGINT)
+                            ELSE CAST(@ITEM_AMOUNT * @PRORATE_FACTOR AS BIGINT)
+                        END;
 
                     -- 🛠 اصلاح باگ ۳۰برابری: آیتم‌های روزانهٔ مبلغ‌ماهانه بر تعداد روز ماه تقسیم می‌شوند
                     ELSE IF @ITEM_BASIS = 1
