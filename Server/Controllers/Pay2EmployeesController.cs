@@ -945,20 +945,30 @@ namespace Safir.Server.Controllers
             {
                 await _db.ExecuteInTransactionAsync(async (conn, tran) =>
                 {
-                    // خواندن شناسه پرسنل برای بازگرداندن وضعیت او به فعال
-                    int? empId = await conn.QuerySingleOrDefaultAsync<int?>("SELECT EMP_ID FROM PAY2_SETTLEMENT WHERE SET_ID=@setId AND STATUS=1", new { setId }, tran);
-                    if (!empId.HasValue) throw new InvalidOperationException("تسویه حساب یافت نشد یا از حالت پیش‌نویس خارج شده است.");
+                    // 🚀 فیکس امنیتی: WITH (UPDLOCK) — اگر مدیر دیگری در حال تأیید نهایی این تسویه است،
+                    // این کوئری تا پایان کار او منتظر می‌ماند و سپس وضعیت جدید را می‌خواند و بلاک می‌شود.
+                    const string sqlCheck = "SELECT STATUS FROM PAY2_SETTLEMENT WITH (UPDLOCK) WHERE SET_ID=@setId";
+                    var status = await conn.QuerySingleOrDefaultAsync<byte?>(sqlCheck, new { setId }, tran);
 
+                    if (!status.HasValue)
+                        throw new InvalidOperationException("تسویه حساب یافت نشد.");
+
+                    if (status.Value > 1)
+                        throw new InvalidOperationException("تسویه حساب تأیید نهایی شده است و قابل حذف نیست.");
+
+                    // حذف ایمن پیش‌نویس (غیرفعال‌سازی پرسنل در زمان Finalize انجام می‌شود، نه در محاسبه،
+                    // پس حذف پیش‌نویس نیازی به فعال‌سازی مجدد پرسنل ندارد.)
                     await conn.ExecuteAsync("DELETE FROM PAY2_SETTLEMENT WHERE SET_ID = @setId", new { setId }, tran);
-
-                    // برگرداندن پرسنل به حالت فعال (چون محاسبه تسویه باعث غیرفعال شدن او شده بود)
-                    await conn.ExecuteAsync("UPDATE PAY2_EMPLOYEE SET IS_ACTIVE = 1, FIRE_DATE = NULL WHERE EMP_ID = @empId", new { empId }, tran);
                 });
                 return Ok();
             }
-            catch (Exception ex)
+            catch (InvalidOperationException ex)
             {
                 return BadRequest(ex.Message);
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, "خطای سیستمی در حذف تسویه حساب. " + ex.Message);
             }
         }
 
@@ -1319,13 +1329,29 @@ namespace Safir.Server.Controllers
             {
                 await _db.ExecuteInTransactionAsync(async (conn, tran) =>
                 {
-                    // فقط تسویه‌هایی که تایید نهایی (۲) شده‌اند قابل برگشت به پیش‌نویس (۱) هستند
-                    int rows = await conn.ExecuteAsync(
+                    // فقط تسویه‌هایی که تایید نهایی (۲) شده‌اند قابل برگشت به پیش‌نویس (۱) هستند.
+                    // قفل ردیف تا پایان تراکنش (هماهنگ با UPDLOCK در Finalize/Delete).
+                    int? empId = await conn.QuerySingleOrDefaultAsync<int?>(
+                        "SELECT EMP_ID FROM PAY2_SETTLEMENT WITH (UPDLOCK) WHERE SET_ID = @setId AND STATUS = 2",
+                        new { setId }, tran);
+
+                    if (!empId.HasValue)
+                        throw new InvalidOperationException("تسویه حساب یافت نشد یا در وضعیتی نیست که قابل برگشت باشد.");
+
+                    await conn.ExecuteAsync(
                         "UPDATE PAY2_SETTLEMENT SET STATUS = 1, APPROVED_BY = NULL, APPROVED_AT = NULL WHERE SET_ID = @setId AND STATUS = 2",
                         new { setId }, tran);
 
-                    if (rows == 0)
-                        throw new InvalidOperationException("تسویه حساب یافت نشد یا در وضعیتی نیست که قابل برگشت باشد.");
+                    // 🚀 رفع حالت یتیم: غیرفعال‌سازی پرسنل و بستن وام‌ها در Finalize انجام شده،
+                    // پس در برگشت باید پرسنل دوباره فعال و وام‌های «بسته‌شده در تسویه» باز شوند.
+                    await conn.ExecuteAsync(
+                        "UPDATE PAY2_EMPLOYEE SET IS_ACTIVE = 1, FIRE_DATE = NULL WHERE EMP_ID = @empId",
+                        new { empId }, tran);
+
+                    await conn.ExecuteAsync(
+                        "UPDATE PAY2_LOAN SET IS_ACTIVE = 1, PURPOSE = REPLACE(ISNULL(PURPOSE, N''), N' (بسته‌شده در تسویه)', N'') " +
+                        "WHERE EMP_ID = @empId AND IS_ACTIVE = 0 AND PURPOSE LIKE N'%(بسته‌شده در تسویه)%'",
+                        new { empId }, tran);
                 });
                 return Ok();
             }
