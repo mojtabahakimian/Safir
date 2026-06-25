@@ -256,7 +256,7 @@ BEGIN
                     BEGIN
                         IF @SHIFT_MODE = 'FIXED'
                             -- حالت مبلغ ثابت: مانند سایر آیتم‌های روزانه با تناسب روز کارکرد
-                            SET @CALC_AMOUNT = CAST(@ITEM_AMOUNT * @PAY_DAYS / CAST(@MONTH_DAYS AS DECIMAL(5,2)) AS BIGINT);
+                            SET @CALC_AMOUNT = CAST(@ITEM_AMOUNT * (@PAY_DAYS / CAST(@MONTH_DAYS AS DECIMAL(5,2))) AS BIGINT);
                         ELSE
                         BEGIN
                             -- v6.1: درصدی از حقوق پایه «ماهیانه» (نرخ روزانه × 30) با تناسب روز کارکرد
@@ -267,7 +267,7 @@ BEGIN
                         END;
                     END;
                     ELSE
-                        SET @CALC_AMOUNT = CAST(@ITEM_AMOUNT * @PAY_DAYS / CAST(@MONTH_DAYS AS DECIMAL(5,2)) AS BIGINT);
+                        SET @CALC_AMOUNT = CAST(@ITEM_AMOUNT * @PAY_DAYS AS BIGINT);
                 END;
                 ELSE 
                     SET @CALC_AMOUNT = ISNULL(@ITEM_AMOUNT, 0);
