@@ -1465,9 +1465,9 @@ BEGIN
                     DECLARE @PAY_DAYS DECIMAL(18,6) = (CASE @ITEM_PBD WHEN 1 THEN @DAYS ELSE @DAYSB END) * @PRORATE_FACTOR;
                     DECLARE @BASE_DAYS_RAW DECIMAL(5,2) = (CASE @ITEM_PBD WHEN 1 THEN @DAYS ELSE @DAYSB END);
 
-                    -- 🛠 اصلاح باگ ۳۰برابری: مبلغ پایه ماهانه است و باید بر تعداد روز ماه تقسیم شود
+                    -- v6.3 (رفع باگ پایه): مبلغِ پایه نرخِ «روزانه» است (CALC_BASIS=1، مطابقِ فرمِ ثبتِ حکم که AMOUNT را در ۳۰ ضرب می‌کند)؛ ×30 آن را ماهانه می‌کند، سپس به‌نسبت کارکرد تسهیم می‌شود
                     IF @ITEM_CODE IN ('BASE_SAL', 'BASE_SAL_B')
-                        SET @CALC_AMOUNT = CAST(@ITEM_AMOUNT * @PAY_DAYS / CAST(@MONTH_DAYS AS DECIMAL(18,6)) AS BIGINT);
+                        SET @CALC_AMOUNT = CAST(@ITEM_AMOUNT * 30.0 * @PAY_DAYS / CAST(@MONTH_DAYS AS DECIMAL(18,6)) AS BIGINT);
 
                     ELSE IF @ITEM_CODE IN ('HOME','CHILDREN','GROCERY')
                     BEGIN
@@ -1486,8 +1486,8 @@ BEGIN
                         IF @SHIFT_MODE = 'FIXED'
                             SET @CALC_AMOUNT = CAST(@ITEM_AMOUNT * (@PAY_DAYS / CAST(@MONTH_DAYS AS DECIMAL(5,2))) AS BIGINT);
                         ELSE
-                            -- v6.2 (رفع باگ): @CURRENT_DEC_DAILY_BASE مقدارِ «ماهانه»‌ی پایه است (نه روزانه)؛ ضربِ نادرست در 30 حذف شد تا حق شیفتِ درصدی ۳۰برابر نشود
-                            SET @CALC_AMOUNT = CAST(ROUND((@CURRENT_DEC_DAILY_BASE * @ITEM_AMOUNT / 100.0) * (@PAY_DAYS / CAST(@MONTH_DAYS AS DECIMAL(5,2))), 0) AS BIGINT);
+                            -- v6.3 (اصلاح): @CURRENT_DEC_DAILY_BASE نرخِ «روزانه»‌ی پایه است؛ ×30 آن را ماهانه می‌کند تا حق شیفت = درصدی از حقوق پایهٔ ماهیانه شود (مطابقِ فرمِ ثبتِ حکم)
+                            SET @CALC_AMOUNT = CAST(ROUND((@CURRENT_DEC_DAILY_BASE * 30.0 * @ITEM_AMOUNT / 100.0) * (@PAY_DAYS / CAST(@MONTH_DAYS AS DECIMAL(5,2))), 0) AS BIGINT);
                     END
 
                     -- v6.1 (حفظ‌شده): مبنای ساعتی — آیتم‌های اضافه‌کار از ساعات کارکرد خودشان استفاده می‌کنند
@@ -1509,9 +1509,9 @@ BEGIN
                             ELSE CAST(@ITEM_AMOUNT * @PRORATE_FACTOR AS BIGINT)
                         END;
 
-                    -- 🛠 اصلاح باگ ۳۰برابری: آیتم‌های روزانهٔ مبلغ‌ماهانه بر تعداد روز ماه تقسیم می‌شوند
+                    -- v6.3 (رفع باگ پایه): آیتم‌های روزانه (basis=1) — نرخِ روزانه ×30 = ماهانه، سپس تسهیم به‌نسبت کارکرد
                     ELSE IF @ITEM_BASIS = 1
-                        SET @CALC_AMOUNT = CAST(@ITEM_AMOUNT * @PAY_DAYS / CAST(@MONTH_DAYS AS DECIMAL(18,6)) AS BIGINT);
+                        SET @CALC_AMOUNT = CAST(@ITEM_AMOUNT * 30.0 * @PAY_DAYS / CAST(@MONTH_DAYS AS DECIMAL(18,6)) AS BIGINT);
 
                     ELSE
                         SET @CALC_AMOUNT = ISNULL(@ITEM_AMOUNT, 0);
@@ -1539,13 +1539,13 @@ BEGIN
         END
         ELSE IF @OT_HOUR_BASE > 0
         BEGIN
-            -- Fallback: مبلغ پایه ماهانه از آخرین حکم؛ تقسیم بر MONTH_DAYS برای رسیدن به نرخ روزانه (اصلاح باگ ۳۰برابری)
+            -- v6.3 (رفع باگ پایه): @FALLBACK نرخِ «روزانه»‌ی پایه از آخرین حکم است؛ ×30 → ماهانه، ÷MONTH_DAYS → روزانه، ÷ساعت‌کاری → نرخ ساعتی
             DECLARE @FALLBACK_MONTHLY_BASE BIGINT = 0;
             SELECT TOP 1 @FALLBACK_MONTHLY_BASE = CAST(DL.AMOUNT AS BIGINT)
             FROM PAY2_DECREE D INNER JOIN PAY2_DECREE_LINE DL ON D.DEC_ID = DL.DEC_ID INNER JOIN PAY2_ITEM_DEF ID ON DL.ITEM_ID = ID.ITEM_ID
             WHERE D.EMP_ID = @EMP_ID AND D.IS_CONFIRMED = 1 AND ID.ITEM_CODE IN ('BASE_SAL', 'BASE_SAL_B') ORDER BY D.EFF_FROM DESC;
 
-            SET @EFFECTIVE_HOURLY = ISNULL((CAST(@FALLBACK_MONTHLY_BASE AS DECIMAL(18,2)) / CAST(@MONTH_DAYS AS DECIMAL(18,6))) / NULLIF(@OT_HOUR_BASE, 0), 0);
+            SET @EFFECTIVE_HOURLY = ISNULL((CAST(@FALLBACK_MONTHLY_BASE AS DECIMAL(18,2)) * 30.0 / CAST(@MONTH_DAYS AS DECIMAL(18,6))) / NULLIF(@OT_HOUR_BASE, 0), 0);
         END
 
         IF @OT_NORMAL_H > 0 AND NOT EXISTS (SELECT 1 FROM @ItemCalc WHERE ITEM_CODE = 'OT_NORMAL')
