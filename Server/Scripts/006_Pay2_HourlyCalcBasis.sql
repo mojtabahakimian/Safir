@@ -260,10 +260,10 @@ BEGIN
                         ELSE
                         BEGIN
                             -- v6.1: درصدی از حقوق پایه «ماهیانه» (نرخ روزانه × 30) با تناسب روز کارکرد
-                            -- @BASE_SAL_B محاسبه‌شده = نرخ روزانه × DAYSB ÷ 30  →  ضرب در @MONTH_DAYS = نرخ روزانه × DAYSB
+                            -- @BASE_SAL_B محاسبه‌شده = نرخ روزانه × DAYSB  →  درست محاسبه شده
                             -- NOTE: این منطق در Server/Info/PAY2_Procedures_v6.sql هم وجود دارد؛ تغییر باید در هر دو فایل اعمال شود
                             DECLARE @BASE_SAL_B BIGINT = ISNULL((SELECT TOP 1 AMOUNT FROM #ItemCalc WHERE ITEM_CODE = 'BASE_SAL_B'), 0);
-                            SET @CALC_AMOUNT = CAST(ROUND(@BASE_SAL_B * @MONTH_DAYS * @ITEM_AMOUNT / 100.0, 0) AS BIGINT);
+                            SET @CALC_AMOUNT = CAST(ROUND(@BASE_SAL_B * @ITEM_AMOUNT / 100.0, 0) AS BIGINT);
                         END;
                     END;
                     ELSE
@@ -286,25 +286,28 @@ BEGIN
         -- گام ۶ — افزودن آیتم‌های متغیر
         -- v6.1: اگر آیتم اضافه‌کار به صورت صریح در حکم تعریف شده باشد (مثلاً با نرخ ساعتی)،
         -- محاسبه خودکار آن از روی حقوق پایه انجام نمی‌شود تا دوبار منظور نگردد
-        DECLARE @BASE_SAL_DAILY BIGINT = ISNULL((SELECT TOP 1 AMOUNT FROM #ItemCalc WHERE ITEM_CODE = 'BASE_SAL' OR ITEM_CODE = 'BASE_SAL_B'), 0);
+        DECLARE @BASE_SAL_IN_MONTH BIGINT = ISNULL((SELECT TOP 1 AMOUNT FROM #ItemCalc WHERE ITEM_CODE = 'BASE_SAL' OR ITEM_CODE = 'BASE_SAL_B'), 0);
+        DECLARE @EFFECTIVE_HOURLY DECIMAL(18,2) = 0;
+        IF @DAYSB > 0 AND @OT_HOUR_BASE > 0
+            SET @EFFECTIVE_HOURLY = ISNULL((CAST(@BASE_SAL_IN_MONTH AS DECIMAL(18,2)) / @DAYSB) / NULLIF(@OT_HOUR_BASE, 0), 0);
 
         IF @OT_NORMAL_H > 0 AND NOT EXISTS (SELECT 1 FROM #ItemCalc WHERE ITEM_CODE = 'OT_NORMAL')
         BEGIN
-            DECLARE @OT_NORMAL_AMT BIGINT = ISNULL(CAST(@BASE_SAL_DAILY / (@MONTH_DAYS * @OT_HOUR_BASE) * @OT_NORMAL_H * @OT_NORMAL_MULT AS BIGINT), 0);
+            DECLARE @OT_NORMAL_AMT BIGINT = ISNULL(CAST(@EFFECTIVE_HOURLY * @OT_NORMAL_H * @OT_NORMAL_MULT AS BIGINT), 0);
             INSERT INTO #ItemCalc (ITEM_ID, ITEM_CODE, ITEM_TYPE, AMOUNT, INS_SUBJECT, TAX_SUBJECT)
             SELECT ITEM_ID, 'OT_NORMAL', 2, @OT_NORMAL_AMT, INS_SUBJECT, TAX_SUBJECT FROM PAY2_ITEM_DEF WHERE ITEM_CODE = 'OT_NORMAL';
         END;
 
         IF @OT_HOLIDAY_H > 0 AND NOT EXISTS (SELECT 1 FROM #ItemCalc WHERE ITEM_CODE = 'OT_HOLIDAY')
         BEGIN
-            DECLARE @OT_HOLIDAY_AMT BIGINT = ISNULL(CAST(@BASE_SAL_DAILY / (@MONTH_DAYS * @OT_HOUR_BASE) * @OT_HOLIDAY_H * @OT_HOLIDAY_MULT AS BIGINT), 0);
+            DECLARE @OT_HOLIDAY_AMT BIGINT = ISNULL(CAST(@EFFECTIVE_HOURLY * @OT_HOLIDAY_H * @OT_HOLIDAY_MULT AS BIGINT), 0);
             INSERT INTO #ItemCalc (ITEM_ID, ITEM_CODE, ITEM_TYPE, AMOUNT, INS_SUBJECT, TAX_SUBJECT)
             SELECT ITEM_ID, 'OT_HOLIDAY', 2, @OT_HOLIDAY_AMT, INS_SUBJECT, TAX_SUBJECT FROM PAY2_ITEM_DEF WHERE ITEM_CODE = 'OT_HOLIDAY';
         END;
 
         IF @OT_ADMIN_H > 0 AND NOT EXISTS (SELECT 1 FROM #ItemCalc WHERE ITEM_CODE = 'OT_ADMIN')
         BEGIN
-            DECLARE @OT_ADMIN_AMT BIGINT = ISNULL(CAST(@BASE_SAL_DAILY / (@MONTH_DAYS * @OT_HOUR_BASE) * @OT_ADMIN_H * @OT_NORMAL_MULT AS BIGINT), 0);
+            DECLARE @OT_ADMIN_AMT BIGINT = ISNULL(CAST(@EFFECTIVE_HOURLY * @OT_ADMIN_H * @OT_NORMAL_MULT AS BIGINT), 0);
             INSERT INTO #ItemCalc (ITEM_ID, ITEM_CODE, ITEM_TYPE, AMOUNT, INS_SUBJECT, TAX_SUBJECT)
             SELECT ITEM_ID, 'OT_ADMIN', 2, @OT_ADMIN_AMT, INS_SUBJECT, TAX_SUBJECT FROM PAY2_ITEM_DEF WHERE ITEM_CODE = 'OT_ADMIN';
         END;
