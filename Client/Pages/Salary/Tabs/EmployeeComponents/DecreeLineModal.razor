@@ -66,18 +66,51 @@
                                         Disabled="@(IsEditing || IsDecreeConfirmed)" />
                         </div>
                         <div class="form-field">
-                            <label>@(IsShiftPctItem ? "درصد از حقوق پایه ماهیانه (٪) *" : "مبلغ در این حکم (ریال) *")</label>
-                            <Pay2NumericInput @bind-Value="CurrentAmountStr" @bind-Value:after="OnAmountManuallyChanged"
-                                              MaxLength="@(IsShiftPctItem ? 3 : 16)" Direction="ltr"
-                                              InputMode="@(IsShiftPctItem ? Pay2NumericInput.NumericInputMode.Percentage : Pay2NumericInput.NumericInputMode.None)"
-                                              MaxDecimalPlaces="@(IsShiftPctItem ? 2 : 0)"
-                                              IsDigitGroupActive="@(!IsShiftPctItem)" ThreeTwoZero="@(!IsShiftPctItem)"
-                                              Placeholder="@(IsShiftPctItem ? "مثال: 10.5" : null)"
-                                              ToolTip="@(IsShiftPctItem ? "حق شیفت به صورت درصدی از حقوق پایه ماهیانه (نرخ روزانه × ۳۰) محاسبه می‌شود — عدد درصد را وارد کنید (اعشار هم مجاز است)" : null)"
-                                              Disabled="@IsDecreeConfirmed" />
-                            @if (IsShiftPctItem && !string.IsNullOrWhiteSpace(ShiftHint))
+                            @if (IsShiftPctItem)
                             {
-                                <div style="font-size:11px; color:var(--p2-text-muted); margin-top:4px;">@ShiftHint</div>
+                                <label style="color:var(--pay2-primary);">درصد حق شیفت (٪) <span style="color:var(--pay2-danger);">*</span></label>
+                                <Pay2NumericInput @bind-Value="CurrentAmountStr" @bind-Value:after="OnAmountManuallyChanged"
+                                                  MaxLength="5" Direction="ltr"
+                                                  InputMode="Pay2NumericInput.NumericInputMode.Percentage"
+                                                  MaxDecimalPlaces="2"
+                                                  IsDigitGroupActive="false" ThreeTwoZero="false"
+                                                  Placeholder="مثال: 15 یا 22.5"
+                                                  ToolTip="درصد وارد کنید. در زمان محاسبه این درصد در حقوق پایه روزانه فرد ضرب خواهد شد"
+                                                  Disabled="@IsDecreeConfirmed" />
+                                <div style="font-size:11px; color:#64748b; margin-top:4px; padding-right:4px;">
+                                    درصد وارد کنید. (محاسبه درصدی از پایه روزانه × کارکرد)
+                                </div>
+                                @if (!string.IsNullOrWhiteSpace(ShiftHint))
+                                {
+                                    <div class="hint-text mt-1 text-success" style="font-size:11px;">
+                                        <i class="bi bi-info-circle-fill me-1"></i> @ShiftHint
+                                    </div>
+                                }
+                            }
+                            else if (IsShiftFixedItem)
+                            {
+                                <label style="color:var(--pay2-primary);">مبلغ حق شیفت ماهانه (ریال) <span style="color:var(--pay2-danger);">*</span></label>
+                                <Pay2NumericInput @bind-Value="CurrentAmountStr" @bind-Value:after="OnAmountManuallyChanged"
+                                                  MaxLength="16" Direction="ltr"
+                                                  InputMode="Pay2NumericInput.NumericInputMode.None"
+                                                  MaxDecimalPlaces="0"
+                                                  IsDigitGroupActive="true" ThreeTwoZero="true"
+                                                  Placeholder="مبلغ ماه کامل به ریال"
+                                                  ToolTip="مبلغ ثابت ماهانه حق شیفت را وارد کنید. سیستم این مبلغ را بر اساس کارکرد ماه پرو-راتا خواهد کرد."
+                                                  Disabled="@IsDecreeConfirmed" />
+                                <div style="font-size:11px; color:#64748b; margin-top:4px; padding-right:4px;">
+                                    مبلغ ثابت ماهانه وارد کنید. (نسبت به کارکرد پرداخت خواهد شد)
+                                </div>
+                            }
+                            else
+                            {
+                                <label>مبلغ در این حکم (ریال) <span style="color:var(--pay2-danger);">*</span></label>
+                                <Pay2NumericInput @bind-Value="CurrentAmountStr" @bind-Value:after="OnAmountManuallyChanged"
+                                                  MaxLength="16" Direction="ltr"
+                                                  InputMode="Pay2NumericInput.NumericInputMode.None"
+                                                  MaxDecimalPlaces="0"
+                                                  IsDigitGroupActive="true" ThreeTwoZero="true"
+                                                  Disabled="@IsDecreeConfirmed" />
                             }
                         </div>
                         @if (!IsShiftPctItem && IsMonthlyBasisSelected)
@@ -228,6 +261,8 @@
 
     // در حالت PCT، موتور محاسبه (SP_PAY2_CALC_RUN) مبلغ آیتم SHIFT را «درصد» تفسیر می‌کند
     bool IsShiftPctItem => IsShiftPctLine(CurrentLine);
+
+    bool IsShiftFixedItem => SelectedDef?.ITEM_CODE == "SHIFT" && _shiftMode == "FIXED";
 
     // کمک‌محاسبه درصد فقط برای آیتم‌هایی که مبنای مؤثرشان ماهیانه است (مبلغ = ریالِ کامل ماه)
     bool IsMonthlyBasisSelected => SelectedDef != null && (CurrentLine.BASIS_OV ?? SelectedDef.CALC_BASIS) == 2;
