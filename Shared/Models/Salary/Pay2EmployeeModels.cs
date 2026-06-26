@@ -53,6 +53,7 @@
         public bool IS_MANAGER { get; set; } = false;
         public int? TMPL_ID { get; set; }
         public bool IS_CONFIRMED { get; set; } = false;
+        public string? SHIFT_MODE { get; set; }
         public string? NOTES { get; set; }
         public string? TemplateName { get; set; }
     }
@@ -70,6 +71,7 @@
         public bool? INS_OV { get; set; }
         public bool? TAX_OV { get; set; }
         public byte? BASIS_OV { get; set; }
+        public string? SHIFT_MODE_OV { get; set; }
 
         // 👇 تغییر عدد 0 به 3 برای رفع مشکل خالی شدن کمبوباکس در Blazor
         public int InsCombo
@@ -270,6 +272,7 @@
         public bool? INS_OV { get; set; }
         public bool? TAX_OV { get; set; }
         public byte? BASIS_OV { get; set; }
+        public string? SHIFT_MODE_OV { get; set; }
 
         // پراپرتی‌های کمکی برای بایندینگ به کامبوباکسِ Pay2Select در UI
         public int InsCombo { get => INS_OV == null ? 3 : (INS_OV == true ? 1 : 2); set => INS_OV = value == 3 ? (bool?)null : (value == 1); }

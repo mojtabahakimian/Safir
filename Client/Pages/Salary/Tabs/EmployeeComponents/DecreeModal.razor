@@ -35,6 +35,14 @@
                     <label>تاریخ پایان اجرا</label>
                     <Pay2NumericInput @bind-Value="EffToStr" InputMode="Pay2NumericInput.NumericInputMode.PersianDate" Direction="ltr" Placeholder="خالی = تا حکم بعدی" />
                 </div>
+                                <div class="form-field">
+                    <label>محاسبه حق شیفت</label>
+                    <select class="pay2-input" @bind="CurrentDecree.SHIFT_MODE">
+                        <option value="">تابع کارگاه/سیستم (پیش‌فرض)</option>
+                        <option value="PCT">درصدی</option>
+                        <option value="FIXED">مبلغ ثابت</option>
+                    </select>
+                </div>
                 <div class="form-field">
                     <label>استفاده از قالب (ایجاد خودکار آیتم‌ها)</label>
                     <Pay2Select TItem="LookupDto<int>" TValue="int?" Items="Templates" @bind-Value="CurrentDecree.TMPL_ID" TextSelector="x => x.Name" ValueSelector="x => x.Id" Placeholder="— انتخاب کنید —" Clearable="true" />
@@ -154,6 +162,8 @@
     <!-- فراخوانی مدال اقلام ریالی -->
     <DecreeLineModal IsOpen="ShowDecreeLineModal"
                      DecreeId="SelectedDecForLine.DEC_ID"
+                     EmployeeId="EmployeeId"
+                     WorkshopId="WorkshopId"
                      DecreeDate="SelectedDecForLine.EFF_FROM"
                      IsDecreeConfirmed="SelectedDecForLine.IS_CONFIRMED"
                      OnClose="CloseDecreeLineModal" />

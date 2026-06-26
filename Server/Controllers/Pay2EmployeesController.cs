@@ -164,6 +164,7 @@ namespace Safir.Server.Controllers
                 var decId = await _db.ExecuteInTransactionAsync(async (conn, tran) =>
                 {
                     int currentDecId = decree.DEC_ID;
+                    decree.SHIFT_MODE = string.IsNullOrWhiteSpace(decree.SHIFT_MODE) ? null : decree.SHIFT_MODE;
 
                     if (currentDecId == 0) // درج جدید
                     {
@@ -177,9 +178,9 @@ namespace Safir.Server.Controllers
                         await conn.ExecuteAsync(closePrevSql, new { PrevTo = prevTo, EmpId = decree.EMP_ID, NewFrom = decree.EFF_FROM }, tran);
 
                         const string insertSql = @"
-                    INSERT INTO PAY2_DECREE (EMP_ID, WS_ID, ISSUED_DATE, EFF_FROM, EFF_TO, EDU_LEVEL, MARITAL, IS_MANAGER, TMPL_ID, IS_CONFIRMED, CREATED_AT, CREATED_BY, NOTES)
+                    INSERT INTO PAY2_DECREE (EMP_ID, WS_ID, ISSUED_DATE, EFF_FROM, EFF_TO, EDU_LEVEL, MARITAL, IS_MANAGER, TMPL_ID, IS_CONFIRMED, CREATED_AT, CREATED_BY, NOTES, SHIFT_MODE)
                     OUTPUT INSERTED.DEC_ID
-                    VALUES (@EMP_ID, @WS_ID, @ISSUED_DATE, @EFF_FROM, @EFF_TO, @EDU_LEVEL, @MARITAL, @IS_MANAGER, @TMPL_ID, @IS_CONFIRMED, GETDATE(), @User, @NOTES)";
+                    VALUES (@EMP_ID, @WS_ID, @ISSUED_DATE, @EFF_FROM, @EFF_TO, @EDU_LEVEL, @MARITAL, @IS_MANAGER, @TMPL_ID, @IS_CONFIRMED, GETDATE(), @User, @NOTES, @SHIFT_MODE)";
 
                         var p = new DynamicParameters(decree);
                         p.Add("User", userCod);
@@ -189,8 +190,8 @@ namespace Safir.Server.Controllers
                         if (decree.TMPL_ID.HasValue && decree.TMPL_ID > 0)
                         {
                             string sqlLines = @"
-                        INSERT INTO PAY2_DECREE_LINE (DEC_ID, ITEM_ID, AMOUNT, INS_OV, TAX_OV, BASIS_OV)
-                        SELECT @NewDecId, ITEM_ID, DEF_AMOUNT, INS_OV, TAX_OV, BASIS_OV
+                        INSERT INTO PAY2_DECREE_LINE (DEC_ID, ITEM_ID, AMOUNT, INS_OV, TAX_OV, BASIS_OV, SHIFT_MODE_OV)
+                        SELECT @NewDecId, ITEM_ID, DEF_AMOUNT, INS_OV, TAX_OV, BASIS_OV, SHIFT_MODE_OV
                         FROM PAY2_ITEM_TMPL_LINE WHERE TMPL_ID = @TmplId";
                             await conn.ExecuteAsync(sqlLines, new { NewDecId = currentDecId, TmplId = decree.TMPL_ID.Value }, tran);
                         }
@@ -262,7 +263,7 @@ namespace Safir.Server.Controllers
                         UPDATE PAY2_DECREE
                         SET ISSUED_DATE=@ISSUED_DATE, EFF_FROM=@EFF_FROM, EFF_TO=@EFF_TO,
                             EDU_LEVEL=@EDU_LEVEL, MARITAL=@MARITAL, IS_MANAGER=@IS_MANAGER,
-                            IS_CONFIRMED=@IS_CONFIRMED, NOTES=@NOTES
+                            IS_CONFIRMED=@IS_CONFIRMED, NOTES=@NOTES, SHIFT_MODE=@SHIFT_MODE
                         WHERE DEC_ID=@DEC_ID";
                             await conn.ExecuteAsync(updateSql, decree, tran);
                         }
@@ -333,7 +334,7 @@ namespace Safir.Server.Controllers
         public async Task<ActionResult<IEnumerable<Pay2DecreeLineDto>>> GetDecreeLines(int decId)
         {
             const string sql = @"
-                SELECT L.DEC_ID, L.ITEM_ID, I.ITEM_NAME, L.AMOUNT, L.INS_OV, L.TAX_OV, L.BASIS_OV
+                SELECT L.DEC_ID, L.ITEM_ID, I.ITEM_NAME, L.AMOUNT, L.INS_OV, L.TAX_OV, L.BASIS_OV, L.SHIFT_MODE_OV
                 FROM PAY2_DECREE_LINE L
                 INNER JOIN PAY2_ITEM_DEF I ON L.ITEM_ID = I.ITEM_ID
                 WHERE L.DEC_ID = @decId
@@ -349,6 +350,7 @@ namespace Safir.Server.Controllers
             {
                 await _db.ExecuteInTransactionAsync(async (conn, tran) =>
                 {
+                    line.SHIFT_MODE_OV = string.IsNullOrWhiteSpace(line.SHIFT_MODE_OV) ? null : line.SHIFT_MODE_OV;
                     var decHeader = await conn.QuerySingleOrDefaultAsync(
                         "SELECT IS_CONFIRMED FROM PAY2_DECREE WHERE DEC_ID = @DEC_ID", new { line.DEC_ID }, tran)
                         ?? throw new KeyNotFoundException();
@@ -372,7 +374,7 @@ namespace Safir.Server.Controllers
                     // اعتبارسنجی: مقدار اعشاری فقط برای آیتم حق شیفت درصدی مجاز است
                     if (line.AMOUNT != Math.Truncate(line.AMOUNT))
                     {
-                        bool isShiftPct = await IsShiftPctItemAsync(conn, tran, line.ITEM_ID);
+                        bool isShiftPct = await IsShiftPctItemAsync(conn, tran, line.ITEM_ID, decId: line.DEC_ID, tmplId: null, shiftModeOv: line.SHIFT_MODE_OV);
                         if (!isShiftPct)
                             throw new InvalidOperationException("مبلغ اعشاری فقط برای آیتم «حق شیفت درصدی» مجاز است.");
                     }
@@ -383,14 +385,14 @@ namespace Safir.Server.Controllers
 
                     if (count == 0)
                     {
-                        const string insertSql = @"INSERT INTO PAY2_DECREE_LINE (DEC_ID, ITEM_ID, AMOUNT, INS_OV, TAX_OV, BASIS_OV)
-                                           VALUES (@DEC_ID, @ITEM_ID, @AMOUNT, @INS_OV, @TAX_OV, @BASIS_OV)";
+                        const string insertSql = @"INSERT INTO PAY2_DECREE_LINE (DEC_ID, ITEM_ID, AMOUNT, INS_OV, TAX_OV, BASIS_OV, SHIFT_MODE_OV)
+                                           VALUES (@DEC_ID, @ITEM_ID, @AMOUNT, @INS_OV, @TAX_OV, @BASIS_OV, @SHIFT_MODE_OV)";
                         await conn.ExecuteAsync(insertSql, line, tran);
                     }
                     else
                     {
                         const string updateSql = @"UPDATE PAY2_DECREE_LINE 
-                                           SET AMOUNT=@AMOUNT, INS_OV=@INS_OV, TAX_OV=@TAX_OV, BASIS_OV=@BASIS_OV
+                                           SET AMOUNT=@AMOUNT, INS_OV=@INS_OV, TAX_OV=@TAX_OV, BASIS_OV=@BASIS_OV, SHIFT_MODE_OV=@SHIFT_MODE_OV
                                            WHERE DEC_ID=@DEC_ID AND ITEM_ID=@ITEM_ID";
                         await conn.ExecuteAsync(updateSql, line, tran);
                     }
@@ -1098,7 +1100,7 @@ namespace Safir.Server.Controllers
         [HttpGet("template/{tmplId:int}/lines")]
         public async Task<ActionResult<IEnumerable<Pay2ItemTmplLineDto>>> GetTemplateLines(int tmplId)
         {
-            const string sql = @"SELECT L.TMPL_ID, L.ITEM_ID, I.ITEM_NAME, L.DEF_AMOUNT, L.INS_OV, L.TAX_OV, L.BASIS_OV
+            const string sql = @"SELECT L.TMPL_ID, L.ITEM_ID, I.ITEM_NAME, L.DEF_AMOUNT, L.INS_OV, L.TAX_OV, L.BASIS_OV, L.SHIFT_MODE_OV
                          FROM PAY2_ITEM_TMPL_LINE L
                          INNER JOIN PAY2_ITEM_DEF I ON L.ITEM_ID = I.ITEM_ID
                          WHERE L.TMPL_ID = @tmplId
@@ -1114,9 +1116,10 @@ namespace Safir.Server.Controllers
                 await _db.ExecuteInTransactionAsync(async (conn, tran) =>
                 {
                     // اعتبارسنجی: مقدار اعشاری فقط برای آیتم حق شیفت درصدی مجاز است
+                    line.SHIFT_MODE_OV = string.IsNullOrWhiteSpace(line.SHIFT_MODE_OV) ? null : line.SHIFT_MODE_OV;
                     if (line.DEF_AMOUNT != Math.Truncate(line.DEF_AMOUNT))
                     {
-                        bool isShiftPct = await IsShiftPctItemAsync(conn, tran, line.ITEM_ID);
+                        bool isShiftPct = await IsShiftPctItemAsync(conn, tran, line.ITEM_ID, decId: null, tmplId: line.TMPL_ID, shiftModeOv: line.SHIFT_MODE_OV);
                         if (!isShiftPct)
                             throw new InvalidOperationException("مبلغ اعشاری فقط برای آیتم «حق شیفت درصدی» مجاز است.");
                     }
@@ -1125,14 +1128,14 @@ namespace Safir.Server.Controllers
 
                     if (count == 0)
                     {
-                        const string insertSql = @"INSERT INTO PAY2_ITEM_TMPL_LINE (TMPL_ID, ITEM_ID, DEF_AMOUNT, INS_OV, TAX_OV, BASIS_OV)
-                                           VALUES (@TMPL_ID, @ITEM_ID, @DEF_AMOUNT, @INS_OV, @TAX_OV, @BASIS_OV)";
+                        const string insertSql = @"INSERT INTO PAY2_ITEM_TMPL_LINE (TMPL_ID, ITEM_ID, DEF_AMOUNT, INS_OV, TAX_OV, BASIS_OV, SHIFT_MODE_OV)
+                                           VALUES (@TMPL_ID, @ITEM_ID, @DEF_AMOUNT, @INS_OV, @TAX_OV, @BASIS_OV, @SHIFT_MODE_OV)";
                         await conn.ExecuteAsync(insertSql, line, tran);
                     }
                     else
                     {
                         const string updateSql = @"UPDATE PAY2_ITEM_TMPL_LINE 
-                                           SET DEF_AMOUNT=@DEF_AMOUNT, INS_OV=@INS_OV, TAX_OV=@TAX_OV, BASIS_OV=@BASIS_OV
+                                           SET DEF_AMOUNT=@DEF_AMOUNT, INS_OV=@INS_OV, TAX_OV=@TAX_OV, BASIS_OV=@BASIS_OV, SHIFT_MODE_OV=@SHIFT_MODE_OV
                                            WHERE TMPL_ID=@TMPL_ID AND ITEM_ID=@ITEM_ID";
                         await conn.ExecuteAsync(updateSql, line, tran);
                     }
@@ -1307,16 +1310,90 @@ namespace Safir.Server.Controllers
             catch (Exception ex) { return BadRequest(ex.Message); }
         }
 
-        private static async Task<bool> IsShiftPctItemAsync(IDbConnection conn, IDbTransaction tran, int itemId)
+
+        [HttpGet("effective-shift-mode")]
+        public async Task<ActionResult<string>> GetEffectiveShiftModeAsync([FromQuery] int? decId, [FromQuery] int? tmplId, [FromQuery] int? wsId)
+        {
+            try
+            {
+                string globalShiftMode = "PCT";
+                string? wsShiftMode = null;
+                string? empShiftMode = null;
+
+                await _db.ExecuteInTransactionAsync(async (conn, tran) =>
+                {
+                    globalShiftMode = await conn.QueryFirstOrDefaultAsync<string>("SELECT CFG_VALUE FROM PAY2_CONFIG WHERE CFG_KEY = 'SHIFT_MODE'", null, tran) ?? "PCT";
+
+                    if (decId.HasValue)
+                    {
+                        var decInfo = await conn.QueryFirstOrDefaultAsync<dynamic>("SELECT D.SHIFT_MODE AS DecShiftMode, W.SHIFT_MODE AS WsShiftMode FROM PAY2_DECREE D LEFT JOIN PAY2_WORKSHOP W ON D.WS_ID = W.WS_ID WHERE D.DEC_ID = @decId", new { decId }, tran);
+                        if (decInfo != null)
+                        {
+                            empShiftMode = decInfo.DecShiftMode;
+                            wsShiftMode = decInfo.WsShiftMode;
+                        }
+                    }
+                    else if (tmplId.HasValue)
+                    {
+                        var tmplInfo = await conn.QueryFirstOrDefaultAsync<dynamic>("SELECT W.SHIFT_MODE AS WsShiftMode FROM PAY2_ITEM_TEMPLATE T LEFT JOIN PAY2_WORKSHOP W ON T.WS_ID = W.WS_ID WHERE T.TMPL_ID = @tmplId", new { tmplId }, tran);
+                        if (tmplInfo != null)
+                        {
+                            wsShiftMode = tmplInfo.WsShiftMode;
+                        }
+                    }
+                    else if (wsId.HasValue)
+                    {
+                        wsShiftMode = await conn.QueryFirstOrDefaultAsync<string>("SELECT SHIFT_MODE FROM PAY2_WORKSHOP WHERE WS_ID = @wsId", new { wsId }, tran);
+                    }
+                });
+
+                string effectiveMode = empShiftMode ?? wsShiftMode ?? globalShiftMode;
+                return Ok(effectiveMode);
+            }
+            catch (Exception ex) { return BadRequest(ex.Message); }
+        }
+
+        private static async Task<bool> IsShiftPctItemAsync(IDbConnection conn, IDbTransaction tran, int itemId, int? decId = null, int? tmplId = null, string? shiftModeOv = null)
         {
             string? itemCode = await conn.QuerySingleOrDefaultAsync<string>(
                 "SELECT ITEM_CODE FROM PAY2_ITEM_DEF WHERE ITEM_ID = @itemId", new { itemId }, tran);
             if (!string.Equals(itemCode, "SHIFT", StringComparison.OrdinalIgnoreCase))
                 return false;
 
-            string? shiftMode = await conn.QuerySingleOrDefaultAsync<string>(
+            if (!string.IsNullOrWhiteSpace(shiftModeOv))
+                return !string.Equals(shiftModeOv, "FIXED", StringComparison.OrdinalIgnoreCase);
+
+            string? empShiftMode = null;
+            string? wsShiftMode = null;
+
+            if (decId.HasValue)
+            {
+                var row = await conn.QueryFirstOrDefaultAsync(
+                    "SELECT D.SHIFT_MODE AS DecShiftMode, W.SHIFT_MODE AS WsShiftMode FROM PAY2_DECREE D LEFT JOIN PAY2_WORKSHOP W ON D.WS_ID = W.WS_ID WHERE D.DEC_ID = @decId", new { decId }, tran);
+                if (row != null)
+                {
+                    empShiftMode = row.DecShiftMode;
+                    wsShiftMode = row.WsShiftMode;
+                }
+            }
+            else if (tmplId.HasValue)
+            {
+                var row = await conn.QueryFirstOrDefaultAsync(
+                    "SELECT W.SHIFT_MODE AS WsShiftMode FROM PAY2_ITEM_TEMPLATE T LEFT JOIN PAY2_WORKSHOP W ON T.WS_ID = W.WS_ID WHERE T.TMPL_ID = @tmplId", new { tmplId }, tran);
+                if (row != null)
+                {
+                    wsShiftMode = row.WsShiftMode;
+                }
+            }
+
+            string? globalShiftMode = await conn.QuerySingleOrDefaultAsync<string>(
                 "SELECT CFG_VALUE FROM PAY2_CONFIG WHERE CFG_KEY = 'SHIFT_MODE'", null, tran);
-            return !string.Equals(shiftMode, "FIXED", StringComparison.OrdinalIgnoreCase);
+
+            string effectiveMode = string.IsNullOrWhiteSpace(empShiftMode) ?
+                (string.IsNullOrWhiteSpace(wsShiftMode) ? (string.IsNullOrWhiteSpace(globalShiftMode) ? "PCT" : globalShiftMode) : wsShiftMode)
+                : empShiftMode;
+
+            return !string.Equals(effectiveMode, "FIXED", StringComparison.OrdinalIgnoreCase);
         }
 
         [HttpPut("settlement/{setId:int}/revert")]

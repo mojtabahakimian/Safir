@@ -283,7 +283,8 @@ CREATE TABLE [dbo].[PAY2_WORKSHOP]
 (
     [WS_ID]           INT           NOT NULL IDENTITY(1,1),
     [WS_CODE]         NVARCHAR(20)  NOT NULL,                                    -- کد کارگاه (مرجع TAGCOD.CODE در صورت مهاجرت)
-    [WS_NAME]         NVARCHAR(100) NOT NULL,                                    -- نام کارگاه
+    [WS_NAME]         NVARCHAR(100) NOT NULL,
+    [SHIFT_MODE]      NVARCHAR(10)  NULL,                                    -- نام کارگاه
     [EMPLOYER_NAME]   NVARCHAR(100) NULL,                                        -- نام کارفرما (فیلد جدید v6)
     [NATIONAL_ID]     NVARCHAR(11)  NULL,                                        -- شناسه ملی کارگاه
     [SOCIAL_INS_CODE] NVARCHAR(20)  NULL,                                        -- کد کارگاه نزد تأمین اجتماعی
@@ -531,6 +532,7 @@ CREATE TABLE [dbo].[PAY2_ITEM_TMPL_LINE]
     [INS_OV]    BIT      NULL,                                               -- NULL=از تعریف آیتم
     [TAX_OV]    BIT      NULL,
     [BASIS_OV]  TINYINT  NULL,
+    [SHIFT_MODE_OV] NVARCHAR(10) NULL,
 
     CONSTRAINT PK_PAY2_TMPL_LINE PRIMARY KEY ([TMPL_ID], [ITEM_ID]),
     CONSTRAINT FK_TL_TMPL FOREIGN KEY ([TMPL_ID]) REFERENCES [PAY2_ITEM_TEMPLATE]([TMPL_ID]) ON DELETE CASCADE,
@@ -550,7 +552,8 @@ CREATE TABLE [dbo].[PAY2_DECREE]
     [DEC_ID]       INT           NOT NULL IDENTITY(1,1),
     [EMP_ID]       INT           NOT NULL,
     [WS_ID]        INT           NOT NULL,
-    [ISSUED_DATE]  BIGINT        NOT NULL,                                   -- تاریخ صدور شمسی
+    [ISSUED_DATE]  BIGINT        NOT NULL,
+    [SHIFT_MODE]   NVARCHAR(10)  NULL,                                   -- تاریخ صدور شمسی
     [EFF_FROM]     BIGINT        NOT NULL,                                   -- تاریخ شروع اجرا (شمسی)
     [EFF_TO]       BIGINT        NULL,                                       -- پایان اجرا (NULL=تا حکم بعدی)
     [EDU_LEVEL]    TINYINT       NULL,
@@ -585,6 +588,7 @@ CREATE TABLE [dbo].[PAY2_DECREE_LINE]
     [INS_OV]   BIT      NULL,                                                -- NULL=از PAY2_ITEM_DEF
     [TAX_OV]   BIT      NULL,
     [BASIS_OV] TINYINT  NULL,
+    [SHIFT_MODE_OV] NVARCHAR(10) NULL,
 
     CONSTRAINT PK_PAY2_DECREE_LINE PRIMARY KEY ([DEC_ID], [ITEM_ID]),
     CONSTRAINT FK_DL_DEC  FOREIGN KEY ([DEC_ID])  REFERENCES [PAY2_DECREE]([DEC_ID]) ON DELETE CASCADE,

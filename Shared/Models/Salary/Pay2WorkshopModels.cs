@@ -13,6 +13,7 @@
         public string? TAX_CODE { get; set; }
         public string? ADDRESS { get; set; }
         public string? PHONE { get; set; }
+        public string? SHIFT_MODE { get; set; }
         public bool IS_ACTIVE { get; set; } = true;
         public int INS_MODE { get; set; } = 1;
         public string? POSTAL_CODE { get; set; }

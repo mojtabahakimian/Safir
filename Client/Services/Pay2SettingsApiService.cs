@@ -52,6 +52,28 @@ namespace Safir.Client.Services
 
         private string? _cachedShiftMode;
 
+
+        public async Task<string> GetEffectiveShiftModeAsync(int? decId = null, int? tmplId = null, int? wsId = null)
+        {
+            try
+            {
+                var queryParams = new List<string>();
+                if (decId.HasValue) queryParams.Add($"decId={decId.Value}");
+                if (tmplId.HasValue) queryParams.Add($"tmplId={tmplId.Value}");
+                if (wsId.HasValue) queryParams.Add($"wsId={wsId.Value}");
+
+                string queryString = string.Join("&", queryParams);
+                string url = "api/pay2/employees/effective-shift-mode";
+                if (!string.IsNullOrEmpty(queryString)) url += "?" + queryString;
+
+                return await _http.GetStringAsync(url) ?? "PCT";
+            }
+            catch
+            {
+                return "PCT";
+            }
+        }
+
         public async Task<string> GetShiftModeAsync()
         {
             if (_cachedShiftMode is not null) return _cachedShiftMode;
