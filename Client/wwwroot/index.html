@@ -606,9 +606,32 @@
                 });
             } else {
                 // In production, register the service worker
-                navigator.serviceWorker.register('service-worker.js')
-                    .then(reg => console.log('Service Worker: Registration successful with scope: ', reg.scope))
-                    .catch(err => console.error('Service Worker: Registration failed: ', err));
+                navigator.serviceWorker.register('service-worker.js').then(reg => {
+                    console.log('Service Worker: Registration successful with scope: ', reg.scope);
+
+                    reg.addEventListener('updatefound', () => {
+                        const newWorker = reg.installing;
+                        newWorker.addEventListener('statechange', () => {
+                            if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                                if (confirm('🎉 نسخه جدیدی از نرم‌افزار سفیر در دسترس است!\n\nآیا می‌خواهید برای اعمال تغییرات، صفحه را اکنون بروزرسانی کنید؟ (تنظیمات شما پاک نمی‌شود)')) {
+                                    // The manual cache deletion has been removed based on the Codex review.
+                                    // Service-worker.published.js handles cleaning up old caches in its 'activate' event
+                                    // and has already downloaded the new files in the 'install' event.
+
+                                    newWorker.postMessage({ type: 'SKIP_WAITING' });
+
+                                    let refreshing = false;
+                                    navigator.serviceWorker.addEventListener('controllerchange', () => {
+                                        if (!refreshing) {
+                                            window.location.reload();
+                                            refreshing = true;
+                                        }
+                                    });
+                                }
+                            }
+                        });
+                    });
+                }).catch(err => console.error('Service Worker Registration failed: ', err));
             }
         }
     </script>

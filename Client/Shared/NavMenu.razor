@@ -79,12 +79,16 @@
             <MudNavGroup Title="تنظیمات" Icon="@Icons.Material.Filled.Settings" Expanded="false">
                 <MudNavLink Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.Person">@context.User.FindFirst(Safir.Shared.Constants.BaseknowClaimTypes.UUSER)?.Value</MudNavLink>
 
-                <MudNavLink @onclick="BeginFullCleanup" Icon="@Icons.Material.Filled.CleaningServices">
-                    تازه سازی اطلاعات
+                <MudNavLink @onclick="BeginSoftRefresh" Icon="@Icons.Material.Filled.SystemUpdateAlt">
+                    بررسی و دریافت بروزرسانی
                 </MudNavLink>
 
                 <MudNavLink @onclick="BeginServerStateReset" Icon="@Icons.Material.Filled.DeleteForever">
                     ریست ذخیره وضعیت
+                </MudNavLink>
+
+                <MudNavLink @onclick="BeginFactoryReset" Icon="@Icons.Material.Filled.DeleteForever" Style="color: var(--mud-palette-error);">
+                    ریست کامل سایت
                 </MudNavLink>
 
                 <MudNavLink Href="settings/security" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.Security">
@@ -111,8 +115,12 @@
                 نسخه: @appVersion
             </MudNavLink>
 
-            <MudNavLink @onclick="BeginFullCleanup" Icon="@Icons.Material.Filled.CleaningServices">
-                تازه سازی اطلاعات
+            <MudNavLink @onclick="BeginSoftRefresh" Icon="@Icons.Material.Filled.SystemUpdateAlt">
+                بررسی و دریافت بروزرسانی
+            </MudNavLink>
+
+            <MudNavLink @onclick="BeginFactoryReset" Icon="@Icons.Material.Filled.DeleteForever" Style="color: var(--mud-palette-error);">
+                ریست کامل سایت
             </MudNavLink>
         </NotAuthorized>
     </AuthorizeView>
@@ -188,7 +196,7 @@
         var dialog = DialogService.Show<ConfirmDialog>(parameters["Title"]?.ToString()!, parameters, options);
         var result = await dialog.Result;
 
-        if (!result.Cancelled)
+        if (!result.Canceled)
         {
             try
             {
@@ -225,50 +233,66 @@
         };
         var dialog = DialogService.Show<ConfirmDialog>(parameters["Title"]?.ToString()!, parameters, options);
         var result = await dialog.Result;
-        if (!result.Cancelled)
+        if (!result.Canceled)
         {
             await AuthService.Logout();
             NavigationManager.NavigateTo("login", true);
         }
     }
-    private async Task BeginFullCleanup()
+
+    private async Task BeginSoftRefresh()
     {
         var options = new DialogOptions { CloseButton = false, MaxWidth = MaxWidth.Small };
         var parameters = new DialogParameters
         {
-            ["Title"] = "پاکسازی کامل اطلاعات مرورگر",
-            ["ContentText"] = "آیا مطمئن هستید که می‌خواهید تمامی اطلاعات ذخیره شده این سایت در مرورگر (شامل تنظیمات، کش و داده‌های آفلاین) را پاک کنید؟ این عملیات معادل باز کردن سایت برای اولین بار خواهد بود.",
-            ["ConfirmButtonText"] = "پاکسازی و شروع مجدد",
-            ["CancelButtonText"] = "منصرف شدم"
+            ["Title"] = "دریافت آخرین تغییرات",
+            ["ContentText"] = "آیا می‌خواهید برنامه را به‌روزرسانی کنید؟ (تنظیمات اتصال شما محفوظ می‌ماند)",
+            ["ConfirmButtonText"] = "بله، آپدیت کن",
+            ["CancelButtonText"] = "انصراف"
         };
         var dialog = DialogService.Show<ConfirmDialog>(parameters["Title"]?.ToString()!, parameters, options);
         var result = await dialog.Result;
 
-        if (!result.Cancelled)
+        if (!result.Canceled)
         {
             try
             {
-                // فراخوانی تابع JavaScript برای پاکسازی کامل
-                // از BeforeInvoke/AfterInvoke برای اطمینان از آماده بودن JS استفاده می کنیم.
-                await JSRuntime.InvokeVoidAsync("console.log", "Attempting to invoke appCleanup.clearAllBrowserData...");
-                var success = await JSRuntime.InvokeAsync<bool>("appCleanup.clearAllBrowserData");
-
-                if (success)
-                {
-                    Snackbar.Add("پاکسازی اطلاعات مرورگر با موفقیت انجام شد. صفحه بارگذاری مجدد می‌شود.", MudBlazor.Severity.Success);
-                    // پس از پاکسازی، کاربر را به صفحه اصلی هدایت می‌کنیم تا سایت کاملاً از نو بارگذاری شود
-                    // forceLoad: true تضمین می‌کند که مرورگر تمام منابع را دوباره دانلود کند.
-                    NavigationManager.NavigateTo("/", forceLoad: true);
-                }
-                else
-                {
-                    Snackbar.Add("خطا در پاکسازی اطلاعات مرورگر.", MudBlazor.Severity.Error);
-                }
+                await JSRuntime.InvokeAsync<bool>("appCleanup.softRefresh");
+                Snackbar.Add("کش سیستم پاک شد. صفحه در حال بارگذاری مجدد است...", MudBlazor.Severity.Success);
+                NavigationManager.NavigateTo("/", forceLoad: true);
             }
             catch (Exception ex)
             {
-                Console.Error.WriteLine($"Error during full cleanup: {ex.Message}");
-                Snackbar.Add($"خطای غیرمنتظره در پاکسازی , صفحه را رفرش کنید و مجددا امتحان کنید", MudBlazor.Severity.Error); // Use ex.Message
+                Console.Error.WriteLine($"Error during soft refresh: {ex.Message}");
+                Snackbar.Add("خطا در به‌روزرسانی.", MudBlazor.Severity.Error);
+            }
+        }
+    }
+
+    private async Task BeginFactoryReset()
+    {
+        var options = new DialogOptions { CloseButton = false, MaxWidth = MaxWidth.Small };
+        var parameters = new DialogParameters
+        {
+            ["Title"] = "بازگشت به تنظیمات کارخانه",
+            ["ContentText"] = "هشدار! با این کار تمامی تنظیمات از جمله آدرس سرور و اطلاعات دیتابیس پاک خواهد شد و باید مجدداً لاگین کنید. آیا مطمئن هستید؟",
+            ["ConfirmButtonText"] = "بله، همه چیز پاک شود",
+            ["CancelButtonText"] = "انصراف"
+        };
+        var dialog = DialogService.Show<ConfirmDialog>(parameters["Title"]?.ToString()!, parameters, options);
+        var result = await dialog.Result;
+
+        if (!result.Canceled)
+        {
+            try
+            {
+                await JSRuntime.InvokeAsync<bool>("appCleanup.factoryReset");
+                NavigationManager.NavigateTo("/", forceLoad: true);
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine($"Error during factory reset: {ex.Message}");
+                Snackbar.Add("خطا در ریست کارخانه.", MudBlazor.Severity.Error);
             }
         }
     }
