@@ -2,6 +2,8 @@
 using Microsoft.Data.SqlClient;
 using Prg_SendInvoice.CNNMANAGER;
 using System;
+using System.Data;
+using System.IO;
 using System.Text.RegularExpressions;
 
 namespace Prg_UI.Scriptses
@@ -2595,55 +2597,169 @@ GO
 ON [dbo].[PAY2_JOB] ([IS_ACTIVE], [JOB_NAME]) 
 INCLUDE ([JOB_ID]);"); } catch { }
 
-                LoadJobData(db);   // <-- این خط اضافه شود
                 // Migration 009: افزودن تنظیمات حق شیفت به تفکیک کارگاه و پرسنل
                 try
                 {
                     db.Execute($@"
                         IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.PAY2_WORKSHOP') AND name = 'SHIFT_MODE')
                         BEGIN
-                            ALTER TABLE [dbo].[PAY2_WORKSHOP] ADD [SHIFT_MODE] NVARCHAR(10) NULL;
-                            ALTER TABLE [dbo].[PAY2_WORKSHOP] ADD CONSTRAINT [CK_WS_SHIFT_MODE] CHECK ([SHIFT_MODE] IN ('PCT','FIXED'));
+                            ALTER TABLE [dbo].[PAY2_WORKSHOP] ADD [SHIFT_MODE] NVARCHAR(10) NULL CONSTRAINT [CK_WS_SHIFT_MODE] CHECK ([SHIFT_MODE] IN ('PCT','FIXED'));
                         END
                     ");
-                } catch { }
+                }
+                catch { }
 
                 try
                 {
                     db.Execute($@"
                         IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.PAY2_DECREE') AND name = 'SHIFT_MODE')
                         BEGIN
-                            ALTER TABLE [dbo].[PAY2_DECREE] ADD [SHIFT_MODE] NVARCHAR(10) NULL;
-                            ALTER TABLE [dbo].[PAY2_DECREE] ADD CONSTRAINT [CK_DEC_SHIFT_MODE] CHECK ([SHIFT_MODE] IN ('PCT','FIXED'));
+                            ALTER TABLE [dbo].[PAY2_DECREE] ADD [SHIFT_MODE] NVARCHAR(10) NULL CONSTRAINT [CK_DEC_SHIFT_MODE] CHECK ([SHIFT_MODE] IN ('PCT','FIXED'));
                         END
                     ");
-                } catch { }
+                }
+                catch { }
 
                 try
                 {
                     db.Execute($@"
                         IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.PAY2_DECREE_LINE') AND name = 'SHIFT_MODE_OV')
                         BEGIN
-                            ALTER TABLE [dbo].[PAY2_DECREE_LINE] ADD [SHIFT_MODE_OV] NVARCHAR(10) NULL;
-                            ALTER TABLE [dbo].[PAY2_DECREE_LINE] ADD CONSTRAINT [CK_DL_SHIFT_MODE_OV] CHECK ([SHIFT_MODE_OV] IN ('PCT','FIXED'));
+                            ALTER TABLE [dbo].[PAY2_DECREE_LINE] ADD [SHIFT_MODE_OV] NVARCHAR(10) NULL CONSTRAINT [CK_DL_SHIFT_MODE_OV] CHECK ([SHIFT_MODE_OV] IN ('PCT','FIXED'));
                         END
                     ");
-                } catch { }
+                }
+                catch { }
 
                 try
                 {
                     db.Execute($@"
                         IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.PAY2_ITEM_TMPL_LINE') AND name = 'SHIFT_MODE_OV')
                         BEGIN
-                            ALTER TABLE [dbo].[PAY2_ITEM_TMPL_LINE] ADD [SHIFT_MODE_OV] NVARCHAR(10) NULL;
-                            ALTER TABLE [dbo].[PAY2_ITEM_TMPL_LINE] ADD CONSTRAINT [CK_TL_SHIFT_MODE_OV] CHECK ([SHIFT_MODE_OV] IN ('PCT','FIXED'));
+                            ALTER TABLE [dbo].[PAY2_ITEM_TMPL_LINE] ADD [SHIFT_MODE_OV] NVARCHAR(10) NULL CONSTRAINT [CK_TL_SHIFT_MODE_OV] CHECK ([SHIFT_MODE_OV] IN ('PCT','FIXED'));
                         END
                     ");
-                } catch { }
+                }
+                catch { }
 
+                LoadJobData(db);   // <-- این خط اضافه شود
             }
         }
         private static void ExecuteBatches(SqlConnection db, string script)
         {
             // Safely split the script ONLY when "GO" is on its own line
             var commands = Regex.Split(script, @"^\s*GO\s*$", RegexOptions.Multiline | RegexOptions.IgnoreCase);
+
+            foreach (var cmdText in commands)
+            {
+                if (!string.IsNullOrWhiteSpace(cmdText))
+                {
+                    try
+                    {
+                        db.Execute(cmdText);
+                    }
+                    catch (SqlException ex)
+                    {
+                        // Logging the exact error and query batch that failed so you can actually debug it
+                        Console.WriteLine($"SQL Execution Error:\n{ex.Message}\nFailed Batch:\n{cmdText}\n");
+                        // If a critical procedure fails to create, you might want to throw the error here
+                        // throw; 
+                    }
+                }
+            }
+        }
+        private static void LoadJobData(SqlConnection db)
+        {
+            const string JobFilePath = @"C:\CORRECT\joby.sql";
+
+            if (!File.Exists(JobFilePath))
+            {
+                Console.WriteLine($"[LoadJobData] فایل پیدا نشد: {JobFilePath}");
+                return;
+            }
+
+            // ── بررسی وجود داده قبلی ─────────────────────────────
+            var existingCount = db.ExecuteScalar<int>("SELECT COUNT(*) FROM [dbo].[PAY2_JOB]");
+            if (existingCount > 0)
+            {
+                Console.WriteLine($"[LoadJobData] PAY2_JOB از قبل {existingCount} رکورد دارد — رد شد.");
+                return;
+            }
+
+            Console.WriteLine("[LoadJobData] در حال خواندن joby.sql ...");
+
+            // فایل UTF-16LE است
+            string[] lines = File.ReadAllLines(JobFilePath, System.Text.Encoding.Unicode);
+
+            // ── Parse سطرهای INSERT با Regex ─────────────────────
+            // نمونه: INSERT [dbo].[PAY2_JOB] ([JOB_ID],...) VALUES (1, N'1', N'2', N'3', 1)
+            var insertRx = new Regex(
+                @"VALUES\s*\(\s*(\d+)\s*,\s*N'((?:[^']|'')*)'\s*,\s*N'((?:[^']|'')*)'\s*,\s*(?:N'((?:[^']|'')*)'|NULL)\s*,\s*(\d+)\s*\)",
+                RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+            var table = new DataTable();
+            table.Columns.Add("JOB_ID", typeof(int));
+            table.Columns.Add("JOB_CODE", typeof(string));
+            table.Columns.Add("JOB_NAME", typeof(string));
+            table.Columns.Add("JOB_GROUP", typeof(string));
+            table.Columns.Add("IS_ACTIVE", typeof(bool));
+
+            int parsed = 0;
+            foreach (string line in lines)
+            {
+                var m = insertRx.Match(line);
+                if (!m.Success) continue;
+
+                table.Rows.Add(
+                    int.Parse(m.Groups[1].Value),           // JOB_ID
+                    m.Groups[2].Value.Replace("''", "'"),   // JOB_CODE
+                    m.Groups[3].Value.Replace("''", "'"),   // JOB_NAME
+                    m.Groups[4].Success && m.Groups[4].Value.Length > 0
+                        ? (object)m.Groups[4].Value.Replace("''", "'")
+                        : DBNull.Value,                     // JOB_GROUP (nullable)
+                    m.Groups[5].Value == "1"                // IS_ACTIVE
+                );
+                parsed++;
+            }
+
+            if (parsed == 0)
+            {
+                Console.WriteLine("[LoadJobData] هیچ سطر INSERT ای parse نشد.");
+                return;
+            }
+
+            Console.WriteLine($"[LoadJobData] {parsed} رکورد parse شد — در حال BulkCopy ...");
+
+            // ── SqlBulkCopy با IDENTITY_INSERT ON ────────────────
+            using (var cmd = new SqlCommand("SET IDENTITY_INSERT [dbo].[PAY2_JOB] ON", db))
+                cmd.ExecuteNonQuery();
+
+            try
+            {
+                using var bulk = new SqlBulkCopy(db, SqlBulkCopyOptions.KeepIdentity, null)
+                {
+                    DestinationTableName = "[dbo].[PAY2_JOB]",
+                    BatchSize = 1000,
+                    BulkCopyTimeout = 600
+                };
+                bulk.ColumnMappings.Add("JOB_ID", "JOB_ID");
+                bulk.ColumnMappings.Add("JOB_CODE", "JOB_CODE");
+                bulk.ColumnMappings.Add("JOB_NAME", "JOB_NAME");
+                bulk.ColumnMappings.Add("JOB_GROUP", "JOB_GROUP");
+                bulk.ColumnMappings.Add("IS_ACTIVE", "IS_ACTIVE");
+
+                bulk.WriteToServer(table);
+                Console.WriteLine($"[LoadJobData] {parsed} رکورد با موفقیت در PAY2_JOB درج شد.");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[LoadJobData] خطا در BulkCopy: {ex.Message}");
+            }
+            finally
+            {
+                using var cmd = new SqlCommand("SET IDENTITY_INSERT [dbo].[PAY2_JOB] OFF", db);
+                cmd.ExecuteNonQuery();
+            }
+        }
+    }
+}
