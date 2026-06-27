@@ -146,6 +146,7 @@
 @code {
     [Parameter] public bool IsOpen { get; set; }
     [Parameter] public int MasterTemplateId { get; set; }
+    [Parameter] public int? WorkshopId { get; set; }
     [Parameter] public string MasterTemplateName { get; set; } = "";
     [Parameter] public EventCallback OnClose { get; set; }
 
@@ -164,8 +165,10 @@
 
     bool IsShiftPctItem => IsShiftPctLine(CurrentLine);
 
+    string EffectiveShiftMode(string? lineOv) => !string.IsNullOrEmpty(lineOv) ? lineOv : _shiftMode;
+
     bool IsShiftPctLine(Pay2ItemTmplLineDto line) =>
-        Pay2SettingsApiService.IsShiftPctItem(_shiftMode, FullItemDefs, line.ITEM_ID);
+        Pay2SettingsApiService.IsShiftPctItem(EffectiveShiftMode(line.SHIFT_MODE_OV), FullItemDefs, line.ITEM_ID);
 
     List<LookupDto<int>> OverrideOptions = new() { new(3, "طبق تعریف پایه"), new(1, "مشمول"), new(2, "معاف") };
     List<LookupDto<int>> BasisOptions = new() { new(9, "طبق تعریف پایه"), new(1, "روزانه"), new(2, "ماهیانه"), new(3, "ساعتی") };
@@ -192,7 +195,7 @@
         {
             var linesTask = EmployeeApi.GetTemplateLinesAsync(MasterTemplateId);
             var fullDefsTask = ItemDefApi.GetItemDefsAsync();
-            var shiftModeTask = SettingsApi.GetShiftModeAsync();
+            var shiftModeTask = SettingsApi.GetEffectiveShiftModeAsync(decId: null, tmplId: MasterTemplateId, wsId: WorkshopId);
 
             await Task.WhenAll(linesTask, fullDefsTask, shiftModeTask);
 
@@ -231,7 +234,8 @@
             DEF_AMOUNT = item.DEF_AMOUNT,
             INS_OV = item.INS_OV,
             TAX_OV = item.TAX_OV,
-            BASIS_OV = item.BASIS_OV
+            BASIS_OV = item.BASIS_OV,
+            SHIFT_MODE_OV = item.SHIFT_MODE_OV
         };
         AmountStr = IsShiftPctItem
             ? CurrentLine.DEF_AMOUNT.ToString(System.Globalization.CultureInfo.InvariantCulture)

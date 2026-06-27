@@ -361,6 +361,15 @@
                     </div>
                 </div>
 
+                                <div class="form-field">
+                    <label>محاسبه حق شیفت</label>
+                    <select class="pay2-input" @bind="CurrentWorkshop.SHIFT_MODE">
+                        <option value="">سیستم (پیش‌فرض)</option>
+                        <option value="PCT">درصدی</option>
+                        <option value="FIXED">مبلغ ثابت</option>
+                    </select>
+                </div>
+
                 <div class="form-field">
                     <label>نوع محاسبه بیمه</label>
                     <Pay2Select TItem="Pay2InsModeOption"
@@ -684,7 +693,8 @@
             REGISTRATION_NUMBER = CleanText(selected.REGISTRATION_NUMBER, 20),
             SSO_BRANCH = CleanText(selected.SSO_BRANCH, 50),
             FINANCIAL_MANAGER = CleanText(selected.FINANCIAL_MANAGER, 100),
-            ADMIN_MANAGER = CleanText(selected.ADMIN_MANAGER, 100)
+            ADMIN_MANAGER = CleanText(selected.ADMIN_MANAGER, 100),
+            SHIFT_MODE = selected.SHIFT_MODE
         };
 
         _fieldErrors.Clear();
@@ -771,7 +781,8 @@
         CurrentWorkshop = new Pay2WorkshopDto
         {
             IS_ACTIVE = true,
-            INS_MODE = 1
+            INS_MODE = 1,
+            SHIFT_MODE = null
         };
 
         CurrentWorkshopAcc = new Pay2WorkshopAccDto();

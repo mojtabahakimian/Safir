@@ -133,6 +133,18 @@
 
                     <div style="background: var(--p2-bg-white); border: 1px solid var(--p2-border); border-radius: var(--p2-radius-md); padding: 16px; margin-bottom: 16px;">
                         <div class="form-grid-3">
+
+                        @if (CurrentLine.ITEM_ID > 0 && SelectedDef?.ITEM_CODE == "SHIFT")
+                        {
+                            <div class="form-field" style="grid-column: span 3;">
+                                <label style="color:var(--p2-primary);">روش محاسبه حق شیفت (اختصاصی این خط)</label>
+                                <select class="pay2-input" @bind="CurrentLine.SHIFT_MODE_OV" disabled="@IsDecreeConfirmed">
+                                    <option value="">ارث‌بری از سیستم/حکم (پیش‌فرض)</option>
+                                    <option value="PCT">درصدی (PCT)</option>
+                                    <option value="FIXED">مبلغ ثابت (FIXED)</option>
+                                </select>
+                            </div>
+                        }
                             <div class="form-field">
                                 <label>مشمولیت بیمه (Override)</label>
                                 <Pay2Select TItem="LookupDto<int>" TValue="int" Items="OverrideOptions"
@@ -239,6 +251,8 @@
 @code {
     [Parameter] public bool IsOpen { get; set; }
     [Parameter] public int DecreeId { get; set; }
+    [Parameter] public int EmployeeId { get; set; }
+    [Parameter] public int WorkshopId { get; set; }
     [Parameter] public long DecreeDate { get; set; }
     [Parameter] public EventCallback OnClose { get; set; }
 
@@ -253,7 +267,7 @@
     string? CurrentPercentStr;
     string? PercentHint;
     string? ShiftHint;
-    string _shiftMode = "PCT"; // SHIFT_MODE از PAY2_CONFIG: PCT=درصدی | FIXED=مبلغ ثابت
+    string _shiftMode = "PCT";
     bool IsSaving = false;
     bool IsEditing = false;
 
@@ -262,7 +276,7 @@
     // در حالت PCT، موتور محاسبه (SP_PAY2_CALC_RUN) مبلغ آیتم SHIFT را «درصد» تفسیر می‌کند
     bool IsShiftPctItem => IsShiftPctLine(CurrentLine);
 
-    bool IsShiftFixedItem => SelectedDef?.ITEM_CODE == "SHIFT" && _shiftMode == "FIXED";
+    bool IsShiftFixedItem => SelectedDef?.ITEM_CODE == "SHIFT" && EffectiveShiftMode(CurrentLine.SHIFT_MODE_OV) == "FIXED";
 
     // کمک‌محاسبه درصد فقط برای آیتم‌هایی که مبنای مؤثرشان ماهیانه است (مبلغ = ریالِ کامل ماه)
     bool IsMonthlyBasisSelected => SelectedDef != null && (CurrentLine.BASIS_OV ?? SelectedDef.CALC_BASIS) == 2;
@@ -306,7 +320,7 @@
             // منتظر می‌مانیم تا هم لیست تعاریف آیتم‌ها و هم اقلام ریالی این حکم به طور کامل لود شوند
             var linesTask = EmployeeApi.GetDecreeLinesAsync(DecreeId);
             var fullDefsTask = ItemDefApi.GetItemDefsAsync();
-            var shiftModeTask = SettingsApi.GetShiftModeAsync();
+            var shiftModeTask = SettingsApi.GetEffectiveShiftModeAsync(decId: DecreeId, tmplId: null, wsId: WorkshopId);
 
             await Task.WhenAll(linesTask, fullDefsTask, shiftModeTask);
 
@@ -360,8 +374,10 @@
         ShiftHint = null;
     }
 
+    string EffectiveShiftMode(string? lineOv) => !string.IsNullOrEmpty(lineOv) ? lineOv : _shiftMode;
+
     bool IsShiftPctLine(Pay2DecreeLineDto line) =>
-        Pay2SettingsApiService.IsShiftPctItem(_shiftMode, FullItemDefs, line.ITEM_ID);
+        Pay2SettingsApiService.IsShiftPctItem(EffectiveShiftMode(line.SHIFT_MODE_OV), FullItemDefs, line.ITEM_ID);
 
     // منطق مشترک «درصد × حقوق پایه ماهیانه» برای هر دو کمک‌محاسبه (شیفت و عمومی)
     (long? Computed, string Hint) CalcPercentOfMonthly(decimal pct)
@@ -428,7 +444,8 @@
             // این سه مقدار اصل کاری هستند که باید منتقل شوند
             INS_OV = item.INS_OV,
             TAX_OV = item.TAX_OV,
-            BASIS_OV = item.BASIS_OV
+            BASIS_OV = item.BASIS_OV,
+            SHIFT_MODE_OV = item.SHIFT_MODE_OV
         };
 
         CurrentAmountStr = IsShiftPctItem

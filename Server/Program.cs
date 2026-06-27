@@ -118,6 +118,7 @@ using (var scope = app.Services.CreateScope())
             //"006_Pay2_HourlyCalcBasis.sql",
             //"007_Pay2_HourlyLeaveType.sql",
             //"008_DecreeLineAmountDecimal.sql",
+            //"009_Pay2_ShiftModePerScope.sql",
         };
 
         foreach (var scriptName in scriptsToRun)

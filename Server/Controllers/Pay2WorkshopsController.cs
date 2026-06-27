@@ -27,7 +27,7 @@ public class Pay2WorkshopsController : ControllerBase
         // 🚀 فیلدهای جدید به SELECT اضافه شدند
         const string sql = @"
             SELECT WS_ID, WS_CODE, WS_NAME, NATIONAL_ID, SOCIAL_INS_CODE, TAX_CODE,
-                   ADDRESS, PHONE, POSTAL_CODE, EMPLOYER_NAME, IS_ACTIVE, ISNULL(INS_MODE, 1) AS INS_MODE,
+                   ADDRESS, PHONE, POSTAL_CODE, EMPLOYER_NAME, IS_ACTIVE, ISNULL(INS_MODE, 1) AS INS_MODE, SHIFT_MODE,
                    PROVINCE, CITY, REGISTRATION_NUMBER, SSO_BRANCH, FINANCIAL_MANAGER, ADMIN_MANAGER
             FROM   PAY2_WORKSHOP
             ORDER  BY WS_ID";
@@ -78,6 +78,7 @@ public class Pay2WorkshopsController : ControllerBase
         request.Accounts ??= new Pay2WorkshopAccDto();
 
         var w = request.Workshop;
+        w.SHIFT_MODE = string.IsNullOrWhiteSpace(w.SHIFT_MODE) ? null : w.SHIFT_MODE;
         var a = request.Accounts;
 
         var validationError = NormalizeAndValidate(w, a);
@@ -110,12 +111,12 @@ public class Pay2WorkshopsController : ControllerBase
                     const string insertSql = @"
                         INSERT INTO PAY2_WORKSHOP
                         (WS_CODE, WS_NAME, NATIONAL_ID, SOCIAL_INS_CODE, TAX_CODE,
-                         ADDRESS, PHONE, POSTAL_CODE, EMPLOYER_NAME, IS_ACTIVE, INS_MODE, CREATED_BY,
+                         ADDRESS, PHONE, POSTAL_CODE, EMPLOYER_NAME, IS_ACTIVE, INS_MODE, CREATED_BY, SHIFT_MODE,
                          PROVINCE, CITY, REGISTRATION_NUMBER, SSO_BRANCH, FINANCIAL_MANAGER, ADMIN_MANAGER)
                         OUTPUT INSERTED.WS_ID
                         VALUES
                         (@WS_CODE, @WS_NAME, @NATIONAL_ID, @SOCIAL_INS_CODE, @TAX_CODE,
-                         @ADDRESS, @PHONE, @POSTAL_CODE, @EMPLOYER_NAME, @IS_ACTIVE, @INS_MODE, @CREATED_BY,
+                         @ADDRESS, @PHONE, @POSTAL_CODE, @EMPLOYER_NAME, @IS_ACTIVE, @INS_MODE, @CREATED_BY, @SHIFT_MODE,
                          @PROVINCE, @CITY, @REGISTRATION_NUMBER, @SSO_BRANCH, @FINANCIAL_MANAGER, @ADMIN_MANAGER)";
 
                     newOrUpdatedWsId = await conn.QueryFirstAsync<int>(insertSql, new
@@ -131,6 +132,7 @@ public class Pay2WorkshopsController : ControllerBase
                         w.EMPLOYER_NAME,
                         w.IS_ACTIVE,
                         w.INS_MODE,
+                        w.SHIFT_MODE,
                         CREATED_BY = userCod,
                         w.PROVINCE,
                         w.CITY,
@@ -156,6 +158,7 @@ public class Pay2WorkshopsController : ControllerBase
                         EMPLOYER_NAME   = @EMPLOYER_NAME,
                         IS_ACTIVE       = @IS_ACTIVE,
                         INS_MODE        = @INS_MODE,
+                        SHIFT_MODE      = @SHIFT_MODE,
                         PROVINCE        = @PROVINCE,
                         CITY            = @CITY,
                         REGISTRATION_NUMBER = @REGISTRATION_NUMBER,
