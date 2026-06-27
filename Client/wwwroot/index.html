@@ -614,11 +614,9 @@
                         newWorker.addEventListener('statechange', () => {
                             if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
                                 if (confirm('🎉 نسخه جدیدی از نرم‌افزار سفیر در دسترس است!\n\nآیا می‌خواهید برای اعمال تغییرات، صفحه را اکنون بروزرسانی کنید؟ (تنظیمات شما پاک نمی‌شود)')) {
-                                    if ('caches' in window) {
-                                        caches.keys().then(names => {
-                                            for (let name of names) caches.delete(name);
-                                        });
-                                    }
+                                    // The manual cache deletion has been removed based on the Codex review.
+                                    // Service-worker.published.js handles cleaning up old caches in its 'activate' event
+                                    // and has already downloaded the new files in the 'install' event.
 
                                     newWorker.postMessage({ type: 'SKIP_WAITING' });
 
