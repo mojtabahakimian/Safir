@@ -2578,6 +2578,22 @@ WHERE OBJECT_NAME(cc.parent_object_id) = 'PAY2_LEAVE'
 IF LEN(@sql) > 0
     EXEC sp_executesql @sql;
 GO
+
+-- ================================================================
+-- ۶. اصلاح وضعیت بیمه و مالیات حق اولاد و بن کارگری برای دیتابیس‌های لایو
+-- ================================================================
+UPDATE [dbo].[PAY2_ITEM_DEF]
+SET
+    INS_SUBJECT = 0,
+    TAX_SUBJECT = 1
+WHERE ITEM_CODE = 'CHILDREN';
+
+UPDATE [dbo].[PAY2_ITEM_DEF]
+SET
+    INS_SUBJECT = 1,
+    TAX_SUBJECT = 0
+WHERE ITEM_CODE = 'GROCERY';
+GO
 ";
                 ExecuteBatches(db, modify1);
 
