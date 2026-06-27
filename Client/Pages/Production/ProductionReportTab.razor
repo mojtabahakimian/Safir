@@ -750,7 +750,7 @@
                                     <MudIcon Icon="@Icons.Material.Outlined.Inventory2" Style="color: #2e7d32; font-size: 32px;" />
                                 </div>
                                 <div class="kpi-content">
-                                    <div class="kpi-title">کل پودر تولیدی</div>
+                                    <div class="kpi-title">کل محصول خروجی</div>
                                     <div class="kpi-value-wrapper">
                                         <span class="kpi-value" style="color: #2e7d32;">@TotalPowderQty.ToString("N0")</span>
                                         <span class="kpi-unit">کیلوگرم</span>
@@ -810,7 +810,7 @@
                                     </div>
                                     <div class="prod-legend">
                                         <div class="prod-legend-item"><span class="prod-legend-dot" style="background: #0288d1;"></span> آب‌پنیر دریافتی (لیتر)</div>
-                                        <div class="prod-legend-item"><span class="prod-legend-dot" style="background: #2e7d32;"></span> پودر خروجی (کیلوگرم)</div>
+                                        <div class="prod-legend-item"><span class="prod-legend-dot" style="background: #2e7d32;"></span> محصول خروجی (کیلوگرم)</div>
                                     </div>
                                 }
                                 else
@@ -981,7 +981,7 @@
                 <MudPaper Elevation="0" Outlined="true" Class="pa-6 rounded-xl pay2-form-card">
                     <div class="d-flex align-center justify-space-between flex-wrap gap-2 mb-6">
                         <div class="d-flex align-center">
-                            <MudIcon Icon="@(_isEditing ? Icons.Material.Outlined.Edit : Icons.Material.Outlined.Assignment)" Color="Color.Primary" Class="ml-2" />
+                            <MudIcon Icon="@(_isEditing? Icons.Material.Outlined.Edit : Icons.Material.Outlined.Assignment)" Color="Color.Primary" Class="ml-2" />
                             <MudText Typo="Typo.h6" Style="font-weight: 800;">@(_isEditing ? "ویرایش گزارش تولید" : "ثبت گزارش تولید روزانه")</MudText>
                         </div>
                         @if (_isEditing)
@@ -1059,6 +1059,17 @@
                                 </div>
                                 <MudGrid>
                                     <MudItem xs="12" sm="6">
+                                        <MudText Typo="Typo.caption" Class="text-muted mb-1 d-block" Style="font-weight: bold;">نوع محصول:</MudText>
+                                        <MudSelect T="string" @bind-Value="Model.ProductType" Variant="Variant.Outlined" Margin="Margin.Dense" Required="true" AnchorOrigin="Origin.BottomCenter">
+                                            <MudSelectItem Value="@("پودر")" />
+                                            <MudSelectItem Value="@("شیر خشک")" />
+                                        </MudSelect>
+                                    </MudItem>
+                                    <MudItem xs="12" sm="6">
+                                        <MudText Typo="Typo.caption" Class="text-muted mb-1 d-block" Style="font-weight: bold;">مقدار ماده خشک:</MudText>
+                                        <MudNumericField @bind-Value="Model.DryMatterQty" Variant="Variant.Outlined" Margin="Margin.Dense" HideSpinButtons="true" />
+                                    </MudItem>
+                                    <MudItem xs="12" sm="6">
                                         <MudText Typo="Typo.caption" Class="text-muted mb-1 d-block" Style="font-weight: bold;">شروع اسپری:</MudText>
                                         <MudTimePicker @bind-Time="Model.SprayStart" Variant="Variant.Outlined" Margin="Margin.Dense" />
                                     </MudItem>
@@ -1067,7 +1078,7 @@
                                         <MudTimePicker @bind-Time="Model.SprayEnd" Variant="Variant.Outlined" Margin="Margin.Dense" />
                                     </MudItem>
                                     <MudItem xs="12">
-                                        <MudText Typo="Typo.caption" Class="text-muted mb-1 d-block" Style="font-weight: bold;">مقدار پودر خروجی (کیلوگرم):</MudText>
+                                        <MudText Typo="Typo.caption" Class="text-muted mb-1 d-block" Style="font-weight: bold;">مقدار خروجی (کیلوگرم):</MudText>
                                         <MudNumericField @bind-Value="Model.SprayPowderQty" Variant="Variant.Outlined" Margin="Margin.Dense" HideSpinButtons="true" />
                                     </MudItem>
                                 </MudGrid>
@@ -1207,11 +1218,15 @@
                                     </div>
 
                                     <div class="mc-stat-box out">
-                                        <div class="mc-stat-label">پودر خروجی</div>
+                                        <div class="mc-stat-label">@(!string.IsNullOrEmpty(report.ProductType) ? report.ProductType : "پودر") خروجی</div>
                                         <div style="color: #2e7d32;">
                                             <span class="mc-stat-value">@(report.SprayPowderQty?.ToString("N0") ?? "۰")</span>
                                             <span class="mc-stat-unit">کیلوگرم</span>
                                         </div>
+                                        @if (report.DryMatterQty.HasValue)
+                                        {
+                                            <div class="mc-stat-subvalue" style="font-size: 0.75rem;">ماده خشک: <span dir="ltr">@report.DryMatterQty?.ToString("N2")</span></div>
+                                        }
                                     </div>
 
                                     <div class="mc-stat-box kpi">
@@ -1480,7 +1495,7 @@
     private List<ChartSeries> _chartSeries = new();
     private string[] _chartXLabels = Array.Empty<string>();
     private double[] _donutData = Array.Empty<double>();
-    private string[] _donutLabels = new[] { "پودر تولیدی (کیلوگرم)", "آب‌پنیر تبخیر شده (لیتر)" };
+    private string[] _donutLabels = new[] { "محصول تولیدی (کیلوگرم)", "آب‌پنیر تبخیر شده (لیتر)" };
     private ChartOptions _chartOptions = new();
 
     protected override async Task OnInitializedAsync()
@@ -1523,7 +1538,7 @@
         _chartSeries = new List<ChartSeries>
         {
             new() { Name = "آبپنیر دریافتی (لیتر)", Data = topReports.Select(x => (double)(x.ConcentrationWheyQty ?? 0)).ToArray() },
-            new() { Name = "پودر خروجی (کیلوگرم)", Data = topReports.Select(x => (double)(x.SprayPowderQty ?? 0)).ToArray() }
+            new() { Name = "محصول خروجی (کیلوگرم)", Data = topReports.Select(x => (double)(x.SprayPowderQty ?? 0)).ToArray() }
         };
 
         if (TotalWheyQty > 0)
@@ -1532,7 +1547,7 @@
             _donutData = new double[] { (double)TotalPowderQty, remainingLiquid > 0 ? remainingLiquid : 0 };
             _donutLabels = new[]
             {
-                $"پودر تولیدی ({TotalPowderQty.ToString("N0")} کیلوگرم)",
+                $"محصول تولیدی ({TotalPowderQty.ToString("N0")} کیلوگرم)",
                 $"آب‌پنیر تبخیر شده ({(remainingLiquid > 0 ? remainingLiquid : 0).ToString("N0")} لیتر)"
             };
         }
@@ -1651,6 +1666,8 @@
             SprayStart = report.SprayStart,
             SprayEnd = report.SprayEnd,
             SprayPowderQty = report.SprayPowderQty,
+            DryMatterQty = report.DryMatterQty,
+            ProductType = report.ProductType ?? "پودر",
             CounterNumber = report.CounterNumber,
             Description = report.Description
         };

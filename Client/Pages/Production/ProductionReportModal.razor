@@ -41,13 +41,22 @@
                     <MudDivider />
                 </MudItem>
                 <MudItem xs="12" md="4">
+                    <MudSelect T="string" Label="نوع محصول" @bind-Value="Model.ProductType" Variant="Variant.Outlined" Required="true" AnchorOrigin="Origin.BottomCenter">
+                        <MudSelectItem Value="@("پودر")" />
+                        <MudSelectItem Value="@("شیر خشک")" />
+                    </MudSelect>
+                </MudItem>
+                <MudItem xs="12" md="4">
                     <MudTimePicker Label="شروع اسپری" @bind-Time="Model.SprayStart" />
                 </MudItem>
                 <MudItem xs="12" md="4">
                     <MudTimePicker Label="پایان اسپری" @bind-Time="Model.SprayEnd" />
                 </MudItem>
                 <MudItem xs="12" md="4">
-                    <MudNumericField @bind-Value="Model.SprayPowderQty" Label="مقدار پودر خروجی (کیلوگرم)" Variant="Variant.Outlined" Min="0" />
+                    <MudNumericField @bind-Value="Model.SprayPowderQty" Label="مقدار خروجی (کیلوگرم)" Variant="Variant.Outlined" Min="0" />
+                </MudItem>
+                <MudItem xs="12" md="4">
+                    <MudNumericField @bind-Value="Model.DryMatterQty" Label="مقدار ماده خشک" Variant="Variant.Outlined" Min="0" HideSpinButtons="true" />
                 </MudItem>
 
                 @* توضیحات و کنتور *@
@@ -102,6 +111,8 @@
                 SprayStart = InputModel.SprayStart,
                 SprayEnd = InputModel.SprayEnd,
                 SprayPowderQty = InputModel.SprayPowderQty,
+                DryMatterQty = InputModel.DryMatterQty,
+                ProductType = InputModel.ProductType ?? "پودر",
                 CounterNumber = InputModel.CounterNumber,
                 Description = InputModel.Description
             };

@@ -51,7 +51,7 @@ namespace Safir.Server.Controllers
                 var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value
                                   ?? User.FindFirst("UserId")?.Value;
 
-              
+
                 if (!int.TryParse(userIdClaim, out int userId))
                 {
                     userId = 78;
@@ -60,9 +60,9 @@ namespace Safir.Server.Controllers
 
                 var query = @"
                     INSERT INTO [dbo].[PRD_ProductionReports] 
-                    (UserId, ReportDate, WheyCompany, ConcentrationStart, ConcentrationEnd, ConcentrationWheyQty, SprayStart, SprayEnd, SprayPowderQty, CounterNumber, Description, CreatedAt)
+                    (UserId, ReportDate, WheyCompany, ConcentrationStart, ConcentrationEnd, ConcentrationWheyQty, SprayStart, SprayEnd, SprayPowderQty, DryMatterQty, ProductType, CounterNumber, Description, CreatedAt)
                     VALUES 
-                    (@UserId, @ReportDate, @WheyCompany, @ConcentrationStart, @ConcentrationEnd, @ConcentrationWheyQty, @SprayStart, @SprayEnd, @SprayPowderQty, @CounterNumber, @Description, GETDATE());";
+                    (@UserId, @ReportDate, @WheyCompany, @ConcentrationStart, @ConcentrationEnd, @ConcentrationWheyQty, @SprayStart, @SprayEnd, @SprayPowderQty, @DryMatterQty, @ProductType, @CounterNumber, @Description, GETDATE());";
 
                 model.UserId = userId;
 
@@ -95,6 +95,8 @@ namespace Safir.Server.Controllers
                         SprayStart = @SprayStart,
                         SprayEnd = @SprayEnd,
                         SprayPowderQty = @SprayPowderQty,
+                        DryMatterQty = @DryMatterQty,
+                        ProductType = @ProductType,
                         CounterNumber = @CounterNumber,
                         Description = @Description
                     WHERE Id = @Id;";
