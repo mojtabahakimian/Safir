@@ -1,57 +1,66 @@
 // Client\wwwroot\js\cleanup.js
 window.appCleanup = {
-    clearAllBrowserData: async function () {
-        console.log("Starting browser data cleanup...");
 
-        // Clear localStorage
+    softRefresh: async function () {
+        console.log("Starting Soft Refresh...");
+
+        const protectedKeys = ['dbConnectionSettings', 'isDarkMode', 'authToken'];
+
         try {
-            localStorage.clear();
-            console.log("localStorage cleared.");
-        } catch (e) {
-            console.error("Error clearing localStorage:", e);
-        }
+            for (let i = localStorage.length - 1; i >= 0; i--) {
+                const key = localStorage.key(i);
+                if (!protectedKeys.includes(key)) {
+                    localStorage.removeItem(key);
+                }
+            }
+        } catch (e) { console.error("Error clearing localStorage:", e); }
 
-        // Clear sessionStorage
-        try {
-            sessionStorage.clear();
-            console.log("sessionStorage cleared.");
-        } catch (e) {
-            console.error("Error clearing sessionStorage:", e);
-        }
+        try { sessionStorage.clear(); } catch (e) { }
 
-        // Clear Cache Storage (for Service Worker caches)
         if ('caches' in window) {
             try {
                 const cacheNames = await caches.keys();
                 for (const name of cacheNames) {
                     await caches.delete(name);
-                    console.log(`Cache '${name}' deleted.`);
                 }
-                console.log("All caches cleared.");
-            } catch (e) {
-                console.error("Error clearing caches:", e);
-            }
-        } else {
-            console.log("Cache API not supported or available.");
+            } catch (e) { }
         }
 
-        // Unregister all Service Workers
         if ('serviceWorker' in navigator) {
             try {
                 const registrations = await navigator.serviceWorker.getRegistrations();
                 for (const registration of registrations) {
                     await registration.unregister();
-                    console.log(`Service Worker unregistered: ${registration.scope}`);
                 }
-                console.log("All service workers unregistered.");
-            } catch (e) {
-                console.error("Error unregistering service workers:", e);
-            }
-        } else {
-            console.log("Service Worker API not supported or available.");
+            } catch (e) { }
         }
 
-        console.log("Browser data cleanup complete.");
-        return true; // Indicate success
+        return true;
+    },
+
+    factoryReset: async function () {
+        console.log("Starting Factory Reset...");
+        try { localStorage.clear(); } catch (e) { }
+        try { sessionStorage.clear(); } catch (e) { }
+
+        if ('caches' in window) {
+            try {
+                const cacheNames = await caches.keys();
+                for (const name of cacheNames) {
+                    await caches.delete(name);
+                }
+            } catch (e) { }
+        }
+
+        if ('serviceWorker' in navigator) {
+            try {
+                const registrations = await navigator.serviceWorker.getRegistrations();
+                for (const registration of registrations) {
+                    await registration.unregister();
+                }
+            } catch (e) { }
+        }
+
+        return true;
     }
 };
