@@ -101,72 +101,79 @@ namespace Safir.Server.Controllers
 
             try
             {
-                string sql = @"INSERT INTO dbo.MESAGEP
-                                (PERSONEL, COMP_COD, PAYAM, STATUS, STDATE, STTIME, USERNAME, UID, CRT)
-                             VALUES
-                                (@RecipientUserId, @CompCod, @Payam, @Status, @StDate, @StTime, @SenderUsername, @SenderUserCod, GETDATE())";
-
-                int successCount = 0;
-                List<int> failedRecipients = new List<int>();
                 long currentDate = CL_Tarikh.GetCurrentPersianDateAsLong();
                 int currentTime = int.Parse(DateTime.Now.ToString("HHmm"));
 
                 var validRecipients = request.RecipientUserIds.Distinct().Where(id => id > 0).ToList();
+                if (!validRecipients.Any()) return BadRequest("هیچ گیرنده معتبری یافت نشد.");
 
-                if (validRecipients.Any())
+                int successCount = 0;
+                List<int> failedRecipients = new List<int>();
+                int chunkSize = 200; // Safe size to stay well below SQL Server's limits
+
+                string singleInsertSql = @"INSERT INTO dbo.MESAGEP (PERSONEL, COMP_COD, PAYAM, STATUS, STDATE, STTIME, USERNAME, UID, CRT)
+                                           VALUES (@RecipientUserId, @CompCod, @Payam, @Status, @StDate, @StTime, @SenderUsername, @SenderUserCod, GETDATE())";
+
+                for (int chunkIndex = 0; chunkIndex < validRecipients.Count; chunkIndex += chunkSize)
                 {
-                    var parametersList = validRecipients.Select(recipientId => new
+                    var chunk = validRecipients.Skip(chunkIndex).Take(chunkSize).ToList();
+
+                    var sqlBuilder = new System.Text.StringBuilder("INSERT INTO dbo.MESAGEP (PERSONEL, COMP_COD, PAYAM, STATUS, STDATE, STTIME, USERNAME, UID, CRT) VALUES ");
+                    var dParams = new DynamicParameters();
+
+                    dParams.Add("CompCod", request.CompCod);
+                    dParams.Add("Payam", request.MessageText.Trim());
+                    dParams.Add("Status", 1);
+                    dParams.Add("StDate", currentDate);
+                    dParams.Add("StTime", currentTime);
+                    dParams.Add("SenderUsername", senderUsername);
+                    dParams.Add("SenderUserCod", senderUserCod);
+
+                    var valueClauses = new List<string>();
+                    for (int i = 0; i < chunk.Count; i++)
                     {
-                        RecipientUserId = recipientId,
-                        request.CompCod,
-                        Payam = request.MessageText.Trim(),
-                        Status = 1,
-                        StDate = currentDate,
-                        StTime = currentTime,
-                        SenderUsername = senderUsername,
-                        SenderUserCod = senderUserCod
-                    }).ToList();
+                        string pName = $"@RecipientUserId_{i}";
+                        dParams.Add(pName, chunk[i]);
+                        valueClauses.Add($"({pName}, @CompCod, @Payam, @Status, @StDate, @StTime, @SenderUsername, @SenderUserCod, GETDATE())");
+                    }
+
+                    sqlBuilder.Append(string.Join(", ", valueClauses));
 
                     try
                     {
-                        // Use a transaction to ensure Dapper batch insert doesn't cause partial inserts, 
-                        // allowing safe fallback to sequential if any individual row fails.
-                        await _dbService.ExecuteInTransactionAsync(async (conn, trans) =>
-                        {
-                            int batchResult = await conn.ExecuteAsync(sql, parametersList, transaction: trans);
-
-                            // If rows affected doesn't match, it could be a trigger or partial insert problem.
-                            // Throw to rollback the transaction and fallback.
-                            if (batchResult != validRecipients.Count)
-                            {
-                                throw new Exception($"Batch insert affected {batchResult} rows, expected {validRecipients.Count}.");
-                            }
-                        });
-
-                        // All succeeded if no exception was thrown inside the transaction block
-                        successCount = validRecipients.Count;
+                        int rowsAffected = await _dbService.DoExecuteSQLAsync(sqlBuilder.ToString(), dParams);
+                        successCount += chunk.Count;
                     }
-                    catch (Exception batchEx)
+                    catch (Exception)
                     {
-                        _logger.LogWarning(batchEx, "API: SendMessage - Batch insert failed or aborted for SenderUsername {SenderUsername}. Falling back to sequential execution.", senderUsername);
-
-                        // Because the transaction rolled back entirely, it is safe to iterate and find exactly which failed
-                        foreach (var p in parametersList)
+                        // Fallback to single inserts if bulk fails
+                        foreach (var recipientId in chunk)
                         {
+                            var singleParams = new
+                            {
+                                RecipientUserId = recipientId,
+                                request.CompCod,
+                                Payam = request.MessageText.Trim(),
+                                Status = 1,
+                                StDate = currentDate,
+                                StTime = currentTime,
+                                SenderUsername = senderUsername,
+                                SenderUserCod = senderUserCod
+                            };
                             try
                             {
-                                int result = await _dbService.DoExecuteSQLAsync(sql, p);
-                                if (result > 0) successCount++;
-                                else failedRecipients.Add(p.RecipientUserId);
+                                await _dbService.DoExecuteSQLAsync(singleInsertSql, singleParams);
+                                successCount++;
                             }
                             catch (Exception insertEx)
                             {
-                                _logger.LogError(insertEx, "API: SendMessage - Error inserting message for Recipient: {RecipientId}", p.RecipientUserId);
-                                failedRecipients.Add(p.RecipientUserId);
+                                _logger.LogError(insertEx, "API: SendMessage - Error inserting message for Recipient: {RecipientId}", recipientId);
+                                failedRecipients.Add(recipientId);
                             }
                         }
                     }
                 }
+
 
                 if (failedRecipients.Any())
                 {

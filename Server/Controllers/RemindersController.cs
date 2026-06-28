@@ -99,42 +99,82 @@ namespace Safir.Server.Controllers
 
             try
             {
-                string sql = @"INSERT INTO dbo.REMAINDER
-                               (PERSONEL, COMP_COD, PAYAM, STATUS, STDATE, STTIME, USERNAME, CTDATE, CTTIME, CRT, UID)
-                             OUTPUT INSERTED.IDNUM
-                             VALUES
-                               (@RecipientUserId, @CompCod, @Payam, @Status, @StDate, @StTime, @SenderUsername, @CtDate, @CtTime, GETDATE(), @SenderUserCod)";
+                var validRecipients = request.RecipientUserIds.Distinct().Where(id => id > 0).ToList();
+                if (!validRecipients.Any()) return BadRequest("هیچ گیرنده معتبری یافت نشد.");
 
                 int successCount = 0;
                 List<int> failedRecipients = new List<int>();
+                int chunkSize = 200; // Safe size to stay well below SQL Server's 2100 parameter limit and 1000 row limits
 
-                foreach (var recipientId in request.RecipientUserIds.Distinct())
+                string singleInsertSql = @"INSERT INTO dbo.REMAINDER (PERSONEL, COMP_COD, PAYAM, STATUS, STDATE, STTIME, USERNAME, CTDATE, CTTIME, CRT, UID)
+                                           VALUES (@RecipientUserId, @CompCod, @Payam, @Status, @StDate, @StTime, @SenderUsername, @CtDate, @CtTime, GETDATE(), @SenderUserCod)";
+
+                for (int chunkIndex = 0; chunkIndex < validRecipients.Count; chunkIndex += chunkSize)
                 {
-                    if (recipientId <= 0) continue;
-                    var parameters = new
+                    var chunk = validRecipients.Skip(chunkIndex).Take(chunkSize).ToList();
+
+                    var sqlBuilder = new System.Text.StringBuilder("INSERT INTO dbo.REMAINDER (PERSONEL, COMP_COD, PAYAM, STATUS, STDATE, STTIME, USERNAME, CTDATE, CTTIME, CRT, UID) VALUES ");
+                    var dParams = new DynamicParameters();
+
+                    dParams.Add("CompCod", request.CompCod);
+                    dParams.Add("Payam", request.ReminderText.Trim());
+                    dParams.Add("Status", 1);
+                    dParams.Add("StDate", reminderDateLong.Value);
+                    dParams.Add("StTime", reminderTimeInt);
+                    dParams.Add("SenderUsername", senderUsername);
+                    dParams.Add("CtDate", currentCtDate);
+                    dParams.Add("CtTime", currentCtTimeInt);
+                    dParams.Add("SenderUserCod", senderUserCod);
+
+                    var valueClauses = new List<string>();
+                    for (int i = 0; i < chunk.Count; i++)
                     {
-                        RecipientUserId = recipientId,
-                        request.CompCod,
-                        Payam = request.ReminderText.Trim(),
-                        Status = 1,
-                        StDate = reminderDateLong.Value,
-                        StTime = reminderTimeInt,
-                        SenderUsername = senderUsername,
-                        CtDate = currentCtDate,
-                        CtTime = currentCtTimeInt,
-                        SenderUserCod = senderUserCod
-                    };
+                        string pName = $"@RecipientUserId_{i}";
+                        dParams.Add(pName, chunk[i]);
+                        valueClauses.Add($"({pName}, @CompCod, @Payam, @Status, @StDate, @StTime, @SenderUsername, @CtDate, @CtTime, GETDATE(), @SenderUserCod)");
+                    }
+
+                    sqlBuilder.Append(string.Join(", ", valueClauses));
+
                     try
                     {
-                        var newId = await _dbService.DoGetDataSQLAsyncSingle<long?>(sql, parameters);
-                        if (newId.HasValue && newId > 0) successCount++;
-                        else failedRecipients.Add(recipientId);
+                        int rowsAffected = await _dbService.DoExecuteSQLAsync(sqlBuilder.ToString(), dParams);
+                        successCount += chunk.Count;
                     }
-                    catch (Exception insertEx) { _logger.LogError(insertEx, "API: CreateReminder - Error inserting reminder for Recipient: {RecipientId}", recipientId); failedRecipients.Add(recipientId); }
+                    catch (Exception)
+                    {
+                        // Fallback to single inserts if bulk fails (to find the specific failed rows)
+                        foreach (var recipientId in chunk)
+                        {
+                            var singleParams = new
+                            {
+                                RecipientUserId = recipientId,
+                                request.CompCod,
+                                Payam = request.ReminderText.Trim(),
+                                Status = 1,
+                                StDate = reminderDateLong.Value,
+                                StTime = reminderTimeInt,
+                                SenderUsername = senderUsername,
+                                CtDate = currentCtDate,
+                                CtTime = currentCtTimeInt,
+                                SenderUserCod = senderUserCod
+                            };
+                            try
+                            {
+                                await _dbService.DoExecuteSQLAsync(singleInsertSql, singleParams);
+                                successCount++;
+                            }
+                            catch (Exception insertEx)
+                            {
+                                _logger.LogError(insertEx, "API: CreateReminder - Error inserting reminder for Recipient: {RecipientId}", recipientId);
+                                failedRecipients.Add(recipientId);
+                            }
+                        }
+                    }
                 }
 
-                if (successCount == request.RecipientUserIds.Count) return Ok(new { Message = "یادآوری(ها) با موفقیت ثبت شد." });
-                else return StatusCode(207, new { Message = $"یادآوری برای {successCount} نفر از {request.RecipientUserIds.Count} نفر ثبت شد.", FailedRecipients = failedRecipients });
+                if (failedRecipients.Count == 0 && successCount == validRecipients.Count) return Ok(new { Message = "یادآوری(ها) با موفقیت ثبت شد." });
+                else return StatusCode(207, new { Message = $"یادآوری برای {successCount} نفر از {validRecipients.Count} نفر ثبت شد.", FailedRecipients = failedRecipients });
             }
             catch (Exception ex) { _logger.LogError(ex, "API: General error creating reminder from user {SenderUsername}.", senderUsername); return StatusCode(500, "Internal server error while creating reminder."); }
         }
