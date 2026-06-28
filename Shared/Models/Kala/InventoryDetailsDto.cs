@@ -8,6 +8,7 @@ namespace Safir.Shared.Models.Kala
 {
     public class InventoryDetailsDto
     {
+        public string ItemCode { get; set; } = string.Empty;
         public decimal? CurrentInventory { get; set; }
         public decimal? MinimumInventory { get; set; } // Changed from double to decimal?
     }

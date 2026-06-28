@@ -142,32 +142,56 @@ namespace Safir.Server.Controllers
             bool inventoryIssueFound = false;
             if (!request.OverrideInventoryCheck)
             {
-                foreach (var line in request.Lines)
+                var allItemCodes = request.Lines.Select(l => l.ItemCode).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+                if (allItemCodes.Any())
                 {
-                    var itemDefExists = await _dbService.DoGetDataSQLAsyncSingle<int?>("SELECT 1 FROM dbo.STUF_DEF WHERE CODE = @ItemCode", new { ItemCode = line.ItemCode });
-                    if (!itemDefExists.HasValue)
+                    // 1. Verify existence of all items in STUF_DEF
+                    var existingItems = await _dbService.DoGetDataSQLAsync<string>(
+                        "SELECT CODE FROM dbo.STUF_DEF WHERE CODE IN @ItemCodes",
+                        new { ItemCodes = allItemCodes });
+
+                    var missingItems = allItemCodes.Except(existingItems ?? new List<string>(), StringComparer.OrdinalIgnoreCase).ToList();
+                    if (missingItems.Any())
                     {
-                        _logger.LogError("Pre-Transaction Check: Item CODE {ItemCode} not found in STUF_DEF.", line.ItemCode);
-                        return BadRequest(new ProformaSaveResponseDto { Success = false, Message = $"کالای '{line.ItemCode}' در سیستم تعریف نشده است." });
+                        var missingItemStr = string.Join(", ", missingItems);
+                        _logger.LogError("Pre-Transaction Check: Items CODE {ItemCodes} not found in STUF_DEF.", missingItemStr);
+                        return BadRequest(new ProformaSaveResponseDto { Success = false, Message = $"کالاهای '{missingItemStr}' در سیستم تعریف نشده‌اند." });
                     }
-                    var inventoryDetails = await _dbService.GetItemInventoryDetailsAsync(line.ItemCode, line.AnbarCode);
-                    if (inventoryDetails == null)
+
+                    // 2. Fetch inventory details batched by AnbarCode
+                    var anbarGroups = request.Lines.GroupBy(l => l.AnbarCode);
+                    foreach (var anbarGroup in anbarGroups)
                     {
-                        inventoryIssueFound = true;
-                        _logger.LogWarning("Pre-Transaction Check: STUF_FSK record missing for Item {ItemCode}, Anbar {AnbarCode}. Confirmation needed.", line.ItemCode, line.AnbarCode);
-                    }
-                    else
-                    {
-                        decimal currentInv = inventoryDetails.CurrentInventory ?? 0;
-                        decimal minInv = inventoryDetails.MinimumInventory ?? 0;
-                        decimal resultingInv = currentInv - line.Quantity;
-                        if (resultingInv < minInv - 0.0001m)
+                        var anbarCode = anbarGroup.Key;
+                        var anbarItemCodes = anbarGroup.Select(l => l.ItemCode).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+
+                        var inventoryDetailsList = await _dbService.GetItemsInventoryDetailsAsync(anbarItemCodes, anbarCode);
+                        var inventoryDict = inventoryDetailsList
+                            .GroupBy(d => d.ItemCode, StringComparer.OrdinalIgnoreCase)
+                            .ToDictionary(g => g.Key, g => g.First(), StringComparer.OrdinalIgnoreCase);
+
+                        foreach (var line in anbarGroup)
                         {
-                            inventoryIssueFound = true;
-                            _logger.LogWarning("Pre-Transaction Check: Low stock for Item {ItemCode}, Anbar {AnbarCode}. Resulting: {ResultingInv}, Min: {MinInv}. Confirmation needed.", line.ItemCode, line.AnbarCode, resultingInv, minInv);
+                            if (!inventoryDict.TryGetValue(line.ItemCode, out var inventoryDetails) || inventoryDetails == null)
+                            {
+                                inventoryIssueFound = true;
+                                _logger.LogWarning("Pre-Transaction Check: STUF_FSK record missing for Item {ItemCode}, Anbar {AnbarCode}. Confirmation needed.", line.ItemCode, line.AnbarCode);
+                            }
+                            else
+                            {
+                                decimal currentInv = inventoryDetails.CurrentInventory ?? 0;
+                                decimal minInv = inventoryDetails.MinimumInventory ?? 0;
+                                decimal resultingInv = currentInv - line.Quantity;
+                                if (resultingInv < minInv - 0.0001m)
+                                {
+                                    inventoryIssueFound = true;
+                                    _logger.LogWarning("Pre-Transaction Check: Low stock for Item {ItemCode}, Anbar {AnbarCode}. Resulting: {ResultingInv}, Min: {MinInv}. Confirmation needed.", line.ItemCode, line.AnbarCode, resultingInv, minInv);
+                                }
+                            }
+                            if (inventoryIssueFound) break;
                         }
+                        if (inventoryIssueFound) break;
                     }
-                    if (inventoryIssueFound) break;
                 }
             }
             if (inventoryIssueFound && !request.OverrideInventoryCheck)

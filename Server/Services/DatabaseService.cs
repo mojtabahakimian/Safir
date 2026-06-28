@@ -6,7 +6,7 @@ using Microsoft.Extensions.Logging;
 using System;
 using System.Threading.Tasks;
 using System.Collections.Generic; // For IEnumerable
-using System.Data.SqlClient;
+using Microsoft.Data.SqlClient;
 using Safir.Shared.Models.Kala;
 using Safir.Shared.Models.User_Model;
 using Safir.Shared.Models.Kharid;
@@ -238,6 +238,7 @@ namespace Safir.Server.Services
             // SQL to get both current inventory and minimum inventory (MIN_M from STUF_FSK)
             const string sql = @"
                 SELECT
+                    SD.CODE as ItemCode,
                     ROUND(ISNULL(AK.SMEGH,0) - ISNULL(FR.MEG,0), 2) AS CurrentInventory,
                     FSK.MIN_M AS MinimumInventory
                 FROM dbo.STUF_DEF SD
@@ -263,6 +264,41 @@ namespace Safir.Server.Services
                 _logger.LogError(ex, "Error getting inventory details for Item: {ItemCode}, Anbar: {AnbarCode}", itemCode, anbarCode);
                 LogDbErrorToFile(sql, ex);
                 return null; // Return null on error
+            }
+        }
+
+        public async Task<IEnumerable<InventoryDetailsDto>> GetItemsInventoryDetailsAsync(IEnumerable<string> itemCodes, int anbarCode)
+        {
+            const string sql = @"
+                SELECT
+                    SD.CODE as ItemCode,
+                    ROUND(ISNULL(AK.SMEGH,0) - ISNULL(FR.MEG,0), 2) AS CurrentInventory,
+                    FSK.MIN_M AS MinimumInventory
+                FROM dbo.STUF_DEF SD
+                LEFT JOIN dbo.STUF_FSK FSK ON SD.CODE = FSK.CODE AND FSK.ANBAR = @AnbarCode
+                LEFT JOIN dbo.AK_MOGO_AVL_KOL(99999999, @AnbarCode) AK ON AK.CODE = SD.CODE AND AK.ANBAR = @AnbarCode
+                LEFT JOIN dbo.AK_MOGO_FR(99999999, @AnbarCode) FR ON FR.CODE = SD.CODE AND FR.ANBAR = @AnbarCode
+                WHERE SD.CODE IN @ItemCodes;";
+
+            try
+            {
+                using IDbConnection db = new SqlConnection(_connectionString);
+                var results = await db.QueryAsync<InventoryDetailsDto>(sql, new { ItemCodes = itemCodes, AnbarCode = anbarCode });
+
+                foreach (var result in results)
+                {
+                    if (result.MinimumInventory == null)
+                    {
+                        result.MinimumInventory = 0;
+                    }
+                }
+                return results;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting inventory details for Anbar: {AnbarCode}", anbarCode);
+                LogDbErrorToFile(sql, ex);
+                return new List<InventoryDetailsDto>();
             }
         }
 

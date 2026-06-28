@@ -41,6 +41,7 @@ namespace Safir.Shared.Interfaces
         Task<decimal?> GetItemInventoryAsync(string itemCode);
 
         Task<InventoryDetailsDto?> GetItemInventoryDetailsAsync(string itemCode, int anbarCode); // New Method
+        Task<IEnumerable<InventoryDetailsDto>> GetItemsInventoryDetailsAsync(IEnumerable<string> itemCodes, int anbarCode);
 
 
         Task<SqlMapper.GridReader> DoGetDataSQLAsyncMultiple(string sql, object? parameters = null);
