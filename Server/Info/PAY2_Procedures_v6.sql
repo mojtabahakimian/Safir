@@ -388,7 +388,9 @@ BEGIN
         SELECT @GROSS_PAY = ISNULL(SUM(AMOUNT), 0) FROM @ItemCalc WHERE ITEM_TYPE IN (1, 2);
         SELECT @INS_BASE = ISNULL(SUM(INS_AMOUNT), 0) FROM @ItemCalc WHERE INS_SUBJECT = 1 AND ITEM_TYPE IN (1, 2);
 
-        DECLARE @EFFECTIVE_INS_CEILING BIGINT = CAST((@INS_CEILING / 30.0) * @DAYSB AS BIGINT);
+        -- v6.3: سقف بیمه باید روی همان روزِ «مبنای بیمه» (اسمی/DAYS) محاسبه شود، نه DAYSB.
+        -- وگرنه اگر سقف فعال شود، پرسنلِ «فقط‌بیمه» (DAYSB=0) سقفشان صفر شده و بیمه دوباره صفر می‌شد.
+        DECLARE @EFFECTIVE_INS_CEILING BIGINT = CAST((@INS_CEILING / 30.0) * @DAYS AS BIGINT);
         IF @INS_CEILING_APPLY = 1 AND @INS_TYPE <> 3
             SET @INS_BASE = CASE WHEN @INS_BASE > @EFFECTIVE_INS_CEILING THEN @EFFECTIVE_INS_CEILING ELSE @INS_BASE END;
 
