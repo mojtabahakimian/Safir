@@ -1219,6 +1219,11 @@ GO
 --
 -- جمع: ۲۱ جدول، ۲ View، ۲ Function، ۱ Stored Procedure، ۱ Trigger
 -- ================================================================
+
+-- Migration 010: Fix configurations for Shift Allowance and Nominal Base Salary
+UPDATE [dbo].[PAY2_ITEM_DEF] SET [INS_SUBJECT] = 0 WHERE [ITEM_CODE] = 'SHIFT' AND [INS_SUBJECT] = 1;
+UPDATE [dbo].[PAY2_ITEM_DEF] SET [PAY_BASE_DAYS] = 1 WHERE [ITEM_CODE] IN ('BASE_SAL', 'HOME', 'CHILDREN', 'FAMILY_ALLOW', 'ATTRACT', 'GROCERY', 'HARD_COND', 'OTHER_FIX') AND [PAY_BASE_DAYS] = 2;
+
 GO
 ";
                 ExecuteBatches(db, tablescript);
