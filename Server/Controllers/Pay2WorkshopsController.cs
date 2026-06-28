@@ -170,19 +170,6 @@ public class Pay2WorkshopsController : ControllerBase
                     await conn.ExecuteAsync(updateSql, w, tran);
                 }
 
-                const string accUpsertSql = @"
-                    IF EXISTS (SELECT 1 FROM PAY2_WORKSHOP_ACC WHERE WS_ID = @WS_ID AND ACC_KEY = @ACC_KEY)
-                        UPDATE PAY2_WORKSHOP_ACC
-                           SET ACC_CODE = @ACC_CODE
-                         WHERE WS_ID = @WS_ID AND ACC_KEY = @ACC_KEY
-                    ELSE
-                        INSERT INTO PAY2_WORKSHOP_ACC (WS_ID, ACC_KEY, ACC_CODE)
-                        VALUES (@WS_ID, @ACC_KEY, @ACC_CODE)";
-
-                const string accDeleteSql = @"
-                    DELETE FROM PAY2_WORKSHOP_ACC
-                    WHERE WS_ID = @WS_ID AND ACC_KEY = @ACC_KEY";
-
                 var accEntries = new[]
                 {
                     ("ADV_HES",             a.ADV_HES),
@@ -198,23 +185,35 @@ public class Pay2WorkshopsController : ControllerBase
                     ("BANK_PAY_HES",        a.BANK_PAY_HES)
                 };
 
+                var sqlBuilder = new System.Text.StringBuilder();
+                var parameters = new DynamicParameters();
+                parameters.Add("WS_ID", newOrUpdatedWsId);
+
+                int pIndex = 0;
                 foreach (var (key, code) in accEntries)
                 {
                     if (string.IsNullOrWhiteSpace(code))
                     {
-                        await conn.ExecuteAsync(accDeleteSql,
-                            new { WS_ID = newOrUpdatedWsId, ACC_KEY = key },
-                            tran);
+                        sqlBuilder.AppendLine($"DELETE FROM PAY2_WORKSHOP_ACC WHERE WS_ID = @WS_ID AND ACC_KEY = '{key}';");
                     }
                     else
                     {
-                        await conn.ExecuteAsync(accUpsertSql, new
-                        {
-                            WS_ID = newOrUpdatedWsId,
-                            ACC_KEY = key,
-                            ACC_CODE = code.Trim()
-                        }, tran);
+                        parameters.Add($"ACC_CODE_{pIndex}", code.Trim());
+                        sqlBuilder.AppendLine($@"
+                            IF EXISTS (SELECT 1 FROM PAY2_WORKSHOP_ACC WHERE WS_ID = @WS_ID AND ACC_KEY = '{key}')
+                                UPDATE PAY2_WORKSHOP_ACC
+                                   SET ACC_CODE = @ACC_CODE_{pIndex}
+                                 WHERE WS_ID = @WS_ID AND ACC_KEY = '{key}';
+                            ELSE
+                                INSERT INTO PAY2_WORKSHOP_ACC (WS_ID, ACC_KEY, ACC_CODE)
+                                VALUES (@WS_ID, '{key}', @ACC_CODE_{pIndex});");
+                        pIndex++;
                     }
+                }
+
+                if (sqlBuilder.Length > 0)
+                {
+                    await conn.ExecuteAsync(sqlBuilder.ToString(), parameters, tran);
                 }
 
                 return newOrUpdatedWsId;

@@ -142,32 +142,56 @@ namespace Safir.Server.Controllers
             bool inventoryIssueFound = false;
             if (!request.OverrideInventoryCheck)
             {
-                foreach (var line in request.Lines)
+                var allItemCodes = request.Lines.Select(l => l.ItemCode).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+                if (allItemCodes.Any())
                 {
-                    var itemDefExists = await _dbService.DoGetDataSQLAsyncSingle<int?>("SELECT 1 FROM dbo.STUF_DEF WHERE CODE = @ItemCode", new { ItemCode = line.ItemCode });
-                    if (!itemDefExists.HasValue)
+                    // 1. Verify existence of all items in STUF_DEF
+                    var existingItems = await _dbService.DoGetDataSQLAsync<string>(
+                        "SELECT CODE FROM dbo.STUF_DEF WHERE CODE IN @ItemCodes",
+                        new { ItemCodes = allItemCodes });
+
+                    var missingItems = allItemCodes.Except(existingItems ?? new List<string>(), StringComparer.OrdinalIgnoreCase).ToList();
+                    if (missingItems.Any())
                     {
-                        _logger.LogError("Pre-Transaction Check: Item CODE {ItemCode} not found in STUF_DEF.", line.ItemCode);
-                        return BadRequest(new ProformaSaveResponseDto { Success = false, Message = $"کالای '{line.ItemCode}' در سیستم تعریف نشده است." });
+                        var missingItemStr = string.Join(", ", missingItems);
+                        _logger.LogError("Pre-Transaction Check: Items CODE {ItemCodes} not found in STUF_DEF.", missingItemStr);
+                        return BadRequest(new ProformaSaveResponseDto { Success = false, Message = $"کالاهای '{missingItemStr}' در سیستم تعریف نشده‌اند." });
                     }
-                    var inventoryDetails = await _dbService.GetItemInventoryDetailsAsync(line.ItemCode, line.AnbarCode);
-                    if (inventoryDetails == null)
+
+                    // 2. Fetch inventory details batched by AnbarCode
+                    var anbarGroups = request.Lines.GroupBy(l => l.AnbarCode);
+                    foreach (var anbarGroup in anbarGroups)
                     {
-                        inventoryIssueFound = true;
-                        _logger.LogWarning("Pre-Transaction Check: STUF_FSK record missing for Item {ItemCode}, Anbar {AnbarCode}. Confirmation needed.", line.ItemCode, line.AnbarCode);
-                    }
-                    else
-                    {
-                        decimal currentInv = inventoryDetails.CurrentInventory ?? 0;
-                        decimal minInv = inventoryDetails.MinimumInventory ?? 0;
-                        decimal resultingInv = currentInv - line.Quantity;
-                        if (resultingInv < minInv - 0.0001m)
+                        var anbarCode = anbarGroup.Key;
+                        var anbarItemCodes = anbarGroup.Select(l => l.ItemCode).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+
+                        var inventoryDetailsList = await _dbService.GetItemsInventoryDetailsAsync(anbarItemCodes, anbarCode);
+                        var inventoryDict = inventoryDetailsList
+                            .GroupBy(d => d.ItemCode, StringComparer.OrdinalIgnoreCase)
+                            .ToDictionary(g => g.Key, g => g.First(), StringComparer.OrdinalIgnoreCase);
+
+                        foreach (var line in anbarGroup)
                         {
-                            inventoryIssueFound = true;
-                            _logger.LogWarning("Pre-Transaction Check: Low stock for Item {ItemCode}, Anbar {AnbarCode}. Resulting: {ResultingInv}, Min: {MinInv}. Confirmation needed.", line.ItemCode, line.AnbarCode, resultingInv, minInv);
+                            if (!inventoryDict.TryGetValue(line.ItemCode, out var inventoryDetails) || inventoryDetails == null)
+                            {
+                                inventoryIssueFound = true;
+                                _logger.LogWarning("Pre-Transaction Check: STUF_FSK record missing for Item {ItemCode}, Anbar {AnbarCode}. Confirmation needed.", line.ItemCode, line.AnbarCode);
+                            }
+                            else
+                            {
+                                decimal currentInv = inventoryDetails.CurrentInventory ?? 0;
+                                decimal minInv = inventoryDetails.MinimumInventory ?? 0;
+                                decimal resultingInv = currentInv - line.Quantity;
+                                if (resultingInv < minInv - 0.0001m)
+                                {
+                                    inventoryIssueFound = true;
+                                    _logger.LogWarning("Pre-Transaction Check: Low stock for Item {ItemCode}, Anbar {AnbarCode}. Resulting: {ResultingInv}, Min: {MinInv}. Confirmation needed.", line.ItemCode, line.AnbarCode, resultingInv, minInv);
+                                }
+                            }
+                            if (inventoryIssueFound) break;
                         }
+                        if (inventoryIssueFound) break;
                     }
-                    if (inventoryIssueFound) break;
                 }
             }
             if (inventoryIssueFound && !request.OverrideInventoryCheck)
@@ -292,38 +316,110 @@ namespace Safir.Server.Controllers
                     if (headRowsAffected <= 0) throw new InvalidOperationException("Insert into HEAD_LST failed.");
 
                     // 3. Insert INVO_LST Lines (Discount calculation logic updated)
-                    string insertLineSql = @"
-                        INSERT INTO dbo.INVO_LST (
-                          NUMBER, TAG, ANBAR, CODE, MEGH, MEGHk, MABL, MABL_K,
-                          VAHED_K, N_KOL, TKHN, N_MOIN, IMBAA, MANDAH, RADIF,
-                          FROM_A, JAY, CRT, UID
-                        ) VALUES (
-                          @NUMBER, @TAG, @ANBAR, @CODE, @MEGH, @MEGHk, @MABL, @MABL_K,
-                          @VAHED_K, @N_KOL, @TKHN, @N_MOIN, @IMBAA, @MANDAH, @RADIF,
-                          0, 0, GETDATE(), @UserId
-                        )";
-                    const string checkStufFskSql = "SELECT 1 FROM dbo.STUF_FSK WHERE CODE = @CODE AND ANBAR = @ANBAR";
-                    const string insertStufFskSql = @"INSERT INTO dbo.STUF_FSK (CODE, ANBAR, MOGODI_A, FI_A, MABL_A, MANDAH_A, MIN_M, MAX_M, CRT, UID) VALUES (@CODE, @ANBAR, 0, 0, 0, 0, 0, 0, GETDATE(), @UserId)";
                     int radifCounter = 0;
                     decimal totalCalculatedVat = 0;
 
-                    //decimal jamf = 0;      // مجموع مبلغ پس از تخفیف و مالیات
-                    //decimal jamTakhfif = 0; // مجموع تخفیف
-                    //decimal pursantP = 0;   // جمع پورسانت محاسبه شده
+                    // Batch STUF_FSK Check/Insert
+                    var distinctFskRequests = request.Lines
+                        .Select(l => new { l.ItemCode, l.AnbarCode })
+                        .Distinct()
+                        .ToList();
+
+                    var distinctItemCodes = distinctFskRequests.Select(r => r.ItemCode).Distinct().ToList();
+
+                    if (distinctFskRequests.Any())
+                    {
+                        // Chunk requests to avoid SQL Server's 2100 parameter limit (2 params per item = max ~1000 items per chunk)
+                        int chunkSize = 500;
+                        for (int chunkIndex = 0; chunkIndex < distinctFskRequests.Count; chunkIndex += chunkSize)
+                        {
+                            var chunk = distinctFskRequests.Skip(chunkIndex).Take(chunkSize).ToList();
+
+                            var ensureFskSql = new System.Text.StringBuilder();
+                            var fskParams = new Dapper.DynamicParameters();
+                            fskParams.Add("UserId", userId);
+
+                            for (int i = 0; i < chunk.Count; i++)
+                            {
+                                var req = chunk[i];
+                                // Using IF NOT EXISTS is safe in SQL Server for this scenario
+                                ensureFskSql.AppendLine($@"
+                                    IF NOT EXISTS (SELECT 1 FROM dbo.STUF_FSK WHERE CODE = @ItemCode{i} AND ANBAR = @AnbarCode{i})
+                                    BEGIN
+                                        INSERT INTO dbo.STUF_FSK (CODE, ANBAR, MOGODI_A, FI_A, MABL_A, MANDAH_A, MIN_M, MAX_M, CRT, UID) 
+                                        VALUES (@ItemCode{i}, @AnbarCode{i}, 0, 0, 0, 0, 0, 0, GETDATE(), @UserId);
+                                    END
+                                ");
+                                fskParams.Add($"ItemCode{i}", req.ItemCode);
+                                fskParams.Add($"AnbarCode{i}", req.AnbarCode);
+                            }
+
+                            await connection.ExecuteAsync(ensureFskSql.ToString(), fskParams, transaction: transaction);
+                        }
+                    }
+
+                    // Pre-fetch Item definitions (VAT info, base units)
+                    var stufDefs = new Dictionary<string, dynamic>();
+                    if (distinctItemCodes.Any())
+                    {
+                        string stufDefSql = "SELECT CODE, VAHED, CMBAA, VRA FROM dbo.STUF_DEF WHERE CODE IN @Codes";
+                        var fetchedDefs = await connection.QueryAsync(stufDefSql, new { Codes = distinctItemCodes }, transaction: transaction);
+                        foreach (var def in fetchedDefs)
+                        {
+                            stufDefs[def.CODE] = def;
+                        }
+                    }
+
+                    // Pre-fetch Unit Conversions
+                    var unitConversions = new Dictionary<(string Code, int Unit), double>();
+                    var requestedUnitPairs = request.Lines
+                        .Select(l => new { l.ItemCode, l.SelectedUnitCode })
+                        .Distinct()
+                        .ToList();
+
+                    if (requestedUnitPairs.Any())
+                    {
+                        int chunkSize = 500;
+                        for (int chunkIndex = 0; chunkIndex < requestedUnitPairs.Count; chunkIndex += chunkSize)
+                        {
+                            var chunk = requestedUnitPairs.Skip(chunkIndex).Take(chunkSize).ToList();
+                            var unitSql = new System.Text.StringBuilder();
+                            var unitParams = new Dapper.DynamicParameters();
+
+                            unitSql.AppendLine("SELECT CODE, VAHED, NESBAT FROM dbo.VAHEDS WHERE 1=0 "); // trick to start OR chain safely
+
+                            for (int i = 0; i < chunk.Count; i++)
+                            {
+                                unitSql.AppendLine($" OR (CODE = @Code{i} AND VAHED = @Unit{i}) ");
+                                unitParams.Add($"Code{i}", chunk[i].ItemCode);
+                                unitParams.Add($"Unit{i}", chunk[i].SelectedUnitCode);
+                            }
+
+                            var fetchedUnits = await connection.QueryAsync(unitSql.ToString(), unitParams, transaction: transaction);
+                            foreach (var u in fetchedUnits)
+                            {
+                                unitConversions[(u.CODE, u.VAHED)] = (double)u.NESBAT;
+                            }
+                        }
+                    }
+
+                    var allLineParams = new List<dynamic>();
 
                     foreach (var line in request.Lines)
                     {
                         radifCounter++;
-                        // STUF_FSK Check/Insert (Unchanged)
-                        var fskExists = await connection.QuerySingleOrDefaultAsync<int?>(checkStufFskSql, new { CODE = line.ItemCode, ANBAR = line.AnbarCode }, transaction: transaction);
-                        if (!fskExists.HasValue)
-                        {
-                            int fskRows = await connection.ExecuteAsync(insertStufFskSql, new { CODE = line.ItemCode, ANBAR = line.AnbarCode, UserId = userId }, transaction: transaction);
-                            if (fskRows <= 0) throw new InvalidOperationException($"Failed to auto-create STUF_FSK record for CODE={line.ItemCode}, ANBAR={line.AnbarCode}.");
-                        }
 
                         // --- Line Calculations (Using Correct Discount Logic) ---
-                        double nesbat = await GetConversionRateAsync(line.ItemCode, line.SelectedUnitCode, connection, transaction);
+                        double nesbat = 1.0;
+                        if (unitConversions.TryGetValue((line.ItemCode, line.SelectedUnitCode), out double fetchedRate))
+                        {
+                            nesbat = fetchedRate;
+                        }
+                        else if (stufDefs.TryGetValue(line.ItemCode, out var def) && def.VAHED == line.SelectedUnitCode)
+                        {
+                            nesbat = 1.0; // Base unit selected
+                        }
+
                         decimal meghK = line.Quantity * (decimal)nesbat; // Quantity in base unit
                                                                          // MABL_K is Total Price in Base Unit: QtyInBaseUnit * PricePerBaseUnit
                                                                          // We have PricePerUnit (which is price for the SELECTED unit from client)
@@ -341,34 +437,19 @@ namespace Safir.Server.Controllers
                         decimal nMoin = discountAmount + cashDiscountAmount; // Total discount amount (N_MOIN)
 
                         decimal imbaaLine = 0; // VAT Amount
-                        if (request.Header.ApplyVat)
+                        if (request.Header.ApplyVat && stufDefs.TryGetValue(line.ItemCode, out var itemDef))
                         {
-                            bool isVatApplicable = await connection.QuerySingleOrDefaultAsync<bool?>("SELECT CMBAA FROM STUF_DEF WHERE CODE = @Code", new { Code = line.ItemCode }, transaction) ?? false;
+                            bool isVatApplicable = (bool?)itemDef.CMBAA ?? false;
                             if (isVatApplicable)
                             {
-                                double vatRate = await GetVatRateAsync(line.ItemCode, connection, transaction);
+                                double vatRate = (double?)itemDef.VRA ?? 0;
                                 // VAT is calculated on price AFTER discounts
                                 imbaaLine = Math.Round(((mablK - nMoin) * (decimal)vatRate) / 100m);
                                 totalCalculatedVat += imbaaLine;
                             }
                         }
 
-                        //// جمع مبالغ برای پورسانت و آمار
-                        //jamf += (mablK - nMoin + imbaaLine);
-                        //jamTakhfif += nMoin;
-
-                        //if (porid.HasValue)
-                        //{
-                        //    const string porsantSql = "SELECT PORSANT FROM dbo.VISITORS_PORSANT_KALA WHERE PORID = @PorId AND code = @ItemCode";
-                        //    decimal? porsantPercent = await connection.QuerySingleOrDefaultAsync<decimal?>(porsantSql, new { PorId = porid.Value, ItemCode = line.ItemCode }, transaction: transaction);
-                        //    if (porsantPercent.HasValue)
-                        //    {
-                        //        pursantP += Math.Round(((mablK - nMoin + imbaaLine) * porsantPercent.Value) / 100m);
-                        //    }
-                        //}
-                        // --- End Calculations ---
-
-                        var lineParams = new
+                        allLineParams.Add(new
                         {
                             NUMBER = nextNumber,
                             TAG = ProformaTag,
@@ -386,10 +467,55 @@ namespace Safir.Server.Controllers
                             MANDAH = line.Notes,
                             RADIF = radifCounter,
                             UserId = userId
-                        };
-                        int lineRowsAffected = await connection.ExecuteAsync(insertLineSql, lineParams, transaction: transaction);
-                        if (lineRowsAffected <= 0) throw new InvalidOperationException($"Insert into INVO_LST failed for item {line.ItemCode}.");
+                        });
                     }
+
+                    if (allLineParams.Any())
+                    {
+                        int lineChunkSize = 100;
+                        for (int chunkIndex = 0; chunkIndex < allLineParams.Count; chunkIndex += lineChunkSize)
+                        {
+                            var chunk = allLineParams.Skip(chunkIndex).Take(lineChunkSize).ToList();
+                            var lineSql = new System.Text.StringBuilder();
+                            var lineParams = new Dapper.DynamicParameters();
+
+                            for (int i = 0; i < chunk.Count; i++)
+                            {
+                                var p = chunk[i];
+                                lineSql.AppendLine($@"
+                                    INSERT INTO dbo.INVO_LST (
+                                        NUMBER, TAG, ANBAR, CODE, MEGH, MEGHk, MABL, MABL_K,
+                                        VAHED_K, N_KOL, TKHN, N_MOIN, IMBAA, MANDAH, RADIF,
+                                        FROM_A, JAY, CRT, UID
+                                    ) VALUES (
+                                        @NUMBER{i}, @TAG{i}, @ANBAR{i}, @CODE{i}, @MEGH{i}, @MEGHk{i}, @MABL{i}, @MABL_K{i},
+                                        @VAHED_K{i}, @N_KOL{i}, @TKHN{i}, @N_MOIN{i}, @IMBAA{i}, @MANDAH{i}, @RADIF{i},
+                                        0, 0, GETDATE(), @UserId{i}
+                                    );
+                                ");
+
+                                lineParams.Add($"NUMBER{i}", p.NUMBER);
+                                lineParams.Add($"TAG{i}", p.TAG);
+                                lineParams.Add($"ANBAR{i}", p.ANBAR);
+                                lineParams.Add($"CODE{i}", p.CODE);
+                                lineParams.Add($"MEGH{i}", p.MEGH);
+                                lineParams.Add($"MEGHk{i}", p.MEGHk);
+                                lineParams.Add($"MABL{i}", p.MABL);
+                                lineParams.Add($"MABL_K{i}", p.MABL_K);
+                                lineParams.Add($"VAHED_K{i}", p.VAHED_K);
+                                lineParams.Add($"N_KOL{i}", p.N_KOL);
+                                lineParams.Add($"TKHN{i}", p.TKHN);
+                                lineParams.Add($"N_MOIN{i}", p.N_MOIN);
+                                lineParams.Add($"IMBAA{i}", p.IMBAA);
+                                lineParams.Add($"MANDAH{i}", p.MANDAH);
+                                lineParams.Add($"RADIF{i}", p.RADIF);
+                                lineParams.Add($"UserId{i}", p.UserId);
+                            }
+
+                            await connection.ExecuteAsync(lineSql.ToString(), lineParams, transaction: transaction);
+                        }
+                    }
+
                     _logger.LogInformation("Transaction: Inserted {LineCount} lines into INVO_LST for Number {Number}", request.Lines.Count, nextNumber);
 
                     // 4. Update Header VAT (Unchanged)

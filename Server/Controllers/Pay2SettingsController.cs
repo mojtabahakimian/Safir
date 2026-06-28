@@ -215,8 +215,9 @@ VALUES
                     foreach (var row in rows)
                     {
                         row.TAX_YEAR = request.TAX_YEAR;
-                        await conn.ExecuteAsync(insertSql, row, tran);
                     }
+
+                    await conn.ExecuteAsync(insertSql, rows, tran);
                 });
 
                 return Ok();
