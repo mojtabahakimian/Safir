@@ -557,16 +557,16 @@ INSERT INTO PAY2_ITEM_DEF
     (ITEM_CODE, ITEM_NAME, ITEM_TYPE, CALC_BASIS, INS_SUBJECT, TAX_SUBJECT, INS_BASE_DAYS, PAY_BASE_DAYS, IS_SYSTEM, SORT_ORDER)
 VALUES
 ('BASE_SAL_B',  N'حقوق روزانه رسمی',        1, 1, 1, 1, 1, 2, 1, 1),   -- SALARY_DAYLYB
-('BASE_SAL',    N'حقوق روزانه اسمی',         1, 1, 1, 1, 1, 2, 1, 2),   -- SALARY_DAYLY
-('HOME',        N'خواربار و مسکن',           1, 1, 1, 1, 1, 2, 1, 3),   -- قانون ۲۸ روز
-('CHILDREN',    N'حق اولاد',                 1, 1, 0, 1, 1, 2, 1, 4),   -- معاف بیمه، مشمول مالیات
-('FAMILY_ALLOW',N'حق تأهل',                  1, 2, 1, 1, 1, 2, 1, 5),   -- ماهیانه
-('ATTRACT',     N'حق جذب',                   1, 2, 1, 1, 1, 2, 1, 6),
-('GROCERY',     N'بن کارگری',                1, 1, 1, 0, 1, 2, 1, 7),   -- مشمول بیمه، معاف مالیات
-('HARD_COND',   N'شرایط محیط کار',           1, 2, 1, 1, 1, 2, 1, 8),
+('BASE_SAL',    N'حقوق روزانه اسمی',         1, 1, 1, 1, 1, 1, 1, 2),   -- SALARY_DAYLY
+('HOME',        N'خواربار و مسکن',           1, 1, 1, 1, 1, 1, 1, 3),   -- قانون ۲۸ روز
+('CHILDREN',    N'حق اولاد',                 1, 1, 0, 1, 1, 1, 1, 4),   -- معاف بیمه، مشمول مالیات
+('FAMILY_ALLOW',N'حق تأهل',                  1, 2, 1, 1, 1, 1, 1, 5),   -- ماهیانه
+('ATTRACT',     N'حق جذب',                   1, 2, 1, 1, 1, 1, 1, 6),   -- ماهیانه
+('GROCERY',     N'بن کارگری',                1, 1, 1, 0, 1, 1, 1, 7),   -- مشمول بیمه، معاف مالیات
+('HARD_COND',   N'شرایط محیط کار',           1, 2, 1, 1, 1, 1, 1, 8),
 ('NAHAR',       N'حق نهار',                  1, 2, 0, 0, 2, 2, 1, 9),   -- معاف بیمه/مالیات
-('SHIFT',       N'حق شیفت/نوبت/شب‌کاری',    1, 1, 1, 1, 1, 2, 1, 10),  -- درصد از BASE_SAL_B
-('OTHER_FIX',   N'سایر ثابت',               1, 2, 1, 1, 1, 2, 1, 11),
+('SHIFT',       N'حق شیفت/نوبت/شب‌کاری',    1, 1, 0, 1, 1, 2, 1, 10),  -- درصد از BASE_SAL_B
+('OTHER_FIX',   N'سایر ثابت',               1, 2, 1, 1, 1, 1, 1, 11),
 ('OT_NORMAL',   N'اضافه‌کار عادی',           2, 1, 1, 1, 1, 2, 1, 12),
 ('OT_HOLIDAY',  N'اضافه‌کار تعطیل',          2, 1, 1, 1, 1, 2, 1, 13),
 ('OT_ADMIN',    N'اضافه‌کار اداری',           2, 1, 1, 1, 1, 2, 1, 14),
@@ -1497,8 +1497,11 @@ BEGIN
                         IF @EFF_SHIFT_MODE = 'FIXED'
                             SET @CALC_AMOUNT = CAST(@ITEM_AMOUNT * (@PAY_DAYS / CAST(@MONTH_DAYS AS DECIMAL(5,2))) AS BIGINT);
                         ELSE
-                            -- v6.2 (رفع باگ): @CURRENT_DEC_DAILY_BASE مقدارِ «ماهانه»‌ی پایه است (نه روزانه)؛ ضربِ نادرست در 30 حذف شد تا حق شیفتِ درصدی ۳۰برابر نشود
-                            SET @CALC_AMOUNT = CAST(ROUND((@CURRENT_DEC_DAILY_BASE * @PAY_DAYS * @ITEM_AMOUNT / 100.0), 0) AS BIGINT);
+                        BEGIN
+                            DECLARE @SHIFT_BASE_B DECIMAL(18,2) = 0;
+                            SELECT TOP 1 @SHIFT_BASE_B = AMOUNT FROM PAY2_DECREE_LINE DL INNER JOIN PAY2_ITEM_DEF ID ON DL.ITEM_ID = ID.ITEM_ID WHERE DL.DEC_ID = @DEC_ID AND ID.ITEM_CODE = 'BASE_SAL_B';
+                            SET @CALC_AMOUNT = CAST(ROUND((@SHIFT_BASE_B * @PAY_DAYS * @ITEM_AMOUNT / 100.0), 0) AS BIGINT);
+                        END
                     END
 
                     -- v6.1 (حفظ‌شده): مبنای ساعتی — آیتم‌های اضافه‌کار از ساعات کارکرد خودشان استفاده می‌کنند
