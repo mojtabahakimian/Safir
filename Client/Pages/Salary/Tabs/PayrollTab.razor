@@ -991,19 +991,24 @@
         }
     }
 
-    Comparison<Pay2RunLineDto> GetComparison(string key) => key switch
+    // به‌صورت switch statement با return نوشته شده (نه switch expression) تا target-typing
+    // لامبداها از روی نوع بازگشتی متد قطعی باشد و هیچ ابهام کامپایلری پیش نیاید.
+    Comparison<Pay2RunLineDto> GetComparison(string key)
     {
-        "name"      => (a, b) => FaCompare(a.FULL_NAME, b.FULL_NAME),
-        "work"      => (a, b) => a.WORK_DAYS.CompareTo(b.WORK_DAYS),
-        "gross"     => (a, b) => a.GROSS_PAY.CompareTo(b.GROSS_PAY),
-        "insbase"   => (a, b) => a.INS_BASE.CompareTo(b.INS_BASE),
-        "insworker" => (a, b) => a.INS_WORKER.CompareTo(b.INS_WORKER),
-        "tax"       => (a, b) => a.TAX_AMOUNT.CompareTo(b.TAX_AMOUNT),
-        "ded"       => (a, b) => a.TOTAL_DED.CompareTo(b.TOTAL_DED),
-        "net"       => (a, b) => a.NET_PAY.CompareTo(b.NET_PAY),
-        // در غیر این صورت کلید = ITEM_CODE ستون پویا
-        _           => (a, b) => a.Details.GetValueOrDefault(key, 0L).CompareTo(b.Details.GetValueOrDefault(key, 0L))
-    };
+        switch (key)
+        {
+            case "name":      return (a, b) => FaCompare(a.FULL_NAME, b.FULL_NAME);
+            case "work":      return (a, b) => a.WORK_DAYS.CompareTo(b.WORK_DAYS);
+            case "gross":     return (a, b) => a.GROSS_PAY.CompareTo(b.GROSS_PAY);
+            case "insbase":   return (a, b) => a.INS_BASE.CompareTo(b.INS_BASE);
+            case "insworker": return (a, b) => a.INS_WORKER.CompareTo(b.INS_WORKER);
+            case "tax":       return (a, b) => a.TAX_AMOUNT.CompareTo(b.TAX_AMOUNT);
+            case "ded":       return (a, b) => a.TOTAL_DED.CompareTo(b.TOTAL_DED);
+            case "net":       return (a, b) => a.NET_PAY.CompareTo(b.NET_PAY);
+            // در غیر این صورت کلید = ITEM_CODE ستون پویا
+            default:          return (a, b) => a.Details.GetValueOrDefault(key, 0L).CompareTo(b.Details.GetValueOrDefault(key, 0L));
+        }
+    }
 
     static int FaCompare(string? a, string? b) => Math.Sign(_faComparer.Compare(a ?? "", b ?? ""));
 
