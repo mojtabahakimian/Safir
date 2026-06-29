@@ -85,9 +85,9 @@ namespace Safir.Client.Services
         }
 
         // دریافت بایت‌های PDF فیش حقوقی یک پرسنل (برای نمایش در نمایشگر داخلی مرورگر)
-        public async Task<byte[]> GetPayslipPdfAsync(int runId, int empId)
+        public async Task<byte[]> GetPayslipPdfAsync(int runId, int empId, bool isOfficial = false)
         {
-            var res = await _http.GetAsync($"api/pay2/run/{runId}/employee/{empId}/payslip");
+            var res = await _http.GetAsync($"api/pay2/run/{runId}/employee/{empId}/payslip?isOfficial={isOfficial}");
             if (!res.IsSuccessStatusCode)
             {
                 var err = await res.Content.ReadAsStringAsync();

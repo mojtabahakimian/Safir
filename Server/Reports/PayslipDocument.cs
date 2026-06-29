@@ -206,21 +206,17 @@ namespace Safir.Server.Reports
                     });
                 }
 
-                // اطلاعات تکمیلی (مانده‌ها) — فقط در صورت وجود
-                bool hasLeave = _data.LeaveBalanceDays.HasValue;
-                bool hasLoan = _data.LoanBalance.HasValue && _data.LoanBalance.Value != 0;
-                if (hasLeave || hasLoan)
+                // اطلاعات تکمیلی (مانده‌ها) — نمایش همیشگی حتی در صورت صفر بودن
+                col.Item().PaddingTop(4).Text(t =>
                 {
-                    col.Item().PaddingTop(4).Text(t =>
-                    {
-                        if (hasLeave)
-                            t.Span($"مانده مرخصی: {_data.LeaveBalanceDays!.Value.ToString("0.##", FaCulture)} روز    ")
-                             .FontSize(8).FontColor(Colors.Grey.Darken1);
-                        if (hasLoan)
-                            t.Span($"مانده وام: {Money(_data.LoanBalance!.Value)} ریال")
-                             .FontSize(8).FontColor(Colors.Grey.Darken1);
-                    });
-                }
+                    decimal leave = _data.LeaveBalanceDays ?? 0;
+                    t.Span($"مانده مرخصی: {leave.ToString("0.##", FaCulture)} روز    ")
+                     .FontSize(8).FontColor(Colors.Grey.Darken1);
+
+                    long loan = _data.LoanBalance ?? 0;
+                    t.Span($"مانده وام: {Money(loan)} ریال")
+                     .FontSize(8).FontColor(Colors.Grey.Darken1);
+                });
 
                 // محل امضا
                 col.Item().PaddingTop(20).Row(row =>

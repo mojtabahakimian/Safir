@@ -566,18 +566,19 @@
     }
 
     // باز کردن پیش‌نمایش/چاپ فیش حقوقی پرسنل در نمایشگر داخلی مرورگر (Blob URL + iframe)
-    void OpenPayslip(Pay2RunLineDto item)
+    void OpenPayslip(Pay2RunLineDto item, bool isOfficial = false)
     {
         if (CurrentRun == null) return;
 
         int runId = CurrentRun.RUN_ID;
         int empId = item.EMP_ID;
         string fullName = item.FULL_NAME ?? "";
+        string slipType = isOfficial ? "(رسمی)" : "(اسمی)";
 
         var parameters = new MudBlazor.DialogParameters
         {
-            ["Title"] = $"فیش حقوقی - {fullName}",
-            ["FetchPdfBytes"] = (Func<Task<byte[]>>)(() => RunApi.GetPayslipPdfAsync(runId, empId))
+            ["Title"] = $"فیش حقوقی {slipType} - {fullName}",
+            ["FetchPdfBytes"] = (Func<Task<byte[]>>)(() => RunApi.GetPayslipPdfAsync(runId, empId, isOfficial))
         };
 
         var options = new MudBlazor.DialogOptions
@@ -612,11 +613,14 @@
             </text>;
 
         RenderFragment<Pay2RunLineDto> actionsCell = item =>
-            @<text>
-                <button class="btn-outline-pay2 p2-btn-sm" @onclick="() => OpenPayslip(item)" title="چاپ فیش حقوقی">
-                    <i class="bi bi-printer"></i> چاپ فیش
+            @<div style="display: flex; gap: 4px; justify-content: center;">
+                <button class="btn-outline-pay2 p2-btn-sm" @onclick="() => OpenPayslip(item, false)" title="چاپ فیش اسمی (واقعی)">
+                    <i class="bi bi-printer"></i> اسمی
                 </button>
-            </text>;
+                <button class="btn-outline-pay2 p2-btn-sm" @onclick="() => OpenPayslip(item, true)" title="چاپ فیش رسمی">
+                    <i class="bi bi-printer"></i> رسمی
+                </button>
+            </div>;
 
         // ۱) پرسنل (ستون چسبان؛ مرتب‌سازی بر اساس نام، جستجو بر اساس نام+کد، خروجی به دو ستون کد و نام)
         cols.Add(new Pay2GridColumn<Pay2RunLineDto>
