@@ -2,7 +2,6 @@
 @using Safir.Shared.Models
 @using Safir.Shared.Utility
 @using Safir.Client.Components.Reports
-@using System.Text
 @using System.Globalization
 @inject Safir.Client.Services.Pay2RunApiService RunApi
 @inject Safir.Client.Services.Pay2AttendanceApiService AttApi
@@ -10,7 +9,6 @@
 @inject ISnackbar Snackbar
 @inject MudBlazor.IDialogService DialogService
 @inject ConnectionManagerService ConnectionManager
-@inject Microsoft.JSInterop.IJSRuntime JS
 
 <style>
     /* ========== استایل لیست دوره‌ها (Master View) ========== */
@@ -37,127 +35,6 @@
         border-color: var(--p2-primary-border);
         box-shadow: var(--p2-shadow-md);
         transform: translateY(-2px);
-    }
-
-    /* ========== گرید پرفورمنس‌بالا (Resize + Sort + Virtualize) ========== */
-    /* نام کلاس‌ها عمداً p2-excel-* است تا با تابع window.startP2Resize در interop.js کار کند */
-    .p2-excel-wrapper {
-        width: 100%;
-        overflow: auto;
-        max-height: 62vh;
-        border: 1px solid var(--p2-border);
-        border-radius: 8px;
-        position: relative;
-        background: #fff;
-    }
-
-    .p2-excel-table {
-        border-collapse: separate;
-        border-spacing: 0;
-        table-layout: fixed; /* لازم برای Resize پایدار ستون‌ها */
-        width: max-content;
-        min-width: 100%;
-        font-size: 13px;
-    }
-
-        .p2-excel-table th {
-            background: #f8fafc;
-            color: var(--p2-text-main);
-            font-weight: 700;
-            padding: 10px 8px;
-            border-bottom: 2px solid #cbd5e1;
-            border-left: 1px solid #e2e8f0;
-            text-align: center;
-            position: sticky;
-            top: 0;
-            z-index: 20;
-            white-space: nowrap;
-        }
-
-        .p2-excel-table td {
-            border-bottom: 1px solid #e2e8f0;
-            border-left: 1px solid #e2e8f0;
-            padding: 6px 8px;
-            background: inherit;
-            vertical-align: middle;
-            white-space: nowrap;
-        }
-
-        .p2-excel-table tbody tr {
-            background: #fff;
-        }
-
-            .p2-excel-table tbody tr:hover {
-                background: #f8fafc;
-            }
-
-    /* ستون اول (پرسنل) چسبان به راست */
-    .p2-sticky-col-1 {
-        position: sticky;
-        right: 0;
-        z-index: 10;
-        background: #fff;
-        box-shadow: -1px 0 0 #e2e8f0;
-    }
-
-    .p2-excel-table th.p2-sticky-col-1 {
-        z-index: 30;
-        background: #f1f5f9;
-    }
-
-    .p2-excel-table tbody tr:hover td.p2-sticky-col-1 {
-        background: #f8fafc;
-    }
-
-    /* دستگیره تغییر عرض ستون */
-    .p2-col-resizer {
-        position: absolute;
-        top: 0;
-        left: -2px;
-        width: 6px;
-        height: 100%;
-        cursor: col-resize;
-        z-index: 50;
-        background-color: transparent;
-        transition: background-color 0.2s;
-    }
-
-        .p2-col-resizer:hover, .p2-col-resizer:active {
-            background-color: var(--p2-primary);
-        }
-
-    body.p2-resizing * {
-        user-select: none !important;
-        cursor: col-resize !important;
-    }
-
-    /* تیتر قابل‌کلیک برای Sort */
-    .p2-sort-head {
-        cursor: pointer;
-        user-select: none;
-        display: inline-flex;
-        align-items: center;
-        gap: 4px;
-    }
-
-        .p2-sort-head:hover {
-            color: var(--p2-primary);
-        }
-
-    .p2-sort-ind {
-        font-size: 10px;
-        line-height: 1;
-        color: var(--p2-primary);
-    }
-
-    /* ردیف جمع کل چسبان به پایین */
-    .p2-tfoot-cell {
-        position: sticky;
-        bottom: 0;
-        background: var(--p2-bg-main);
-        font-weight: 900;
-        z-index: 15;
-        border-top: 2px solid var(--p2-border);
     }
 </style>
 
@@ -242,7 +119,6 @@
                             <div class="period-card-item">
                                 <div style="display:flex; justify-content:space-between; align-items:flex-start;">
                                     <span style="font-size: 18px; font-weight: 800; color: var(--p2-text-main);">@p.PERIOD_TITLE</span>
-                                    <!-- در این تب، وضعیت کارکرد نشان داده می‌شود. اگر بسته باشد یعنی آماده محاسبه است -->
                                     <span class="p2-badge @(p.STATUS == 1 ? "p2-badge-warning" : "p2-badge-success")">
                                         @(p.STATUS == 1 ? "کارکرد باز" : "آماده محاسبه")
                                     </span>
@@ -393,178 +269,15 @@
         }
         else
         {
-            var colCount = RunData?.Columns?.Count ?? 0;
-
             <div class="card-custom p2-fade-content" style="padding: 12px; border: none; box-shadow: none;">
-
-                <!-- نوار ابزار گرید: جستجو + خروجی + شمارنده -->
-                <div style="display:flex; align-items:center; gap:12px; margin-bottom:10px; flex-wrap:wrap;">
-                    <div class="pay2-search-wrapper" style="width:300px; max-width:100%;">
-                        <i class="bi bi-search"></i>
-                        <input type="text"
-                               class="pay2-search-input"
-                               style="width:100%;"
-                               placeholder="جستجوی نام یا کد پرسنلی..."
-                               value="@_gridSearch"
-                               @oninput="OnGridSearchInput" />
-                    </div>
-
-                    <button class="btn-outline-pay2 p2-btn-sm"
-                            style="height:38px;"
-                            @onclick="ExportCsv"
-                            disabled="@(!_displayLines.Any())"
-                            title="خروجی Excel از نمای فعلی (با فیلتر و مرتب‌سازی)">
-                        <i class="bi bi-file-earmark-excel"></i> خروجی Excel
-                    </button>
-
-                    <div style="flex-grow:1;"></div>
-
-                    <div class="p2-text-muted" style="font-size:12px;">
-                        نمایش <b>@_displayLines.Count</b> از <b>@(RunData?.Lines?.Count ?? 0)</b> ردیف
-                        @if (_sortKey != null)
-                        {
-                            <span style="margin-right:8px;">| مرتب‌سازی فعال</span>
-                        }
-                    </div>
-                </div>
-
-                <div class="p2-excel-wrapper">
-                    <table class="p2-excel-table">
-                        <colgroup>
-                            <col style="width:210px;" />  <!-- 0 پرسنل -->
-                            <col style="width:80px;" />   <!-- 1 کارکرد -->
-                            @for (int i = 0; i < colCount; i++)
-                            {
-                                <col style="width:120px;" />
-                            }
-                            <col style="width:120px;" />  <!-- ناخالص -->
-                            <col style="width:110px;" />  <!-- مبنای بیمه -->
-                            <col style="width:110px;" />  <!-- بیمه کارگر -->
-                            <col style="width:110px;" />  <!-- مالیات -->
-                            <col style="width:150px;" />  <!-- کسورات -->
-                            <col style="width:130px;" />  <!-- خالص -->
-                            <col style="width:110px;" />  <!-- عملیات -->
-                        </colgroup>
-
-                        <thead>
-                            <tr>
-                                <th class="p2-sticky-col-1">
-                                    <span class="p2-sort-head" @onclick='() => ToggleSort("name")'>پرسنل <span class="p2-sort-ind">@SortArrow("name")</span></span>
-                                    <div class="p2-col-resizer" onmousedown="startP2Resize(event, this, 0, true)"></div>
-                                </th>
-                                <th>
-                                    <span class="p2-sort-head" @onclick='() => ToggleSort("work")'>کارکرد <span class="p2-sort-ind">@SortArrow("work")</span></span>
-                                    <div class="p2-col-resizer" onmousedown="startP2Resize(event, this, 1, false)"></div>
-                                </th>
-
-                                @{ int headIdx = 2; }
-                                @foreach (var col in RunData.Columns)
-                                {
-                                    var code = col.ITEM_CODE;
-                                    var resizeJs = $"startP2Resize(event, this, {headIdx}, false)";
-                                    <th style="color:#2563eb;">
-                                        <span class="p2-sort-head" @onclick="() => ToggleSort(code)">@col.ITEM_NAME <span class="p2-sort-ind">@SortArrow(code)</span></span>
-                                        <div class="p2-col-resizer" onmousedown="@resizeJs"></div>
-                                    </th>
-                                    headIdx++;
-                                }
-
-                                <th style="border-right: 2px solid var(--p2-border-light);">
-                                    <span class="p2-sort-head" @onclick='() => ToggleSort("gross")'>ناخالص حقوق <span class="p2-sort-ind">@SortArrow("gross")</span></span>
-                                    <div class="p2-col-resizer" onmousedown="@($"startP2Resize(event, this, {2 + colCount}, false)")"></div>
-                                </th>
-                                <th>
-                                    <span class="p2-sort-head" @onclick='() => ToggleSort("insbase")'>مبنای بیمه <span class="p2-sort-ind">@SortArrow("insbase")</span></span>
-                                    <div class="p2-col-resizer" onmousedown="@($"startP2Resize(event, this, {3 + colCount}, false)")"></div>
-                                </th>
-                                <th>
-                                    <span class="p2-sort-head" @onclick='() => ToggleSort("insworker")'>بیمه کارگر <span class="p2-sort-ind">@SortArrow("insworker")</span></span>
-                                    <div class="p2-col-resizer" onmousedown="@($"startP2Resize(event, this, {4 + colCount}, false)")"></div>
-                                </th>
-                                <th>
-                                    <span class="p2-sort-head" @onclick='() => ToggleSort("tax")'>مالیات <span class="p2-sort-ind">@SortArrow("tax")</span></span>
-                                    <div class="p2-col-resizer" onmousedown="@($"startP2Resize(event, this, {5 + colCount}, false)")"></div>
-                                </th>
-                                <th style="color:#ef4444;">
-                                    <span class="p2-sort-head" @onclick='() => ToggleSort("ded")'>مساعده/وام/سایر کسورات <span class="p2-sort-ind">@SortArrow("ded")</span></span>
-                                    <div class="p2-col-resizer" onmousedown="@($"startP2Resize(event, this, {6 + colCount}, false)")"></div>
-                                </th>
-                                <th style="color:#059669; border-right: 2px solid var(--p2-border-light);">
-                                    <span class="p2-sort-head" @onclick='() => ToggleSort("net")'>خالص پرداختی <span class="p2-sort-ind">@SortArrow("net")</span></span>
-                                    <div class="p2-col-resizer" onmousedown="@($"startP2Resize(event, this, {7 + colCount}, false)")"></div>
-                                </th>
-                                <th style="border-right: 2px solid var(--p2-border-light);">عملیات
-                                    <div class="p2-col-resizer" onmousedown="@($"startP2Resize(event, this, {8 + colCount}, false)")"></div>
-                                </th>
-                            </tr>
-                        </thead>
-
-                        <tbody>
-                            @if (!_displayLines.Any())
-                            {
-                                <tr><td colspan="@(9 + colCount)" style="text-align:center; padding:30px;">رکوردی یافت نشد.</td></tr>
-                            }
-                            else
-                            {
-                                <Virtualize Items="_displayLines" Context="item" ItemSize="42" OverscanCount="10">
-                                    <tr @key="item.EMP_ID">
-                                        <td class="p2-sticky-col-1">
-                                            <div style="font-weight:700;">@item.FULL_NAME</div>
-                                            <div class="p2-text-muted p2-text-mono" style="font-size:11px;">@item.EMP_CODE</div>
-                                        </td>
-                                        <td class="p2-text-mono" style="text-align:center;">@item.WORK_DAYS.ToString("0.##")</td>
-
-                                        @foreach (var col in RunData.Columns)
-                                        {
-                                            long val = item.Details.GetValueOrDefault(col.ITEM_CODE, 0);
-                                            <td class="p2-text-mono" style="text-align:left; color: @(val == 0 ? "var(--p2-border)" : "inherit");">
-                                                @(val == 0 ? "-" : val.ToString("N0"))
-                                            </td>
-                                        }
-
-                                        <td class="p2-text-mono" style="text-align:left; font-weight:bold; border-right: 2px solid var(--p2-border-light);">@item.GROSS_PAY.ToString("N0")</td>
-                                        <td class="p2-text-mono p2-text-muted" style="text-align:left;">@item.INS_BASE.ToString("N0")</td>
-                                        <td class="p2-text-mono" style="text-align:left;">@item.INS_WORKER.ToString("N0")</td>
-                                        <td class="p2-text-mono" style="text-align:left;">@item.TAX_AMOUNT.ToString("N0")</td>
-                                        <td class="p2-text-mono p2-text-danger" style="text-align:left;">@item.TOTAL_DED.ToString("N0")</td>
-                                        <td class="p2-text-mono p2-text-success" style="text-align:left; font-weight:900; font-size:15px; background: #f0fdf4; border-right: 2px solid var(--p2-border-light);">@item.NET_PAY.ToString("N0")</td>
-                                        <td style="text-align:center; border-right: 2px solid var(--p2-border-light);">
-                                            <button class="btn-outline-pay2 p2-btn-sm" @onclick="() => OpenPayslip(item)" title="چاپ فیش حقوقی">
-                                                <i class="bi bi-printer"></i> چاپ فیش
-                                            </button>
-                                        </td>
-                                    </tr>
-                                </Virtualize>
-                            }
-                        </tbody>
-
-                        <tfoot>
-                            @if (_displayLines.Any())
-                            {
-                                <tr>
-                                    <td class="p2-tfoot-cell" colspan="2" style="text-align:left;">
-                                        @(string.IsNullOrWhiteSpace(_gridSearch) ? "جمع کل دوره:" : "جمع موارد فیلترشده:")
-                                    </td>
-
-                                    @foreach (var col in RunData.Columns)
-                                    {
-                                        <td class="p2-tfoot-cell p2-text-mono" style="text-align:left; color:#2563eb;">
-                                            @((_colTotals.TryGetValue(col.ITEM_CODE, out var cv) ? cv : 0).ToString("N0"))
-                                        </td>
-                                    }
-
-                                    <td class="p2-tfoot-cell p2-text-mono" style="text-align:left; border-right: 2px solid var(--p2-border-light);">@_totGross.ToString("N0")</td>
-                                    <td class="p2-tfoot-cell p2-text-mono" style="text-align:left;">@_totInsBase.ToString("N0")</td>
-                                    <td class="p2-tfoot-cell p2-text-mono" style="text-align:left;">@_totInsWorker.ToString("N0")</td>
-                                    <td class="p2-tfoot-cell p2-text-mono" style="text-align:left;">@_totTax.ToString("N0")</td>
-                                    <td class="p2-tfoot-cell p2-text-mono p2-text-danger" style="text-align:left;">@_totDed.ToString("N0")</td>
-                                    <td class="p2-tfoot-cell p2-text-mono p2-text-success" style="text-align:left; font-size:16px; border-right: 2px solid var(--p2-border-light);">@_totNet.ToString("N0")</td>
-                                    <td class="p2-tfoot-cell" style="border-right: 2px solid var(--p2-border-light);"></td>
-                                </tr>
-                            }
-                        </tfoot>
-                    </table>
-                </div>
+                <Safir.Client.Pages.Salary.Tabs.Pay2DataGrid TItem="Pay2RunLineDto"
+                                                             Items="RunData.Lines"
+                                                             Columns="_gridColumns"
+                                                             KeySelector="@(x => (object)x.EMP_ID)"
+                                                             SearchPlaceholder="جستجوی نام یا کد پرسنلی..."
+                                                             FooterLabel="جمع کل دوره"
+                                                             ExportFileName="@($"Payroll_{SelectedPeriodDate}")"
+                                                             MaxHeight="62vh" />
             </div>
         }
     }
@@ -601,40 +314,11 @@
     Pay2RunDto? CurrentRun;
     Pay2RunResultDto RunData = new();
 
+    // ستون‌های گرید عمومی (Pay2DataGrid) — هنگام لود هر اجرا ساخته می‌شوند
+    List<Pay2GridColumn<Pay2RunLineDto>> _gridColumns = new();
+
     bool IsLoading = false;
     bool IsProcessing = false;
-
-    // ════════════════════════════════════════════════════════════════
-    // وضعیت گرید (Sort / Search / Totals) — همگی خارج از مسیر render محاسبه می‌شوند
-    // ════════════════════════════════════════════════════════════════
-
-    // لیست فیلترشده (به ترتیب منبع) و لیست نهاییِ نمایشی (فیلترشده + مرتب‌شده).
-    // جداسازی این دو باعث می‌شود مرتب‌سازی، جمع‌های فوتر را بی‌جهت بازمحاسبه نکند.
-    List<Pay2RunLineDto> _filtered = new();
-    List<Pay2RunLineDto> _displayLines = new();
-
-    // ایندکس جستجوی از پیش‌نرمال‌شده (EMP_ID → "نام کد" نرمال‌شده). یک‌بار هنگام لود ساخته می‌شود
-    // تا در هر کلیدِ تایپ، روی همهٔ ردیف‌ها ToStandardSearchText/ToLower اجرا نشود (پرفورمنس WASM).
-    readonly Dictionary<int, string> _searchIndex = new();
-
-    string _gridSearch = "";
-    int _searchSeq = 0; // برای debounce بدون CancellationTokenSource
-
-    // مرتب‌سازی: کلید ستون + جهت (0=بدون مرتب‌سازی، 1=صعودی، -1=نزولی)
-    string? _sortKey;
-    int _sortDir;
-
-    // جمع‌های از پیش‌محاسبه‌شدهٔ ردیف tfoot (به‌جای Sum روی هر render)
-    readonly Dictionary<string, long> _colTotals = new();
-    long _totGross, _totInsBase, _totInsWorker, _totTax, _totDed, _totNet;
-
-    // مقایسه‌گرِ آگاه‌به‌فارسی برای مرتب‌سازی نام؛ در صورت نبود فرهنگ (InvariantGlobalization) به Ordinal برمی‌گردد
-    static readonly StringComparer _faComparer = BuildFaComparer();
-    static StringComparer BuildFaComparer()
-    {
-        try { return StringComparer.Create(System.Globalization.CultureInfo.GetCultureInfo("fa-IR"), ignoreCase: true); }
-        catch { return StringComparer.OrdinalIgnoreCase; }
-    }
 
     protected override async Task OnInitializedAsync()
     {
@@ -672,7 +356,7 @@
         CurrentPeriod = null;
         CurrentRun = null;
         RunData = new Pay2RunResultDto();
-        ResetGridState();
+        _gridColumns = new();
         PayrollNsStr = null;
         _periodSearchTerm = "";
 
@@ -694,7 +378,7 @@
         CurrentPeriod = null;
         CurrentRun = null;
         RunData = new Pay2RunResultDto();
-        ResetGridState();
+        _gridColumns = new();
         PayrollNsStr = null;
         _periodSearchTerm = "";
         SelectedPeriodDate = 0;
@@ -719,16 +403,16 @@
 
             CurrentRun = await RunApi.GetLatestRunAsync(CurrentPeriod.PER_ID);
 
-          if (CurrentRun != null)
+            if (CurrentRun != null)
             {
                 RunData = await RunApi.GetRunLinesAsync(CurrentRun.RUN_ID);
+                BuildGridColumns();
             }
             else
             {
                 RunData = new Pay2RunResultDto();
+                _gridColumns = new();
             }
-
-            PrepareGrid(); // ساخت ایندکس جستجو + ریست sort/search + ساخت نمای اولیه و جمع‌ها
         }
         catch (Exception ex)
         {
@@ -907,247 +591,120 @@
     }
 
     // ════════════════════════════════════════════════════════════════
-    // گرید: ساخت ایندکس، فیلتر، مرتب‌سازی و جمع‌ها
+    // ساخت تعریف ستون‌های گرید عمومی برای فیش حقوقی
     // ════════════════════════════════════════════════════════════════
-
-    void PrepareGrid()
+    void BuildGridColumns()
     {
-        _gridSearch = "";
-        _sortKey = null;
-        _sortDir = 0;
-        RebuildSearchIndex();
-        ApplyFilter();
-        ApplySort();
-    }
+        var cols = new List<Pay2GridColumn<Pay2RunLineDto>>();
 
-    void ResetGridState()
-    {
-        _gridSearch = "";
-        _sortKey = null;
-        _sortDir = 0;
-        _searchIndex.Clear();
-        _filtered = new();
-        _displayLines = new();
-        _colTotals.Clear();
-        _totGross = _totInsBase = _totInsWorker = _totTax = _totDed = _totNet = 0;
-    }
-
-    // یک‌بار هنگام لودِ داده اجرا می‌شود — نه در هر کلید جستجو
-    void RebuildSearchIndex()
-    {
-        _searchIndex.Clear();
-        var lines = RunData?.Lines;
-        if (lines == null) return;
-
-        foreach (var l in lines)
+        if (RunData?.Columns == null)
         {
-            // ToStandardSearchText: حذف کاراکترهای نامرئی + اصلاح ك/ي و ارقام فارسی + lowercase
-            _searchIndex[l.EMP_ID] = ((l.FULL_NAME ?? "") + " " + (l.EMP_CODE ?? "")).ToStandardSearchText();
-        }
-    }
-
-    // فیلتر جستجو روی لیست منبع (به ترتیب منبع). جمع‌های فوتر هم اینجا یک‌بار محاسبه می‌شوند،
-    // چون فقط با تغییرِ «مجموعهٔ فیلترشده» عوض می‌شوند و مرتب‌سازی روی آن‌ها اثری ندارد.
-    void ApplyFilter()
-    {
-        var src = RunData?.Lines;
-        if (src == null || src.Count == 0)
-        {
-            _filtered = new();
-            RecomputeTotals();
+            _gridColumns = cols;
             return;
         }
 
-        var term = _gridSearch?.Trim();
-        if (string.IsNullOrEmpty(term))
-        {
-            _filtered = src.ToList();
-        }
-        else
-        {
-            var t = term.ToStandardSearchText();
-            _filtered = t.Length == 0
-                ? src.ToList()
-                : src.Where(x => _searchIndex.TryGetValue(x.EMP_ID, out var s)
-                                 && s.Contains(t, StringComparison.Ordinal)).ToList();
-        }
+        // قالب سلولِ ستونِ پرسنل (نام + کد، دو خطی) — به‌صورت متغیر محلی تا بتواند this را capture کند
+        RenderFragment<Pay2RunLineDto> personnelCell = item =>
+            @<text>
+                <div style="font-weight:700;">@item.FULL_NAME</div>
+                <div class="p2-text-muted p2-text-mono" style="font-size:11px;">@item.EMP_CODE</div>
+            </text>;
 
-        RecomputeTotals();
-    }
+        RenderFragment<Pay2RunLineDto> actionsCell = item =>
+            @<text>
+                <button class="btn-outline-pay2 p2-btn-sm" @onclick="() => OpenPayslip(item)" title="چاپ فیش حقوقی">
+                    <i class="bi bi-printer"></i> چاپ فیش
+                </button>
+            </text>;
 
-    // مرتب‌سازی روی کپیِ لیست فیلترشده (تا خاموش‌کردن مرتب‌سازی، ترتیب منبع را برگرداند).
-    void ApplySort()
-    {
-        var list = _filtered.ToList();
-
-        if (_sortKey != null && _sortDir != 0)
+        // ۱) پرسنل (ستون چسبان؛ مرتب‌سازی بر اساس نام، جستجو بر اساس نام+کد، خروجی به دو ستون کد و نام)
+        cols.Add(new Pay2GridColumn<Pay2RunLineDto>
         {
-            var cmp = GetComparison(_sortKey);
-            list.Sort((a, b) =>
+            Title = "پرسنل",
+            Width = 210,
+            Align = "right",
+            Sticky = true,
+            SortBy = x => x.FULL_NAME,
+            Searchable = true,
+            SearchText = x => (x.FULL_NAME ?? "") + " " + (x.EMP_CODE ?? ""),
+            CellTemplate = personnelCell,
+            ExportTitles = new[] { "کد پرسنلی", "نام و نام خانوادگی" },
+            ExportCells = x => new[]
             {
-                int r = cmp(a, b);
-                if (r == 0) return a.EMP_ID.CompareTo(b.EMP_ID); // tie-break پایدار
-                return _sortDir == 1 ? r : -r;
+                new Pay2GridCell(x.EMP_CODE ?? "", true),   // متنِ امنِ اکسل (حفظ صفر ابتدایی)
+                new Pay2GridCell(x.FULL_NAME ?? "", false)
+            }
+        });
+
+        // ۲) کارکرد
+        cols.Add(new Pay2GridColumn<Pay2RunLineDto>
+        {
+            Title = "کارکرد",
+            Width = 80,
+            Align = "center",
+            CellClass = "p2-text-mono",
+            SortBy = x => x.WORK_DAYS,
+            Display = x => x.WORK_DAYS.ToString("0.##"),
+            ExportText = x => x.WORK_DAYS.ToString("0.##", CultureInfo.InvariantCulture)
+        });
+
+        // ۳) ستون‌های پویای آیتم‌های حقوقی (با جمع فوتر)
+        foreach (var c in RunData.Columns)
+        {
+            var code = c.ITEM_CODE;
+            cols.Add(new Pay2GridColumn<Pay2RunLineDto>
+            {
+                Title = c.ITEM_NAME,
+                Width = 120,
+                Align = "left",
+                HeaderColor = "#2563eb",
+                CellClass = "p2-text-mono",
+                SortBy = x => x.Details.GetValueOrDefault(code, 0L),
+                Display = x =>
+                {
+                    var v = x.Details.GetValueOrDefault(code, 0L);
+                    return v == 0 ? "-" : v.ToString("N0");
+                },
+                ExportText = x => x.Details.GetValueOrDefault(code, 0L).ToString(CultureInfo.InvariantCulture),
+                Sum = x => x.Details.GetValueOrDefault(code, 0L)
             });
         }
 
-        _displayLines = list;
+        // ۴) ستون‌های مبلغیِ ثابت (با جمع فوتر)
+        cols.Add(NumCol("ناخالص حقوق", 120, x => x.GROSS_PAY, "p2-text-mono"));
+        cols.Add(NumCol("مبنای بیمه", 110, x => x.INS_BASE, "p2-text-mono p2-text-muted"));
+        cols.Add(NumCol("بیمه کارگر", 110, x => x.INS_WORKER, "p2-text-mono"));
+        cols.Add(NumCol("مالیات", 110, x => x.TAX_AMOUNT, "p2-text-mono"));
+        cols.Add(NumCol("مساعده/وام/سایر کسورات", 150, x => x.TOTAL_DED, "p2-text-mono p2-text-danger", "#ef4444"));
+        cols.Add(NumCol("خالص پرداختی", 130, x => x.NET_PAY, "p2-text-mono p2-text-success", "#059669"));
+
+        // ۵) عملیات (بدون مرتب‌سازی/جمع)
+        cols.Add(new Pay2GridColumn<Pay2RunLineDto>
+        {
+            Title = "عملیات",
+            Width = 110,
+            Align = "center",
+            Sortable = false,
+            CellTemplate = actionsCell
+        });
+
+        _gridColumns = cols;
     }
 
-    // جمع‌های ردیف tfoot یک‌بار محاسبه و کش می‌شوند (به‌جای Sum روی هر render)
-    void RecomputeTotals()
+    // ستون مبلغیِ استاندارد: نمایش N0، مرتب‌سازی و جمع و خروجیِ خامِ عددی
+    static Pay2GridColumn<Pay2RunLineDto> NumCol(string title, int width, Func<Pay2RunLineDto, long> val, string cellClass, string? headerColor = null)
     {
-        _colTotals.Clear();
-        _totGross = _totInsBase = _totInsWorker = _totTax = _totDed = _totNet = 0;
-
-        foreach (var l in _filtered)
+        return new Pay2GridColumn<Pay2RunLineDto>
         {
-            _totGross += l.GROSS_PAY;
-            _totInsBase += l.INS_BASE;
-            _totInsWorker += l.INS_WORKER;
-            _totTax += l.TAX_AMOUNT;
-            _totDed += l.TOTAL_DED;
-            _totNet += l.NET_PAY;
-
-            foreach (var kv in l.Details)
-                _colTotals[kv.Key] = (_colTotals.TryGetValue(kv.Key, out var cur) ? cur : 0) + kv.Value;
-        }
-    }
-
-    // به‌صورت switch statement با return نوشته شده (نه switch expression) تا target-typing
-    // لامبداها از روی نوع بازگشتی متد قطعی باشد و هیچ ابهام کامپایلری پیش نیاید.
-    Comparison<Pay2RunLineDto> GetComparison(string key)
-    {
-        switch (key)
-        {
-            case "name":      return (a, b) => FaCompare(a.FULL_NAME, b.FULL_NAME);
-            case "work":      return (a, b) => a.WORK_DAYS.CompareTo(b.WORK_DAYS);
-            case "gross":     return (a, b) => a.GROSS_PAY.CompareTo(b.GROSS_PAY);
-            case "insbase":   return (a, b) => a.INS_BASE.CompareTo(b.INS_BASE);
-            case "insworker": return (a, b) => a.INS_WORKER.CompareTo(b.INS_WORKER);
-            case "tax":       return (a, b) => a.TAX_AMOUNT.CompareTo(b.TAX_AMOUNT);
-            case "ded":       return (a, b) => a.TOTAL_DED.CompareTo(b.TOTAL_DED);
-            case "net":       return (a, b) => a.NET_PAY.CompareTo(b.NET_PAY);
-            // در غیر این صورت کلید = ITEM_CODE ستون پویا
-            default:          return (a, b) => a.Details.GetValueOrDefault(key, 0L).CompareTo(b.Details.GetValueOrDefault(key, 0L));
-        }
-    }
-
-    static int FaCompare(string? a, string? b) => Math.Sign(_faComparer.Compare(a ?? "", b ?? ""));
-
-    void ToggleSort(string key)
-    {
-        if (_sortKey == key)
-        {
-            // چرخه: صعودی → نزولی → بدون مرتب‌سازی
-            if (_sortDir == 1) _sortDir = -1;
-            else { _sortKey = null; _sortDir = 0; }
-        }
-        else
-        {
-            _sortKey = key;
-            _sortDir = 1;
-        }
-
-        ApplySort(); // مرتب‌سازی مجموعهٔ فیلترشدهٔ موجود؛ نیازی به بازمحاسبهٔ فیلتر/جمع نیست
-    }
-
-    string SortArrow(string key) => _sortKey == key ? (_sortDir == 1 ? "▲" : "▼") : "";
-
-    async Task OnGridSearchInput(ChangeEventArgs e)
-    {
-        _gridSearch = e.Value?.ToString() ?? "";
-
-        var seq = ++_searchSeq;
-        await Task.Delay(180); // debounce
-        if (seq != _searchSeq) return; // کلید جدیدتری تایپ شده — این یکی منسوخ است
-
-        ApplyFilter();
-        ApplySort();
-        StateHasChanged();
-    }
-
-    // ════════════════════════════════════════════════════════════════
-    // خروجی Excel/CSV از نمای فعلی (فیلتر + مرتب‌سازی اعمال‌شده)
-    // تولید رشتهٔ CSV کاملاً سمت کلاینت است و دانلود با همان helper تست‌شدهٔ پروژه انجام می‌شود.
-    // ════════════════════════════════════════════════════════════════
-    async Task ExportCsv()
-    {
-        if (RunData?.Columns == null || _displayLines.Count == 0)
-            return;
-
-        var sb = new StringBuilder();
-        sb.Append('\uFEFF'); // BOM تا اکسل، متن فارسی را با UTF-8 درست بخواند
-        sb.Append("sep=,\r\n");   // اعلام جداکننده «کاما» به اکسل؛ مستقل از تنظیمات منطقه‌ای ویندوز
-                                  // (که گاهی ; است و باعث می‌شود کل ردیف در یک ستون بیفتد)
-
-        // سرستون‌ها (هم‌ترتیب با گرید)
-        var header = new List<string> { "کد پرسنلی", "نام و نام خانوادگی", "کارکرد" };
-        foreach (var col in RunData.Columns) header.Add(col.ITEM_NAME);
-        header.AddRange(new[] { "ناخالص حقوق", "مبنای بیمه", "بیمه کارگر", "مالیات", "جمع کسورات", "خالص پرداختی" });
-        sb.Append(string.Join(",", header.Select(Csv))).Append("\r\n");
-
-        // ردیف‌ها — دقیقاً همان نمایی که کاربر می‌بیند (فیلتر/مرتب‌شده).
-        // هر فیلد از قبل escape می‌شود تا بتوان برای «کد پرسنلی» قالبِ متنیِ امنِ اکسل به‌کار برد.
-        foreach (var l in _displayLines)
-        {
-            var fields = new List<string>
-            {
-                CsvText(l.EMP_CODE),  // متنِ امنِ اکسل: حفظ صفرهای ابتدایی و خط‌فاصله در کد پرسنلی
-                Csv(l.FULL_NAME),
-                Csv(l.WORK_DAYS.ToString("0.##", CultureInfo.InvariantCulture))
-            };
-            foreach (var col in RunData.Columns)
-                fields.Add(Csv(l.Details.GetValueOrDefault(col.ITEM_CODE, 0).ToString(CultureInfo.InvariantCulture)));
-            fields.Add(Csv(l.GROSS_PAY.ToString(CultureInfo.InvariantCulture)));
-            fields.Add(Csv(l.INS_BASE.ToString(CultureInfo.InvariantCulture)));
-            fields.Add(Csv(l.INS_WORKER.ToString(CultureInfo.InvariantCulture)));
-            fields.Add(Csv(l.TAX_AMOUNT.ToString(CultureInfo.InvariantCulture)));
-            fields.Add(Csv(l.TOTAL_DED.ToString(CultureInfo.InvariantCulture)));
-            fields.Add(Csv(l.NET_PAY.ToString(CultureInfo.InvariantCulture)));
-            sb.Append(string.Join(",", fields)).Append("\r\n");
-        }
-
-        // ردیف جمع (هم‌خوان با جمع‌های فوتر = همین نمای فیلترشده)
-        var totals = new List<string> { "", "جمع", "" };
-        foreach (var col in RunData.Columns)
-            totals.Add((_colTotals.TryGetValue(col.ITEM_CODE, out var cv) ? cv : 0).ToString(CultureInfo.InvariantCulture));
-        totals.Add(_totGross.ToString(CultureInfo.InvariantCulture));
-        totals.Add(_totInsBase.ToString(CultureInfo.InvariantCulture));
-        totals.Add(_totInsWorker.ToString(CultureInfo.InvariantCulture));
-        totals.Add(_totTax.ToString(CultureInfo.InvariantCulture));
-        totals.Add(_totDed.ToString(CultureInfo.InvariantCulture));
-        totals.Add(_totNet.ToString(CultureInfo.InvariantCulture));
-        sb.Append(string.Join(",", totals.Select(Csv))).Append("\r\n");
-
-        var bytes = Encoding.UTF8.GetBytes(sb.ToString());
-        var fileName = $"Payroll_{SelectedPeriodDate}.csv";
-
-        try
-        {
-            await JS.InvokeVoidAsync("downloadFileFromBytes", fileName, bytes);
-        }
-        catch (Exception ex)
-        {
-            Snackbar.Add("خطا در تهیهٔ خروجی Excel: " + ex.Message, MudBlazor.Severity.Error);
-        }
-    }
-
-    // فرار‌سازی استاندارد CSV: اگر فیلد شامل کاما/نقل‌قول/خط‌جدید بود، داخل "" قرار می‌گیرد و " دوبل می‌شود
-    static string Csv(string? s)
-    {
-        s ??= "";
-        if (s.IndexOf('"') >= 0 || s.IndexOf(',') >= 0 || s.IndexOf('\n') >= 0 || s.IndexOf('\r') >= 0)
-            return "\"" + s.Replace("\"", "\"\"") + "\"";
-        return s;
-    }
-
-    // فیلدِ «متنِ امنِ اکسل»: با فرمت ="..." اکسل مقدار را متن می‌خواند، نه عدد.
-    // بدون این کار، کد پرسنلیِ دارای صفر ابتدایی (مثل 0042) یا خط‌فاصله هنگام باز شدن در اکسل خراب می‌شود.
-    // این فرمت هم‌زمان جلوی CSV-injection روی همین فیلد را هم می‌گیرد (مقدار داخل رشتهٔ فرمول قرار می‌گیرد).
-    static string CsvText(string? s)
-    {
-        if (string.IsNullOrEmpty(s)) return "";
-        return "\"=\"\"" + s.Replace("\"", "\"\"") + "\"\"\"";
+            Title = title,
+            Width = width,
+            Align = "left",
+            HeaderColor = headerColor,
+            CellClass = cellClass,
+            SortBy = x => val(x),
+            Display = x => val(x).ToString("N0"),
+            ExportText = x => val(x).ToString(CultureInfo.InvariantCulture),
+            Sum = x => val(x)
+        };
     }
 }

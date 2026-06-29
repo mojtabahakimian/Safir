@@ -1,0 +1,545 @@
+@typeparam TItem
+@using Safir.Shared.Utility
+@using System.Text
+@using System.Globalization
+@inject Microsoft.JSInterop.IJSRuntime JS
+@inject ISnackbar Snackbar
+
+@*
+    Pay2DataGrid — گرید عمومی، منعطف و سراسری
+    قابلیت‌ها: Resize ستون‌ها (با window.startP2Resize)، Sort سه‌حالته، جستجوی سراسری دیبونس‌دار،
+    Virtualize برای داده حجیم، ستونِ چسبان (Freeze)، ردیف جمع (Footer)، و خروجی Excel (UTF-16/TAB).
+    پیکربندی کاملاً از طریق List<Pay2GridColumn<TItem>> انجام می‌شود.
+*@
+
+<style>
+    /* نام کلاس‌ها عمداً p2-excel-* است تا با تابع window.startP2Resize در interop.js کار کند */
+    .p2-excel-wrapper {
+        width: 100%;
+        overflow: auto;
+        border: 1px solid var(--p2-border);
+        border-radius: 8px;
+        position: relative;
+        background: #fff;
+    }
+
+    .p2-excel-table {
+        border-collapse: separate;
+        border-spacing: 0;
+        table-layout: fixed; /* لازم برای Resize پایدار */
+        width: max-content;
+        min-width: 100%;
+        font-size: 13px;
+    }
+
+        .p2-excel-table th {
+            background: #f8fafc;
+            color: var(--p2-text-main);
+            font-weight: 700;
+            padding: 10px 8px;
+            border-bottom: 2px solid #cbd5e1;
+            border-left: 1px solid #e2e8f0;
+            text-align: center;
+            position: sticky;
+            top: 0;
+            z-index: 20;
+            white-space: nowrap;
+        }
+
+        .p2-excel-table td {
+            border-bottom: 1px solid #e2e8f0;
+            border-left: 1px solid #e2e8f0;
+            padding: 6px 8px;
+            background: inherit;
+            vertical-align: middle;
+            white-space: nowrap;
+        }
+
+        .p2-excel-table tbody tr {
+            background: #fff;
+        }
+
+            .p2-excel-table tbody tr:hover {
+                background: #f8fafc;
+            }
+
+    .p2-sticky-col-1 {
+        position: sticky;
+        right: 0;
+        z-index: 10;
+        background: #fff;
+        box-shadow: -1px 0 0 #e2e8f0;
+    }
+
+    .p2-excel-table th.p2-sticky-col-1 {
+        z-index: 30;
+        background: #f1f5f9;
+    }
+
+    .p2-excel-table tbody tr:hover td.p2-sticky-col-1 {
+        background: #f8fafc;
+    }
+
+    .p2-col-resizer {
+        position: absolute;
+        top: 0;
+        left: -2px;
+        width: 6px;
+        height: 100%;
+        cursor: col-resize;
+        z-index: 50;
+        background-color: transparent;
+        transition: background-color 0.2s;
+    }
+
+        .p2-col-resizer:hover, .p2-col-resizer:active {
+            background-color: var(--p2-primary);
+        }
+
+    body.p2-resizing * {
+        user-select: none !important;
+        cursor: col-resize !important;
+    }
+
+    .p2-sort-head {
+        cursor: pointer;
+        user-select: none;
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+    }
+
+        .p2-sort-head:hover {
+            color: var(--p2-primary);
+        }
+
+    .p2-sort-ind {
+        font-size: 10px;
+        line-height: 1;
+        color: var(--p2-primary);
+    }
+
+    .p2-tfoot-cell {
+        position: sticky;
+        bottom: 0;
+        background: var(--p2-bg-main);
+        font-weight: 900;
+        z-index: 15;
+        border-top: 2px solid var(--p2-border);
+    }
+</style>
+
+@if (Searchable || Exportable || Toolbar != null)
+{
+    <div style="display:flex; align-items:center; gap:12px; margin-bottom:10px; flex-wrap:wrap;">
+        @if (Searchable)
+        {
+            <div class="pay2-search-wrapper" style="width:300px; max-width:100%;">
+                <i class="bi bi-search"></i>
+                <input type="text"
+                       class="pay2-search-input"
+                       style="width:100%;"
+                       placeholder="@SearchPlaceholder"
+                       value="@_search"
+                       @oninput="OnSearchInput" />
+            </div>
+        }
+
+        @if (Exportable)
+        {
+            <button class="btn-outline-pay2 p2-btn-sm"
+                    style="height:38px;"
+                    @onclick="ExportAsync"
+                    disabled="@(_view.Count == 0)"
+                    title="خروجی Excel از نمای فعلی (با فیلتر و مرتب‌سازی)">
+                <i class="bi bi-file-earmark-excel"></i> خروجی Excel
+            </button>
+        }
+
+        @if (Toolbar != null)
+        {
+            @Toolbar
+        }
+
+        <div style="flex-grow:1;"></div>
+
+        <div class="p2-text-muted" style="font-size:12px;">
+            نمایش <b>@_view.Count</b> از <b>@_all.Count</b> ردیف
+            @if (_sortCol != null)
+            {
+                <span style="margin-right:8px;">| مرتب‌سازی فعال</span>
+            }
+        </div>
+    </div>
+}
+
+<div class="p2-excel-wrapper" style="max-height:@MaxHeight;">
+    <table class="p2-excel-table">
+        <colgroup>
+            @foreach (var col in Columns)
+            {
+                <col style="width:@(col.Width)px;" />
+            }
+        </colgroup>
+
+        <thead>
+            <tr>
+                @{ int ci = 0; }
+                @foreach (var col in Columns)
+                {
+                    var c = col;
+                    var idx = ci;
+                    var resizeJs = $"startP2Resize(event, this, {idx}, {(idx == 0 ? "true" : "false")})";
+                    <th class="@(c.Sticky ? "p2-sticky-col-1" : null)"
+                        style="@(string.IsNullOrEmpty(c.HeaderColor) ? null : $"color:{c.HeaderColor};")">
+                        @if (c.Sortable && c.SortBy != null)
+                        {
+                            <span class="p2-sort-head" @onclick="() => ToggleSort(c)">@c.Title <span class="p2-sort-ind">@SortArrow(c)</span></span>
+                        }
+                        else
+                        {
+                            @c.Title
+                        }
+                        @if (Resizable)
+                        {
+                            <div class="p2-col-resizer" onmousedown="@resizeJs"></div>
+                        }
+                    </th>
+                    ci++;
+                }
+            </tr>
+        </thead>
+
+        <tbody>
+            @if (_view.Count == 0)
+            {
+                <tr><td colspan="@Columns.Count" style="text-align:center; padding:30px;">رکوردی یافت نشد.</td></tr>
+            }
+            else
+            {
+                <Virtualize Items="_view" Context="row" ItemSize="ItemSize" OverscanCount="10">
+                    <tr @key="Key(row.Item)">
+                        @foreach (var col in Columns)
+                        {
+                            <td class="@CellClasses(col)" style="text-align:@col.Align;@col.CellStyle">
+                                @if (col.CellTemplate != null)
+                                {
+                                    @col.CellTemplate(row.Item)
+                                }
+                                else
+                                {
+                                    @(col.Display?.Invoke(row.Item) ?? "")
+                                }
+                            </td>
+                        }
+                    </tr>
+                </Virtualize>
+            }
+        </tbody>
+
+        <tfoot>
+            @if (_hasFooter && _view.Count > 0)
+            {
+                <tr>
+                    @{ int fi = 0; }
+                    @foreach (var col in Columns)
+                    {
+                        <td class="p2-tfoot-cell @(col.Sticky ? "p2-sticky-col-1" : null)" style="text-align:@col.Align;">
+                            @if (col.Sum != null)
+                            {
+                                @SumText(col)
+                            }
+                            else if (fi == 0)
+                            {
+                                @FooterLabel
+                            }
+                        </td>
+                        fi++;
+                    }
+                </tr>
+            }
+        </tfoot>
+    </table>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public IReadOnlyList<TItem> Items { get; set; } = default!;
+    [Parameter, EditorRequired] public List<Pay2GridColumn<TItem>> Columns { get; set; } = default!;
+
+    [Parameter] public Func<TItem, object>? KeySelector { get; set; }
+    [Parameter] public bool Searchable { get; set; } = true;
+    [Parameter] public bool Resizable { get; set; } = true;
+    [Parameter] public bool Exportable { get; set; } = true;
+    [Parameter] public string SearchPlaceholder { get; set; } = "جستجو...";
+    [Parameter] public string FooterLabel { get; set; } = "جمع";
+    [Parameter] public string ExportFileName { get; set; } = "export";
+    [Parameter] public string MaxHeight { get; set; } = "62vh";
+    [Parameter] public float ItemSize { get; set; } = 42f;
+    [Parameter] public RenderFragment? Toolbar { get; set; }
+
+    private sealed class RowVM
+    {
+        public TItem Item = default!;
+        public string Search = "";
+    }
+
+    private List<RowVM> _all = new();
+    private List<RowVM> _view = new();
+    private readonly Dictionary<Pay2GridColumn<TItem>, long> _sums = new();
+    private bool _hasFooter;
+
+    private Pay2GridColumn<TItem>? _sortCol;
+    private int _sortDir; // 1=صعودی، -1=نزولی، 0=بدون مرتب‌سازی
+
+    private string _search = "";
+    private int _searchSeq = 0;
+
+    private IReadOnlyList<TItem>? _lastItems;
+    private List<Pay2GridColumn<TItem>>? _lastColumns;
+
+    private static readonly StringComparer _fa = BuildFa();
+    private static StringComparer BuildFa()
+    {
+        try { return StringComparer.Create(System.Globalization.CultureInfo.GetCultureInfo("fa-IR"), ignoreCase: true); }
+        catch { return StringComparer.OrdinalIgnoreCase; }
+    }
+
+    protected override void OnParametersSet()
+    {
+        bool itemsChanged = !ReferenceEquals(Items, _lastItems);
+        bool colsChanged = !ReferenceEquals(Columns, _lastColumns);
+
+        if (itemsChanged || colsChanged)
+        {
+            _lastItems = Items;
+            _lastColumns = Columns;
+            _hasFooter = Columns?.Any(c => c.Sum != null) ?? false;
+
+            if (itemsChanged)
+            {
+                _search = "";
+                _sortCol = null;
+                _sortDir = 0;
+            }
+
+            RebuildAll();
+            ApplyView();
+        }
+    }
+
+    private void RebuildAll()
+    {
+        _all = new();
+        if (Items == null || Columns == null) return;
+
+        var searchCols = Columns.Where(c => c.Searchable).ToList();
+
+        foreach (var it in Items)
+        {
+            string s = "";
+            if (searchCols.Count > 0)
+            {
+                var parts = searchCols.Select(c =>
+                {
+                    var txt = c.SearchText != null ? c.SearchText(it) : c.Display?.Invoke(it);
+                    return txt ?? "";
+                });
+                s = string.Join(" ", parts).ToStandardSearchText();
+            }
+            _all.Add(new RowVM { Item = it, Search = s });
+        }
+    }
+
+    private void ApplyView()
+    {
+        IEnumerable<RowVM> q = _all;
+
+        var term = _search?.Trim();
+        if (!string.IsNullOrEmpty(term))
+        {
+            var t = term.ToStandardSearchText();
+            if (t.Length > 0)
+                q = q.Where(r => r.Search.Contains(t, StringComparison.Ordinal));
+        }
+
+        var list = q.ToList();
+
+        if (_sortCol != null && _sortDir != 0 && _sortCol.SortBy != null)
+        {
+            var sel = _sortCol.SortBy;
+            int dir = _sortDir;
+            list.Sort((a, b) =>
+            {
+                int r = CompareValues(sel(a.Item), sel(b.Item));
+                return dir == 1 ? r : -r;
+            });
+        }
+
+        _view = list;
+        RecomputeSums();
+    }
+
+    private static int CompareValues(object? a, object? b)
+    {
+        if (a is string sa && b is string sb) return Math.Sign(_fa.Compare(sa, sb));
+        if (a == null && b == null) return 0;
+        if (a == null) return -1;
+        if (b == null) return 1;
+        if (a is IComparable ca) return Math.Sign(ca.CompareTo(b));
+        return 0;
+    }
+
+    private void RecomputeSums()
+    {
+        _sums.Clear();
+        if (!_hasFooter) return;
+
+        foreach (var col in Columns)
+        {
+            if (col.Sum == null) continue;
+            long t = 0;
+            foreach (var r in _view) t += col.Sum(r.Item);
+            _sums[col] = t;
+        }
+    }
+
+    private void ToggleSort(Pay2GridColumn<TItem> col)
+    {
+        if (!col.Sortable || col.SortBy == null) return;
+
+        if (_sortCol == col)
+        {
+            if (_sortDir == 1) _sortDir = -1;
+            else { _sortCol = null; _sortDir = 0; }
+        }
+        else
+        {
+            _sortCol = col;
+            _sortDir = 1;
+        }
+
+        ApplyView();
+    }
+
+    private string SortArrow(Pay2GridColumn<TItem> col) => _sortCol == col ? (_sortDir == 1 ? "▲" : "▼") : "";
+
+    private async Task OnSearchInput(ChangeEventArgs e)
+    {
+        _search = e.Value?.ToString() ?? "";
+        var seq = ++_searchSeq;
+        await Task.Delay(180);
+        if (seq != _searchSeq) return;
+
+        ApplyView();
+        StateHasChanged();
+    }
+
+    private object Key(TItem item) => KeySelector?.Invoke(item) ?? item!;
+
+    private string CellClasses(Pay2GridColumn<TItem> col)
+    {
+        var sticky = col.Sticky ? "p2-sticky-col-1" : "";
+        if (string.IsNullOrEmpty(col.CellClass)) return sticky;
+        return string.IsNullOrEmpty(sticky) ? col.CellClass! : sticky + " " + col.CellClass;
+    }
+
+    private string SumText(Pay2GridColumn<TItem> col)
+    {
+        long s = _sums.TryGetValue(col, out var v) ? v : 0;
+        return col.SumDisplay?.Invoke(s) ?? s.ToString("N0");
+    }
+
+    // ════════════════════════════════════════════════════════════════
+    // خروجی Excel: UTF-16LE + جداکنندهٔ TAB.
+    // اکسل فایل‌های UTF-16 را با جداکنندهٔ Tab باز می‌کند (نه list-separatorِ منطقه‌ای) و
+    // متن یونیکد را درست می‌خواند. این روش هم‌زمان مشکلِ «همه در یک ستون» و «mojibake فارسی»
+    // را مستقل از تنظیمات ویندوز حل می‌کند.
+    // ════════════════════════════════════════════════════════════════
+    private async Task ExportAsync()
+    {
+        if (_view.Count == 0 || Columns == null) return;
+
+        const char SEP = '\t';
+        var sb = new StringBuilder();
+        sb.Append('\uFEFF'); // در UTF-16LE به بایت‌های FF FE (BOM) تبدیل می‌شود
+
+        // ── سرستون‌ها ──
+        var head = new List<string>();
+        foreach (var col in Columns)
+        {
+            if (col.ExportTitles != null && col.ExportTitles.Count > 0) head.AddRange(col.ExportTitles);
+            else head.Add(col.Title);
+        }
+        sb.Append(string.Join(SEP, head.Select(F))).Append("\r\n");
+
+        // ── ردیف‌ها (نمای فیلتر/مرتب‌شدهٔ فعلی) ──
+        foreach (var r in _view)
+        {
+            var cells = new List<string>();
+            foreach (var col in Columns)
+            {
+                if (col.ExportCells != null)
+                {
+                    foreach (var cell in col.ExportCells(r.Item))
+                        cells.Add(cell.AsText ? FText(cell.Value) : F(cell.Value));
+                }
+                else
+                {
+                    var v = col.ExportText?.Invoke(r.Item) ?? col.Display?.Invoke(r.Item) ?? "";
+                    cells.Add(col.ExportAsText ? FText(v) : F(v));
+                }
+            }
+            sb.Append(string.Join(SEP, cells)).Append("\r\n");
+        }
+
+        // ── ردیف جمع ──
+        if (_hasFooter)
+        {
+            var tot = new List<string>();
+            bool first = true;
+            foreach (var col in Columns)
+            {
+                int count = (col.ExportTitles != null && col.ExportTitles.Count > 0) ? col.ExportTitles.Count : 1;
+                if (col.Sum != null)
+                {
+                    long s = _sums.TryGetValue(col, out var sv) ? sv : 0;
+                    tot.Add(F(s.ToString(CultureInfo.InvariantCulture)));
+                    for (int k = 1; k < count; k++) tot.Add("");
+                }
+                else
+                {
+                    for (int k = 0; k < count; k++) tot.Add(k == 0 && first ? F(FooterLabel) : "");
+                }
+                first = false;
+            }
+            sb.Append(string.Join(SEP, tot)).Append("\r\n");
+        }
+
+        var bytes = Encoding.Unicode.GetBytes(sb.ToString()); // UTF-16LE (بدون پریمبلِ جدا؛ BOM از کاراکترِ U+FEFF می‌آید)
+
+        try
+        {
+            await JS.InvokeVoidAsync("downloadFileFromBytes", ExportFileName + ".csv", bytes);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add("خطا در تهیهٔ خروجی Excel: " + ex.Message, MudBlazor.Severity.Error);
+        }
+    }
+
+    // escape برای فرمت تب‌جداشده: اگر فیلد شامل tab/نقل‌قول/خط‌جدید بود، در "" قرار می‌گیرد و " دوبل می‌شود
+    private static string F(string? s)
+    {
+        s ??= "";
+        if (s.IndexOf('\t') >= 0 || s.IndexOf('"') >= 0 || s.IndexOf('\n') >= 0 || s.IndexOf('\r') >= 0)
+            return "\"" + s.Replace("\"", "\"\"") + "\"";
+        return s;
+    }
+
+    // فیلدِ «متنِ امنِ اکسل»: با فرمت ="..." اکسل مقدار را متن می‌خواند (حفظ صفر ابتدایی/خط‌فاصلهٔ کد پرسنلی)
+    private static string FText(string? s)
+    {
+        if (string.IsNullOrEmpty(s)) return "";
+        return "\"=\"\"" + s.Replace("\"", "\"\"") + "\"\"\"";
+    }
+}
