@@ -324,9 +324,12 @@
                                         <td class="p2-text-mono" style="text-align:left;">@item.TAX_AMOUNT.ToString("N0")</td>
                                         <td class="p2-text-mono p2-text-danger" style="text-align:left;">@item.TOTAL_DED.ToString("N0")</td>
                                         <td class="p2-text-mono p2-text-success" style="text-align:left; font-weight:900; font-size:15px; background: #f0fdf4; border-right: 2px solid var(--p2-border-light);">@item.NET_PAY.ToString("N0")</td>
-                                        <td style="text-align:center; border-right: 2px solid var(--p2-border-light);">
-                                            <button class="btn-outline-pay2 p2-btn-sm" @onclick="() => OpenPayslip(item)" title="چاپ فیش حقوقی">
-                                                <i class="bi bi-printer"></i> چاپ فیش
+                                        <td style="text-align:center; border-right: 2px solid var(--p2-border-light); display: flex; gap: 4px; justify-content: center; padding: 4px;">
+                                            <button class="btn-outline-pay2 p2-btn-sm" @onclick="() => OpenPayslip(item, false)" title="چاپ فیش اسمی (واقعی)">
+                                                <i class="bi bi-printer"></i> اسمی
+                                            </button>
+                                            <button class="btn-outline-pay2 p2-btn-sm" @onclick="() => OpenPayslip(item, true)" title="چاپ فیش رسمی">
+                                                <i class="bi bi-printer"></i> رسمی
                                             </button>
                                         </td>
                                     </tr>
@@ -639,18 +642,19 @@
     }
 
     // باز کردن پیش‌نمایش/چاپ فیش حقوقی پرسنل در نمایشگر داخلی مرورگر (Blob URL + iframe)
-    void OpenPayslip(Pay2RunLineDto item)
+    void OpenPayslip(Pay2RunLineDto item, bool isOfficial = false)
     {
         if (CurrentRun == null) return;
 
         int runId = CurrentRun.RUN_ID;
         int empId = item.EMP_ID;
         string fullName = item.FULL_NAME ?? "";
+        string slipType = isOfficial ? "(رسمی)" : "(اسمی)";
 
         var parameters = new MudBlazor.DialogParameters
         {
-            ["Title"] = $"فیش حقوقی - {fullName}",
-            ["FetchPdfBytes"] = (Func<Task<byte[]>>)(() => RunApi.GetPayslipPdfAsync(runId, empId))
+            ["Title"] = $"فیش حقوقی {slipType} - {fullName}",
+            ["FetchPdfBytes"] = (Func<Task<byte[]>>)(() => RunApi.GetPayslipPdfAsync(runId, empId, isOfficial))
         };
 
         var options = new MudBlazor.DialogOptions

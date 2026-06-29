@@ -104,7 +104,7 @@ namespace Safir.Server.Controllers
         // صریح (= TOTAL_DED) تا هیچ آیتمی دوبار شمرده نشود و جمع مزایا − جمع کسورات = خالص.
         // ===================================================================
         [HttpGet("{runId:int}/employee/{empId:int}/payslip")]
-        public async Task<IActionResult> GetPayslip(int runId, int empId)
+        public async Task<IActionResult> GetPayslip(int runId, int empId, [FromQuery] bool isOfficial = false)
         {
             // ۱. هدر فیش (مشخصات پرسنل/دوره/کارگاه + جمع‌های صریح)
             const string headSql = @"
@@ -130,14 +130,33 @@ namespace Safir.Server.Controllers
                 return NotFound("فیش حقوقی برای این پرسنل در این اجرا یافت نشد.");
 
             // ۲. مزایا = فقط آیتم‌های نوع پرداختی (ITEM_TYPE 1,2)؛ مجموع آن‌ها = GROSS_PAY
-            const string earnSql = @"
-                SELECT I.ITEM_NAME AS Title, D.AMOUNT AS Amount
-                FROM PAY2_RUN_DETAIL D WITH (NOLOCK)
-                INNER JOIN PAY2_ITEM_DEF I WITH (NOLOCK) ON D.ITEM_ID = I.ITEM_ID
-                WHERE D.RUN_ID = @runId AND D.EMP_ID = @empId
-                  AND I.ITEM_TYPE IN (1, 2)
-                  AND D.AMOUNT <> 0
-                ORDER BY I.SORT_ORDER";
+            string earnSql;
+            if (isOfficial)
+            {
+                // در فیش رسمی: حقوق رسمی نمایش داده می‌شود و حقوق اسمی (BASE_SAL) فیلتر می‌شود
+                earnSql = @"
+                    SELECT I.ITEM_NAME AS Title, D.AMOUNT AS Amount
+                    FROM PAY2_RUN_DETAIL D WITH (NOLOCK)
+                    INNER JOIN PAY2_ITEM_DEF I WITH (NOLOCK) ON D.ITEM_ID = I.ITEM_ID
+                    WHERE D.RUN_ID = @runId AND D.EMP_ID = @empId
+                      AND I.ITEM_TYPE IN (1, 2)
+                      AND D.AMOUNT <> 0
+                      AND I.ITEM_CODE <> 'BASE_SAL'
+                    ORDER BY I.SORT_ORDER";
+            }
+            else
+            {
+                // در فیش اسمی (واقعی): حقوق اسمی و مزایا نمایش داده می‌شود و حقوق رسمی (BASE_SAL_B) فیلتر می‌شود
+                earnSql = @"
+                    SELECT I.ITEM_NAME AS Title, D.AMOUNT AS Amount
+                    FROM PAY2_RUN_DETAIL D WITH (NOLOCK)
+                    INNER JOIN PAY2_ITEM_DEF I WITH (NOLOCK) ON D.ITEM_ID = I.ITEM_ID
+                    WHERE D.RUN_ID = @runId AND D.EMP_ID = @empId
+                      AND I.ITEM_TYPE IN (1, 2)
+                      AND D.AMOUNT <> 0
+                      AND I.ITEM_CODE <> 'BASE_SAL_B'
+                    ORDER BY I.SORT_ORDER";
+            }
 
             var earnings = (await _db.DoGetDataSQLAsync<PayslipLineDto>(earnSql, new { runId, empId })).ToList();
 
@@ -172,13 +191,26 @@ namespace Safir.Server.Controllers
             AddDed("مساعده", head.ADVANCE_DED);
             AddDed("سایر کسورات", head.OTHER_DED);
 
-            // تعدیلِ گرد کردنِ خالص (اعمال ROUND_MODE در موتور محاسبه) تا اتحاد
-            // «جمع مزایا − جمع کسورات = خالص پرداختیِ رسمی» همیشه دقیق بماند.
-            long rounding = head.NET_PAY - (head.GROSS_PAY - head.TOTAL_DED);
-            if (rounding > 0)
-                dto.Earnings.Add(new PayslipLineDto { Title = "تعدیل (گرد کردن)", Amount = rounding });
-            else if (rounding < 0)
-                dto.Deductions.Add(new PayslipLineDto { Title = "تعدیل (گرد کردن)", Amount = -rounding });
+            // در فیش رسمی نیازی به تعدیل گرد کردن به شیوه اسمی نیست زیرا پایه حقوق تغییر کرده است
+            // اما برای حفظ ظاهر، تعدیل روی فیش اسمی اعمال می‌شود
+            if (!isOfficial)
+            {
+                // تعدیلِ گرد کردنِ خالص (اعمال ROUND_MODE در موتور محاسبه) تا اتحاد
+                // «جمع مزایا − جمع کسورات = خالص پرداختیِ رسمی» همیشه دقیق بماند.
+                long rounding = head.NET_PAY - (head.GROSS_PAY - head.TOTAL_DED);
+                if (rounding > 0)
+                    dto.Earnings.Add(new PayslipLineDto { Title = "تعدیل (گرد کردن)", Amount = rounding });
+                else if (rounding < 0)
+                    dto.Deductions.Add(new PayslipLineDto { Title = "تعدیل (گرد کردن)", Amount = -rounding });
+            }
+            else
+            {
+                // در فیش رسمی مبلغ خالص جدید را بر اساس اقلام موجود (رسمی) دوباره حساب میکنیم
+                // تا تراز فیش رسمی درست بماند
+                long officialTotalEarn = dto.Earnings.Sum(x => x.Amount);
+                long officialTotalDed = dto.Deductions.Sum(x => x.Amount);
+                dto.NetPay = officialTotalEarn - officialTotalDed;
+            }
 
             dto.NetPayInWords = CL_HESABDARI.ALPHANUM(head.NET_PAY) + " ریال";
 
