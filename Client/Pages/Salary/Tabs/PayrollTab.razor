@@ -2,12 +2,15 @@
 @using Safir.Shared.Models
 @using Safir.Shared.Utility
 @using Safir.Client.Components.Reports
+@using System.Text
+@using System.Globalization
 @inject Safir.Client.Services.Pay2RunApiService RunApi
 @inject Safir.Client.Services.Pay2AttendanceApiService AttApi
 @inject Safir.Client.Services.Pay2WorkshopApiService WorkshopApi
 @inject ISnackbar Snackbar
 @inject MudBlazor.IDialogService DialogService
 @inject ConnectionManagerService ConnectionManager
+@inject Microsoft.JSInterop.IJSRuntime JS
 
 <style>
     /* ========== استایل لیست دوره‌ها (Master View) ========== */
@@ -394,8 +397,8 @@
 
             <div class="card-custom p2-fade-content" style="padding: 12px; border: none; box-shadow: none;">
 
-                <!-- نوار ابزار گرید: جستجو + شمارنده -->
-                <div style="display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:10px; flex-wrap:wrap;">
+                <!-- نوار ابزار گرید: جستجو + خروجی + شمارنده -->
+                <div style="display:flex; align-items:center; gap:12px; margin-bottom:10px; flex-wrap:wrap;">
                     <div class="pay2-search-wrapper" style="width:300px; max-width:100%;">
                         <i class="bi bi-search"></i>
                         <input type="text"
@@ -405,6 +408,17 @@
                                value="@_gridSearch"
                                @oninput="OnGridSearchInput" />
                     </div>
+
+                    <button class="btn-outline-pay2 p2-btn-sm"
+                            style="height:38px;"
+                            @onclick="ExportCsv"
+                            disabled="@(!_displayLines.Any())"
+                            title="خروجی Excel از نمای فعلی (با فیلتر و مرتب‌سازی)">
+                        <i class="bi bi-file-earmark-excel"></i> خروجی Excel
+                    </button>
+
+                    <div style="flex-grow:1;"></div>
+
                     <div class="p2-text-muted" style="font-size:12px;">
                         نمایش <b>@_displayLines.Count</b> از <b>@(RunData?.Lines?.Count ?? 0)</b> ردیف
                         @if (_sortKey != null)
@@ -594,7 +608,9 @@
     // وضعیت گرید (Sort / Search / Totals) — همگی خارج از مسیر render محاسبه می‌شوند
     // ════════════════════════════════════════════════════════════════
 
-    // لیست نهاییِ نمایشی (فیلترشده + مرتب‌شده). Virtualize فقط روی همین کار می‌کند.
+    // لیست فیلترشده (به ترتیب منبع) و لیست نهاییِ نمایشی (فیلترشده + مرتب‌شده).
+    // جداسازی این دو باعث می‌شود مرتب‌سازی، جمع‌های فوتر را بی‌جهت بازمحاسبه نکند.
+    List<Pay2RunLineDto> _filtered = new();
     List<Pay2RunLineDto> _displayLines = new();
 
     // ایندکس جستجوی از پیش‌نرمال‌شده (EMP_ID → "نام کد" نرمال‌شده). یک‌بار هنگام لود ساخته می‌شود
@@ -900,7 +916,8 @@
         _sortKey = null;
         _sortDir = 0;
         RebuildSearchIndex();
-        RecomputeView();
+        ApplyFilter();
+        ApplySort();
     }
 
     void ResetGridState()
@@ -909,6 +926,7 @@
         _sortKey = null;
         _sortDir = 0;
         _searchIndex.Clear();
+        _filtered = new();
         _displayLines = new();
         _colTotals.Clear();
         _totGross = _totInsBase = _totInsWorker = _totTax = _totDed = _totNet = 0;
@@ -928,34 +946,40 @@
         }
     }
 
-    // ترکیب فیلتر + مرتب‌سازی + محاسبهٔ جمع‌ها. همیشه خارج از مسیر render صدا زده می‌شود.
-    void RecomputeView()
+    // فیلتر جستجو روی لیست منبع (به ترتیب منبع). جمع‌های فوتر هم اینجا یک‌بار محاسبه می‌شوند،
+    // چون فقط با تغییرِ «مجموعهٔ فیلترشده» عوض می‌شوند و مرتب‌سازی روی آن‌ها اثری ندارد.
+    void ApplyFilter()
     {
         var src = RunData?.Lines;
         if (src == null || src.Count == 0)
         {
-            _displayLines = new();
+            _filtered = new();
             RecomputeTotals();
             return;
         }
 
-        IEnumerable<Pay2RunLineDto> q = src;
-
-        // --- فیلتر جستجو ---
         var term = _gridSearch?.Trim();
-        if (!string.IsNullOrEmpty(term))
+        if (string.IsNullOrEmpty(term))
+        {
+            _filtered = src.ToList();
+        }
+        else
         {
             var t = term.ToStandardSearchText();
-            if (t.Length > 0)
-            {
-                q = q.Where(x => _searchIndex.TryGetValue(x.EMP_ID, out var s)
-                                 && s.Contains(t, StringComparison.Ordinal));
-            }
+            _filtered = t.Length == 0
+                ? src.ToList()
+                : src.Where(x => _searchIndex.TryGetValue(x.EMP_ID, out var s)
+                                 && s.Contains(t, StringComparison.Ordinal)).ToList();
         }
 
-        var list = q.ToList();
+        RecomputeTotals();
+    }
 
-        // --- مرتب‌سازی ---
+    // مرتب‌سازی روی کپیِ لیست فیلترشده (تا خاموش‌کردن مرتب‌سازی، ترتیب منبع را برگرداند).
+    void ApplySort()
+    {
+        var list = _filtered.ToList();
+
         if (_sortKey != null && _sortDir != 0)
         {
             var cmp = GetComparison(_sortKey);
@@ -968,7 +992,6 @@
         }
 
         _displayLines = list;
-        RecomputeTotals();
     }
 
     // جمع‌های ردیف tfoot یک‌بار محاسبه و کش می‌شوند (به‌جای Sum روی هر render)
@@ -977,7 +1000,7 @@
         _colTotals.Clear();
         _totGross = _totInsBase = _totInsWorker = _totTax = _totDed = _totNet = 0;
 
-        foreach (var l in _displayLines)
+        foreach (var l in _filtered)
         {
             _totGross += l.GROSS_PAY;
             _totInsBase += l.INS_BASE;
@@ -1026,7 +1049,7 @@
             _sortDir = 1;
         }
 
-        RecomputeView();
+        ApplySort(); // مرتب‌سازی مجموعهٔ فیلترشدهٔ موجود؛ نیازی به بازمحاسبهٔ فیلتر/جمع نیست
     }
 
     string SortArrow(string key) => _sortKey == key ? (_sortDir == 1 ? "▲" : "▼") : "";
@@ -1039,7 +1062,80 @@
         await Task.Delay(180); // debounce
         if (seq != _searchSeq) return; // کلید جدیدتری تایپ شده — این یکی منسوخ است
 
-        RecomputeView();
+        ApplyFilter();
+        ApplySort();
         StateHasChanged();
+    }
+
+    // ════════════════════════════════════════════════════════════════
+    // خروجی Excel/CSV از نمای فعلی (فیلتر + مرتب‌سازی اعمال‌شده)
+    // تولید رشتهٔ CSV کاملاً سمت کلاینت است و دانلود با همان helper تست‌شدهٔ پروژه انجام می‌شود.
+    // ════════════════════════════════════════════════════════════════
+    async Task ExportCsv()
+    {
+        if (RunData?.Columns == null || _displayLines.Count == 0)
+            return;
+
+        var sb = new StringBuilder();
+        sb.Append('\uFEFF'); // BOM تا اکسل، متن فارسی را با UTF-8 درست بخواند
+
+        // سرستون‌ها (هم‌ترتیب با گرید)
+        var header = new List<string> { "کد پرسنلی", "نام و نام خانوادگی", "کارکرد" };
+        foreach (var col in RunData.Columns) header.Add(col.ITEM_NAME);
+        header.AddRange(new[] { "ناخالص حقوق", "مبنای بیمه", "بیمه کارگر", "مالیات", "جمع کسورات", "خالص پرداختی" });
+        sb.Append(string.Join(",", header.Select(Csv))).Append("\r\n");
+
+        // ردیف‌ها — دقیقاً همان نمایی که کاربر می‌بیند (فیلتر/مرتب‌شده)
+        foreach (var l in _displayLines)
+        {
+            var row = new List<string>
+            {
+                l.EMP_CODE ?? "",
+                l.FULL_NAME ?? "",
+                l.WORK_DAYS.ToString("0.##", CultureInfo.InvariantCulture)
+            };
+            foreach (var col in RunData.Columns)
+                row.Add(l.Details.GetValueOrDefault(col.ITEM_CODE, 0).ToString(CultureInfo.InvariantCulture));
+            row.Add(l.GROSS_PAY.ToString(CultureInfo.InvariantCulture));
+            row.Add(l.INS_BASE.ToString(CultureInfo.InvariantCulture));
+            row.Add(l.INS_WORKER.ToString(CultureInfo.InvariantCulture));
+            row.Add(l.TAX_AMOUNT.ToString(CultureInfo.InvariantCulture));
+            row.Add(l.TOTAL_DED.ToString(CultureInfo.InvariantCulture));
+            row.Add(l.NET_PAY.ToString(CultureInfo.InvariantCulture));
+            sb.Append(string.Join(",", row.Select(Csv))).Append("\r\n");
+        }
+
+        // ردیف جمع (هم‌خوان با جمع‌های فوتر = همین نمای فیلترشده)
+        var totals = new List<string> { "", "جمع", "" };
+        foreach (var col in RunData.Columns)
+            totals.Add((_colTotals.TryGetValue(col.ITEM_CODE, out var cv) ? cv : 0).ToString(CultureInfo.InvariantCulture));
+        totals.Add(_totGross.ToString(CultureInfo.InvariantCulture));
+        totals.Add(_totInsBase.ToString(CultureInfo.InvariantCulture));
+        totals.Add(_totInsWorker.ToString(CultureInfo.InvariantCulture));
+        totals.Add(_totTax.ToString(CultureInfo.InvariantCulture));
+        totals.Add(_totDed.ToString(CultureInfo.InvariantCulture));
+        totals.Add(_totNet.ToString(CultureInfo.InvariantCulture));
+        sb.Append(string.Join(",", totals.Select(Csv))).Append("\r\n");
+
+        var bytes = Encoding.UTF8.GetBytes(sb.ToString());
+        var fileName = $"Payroll_{SelectedPeriodDate}.csv";
+
+        try
+        {
+            await JS.InvokeVoidAsync("downloadFileFromBytes", fileName, bytes);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add("خطا در تهیهٔ خروجی Excel: " + ex.Message, MudBlazor.Severity.Error);
+        }
+    }
+
+    // فرار‌سازی استاندارد CSV: اگر فیلد شامل کاما/نقل‌قول/خط‌جدید بود، داخل "" قرار می‌گیرد و " دوبل می‌شود
+    static string Csv(string? s)
+    {
+        s ??= "";
+        if (s.IndexOf('"') >= 0 || s.IndexOf(',') >= 0 || s.IndexOf('\n') >= 0 || s.IndexOf('\r') >= 0)
+            return "\"" + s.Replace("\"", "\"\"") + "\"";
+        return s;
     }
 }
