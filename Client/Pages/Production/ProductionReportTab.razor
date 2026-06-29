@@ -688,6 +688,14 @@
             <div class="animate-fade-in">
                 @{
                     var periods = new (int Value, string Label)[] { (0, "همه"), (7, "۷ روز"), (30, "۳۰ روز"), (90, "۹۰ روز") };
+
+                    var months = new (int Value, string Label)[] {
+                        (1, "فروردین"), (2, "اردیبهشت"), (3, "خرداد"),
+                        (4, "تیر"), (5, "مرداد"), (6, "شهریور"),
+                        (7, "مهر"), (8, "آبان"), (9, "آذر"),
+                        (10, "دی"), (11, "بهمن"), (12, "اسفند")
+                    };
+
                     var dash = DashboardReports.ToList();
                     var dashDays = Math.Max(1, DashDaysCount);
                     var trend = EfficiencyTrend;
@@ -708,11 +716,23 @@
                         <MudIcon Icon="@Icons.Material.Outlined.QueryStats" Color="Color.Primary" />
                         <MudText Typo="Typo.h6" Style="font-weight: 800;">پیشخوان مدیریتی</MudText>
                     </div>
-                    <div class="p2-period-bar">
-                        @foreach (var p in periods)
-                        {
-                            <button class="p2-period-btn @(_dashboardPeriod == p.Value ? "active" : "")" @onclick="@(() => OnPeriodChanged(p.Value))">@p.Label</button>
-                        }
+                    <div class="d-flex align-center gap-3">
+                        <MudSelect T="int" Value="_selectedMonth" ValueChanged="OnMonthChanged"
+                                   Variant="Variant.Outlined" Margin="Margin.Dense" Dense="true"
+                                   Style="min-width: 140px; background-color: var(--mud-palette-surface);"
+                                   Label="فیلتر ماهیانه" AnchorOrigin="Origin.BottomCenter" Clearable="true">
+                            @foreach(var m in months)
+                            {
+                                <MudSelectItem Value="@m.Value">@m.Label</MudSelectItem>
+                            }
+                        </MudSelect>
+
+                        <div class="p2-period-bar">
+                            @foreach (var p in periods)
+                            {
+                                <button class="p2-period-btn @(_dashboardPeriod == p.Value ? "active" : "")" @onclick="@(() => OnPeriodChanged(p.Value))">@p.Label</button>
+                            }
+                        </div>
                     </div>
                 </div>
 
@@ -1123,8 +1143,9 @@
                 }
 
                 <MudPaper Elevation="0" Outlined="true" Class="pa-3 rounded-xl mb-4" Style="border: 1px solid var(--mud-palette-lines-default); background: var(--mud-palette-surface);">
-                    <div class="d-flex flex-wrap align-center gap-3">
-                        <MudTextField T="string" Value="@_searchString" ValueChanged="OnSearchChanged" Immediate="true"
+                    <div class="d-flex flex-wrap align-center gap-3 justify-space-between">
+                        <div class="d-flex flex-wrap align-center gap-3 flex-grow-1">
+                            <MudTextField T="string" Value="@_searchString" ValueChanged="OnSearchChanged" Immediate="true"
                                       Placeholder="جستجو در نام شرکت یا توضیحات..."
                                       Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search"
                                       Variant="Variant.Outlined" Margin="Margin.Dense" Clearable="true"
@@ -1147,16 +1168,26 @@
                             </MudTooltip>
                         </div>
 
-                        <div class="d-flex align-center ms-auto" style="font-size: 0.9rem; white-space: nowrap; color: var(--mud-palette-text-secondary);">
-                            <MudIcon Icon="@Icons.Material.Outlined.Assignment" Size="Size.Small" Class="ml-1" />
-                            @if (!string.IsNullOrWhiteSpace(_searchString))
-                            {
-                                <span>@shown از @_reports.Count گزارش</span>
-                            }
-                            else
-                            {
-                                <span>@_reports.Count گزارش</span>
-                            }
+                        </div>
+                        <div class="d-flex align-center gap-3 ms-auto">
+                            <div class="d-flex align-center p2-period-bar">
+                                <button class="p2-period-btn @(!_isGridView ? "active" : "")" @onclick="() => _isGridView = false"><MudIcon Icon="@Icons.Material.Filled.GridView" Size="Size.Small" Class="mr-1" /> کارت</button>
+                                <button class="p2-period-btn @(_isGridView ? "active" : "")" @onclick="() => _isGridView = true"><MudIcon Icon="@Icons.Material.Filled.TableRows" Size="Size.Small" Class="mr-1" /> جدول</button>
+                            </div>
+
+                            <MudButton Variant="Variant.Outlined" Color="Color.Success" Size="Size.Small" StartIcon="@Icons.Material.Outlined.FileDownload" OnClick="ExportToExcel">خروجی اکسل</MudButton>
+
+                            <div class="d-flex align-center ms-auto" style="font-size: 0.9rem; white-space: nowrap; color: var(--mud-palette-text-secondary);">
+                                <MudIcon Icon="@Icons.Material.Outlined.Assignment" Size="Size.Small" Class="ml-1" />
+                                @if (!string.IsNullOrWhiteSpace(_searchString))
+                                {
+                                    <span>@shown از @_reports.Count گزارش</span>
+                                }
+                                else
+                                {
+                                    <span>@_reports.Count گزارش</span>
+                                }
+                            </div>
                         </div>
                     </div>
                 </MudPaper>
@@ -1170,7 +1201,45 @@
                 }
                 else
                 {
-                    <div class="mc-grid">
+                    if (_isGridView)
+                    {
+                        <MudDataGrid T="ProductionReportDto" Items="@displayed" Filterable="true" SortMode="SortMode.Multiple" Groupable="false" Virtualize="true" FixedHeader="true" Height="600px">
+                            <Columns>
+                                <TemplateColumn Title="عملیات" Filterable="false" Sortable="false">
+                                    <CellTemplate Context="cellContext">
+                                        <div class="d-flex gap-1">
+                                            <MudIconButton Icon="@Icons.Material.Outlined.Edit" Size="Size.Small" Color="Color.Primary" OnClick="() => EditReport(cellContext.Item)" />
+                                            <MudIconButton Icon="@Icons.Material.Outlined.Delete" Size="Size.Small" Color="Color.Error" OnClick="() => DeleteReport(cellContext.Item)" />
+                                        </div>
+                                    </CellTemplate>
+                                </TemplateColumn>
+                                <PropertyColumn Property="x => x.ReportDate" Title="تاریخ">
+                                    <CellTemplate Context="cellContext">
+                                        @GetShamsiDateString(cellContext.Item.ReportDate)
+                                        @if(cellContext.Item.ReportDate.HasValue) {
+                                            <MudText Typo="Typo.caption" Class="d-block text-muted">@GetPersianWeekday(cellContext.Item.ReportDate.Value)</MudText>
+                                        }
+                                    </CellTemplate>
+                                </PropertyColumn>
+                                <PropertyColumn Property="x => x.WheyCompany" Title="شرکت" />
+                                <PropertyColumn Property="x => x.ConcentrationWheyQty" Title="آب‌پنیر (لیتر)" Format="N0" />
+                                <PropertyColumn Property="x => x.SprayPowderQty" Title="پودر (کیلوگرم)" Format="N0" />
+                                <PropertyColumn Property="x => x.ProductType" Title="نوع محصول" />
+                                <TemplateColumn Title="راندمان">
+                                    <CellTemplate Context="cellContext">
+                                        @{
+                                            var eff = cellContext.Item.ConcentrationWheyQty > 0 ? ((decimal)(cellContext.Item.SprayPowderQty ?? 0) / (decimal)(cellContext.Item.ConcentrationWheyQty ?? 0) * 100) : 0;
+                                        }
+                                        @eff.ToString("N1")٪
+                                    </CellTemplate>
+                                </TemplateColumn>
+                                <PropertyColumn Property="x => x.Description" Title="توضیحات" />
+                            </Columns>
+                        </MudDataGrid>
+                    }
+                    else
+                    {
+                        <div class="mc-grid">
                         @foreach (var report in displayed.Take(_visibleCount))
                         {
                             var concE = GetElapsedTime(report.ConcentrationStart, report.ConcentrationEnd);
@@ -1316,15 +1385,16 @@
                                 }
                             </div>
                         }
-                    </div>
-
-                    @if (shown > _visibleCount)
-                    {
-                        <div class="d-flex justify-center mt-4">
-                            <MudButton Variant="Variant.Outlined" Color="Color.Primary" Class="rounded-xl px-8 py-2" OnClick="ShowMore" StartIcon="@Icons.Material.Outlined.ExpandMore">
-                                نمایش بیشتر (@(shown - _visibleCount) مورد دیگر)
-                            </MudButton>
                         </div>
+
+                        @if (shown > _visibleCount)
+                        {
+                            <div class="d-flex justify-center mt-4">
+                                <MudButton Variant="Variant.Outlined" Color="Color.Primary" Class="rounded-xl px-8 py-2" OnClick="ShowMore" StartIcon="@Icons.Material.Outlined.ExpandMore">
+                                    نمایش بیشتر (@(shown - _visibleCount) مورد دیگر)
+                                </MudButton>
+                            </div>
+                        }
                     }
                 }
             </div>
@@ -1334,6 +1404,7 @@
 
 @code {
     private bool _isDataLoaded = false;
+    private bool _isGridView = false;
     private int _activeTab = 1;
     private bool _isProcessing = false;
     private bool _isEditing = false;
@@ -1345,18 +1416,40 @@
 
     // ===== داشبورد مدیریتی =====
     private int _dashboardPeriod = 0; // 0 = همه، در غیر این صورت تعداد روز اخیر
+    private int _selectedMonth = 0;
 
-    private IEnumerable<ProductionReportDto> DashboardReports =>
-        _dashboardPeriod <= 0
-            ? _reports
-            : _reports.Where(r => r.ReportDate.HasValue && r.ReportDate.Value.Date > DateTime.Today.AddDays(-_dashboardPeriod));
+    private IEnumerable<ProductionReportDto> DashboardReports
+    {
+        get
+        {
+            var query = _reports.AsEnumerable();
 
-    private IEnumerable<ProductionReportDto> PrevPeriodReports =>
-        _dashboardPeriod <= 0
-            ? Enumerable.Empty<ProductionReportDto>()
-            : _reports.Where(r => r.ReportDate.HasValue
+            if (_selectedMonth > 0)
+            {
+                var pc = new System.Globalization.PersianCalendar();
+                query = query.Where(r => r.ReportDate.HasValue && pc.GetMonth(r.ReportDate.Value) == _selectedMonth);
+            }
+            else if (_dashboardPeriod > 0)
+            {
+                query = query.Where(r => r.ReportDate.HasValue && r.ReportDate.Value.Date > DateTime.Today.AddDays(-_dashboardPeriod));
+            }
+
+            return query;
+        }
+    }
+
+    private IEnumerable<ProductionReportDto> PrevPeriodReports
+    {
+        get
+        {
+            if (_selectedMonth > 0) return Enumerable.Empty<ProductionReportDto>(); // Trend makes less sense for static months in this simple logic
+            if (_dashboardPeriod <= 0) return Enumerable.Empty<ProductionReportDto>();
+
+            return _reports.Where(r => r.ReportDate.HasValue
                 && r.ReportDate.Value.Date > DateTime.Today.AddDays(-2 * _dashboardPeriod)
                 && r.ReportDate.Value.Date <= DateTime.Today.AddDays(-_dashboardPeriod));
+        }
+    }
 
     private decimal TotalWheyQty => DashboardReports.Sum(x => x.ConcentrationWheyQty ?? 0);
     private decimal TotalPowderQty => DashboardReports.Sum(x => x.SprayPowderQty ?? 0);
@@ -1425,6 +1518,14 @@
     private void OnPeriodChanged(int period)
     {
         _dashboardPeriod = period;
+        if (period > 0) _selectedMonth = 0;
+        CalculateDashboardStats();
+    }
+
+    private void OnMonthChanged(int month)
+    {
+        _selectedMonth = month;
+        if (month > 0) _dashboardPeriod = 0;
         CalculateDashboardStats();
     }
 
@@ -1490,6 +1591,57 @@
     }
 
     private void ShowMore() => _visibleCount += InitialVisible;
+
+    private async Task ExportToExcel()
+    {
+        try
+        {
+            var dataToExport = DisplayedReports.ToList();
+            if (dataToExport.Count == 0)
+            {
+                Snackbar.Add("داده‌ای برای خروجی وجود ندارد.", Severity.Warning);
+                return;
+            }
+
+            var sb = new System.Text.StringBuilder();
+
+            // Header
+            sb.AppendLine("تاریخ\tروز هفته\tشرکت\tآب‌پنیر (لیتر)\tپودر (کیلوگرم)\tنوع محصول\tراندمان (%)\tتوضیحات");
+
+            // Data
+            foreach (var r in dataToExport)
+            {
+                var dateStr = GetShamsiDateString(r.ReportDate);
+                var weekday = r.ReportDate.HasValue ? GetPersianWeekday(r.ReportDate.Value) : "";
+                var company = r.WheyCompany ?? "";
+                var whey = r.ConcentrationWheyQty?.ToString("N0") ?? "0";
+                var powder = r.SprayPowderQty?.ToString("N0") ?? "0";
+                var prodType = r.ProductType ?? "";
+                var eff = r.ConcentrationWheyQty > 0 ? ((decimal)(r.SprayPowderQty ?? 0) / (decimal)(r.ConcentrationWheyQty ?? 0) * 100).ToString("N1") : "0.0";
+                var desc = (r.Description ?? "").Replace("\n", " ").Replace("\r", "").Replace("\t", " "); // Clean up description for TSV
+
+                sb.AppendLine($"{dateStr}\t{weekday}\t{company}\t{whey}\t{powder}\t{prodType}\t{eff}\t{desc}");
+            }
+
+            // UTF-16LE BOM
+            var preamble = System.Text.Encoding.Unicode.GetPreamble();
+            var payload = System.Text.Encoding.Unicode.GetBytes(sb.ToString());
+
+            var result = new byte[preamble.Length + payload.Length];
+            Buffer.BlockCopy(preamble, 0, result, 0, preamble.Length);
+            Buffer.BlockCopy(payload, 0, result, preamble.Length, payload.Length);
+
+            var fileName = $"Production_Reports_{GetTodayShamsi()}.csv"; // Excel handles UTF-16 TSV with CSV extension gracefully in most locales, or XLS
+
+            // Use the specific download function mentioned in the prompt constraints
+            await JS.InvokeVoidAsync("window.downloadFileFromBytes", fileName, result);
+            Snackbar.Add("خروجی با موفقیت ایجاد شد.", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"خطا در ایجاد فایل خروجی: {ex.Message}", Severity.Error);
+        }
+    }
 
     // ===== نمودارها =====
     private List<ChartSeries> _chartSeries = new();
