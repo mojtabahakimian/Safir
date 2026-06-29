@@ -18,6 +18,8 @@
 
 		<PackageReference Include="MudBlazor" Version="6.21.0" />
 		<PackageReference Include="System.IdentityModel.Tokens.Jwt" Version="6.36.0" />
+		
+		<PackageReference Include="Syncfusion.Blazor.Grid" Version="29.1.33" />
 	</ItemGroup>
 
 	<ItemGroup>

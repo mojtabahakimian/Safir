@@ -8,6 +8,7 @@ using Microsoft.AspNetCore.Components.Web;
 using Safir.Shared.Interfaces;
 using MudBlazor.Services;
 using System.Globalization;
+using Syncfusion.Blazor;
 
 var builder = WebAssemblyHostBuilder.CreateDefault(args);
 builder.RootComponents.Add<App>("#app"); // Check if App.razor exists, or use HeadOutlet/Routes
@@ -79,6 +80,7 @@ builder.Services.AddScoped<Pay2DashboardApiService>();
 
 builder.Services.AddScoped<IProductionReportApiService, ProductionReportApiService>();
 
+builder.Services.AddSyncfusionBlazor();
 #endregion
 
 
