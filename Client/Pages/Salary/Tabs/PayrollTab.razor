@@ -1,5 +1,6 @@
-﻿@using Safir.Shared.Models.Salary
+@using Safir.Shared.Models.Salary
 @using Safir.Shared.Models
+@using Safir.Shared.Utility
 @using Safir.Client.Components.Reports
 @inject Safir.Client.Services.Pay2RunApiService RunApi
 @inject Safir.Client.Services.Pay2AttendanceApiService AttApi
@@ -34,6 +35,127 @@
         box-shadow: var(--p2-shadow-md);
         transform: translateY(-2px);
     }
+
+    /* ========== گرید پرفورمنس‌بالا (Resize + Sort + Virtualize) ========== */
+    /* نام کلاس‌ها عمداً p2-excel-* است تا با تابع window.startP2Resize در interop.js کار کند */
+    .p2-excel-wrapper {
+        width: 100%;
+        overflow: auto;
+        max-height: 62vh;
+        border: 1px solid var(--p2-border);
+        border-radius: 8px;
+        position: relative;
+        background: #fff;
+    }
+
+    .p2-excel-table {
+        border-collapse: separate;
+        border-spacing: 0;
+        table-layout: fixed; /* لازم برای Resize پایدار ستون‌ها */
+        width: max-content;
+        min-width: 100%;
+        font-size: 13px;
+    }
+
+        .p2-excel-table th {
+            background: #f8fafc;
+            color: var(--p2-text-main);
+            font-weight: 700;
+            padding: 10px 8px;
+            border-bottom: 2px solid #cbd5e1;
+            border-left: 1px solid #e2e8f0;
+            text-align: center;
+            position: sticky;
+            top: 0;
+            z-index: 20;
+            white-space: nowrap;
+        }
+
+        .p2-excel-table td {
+            border-bottom: 1px solid #e2e8f0;
+            border-left: 1px solid #e2e8f0;
+            padding: 6px 8px;
+            background: inherit;
+            vertical-align: middle;
+            white-space: nowrap;
+        }
+
+        .p2-excel-table tbody tr {
+            background: #fff;
+        }
+
+            .p2-excel-table tbody tr:hover {
+                background: #f8fafc;
+            }
+
+    /* ستون اول (پرسنل) چسبان به راست */
+    .p2-sticky-col-1 {
+        position: sticky;
+        right: 0;
+        z-index: 10;
+        background: #fff;
+        box-shadow: -1px 0 0 #e2e8f0;
+    }
+
+    .p2-excel-table th.p2-sticky-col-1 {
+        z-index: 30;
+        background: #f1f5f9;
+    }
+
+    .p2-excel-table tbody tr:hover td.p2-sticky-col-1 {
+        background: #f8fafc;
+    }
+
+    /* دستگیره تغییر عرض ستون */
+    .p2-col-resizer {
+        position: absolute;
+        top: 0;
+        left: -2px;
+        width: 6px;
+        height: 100%;
+        cursor: col-resize;
+        z-index: 50;
+        background-color: transparent;
+        transition: background-color 0.2s;
+    }
+
+        .p2-col-resizer:hover, .p2-col-resizer:active {
+            background-color: var(--p2-primary);
+        }
+
+    body.p2-resizing * {
+        user-select: none !important;
+        cursor: col-resize !important;
+    }
+
+    /* تیتر قابل‌کلیک برای Sort */
+    .p2-sort-head {
+        cursor: pointer;
+        user-select: none;
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+    }
+
+        .p2-sort-head:hover {
+            color: var(--p2-primary);
+        }
+
+    .p2-sort-ind {
+        font-size: 10px;
+        line-height: 1;
+        color: var(--p2-primary);
+    }
+
+    /* ردیف جمع کل چسبان به پایین */
+    .p2-tfoot-cell {
+        position: sticky;
+        bottom: 0;
+        background: var(--p2-bg-main);
+        font-weight: 900;
+        z-index: 15;
+        border-top: 2px solid var(--p2-border);
+    }
 </style>
 
 <div class="pay2-tab-container">
@@ -61,7 +183,7 @@
 
             <!-- وسط و چپ: سرچ و تغییر نما -->
             <div style="display:flex; align-items:center; gap: 12px; flex-grow: 1; max-width: 450px;">
-                
+
                 <div class="pay2-search-wrapper" style="flex-grow: 1;">
                     <i class="bi bi-search"></i>
                     <input type="text" class="pay2-search-input" style="width: 100%;" placeholder="جستجوی دوره (مثلاً: خرداد یا 1403)..." @bind="PeriodSearchTerm" @bind:event="oninput" />
@@ -69,13 +191,13 @@
 
                 <!-- کنترل تغییر نما (Segmented Control) -->
                 <div style="display:flex; background: var(--p2-bg-main); border: 1px solid var(--p2-border); border-radius: var(--p2-radius-sm); padding: 4px;">
-                    <button class="btn-ghost-pay2 sm @(!IsListView ? "p2-text-primary" : "p2-text-muted")" 
-                            style="padding: 6px 12px; border-radius: 4px; background: @(!IsListView ? "var(--p2-bg-white)" : "transparent"); box-shadow: @(!IsListView ? "0 1px 3px rgba(0,0,0,0.1)" : "none");" 
+                    <button class="btn-ghost-pay2 sm @(!IsListView ? "p2-text-primary" : "p2-text-muted")"
+                            style="padding: 6px 12px; border-radius: 4px; background: @(!IsListView ? "var(--p2-bg-white)" : "transparent"); box-shadow: @(!IsListView ? "0 1px 3px rgba(0,0,0,0.1)" : "none");"
                             @onclick="() => IsListView = false" title="نمایش کارتی">
                         <i class="bi bi-grid-fill" style="font-size: 16px;"></i>
                     </button>
-                    <button class="btn-ghost-pay2 sm @(IsListView ? "p2-text-primary" : "p2-text-muted")" 
-                            style="padding: 6px 12px; border-radius: 4px; background: @(IsListView ? "var(--p2-bg-white)" : "transparent"); box-shadow: @(IsListView ? "0 1px 3px rgba(0,0,0,0.1)" : "none");" 
+                    <button class="btn-ghost-pay2 sm @(IsListView ? "p2-text-primary" : "p2-text-muted")"
+                            style="padding: 6px 12px; border-radius: 4px; background: @(IsListView ? "var(--p2-bg-white)" : "transparent"); box-shadow: @(IsListView ? "0 1px 3px rgba(0,0,0,0.1)" : "none");"
                             @onclick="() => IsListView = true" title="نمایش لیستی">
                         <i class="bi bi-list-ul" style="font-size: 16px;"></i>
                     </button>
@@ -122,10 +244,10 @@
                                         @(p.STATUS == 1 ? "کارکرد باز" : "آماده محاسبه")
                                     </span>
                                 </div>
-                                
+
                                 <div style="display:flex; justify-content:flex-end; align-items:center; margin-top: auto; padding-top: 12px; border-top: 1px dashed var(--p2-border-light);">
-                                    <button class="btn-primary-pay2 p2-btn-sm" 
-                                            @onclick="() => EnterPeriod(p.PERIOD_DATE)" 
+                                    <button class="btn-primary-pay2 p2-btn-sm"
+                                            @onclick="() => EnterPeriod(p.PERIOD_DATE)"
                                             style="border-radius: 20px; padding: 6px 16px;">
                                         ورود به میز کار محاسباتی <i class="bi bi-arrow-left-short" style="margin-right:4px;"></i>
                                     </button>
@@ -182,7 +304,7 @@
         <!-- ========================================================================= -->
 
         <div class="card-custom" style="padding: 12px 16px; margin-bottom: 16px; display: flex; flex-wrap: wrap; gap: 16px; align-items: center; justify-content: space-between; background: var(--p2-bg-white);">
-            
+
             <div style="display:flex; align-items:center; gap: 16px;">
                 <button class="btn-outline-pay2" @onclick="BackToList" style="border-radius: 20px;" disabled="@IsProcessing">
                     <i class="bi bi-arrow-right"></i> بازگشت
@@ -268,48 +390,116 @@
         }
         else
         {
-            <div class="card-custom p2-fade-content" style="padding: 0; border: none; box-shadow: none;">
-                <div class="pay2-table-responsive" style="max-height: 60vh; overflow-y: auto; margin: 0; border: 1px solid var(--p2-border);">
-                    <table class="p2-table">
-                        <thead style="position: sticky; top: 0; z-index: 10;">
+            @{ var colCount = RunData?.Columns?.Count ?? 0; }
+
+            <div class="card-custom p2-fade-content" style="padding: 12px; border: none; box-shadow: none;">
+
+                <!-- نوار ابزار گرید: جستجو + شمارنده -->
+                <div style="display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:10px; flex-wrap:wrap;">
+                    <div class="pay2-search-wrapper" style="width:300px; max-width:100%;">
+                        <i class="bi bi-search"></i>
+                        <input type="text"
+                               class="pay2-search-input"
+                               style="width:100%;"
+                               placeholder="جستجوی نام یا کد پرسنلی..."
+                               value="@_gridSearch"
+                               @oninput="OnGridSearchInput" />
+                    </div>
+                    <div class="p2-text-muted" style="font-size:12px;">
+                        نمایش <b>@_displayLines.Count</b> از <b>@(RunData?.Lines?.Count ?? 0)</b> ردیف
+                        @if (_sortKey != null)
+                        {
+                            <span style="margin-right:8px;">| مرتب‌سازی فعال</span>
+                        }
+                    </div>
+                </div>
+
+                <div class="p2-excel-wrapper">
+                    <table class="p2-excel-table">
+                        <colgroup>
+                            <col style="width:210px;" />  <!-- 0 پرسنل -->
+                            <col style="width:80px;" />   <!-- 1 کارکرد -->
+                            @for (int i = 0; i < colCount; i++)
+                            {
+                                <col style="width:120px;" />
+                            }
+                            <col style="width:120px;" />  <!-- ناخالص -->
+                            <col style="width:110px;" />  <!-- مبنای بیمه -->
+                            <col style="width:110px;" />  <!-- بیمه کارگر -->
+                            <col style="width:110px;" />  <!-- مالیات -->
+                            <col style="width:150px;" />  <!-- کسورات -->
+                            <col style="width:130px;" />  <!-- خالص -->
+                            <col style="width:110px;" />  <!-- عملیات -->
+                        </colgroup>
+
+                        <thead>
                             <tr>
-                                <th>پرسنل</th>
-                                <th style="text-align:center;">کارکرد</th>
-                                
-                                <!-- 🚀 رندر پویای ستون‌های آیتم‌های حقوقی -->
-                                @if (RunData != null && RunData.Columns != null)
+                                <th class="p2-sticky-col-1">
+                                    <span class="p2-sort-head" @onclick='() => ToggleSort("name")'>پرسنل <span class="p2-sort-ind">@SortArrow("name")</span></span>
+                                    <div class="p2-col-resizer" onmousedown="startP2Resize(event, this, 0, true)"></div>
+                                </th>
+                                <th>
+                                    <span class="p2-sort-head" @onclick='() => ToggleSort("work")'>کارکرد <span class="p2-sort-ind">@SortArrow("work")</span></span>
+                                    <div class="p2-col-resizer" onmousedown="startP2Resize(event, this, 1, false)"></div>
+                                </th>
+
+                                @{ int headIdx = 2; }
+                                @foreach (var col in RunData.Columns)
                                 {
-                                    foreach (var col in RunData.Columns)
-                                    {
-                                        <th style="text-align:left; color:#2563eb;">@col.ITEM_NAME</th>
-                                    }
+                                    var code = col.ITEM_CODE;
+                                    var resizeJs = $"startP2Resize(event, this, {headIdx}, false)";
+                                    <th style="color:#2563eb;">
+                                        <span class="p2-sort-head" @onclick="() => ToggleSort(code)">@col.ITEM_NAME <span class="p2-sort-ind">@SortArrow(code)</span></span>
+                                        <div class="p2-col-resizer" onmousedown="@resizeJs"></div>
+                                    </th>
+                                    headIdx++;
                                 }
 
-                                <th style="text-align:left; border-right: 2px solid var(--p2-border-light);">ناخالص حقوق</th>
-                                <th style="text-align:left;">مبنای بیمه</th>
-                                <th style="text-align:left;">بیمه کارگر</th>
-                                <th style="text-align:left;">مالیات</th>
-                                <th style="text-align:left; color:#ef4444;">مساعده/وام/سایر کسورات</th>
-                                <th style="text-align:left; color:#059669; font-size:14px; border-right: 2px solid var(--p2-border-light);">خالص پرداختی</th>
-                                <th style="text-align:center; border-right: 2px solid var(--p2-border-light);">عملیات</th>
+                                <th style="border-right: 2px solid var(--p2-border-light);">
+                                    <span class="p2-sort-head" @onclick='() => ToggleSort("gross")'>ناخالص حقوق <span class="p2-sort-ind">@SortArrow("gross")</span></span>
+                                    <div class="p2-col-resizer" onmousedown="@($"startP2Resize(event, this, {2 + colCount}, false)")"></div>
+                                </th>
+                                <th>
+                                    <span class="p2-sort-head" @onclick='() => ToggleSort("insbase")'>مبنای بیمه <span class="p2-sort-ind">@SortArrow("insbase")</span></span>
+                                    <div class="p2-col-resizer" onmousedown="@($"startP2Resize(event, this, {3 + colCount}, false)")"></div>
+                                </th>
+                                <th>
+                                    <span class="p2-sort-head" @onclick='() => ToggleSort("insworker")'>بیمه کارگر <span class="p2-sort-ind">@SortArrow("insworker")</span></span>
+                                    <div class="p2-col-resizer" onmousedown="@($"startP2Resize(event, this, {4 + colCount}, false)")"></div>
+                                </th>
+                                <th>
+                                    <span class="p2-sort-head" @onclick='() => ToggleSort("tax")'>مالیات <span class="p2-sort-ind">@SortArrow("tax")</span></span>
+                                    <div class="p2-col-resizer" onmousedown="@($"startP2Resize(event, this, {5 + colCount}, false)")"></div>
+                                </th>
+                                <th style="color:#ef4444;">
+                                    <span class="p2-sort-head" @onclick='() => ToggleSort("ded")'>مساعده/وام/سایر کسورات <span class="p2-sort-ind">@SortArrow("ded")</span></span>
+                                    <div class="p2-col-resizer" onmousedown="@($"startP2Resize(event, this, {6 + colCount}, false)")"></div>
+                                </th>
+                                <th style="color:#059669; border-right: 2px solid var(--p2-border-light);">
+                                    <span class="p2-sort-head" @onclick='() => ToggleSort("net")'>خالص پرداختی <span class="p2-sort-ind">@SortArrow("net")</span></span>
+                                    <div class="p2-col-resizer" onmousedown="@($"startP2Resize(event, this, {7 + colCount}, false)")"></div>
+                                </th>
+                                <th style="border-right: 2px solid var(--p2-border-light);">عملیات
+                                    <div class="p2-col-resizer" onmousedown="@($"startP2Resize(event, this, {8 + colCount}, false)")"></div>
+                                </th>
                             </tr>
                         </thead>
+
                         <tbody>
-                            @if (RunData == null || !RunData.Lines.Any())
+                            @if (!_displayLines.Any())
                             {
-                                <tr><td colspan="100%" style="text-align:center; padding:30px;">رکوردی یافت نشد.</td></tr>
+                                <tr><td colspan="@(9 + colCount)" style="text-align:center; padding:30px;">رکوردی یافت نشد.</td></tr>
                             }
                             else
                             {
-                                <Virtualize Items="RunData.Lines" Context="item" OverscanCount="10">
+                                <Virtualize Items="_displayLines" Context="item" ItemSize="42" OverscanCount="10">
                                     <tr @key="item.EMP_ID">
-                                        <td>
+                                        <td class="p2-sticky-col-1">
                                             <div style="font-weight:700;">@item.FULL_NAME</div>
                                             <div class="p2-text-muted p2-text-mono" style="font-size:11px;">@item.EMP_CODE</div>
                                         </td>
                                         <td class="p2-text-mono" style="text-align:center;">@item.WORK_DAYS.ToString("0.##")</td>
-                                        
-                                        <!-- 🚀 رندر پویای مقادیر داخل سلول‌ها -->
+
                                         @foreach (var col in RunData.Columns)
                                         {
                                             long val = item.Details.GetValueOrDefault(col.ITEM_CODE, 0);
@@ -333,27 +523,29 @@
                                 </Virtualize>
                             }
                         </tbody>
-                        <tfoot style="position: sticky; bottom: 0; background: var(--p2-bg-main); font-weight:900; box-shadow: 0 -2px 10px rgba(0,0,0,0.05); z-index: 10;">
-                            @if (RunData != null && RunData.Lines.Any())
+
+                        <tfoot>
+                            @if (_displayLines.Any())
                             {
                                 <tr>
-                                    <td colspan="2" style="text-align:left;">جمع کل دوره:</td>
-                                    
-                                    <!-- 🚀 جمع مقادیر ستون‌های پویا در پایین جدول -->
+                                    <td class="p2-tfoot-cell" colspan="2" style="text-align:left;">
+                                        @(string.IsNullOrWhiteSpace(_gridSearch) ? "جمع کل دوره:" : "جمع موارد فیلترشده:")
+                                    </td>
+
                                     @foreach (var col in RunData.Columns)
                                     {
-                                        <td class="p2-text-mono" style="text-align:left; color:#2563eb;">
-                                            @RunData.Lines.Sum(x => x.Details.GetValueOrDefault(col.ITEM_CODE, 0)).ToString("N0")
+                                        <td class="p2-tfoot-cell p2-text-mono" style="text-align:left; color:#2563eb;">
+                                            @((_colTotals.TryGetValue(col.ITEM_CODE, out var cv) ? cv : 0).ToString("N0"))
                                         </td>
                                     }
 
-                                    <td class="p2-text-mono" style="text-align:left; border-right: 2px solid var(--p2-border-light);">@RunData.Lines.Sum(x => x.GROSS_PAY).ToString("N0")</td>
-                                    <td class="p2-text-mono" style="text-align:left;">@RunData.Lines.Sum(x => x.INS_BASE).ToString("N0")</td>
-                                    <td class="p2-text-mono" style="text-align:left;">@RunData.Lines.Sum(x => x.INS_WORKER).ToString("N0")</td>
-                                    <td class="p2-text-mono" style="text-align:left;">@RunData.Lines.Sum(x => x.TAX_AMOUNT).ToString("N0")</td>
-                                    <td class="p2-text-mono p2-text-danger" style="text-align:left;">@RunData.Lines.Sum(x => x.TOTAL_DED).ToString("N0")</td>
-                                    <td class="p2-text-mono p2-text-success" style="text-align:left; font-size:16px; border-right: 2px solid var(--p2-border-light);">@RunData.Lines.Sum(x => x.NET_PAY).ToString("N0")</td>
-                                    <td style="border-right: 2px solid var(--p2-border-light);"></td>
+                                    <td class="p2-tfoot-cell p2-text-mono" style="text-align:left; border-right: 2px solid var(--p2-border-light);">@_totGross.ToString("N0")</td>
+                                    <td class="p2-tfoot-cell p2-text-mono" style="text-align:left;">@_totInsBase.ToString("N0")</td>
+                                    <td class="p2-tfoot-cell p2-text-mono" style="text-align:left;">@_totInsWorker.ToString("N0")</td>
+                                    <td class="p2-tfoot-cell p2-text-mono" style="text-align:left;">@_totTax.ToString("N0")</td>
+                                    <td class="p2-tfoot-cell p2-text-mono p2-text-danger" style="text-align:left;">@_totDed.ToString("N0")</td>
+                                    <td class="p2-tfoot-cell p2-text-mono p2-text-success" style="text-align:left; font-size:16px; border-right: 2px solid var(--p2-border-light);">@_totNet.ToString("N0")</td>
+                                    <td class="p2-tfoot-cell" style="border-right: 2px solid var(--p2-border-light);"></td>
                                 </tr>
                             }
                         </tfoot>
@@ -369,7 +561,7 @@
     enum ViewMode { PeriodList, PayrollGrid }
     ViewMode CurrentView = ViewMode.PeriodList;
 
-    bool IsListView = false; 
+    bool IsListView = false;
 
     string _periodSearchTerm = "";
     string PeriodSearchTerm
@@ -386,7 +578,7 @@
 
     List<Pay2WorkshopDto> Workshops = new();
     List<Pay2PeriodLookupDto> PeriodOptions = new();
-    
+
     int SelectedWsId;
     long SelectedPeriodDate;
     string? PayrollNsStr;
@@ -397,6 +589,36 @@
 
     bool IsLoading = false;
     bool IsProcessing = false;
+
+    // ════════════════════════════════════════════════════════════════
+    // وضعیت گرید (Sort / Search / Totals) — همگی خارج از مسیر render محاسبه می‌شوند
+    // ════════════════════════════════════════════════════════════════
+
+    // لیست نهاییِ نمایشی (فیلترشده + مرتب‌شده). Virtualize فقط روی همین کار می‌کند.
+    List<Pay2RunLineDto> _displayLines = new();
+
+    // ایندکس جستجوی از پیش‌نرمال‌شده (EMP_ID → "نام کد" نرمال‌شده). یک‌بار هنگام لود ساخته می‌شود
+    // تا در هر کلیدِ تایپ، روی همهٔ ردیف‌ها ToStandardSearchText/ToLower اجرا نشود (پرفورمنس WASM).
+    readonly Dictionary<int, string> _searchIndex = new();
+
+    string _gridSearch = "";
+    int _searchSeq = 0; // برای debounce بدون CancellationTokenSource
+
+    // مرتب‌سازی: کلید ستون + جهت (0=بدون مرتب‌سازی، 1=صعودی، -1=نزولی)
+    string? _sortKey;
+    int _sortDir;
+
+    // جمع‌های از پیش‌محاسبه‌شدهٔ ردیف tfoot (به‌جای Sum روی هر render)
+    readonly Dictionary<string, long> _colTotals = new();
+    long _totGross, _totInsBase, _totInsWorker, _totTax, _totDed, _totNet;
+
+    // مقایسه‌گرِ آگاه‌به‌فارسی برای مرتب‌سازی نام؛ در صورت نبود فرهنگ (InvariantGlobalization) به Ordinal برمی‌گردد
+    static readonly StringComparer _faComparer = BuildFaComparer();
+    static StringComparer BuildFaComparer()
+    {
+        try { return StringComparer.Create(System.Globalization.CultureInfo.GetCultureInfo("fa-IR"), ignoreCase: true); }
+        catch { return StringComparer.OrdinalIgnoreCase; }
+    }
 
     protected override async Task OnInitializedAsync()
     {
@@ -433,10 +655,11 @@
         CurrentView = ViewMode.PeriodList;
         CurrentPeriod = null;
         CurrentRun = null;
-        RunData = new Pay2RunResultDto(); // 🟢 جایگزین RunLines.Clear(); شد
-        PayrollNsStr = null; 
+        RunData = new Pay2RunResultDto();
+        ResetGridState();
+        PayrollNsStr = null;
         _periodSearchTerm = "";
-        
+
         await LoadPeriodOptionsAsync();
     }
 
@@ -454,7 +677,8 @@
         CurrentView = ViewMode.PeriodList;
         CurrentPeriod = null;
         CurrentRun = null;
-        RunData = new Pay2RunResultDto(); // 🟢 جایگزین RunLines.Clear(); شد
+        RunData = new Pay2RunResultDto();
+        ResetGridState();
         PayrollNsStr = null;
         _periodSearchTerm = "";
         SelectedPeriodDate = 0;
@@ -469,7 +693,7 @@
         try
         {
             CurrentPeriod = await RunApi.GetPeriodInfoAsync(SelectedWsId, SelectedPeriodDate);
-            
+
             if (CurrentPeriod == null)
             {
                 Snackbar.Add("دوره‌ای با این مشخصات در سیستم وجود ندارد.", MudBlazor.Severity.Warning);
@@ -478,7 +702,7 @@
             }
 
             CurrentRun = await RunApi.GetLatestRunAsync(CurrentPeriod.PER_ID);
-            
+
           if (CurrentRun != null)
             {
                 RunData = await RunApi.GetRunLinesAsync(CurrentRun.RUN_ID);
@@ -487,15 +711,17 @@
             {
                 RunData = new Pay2RunResultDto();
             }
+
+            PrepareGrid(); // ساخت ایندکس جستجو + ریست sort/search + ساخت نمای اولیه و جمع‌ها
         }
-        catch (Exception ex) 
-        { 
-            Snackbar.Add(ex.Message, MudBlazor.Severity.Error); 
+        catch (Exception ex)
+        {
+            Snackbar.Add(ex.Message, MudBlazor.Severity.Error);
             await BackToList();
         }
-        finally 
-        { 
-            IsLoading = false; 
+        finally
+        {
+            IsLoading = false;
         }
     }
 
@@ -513,12 +739,12 @@
             var normalizedStr = new string(PayrollNsStr.Trim()
                 .Select(c => c >= '۰' && c <= '۹' ? (char)(c - '۰' + '0') :
                              c >= '٠' && c <= '٩' ? (char)(c - '٠' + '0') : c)
-                .Where(c => c >= '0' && c <= '9') 
+                .Where(c => c >= '0' && c <= '9')
                 .ToArray());
 
             if (long.TryParse(normalizedStr, out long parsed) && parsed > 0)
             {
-                payrollNs = parsed; 
+                payrollNs = parsed;
             }
             else
             {
@@ -540,7 +766,7 @@
 
             await RunApi.CalculateRunAsync(req);
             Snackbar.Add("محاسبه حقوق با موفقیت انجام شد.", MudBlazor.Severity.Success);
-            
+
             await LoadRunData();
         }
         catch (Exception ex) { Snackbar.Add(ex.Message, MudBlazor.Severity.Error); }
@@ -624,15 +850,15 @@
             {
                 await RunApi.GenerateDeedAsync(CurrentRun.RUN_ID);
                 Snackbar.Add("سند حسابداری با موفقیت صادر شد.", MudBlazor.Severity.Success);
-                
-                await LoadRunData(); 
+
+                await LoadRunData();
             }
-            catch (Exception ex) 
-            { 
-                Snackbar.Add(ex.Message, MudBlazor.Severity.Error); 
+            catch (Exception ex)
+            {
+                Snackbar.Add(ex.Message, MudBlazor.Severity.Error);
             }
-            finally 
-            { 
+            finally
+            {
                 IsProcessing = false;
             }
         }
@@ -662,5 +888,153 @@
         };
 
         DialogService.Show<PdfPreviewDialog>($"فیش حقوقی - {fullName}", parameters, options);
+    }
+
+    // ════════════════════════════════════════════════════════════════
+    // گرید: ساخت ایندکس، فیلتر، مرتب‌سازی و جمع‌ها
+    // ════════════════════════════════════════════════════════════════
+
+    void PrepareGrid()
+    {
+        _gridSearch = "";
+        _sortKey = null;
+        _sortDir = 0;
+        RebuildSearchIndex();
+        RecomputeView();
+    }
+
+    void ResetGridState()
+    {
+        _gridSearch = "";
+        _sortKey = null;
+        _sortDir = 0;
+        _searchIndex.Clear();
+        _displayLines = new();
+        _colTotals.Clear();
+        _totGross = _totInsBase = _totInsWorker = _totTax = _totDed = _totNet = 0;
+    }
+
+    // یک‌بار هنگام لودِ داده اجرا می‌شود — نه در هر کلید جستجو
+    void RebuildSearchIndex()
+    {
+        _searchIndex.Clear();
+        var lines = RunData?.Lines;
+        if (lines == null) return;
+
+        foreach (var l in lines)
+        {
+            // ToStandardSearchText: حذف کاراکترهای نامرئی + اصلاح ك/ي و ارقام فارسی + lowercase
+            _searchIndex[l.EMP_ID] = ((l.FULL_NAME ?? "") + " " + (l.EMP_CODE ?? "")).ToStandardSearchText();
+        }
+    }
+
+    // ترکیب فیلتر + مرتب‌سازی + محاسبهٔ جمع‌ها. همیشه خارج از مسیر render صدا زده می‌شود.
+    void RecomputeView()
+    {
+        var src = RunData?.Lines;
+        if (src == null || src.Count == 0)
+        {
+            _displayLines = new();
+            RecomputeTotals();
+            return;
+        }
+
+        IEnumerable<Pay2RunLineDto> q = src;
+
+        // --- فیلتر جستجو ---
+        var term = _gridSearch?.Trim();
+        if (!string.IsNullOrEmpty(term))
+        {
+            var t = term.ToStandardSearchText();
+            if (t.Length > 0)
+            {
+                q = q.Where(x => _searchIndex.TryGetValue(x.EMP_ID, out var s)
+                                 && s.Contains(t, StringComparison.Ordinal));
+            }
+        }
+
+        var list = q.ToList();
+
+        // --- مرتب‌سازی ---
+        if (_sortKey != null && _sortDir != 0)
+        {
+            var cmp = GetComparison(_sortKey);
+            list.Sort((a, b) =>
+            {
+                int r = cmp(a, b);
+                if (r == 0) return a.EMP_ID.CompareTo(b.EMP_ID); // tie-break پایدار
+                return _sortDir == 1 ? r : -r;
+            });
+        }
+
+        _displayLines = list;
+        RecomputeTotals();
+    }
+
+    // جمع‌های ردیف tfoot یک‌بار محاسبه و کش می‌شوند (به‌جای Sum روی هر render)
+    void RecomputeTotals()
+    {
+        _colTotals.Clear();
+        _totGross = _totInsBase = _totInsWorker = _totTax = _totDed = _totNet = 0;
+
+        foreach (var l in _displayLines)
+        {
+            _totGross += l.GROSS_PAY;
+            _totInsBase += l.INS_BASE;
+            _totInsWorker += l.INS_WORKER;
+            _totTax += l.TAX_AMOUNT;
+            _totDed += l.TOTAL_DED;
+            _totNet += l.NET_PAY;
+
+            foreach (var kv in l.Details)
+                _colTotals[kv.Key] = (_colTotals.TryGetValue(kv.Key, out var cur) ? cur : 0) + kv.Value;
+        }
+    }
+
+    Comparison<Pay2RunLineDto> GetComparison(string key) => key switch
+    {
+        "name"      => (a, b) => FaCompare(a.FULL_NAME, b.FULL_NAME),
+        "work"      => (a, b) => a.WORK_DAYS.CompareTo(b.WORK_DAYS),
+        "gross"     => (a, b) => a.GROSS_PAY.CompareTo(b.GROSS_PAY),
+        "insbase"   => (a, b) => a.INS_BASE.CompareTo(b.INS_BASE),
+        "insworker" => (a, b) => a.INS_WORKER.CompareTo(b.INS_WORKER),
+        "tax"       => (a, b) => a.TAX_AMOUNT.CompareTo(b.TAX_AMOUNT),
+        "ded"       => (a, b) => a.TOTAL_DED.CompareTo(b.TOTAL_DED),
+        "net"       => (a, b) => a.NET_PAY.CompareTo(b.NET_PAY),
+        // در غیر این صورت کلید = ITEM_CODE ستون پویا
+        _           => (a, b) => a.Details.GetValueOrDefault(key, 0L).CompareTo(b.Details.GetValueOrDefault(key, 0L))
+    };
+
+    static int FaCompare(string? a, string? b) => Math.Sign(_faComparer.Compare(a ?? "", b ?? ""));
+
+    void ToggleSort(string key)
+    {
+        if (_sortKey == key)
+        {
+            // چرخه: صعودی → نزولی → بدون مرتب‌سازی
+            if (_sortDir == 1) _sortDir = -1;
+            else { _sortKey = null; _sortDir = 0; }
+        }
+        else
+        {
+            _sortKey = key;
+            _sortDir = 1;
+        }
+
+        RecomputeView();
+    }
+
+    string SortArrow(string key) => _sortKey == key ? (_sortDir == 1 ? "▲" : "▼") : "";
+
+    async Task OnGridSearchInput(ChangeEventArgs e)
+    {
+        _gridSearch = e.Value?.ToString() ?? "";
+
+        var seq = ++_searchSeq;
+        await Task.Delay(180); // debounce
+        if (seq != _searchSeq) return; // کلید جدیدتری تایپ شده — این یکی منسوخ است
+
+        RecomputeView();
+        StateHasChanged();
     }
 }
