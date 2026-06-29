@@ -1221,8 +1221,6 @@ GO
 -- ================================================================
 
 -- Migration 010: Fix configurations for Shift Allowance
-UPDATE [dbo].[PAY2_ITEM_DEF] SET [INS_SUBJECT] = 0 WHERE [ITEM_CODE] = 'SHIFT' AND [INS_SUBJECT] = 1;
-
 GO
 ";
                 ExecuteBatches(db, tablescript);
