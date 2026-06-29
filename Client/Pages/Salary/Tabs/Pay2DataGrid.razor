@@ -503,7 +503,12 @@
                 if (col.Sum != null)
                 {
                     long s = _sums.TryGetValue(col, out var sv) ? sv : 0;
-                    tot.Add(F(s.ToString(CultureInfo.InvariantCulture)));
+                    // اگر ستون به‌صورت متنِ امنِ اکسل خروجی می‌شود، جمع هم با همان قالب (جداکنندهٔ هزارگان)
+                    // به‌صورت متن نوشته می‌شود تا با سلول‌های ستون هم‌خوان و بدون نماد علمی باشد.
+                    if (col.ExportAsText)
+                        tot.Add(FText(s.ToString("#,##0", CultureInfo.InvariantCulture)));
+                    else
+                        tot.Add(F(s.ToString(CultureInfo.InvariantCulture)));
                     for (int k = 1; k < count; k++) tot.Add("");
                 }
                 else
