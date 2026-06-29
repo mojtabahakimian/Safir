@@ -2,7 +2,7 @@ using System;
 using System.Collections.Generic;
 using Microsoft.AspNetCore.Components;
 
-namespace Safir.Client.Pages.Salary.Tabs
+namespace Safir.Client.Components.Grid
 {
     /// <summary>
     /// تعریف یک ستون برای کامپوننت عمومی <see cref="Pay2DataGrid{TItem}"/>.

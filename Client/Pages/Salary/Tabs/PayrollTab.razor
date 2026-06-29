@@ -2,6 +2,7 @@
 @using Safir.Shared.Models
 @using Safir.Shared.Utility
 @using Safir.Client.Components.Reports
+@using Safir.Client.Components.Grid
 @using System.Globalization
 @inject Safir.Client.Services.Pay2RunApiService RunApi
 @inject Safir.Client.Services.Pay2AttendanceApiService AttApi
@@ -270,14 +271,14 @@
         else
         {
             <div class="card-custom p2-fade-content" style="padding: 12px; border: none; box-shadow: none;">
-                <Safir.Client.Pages.Salary.Tabs.Pay2DataGrid TItem="Pay2RunLineDto"
-                                                             Items="RunData.Lines"
-                                                             Columns="_gridColumns"
-                                                             KeySelector="@(x => (object)x.EMP_ID)"
-                                                             SearchPlaceholder="جستجوی نام یا کد پرسنلی..."
-                                                             FooterLabel="جمع کل دوره"
-                                                             ExportFileName="@($"Payroll_{SelectedPeriodDate}")"
-                                                             MaxHeight="62vh" />
+                <Pay2DataGrid TItem="Pay2RunLineDto"
+                              Items="RunData.Lines"
+                              Columns="_gridColumns"
+                              KeySelector="@(x => (object)x.EMP_ID)"
+                              SearchPlaceholder="جستجوی نام یا کد پرسنلی..."
+                              FooterLabel="جمع کل دوره"
+                              ExportFileName="@($"Payroll_{SelectedPeriodDate}")"
+                              MaxHeight="62vh" />
             </div>
         }
     }
