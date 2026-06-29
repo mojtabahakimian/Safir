@@ -65,11 +65,17 @@ namespace Safir.Client.Pages.Salary.Tabs
         /// </summary>
         public Func<TItem, IReadOnlyList<Pay2GridCell>>? ExportCells { get; set; }
 
-        /// <summary>مقدار خروجیِ تک‌سلولی (وقتی ExportCells تعریف نشده). اگر null از Display استفاده می‌شود.</summary>
+        /// <summary>مقدار خروجیِ متنیِ تک‌سلولی (وقتی نه ExportCells و نه ExportNumber تعریف نشده). اگر null از Display استفاده می‌شود.</summary>
         public Func<TItem, string>? ExportText { get; set; }
 
-        /// <summary>اگر true، مقدار با قالب ="..." خروجی می‌شود تا اکسل آن را «متن» بخواند (حفظ صفر ابتدایی).</summary>
-        public bool ExportAsText { get; set; }
+        /// <summary>
+        /// مقدار عددیِ خروجی برای XLSX. اگر ست شود، سلول به‌صورت «عددِ واقعی» (نه متن) نوشته می‌شود؛
+        /// پس بدون نماد علمی، بدون مثلث سبز و جمع‌پذیر است. برای ستون‌های مبلغی این را ست کن.
+        /// </summary>
+        public Func<TItem, double?>? ExportNumber { get; set; }
+
+        /// <summary>اگر true و ExportNumber ست شده باشد، سلول با فرمت «#,##0» (جداکنندهٔ هزارگان) نمایش داده می‌شود.</summary>
+        public bool ExportMoney { get; set; }
     }
 
     /// <summary>یک سلول خروجی Excel: مقدار + اینکه آیا باید به‌صورت متنِ امن (="...") نوشته شود.</summary>

@@ -665,8 +665,8 @@
                     var v = x.Details.GetValueOrDefault(code, 0L);
                     return v == 0 ? "-" : v.ToString("N0");
                 },
-                ExportText = x => x.Details.GetValueOrDefault(code, 0L).ToString("#,##0", CultureInfo.InvariantCulture),
-                ExportAsText = true,   // متنِ امنِ اکسل تا اعداد بزرگ به‌صورت نماد علمی (2E+08) نمایش داده نشوند
+                ExportNumber = x => (double)x.Details.GetValueOrDefault(code, 0L),
+                ExportMoney = true,
                 Sum = x => x.Details.GetValueOrDefault(code, 0L)
             });
         }
@@ -704,8 +704,8 @@
             CellClass = cellClass,
             SortBy = x => val(x),
             Display = x => val(x).ToString("N0"),
-            ExportText = x => val(x).ToString("#,##0", CultureInfo.InvariantCulture),
-            ExportAsText = true,   // متنِ امنِ اکسل تا اعداد بزرگ به‌صورت نماد علمی (2E+08) نمایش داده نشوند
+            ExportNumber = x => (double)val(x),
+            ExportMoney = true,
             Sum = x => val(x)
         };
     }

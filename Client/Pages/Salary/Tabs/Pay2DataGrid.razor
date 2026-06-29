@@ -450,81 +450,154 @@
     }
 
     // ════════════════════════════════════════════════════════════════
-    // خروجی Excel: UTF-16LE + جداکنندهٔ TAB.
-    // اکسل فایل‌های UTF-16 را با جداکنندهٔ Tab باز می‌کند (نه list-separatorِ منطقه‌ای) و
-    // متن یونیکد را درست می‌خواند. این روش هم‌زمان مشکلِ «همه در یک ستون» و «mojibake فارسی»
-    // را مستقل از تنظیمات ویندوز حل می‌کند.
+    // خروجی Excel: تولید فایل واقعی XLSX (OpenXML) به‌صورت ZIP+XML، بدون هیچ کتابخانه.
+    // مزیت نسبت به CSV: اعداد «عددِ واقعی» با فرمت #,##0 → بدون نماد علمی، بدون مثلث سبزِ خطا،
+    // جمع‌پذیر، و فارسیِ درست؛ کاملاً مستقل از تنظیمات منطقه‌ای ویندوز.
     // ════════════════════════════════════════════════════════════════
     private async Task ExportAsync()
     {
         if (_view.Count == 0 || Columns == null) return;
 
-        const char SEP = '\t';
-        var sb = new StringBuilder();
-        sb.Append('\uFEFF'); // در UTF-16LE به بایت‌های FF FE (BOM) تبدیل می‌شود
-
-        // ── سرستون‌ها ──
-        var head = new List<string>();
+        // ── لیستِ مسطحِ ستون‌های خروجی (یک ستونِ گرید ممکن است به چند ستونِ خروجی بسط یابد) ──
+        var xcols = new List<XCol>();
         foreach (var col in Columns)
         {
-            if (col.ExportTitles != null && col.ExportTitles.Count > 0) head.AddRange(col.ExportTitles);
-            else head.Add(col.Title);
+            if (col.ExportCells != null && col.ExportTitles != null && col.ExportTitles.Count > 0)
+            {
+                var c = col;
+                for (int i = 0; i < col.ExportTitles.Count; i++)
+                {
+                    int captured = i;
+                    xcols.Add(new XCol
+                    {
+                        Title = col.ExportTitles[captured],
+                        IsNumber = false,
+                        Text = item =>
+                        {
+                            var cells = c.ExportCells!(item);
+                            return captured < cells.Count ? cells[captured].Value : "";
+                        }
+                    });
+                }
+            }
+            else if (col.ExportNumber != null)
+            {
+                var c = col;
+                xcols.Add(new XCol
+                {
+                    Title = c.Title,
+                    IsNumber = true,
+                    IsMoney = c.ExportMoney,
+                    Number = c.ExportNumber,
+                    SumCol = c.Sum != null ? c : null
+                });
+            }
+            else
+            {
+                var c = col;
+                xcols.Add(new XCol
+                {
+                    Title = c.Title,
+                    IsNumber = false,
+                    Text = item => c.ExportText?.Invoke(item) ?? c.Display?.Invoke(item) ?? ""
+                });
+            }
         }
-        sb.Append(string.Join(SEP, head.Select(F))).Append("\r\n");
 
-        // ── ردیف‌ها (نمای فیلتر/مرتب‌شدهٔ فعلی) ──
+        if (xcols.Count == 0) return;
+
+        int colCount = xcols.Count;
+        int totalRows = 1 + _view.Count + (_hasFooter ? 1 : 0); // هدر + داده + جمع
+
+        // ── بدنهٔ worksheet ──
+        var sd = new StringBuilder();
+        sd.Append("<sheetData>");
+
+        // هدر (ردیف ۱)
+        sd.Append("<row r=\"1\">");
+        for (int j = 0; j < colCount; j++)
+            sd.Append(TextCell(ColLetter(j) + "1", xcols[j].Title));
+        sd.Append("</row>");
+
+        // ردیف‌های داده
+        int rowNum = 2;
         foreach (var r in _view)
         {
-            var cells = new List<string>();
-            foreach (var col in Columns)
+            sd.Append("<row r=\"").Append(rowNum).Append("\">");
+            for (int j = 0; j < colCount; j++)
             {
-                if (col.ExportCells != null)
-                {
-                    foreach (var cell in col.ExportCells(r.Item))
-                        cells.Add(cell.AsText ? FText(cell.Value) : F(cell.Value));
-                }
+                var xc = xcols[j];
+                string cellRef = ColLetter(j) + rowNum;
+                if (xc.IsNumber)
+                    sd.Append(NumberCell(cellRef, xc.Number?.Invoke(r.Item), xc.IsMoney));
                 else
-                {
-                    var v = col.ExportText?.Invoke(r.Item) ?? col.Display?.Invoke(r.Item) ?? "";
-                    cells.Add(col.ExportAsText ? FText(v) : F(v));
-                }
+                    sd.Append(TextCell(cellRef, xc.Text?.Invoke(r.Item) ?? ""));
             }
-            sb.Append(string.Join(SEP, cells)).Append("\r\n");
+            sd.Append("</row>");
+            rowNum++;
         }
 
-        // ── ردیف جمع ──
+        // ردیف جمع
         if (_hasFooter)
         {
-            var tot = new List<string>();
-            bool first = true;
-            foreach (var col in Columns)
+            sd.Append("<row r=\"").Append(rowNum).Append("\">");
+            for (int j = 0; j < colCount; j++)
             {
-                int count = (col.ExportTitles != null && col.ExportTitles.Count > 0) ? col.ExportTitles.Count : 1;
-                if (col.Sum != null)
+                var xc = xcols[j];
+                string cellRef = ColLetter(j) + rowNum;
+                if (xc.SumCol != null && xc.SumCol.Sum != null)
                 {
-                    long s = _sums.TryGetValue(col, out var sv) ? sv : 0;
-                    // اگر ستون به‌صورت متنِ امنِ اکسل خروجی می‌شود، جمع هم با همان قالب (جداکنندهٔ هزارگان)
-                    // به‌صورت متن نوشته می‌شود تا با سلول‌های ستون هم‌خوان و بدون نماد علمی باشد.
-                    if (col.ExportAsText)
-                        tot.Add(FText(s.ToString("#,##0", CultureInfo.InvariantCulture)));
-                    else
-                        tot.Add(F(s.ToString(CultureInfo.InvariantCulture)));
-                    for (int k = 1; k < count; k++) tot.Add("");
+                    long s = _sums.TryGetValue(xc.SumCol, out var v) ? v : 0;
+                    sd.Append(NumberCell(cellRef, s, xc.IsMoney));
+                }
+                else if (j == 0)
+                {
+                    sd.Append(TextCell(cellRef, FooterLabel));
                 }
                 else
                 {
-                    for (int k = 0; k < count; k++) tot.Add(k == 0 && first ? F(FooterLabel) : "");
+                    sd.Append("<c r=\"").Append(cellRef).Append("\"/>");
                 }
-                first = false;
             }
-            sb.Append(string.Join(SEP, tot)).Append("\r\n");
+            sd.Append("</row>");
+            rowNum++;
         }
 
-        var bytes = Encoding.Unicode.GetBytes(sb.ToString()); // UTF-16LE (بدون پریمبلِ جدا؛ BOM از کاراکترِ U+FEFF می‌آید)
+        sd.Append("</sheetData>");
+
+        // عرضِ کافی تا اعداد بزرگ به نماد علمی نروند + سرکوبِ مثلثِ «متنِ عددی» روی کدها
+        string lastCellRef = ColLetter(colCount - 1) + totalRows;
+        string colsXml = $"<cols><col min=\"1\" max=\"{colCount}\" width=\"18\" customWidth=\"1\"/></cols>";
+        string ignoredXml = $"<ignoredErrors><ignoredError sqref=\"A1:{lastCellRef}\" numberStoredAsText=\"1\"/></ignoredErrors>";
+
+        string sheetXml =
+            "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>" +
+            "<worksheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\">" +
+            "<sheetViews><sheetView rightToLeft=\"1\" workbookViewId=\"0\"/></sheetViews>" +
+            colsXml +
+            sd.ToString() +
+            ignoredXml +
+            "</worksheet>";
+
+        // ── ساخت فایل XLSX (ZIP از parts) ──
+        byte[] bytes;
+        using (var ms = new System.IO.MemoryStream())
+        {
+            using (var zip = new System.IO.Compression.ZipArchive(ms, System.IO.Compression.ZipArchiveMode.Create, true))
+            {
+                AddZipEntry(zip, "[Content_Types].xml", ContentTypesXml);
+                AddZipEntry(zip, "_rels/.rels", RootRelsXml);
+                AddZipEntry(zip, "xl/workbook.xml", WorkbookXml);
+                AddZipEntry(zip, "xl/_rels/workbook.xml.rels", WorkbookRelsXml);
+                AddZipEntry(zip, "xl/styles.xml", StylesXml);
+                AddZipEntry(zip, "xl/worksheets/sheet1.xml", sheetXml);
+            }
+            bytes = ms.ToArray();
+        }
 
         try
         {
-            await JS.InvokeVoidAsync("downloadFileFromBytes", ExportFileName + ".csv", bytes);
+            await JS.InvokeVoidAsync("downloadFileFromBytes", ExportFileName + ".xlsx", bytes);
         }
         catch (Exception ex)
         {
@@ -532,19 +605,95 @@
         }
     }
 
-    // escape برای فرمت تب‌جداشده: اگر فیلد شامل tab/نقل‌قول/خط‌جدید بود، در "" قرار می‌گیرد و " دوبل می‌شود
-    private static string F(string? s)
+    private sealed class XCol
     {
-        s ??= "";
-        if (s.IndexOf('\t') >= 0 || s.IndexOf('"') >= 0 || s.IndexOf('\n') >= 0 || s.IndexOf('\r') >= 0)
-            return "\"" + s.Replace("\"", "\"\"") + "\"";
-        return s;
+        public string Title = "";
+        public bool IsNumber;
+        public bool IsMoney;
+        public Func<TItem, string>? Text;
+        public Func<TItem, double?>? Number;
+        public Pay2GridColumn<TItem>? SumCol;
     }
 
-    // فیلدِ «متنِ امنِ اکسل»: با فرمت ="..." اکسل مقدار را متن می‌خواند (حفظ صفر ابتدایی/خط‌فاصلهٔ کد پرسنلی)
-    private static string FText(string? s)
+    private static string TextCell(string cellRef, string? value)
+    {
+        if (string.IsNullOrEmpty(value)) return "<c r=\"" + cellRef + "\"/>";
+        return "<c r=\"" + cellRef + "\" t=\"inlineStr\"><is><t xml:space=\"preserve\">" + XmlEsc(value) + "</t></is></c>";
+    }
+
+    private static string NumberCell(string cellRef, double? value, bool money)
+    {
+        if (value == null) return "<c r=\"" + cellRef + "\"/>";
+        string styleAttr = money ? " s=\"1\"" : "";
+        return "<c r=\"" + cellRef + "\"" + styleAttr + "><v>" + value.Value.ToString(CultureInfo.InvariantCulture) + "</v></c>";
+    }
+
+    private static void AddZipEntry(System.IO.Compression.ZipArchive zip, string path, string content)
+    {
+        var entry = zip.CreateEntry(path, System.IO.Compression.CompressionLevel.Optimal);
+        using var s = entry.Open();
+        var b = Encoding.UTF8.GetBytes(content);
+        s.Write(b, 0, b.Length);
+    }
+
+    // index صفر‌مبنا → حرف ستون اکسل (0→A، 25→Z، 26→AA ...)
+    private static string ColLetter(int index)
+    {
+        var sb = new StringBuilder();
+        index++;
+        while (index > 0)
+        {
+            int rem = (index - 1) % 26;
+            sb.Insert(0, (char)('A' + rem));
+            index = (index - 1) / 26;
+        }
+        return sb.ToString();
+    }
+
+    private static string XmlEsc(string? s)
     {
         if (string.IsNullOrEmpty(s)) return "";
-        return "\"=\"\"" + s.Replace("\"", "\"\"") + "\"\"\"";
+        return s.Replace("&", "&amp;").Replace("<", "&lt;").Replace(">", "&gt;").Replace("\"", "&quot;");
     }
+
+    private const string ContentTypesXml =
+        "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>" +
+        "<Types xmlns=\"http://schemas.openxmlformats.org/package/2006/content-types\">" +
+        "<Default Extension=\"rels\" ContentType=\"application/vnd.openxmlformats-package.relationships+xml\"/>" +
+        "<Default Extension=\"xml\" ContentType=\"application/xml\"/>" +
+        "<Override PartName=\"/xl/workbook.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml\"/>" +
+        "<Override PartName=\"/xl/styles.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml\"/>" +
+        "<Override PartName=\"/xl/worksheets/sheet1.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml\"/>" +
+        "</Types>";
+
+    private const string RootRelsXml =
+        "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>" +
+        "<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">" +
+        "<Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument\" Target=\"xl/workbook.xml\"/>" +
+        "</Relationships>";
+
+    private const string WorkbookXml =
+        "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>" +
+        "<workbook xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\" xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\">" +
+        "<sheets><sheet name=\"Sheet1\" sheetId=\"1\" r:id=\"rId1\"/></sheets>" +
+        "</workbook>";
+
+    private const string WorkbookRelsXml =
+        "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>" +
+        "<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">" +
+        "<Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet\" Target=\"worksheets/sheet1.xml\"/>" +
+        "<Relationship Id=\"rId2\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles\" Target=\"styles.xml\"/>" +
+        "</Relationships>";
+
+    private const string StylesXml =
+        "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>" +
+        "<styleSheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\">" +
+        "<numFmts count=\"1\"><numFmt numFmtId=\"164\" formatCode=\"#,##0\"/></numFmts>" +
+        "<fonts count=\"1\"><font><sz val=\"11\"/><name val=\"Calibri\"/></font></fonts>" +
+        "<fills count=\"2\"><fill><patternFill patternType=\"none\"/></fill><fill><patternFill patternType=\"gray125\"/></fill></fills>" +
+        "<borders count=\"1\"><border/></borders>" +
+        "<cellStyleXfs count=\"1\"><xf numFmtId=\"0\" fontId=\"0\" fillId=\"0\" borderId=\"0\"/></cellStyleXfs>" +
+        "<cellXfs count=\"2\"><xf numFmtId=\"0\" fontId=\"0\" fillId=\"0\" borderId=\"0\" xfId=\"0\"/><xf numFmtId=\"164\" fontId=\"0\" fillId=\"0\" borderId=\"0\" xfId=\"0\" applyNumberFormat=\"1\"/></cellXfs>" +
+        "<cellStyles count=\"1\"><cellStyle name=\"Normal\" xfId=\"0\" builtinId=\"0\"/></cellStyles>" +
+        "</styleSheet>";
 }
