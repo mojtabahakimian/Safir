@@ -88,6 +88,9 @@ builder.Services.AddScoped<Pay2DashboardApiService>();
 builder.Services.AddScoped<IProductionReportApiService, ProductionReportApiService>();
 
 builder.Services.AddSyncfusionBlazor();
+
+// محلی‌سازِ فارسیِ کامپوننت‌های Syncfusion (برچسب‌های فیلترِ گرید و ...)
+builder.Services.AddSingleton(typeof(Syncfusion.Blazor.ISyncfusionStringLocalizer), typeof(Safir.Client.Services.SyncfusionLocalizer));
 #endregion
 
 
