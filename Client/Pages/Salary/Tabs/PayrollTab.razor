@@ -368,7 +368,6 @@
                         AllowFiltering="true"
                         AllowTextWrap="false"
                         EnableVirtualization="true"
-                        EnableColumnVirtualization="true"
                         RowHeight="48"
                         EnableHover="true"
                         EnableRtl="true"
@@ -380,7 +379,7 @@
                         <GridColumn Field="EMP_ID" IsPrimaryKey="true" Visible="false" Type="Syncfusion.Blazor.Grids.ColumnType.Number" Width="100" />
 
                         <!-- ۱) کد پرسنلی -->
-                        <GridColumn Field="EMP_CODE" HeaderText="کد پرسنلی" Width="120" TextAlign="TextAlign.Center" Type="Syncfusion.Blazor.Grids.ColumnType.String">
+                        <GridColumn Field="EMP_CODE" HeaderText="کد پرسنلی" Width="120" TextAlign="TextAlign.Center" Type="Syncfusion.Blazor.Grids.ColumnType.String" Freeze="Syncfusion.Blazor.Grids.FreezeDirection.Right">
                             <Template>
                                 @{ var r = (IDictionary<string, object>)context; }
                                 <span class="p2-text-mono">@r["EMP_CODE"]</span>
@@ -388,7 +387,7 @@
                         </GridColumn>
 
                         <!-- ۲) نام و نام خانوادگی -->
-                        <GridColumn Field="FULL_NAME" HeaderText="نام و نام خانوادگی" Width="200" TextAlign="TextAlign.Right" Type="Syncfusion.Blazor.Grids.ColumnType.String">
+                        <GridColumn Field="FULL_NAME" HeaderText="نام و نام خانوادگی" Width="200" TextAlign="TextAlign.Right" Type="Syncfusion.Blazor.Grids.ColumnType.String" Freeze="Syncfusion.Blazor.Grids.FreezeDirection.Right">
                             <Template>
                                 @{ var r = (IDictionary<string, object>)context; }
                                 <span style="font-weight:700;">@r["FULL_NAME"]</span>
