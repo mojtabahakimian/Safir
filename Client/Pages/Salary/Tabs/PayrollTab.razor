@@ -40,11 +40,20 @@
     }
 
     /* ========== هماهنگ‌سازی گرید Syncfusion با تم برنامه ========== */
-    .pay2-sf-grid .e-grid,
-    .pay2-sf-grid .e-grid .e-table,
-    .pay2-sf-grid .e-grid .e-headercell,
-    .pay2-sf-grid .e-grid .e-toolbar {
+    /* فقط فونتِ متن سلول‌ها/هدرها را عوض می‌کنیم؛ روی خود .e-grid اعمال نمی‌کنیم
+       تا روی عناصر آیکونی (فونت e-icons) اثر نگذارد و آیکون‌ها خراب نشوند. */
+    .pay2-sf-grid .e-grid .e-headercelldiv,
+    .pay2-sf-grid .e-grid .e-rowcell,
+    .pay2-sf-grid .e-grid .e-summarycell,
+    .pay2-sf-grid .e-grid .e-input,
+    .pay2-sf-grid .e-grid .e-toolbar .e-tbar-btn-text {
         font-family: 'Vazirmatn', 'Roboto', Tahoma, sans-serif;
+    }
+
+    /* تضمین سالم ماندن فونت آیکون‌های Syncfusion در صورت هرگونه override سراسری */
+    .pay2-sf-grid .e-grid .e-icons,
+    .pay2-sf-grid .e-grid span[class*="e-icon"] {
+        font-family: 'e-icons' !important;
     }
 
     .pay2-sf-grid .e-grid {
@@ -329,9 +338,8 @@
                     </div>
                 </div>
 
-                <div style="height: 62vh; min-height: 380px;">
-                <SfGrid @key="@($"{CurrentRun?.RUN_ID}-{RunData.Columns.Count}")"
-                        TValue="Pay2RunLineDto"
+                <div @key="@($"{CurrentRun?.RUN_ID}-{RunData.Columns.Count}")" style="height: 62vh; min-height: 380px;">
+                <SfGrid TValue="Pay2RunLineDto"
                         DataSource="@RunData.Lines"
                         AllowSorting="true"
                         AllowResizing="true"
@@ -339,7 +347,6 @@
                         EnableRtl="true"
                         Height="100%"
                         GridLines="GridLine.Both"
-                        FrozenColumns="2"
                         Toolbar="@_gridToolbar">
                     <GridColumns>
 
