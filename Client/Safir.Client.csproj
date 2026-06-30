@@ -17,6 +17,8 @@
 		<PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly.DevServer" Version="8.0.0" PrivateAssets="all" />
 
 		<PackageReference Include="MudBlazor" Version="6.21.0" />
+
+		<PackageReference Include="Syncfusion.Blazor.Themes" Version="29.1.33" />
 		<PackageReference Include="System.IdentityModel.Tokens.Jwt" Version="6.36.0" />
 		
 		<PackageReference Include="Syncfusion.Blazor.Grid" Version="29.1.33" />
