@@ -457,42 +457,42 @@
                     <GridAggregates>
                         <GridAggregate>
                             <GridAggregateColumns>
-                                <GridAggregateColumn Field="@nameof(Pay2RunLineDto.EMP_CODE)" Type="AggregateType.Count">
+                                <GridAggregateColumn Field="@nameof(Pay2RunLineDto.EMP_CODE)" Type="Syncfusion.Blazor.Grids.AggregateType.Count">
                                     <FooterTemplate>
                                         <span style="font-weight:800;">جمع کل دوره</span>
                                     </FooterTemplate>
                                 </GridAggregateColumn>
-                                <GridAggregateColumn Field="@nameof(Pay2RunLineDto.GROSS_PAY)" Type="AggregateType.Sum" Format="N0">
+                                <GridAggregateColumn Field="@nameof(Pay2RunLineDto.GROSS_PAY)" Type="Syncfusion.Blazor.Grids.AggregateType.Sum" Format="N0">
                                     <FooterTemplate>
                                         @{ var a = (Syncfusion.Blazor.Grids.AggregateTemplateContext)context; }
                                         <span class="p2-text-mono">@a.Sum</span>
                                     </FooterTemplate>
                                 </GridAggregateColumn>
-                                <GridAggregateColumn Field="@nameof(Pay2RunLineDto.INS_BASE)" Type="AggregateType.Sum" Format="N0">
+                                <GridAggregateColumn Field="@nameof(Pay2RunLineDto.INS_BASE)" Type="Syncfusion.Blazor.Grids.AggregateType.Sum" Format="N0">
                                     <FooterTemplate>
                                         @{ var a = (Syncfusion.Blazor.Grids.AggregateTemplateContext)context; }
                                         <span class="p2-text-mono p2-text-muted">@a.Sum</span>
                                     </FooterTemplate>
                                 </GridAggregateColumn>
-                                <GridAggregateColumn Field="@nameof(Pay2RunLineDto.INS_WORKER)" Type="AggregateType.Sum" Format="N0">
+                                <GridAggregateColumn Field="@nameof(Pay2RunLineDto.INS_WORKER)" Type="Syncfusion.Blazor.Grids.AggregateType.Sum" Format="N0">
                                     <FooterTemplate>
                                         @{ var a = (Syncfusion.Blazor.Grids.AggregateTemplateContext)context; }
                                         <span class="p2-text-mono">@a.Sum</span>
                                     </FooterTemplate>
                                 </GridAggregateColumn>
-                                <GridAggregateColumn Field="@nameof(Pay2RunLineDto.TAX_AMOUNT)" Type="AggregateType.Sum" Format="N0">
+                                <GridAggregateColumn Field="@nameof(Pay2RunLineDto.TAX_AMOUNT)" Type="Syncfusion.Blazor.Grids.AggregateType.Sum" Format="N0">
                                     <FooterTemplate>
                                         @{ var a = (Syncfusion.Blazor.Grids.AggregateTemplateContext)context; }
                                         <span class="p2-text-mono">@a.Sum</span>
                                     </FooterTemplate>
                                 </GridAggregateColumn>
-                                <GridAggregateColumn Field="@nameof(Pay2RunLineDto.TOTAL_DED)" Type="AggregateType.Sum" Format="N0">
+                                <GridAggregateColumn Field="@nameof(Pay2RunLineDto.TOTAL_DED)" Type="Syncfusion.Blazor.Grids.AggregateType.Sum" Format="N0">
                                     <FooterTemplate>
                                         @{ var a = (Syncfusion.Blazor.Grids.AggregateTemplateContext)context; }
                                         <span class="p2-text-mono" style="color:#ef4444;">@a.Sum</span>
                                     </FooterTemplate>
                                 </GridAggregateColumn>
-                                <GridAggregateColumn Field="@nameof(Pay2RunLineDto.NET_PAY)" Type="AggregateType.Sum" Format="N0">
+                                <GridAggregateColumn Field="@nameof(Pay2RunLineDto.NET_PAY)" Type="Syncfusion.Blazor.Grids.AggregateType.Sum" Format="N0">
                                     <FooterTemplate>
                                         @{ var a = (Syncfusion.Blazor.Grids.AggregateTemplateContext)context; }
                                         <span class="p2-text-mono" style="color:#059669;">@a.Sum</span>
