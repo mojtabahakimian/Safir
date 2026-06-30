@@ -14,7 +14,7 @@ using Syncfusion.Blazor;
 // لایسنس Syncfusion: برای حذف پیام «trial/unlicensed»، کلید لایسنس معتبرِ نسخهٔ 29
 // را این‌جا (قبل از ساختِ host و استفاده از کامپوننت‌ها) ثبت کنید.
 // نمونه:
-//Syncfusion.Licensing.SyncfusionLicenseProvider.RegisterLicense("YOUR-SYNCFUSION-V29-LICENSE-KEY");
+// Syncfusion.Licensing.SyncfusionLicenseProvider.RegisterLicense("YOUR-SYNCFUSION-V29-LICENSE-KEY");
 // ───────────────────────────────────────────────────────────────────────────
 
 var builder = WebAssemblyHostBuilder.CreateDefault(args);
@@ -88,6 +88,9 @@ builder.Services.AddScoped<Pay2DashboardApiService>();
 builder.Services.AddScoped<IProductionReportApiService, ProductionReportApiService>();
 
 builder.Services.AddSyncfusionBlazor();
+
+// محلی‌سازِ فارسیِ کامپوننت‌های Syncfusion (برچسب‌های فیلترِ گرید و ...)
+builder.Services.AddSingleton(typeof(Syncfusion.Blazor.ISyncfusionStringLocalizer), typeof(Safir.Client.Services.SyncfusionLocalizer));
 #endregion
 
 

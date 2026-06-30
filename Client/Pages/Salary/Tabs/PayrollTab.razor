@@ -3,6 +3,7 @@
 @using Safir.Shared.Utility
 @using Safir.Client.Components.Reports
 @using Safir.Client.Components.Grid
+@using System.Dynamic
 @inject Safir.Client.Services.Pay2RunApiService RunApi
 @inject Safir.Client.Services.Pay2AttendanceApiService AttApi
 @inject Safir.Client.Services.Pay2WorkshopApiService WorkshopApi
@@ -337,113 +338,116 @@
                     </div>
                 </div>
 
-                <div @key="@($"{CurrentRun?.RUN_ID}-{RunData.Columns.Count}")" style="height: 62vh; min-height: 380px;">
+                <div @key="@($"{CurrentRun?.RUN_ID}-{_dynCols.Count}")" style="height: 62vh; min-height: 380px;">
                 <SfGrid @ref="_payrollGrid"
-                        TValue="Pay2RunLineDto"
-                        DataSource="@RunData.Lines"
+                        TValue="ExpandoObject"
+                        DataSource="@_gridData"
                         AllowSorting="true"
                         AllowResizing="true"
+                        AllowFiltering="true"
                         AllowTextWrap="false"
                         EnableRtl="true"
                         Height="100%"
                         GridLines="GridLine.Both"
                         Toolbar="@_gridToolbar">
+                    <GridFilterSettings Type="Syncfusion.Blazor.Grids.FilterType.Excel"></GridFilterSettings>
                     <GridColumns>
 
-                        <!-- ۱) کد پرسنلی (چسبان) -->
-                        <GridColumn Field="@nameof(Pay2RunLineDto.EMP_CODE)" HeaderText="کد پرسنلی" Width="110" TextAlign="TextAlign.Center">
+                        <!-- ۱) کد پرسنلی -->
+                        <GridColumn Field="EMP_CODE" HeaderText="کد پرسنلی" Width="110" TextAlign="TextAlign.Center" Type="Syncfusion.Blazor.Grids.ColumnType.String">
                             <Template>
-                                @{ var l = (Pay2RunLineDto)context; }
-                                <span class="p2-text-mono">@l.EMP_CODE</span>
+                                @{ var r = (IDictionary<string, object>)context; }
+                                <span class="p2-text-mono">@r["EMP_CODE"]</span>
                             </Template>
                         </GridColumn>
 
-                        <!-- ۲) نام و نام خانوادگی (چسبان) -->
-                        <GridColumn Field="@nameof(Pay2RunLineDto.FULL_NAME)" HeaderText="نام و نام خانوادگی" Width="200" TextAlign="TextAlign.Right">
+                        <!-- ۲) نام و نام خانوادگی -->
+                        <GridColumn Field="FULL_NAME" HeaderText="نام و نام خانوادگی" Width="200" TextAlign="TextAlign.Right" Type="Syncfusion.Blazor.Grids.ColumnType.String">
                             <Template>
-                                @{ var l = (Pay2RunLineDto)context; }
-                                <span style="font-weight:700;">@l.FULL_NAME</span>
+                                @{ var r = (IDictionary<string, object>)context; }
+                                <span style="font-weight:700;">@r["FULL_NAME"]</span>
                             </Template>
                         </GridColumn>
 
                         <!-- ۳) کارکرد -->
-                        <GridColumn Field="@nameof(Pay2RunLineDto.WORK_DAYS)" HeaderText="کارکرد" Width="90" TextAlign="TextAlign.Center" AllowSearching="false">
+                        <GridColumn Field="WORK_DAYS" HeaderText="کارکرد" Width="90" TextAlign="TextAlign.Center" Type="Syncfusion.Blazor.Grids.ColumnType.Double" AllowSearching="false">
                             <Template>
-                                @{ var l = (Pay2RunLineDto)context; }
-                                <span class="p2-text-mono">@l.WORK_DAYS.ToString("0.##")</span>
+                                @{ var r = (IDictionary<string, object>)context; var v = ToD(r, "WORK_DAYS"); }
+                                <span class="p2-text-mono">@v.ToString("0.##")</span>
                             </Template>
                         </GridColumn>
 
                         <!-- ۴) ستون‌های پویای آیتم‌های حقوقی -->
-                        @foreach (var c in RunData.Columns)
+                        @foreach (var dc in _dynCols)
                         {
-                            var code = c.ITEM_CODE;
-                            <GridColumn HeaderText="@c.ITEM_NAME" Width="120" TextAlign="TextAlign.Left" AllowSorting="false" AllowSearching="false">
+                            var field = dc.Field;
+                            <GridColumn Field="@field" HeaderText="@dc.Header" Width="120" TextAlign="TextAlign.Left" Type="Syncfusion.Blazor.Grids.ColumnType.Double" Format="N0" AllowSearching="false">
                                 <HeaderTemplate>
-                                    <span style="color:#2563eb;">@c.ITEM_NAME</span>
+                                    <span style="color:#2563eb;">@dc.Header</span>
                                 </HeaderTemplate>
                                 <Template>
-                                    @{
-                                        var l = (Pay2RunLineDto)context;
-                                        var v = l.Details != null && l.Details.TryGetValue(code, out var dv) ? dv : 0L;
-                                    }
+                                    @{ var r = (IDictionary<string, object>)context; var v = ToD(r, field); }
                                     <span class="p2-text-mono">@(v == 0 ? "-" : v.ToString("N0"))</span>
                                 </Template>
                             </GridColumn>
                         }
 
                         <!-- ۵) ستون‌های مبلغیِ ثابت -->
-                        <GridColumn Field="@nameof(Pay2RunLineDto.GROSS_PAY)" HeaderText="ناخالص حقوق" Width="120" TextAlign="TextAlign.Left" AllowSearching="false">
+                        <GridColumn Field="GROSS_PAY" HeaderText="ناخالص حقوق" Width="120" TextAlign="TextAlign.Left" Type="Syncfusion.Blazor.Grids.ColumnType.Double" Format="N0" AllowSearching="false">
                             <Template>
-                                @{ var l = (Pay2RunLineDto)context; }
-                                <span class="p2-text-mono">@l.GROSS_PAY.ToString("N0")</span>
+                                @{ var r = (IDictionary<string, object>)context; }
+                                <span class="p2-text-mono">@ToD(r, "GROSS_PAY").ToString("N0")</span>
                             </Template>
                         </GridColumn>
 
-                        <GridColumn Field="@nameof(Pay2RunLineDto.INS_BASE)" HeaderText="مبنای بیمه" Width="110" TextAlign="TextAlign.Left" AllowSearching="false">
+                        <GridColumn Field="INS_BASE" HeaderText="مبنای بیمه" Width="110" TextAlign="TextAlign.Left" Type="Syncfusion.Blazor.Grids.ColumnType.Double" Format="N0" AllowSearching="false">
                             <Template>
-                                @{ var l = (Pay2RunLineDto)context; }
-                                <span class="p2-text-mono p2-text-muted">@l.INS_BASE.ToString("N0")</span>
+                                @{ var r = (IDictionary<string, object>)context; }
+                                <span class="p2-text-mono p2-text-muted">@ToD(r, "INS_BASE").ToString("N0")</span>
                             </Template>
                         </GridColumn>
 
-                        <GridColumn Field="@nameof(Pay2RunLineDto.INS_WORKER)" HeaderText="بیمه کارگر" Width="110" TextAlign="TextAlign.Left" AllowSearching="false">
+                        <GridColumn Field="INS_WORKER" HeaderText="بیمه کارگر" Width="110" TextAlign="TextAlign.Left" Type="Syncfusion.Blazor.Grids.ColumnType.Double" Format="N0" AllowSearching="false">
                             <Template>
-                                @{ var l = (Pay2RunLineDto)context; }
-                                <span class="p2-text-mono">@l.INS_WORKER.ToString("N0")</span>
+                                @{ var r = (IDictionary<string, object>)context; }
+                                <span class="p2-text-mono">@ToD(r, "INS_WORKER").ToString("N0")</span>
                             </Template>
                         </GridColumn>
 
-                        <GridColumn Field="@nameof(Pay2RunLineDto.TAX_AMOUNT)" HeaderText="مالیات" Width="110" TextAlign="TextAlign.Left" AllowSearching="false">
+                        <GridColumn Field="TAX_AMOUNT" HeaderText="مالیات" Width="110" TextAlign="TextAlign.Left" Type="Syncfusion.Blazor.Grids.ColumnType.Double" Format="N0" AllowSearching="false">
                             <Template>
-                                @{ var l = (Pay2RunLineDto)context; }
-                                <span class="p2-text-mono">@l.TAX_AMOUNT.ToString("N0")</span>
+                                @{ var r = (IDictionary<string, object>)context; }
+                                <span class="p2-text-mono">@ToD(r, "TAX_AMOUNT").ToString("N0")</span>
                             </Template>
                         </GridColumn>
 
-                        <GridColumn Field="@nameof(Pay2RunLineDto.TOTAL_DED)" HeaderText="مساعده/وام/سایر کسورات" Width="160" TextAlign="TextAlign.Left" AllowSearching="false">
+                        <GridColumn Field="TOTAL_DED" HeaderText="مساعده/وام/سایر کسورات" Width="160" TextAlign="TextAlign.Left" Type="Syncfusion.Blazor.Grids.ColumnType.Double" Format="N0" AllowSearching="false">
                             <Template>
-                                @{ var l = (Pay2RunLineDto)context; }
-                                <span class="p2-text-mono" style="color:#ef4444;">@l.TOTAL_DED.ToString("N0")</span>
+                                @{ var r = (IDictionary<string, object>)context; }
+                                <span class="p2-text-mono" style="color:#ef4444;">@ToD(r, "TOTAL_DED").ToString("N0")</span>
                             </Template>
                         </GridColumn>
 
-                        <GridColumn Field="@nameof(Pay2RunLineDto.NET_PAY)" HeaderText="خالص پرداختی" Width="130" TextAlign="TextAlign.Left" AllowSearching="false">
+                        <GridColumn Field="NET_PAY" HeaderText="خالص پرداختی" Width="130" TextAlign="TextAlign.Left" Type="Syncfusion.Blazor.Grids.ColumnType.Double" Format="N0" AllowSearching="false">
                             <Template>
-                                @{ var l = (Pay2RunLineDto)context; }
-                                <span class="p2-text-mono" style="color:@(l.NET_PAY < 0 ? "#ef4444" : "#059669"); font-weight:700;">@l.NET_PAY.ToString("N0")</span>
+                                @{ var r = (IDictionary<string, object>)context; var net = ToD(r, "NET_PAY"); }
+                                <span class="p2-text-mono" style="color:@(net < 0 ? "#ef4444" : "#059669"); font-weight:700;">@net.ToString("N0")</span>
                             </Template>
                         </GridColumn>
 
                         <!-- ۶) عملیات -->
-                        <GridColumn HeaderText="عملیات" Width="150" TextAlign="TextAlign.Center" AllowSorting="false" AllowSearching="false" AllowResizing="false">
+                        <GridColumn HeaderText="عملیات" Width="150" TextAlign="TextAlign.Center" AllowSorting="false" AllowSearching="false" AllowFiltering="false" AllowResizing="false">
                             <Template>
-                                @{ var l = (Pay2RunLineDto)context; }
+                                @{
+                                    var r = (IDictionary<string, object>)context;
+                                    var empId = Convert.ToInt32(r["EMP_ID"]);
+                                    var empName = r["FULL_NAME"]?.ToString() ?? "";
+                                }
                                 <div style="display:flex; gap:4px; justify-content:center;">
-                                    <button class="btn-outline-pay2 p2-btn-sm" @onclick="() => OpenPayslip(l, false)" title="چاپ فیش اسمی (واقعی)">
+                                    <button class="btn-outline-pay2 p2-btn-sm" @onclick="() => OpenPayslip(empId, empName, false)" title="چاپ فیش اسمی (واقعی)">
                                         <i class="bi bi-printer"></i> اسمی
                                     </button>
-                                    <button class="btn-outline-pay2 p2-btn-sm" @onclick="() => OpenPayslip(l, true)" title="چاپ فیش رسمی">
+                                    <button class="btn-outline-pay2 p2-btn-sm" @onclick="() => OpenPayslip(empId, empName, true)" title="چاپ فیش رسمی">
                                         <i class="bi bi-printer"></i> رسمی
                                     </button>
                                 </div>
@@ -452,46 +456,61 @@
 
                     </GridColumns>
 
-                    <!-- ردیف جمع کل دوره (Aggregate) روی ستون‌های مبلغیِ ثابت -->
+                    <!-- ردیف جمع کل دوره (Aggregate) روی همهٔ ستون‌های عددی -->
                     <GridAggregates>
                         <GridAggregate>
                             <GridAggregateColumns>
-                                <GridAggregateColumn Field="@nameof(Pay2RunLineDto.EMP_CODE)" Type="Syncfusion.Blazor.Grids.AggregateType.Count">
+                                <GridAggregateColumn Field="EMP_CODE" Type="Syncfusion.Blazor.Grids.AggregateType.Count">
                                     <FooterTemplate>
                                         <span style="font-weight:800;">جمع کل دوره</span>
                                     </FooterTemplate>
                                 </GridAggregateColumn>
-                                <GridAggregateColumn Field="@nameof(Pay2RunLineDto.GROSS_PAY)" Type="Syncfusion.Blazor.Grids.AggregateType.Sum" Format="N0">
+                                <GridAggregateColumn Field="WORK_DAYS" Type="Syncfusion.Blazor.Grids.AggregateType.Sum" Format="N0">
                                     <FooterTemplate>
                                         @{ var a = (Syncfusion.Blazor.Grids.AggregateTemplateContext)context; }
                                         <span class="p2-text-mono">@a.Sum</span>
                                     </FooterTemplate>
                                 </GridAggregateColumn>
-                                <GridAggregateColumn Field="@nameof(Pay2RunLineDto.INS_BASE)" Type="Syncfusion.Blazor.Grids.AggregateType.Sum" Format="N0">
+                                @foreach (var dc in _dynCols)
+                                {
+                                    <GridAggregateColumn Field="@dc.Field" Type="Syncfusion.Blazor.Grids.AggregateType.Sum" Format="N0">
+                                        <FooterTemplate>
+                                            @{ var a = (Syncfusion.Blazor.Grids.AggregateTemplateContext)context; }
+                                            <span class="p2-text-mono">@a.Sum</span>
+                                        </FooterTemplate>
+                                    </GridAggregateColumn>
+                                }
+                                <GridAggregateColumn Field="GROSS_PAY" Type="Syncfusion.Blazor.Grids.AggregateType.Sum" Format="N0">
+                                    <FooterTemplate>
+                                        @{ var a = (Syncfusion.Blazor.Grids.AggregateTemplateContext)context; }
+                                        <span class="p2-text-mono">@a.Sum</span>
+                                    </FooterTemplate>
+                                </GridAggregateColumn>
+                                <GridAggregateColumn Field="INS_BASE" Type="Syncfusion.Blazor.Grids.AggregateType.Sum" Format="N0">
                                     <FooterTemplate>
                                         @{ var a = (Syncfusion.Blazor.Grids.AggregateTemplateContext)context; }
                                         <span class="p2-text-mono p2-text-muted">@a.Sum</span>
                                     </FooterTemplate>
                                 </GridAggregateColumn>
-                                <GridAggregateColumn Field="@nameof(Pay2RunLineDto.INS_WORKER)" Type="Syncfusion.Blazor.Grids.AggregateType.Sum" Format="N0">
+                                <GridAggregateColumn Field="INS_WORKER" Type="Syncfusion.Blazor.Grids.AggregateType.Sum" Format="N0">
                                     <FooterTemplate>
                                         @{ var a = (Syncfusion.Blazor.Grids.AggregateTemplateContext)context; }
                                         <span class="p2-text-mono">@a.Sum</span>
                                     </FooterTemplate>
                                 </GridAggregateColumn>
-                                <GridAggregateColumn Field="@nameof(Pay2RunLineDto.TAX_AMOUNT)" Type="Syncfusion.Blazor.Grids.AggregateType.Sum" Format="N0">
+                                <GridAggregateColumn Field="TAX_AMOUNT" Type="Syncfusion.Blazor.Grids.AggregateType.Sum" Format="N0">
                                     <FooterTemplate>
                                         @{ var a = (Syncfusion.Blazor.Grids.AggregateTemplateContext)context; }
                                         <span class="p2-text-mono">@a.Sum</span>
                                     </FooterTemplate>
                                 </GridAggregateColumn>
-                                <GridAggregateColumn Field="@nameof(Pay2RunLineDto.TOTAL_DED)" Type="Syncfusion.Blazor.Grids.AggregateType.Sum" Format="N0">
+                                <GridAggregateColumn Field="TOTAL_DED" Type="Syncfusion.Blazor.Grids.AggregateType.Sum" Format="N0">
                                     <FooterTemplate>
                                         @{ var a = (Syncfusion.Blazor.Grids.AggregateTemplateContext)context; }
                                         <span class="p2-text-mono" style="color:#ef4444;">@a.Sum</span>
                                     </FooterTemplate>
                                 </GridAggregateColumn>
-                                <GridAggregateColumn Field="@nameof(Pay2RunLineDto.NET_PAY)" Type="Syncfusion.Blazor.Grids.AggregateType.Sum" Format="N0">
+                                <GridAggregateColumn Field="NET_PAY" Type="Syncfusion.Blazor.Grids.AggregateType.Sum" Format="N0">
                                     <FooterTemplate>
                                         @{ var a = (Syncfusion.Blazor.Grids.AggregateTemplateContext)context; }
                                         <span class="p2-text-mono" style="color:#059669;">@a.Sum</span>
@@ -538,12 +557,57 @@
     Pay2RunDto? CurrentRun;
     Pay2RunResultDto RunData = new();
 
+    // دادهٔ گرید به‌صورت ExpandoObject تا ستون‌های پویای آیتم‌ها هم Field واقعی داشته باشند
+    // (لازم برای جمعِ فوتر و فیلترِ اکسلی روی همهٔ ستون‌ها).
+    private List<ExpandoObject> _gridData = new();
+    // ستون‌های پویا: نام Field امن (itm0، itm1، ...) + عنوان فارسی برای هدر
+    private List<(string Field, string Header)> _dynCols = new();
+
     // نوار ابزار داخلی گرید Syncfusion (فقط جعبهٔ جستجو؛ خروجی Excel به‌صورت دکمهٔ سفارشی جداست)
     private readonly List<string> _gridToolbar = new() { "Search" };
 
     // ارجاع به گرید Syncfusion + پرچم درخواست رفرش بعد از لود داده
-    private Syncfusion.Blazor.Grids.SfGrid<Pay2RunLineDto>? _payrollGrid;
+    private Syncfusion.Blazor.Grids.SfGrid<ExpandoObject>? _payrollGrid;
     private bool _refreshGridQueued;
+
+    // خواندن امنِ یک مقدار عددی از ردیفِ ExpandoObject
+    private static double ToD(IDictionary<string, object> row, string field)
+        => row.TryGetValue(field, out var o) && o is not null ? Convert.ToDouble(o) : 0d;
+
+    // ساخت دادهٔ گرید (ExpandoObject) + تعریف ستون‌های پویا از روی نتیجهٔ محاسبه
+    private void BuildGridData()
+    {
+        _dynCols = new();
+        _gridData = new();
+
+        var cols = RunData?.Columns ?? new();
+        // نگاشت ITEM_CODE → نام Field امن
+        var codeToField = new Dictionary<string, string>();
+        for (int i = 0; i < cols.Count; i++)
+        {
+            var f = "itm" + i;
+            _dynCols.Add((f, cols[i].ITEM_NAME));
+            codeToField[cols[i].ITEM_CODE] = f;
+        }
+
+        foreach (var l in RunData?.Lines ?? new())
+        {
+            IDictionary<string, object> row = new ExpandoObject();
+            row["EMP_ID"] = l.EMP_ID;
+            row["EMP_CODE"] = l.EMP_CODE ?? "";
+            row["FULL_NAME"] = l.FULL_NAME ?? "";
+            row["WORK_DAYS"] = (double)l.WORK_DAYS;
+            foreach (var c in cols)
+                row[codeToField[c.ITEM_CODE]] = (double)(l.Details != null && l.Details.TryGetValue(c.ITEM_CODE, out var dv) ? dv : 0L);
+            row["GROSS_PAY"] = (double)l.GROSS_PAY;
+            row["INS_BASE"] = (double)l.INS_BASE;
+            row["INS_WORKER"] = (double)l.INS_WORKER;
+            row["TAX_AMOUNT"] = (double)l.TAX_AMOUNT;
+            row["TOTAL_DED"] = (double)l.TOTAL_DED;
+            row["NET_PAY"] = (double)l.NET_PAY;
+            _gridData.Add((ExpandoObject)row);
+        }
+    }
 
     bool IsLoading = false;
     bool IsProcessing = false;
@@ -595,6 +659,8 @@
         CurrentPeriod = null;
         CurrentRun = null;
         RunData = new Pay2RunResultDto();
+        _gridData = new();
+        _dynCols = new();
         PayrollNsStr = null;
         _periodSearchTerm = "";
 
@@ -616,6 +682,8 @@
         CurrentPeriod = null;
         CurrentRun = null;
         RunData = new Pay2RunResultDto();
+        _gridData = new();
+        _dynCols = new();
         PayrollNsStr = null;
         _periodSearchTerm = "";
         SelectedPeriodDate = 0;
@@ -643,11 +711,14 @@
             if (CurrentRun != null)
             {
                 RunData = await RunApi.GetRunLinesAsync(CurrentRun.RUN_ID);
+                BuildGridData();
                 _refreshGridQueued = true; // پس از رندر، گرید را یک‌بار رفرش کن تا داده‌ها نمایش داده شوند
             }
             else
             {
                 RunData = new Pay2RunResultDto();
+                _gridData = new();
+                _dynCols = new();
             }
         }
         catch (Exception ex)
@@ -801,13 +872,11 @@
     }
 
     // باز کردن پیش‌نمایش/چاپ فیش حقوقی پرسنل در نمایشگر داخلی مرورگر (Blob URL + iframe)
-    void OpenPayslip(Pay2RunLineDto item, bool isOfficial = false)
+    void OpenPayslip(int empId, string fullName, bool isOfficial = false)
     {
         if (CurrentRun == null) return;
 
         int runId = CurrentRun.RUN_ID;
-        int empId = item.EMP_ID;
-        string fullName = item.FULL_NAME ?? "";
         string slipType = isOfficial ? "(رسمی)" : "(اسمی)";
 
         var parameters = new MudBlazor.DialogParameters
