@@ -17,7 +17,26 @@ namespace Safir.Server.Controllers
     public class Pay2RunController : ControllerBase
     {
         private readonly IDatabaseService _db;
-        public Pay2RunController(IDatabaseService db) => _db = db;
+        private readonly IPay2SmartExcelService _excelService;
+        public Pay2RunController(IDatabaseService db, IPay2SmartExcelService excelService)
+        {
+            _db = db;
+            _excelService = excelService;
+        }
+
+        [HttpGet("{runId:int}/smart-excel")]
+        public async Task<IActionResult> GetSmartExcel(int runId)
+        {
+            try
+            {
+                var bytes = await _excelService.GenerateSmartExcelAsync(runId);
+                return File(bytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", $"Payroll_SmartExcel_{runId}.xlsx");
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(ex.Message);
+            }
+        }
 
         [HttpGet("period-info")]
         public async Task<ActionResult<Pay2PeriodDto>> GetPeriodInfo([FromQuery] int wsId, [FromQuery] long periodDate)
