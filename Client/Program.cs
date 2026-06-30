@@ -10,6 +10,13 @@ using MudBlazor.Services;
 using System.Globalization;
 using Syncfusion.Blazor;
 
+// ───────────────────────────────────────────────────────────────────────────
+// لایسنس Syncfusion: برای حذف پیام «trial/unlicensed»، کلید لایسنس معتبرِ نسخهٔ 29
+// را این‌جا (قبل از ساختِ host و استفاده از کامپوننت‌ها) ثبت کنید.
+// نمونه:
+//Syncfusion.Licensing.SyncfusionLicenseProvider.RegisterLicense("YOUR-SYNCFUSION-V29-LICENSE-KEY");
+// ───────────────────────────────────────────────────────────────────────────
+
 var builder = WebAssemblyHostBuilder.CreateDefault(args);
 builder.RootComponents.Add<App>("#app"); // Check if App.razor exists, or use HeadOutlet/Routes
 builder.RootComponents.Add<HeadOutlet>("head::after");

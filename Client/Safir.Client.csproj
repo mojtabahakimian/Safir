@@ -17,11 +17,11 @@
 		<PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly.DevServer" Version="8.0.0" PrivateAssets="all" />
 
 		<PackageReference Include="MudBlazor" Version="6.21.0" />
-
-		<PackageReference Include="Syncfusion.Blazor.Themes" Version="29.1.33" />
 		<PackageReference Include="System.IdentityModel.Tokens.Jwt" Version="6.36.0" />
-		
+
 		<PackageReference Include="Syncfusion.Blazor.Grid" Version="29.1.33" />
+		<!-- استایل‌های (تم) موردنیاز کامپوننت‌های Syncfusion؛ نسخه باید دقیقاً با Syncfusion.Blazor.Grid یکی باشد -->
+		<PackageReference Include="Syncfusion.Blazor.Themes" Version="29.1.33" />
 	</ItemGroup>
 
 	<ItemGroup>
@@ -33,7 +33,7 @@
 	</ItemGroup>
 
 	<ItemGroup>
-	  <Folder Include="Components\NewFolder\" />
+		<Folder Include="Components\NewFolder\" />
 	</ItemGroup>
 
 </Project>
