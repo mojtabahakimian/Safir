@@ -339,7 +339,8 @@
                 </div>
 
                 <div @key="@($"{CurrentRun?.RUN_ID}-{RunData.Columns.Count}")" style="height: 62vh; min-height: 380px;">
-                <SfGrid TValue="Pay2RunLineDto"
+                <SfGrid @ref="_payrollGrid"
+                        TValue="Pay2RunLineDto"
                         DataSource="@RunData.Lines"
                         AllowSorting="true"
                         AllowResizing="true"
@@ -541,8 +542,23 @@
     // نوار ابزار داخلی گرید Syncfusion (فقط جعبهٔ جستجو؛ خروجی Excel به‌صورت دکمهٔ سفارشی جداست)
     private readonly List<string> _gridToolbar = new() { "Search" };
 
+    // ارجاع به گرید Syncfusion + پرچم درخواست رفرش بعد از لود داده
+    private Syncfusion.Blazor.Grids.SfGrid<Pay2RunLineDto>? _payrollGrid;
+    private bool _refreshGridQueued;
+
     bool IsLoading = false;
     bool IsProcessing = false;
+
+    // پس از مونت‌شدن گرید با داده، یک‌بار Refresh می‌زنیم تا Syncfusion رکوردها را
+    // به‌درستی پردازش/نمایش دهد (راه‌حل توصیه‌شدهٔ Syncfusion برای حالت دادهٔ ناهمگامِ محلی).
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_refreshGridQueued && _payrollGrid is not null)
+        {
+            _refreshGridQueued = false;
+            try { await _payrollGrid.Refresh(); } catch { /* در صورت عدم آمادگی گرید، نادیده گرفته می‌شود */ }
+        }
+    }
 
     protected override async Task OnInitializedAsync()
     {
@@ -628,6 +644,7 @@
             if (CurrentRun != null)
             {
                 RunData = await RunApi.GetRunLinesAsync(CurrentRun.RUN_ID);
+                _refreshGridQueued = true; // پس از رندر، گرید را یک‌بار رفرش کن تا داده‌ها نمایش داده شوند
             }
             else
             {
