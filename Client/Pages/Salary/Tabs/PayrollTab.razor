@@ -3,7 +3,6 @@
 @using Safir.Shared.Utility
 @using Safir.Client.Components.Reports
 @using Safir.Client.Components.Grid
-@using System.Globalization
 @inject Safir.Client.Services.Pay2RunApiService RunApi
 @inject Safir.Client.Services.Pay2AttendanceApiService AttApi
 @inject Safir.Client.Services.Pay2WorkshopApiService WorkshopApi
@@ -432,7 +431,7 @@
                         <GridColumn Field="@nameof(Pay2RunLineDto.NET_PAY)" HeaderText="خالص پرداختی" Width="130" TextAlign="TextAlign.Left" AllowSearching="false">
                             <Template>
                                 @{ var l = (Pay2RunLineDto)context; }
-                                <span class="p2-text-mono" style="color:#059669; font-weight:700;">@l.NET_PAY.ToString("N0")</span>
+                                <span class="p2-text-mono" style="color:@(l.NET_PAY < 0 ? "#ef4444" : "#059669"); font-weight:700;">@l.NET_PAY.ToString("N0")</span>
                             </Template>
                         </GridColumn>
 
