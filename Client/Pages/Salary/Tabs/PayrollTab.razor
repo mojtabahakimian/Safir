@@ -348,8 +348,8 @@
                             style="height:38px;"
                             @onclick="ExportExcel"
                             disabled="@(RunData.Lines.Count == 0)"
-                            title="خروجی Excel از کل فیش‌های این دوره">
-                        <i class="bi bi-file-earmark-excel"></i> خروجی Excel
+                            title="خروجی هوشمند اکسل همراه با فرمول‌ از کل فیش‌های این دوره">
+                        <i class="bi bi-file-earmark-excel"></i> خروجی هوشمند Excel
                     </button>
 
                     <div style="flex-grow:1;"></div>
@@ -922,12 +922,12 @@
     }
 
     // ════════════════════════════════════════════════════════════════
-    // خروجی Excel (XLSX واقعی) از کل فیش‌های دورهٔ جاری — شامل ستون‌های
-    // پویای آیتم‌های حقوقی و ردیف جمع. مستقل از موتور خروجی Syncfusion.
+    // خروجی Excel هوشمند (XLSX واقعی همراه با فرمول) از کل فیش‌های دورهٔ جاری
+    // محاسبه و تهیه از سمت سرور
     // ════════════════════════════════════════════════════════════════
     async Task ExportExcel()
     {
-        if (RunData?.Lines == null || RunData.Lines.Count == 0)
+        if (CurrentRun == null || RunData?.Lines == null || RunData.Lines.Count == 0)
         {
             Snackbar.Add("داده‌ای برای خروجی Excel وجود ندارد.", MudBlazor.Severity.Warning);
             return;
@@ -935,8 +935,8 @@
 
         try
         {
-            var bytes = Safir.Client.Components.Grid.SalaryGridExcelExporter.Build(RunData);
-            await JS.InvokeVoidAsync("downloadFileFromBytes", $"Payroll_{SelectedPeriodDate}.xlsx", bytes);
+            var bytes = await RunApi.GetSmartExcelAsync(CurrentRun.RUN_ID);
+            await JS.InvokeVoidAsync("downloadFileFromBytes", $"Payroll_SmartExcel_{SelectedPeriodDate}.xlsx", bytes);
         }
         catch (Exception ex)
         {

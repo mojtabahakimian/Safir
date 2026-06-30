@@ -26,6 +26,7 @@ builder.Services.AddScoped<IDatabaseService, DatabaseService>();
 // Use Scoped lifetime: a new instance per HTTP request
 builder.Services.AddScoped<IUserService, UserService>();
 builder.Services.AddScoped<IUserStateService, UserStateService>();
+builder.Services.AddScoped<IPay2SmartExcelService, Pay2SmartExcelService>();
 
 // --- End Custom Services ---
 builder.Services.AddScoped<IAppSettingsService, AppSettingsService>();
