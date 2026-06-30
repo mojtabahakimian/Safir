@@ -1,0 +1,2108 @@
+
+
+
+--------------------------------------------------------------------------------
+طراحی از پایه سیستم حقوق و دستمزد
+
+           نرم‌افزار مستر کارکت  --  نسخه PAY2
+  طراحی مستقل  --  بدون وابستگی به سیستم قدیم
+
+                                نسخه: v6.0
+                        تاریخ: ۱۴۰۴/۱۲/۲۱
+                               کد: PAY2-DB-006
+
+
+
+
+--------------------------------------------------------------------------------
+مشخصه منحصربه‌فرد این طراحی: مساعده هوشمند از طریق گردش حساب معین پرسنل
+--------------------------------------------------------------------------------
+۰.  تغییرات نسخه v6  --  رفع تناقضات
+                                        ⚠️ این سند نسخه v6 است
+تمام تناقضات شناسایی‌شده در بازنگری مهندسی رفع شده‌اند. پیش از این نسخه، سند در وضعیت <<طراحی اولیه + وصله تحلیلی>> بود. از این نسخه به بعد یک DDL نهایی بدون تناقض داریم.
+
+                                       #
+                                  موضوع
+                               مشکل قبلی
+                                 اصلاح v6
+                                                                             ۱
+                                               کارکرد اسمی / رسمی
+فیلدهای DAYS و DAYSB فقط در بخش ۱۵ بودند، در DDL اصلی نبودند
+Merge شد  --  DAYS، DAYSB، FRID_COUNT، TDAYS به PAY2_ATTENDANCE اضافه شد
+                                                                             ۲
+                                                   دقیقه روز مرخصی
+LEAVE_BAL بر ۴۴۰ مبتنی بود ولی LEAVE.TOTAL_MINUTES از x۴۸۰ استفاده می‌کرد
+                              یکدست شد  --  همه جا ۴۴۰ دقیقه
+                                                                             ۳
+                                          مبنای کارکرد در ITEM_DEF
+            فیلدهای INS_BASE_DAYS و PAY_BASE_DAYS در DDL نبودند
+به PAY2_ITEM_DEF اضافه شد (پیش‌فرض: پرداخت=DAYSB، بیمه=DAYS)
+                                                                             ۴
+                                  حساب مساعده کارگاه‌محور
+ADV_HES_K/HES_M در PAY2_CONFIG سراسری بود  --  اگر دو کارگاه حساب متفاوت داشتند SP اشتباه عمل می‌کرد
+   منتقل به PAY2_WORKSHOP_ACC  --  SP از کارگاه می‌خواند
+                                                                             ۵
+                                                             scope مساعده
+فقط اسناد ماه جاری  --  اگر پرسنل بدهی ماه قبل داشت لحاظ نمی‌شد
+        کانفیگ ADV_SCOPE اضافه شد: CURRENT_MONTH یا OPEN_BALANCE
+                                                                             ۶
+                                                 نسخه‌دار بودن RUN
+ UNIQUE روی PER_ID بود  --  فقط یک محاسبه per دوره ممکن
+             RUN_NO + IS_LATEST اضافه شد، UNIQUE روی (PER_ID,RUN_NO)
+                                                                             ۷
+                                                       NATIONAL_CODE خارجی
+   UNIQUE بدون NULL  --  خارجی‌ها مجبور به مقدار فیک
+                 NULL مجاز + Filtered Unique Index فقط برای non-null
+                                                                             ۸
+                                                               حق بن (BONJ)
+مشمول بیمه به عنوان قانون ثابت نوشته شده بود
+پارامتریک  --  پیش‌فرض جدید: INS_SUBJECT=0 (معاف بیمه)
+                                                                             ۹
+                                                          تسویه مرخصی
+                                        مبنای محاسبه مبهم بود
+         صریح: LEAVE_BAL_MIN / ۴۴۰ x (حقوق ماهیانه / ۲۶)
+                                                                           ۱۰
+                                                             LEAVE_MINS_PER_DAY
+                                                           در CONFIG نبود
+                                کلید LEAVE_MINS_PER_DAY=440 اضافه شد
+
+--------------------------------------------------------------------------------
+۱.  اصول بنیادین این طراحی
+                                       #
+                                    اصل
+                                  مفهوم
+                                                                             ۱
+                               جداسازی کامل از سیستم قدیم
+تمام جداول جدید پیشوند PAY2_ دارند. هیچ Foreign Key به جداول قدیم ندارند. سیستم قدیم و جدید می‌توانند همزمان در یک دیتابیس باشند.
+                                                                             ۲
+                                مساعده هوشمند از حسابداری
+مانده معین پرسنل در سیستم حسابداری (به‌جز اسناد حقوق) = مساعده. فرقی نمی‌کند که کارمند مساعده نقدی گرفته یا از سازمان خرید کرده.
+                                                                             ۳
+                                              همه چیز قابل تنظیم
+هیچ مقدار ثابتی در کد وجود ندارد. تمام نرخ‌ها، مبالغ و رفتارهای محاسباتی از جدول PAY2_CONFIG خوانده می‌شوند.
+                                                                             ۴
+                                              آیتم‌های حکم پویا
+ساختار حکم ستون ثابت ندارد. هر آیتم حقوقی جدید بدون تغییر دیتابیس قابل افزودن است.
+                                                                             ۵
+                                                            چند کارگاه
+هر کارگاه (TAGCOD) حساب‌های حسابداری، بیمه و مالیات مستقل دارد.
+                                                                             ۶
+                                                        حسابرسی کامل
+هر محاسبه با تمام جزئیات ذخیره می‌شود. بازتولید نتیجه هر ماه در هر زمان ممکن است.
+
+                         💡 ایده محوری  --  مساعده هوشمند
+سیستم حسابداری برای هر پرسنل یک حساب معین (HESAB) دارد. هر تراکنش مالی (مساعده نقدی، خرید از کانتین، خرید از فروشگاه سازمان) به بدهکار این حساب ثبت می‌شود. سند حقوق ماه قبل به بستانکار ثبت می‌شود. در زمان محاسبه حقوق ماه جاری، سیستم مانده این حساب را (با حذف اسناد حقوق جاری) می‌خواند و به عنوان مساعده کسر می‌کند.
+
+--------------------------------------------------------------------------------
+۲.  نقشه کامل جداول PAY2
+تمام جداول با پیشوند PAY2_ نام‌گذاری شده‌اند. گروه‌بندی زیر معماری کلی سیستم را نشان می‌دهد:
+
+                                   گروه
+                                  جداول
+                                  تعداد
+                                    نقش
+                                                                              A
+                                                               پیکربندی
+                                                                    PAY2_CONFIG
+                                                                PAY2_CONFIG_LOG
+                                                               PAY2_TAX_BRACKET
+                                                                    ۳ جدول
+تنظیمات آپشنال، لاگ تغییرات، جدول مالیات پلکانی
+                                                                              B
+                                                                   سازمان
+                                                                  PAY2_WORKSHOP
+                                                              PAY2_WORKSHOP_ACC
+                                                                    ۲ جدول
+       چند کارگاه مستقل با سرفصل‌های حسابداری
+                                                                              C
+                                                                     پرسنل
+                                                                       PAY2_JOB
+                                                                  PAY2_EMPLOYEE
+                                                                  PAY2_CONTRACT
+                                                                 PAY2_LEAVE_BAL
+                                                                    ۴ جدول
+مشغل کد پسند، مشخصات (ملیت/جانباز/کارت ساعت)، قراردادها، مانده مرخصی به دقیقه
+                                                                              D
+                                                            تعریف حقوق
+                                                                  PAY2_ITEM_DEF
+                                                             PAY2_ITEM_TEMPLATE
+                                                            PAY2_ITEM_TMPL_LINE
+                                                                    ۳ جدول
+                          آیتم‌های پویا، قالب‌های حکم
+                                                                              E
+                                                                         حکم
+                                                                    PAY2_DECREE
+                                                               PAY2_DECREE_LINE
+                                                                  PAY2_OVERRIDE
+                                                                    ۳ جدول
+                  احکام کارگزینی پویا با تاریخ اجرا
+                                                                              F
+                                                                   کارکرد
+                                                                    PAY2_PERIOD
+                                                                PAY2_ATTENDANCE
+                                                                 PAY2_ATT_VALUE
+                                                                     PAY2_LEAVE
+                                                                    ۴ جدول
+  دوره ماهیانه، کارکرد، مقادیر متغیر، مرخصی
+                                                                              G
+                                                                         وام
+                                                                      PAY2_LOAN
+                                                                PAY2_LOAN_SCHED
+                                                                    ۲ جدول
+                                        وام با جدول بازپرداخت
+                                                                              H
+                                                                   مساعده
+                                                              PAY2_ADVANCE_EXCL
+                                                           SP_PAY2_GET_ADVANCES
+                                                                      ۲ شیء
+SP محاسبه مساعده از DEED_HED+DEED_DTL + جدول استثناها
+                                                                              I
+                                                                   محاسبه
+                                                                       PAY2_RUN
+                                                                  PAY2_RUN_LINE
+                                                                PAY2_RUN_DETAIL
+                                                                    ۳ جدول
+                  نتایج کامل محاسبه  --  فیش و حسابرسی
+                                                                              J
+                                                                     تسویه
+                                                                PAY2_SETTLEMENT
+                                                                    ۱ جدول
+عیدی، سنوات، مانده مرخصی، بستانکاری/بدهکاری قبلی، مالیات عیدی
+
+--------------------------------------------------------------------------------
+۳.  گروه A  --  پیکربندی سیستم
+                      ۳.۱  PAY2_CONFIG  --  جدول تنظیمات مرکزی
+CREATE TABLE [dbo].[PAY2_CONFIG]
+(
+  [CFG_KEY]       NVARCHAR(80)  NOT NULL,  -- کلید یکتا تنظیم
+  [CFG_VALUE]     NVARCHAR(500) NOT NULL,  -- مقدار جاری
+  [CFG_OPTIONS]   NVARCHAR(500) NULL,      -- گزینه‌های مجاز با | (مثال '30|REAL')
+  [CFG_DEFAULT]   NVARCHAR(500) NOT NULL,  -- مقدار پیش‌فرض کارخانه
+  [CFG_SECTION]   NVARCHAR(60)  NOT NULL,  -- گروه در UI تنظیمات
+  [LABEL_FA]      NVARCHAR(200) NOT NULL,  -- عنوان فارسی
+  [DESC_FA]       NVARCHAR(1000)NULL,      -- توضیح کامل
+  [OPT_LABELS]    NVARCHAR(500) NULL,      -- عنوان فارسی هر گزینه با |
+  [DATA_TYPE]     NVARCHAR(20)  NOT NULL CONSTRAINT DF_CFG_DT DEFAULT('TEXT'),
+  -- TEXT | INT | DECIMAL | BOOL | DATE
+  [ACCESS_LEVEL]  TINYINT  NOT NULL CONSTRAINT DF_CFG_AL DEFAULT(2),
+  -- 1=Super Admin | 2=Admin | 3=Payroll Manager
+  [CHANGED_AT]    DATETIME NULL,
+  [CHANGED_BY]    INT      NULL,
+  [CHANGE_NOTE]   NVARCHAR(300) NULL,
+  CONSTRAINT PK_PAY2_CONFIG PRIMARY KEY ([CFG_KEY])
+);
+
+CREATE TABLE [dbo].[PAY2_CONFIG_LOG]
+(
+  [LOG_ID]     INT           NOT NULL IDENTITY(1,1),
+  [CFG_KEY]    NVARCHAR(80)  NOT NULL,
+  [OLD_VALUE]  NVARCHAR(500) NULL,
+  [NEW_VALUE]  NVARCHAR(500) NOT NULL,
+  [CHANGED_BY] INT           NOT NULL,
+  [CHANGED_AT] DATETIME      NOT NULL CONSTRAINT DF_CFL_DT DEFAULT(GETDATE()),
+  [REASON]     NVARCHAR(300) NULL,
+  CONSTRAINT PK_PAY2_CONFIG_LOG PRIMARY KEY ([LOG_ID])
+);
+
+-- Trigger لاگ خودکار
+CREATE TRIGGER [dbo].[TR_PAY2_CONFIG_LOG] ON [dbo].[PAY2_CONFIG] AFTER UPDATE AS
+BEGIN
+  SET NOCOUNT ON;
+  INSERT INTO PAY2_CONFIG_LOG(CFG_KEY,OLD_VALUE,NEW_VALUE,CHANGED_BY,CHANGED_AT,REASON)
+  SELECT i.CFG_KEY,d.CFG_VALUE,i.CFG_VALUE,
+         ISNULL(i.CHANGED_BY,0),GETDATE(),i.CHANGE_NOTE
+  FROM INSERTED i INNER JOIN DELETED d ON i.CFG_KEY=d.CFG_KEY
+  WHERE i.CFG_VALUE<>d.CFG_VALUE;
+END;
+
+                 ۳.۲  PAY2_TAX_BRACKET  --  جدول مالیات پلکانی
+نگهداری مستقل از TCOD_ZARMALIAT قدیم. قابل به‌روزرسانی سالانه:
+
+CREATE TABLE [dbo].[PAY2_TAX_BRACKET]
+(
+  [BRK_ID]      INT     NOT NULL IDENTITY(1,1),
+  [TAX_YEAR]    SMALLINT NOT NULL,   -- سال شمسی (مثال: 1403)
+  [UPPER_LIMIT] BIGINT  NOT NULL,    -- سقف سالانه این پله (ریال)  --  NULL=پله آخر
+  [RATE_PCT]    DECIMAL(5,2) NOT NULL, -- نرخ این پله (درصد)
+  [FIXED_TAX]   BIGINT  NOT NULL CONSTRAINT DF_BRK_FT DEFAULT(0),
+  -- مالیات ثابت پله‌های قبل (برای سرعت محاسبه)
+  [SORT_ORDER]  SMALLINT NOT NULL,
+  CONSTRAINT PK_PAY2_TAX_BRACKET PRIMARY KEY ([BRK_ID]),
+  CONSTRAINT UQ_BRK UNIQUE ([TAX_YEAR],[SORT_ORDER])
+);
+
+-- نمونه داده 1403
+INSERT INTO PAY2_TAX_BRACKET(TAX_YEAR,UPPER_LIMIT,RATE_PCT,FIXED_TAX,SORT_ORDER) VALUES
+(1403, 1800000000, 10,          0, 1),
+(1403, 2700000000, 15,  180000000, 2),
+(1403, 3600000000, 20,  315000000, 3),
+(1403, 4800000000, 25,  495000000, 4),
+(1403, 9999999999, 30,  795000000, 5);
+
+                                     ۳.۳  مقادیر اولیه PAY2_CONFIG
+-- ================================================================
+-- PAY2_CONFIG  --  بارگذاری اولیه تمام تنظیمات
+-- ================================================================
+INSERT INTO PAY2_CONFIG(CFG_KEY,CFG_VALUE,CFG_OPTIONS,CFG_DEFAULT,CFG_SECTION,
+  LABEL_FA,DESC_FA,OPT_LABELS,DATA_TYPE,ACCESS_LEVEL) VALUES
+
+-- ─── محاسبه حقوق ───────────────────────────────────────────────
+('MONTH_DAYS_MODE','30','30|REAL','30',N'محاسبه',
+  N'مبنای روزهای ماه',N'30=ثابت ۳۰ روز | REAL=روز واقعی شمسی',
+  N'۳۰ روز ثابت|روز واقعی ماه','TEXT',2),
+
+('MID_MONTH_PRORATE','CALENDAR','CALENDAR|EXACT','CALENDAR',N'محاسبه',
+  N'روش تغییر حکم وسط ماه',N'CALENDAR=روز تقویمی | EXACT=نسبت دقیق',
+  N'روز تقویمی|نسبت دقیق','TEXT',2),
+
+('OT_NORMAL_MULT','1.40',NULL,'1.40',N'محاسبه',
+  N'ضریب اضافه‌کار عادی',N'طبق ماده ۵۹ ق.ک ضریب ۱.۴۰ (۴۰٪ اضافه)',
+  NULL,'DECIMAL',2),
+
+('OT_HOLIDAY_MULT','1.40',NULL,'1.40',N'محاسبه',
+  N'ضریب اضافه‌کار تعطیل',N'طبق ماده ۶۲ ق.ک. برخی کارگاه‌ها بالاتر توافق می‌کنند',
+  NULL,'DECIMAL',2),
+
+('OT_HOUR_BASE','7.33',NULL,'7.33',N'محاسبه',
+  N'ساعت کاری روزانه (مبنای نرخ ساعتی)',N'۷.۳۳ ساعت = ۴۴ ساعت هفتگی / ۶',
+  NULL,'DECIMAL',2),
+
+('SHIFT_MODE','PCT','PCT|FIXED','PCT',N'محاسبه',
+  N'روش محاسبه حق شیفت',N'PCT=درصدی از حقوق پایه | FIXED=مبلغ ثابت در حکم',
+  N'درصدی|مبلغ ثابت','TEXT',2),
+
+('ROUND_MODE','1000','1|100|1000|10000','1000',N'محاسبه',
+  N'گرد کردن مبالغ (ریال)',N'مبلغ خالص به نزدیک‌ترین مضرب این عدد گرد می‌شود',
+  N'تومان|صدگان|هزارگان|ده‌هزارگان','INT',2),
+
+-- ─── بیمه ──────────────────────────────────────────────────────
+('INS_WORKER_RATE','7.00',NULL,'7.00',N'بیمه',
+  N'نرخ بیمه کارگر (درصد)',NULL,NULL,'DECIMAL',1),
+
+('INS_EMPLOYER_RATE','20.00',NULL,'20.00',N'بیمه',
+  N'نرخ بیمه کارفرما  --  بدون بیمه بیکاری (درصد)',NULL,NULL,'DECIMAL',1),
+
+('INS_UNEMP_RATE','3.00',NULL,'3.00',N'بیمه',
+  N'نرخ بیمه بیکاری کارفرما (درصد)  --  برای غیرمدیران',NULL,NULL,'DECIMAL',1),
+
+('INS_CEILING_APPLY','1','1|0','1',N'بیمه',
+  N'اعمال سقف دستمزد مشمول بیمه',N'1=اعمال (قانونی) | 0=بدون سقف',
+  N'اعمال سقف|بدون سقف','BOOL',1),
+
+('INS_CEILING_MONTHLY','126000000',NULL,'126000000',N'بیمه',
+  N'سقف ماهیانه دستمزد مشمول بیمه (ریال)',
+  N'هر سال با ابلاغ تأمین اجتماعی به‌روز شود',NULL,'INT',1),
+
+-- ─── مالیات ────────────────────────────────────────────────────
+('TAX_YEAR','1403',NULL,'1403',N'مالیات',
+  N'سال مالیاتی جاری',N'برای انتخاب ردیف‌های صحیح از PAY2_TAX_BRACKET',
+  NULL,'INT',1),
+
+('TAX_EXEMPT_MONTHLY','84000000',NULL,'84000000',N'مالیات',
+  N'معافیت ماهیانه مالیاتی (ریال)',N'= معافیت سالانه ماده ۸۴ تقسیم بر ۱۲',
+  NULL,'INT',1),
+
+('TAX_DEDUCT_INS','1','1|0','1',N'مالیات',
+  N'کسر سهم بیمه کارگر از مبنای مالیات',N'۱=بله (تبصره ۱ ماده ۸۶ ق.م.م)',
+  N'بله  --  قانونی|خیر','BOOL',2),
+
+('TAX_DEPRIVATION_APPLY','1','1|0','1',N'مالیات',
+  N'اعمال معافیت مناطق محروم',N'تا ۵۰٪ معافیت برای شاغلان مناطق محروم',
+  N'اعمال|عدم اعمال','BOOL',2),
+
+-- ─── مساعده هوشمند ─────────────────────────────────────────────
+-- منطق: SUM(BED-BES) از DEED_DTL
+-- شرط: HES_K=ADV_HES_K AND HES_M=ADV_HES_M AND HES_T=PCODE
+--      AND DEED_HED.N_S < N_S_سند_حقوق_جاری
+--      AND ماه سند = ماه حقوق
+('ADV_ENABLED','1','1|0','1',N'مساعده',
+  N'آیا مساعده هوشمند فعال باشد؟',
+  N'1=مانده حساب معین پرسنل از DEED_DTL محاسبه می‌شود | 0=بدون کسر مساعده',
+  N'فعال (هوشمند)|غیرفعال','BOOL',2),
+
+-- v6: ADV_HES_K و ADV_HES_M به PAY2_WORKSHOP_ACC منتقل شدند (کارگاه‌محور)
+-- هر کارگاه ACC_KEY='ADV_HES_K' و 'ADV_HES_M' را در PAY2_WORKSHOP_ACC ثبت می‌کند
+
+('ADV_SCOPE','CURRENT_MONTH','CURRENT_MONTH|OPEN_BALANCE','CURRENT_MONTH',N'مساعده',
+  N'محدوده محاسبه مساعده',
+  N'CURRENT_MONTH=فقط اسناد همان ماه | OPEN_BALANCE=کل مانده باز تا سند حقوق',
+  N'فقط ماه جاری|کل مانده باز','TEXT',2),
+
+('ADV_USE_HES_T_FILTER','1','1|0','1',N'مساعده',
+  N'آیا فیلتر HES_T (تفصیلی=کد پرسنل) اعمال شود؟',
+  N'1=هر پرسنل فقط مانده حساب خودش (معمول) | 0=جمع کل معین بدون تفکیک تفصیلی',
+  N'per پرسنل|کل معین','BOOL',2),
+
+('ADV_MIN_POSITIVE','1','1|0','1',N'مساعده',
+  N'مساعده فقط اگر مانده بدهکار (مثبت) باشد کسر شود',
+  N'1=بله  --  اگر حساب بستانکار بود مساعده صفر در نظر گرفته می‌شود | 0=همیشه کسر',
+  N'فقط بدهکار|همیشه','BOOL',2),
+
+-- ─── مرخصی ─────────────────────────────────────────────────────
+('LEAVE_ANNUAL_DAYS','26','24|26|30','26',N'مرخصی',
+  N'روزهای مرخصی استحقاقی سالانه',N'ماده ۶۴ ق.ک',
+  N'۲۴ روز|۲۶ روز|۳۰ روز','INT',2),
+
+('LEAVE_MINS_PER_DAY','440',NULL,'440',N'مرخصی',
+  N'دقیقه معادل یک روز مرخصی',
+  N'v6: ۴۴۰ دقیقه (طبق کارکرد سیستم قدیم)  --  مبنای LEAVE_BAL و تسویه مرخصی',
+  NULL,'INT',2),
+
+('LEAVE_CARRYOVER_MAX','9','0|9|999','9',N'مرخصی',
+  N'حداکثر روز انتقال مرخصی به سال بعد',N'ماده ۶۶ ق.ک  --  ۹ روز',
+  N'ممنوع|۹ روز (قانون)|نامحدود','INT',2),
+
+-- ─── تسویه حساب ────────────────────────────────────────────────
+('BONUS_MODE','MIN_WAGE','MIN_WAGE|ACTUAL|CUSTOM','MIN_WAGE',N'تسویه',
+  N'مبنای محاسبه عیدی',
+  N'MIN_WAGE=حداقل مزد ۶۰-۹۰ روز | ACTUAL=حقوق واقعی | CUSTOM=روز سفارشی',
+  N'حداقل مزد|حقوق واقعی|سفارشی','TEXT',2),
+
+('BONUS_CUSTOM_DAYS','60',NULL,'60',N'تسویه',
+  N'روز عیدی در حالت سفارشی',NULL,NULL,'INT',2),
+
+('MIN_WAGE_DAILY','73200',NULL,'73200',N'تسویه',
+  N'حداقل دستمزد روزانه (ریال) طبق قانون کار',
+  N'هر سال با ابلاغ شورای عالی کار به‌روز شود. در فرم عیدی/سنوات نمایش داده می‌شود.',
+  NULL,'INT',1),
+
+('MIN_WAGE_MONTHLY','2196000',NULL,'2196000',N'تسویه',
+  N'حداقل دستمزد ماهیانه (ریال) طبق قانون کار',
+  N'= MIN_WAGE_DAILY x ۳۰. مبنای محاسبه عیدی در حالت MIN_WAGE.',
+  NULL,'INT',1),
+
+('EIDI_MIN_DAYS','60',NULL,'60',N'تسویه',
+  N'حداقل روز برای محاسبه عیدی (قانون: ۶۰ روز)',NULL,NULL,'INT',1),
+
+('EIDI_MAX_DAYS','90',NULL,'90',N'تسویه',
+  N'حداکثر روز برای محاسبه عیدی (قانون: ۹۰ روز)',NULL,NULL,'INT',1),
+
+('SENIORITY_MODE','LAST_SAL','LAST_SAL|DAILY|FIXED','LAST_SAL',N'تسویه',
+  N'مبنای حق سنوات',
+  N'LAST_SAL=آخرین ماهxسال | DAILY=نرخ روزانهx۳۰xسال | FIXED=مبلغ ثابت per سال',
+  N'آخرین حقوق|نرخ روزانه|مبلغ ثابت','TEXT',2),
+
+('SENIORITY_FIXED_AMT','0',NULL,'0',N'تسویه',
+  N'مبلغ ثابت سنوات per سال (ریال)  --  فقط حالت FIXED',NULL,NULL,'INT',2),
+
+-- ─── امنیت ─────────────────────────────────────────────────────
+('ITEM_DEF_MIN_ROLE','ADMIN','SUPER|ADMIN|MGR','ADMIN',N'امنیت',
+  N'حداقل نقش برای تعریف آیتم حکم',NULL,
+  N'فقط مدیر ارشد|ادمین|مدیر حقوق','TEXT',1),
+
+('CONFIG_MIN_ROLE','SUPER','SUPER|ADMIN','SUPER',N'امنیت',
+  N'حداقل نقش برای تغییر PAY2_CONFIG',NULL,
+  N'فقط مدیر ارشد|ادمین','TEXT',1);
+
+--------------------------------------------------------------------------------
+۴.  گروه B  --  سازمان و کارگاه
+                                   ۴.۱  PAY2_WORKSHOP  --  کارگاه‌ها
+                                       ℹ️ ارتباط با TAGCOD قدیم
+PAY2_WORKSHOP مستقل از TAGCOD است. در صورت نیاز، داده‌های TAGCOD با اسکریپت مهاجرت به PAY2_WORKSHOP کپی می‌شوند  --  هیچ FK یا وابستگی‌ای بین آن‌ها وجود ندارد.
+
+CREATE TABLE [dbo].[PAY2_WORKSHOP]
+(
+  [WS_ID]       INT           NOT NULL IDENTITY(1,1),
+  [WS_CODE]     NVARCHAR(20)  NOT NULL,           -- کد کارگاه (مرجع TAGCOD.CODE در صورت مهاجرت)
+  [WS_NAME]     NVARCHAR(100) NOT NULL,           -- نام کارگاه
+  [NATIONAL_ID] NVARCHAR(11)  NULL,               -- شناسه ملی کارگاه
+  [SOCIAL_INS_CODE] NVARCHAR(20) NULL,            -- کد کارگاه نزد تأمین اجتماعی
+  [TAX_CODE]    NVARCHAR(20)  NULL,               -- شناسه مالیاتی
+  [ADDRESS]     NVARCHAR(300) NULL,
+  [PHONE]       NVARCHAR(30)  NULL,
+  [IS_ACTIVE]   BIT NOT NULL CONSTRAINT DF_WS_ACT DEFAULT(1),
+  [CREATED_AT]  DATETIME NOT NULL CONSTRAINT DF_WS_CRT DEFAULT(GETDATE()),
+  [CREATED_BY]  INT NULL,
+  CONSTRAINT PK_PAY2_WORKSHOP PRIMARY KEY ([WS_ID]),
+  CONSTRAINT UQ_WS_CODE UNIQUE ([WS_CODE])
+);
+
+-- سرفصل‌های حسابداری هر کارگاه (جداگانه برای انعطاف)
+CREATE TABLE [dbo].[PAY2_WORKSHOP_ACC]
+(
+  [WS_ID]       INT          NOT NULL,
+  [ACC_KEY]     NVARCHAR(50) NOT NULL,  -- کلید: 'SALARY_EXP','INS_EXP','PAYABLE','INS_PAYABLE','TAX_PAYABLE'
+  [ACC_CODE]    NVARCHAR(20) NOT NULL,  -- کد سرفصل در سیستم حسابداری
+  [ACC_DESC]    NVARCHAR(100)NULL,
+  CONSTRAINT PK_PAY2_WS_ACC PRIMARY KEY ([WS_ID],[ACC_KEY]),
+  CONSTRAINT FK_WS_ACC FOREIGN KEY ([WS_ID]) REFERENCES [PAY2_WORKSHOP]([WS_ID])
+);
+
+-- مهاجرت از TAGCOD (اختیاری)
+-- INSERT INTO PAY2_WORKSHOP(WS_CODE,WS_NAME,IS_ACTIVE,CREATED_AT)
+-- SELECT CAST(CODE AS NVARCHAR(20)), BARGAH, 1, ISNULL(CRT,GETDATE()) FROM TAGCOD;
+
+            سرفصل‌های استاندارد هر کارگاه (ACC_KEY):
+                                    ACC_KEY
+               توضیح و نقش در سند حسابداری
+                                                                     SALARY_EXP
+             هزینه حقوق و دستمزد (بدهکار سند حقوق)
+                                                                        INS_EXP
+       هزینه بیمه کارفرما ۲۳٪ (بدهکار سند بیمه)
+                                                                 SALARY_PAYABLE
+پرداختنی حقوق (بستانکار سند حقوق  --  خالص پرداختی)
+                                                                    INS_PAYABLE
+                   پرداختنی بیمه تأمین اجتماعی (۳۰٪)
+                                                                    TAX_PAYABLE
+                                         پرداختنی مالیات حقوق
+                                                                      ADV_HES_K
+کد کل (HES_K) حساب معین/دریافتنی پرسنل  --  مبنای محاسبه مساعده هوشمند
+                                                                      ADV_HES_M
+کد معین (HES_M) حساب دریافتنی پرسنل  --  همراه ADV_HES_K
+
+--------------------------------------------------------------------------------
+۵.  گروه C  --  پرسنل
+                      ۵.۰  PAY2_JOB  --  جدول مشاغل (کد پسندی)
+شغل در فرم پرسنل یک Dropdown است  --  نه فیلد متن آزاد. این جدول کدهای شغلی را نگهداری می‌کند:
+
+CREATE TABLE [dbo].[PAY2_JOB]
+(
+  [JOB_ID]    INT           NOT NULL IDENTITY(1,1),
+  [JOB_CODE]  NVARCHAR(20)  NOT NULL,    -- کد شغل
+  [JOB_NAME]  NVARCHAR(100) NOT NULL,    -- عنوان شغل (فارسی)
+  [JOB_GROUP] NVARCHAR(50)  NULL,        -- گروه شغلی
+  [IS_ACTIVE] BIT NOT NULL CONSTRAINT DF_JOB_ACT DEFAULT(1),
+  CONSTRAINT PK_PAY2_JOB PRIMARY KEY ([JOB_ID]),
+  CONSTRAINT UQ_JOB_CODE UNIQUE ([JOB_CODE])
+);
+
+                               ۵.۱  PAY2_EMPLOYEE  --  مشخصات پرسنل
+CREATE TABLE [dbo].[PAY2_EMPLOYEE]
+(
+  [EMP_ID]       INT           NOT NULL IDENTITY(1,1),
+  [EMP_CODE]     NVARCHAR(20)  NOT NULL,   -- کد یکتا (می‌تواند = CODE در PERSONEL قدیم)
+  [WS_ID]        INT           NOT NULL,   -- کارگاه اصلی
+
+  -- ─── مشخصات فردی (از فرم تعریف مشخصات پرسنل) ───────────────
+  [FIRST_NAME]   NVARCHAR(50)  NOT NULL,
+  [LAST_NAME]    NVARCHAR(50)  NOT NULL,
+  [FATHER_NAME]  NVARCHAR(50)  NULL,
+  [NATIONAL_CODE]NVARCHAR(10)  NULL,       -- v6: NULL مجاز (خارجی/موقت  --  filtered unique)
+  [ID_NUMBER]    NVARCHAR(20)  NULL,       -- شماره شناسنامه
+  [BIRTH_PLACE]  NVARCHAR(50)  NULL,       -- محل صدور شناسنامه ✨ (از فرم)
+  [BIRTH_DATE]   BIGINT        NULL,       -- تاریخ تولد شمسی (YYYYMMDD)
+  [GENDER]       TINYINT       NOT NULL CONSTRAINT DF_EMP_GND DEFAULT(1),
+  -- 1=مذکر، 2=مونث
+  [NATIONALITY]  TINYINT       NOT NULL CONSTRAINT DF_EMP_NAT DEFAULT(1),
+  -- 1=ایرانی، 2=خارجی ✨ (از فرم  --  dropdown ملیت)
+  [IS_JANBAZ]    BIT NOT NULL CONSTRAINT DF_EMP_JAN DEFAULT(0),
+  -- جانباز ✨ (از فرم  --  checkbox جانباز)
+
+  -- ─── اشتغال ──────────────────────────────────────────────────
+  [HIRE_DATE]    BIGINT        NOT NULL,   -- تاریخ شروع به کار شمسی
+  [FIRE_DATE]    BIGINT        NULL,       -- تاریخ ترک کار
+  [JOB_ID]       INT           NULL,       -- شغل  --  FK به PAY2_JOB ✨ (dropdown، نه متن آزاد)
+  [UNIT]         TINYINT       NULL,       -- محل کارکرد: 1=تولید، 2=فروش، 3=خدمات، 4=اداری
+  [EDU_LEVEL]    TINYINT       NULL,       -- مدرک تحصیلی
+  [MARITAL]      TINYINT       NOT NULL CONSTRAINT DF_EMP_MAR DEFAULT(2),
+  -- 1=متأهل، 2=مجرد
+  [IS_MANAGER]   BIT NOT NULL CONSTRAINT DF_EMP_MGR DEFAULT(0),
+  -- مدیر  --  غیرمشمول ۳٪ بیمه بیکاری ✨ (از فرم  --  checkbox)
+
+  -- ─── بیمه ────────────────────────────────────────────────────
+  [INS_CODE]     NVARCHAR(15)  NULL,       -- شماره بیمه تأمین اجتماعی
+  [INS_TYPE]     TINYINT       NOT NULL CONSTRAINT DF_EMP_INS DEFAULT(1),
+  -- 1=معمولی، 2=تبصره‌ای (TAB56  --  از فرم checkbox تنبره‌ای)، 3=معاف از بیمه
+
+  -- ─── مالیات ──────────────────────────────────────────────────
+  [TAX_EXEMPT]   BIT NOT NULL CONSTRAINT DF_EMP_TEX DEFAULT(0),
+  [REGION_DEPRIVATION] TINYINT NOT NULL CONSTRAINT DF_EMP_DEP DEFAULT(0),
+  -- ۰=عادی، یا درصد معافیت منطقه محروم (مثال ۵۰)
+
+  -- ─── ارتباط با حسابداری ──────────────────────────────────────
+  [ACC_T]        INT           NULL,
+  -- کد تفصیلی پرسنل در DEED_DTL.HES_T  --  مبنای مساعده هوشمند
+
+  -- ─── اطلاعات تماس و پرداخت ───────────────────────────────────
+  [CARD_NO]      NVARCHAR(20)  NULL,       -- شماره کارت ساعت ✨ (از فرم)
+  [MOBILE]       NVARCHAR(15)  NULL,
+  [BANK_ACC]     NVARCHAR(30)  NULL,       -- شماره حساب بانکی ✨ (از فرم  --  جدا از شبا)
+  [IBAN]         NVARCHAR(26)  NULL,       -- شماره شبا برای پرداخت الکترونیک
+
+  -- ─── وضعیت ───────────────────────────────────────────────────
+  [IS_ACTIVE]    BIT NOT NULL CONSTRAINT DF_EMP_ACT DEFAULT(1),
+  [NOTES]        NVARCHAR(300) NULL,
+  [CREATED_AT]   DATETIME NOT NULL CONSTRAINT DF_EMP_CRT DEFAULT(GETDATE()),
+  [CREATED_BY]   INT NULL,
+
+  CONSTRAINT PK_PAY2_EMPLOYEE PRIMARY KEY ([EMP_ID]),
+  CONSTRAINT UQ_EMP_CODE    UNIQUE ([EMP_CODE]),
+  -- v6: به‌جای UNIQUE ساده، filtered index پس از CREATE TABLE تعریف می‌شود
+  -- CREATE UNIQUE INDEX UX_EMP_NATCODE ON PAY2_EMPLOYEE(NATIONAL_CODE)
+  --   WHERE NATIONAL_CODE IS NOT NULL AND NATIONAL_CODE <> N'';
+  CONSTRAINT FK_EMP_WS  FOREIGN KEY ([WS_ID])  REFERENCES [PAY2_WORKSHOP]([WS_ID]),
+  CONSTRAINT FK_EMP_JOB FOREIGN KEY ([JOB_ID]) REFERENCES [PAY2_JOB]([JOB_ID])
+);
+
+                                    ۵.۲  PAY2_CONTRACT  --  قراردادها
+CREATE TABLE [dbo].[PAY2_CONTRACT]
+(
+  [CON_ID]       INT     NOT NULL IDENTITY(1,1),
+  [EMP_ID]       INT     NOT NULL,
+  [CON_TYPE]     TINYINT NOT NULL,   -- 1=دائم، 2=موقت، 3=پیمانی، 4=ساعتی
+  [START_DATE]   BIGINT  NOT NULL,   -- شمسی
+  [END_DATE]     BIGINT  NULL,       -- NULL=نامحدود
+  [TRIAL_END]    BIGINT  NULL,       -- پایان دوره آزمایشی
+  [WEEKLY_HOURS] DECIMAL(5,2) NOT NULL CONSTRAINT DF_CON_WH DEFAULT(44),
+  [NOTES]        NVARCHAR(200)NULL,
+  [CREATED_AT]   DATETIME NOT NULL CONSTRAINT DF_CON_CRT DEFAULT(GETDATE()),
+  CONSTRAINT PK_PAY2_CONTRACT PRIMARY KEY ([CON_ID]),
+  CONSTRAINT FK_CON_EMP FOREIGN KEY ([EMP_ID]) REFERENCES [PAY2_EMPLOYEE]([EMP_ID])
+);
+
+                                ۵.۳  PAY2_LEAVE_BAL  --  مانده مرخصی
+                                              ℹ️ مانده به دقیقه
+از فرم ثبت مرخصی: مرخصی درخواستی و مانده مرخصی هر دو به صورت روز+ساعت+دقیقه نمایش داده می‌شوند. کل محاسبه به دقیقه انجام می‌شود. (۲۶ روز x ۴۴۰ دقیقه = ۱۱,۴۴۰ دقیقه استحقاق سالانه)
+
+CREATE TABLE [dbo].[PAY2_LEAVE_BAL]
+(
+  [EMP_ID]          INT      NOT NULL,
+  [YEAR]            SMALLINT NOT NULL,     -- سال شمسی
+  -- ─── استحقاق ─────────────────────────────────────────────────
+  [ENTITLEMENT_MIN] INT NOT NULL CONSTRAINT DF_LB_ENT DEFAULT(11440),
+  -- استحقاق سالانه (دقیقه)  --  پیش‌فرض: ۲۶ روز x ۴۴۰ دقیقه
+  -- (۴۴۰ = ۸ ساعت - جمعه + ۴ ساعت پنجشنبه --> میانگین روزانه)
+  -- ─── استفاده‌شده ─────────────────────────────────────────────
+  [USED_MIN]        INT NOT NULL CONSTRAINT DF_LB_USD DEFAULT(0),
+  -- مجموع مرخصی‌های استفاده‌شده (دقیقه)
+  -- ─── انتقالی ─────────────────────────────────────────────────
+  [CARRIED_IN_MIN]  INT NOT NULL CONSTRAINT DF_LB_CIN DEFAULT(0),
+  -- انتقالی از سال قبل (دقیقه)  --  MAX = 9 روز = 3960 دقیقه
+  [CARRIED_OUT_MIN] INT NOT NULL CONSTRAINT DF_LB_COU DEFAULT(0),
+  -- منتقل‌شده به سال بعد (دقیقه)
+  -- ─── ستون‌های محاسبه‌شده (نمایشی) ────────────────────────────
+  [BALANCE_MIN]     AS ([ENTITLEMENT_MIN] + [CARRIED_IN_MIN] - [USED_MIN]),
+  -- مانده کل به دقیقه
+  [BALANCE_DAYS]    AS (([ENTITLEMENT_MIN] + [CARRIED_IN_MIN] - [USED_MIN]) / 440),
+  -- ۱ روز مرخصی = ۴۴۰ دقیقه (روز کاری ۸ ساعت کمتر از ۲۰ دقیقه وقفه)
+  -- مانده به روز (تقریبی  --  برای نمایش در فیش)
+  [UPDATED_AT]      DATETIME NULL,
+  CONSTRAINT PK_PAY2_LEAVE_BAL PRIMARY KEY ([EMP_ID],[YEAR]),
+  CONSTRAINT FK_LB_EMP FOREIGN KEY ([EMP_ID]) REFERENCES [PAY2_EMPLOYEE]([EMP_ID])
+);
+
+--------------------------------------------------------------------------------
+۶.  گروه D  --  تعریف آیتم‌های حقوق
+                            ۶.۱  PAY2_ITEM_DEF  --  آیتم‌های پویا
+CREATE TABLE [dbo].[PAY2_ITEM_DEF]
+(
+  [ITEM_ID]      INT          NOT NULL IDENTITY(1,1),
+  [ITEM_CODE]    NVARCHAR(30) NOT NULL,    -- کد یکتا: 'BASE_SAL','HOME','CHILDREN'...
+  [ITEM_NAME]    NVARCHAR(100)NOT NULL,    -- نام فارسی برای فیش
+  [ITEM_TYPE]    TINYINT      NOT NULL,
+  -- 1=پرداختی ثابت، 2=پرداختی متغیر/کارکردی، 3=کسر ثابت، 4=کسر متغیر، 5=آگاهی(نمایش)
+  [CALC_BASIS]   TINYINT      NOT NULL CONSTRAINT DF_ID_CB DEFAULT(2),
+  -- 1=روزانه (xروزکارکرد/مبنا)، 2=ماهیانه (مبلغ کامل)
+  [INS_SUBJECT]  BIT NOT NULL CONSTRAINT DF_ID_INS DEFAULT(1),   -- مشمول بیمه
+  [TAX_SUBJECT]  BIT NOT NULL CONSTRAINT DF_ID_TAX DEFAULT(1),   -- مشمول مالیات
+  [IS_SYSTEM]    BIT NOT NULL CONSTRAINT DF_ID_SYS DEFAULT(0),   -- سیستمی؟ (حذف ممنوع)
+  [SHOW_IN_SLIP] BIT NOT NULL CONSTRAINT DF_ID_SLP DEFAULT(1),
+  [SORT_ORDER]   SMALLINT     NOT NULL CONSTRAINT DF_ID_SRT DEFAULT(100),
+  [IS_ACTIVE]    BIT NOT NULL CONSTRAINT DF_ID_ACT DEFAULT(1),
+  [NOTES]        NVARCHAR(200)NULL,
+  [CREATED_AT]   DATETIME NOT NULL CONSTRAINT DF_ID_CRT DEFAULT(GETDATE()),
+  [CREATED_BY]   INT NULL,
+  CONSTRAINT PK_PAY2_ITEM_DEF PRIMARY KEY ([ITEM_ID]),
+  CONSTRAINT UQ_ITEM_CODE UNIQUE ([ITEM_CODE]),
+  CONSTRAINT CK_ITEM_TYPE CHECK ([ITEM_TYPE] BETWEEN 1 AND 5),
+  CONSTRAINT CK_CALC_BASIS CHECK ([CALC_BASIS] IN (1,2))
+);
+
+                  آیتم‌های سیستمی پیش‌فرض (IS_SYSTEM=1):
+                                      ID
+                              ITEM_CODE / نام
+                                     TYPE
+                                     BASIS
+                                   بیمه
+                                 مالیات
+                                ملاحظات
+                                                                              1
+                                    BASE_SAL_B / حقوق روزانه رسمی
+                                                                              1
+                                                                   روزانه
+                                                                            ✓
+                                                                            ✓
+      SALARY_DAYLYB  --  مبنای محاسبه اضافه‌کار و بیمه
+                                                                              2
+                                      BASE_SAL / حقوق روزانه اسمی
+                                                                              1
+                                                                   روزانه
+                                                                            ✓
+                                                                            ✓
+             SALARY_DAYLY  --  ممکن است با رسمی یکسان باشد
+                                                                              3
+                                              HOME / خواربار و مسکن
+                                                                              1
+                                                                   روزانه
+                                                                            ✓
+                                                                            ✓
+          طبق فرم حکم: بر اساس روز محاسبه می‌شود
+                                                                              4
+                                                     CHILDREN / حق اولاد
+                                                                              1
+                                                                   روزانه
+                                                                            ✓
+                                                                            ✗
+           طبق فرم حکم: بر اساس روز  --  معاف مالیات
+                                                                              5
+                                                   FAMILY_ALLOW / حق تأهل
+                                                                              1
+                                                                 ماهیانه
+                                                                            ✓
+                                                                            ✓
+                                                          فقط متأهلین
+                                                                              6
+                                                          ATTRACT / حق جذب
+                                                                              1
+                                                                 ماهیانه
+                                                                            ✓
+                                                                            ✓
+
+                                                                              7
+                                                    GROCERY / بن کارگری
+                                                                              1
+                                                                   روزانه
+                                                                            ✗
+                                                                            ✗
+  طبق فرم حکم: بر اساس روز  --  معاف بیمه/مالیات
+                                                                              8
+                                         HARD_COND / شرایط محیط کار
+                                                                              1
+                                                                 ماهیانه
+                                                                            ✓
+                                                                            ✓
+                                 از فرم حکم: شرایط محیط کار
+                                                                              9
+                                                          NAHAR / حق نهار
+                                                                              1
+                                                                 ماهیانه
+                                                                            ✗
+                                                                            ✗
+  از فرم حکم ✨  --  اضافه شد  --  معاف بیمه/مالیات
+                                                                             10
+                        SHIFT / درصد حق شیفت/نوبت/شب‌کاری
+                                                                              1
+                                                                   روزانه
+                                                                            ✓
+                                                                            ✓
+                                درصد از BASE_SAL_B  --  از فرم حکم
+                                                                             11
+                                                  OTHER_FIX / سایر ثابت
+                                                                              1
+                                                                 ماهیانه
+                                                                            ✓
+                                                                            ✓
+
+                                                                             12
+                                       OT_NORMAL / اضافه‌کار عادی
+                                                                              2
+                                                                   روزانه
+                                                                            ✓
+                                                                            ✓
+                 نرخ نمایشی: BASE_SAL_B/(MONTH_DAYSxOT_H_BASE)xMULT
+                                                                             13
+                                    OT_HOLIDAY / اضافه‌کار تعطیل
+                                                                              2
+                                                                   روزانه
+                                                                            ✓
+                                                                            ✓
+                             نرخ تعطیل از PAY2_CONFIG.OT_HOLIDAY_MULT
+                                                                             14
+                                      OT_ADMIN / اضافه‌کار اداری
+                                                                              2
+                                                                   روزانه
+                                                                            ✓
+                                                                            ✓
+                               جداگانه از اضافه‌کار عادی
+                                                                             15
+                                         PERF_BONUS / پاداش/راندمان
+                                                                              2
+                                                                 ماهیانه
+                                                                            ✓
+                                                                            ✓
+                                                       از فرم کارکرد
+                                                                             16
+                                     TRANSP / حق ناقل/ایاب‌ذهاب
+                                                                              2
+                                                                 ماهیانه
+                                                                            ✗
+                                                                            ✗
+                                                       از فرم کارکرد
+                                                                             17
+                                           INS_DED / کسر بیمه کارگر
+                                                                              4
+                                                                   روزانه
+                                                                            ✗
+                                                                            ✗
+                                   خودکار = مبنای بیمه x نرخ
+                                                                             18
+                                                  TAX_DED / کسر مالیات
+                                                                              4
+                                                                   روزانه
+                                                                            ✗
+                                                                            ✗
+                                                  خودکار  --  پلکانی
+                                                                             19
+                                                       LOAN_DED / قسط وام
+                                                                              3
+                                                                 ماهیانه
+                                                                            ✗
+                                                                            ✗
+                                              از PAY2_LOAN_SCHED خودکار
+                                                                             20
+                                                     ADVANCE_DED / مساعده
+                                                                              4
+                                                                 ماهیانه
+                                                                            ✗
+                                                                            ✗
+                                      از مانده DEED_DTL  --  هوشمند
+                                                                             21
+                                              OTHER_DED / سایر کسورات
+                                                                              3
+                                                                 ماهیانه
+                                                                            ✗
+                                                                            ✗
+                                   کسر متفرقه از فرم کارکرد
+
+   ۶.۲  PAY2_ITEM_TEMPLATE + PAY2_ITEM_TMPL_LINE  --  قالب‌های حکم
+CREATE TABLE [dbo].[PAY2_ITEM_TEMPLATE]
+(
+  [TMPL_ID]   INT           NOT NULL IDENTITY(1,1),
+  [TMPL_CODE] NVARCHAR(30)  NOT NULL,
+  [TMPL_NAME] NVARCHAR(100) NOT NULL,   -- مثال: 'کارگر تولید پایه'
+  [WS_ID]     INT           NULL,       -- NULL=برای همه کارگاه‌ها
+  [IS_ACTIVE] BIT NOT NULL CONSTRAINT DF_TMPL_ACT DEFAULT(1),
+  [NOTES]     NVARCHAR(200) NULL,
+  CONSTRAINT PK_PAY2_TMPL PRIMARY KEY ([TMPL_ID]),
+  CONSTRAINT UQ_TMPL_CODE UNIQUE ([TMPL_CODE]),
+  CONSTRAINT FK_TMPL_WS FOREIGN KEY ([WS_ID]) REFERENCES [PAY2_WORKSHOP]([WS_ID])
+);
+
+CREATE TABLE [dbo].[PAY2_ITEM_TMPL_LINE]
+(
+  [TMPL_ID]     INT    NOT NULL,
+  [ITEM_ID]     INT    NOT NULL,
+  [DEF_AMOUNT]  BIGINT NOT NULL CONSTRAINT DF_TL_AMT DEFAULT(0),
+  [INS_OV]      BIT    NULL,   -- NULL=از تعریف آیتم
+  [TAX_OV]      BIT    NULL,
+  [BASIS_OV]    TINYINT NULL,
+  CONSTRAINT PK_PAY2_TMPL_LINE PRIMARY KEY ([TMPL_ID],[ITEM_ID]),
+  CONSTRAINT FK_TL_TMPL FOREIGN KEY ([TMPL_ID]) REFERENCES [PAY2_ITEM_TEMPLATE]([TMPL_ID]) ON DELETE CASCADE,
+  CONSTRAINT FK_TL_ITEM FOREIGN KEY ([ITEM_ID]) REFERENCES [PAY2_ITEM_DEF]([ITEM_ID])
+);
+
+--------------------------------------------------------------------------------
+۷.  گروه E  --  احکام کارگزینی
+                                          ۷.۱  PAY2_DECREE + PAY2_DECREE_LINE
+-- هدر حکم
+CREATE TABLE [dbo].[PAY2_DECREE]
+(
+  [DEC_ID]      INT     NOT NULL IDENTITY(1,1),
+  [EMP_ID]      INT     NOT NULL,
+  [WS_ID]       INT     NOT NULL,
+  [ISSUED_DATE] BIGINT  NOT NULL,   -- تاریخ صدور شمسی
+  [EFF_FROM]    BIGINT  NOT NULL,   -- تاریخ شروع اجرا (شمسی)
+  [EFF_TO]      BIGINT  NULL,       -- پایان اجرا (NULL=تا حکم بعدی)
+  [EDU_LEVEL]   TINYINT NULL,
+  [MARITAL]     TINYINT NULL,       -- تأهل در زمان این حکم
+  [IS_MANAGER]  BIT     NULL,       -- مدیر در این حکم
+  [TMPL_ID]     INT     NULL,       -- قالب استفاده‌شده
+  [IS_CONFIRMED]BIT NOT NULL CONSTRAINT DF_DEC_CON DEFAULT(0),   -- تأیید نهایی؟
+  [CONFIRMED_BY]INT     NULL,
+  [CONFIRMED_AT]DATETIME NULL,
+  [NOTES]       NVARCHAR(300)NULL,
+  [CREATED_AT]  DATETIME NOT NULL CONSTRAINT DF_DEC_CRT DEFAULT(GETDATE()),
+  [CREATED_BY]  INT      NULL,
+  CONSTRAINT PK_PAY2_DECREE PRIMARY KEY ([DEC_ID]),
+  CONSTRAINT FK_DEC_EMP FOREIGN KEY ([EMP_ID]) REFERENCES [PAY2_EMPLOYEE]([EMP_ID]),
+  CONSTRAINT FK_DEC_WS  FOREIGN KEY ([WS_ID])  REFERENCES [PAY2_WORKSHOP]([WS_ID]),
+  CONSTRAINT FK_DEC_TMPL FOREIGN KEY ([TMPL_ID]) REFERENCES [PAY2_ITEM_TEMPLATE]([TMPL_ID])
+);
+CREATE NONCLUSTERED INDEX IX_DEC_EMP_DATE ON PAY2_DECREE([EMP_ID],[EFF_FROM],[EFF_TO]);
+
+-- آیتم‌های حکم (یک ردیف per آیتم)
+CREATE TABLE [dbo].[PAY2_DECREE_LINE]
+(
+  [DEC_ID]    INT    NOT NULL,
+  [ITEM_ID]   INT    NOT NULL,
+  [AMOUNT]    BIGINT NOT NULL CONSTRAINT DF_DL_AMT DEFAULT(0),
+  [INS_OV]    BIT    NULL,      -- NULL=از PAY2_ITEM_DEF
+  [TAX_OV]    BIT    NULL,
+  [BASIS_OV]  TINYINT NULL,     -- NULL=از PAY2_ITEM_DEF
+  CONSTRAINT PK_PAY2_DECREE_LINE PRIMARY KEY ([DEC_ID],[ITEM_ID]),
+  CONSTRAINT FK_DL_DEC  FOREIGN KEY ([DEC_ID])  REFERENCES [PAY2_DECREE]([DEC_ID]) ON DELETE CASCADE,
+  CONSTRAINT FK_DL_ITEM FOREIGN KEY ([ITEM_ID]) REFERENCES [PAY2_ITEM_DEF]([ITEM_ID])
+);
+
+-- استثناهای مشمولیت per پرسنل per آیتم
+CREATE TABLE [dbo].[PAY2_OVERRIDE]
+(
+  [EMP_ID]    INT     NOT NULL,
+  [ITEM_ID]   INT     NOT NULL,
+  [INS_OV]    BIT     NULL,
+  [TAX_OV]    BIT     NULL,
+  [BASIS_OV]  TINYINT NULL,
+  [VALID_FROM]BIGINT  NOT NULL,
+  [VALID_TO]  BIGINT  NULL,
+  [REASON]    NVARCHAR(200)NULL,
+  [CREATED_AT]DATETIME NOT NULL CONSTRAINT DF_OV_CRT DEFAULT(GETDATE()),
+  [CREATED_BY]INT NULL,
+  CONSTRAINT PK_PAY2_OVERRIDE PRIMARY KEY ([EMP_ID],[ITEM_ID],[VALID_FROM]),
+  CONSTRAINT FK_OV_EMP  FOREIGN KEY ([EMP_ID])  REFERENCES [PAY2_EMPLOYEE]([EMP_ID]),
+  CONSTRAINT FK_OV_ITEM FOREIGN KEY ([ITEM_ID]) REFERENCES [PAY2_ITEM_DEF]([ITEM_ID])
+);
+
+--------------------------------------------------------------------------------
+۸.  گروه F  --  کارکرد ماهیانه
+                                 ۸.۱  PAY2_PERIOD  --  دوره ماهیانه
+CREATE TABLE [dbo].[PAY2_PERIOD]
+(
+  [PER_ID]        INT     NOT NULL IDENTITY(1,1),
+  [WS_ID]         INT     NOT NULL,
+  [PERIOD_DATE]   BIGINT  NOT NULL,   -- تاریخ ماه شمسی (YYYYMM00)
+  [HOLIDAY_DAYS]  TINYINT NOT NULL CONSTRAINT DF_PER_HD DEFAULT(0),
+  -- تعداد روزهای تعطیل رسمی این ماه (از فرم ورود کارکرد تنظیم می‌شود)
+  [TENDAR_APPLY]  BIT NOT NULL CONSTRAINT DF_PER_TEN DEFAULT(0),
+  -- ده‌درصدی: آیا کسر ۱۰٪ این ماه اعمال شود؟ (checkbox فرم کارکرد)
+  [DEED_N_S_PAY]  FLOAT   NULL,       -- شماره سند پرداخت صادرشده (از DEED_HED)
+  [STATUS]        TINYINT NOT NULL CONSTRAINT DF_PER_ST DEFAULT(1),
+  -- 1=باز، 2=بسته (آماده محاسبه)، 3=محاسبه‌شده، 4=سند صادر شده
+  [OPENED_AT]     DATETIME NOT NULL CONSTRAINT DF_PER_OA DEFAULT(GETDATE()),
+  [CLOSED_AT]     DATETIME NULL,
+  [NOTES]         NVARCHAR(200)NULL,
+  CONSTRAINT PK_PAY2_PERIOD PRIMARY KEY ([PER_ID]),
+  CONSTRAINT UQ_PERIOD UNIQUE ([WS_ID],[PERIOD_DATE]),
+  CONSTRAINT FK_PER_WS FOREIGN KEY ([WS_ID]) REFERENCES [PAY2_WORKSHOP]([WS_ID])
+);
+
+                       ۸.۲  PAY2_ATTENDANCE + PAY2_ATT_VALUE  --  کارکرد
+-- کارکرد هر پرسنل در هر دوره
+CREATE TABLE [dbo].[PAY2_ATTENDANCE]
+(
+  [PER_ID]        INT      NOT NULL,
+  [EMP_ID]        INT      NOT NULL,
+  -- روزهای کارکرد با تفکیک واحد (از فرم ورود کارکرد)
+  [WORK_DAYS]     DECIMAL(5,2) NOT NULL CONSTRAINT DF_ATT_WD  DEFAULT(0),
+  -- کل روزهای کارکرد (جمع چهار واحد زیر)
+  [DAYS_TOLID]    DECIMAL(5,2) NOT NULL CONSTRAINT DF_ATT_DTL DEFAULT(0), -- روز تولید
+  [DAYS_EDARI]    DECIMAL(5,2) NOT NULL CONSTRAINT DF_ATT_DED DEFAULT(0), -- روز اداری
+  [DAYS_KHADAMAT] DECIMAL(5,2) NOT NULL CONSTRAINT DF_ATT_DKH DEFAULT(0), -- روز خدمات
+  [DAYS_FOROSH]   DECIMAL(5,2) NOT NULL CONSTRAINT DF_ATT_DFR DEFAULT(0), -- روز فروش
+  -- اضافه‌کار
+  [OT_NORMAL_H]   DECIMAL(6,2) NOT NULL CONSTRAINT DF_ATT_OTN DEFAULT(0), -- ساعت اضافه‌کار عادی
+  [OT_HOLIDAY_H]  DECIMAL(6,2) NOT NULL CONSTRAINT DF_ATT_OTH DEFAULT(0), -- ساعت اضافه‌کار تعطیل
+  [OT_ADMIN_H]    DECIMAL(6,2) NOT NULL CONSTRAINT DF_ATT_OTA DEFAULT(0), -- ساعت اضافه‌کار اداری (جداگانه)
+  -- غیبت و مرخصی
+  [LEAVE_DAYS]    DECIMAL(5,2) NOT NULL CONSTRAINT DF_ATT_LD  DEFAULT(0), -- روز مرخصی
+  [ABSENT_DAYS]   DECIMAL(5,2) NOT NULL CONSTRAINT DF_ATT_AD  DEFAULT(0), -- روز غیبت
+  [MISSION_DAYS]  DECIMAL(5,2) NOT NULL CONSTRAINT DF_ATT_MD  DEFAULT(0), -- روز مأموریت
+  -- ─── کارکرد اسمی / رسمی (v6) ───────────────────────────────────
+  [DAYS]          DECIMAL(5,2) NOT NULL CONSTRAINT DF_ATT_DAYS  DEFAULT(0),
+  -- کارکرد اسمی: مبنای محاسبه پایه بیمه (MABMASH)
+  [DAYSB]         DECIMAL(5,2) NOT NULL CONSTRAINT DF_ATT_DAYSB DEFAULT(0),
+  -- کارکرد رسمی: مبنای پرداخت آیتم‌های روزانه
+  [FRID_COUNT]    TINYINT      NOT NULL CONSTRAINT DF_ATT_FRID  DEFAULT(0),
+  -- تعداد جمعه‌های ماه (برای محاسبه روزهای واجد حق نهار)
+  [TDAYS]         DECIMAL(5,2) NOT NULL CONSTRAINT DF_ATT_TDAYS DEFAULT(0),
+  -- تعطیلات رسمی قابل جبران (برای نهار و کارکرد)
+  -- آیتم‌های ثابت کارکردی (از فرم کارکرد  --  مستقیماً قابل ورود)
+  [PERF_AMOUNT]   BIGINT  NOT NULL CONSTRAINT DF_ATT_PF  DEFAULT(0),
+  -- راندمان/پاداش عملکرد (ریال)
+  [TRANSP_AMOUNT] BIGINT  NOT NULL CONSTRAINT DF_ATT_TR  DEFAULT(0),
+  -- حق ناقل/ایاب و ذهاب (ریال)
+  [KASR_OTHER]    BIGINT  NOT NULL CONSTRAINT DF_ATT_KO  DEFAULT(0),
+  -- سایر کسورات (ریال)  --  ستون کسر وام و کسر خاص
+  -- وضعیت ورود
+  [SOURCE]        TINYINT NOT NULL CONSTRAINT DF_ATT_SRC DEFAULT(1),
+  -- 1=دستی، 2=ورود دستگاه، 3=اکسل
+  [LOCKED]        BIT NOT NULL CONSTRAINT DF_ATT_LCK DEFAULT(0),
+  [CREATED_AT]    DATETIME NOT NULL CONSTRAINT DF_ATT_CRT DEFAULT(GETDATE()),
+  [CREATED_BY]    INT NULL,
+  CONSTRAINT PK_PAY2_ATT PRIMARY KEY ([PER_ID],[EMP_ID]),
+  CONSTRAINT FK_ATT_PER FOREIGN KEY ([PER_ID]) REFERENCES [PAY2_PERIOD]([PER_ID]),
+  CONSTRAINT FK_ATT_EMP FOREIGN KEY ([EMP_ID]) REFERENCES [PAY2_EMPLOYEE]([EMP_ID]),
+  -- کنترل: جمع واحدها نباید از WORK_DAYS بیشتر شود (CHECK اختیاری)
+  CONSTRAINT CK_ATT_DAYS CHECK (
+    [DAYS_TOLID]+[DAYS_EDARI]+[DAYS_KHADAMAT]+[DAYS_FOROSH] <= [WORK_DAYS] + 0.01
+  ),
+  -- v6: DAYSB نباید از WORK_DAYS بیشتر باشد
+  CONSTRAINT CK_ATT_DAYSB CHECK ([DAYSB] <= [WORK_DAYS] + 0.01)
+);
+
+-- مقادیر متغیر اضافی (پویا  --  مثل پاداش خاص، آیتم سفارشی)
+CREATE TABLE [dbo].[PAY2_ATT_VALUE]
+(
+  [PER_ID]   INT    NOT NULL,
+  [EMP_ID]   INT    NOT NULL,
+  [ITEM_ID]  INT    NOT NULL,
+  [VALUE]    BIGINT NOT NULL CONSTRAINT DF_AV_VAL DEFAULT(0),
+  CONSTRAINT PK_PAY2_ATT_VAL PRIMARY KEY ([PER_ID],[EMP_ID],[ITEM_ID]),
+  CONSTRAINT FK_AV_ATT  FOREIGN KEY ([PER_ID],[EMP_ID]) REFERENCES [PAY2_ATTENDANCE]([PER_ID],[EMP_ID]) ON DELETE CASCADE,
+  CONSTRAINT FK_AV_ITEM FOREIGN KEY ([ITEM_ID]) REFERENCES [PAY2_ITEM_DEF]([ITEM_ID])
+);
+
+                                        ۸.۳  PAY2_LEAVE  --  ثبت مرخصی
+CREATE TABLE [dbo].[PAY2_LEAVE]
+(
+  [LEV_ID]       INT     NOT NULL IDENTITY(1,1),
+  [EMP_ID]       INT     NOT NULL,
+  [LEV_TYPE]     TINYINT NOT NULL,
+  -- 1=استحقاقی، 2=استعلاجی، 3=بدون حقوق، 4=زایمان، 5=مأموریت
+  [REQUEST_DATE] BIGINT  NOT NULL,    -- تاریخ درخواست ✨ (از فرم)
+  [START_DATE]   BIGINT  NOT NULL,    -- تاریخ شروع
+  [END_DATE]     BIGINT  NOT NULL,    -- تاریخ پایان
+  -- ─── مقدار مرخصی (روز+ساعت+دقیقه  --  از فرم ثبت مرخصی) ────────
+  [REQ_DAYS]     SMALLINT NOT NULL CONSTRAINT DF_LEV_RD DEFAULT(0),
+  [REQ_HOURS]    TINYINT  NOT NULL CONSTRAINT DF_LEV_RH DEFAULT(0),
+  [REQ_MINUTES]  TINYINT  NOT NULL CONSTRAINT DF_LEV_RM DEFAULT(0),
+  [TOTAL_MINUTES]AS ([REQ_DAYS]*440 + [REQ_HOURS]*60 + [REQ_MINUTES]),
+  -- ۱ روز = ۴۴۰ دقیقه  --  هماهنگ با LEAVE_BAL
+  -- مجموع به دقیقه  --  محاسبه‌شده ✨
+  [BAL_BEFORE]   INT     NULL,        -- مانده مرخصی قبل از این برگه (دقیقه) ✨
+  -- ─── توضیحات (ساعت ورود-خروج در فرم) ────────────────────────
+  [DESCRIPTION]  NVARCHAR(300) NULL,  -- توضیحات (ساعت ورود-خروج)
+  -- ─── ارجاع و تأیید ───────────────────────────────────────────
+  [REFER_TO]     INT     NULL,        -- ارجاع به (کد پرسنل مدیر) ✨ (از فرم  --  dropdown)
+  [STATUS]       TINYINT NOT NULL CONSTRAINT DF_LEV_ST DEFAULT(1),
+  -- 1=ثبت، 2=تأیید درخواست‌کننده، 3=تأیید مدیر واحد، 4=تأیید مدیرعامل
+  [APV1_BY]      INT NULL, [APV1_AT] DATETIME NULL,   -- درخواست‌کننده ✨
+  [APV2_BY]      INT NULL, [APV2_AT] DATETIME NULL,   -- مدیر واحد ✨
+  [APV3_BY]      INT NULL, [APV3_AT] DATETIME NULL,   -- مدیر عامل ✨
+  [CREATED_AT]   DATETIME NOT NULL CONSTRAINT DF_LEV_CRT DEFAULT(GETDATE()),
+  [CREATED_BY]   INT NULL,
+  CONSTRAINT PK_PAY2_LEAVE PRIMARY KEY ([LEV_ID]),
+  CONSTRAINT FK_LEV_EMP   FOREIGN KEY ([EMP_ID])   REFERENCES [PAY2_EMPLOYEE]([EMP_ID]),
+  CONSTRAINT FK_LEV_REFER FOREIGN KEY ([REFER_TO])  REFERENCES [PAY2_EMPLOYEE]([EMP_ID])
+);
+
+--------------------------------------------------------------------------------
+۹.  گروه G  --  وام پرسنل
+CREATE TABLE [dbo].[PAY2_LOAN]
+(
+  [LOAN_ID]    INT     NOT NULL IDENTITY(1,1),
+  [EMP_ID]     INT     NOT NULL,
+  [WS_ID]      INT     NOT NULL,
+  [LOAN_TYPE]  TINYINT NOT NULL CONSTRAINT DF_LN_TYP DEFAULT(1),
+  -- 1=قرض‌الحسنه، 2=رفاهی، 3=ضروری، 4=مسکن، 5=سایر
+  [LOAN_DATE]  BIGINT  NOT NULL,        -- تاریخ اعطا شمسی
+  [AMOUNT]     BIGINT  NOT NULL,        -- مبلغ کل وام (ریال)
+  [INSTALLMENT]BIGINT  NOT NULL,        -- مبلغ هر قسط
+  [TOTAL_INST] SMALLINT NOT NULL,       -- تعداد کل اقساط
+  [PAID_INST]  SMALLINT NOT NULL CONSTRAINT DF_LN_PI DEFAULT(0),
+  [FIRST_PAY]  BIGINT  NOT NULL,        -- ماه اولین بازپرداخت شمسی (YYYYMM00)
+  [PURPOSE]    NVARCHAR(200)NULL,
+  [IS_ACTIVE]  BIT NOT NULL CONSTRAINT DF_LN_ACT DEFAULT(1),
+  [CREATED_AT] DATETIME NOT NULL CONSTRAINT DF_LN_CRT DEFAULT(GETDATE()),
+  [CREATED_BY] INT NULL,
+  CONSTRAINT PK_PAY2_LOAN PRIMARY KEY ([LOAN_ID]),
+  CONSTRAINT FK_LN_EMP FOREIGN KEY ([EMP_ID]) REFERENCES [PAY2_EMPLOYEE]([EMP_ID]),
+  CONSTRAINT FK_LN_WS  FOREIGN KEY ([WS_ID])  REFERENCES [PAY2_WORKSHOP]([WS_ID])
+);
+
+-- جدول تفصیلی اقساط (برای ردیابی دقیق)
+CREATE TABLE [dbo].[PAY2_LOAN_SCHED]
+(
+  [SCHED_ID]   INT     NOT NULL IDENTITY(1,1),
+  [LOAN_ID]    INT     NOT NULL,
+  [INST_NUM]   SMALLINT NOT NULL,      -- شماره قسط
+  [DUE_PERIOD] BIGINT  NOT NULL,       -- ماه سررسید شمسی (YYYYMM00)
+  [AMOUNT]     BIGINT  NOT NULL,       -- مبلغ این قسط
+  [RUN_ID]     INT     NULL,           -- شناسه اجرای حقوقی که کسر شد
+  [PAID_AT]    DATETIME NULL,          -- تاریخ پرداخت واقعی
+  CONSTRAINT PK_PAY2_LOAN_SCHED PRIMARY KEY ([SCHED_ID]),
+  CONSTRAINT UQ_LOAN_INST UNIQUE ([LOAN_ID],[INST_NUM]),
+  CONSTRAINT FK_LS_LOAN FOREIGN KEY ([LOAN_ID]) REFERENCES [PAY2_LOAN]([LOAN_ID])
+);
+
+-- View برای مانده وام هر پرسنل
+CREATE VIEW [dbo].[V_PAY2_LOAN_BALANCE] AS
+SELECT
+  L.EMP_ID,
+  L.LOAN_ID,
+  L.AMOUNT                                   AS TOTAL_AMOUNT,
+  L.PAID_INST * L.INSTALLMENT               AS TOTAL_PAID,
+  L.AMOUNT - L.PAID_INST * L.INSTALLMENT    AS BALANCE,
+  L.INSTALLMENT                              AS NEXT_INSTALLMENT,
+  (L.TOTAL_INST - L.PAID_INST)              AS REMAINING_INST
+FROM PAY2_LOAN L
+WHERE L.IS_ACTIVE = 1 AND L.PAID_INST < L.TOTAL_INST;
+
+--------------------------------------------------------------------------------
+۱۰.  گروه H  --  مساعده هوشمند از حسابداری
+                         💡 منطق اصلی  --  کشف از کد قدیمی
+سیستم مستقیماً از DEED_HED + DEED_DTL می‌خواند. فیلتر زمانی: N_S سند < N_S سند حقوق جاری (نه نوع سند!). یعنی هر چیزی که قبل از ثبت سند حقوق روی حساب پرسنل زده شده، مساعده محسوب می‌شود  --  اعم از مساعده نقدی، خرید از فروشگاه، خرید از کانتین یا هر تراکنش دیگری.
+
+                      ۱۰.۱  تحلیل کد مساعده سیستم قدیم
+                 Query اصلی سیستم قدیم (از فرم WORKING_SUB2):
+
+-- حالت ۱: فقط فیلتر HES_K و HES_M (بدون تفکیک تفصیلی)
+SELECT SUM(D.BED - D.BES) AS MAND
+FROM DEED_HED H
+INNER JOIN WORKING W ON W.WDATE = H_date_filter  -- join منطقی ماه
+INNER JOIN DEED_DTL D ON W.PCODE = D.HES_T        -- کد پرسنل = کد تفصیلی
+                     AND H.N_S = D.N_S
+WHERE D.HES_K = PSK1                               -- کد کل حساب (از تنظیمات)
+  AND D.HES_M = PSM1                               -- کد معین حساب (از تنظیمات)
+  AND H.N_S < [N_S_سند_حقوق_جاری]                -- اسناد قبل از سند حقوق این ماه
+  AND WORKING.WDATE = [ماه_جاری]
+  AND Umonth(H.DATE_S) = Umonth([ماه_جاری])       -- تاریخ سند در همان ماه
+
+-- حالت ۲: با فیلتر اضافی HES_T (تفصیلی مشخص)
+-- ... همان query + AND D.HES_T = PST1
+
+                     ۱۰.۲  جدول ساختار حسابداری مرتبط
+                               جدول/ستون
+                           در سیستم قدیم
+                     نقش در محاسبه مساعده
+                                                                   DEED_HED.N_S
+                                                      شماره سند (float)
+              کلید اتصال به DEED_DTL و فیلتر < N_S حقوق
+                                                                DEED_HED.DATE_S
+                                                     تاریخ سند (bigint)
+                            فیلتر ماه: Umonth(DATE_S) = ماه حقوق
+                                                                  DEED_HED.NO_S
+                                                          سری سند (float)
+برای تفکیک سری‌های مختلف اسناد (در صورت نیاز)
+                                                                 DEED_DTL.HES_K
+                                                       کد کل حساب (int)
+     = PSK1 از تنظیمات  --  سرفصل دریافتنی از پرسنل
+                                                                 DEED_DTL.HES_M
+                                                   کد معین حساب (int)
+                    = PSM1 از تنظیمات  --  معین حساب پرسنل
+                                                                 DEED_DTL.HES_T
+                                                        کد تفصیلی (int)
+                                       = PCODE پرسنل = PAY2_EMPLOYEE.ACC_T
+                                                              DEED_DTL.HES_T2-4
+                                               تفصیلی‌های اضافه
+سطوح بیشتر  --  معمولاً در مساعده استفاده نمی‌شود
+                                                                   DEED_DTL.BED
+                                                           بدهکار (float)
+   مبالغ بدهکار حساب پرسنل (مساعده داده‌شده)
+                                                                   DEED_DTL.BES
+                                                       بستانکار (float)
+           مبالغ بستانکار (تسویه از حقوق ماه قبل)
+                                                                   DEED_DTL.HES
+                                              کد معین متنی (nvarchar)
+                   Index جستجوی سریع  --  ترکیب HES_K+HES_M+HES_T
+
+                     ۱۰.۳  PAY2_ADVANCE_EXCL  --  استثناهای دستی
+در مواردی که کاربر بخواهد مبلغی از مانده را از محاسبه مساعده خارج کند (سند اشتباه، تسویه خاص):
+
+CREATE TABLE [dbo].[PAY2_ADVANCE_EXCL]
+(
+  [EXCL_ID]    INT     NOT NULL IDENTITY(1,1),
+  [EMP_ID]     INT     NOT NULL,
+  [PERIOD_DATE]BIGINT  NOT NULL,     -- ماه شمسی اعمال استثنا (YYYYMM00)
+  [EXCL_AMOUNT]BIGINT  NOT NULL,     -- مبلغ کسر از مانده (ریال)
+  [REASON]     NVARCHAR(300) NOT NULL,
+  [DEED_N_S]   FLOAT   NULL,         -- شماره سند مرجع در DEED_HED
+  [CREATED_AT] DATETIME NOT NULL CONSTRAINT DF_AE_CRT DEFAULT(GETDATE()),
+  [CREATED_BY] INT NULL,
+  [APPROVED_BY]INT NULL,
+  CONSTRAINT PK_PAY2_ADV_EXCL PRIMARY KEY ([EXCL_ID]),
+  CONSTRAINT FK_AE_EMP FOREIGN KEY ([EMP_ID]) REFERENCES [PAY2_EMPLOYEE]([EMP_ID])
+);
+
+۱۰.۴  V_PAY2_ADVANCE_BALANCE  --  View مساعده هوشمند (نهایی)
+                                     ✅ این View نهایی‌شده است
+بر اساس ساختار واقعی DEED_HED و DEED_DTL طراحی شده. کدهای HES_K و HES_M از PAY2_CONFIG خوانده می‌شوند. کد تفصیلی پرسنل از PAY2_EMPLOYEE.ACC_T.
+
+-- ================================================================
+-- V_PAY2_ADVANCE_BALANCE
+-- مانده مساعده هر پرسنل برای یک ماه و یک سند حقوق خاص
+-- پارامتر: @PERIOD_DATE (ماه)، @PAYROLL_N_S (شماره سند حقوق)
+-- ================================================================
+
+-- تابع کمکی: تبدیل تاریخ شمسی به ماه (مشابه Umonth سیستم قدیم)
+CREATE FUNCTION [dbo].[FN_PAY2_MONTH](@DATE BIGINT)
+RETURNS INT AS
+BEGIN
+  RETURN @DATE / 100  -- YYYYMM
+END;
+
+-- Stored Procedure محاسبه مساعده همه پرسنل یک ماه
+CREATE PROCEDURE [dbo].[SP_PAY2_GET_ADVANCES]
+  @PERIOD_DATE  BIGINT,    -- ماه شمسی: مثال 14040100
+  @PAYROLL_N_S  FLOAT,     -- شماره سند حقوق این ماه در DEED_HED
+  @WS_ID        INT        -- کارگاه
+AS
+BEGIN
+  SET NOCOUNT ON;
+
+  -- v6: خواندن کدهای حساب از PAY2_WORKSHOP_ACC (کارگاه‌محور  --  نه global)
+  DECLARE @HES_K   INT = (SELECT CAST(ACC_CODE AS INT) FROM PAY2_WORKSHOP_ACC
+                           WHERE WS_ID=@WS_ID AND ACC_KEY='ADV_HES_K')
+  DECLARE @HES_M   INT = (SELECT CAST(ACC_CODE AS INT) FROM PAY2_WORKSHOP_ACC
+                           WHERE WS_ID=@WS_ID AND ACC_KEY='ADV_HES_M')
+  DECLARE @USE_T   BIT = CAST((SELECT CFG_VALUE FROM PAY2_CONFIG WHERE CFG_KEY='ADV_USE_HES_T_FILTER') AS BIT)
+  DECLARE @MIN_POS BIT = CAST((SELECT CFG_VALUE FROM PAY2_CONFIG WHERE CFG_KEY='ADV_MIN_POSITIVE') AS BIT)
+  -- v6: ADV_SCOPE  --  محدوده جستجو: CURRENT_MONTH=فقط همین ماه | OPEN_BALANCE=کل مانده باز
+  DECLARE @ADV_SCOPE NVARCHAR(20) = ISNULL(
+    (SELECT CFG_VALUE FROM PAY2_CONFIG WHERE CFG_KEY='ADV_SCOPE'), 'CURRENT_MONTH')
+  DECLARE @PERIOD_MONTH INT = @PERIOD_DATE / 100  -- YYYYMM
+
+  -- بررسی پیکربندی کارگاه
+  IF @HES_K IS NULL OR @HES_M IS NULL
+  BEGIN
+    RAISERROR(N'PAY2_WORKSHOP_ACC: ADV_HES_K یا ADV_HES_M برای کارگاه %d تنظیم نشده است.',16,1,@WS_ID)
+    RETURN
+  END
+
+  SELECT
+    E.EMP_ID,
+    E.ACC_T                            AS PCODE,
+    E.LAST_NAME + N' ' + E.FIRST_NAME AS FULL_NAME,
+
+    -- مانده حساب معین پرسنل از سیستم حسابداری
+    ISNULL((
+      SELECT CAST(SUM(D.BED - D.BES) AS BIGINT)
+      FROM DEED_HED  H
+      INNER JOIN DEED_DTL D ON H.N_S = D.N_S
+      WHERE D.HES_K = @HES_K                        -- کد کل
+        AND D.HES_M = @HES_M                        -- کد معین
+        AND (
+              @USE_T = 0                            -- اگر تفصیلی لازم نیست
+              OR D.HES_T = E.ACC_T                  -- کد تفصیلی = کد پرسنل
+            )
+        AND H.N_S < @PAYROLL_N_S                    -- *** قبل از سند حقوق جاری ***
+        AND (
+              @ADV_SCOPE = 'OPEN_BALANCE'                       -- کل مانده باز تا سند حقوق
+              OR [dbo].[FN_PAY2_MONTH](H.DATE_S) = @PERIOD_MONTH  -- فقط همان ماه
+            )
+        AND H.OKF = 1                               -- فقط اسناد تأیید شده
+    ), 0)                                           AS RAW_BALANCE,
+
+    -- کسر استثناهای دستی
+    ISNULL((
+      SELECT SUM(EXCL_AMOUNT)
+      FROM PAY2_ADVANCE_EXCL
+      WHERE EMP_ID = E.EMP_ID
+        AND PERIOD_DATE / 100 = @PERIOD_MONTH
+    ), 0)                                           AS MANUAL_EXCL,
+
+    -- مانده نهایی مساعده
+    CASE
+      WHEN @MIN_POS = 1 AND
+           ISNULL((
+             SELECT CAST(SUM(D.BED - D.BES) AS BIGINT)
+             FROM DEED_HED H INNER JOIN DEED_DTL D ON H.N_S=D.N_S
+             WHERE D.HES_K=@HES_K AND D.HES_M=@HES_M
+               AND (@USE_T=0 OR D.HES_T=E.ACC_T)
+               AND H.N_S < @PAYROLL_N_S
+               AND [dbo].[FN_PAY2_MONTH](H.DATE_S)=@PERIOD_MONTH
+               AND H.OKF=1
+           ),0)
+           - ISNULL((SELECT SUM(EXCL_AMOUNT) FROM PAY2_ADVANCE_EXCL
+                     WHERE EMP_ID=E.EMP_ID AND PERIOD_DATE/100=@PERIOD_MONTH),0)
+           <= 0
+      THEN 0
+      ELSE
+        ISNULL((
+          SELECT CAST(SUM(D.BED - D.BES) AS BIGINT)
+          FROM DEED_HED H INNER JOIN DEED_DTL D ON H.N_S=D.N_S
+          WHERE D.HES_K=@HES_K AND D.HES_M=@HES_M
+            AND (@USE_T=0 OR D.HES_T=E.ACC_T)
+            AND H.N_S < @PAYROLL_N_S
+            AND [dbo].[FN_PAY2_MONTH](H.DATE_S)=@PERIOD_MONTH
+            AND H.OKF=1
+        ),0)
+        - ISNULL((SELECT SUM(EXCL_AMOUNT) FROM PAY2_ADVANCE_EXCL
+                  WHERE EMP_ID=E.EMP_ID AND PERIOD_DATE/100=@PERIOD_MONTH),0)
+    END                                             AS ADVANCE_DEDUCTION
+
+  FROM PAY2_EMPLOYEE E
+  INNER JOIN PAY2_PERIOD P ON P.WS_ID = E.WS_ID AND P.PERIOD_DATE/100 = @PERIOD_MONTH
+  WHERE E.WS_ID = @WS_ID
+    AND E.IS_ACTIVE = 1
+    AND E.ACC_T IS NOT NULL;  -- فقط پرسنلی که کد حسابداری دارند
+END;
+
+                 ۱۰.۵  سناریوهای مساعده  --  مثال عملی
+                                                         📌 مثال عددی
+پرسنل با ACC_T=1050. سند حقوق ماه تیر با N_S=9870 ثبت می‌شود. سیستم جمع (BED-BES) را در DEED_DTL جستجو می‌کند که HES_K=X, HES_M=Y, HES_T=1050 و N_S < 9870 و در ماه تیر باشد. نتیجه = کل بدهی این پرسنل در این ماه قبل از پرداخت حقوق.
+
+                      تراکنش در حسابداری
+                                      N_S
+                             اثر در DEED_DTL
+                         نتیجه در مساعده
+                                        مساعده نقدی ۵M  --  ۵ تیر
+                                                                       N_S=9810
+                                                BED=5,000,000 روی HES_T=1050
+                                         ✅ کسر می‌شود (N_S<9870)
+                               خرید از فروشگاه ۲M  --  ۱۲ تیر
+                                                                       N_S=9835
+                                                BED=2,000,000 روی HES_T=1050
+                                         ✅ کسر می‌شود (N_S<9870)
+                              خرید از کانتین ۰.۵M  --  ۲۰ تیر
+                                                                       N_S=9861
+                                                  BED=500,000 روی HES_T=1050
+                                         ✅ کسر می‌شود (N_S<9870)
+                                         سند حقوق تیر  --  ۲۸ تیر
+                                                                       N_S=9870
+                                                 BES=حقوق روی HES_T=1050
+                                  ❌ حذف می‌شود (N_S=9870 نه <)
+                                                   جمع مساعده کسری
+                                                                             --
+                                                                   5+2+0.5=7.5M
+                            💰 ۷,۵۰۰,۰۰۰ ریال از حقوق کسر
+
+                    ۱۰.۶  جایگاه N_S سند حقوق در فرآیند
+                                    گام
+                                 عملیات
+                                                                             ۱
+کاربر دستور محاسبه حقوق ماه X را صادر می‌کند
+                                                                             ۲
+سیستم سند حقوق را در DEED_HED ایجاد می‌کند --> N_S جدید دریافت می‌کند (مثلاً 9870)
+                                                                             ۳
+SP_PAY2_GET_ADVANCES(@PERIOD, @PAYROLL_N_S=9870, @WS_ID) فراخوانی می‌شود
+                                                                             ۴
+برای هر پرسنل: SUM(BED-BES) از DEED_DTL که N_S < 9870 و در ماه X
+                                                                             ۵
+مانده هر پرسنل به عنوان ADVANCE_DEDUCTION در PAY2_RUN_LINE ذخیره می‌شود
+                                                                             ۶
+سند حقوق تکمیل می‌شود: BES روی HES_T=PCODE هر پرسنل ثبت می‌شود
+
+--------------------------------------------------------------------------------
+۱۱.  گروه I  --  نتایج محاسبه حقوق
+-- هدر اجرا: یک ردیف per ماه per کارگاه
+CREATE TABLE [dbo].[PAY2_RUN]
+(
+  [RUN_ID]    INT     NOT NULL IDENTITY(1,1),
+  [PER_ID]    INT     NOT NULL,    -- دوره ماهیانه
+  [RUN_NO]    SMALLINT NOT NULL CONSTRAINT DF_RUN_NO DEFAULT(1),
+  -- شماره ترتیبی نسخه در همان دوره (1=اول، 2=بازمحاسبه اول، ...)  --  v6
+  [IS_LATEST] BIT     NOT NULL CONSTRAINT DF_RUN_IL DEFAULT(1),
+  -- ۱=آخرین نسخه این دوره  --  برای گزارش‌گیری  --  v6
+  [CALC_AT]   DATETIME NOT NULL CONSTRAINT DF_RUN_CA DEFAULT(GETDATE()),
+  [CALC_BY]   INT     NULL,
+  [STATUS]    TINYINT NOT NULL CONSTRAINT DF_RUN_ST DEFAULT(1),
+  -- 1=پیش‌نویس، 2=نهایی، 3=سند صادرشده
+  [PREV_RUN_ID] INT   NULL,    -- ارجاع به نسخه قبلی همین دوره  --  v6
+  [DEED_ID_SAL]   INT NULL,   -- شماره سند حقوق در حسابداری
+  [DEED_ID_INS]   INT NULL,   -- شماره سند بیمه
+  [NOTES]     NVARCHAR(300) NULL,
+  CONSTRAINT PK_PAY2_RUN PRIMARY KEY ([RUN_ID]),
+  -- v6: UNIQUE روی (PER_ID, RUN_NO) به‌جای فقط PER_ID
+  CONSTRAINT UQ_RUN_PERIOD_NO UNIQUE ([PER_ID],[RUN_NO]),
+  CONSTRAINT FK_RUN_PER  FOREIGN KEY ([PER_ID])      REFERENCES [PAY2_PERIOD]([PER_ID]),
+  CONSTRAINT FK_RUN_PREV FOREIGN KEY ([PREV_RUN_ID]) REFERENCES [PAY2_RUN]([RUN_ID])
+);
+
+-- نتیجه per پرسنل
+CREATE TABLE [dbo].[PAY2_RUN_LINE]
+(
+  [RUN_ID]         INT    NOT NULL,
+  [EMP_ID]         INT    NOT NULL,
+  [DEC_ID]         INT    NULL,       -- حکم استفاده‌شده
+  [WORK_DAYS]      DECIMAL(5,2) NOT NULL,
+  -- پرداختی‌ها
+  [GROSS_PAY]      BIGINT NOT NULL,   -- ناخالص (کل پرداختی قبل از کسر)
+  -- بیمه
+  [INS_BASE]       BIGINT NOT NULL,   -- مبنای بیمه
+  [INS_WORKER]     BIGINT NOT NULL,   -- کسر بیمه کارگر (۷٪)
+  [INS_EMPLOYER]   BIGINT NOT NULL,   -- بیمه کارفرما (۲۳٪)
+  -- مالیات
+  [TAX_BASE]       BIGINT NOT NULL,   -- مبنای مالیات
+  [TAX_AMOUNT]     BIGINT NOT NULL,
+  -- کسورات دیگر
+  [LOAN_DED]       BIGINT NOT NULL CONSTRAINT DF_RL_LD DEFAULT(0),
+  [ADVANCE_DED]    BIGINT NOT NULL CONSTRAINT DF_RL_AD DEFAULT(0),   -- مساعده هوشمند
+  [OTHER_DED]      BIGINT NOT NULL CONSTRAINT DF_RL_OD DEFAULT(0),
+  [TOTAL_DED]      BIGINT NOT NULL,
+  -- خالص
+  [NET_PAY]        BIGINT NOT NULL,   -- خالص پرداختی
+  -- اطلاعات فیش
+  [LEAVE_BAL_DAYS] DECIMAL(5,2) NULL,  -- مانده مرخصی (روز)
+  [LOAN_BALANCE]   BIGINT       NULL,  -- مانده وام
+  [ADVANCE_BALANCE_SNAP] BIGINT NULL,  -- عکس مانده مساعده در لحظه محاسبه
+  CONSTRAINT PK_PAY2_RUN_LINE PRIMARY KEY ([RUN_ID],[EMP_ID]),
+  CONSTRAINT FK_RL_RUN FOREIGN KEY ([RUN_ID]) REFERENCES [PAY2_RUN]([RUN_ID]),
+  CONSTRAINT FK_RL_EMP FOREIGN KEY ([EMP_ID]) REFERENCES [PAY2_EMPLOYEE]([EMP_ID])
+);
+
+-- ریز آیتمی (برای فیش تفصیلی و حسابرسی)
+CREATE TABLE [dbo].[PAY2_RUN_DETAIL]
+(
+  [RUN_ID]      INT    NOT NULL,
+  [EMP_ID]      INT    NOT NULL,
+  [ITEM_ID]     INT    NOT NULL,
+  [AMOUNT]      BIGINT NOT NULL,
+  [INS_SUBJECT] BIT    NOT NULL,   -- مشمول بیمه بود؟
+  [TAX_SUBJECT] BIT    NOT NULL,   -- مشمول مالیات بود؟
+  CONSTRAINT PK_PAY2_RUN_DETAIL PRIMARY KEY ([RUN_ID],[EMP_ID],[ITEM_ID]),
+  CONSTRAINT FK_RD_LINE FOREIGN KEY ([RUN_ID],[EMP_ID])
+    REFERENCES [PAY2_RUN_LINE]([RUN_ID],[EMP_ID]) ON DELETE CASCADE
+);
+
+--------------------------------------------------------------------------------
+۱۲.  موتور محاسبه  --  الگوریتم
+یک Stored Procedure مرکزی (SP_PAY2_CALC_RUN) کل محاسبه یک ماه را برای یک کارگاه انجام می‌دهد.
+
+                                    گام
+                                 عملیات
+                                 جزئیات
+                                                                             ۱
+                                                بارگذاری تنظیمات
+SELECT تمام ردیف‌های PAY2_CONFIG مرتبط به متغیرهای محلی
+                                                                             ۲
+                                                            ایجاد PAY2_RUN
+                       INSERT هدر اجرا با STATUS=1 (پیش‌نویس)
+                                                                             ۳
+                                        حلقه روی پرسنل کارگاه
+                 cursor روی PAY2_EMPLOYEE WHERE WS_ID=@WS_ID AND IS_ACTIVE=1
+                                                                             ۴
+                                                   یافتن حکم معتبر
+SELECT از PAY2_DECREE WHERE EMP_ID=@EMP AND EFF_FROM<=@PER AND (EFF_TO IS NULL OR EFF_TO>=@PER)
+پشتیبانی از دو حکم (تغییر وسط ماه) با تقسیم روزها
+                                                                             ۵
+                                              محاسبه هر آیتم حکم
+                                                برای هر PAY2_DECREE_LINE:
+                   بررسی PAY2_OVERRIDE برای این پرسنل+آیتم
+                                  تعیین basis = OV یا LINE یا ITEM_DEF
+       اگر basis=روزانه: amount = AMOUNT x (WORK_DAYS / @MONTH_DAYS)
+                        اگر basis=ماهیانه: amount = AMOUNT (کامل)
+                                                                             ۶
+                                      افزودن آیتم‌های متغیر
+اضافه‌کار عادی = OT_NORMAL_H x (BASE_SAL/(@MONTH_DAYSx@OT_HOUR_BASE)) x @OT_NORMAL_MULT
+    اضافه‌کار تعطیل = OT_HOLIDAY_H x نرخ x @OT_HOLIDAY_MULT
+                                                  سایر: از PAY2_ATT_VALUE
+                                                                             ۷
+                                                          محاسبه بیمه
+                                 مبنا = Σ(آیتم‌های INS_SUBJECT=1)
+      اگر INS_CEILING_APPLY=1: مبنا = MIN(مبنا, INS_CEILING_MONTHLY)
+                         بیمه_کارگر = مبنا x INS_WORKER_RATE/100
+بیمه_کارفرما = مبنا x (INS_EMPLOYER_RATE + CASE WHEN IS_MANAGER=0 THEN INS_UNEMP_RATE ELSE 0 END) /100
+                                                                             ۸
+                                                      محاسبه مالیات
+                                 مبنا = Σ(آیتم‌های TAX_SUBJECT=1)
+             اگر TAX_DEDUCT_INS=1: مبنا = مبنا - بیمه_کارگر
+                               مبنا = MAX(0, مبنا - TAX_EXEMPT_MONTHLY)
+اعمال REGION_DEPRIVATION: مبنا = مبنا x (1 - REGION_DEPRIVATION/100)
+سالانه = مبناx12 --> جستجو در PAY2_TAX_BRACKET --> مالیات_ماهانه = نتیجه/12
+                                                                             ۹
+                                                      مساعده هوشمند
+      فراخوانی SP_PAY2_GET_ADVANCES(@PERIOD_DATE, @PAYROLL_N_S, @WS_ID)
+                          این SP از DEED_HED + DEED_DTL می‌خواند:
+                   WHERE HES_K=@ADV_HES_K AND HES_M=@ADV_HES_M AND HES_T=@ACC_T
+                                             AND DEED_HED.N_S < @PAYROLL_N_S
+                                    AND FN_PAY2_MONTH(DATE_S) = ماه_جاری
+                                                                      AND OKF=1
+                                    کسر استثناهای PAY2_ADVANCE_EXCL
+                     اگر ADV_MIN_POSITIVE=1 و مانده<=0: advance_ded=0
+                                                                           ۱۰
+                                                     کسر وام خودکار
+                                        SELECT SUM(AMOUNT) FROM PAY2_LOAN_SCHED
+WHERE LOAN_ID IN (SELECT LOAN_ID FROM PAY2_LOAN WHERE EMP_ID=@EMP AND IS_ACTIVE=1)
+                                         AND DUE_PERIOD=@PER AND RUN_ID IS NULL
+                                                                           ۱۱
+                                                          محاسبه خالص
+            NET = GROSS - INS_WORKER - TAX - LOAN_DED - ADVANCE_DED - OTHER_DED
+             گرد کردن: NET = ROUND(NET / @ROUND_MODE, 0) x @ROUND_MODE
+                                                                           ۱۲
+                                                          ذخیره نتایج
+                                         INSERT به PAY2_RUN_LINE (خلاصه)
+                                INSERT به PAY2_RUN_DETAIL (ریز آیتمی)
+                                     UPDATE PAY2_LOAN_SCHED: RUN_ID پر شود
+         UPDATE PAY2_LEAVE_BAL با مرخصی‌های استفاده‌شده
+
+                                ۱۲.۱  محاسبه مالیات پلکانی
+CREATE FUNCTION [dbo].[FN_PAY2_CALC_TAX](@ANNUAL_BASE BIGINT, @TAX_YEAR SMALLINT)
+RETURNS BIGINT AS
+BEGIN
+  DECLARE @TAX BIGINT = 0, @PREV_LIMIT BIGINT = 0
+  DECLARE @RATE DECIMAL(5,2), @LIMIT BIGINT, @FIXED BIGINT
+
+  DECLARE cur CURSOR FOR
+    SELECT UPPER_LIMIT, RATE_PCT, FIXED_TAX FROM PAY2_TAX_BRACKET
+    WHERE TAX_YEAR=@TAX_YEAR ORDER BY SORT_ORDER
+
+  OPEN cur
+  FETCH NEXT FROM cur INTO @LIMIT, @RATE, @FIXED
+
+  WHILE @@FETCH_STATUS=0
+  BEGIN
+    IF @ANNUAL_BASE <= @LIMIT
+    BEGIN
+      SET @TAX = @FIXED + CAST((@ANNUAL_BASE - @PREV_LIMIT) * @RATE / 100 AS BIGINT)
+      BREAK
+    END
+    SET @PREV_LIMIT = @LIMIT
+    FETCH NEXT FROM cur INTO @LIMIT, @RATE, @FIXED
+  END
+
+  -- اگر از همه پله‌ها بیشتر بود: پله آخر اعمال شود
+  IF @@FETCH_STATUS<>0 AND @TAX=0
+    SET @TAX = @FIXED + CAST((@ANNUAL_BASE-@PREV_LIMIT)*@RATE/100 AS BIGINT)
+
+  CLOSE cur; DEALLOCATE cur
+  RETURN @TAX  -- مالیات سالانه  --  موتور /12 می‌کند
+END
+
+--------------------------------------------------------------------------------
+۱۳.  گزارش‌ها و ارتباط با حسابداری
+                                          ۱۳.۱  گزارش‌های اصلی
+                                  گزارش
+                                   منبع
+                                  توضیح
+                                                                فیش حقوق
+                                                                PAY2_RUN_DETAIL
+                                                                      +RUN_LINE
+تمام آیتم‌های پرداختی و کسوری، مانده وام، مانده مرخصی، مانده مساعده
+                                                              لیست حقوق
+                                                                  PAY2_RUN_LINE
+      خلاصه per پرسنل per کارگاه  --  جمع‌های ستونی
+                                                              لیست بیمه
+                                                                   V_PAY2_BIMEH
+      BIMEH_CODE + روزکار + مبنا + ۷٪ + ۲۳٪  --  per کارگاه
+                                                        دیسکت XML بیمه
+                                                                   V_PAY2_BIMEH
+فرمت XML تأمین اجتماعی  --  per کارگاه با SOCIAL_INS_CODE
+                                                          لیست مالیات
+                                                                  PAY2_RUN_LINE
+                         TAX_BASE + TAX_AMOUNT + کد ملی  --  ماهیانه
+                                                اظهارنامه سالانه
+                                                                    Σ RUN_LINE
+جمع مالیات سالانه per پرسنل برای ارسال به دارایی
+                                                        گزارش مساعده
+                                                                 V_PAY2_ADV_BAL
+مانده حساب معین هر پرسنل + مساعده کسر شده ماه
+                                                     مقایسه ماه‌ها
+                                                                  PAY2_RUN_LINE
+مقایسه NET_PAY + GROSS_PAY بین ماه‌های مختلف per پرسنل
+                                                          گزارش مرخصی
+                                                                 PAY2_LEAVE_BAL
+                              مانده مرخصی سالانه per پرسنل
+                                                            تسویه حساب
+                                                                محاسبه SP
+    عیدی، سنوات، مانده مرخصی  --  بر اساس PAY2_CONFIG
+
+                                                ۱۳.۲  View لیست بیمه
+CREATE VIEW [dbo].[V_PAY2_BIMEH] AS
+SELECT
+  P.PERIOD_DATE,
+  W.SOCIAL_INS_CODE,
+  W.WS_NAME,
+  E.INS_CODE,
+  E.NATIONAL_CODE,
+  E.LAST_NAME + N' ' + E.FIRST_NAME AS FULL_NAME,
+  RL.WORK_DAYS,
+  RL.INS_BASE,
+  RL.INS_WORKER,
+  RL.INS_EMPLOYER,
+  RL.INS_BASE * 0.30 AS TOTAL_BIMEH,
+  E.INS_TYPE
+FROM PAY2_RUN_LINE RL
+INNER JOIN PAY2_RUN R      ON RL.RUN_ID = R.RUN_ID
+INNER JOIN PAY2_PERIOD P   ON R.PER_ID  = P.PER_ID
+INNER JOIN PAY2_WORKSHOP W ON P.WS_ID   = W.WS_ID
+INNER JOIN PAY2_EMPLOYEE E ON RL.EMP_ID = E.EMP_ID;
+
+                                      ۱۳.۳  سند حسابداری حقوق
+پس از نهایی‌شدن محاسبه (STATUS=2)، SP_PAY2_GEN_DEED سند حقوق را ایجاد می‌کند:
+
+                              شرح آرتیکل
+                                 بدهکار
+                               بستانکار
+                                   حساب
+                                            هزینه حقوق و دستمزد
+                                                                   Σ GROSS_PAY
+                                                                             --
+                                                              WS_ACC.SALARY_EXP
+                                             پرداختنی حقوق خالص
+                                                                             --
+                                                                     Σ NET_PAY
+                                                          WS_ACC.SALARY_PAYABLE
+                                   بیمه کارگر (کسر از پرسنل)
+                                                                             --
+                                                                  Σ INS_WORKER
+                                                             WS_ACC.INS_PAYABLE
+                                                          مالیات حقوق
+                                                                             --
+                                                                  Σ TAX_AMOUNT
+                                                             WS_ACC.TAX_PAYABLE
+                                  مساعده (تصفیه حساب پرسنل)
+                                                                             --
+                                                                 Σ ADVANCE_DED
+                                              حساب معین هر پرسنل
+                                                                  قسط وام
+                                                                             --
+                                                                    Σ LOAN_DED
+                                                                حساب وام
+
+--------------------------------------------------------------------------------
+۱۳-ب.  گروه J  --  تسویه حساب پرسنل
+فرم تسویه حساب یکی از پیچیده‌ترین فرم‌های سیستم است. تمام اطلاعات موردنیاز تسویه در جدول PAY2_SETTLEMENT ذخیره می‌شود.
+
+            💡 فیلدهای کشف‌شده از فرم تسویه حساب
+از تصویر فرم: عیدی | بن | مانده مرخصی (ریالی) | حق سنوات | بستانکاری قبلی | بدهکاری قبلی | مالیات عیدی | مانده وام | سابقه تسویه قبلی | مانده مرخصی (دقیقه) | مانده مرخصی (روز) | دستمزد مبنای محاسبه | سابقه (روز)
+
+                            ۱۳-ب.۱  PAY2_SETTLEMENT  --  تسویه حساب
+CREATE TABLE [dbo].[PAY2_SETTLEMENT]
+(
+  [SET_ID]        INT     NOT NULL IDENTITY(1,1),
+  [EMP_ID]        INT     NOT NULL,
+  [WS_ID]         INT     NOT NULL,
+  -- اطلاعات زمانی
+  [SETTLE_DATE]   BIGINT  NOT NULL,    -- تاریخ تسویه شمسی
+  [HIRE_DATE]     BIGINT  NOT NULL,    -- تاریخ شروع به کار (از PAY2_EMPLOYEE)
+  [END_DATE]      BIGINT  NOT NULL,    -- تاریخ پایان کار
+  [SENIORITY_DAYS]INT     NOT NULL,    -- سابقه خدمت (روز)  --  محاسبه‌شده
+  [SENIORITY_YEARS]DECIMAL(6,2) NOT NULL,  -- سابقه (سال  --  برای نمایش)
+  -- مبنای محاسبه
+  [LAST_SALARY]   BIGINT  NOT NULL,    -- دستمزد مبنا (آخرین حکم)
+  [LAST_DAILY]    BIGINT  NOT NULL,    -- نرخ روزانه (برای محاسبه مرخصی)
+  -- سابقه تسویه قبلی (اگر قبلاً تسویه جزئی داشته)
+  [PREV_SET_ID]   INT     NULL,        -- FK به تسویه قبلی
+  [PREV_SENIORITY_DAYS] INT NOT NULL CONSTRAINT DF_SET_PSD DEFAULT(0),
+  -- سابقه‌ای که در تسویه قبلی حساب شده (کسر می‌شود)
+  -- مانده مرخصی
+  [LEAVE_BAL_MIN] INT     NOT NULL CONSTRAINT DF_SET_LBM DEFAULT(0),
+  -- v6: دقیقه‌های مانده مرخصی از PAY2_LEAVE_BAL (مبنای ۴۴۰ دق/روز)
+  -- مانده مرخصی (دقیقه)
+  [LEAVE_BAL_DAYS]DECIMAL(5,2) NOT NULL CONSTRAINT DF_SET_LBD DEFAULT(0),
+  -- مانده مرخصی (روز  --  برای نمایش)
+  -- ═══ ستون‌های درآمد تسویه ═══
+  [EIDI]          BIGINT  NOT NULL CONSTRAINT DF_SET_EID DEFAULT(0),
+  -- عیدی (محاسبه‌شده بر اساس BONUS_MODE)
+  [BON]           BIGINT  NOT NULL CONSTRAINT DF_SET_BON DEFAULT(0),
+  -- بن کارگری قابل پرداخت در تسویه
+  [LEAVE_PAY]     BIGINT  NOT NULL CONSTRAINT DF_SET_LPY DEFAULT(0),
+  -- مانده مرخصی به ریال (روز x نرخ روزانه)
+  [SANAVAT]       BIGINT  NOT NULL CONSTRAINT DF_SET_SAN DEFAULT(0),
+  -- حق سنوات (بر اساس SENIORITY_MODE)
+  [PREV_CREDIT]   BIGINT  NOT NULL CONSTRAINT DF_SET_PCR DEFAULT(0),
+  -- بستانکاری قبلی (از حسابداری یا تسویه قبلی)
+  [OTHER_INCOME]  BIGINT  NOT NULL CONSTRAINT DF_SET_OIN DEFAULT(0),
+  -- سایر درآمدها
+  [TOTAL_INCOME]  AS (EIDI + BON + LEAVE_PAY + SANAVAT + PREV_CREDIT + OTHER_INCOME),
+  -- جمع درآمدها  --  محاسبه‌شده
+  -- ═══ ستون‌های کسورات تسویه ═══
+  [PREV_DEBIT]    BIGINT  NOT NULL CONSTRAINT DF_SET_PDB DEFAULT(0),
+  -- بدهکاری قبلی (مساعده‌های پرداخت‌نشده)
+  [EIDI_TAX]      BIGINT  NOT NULL CONSTRAINT DF_SET_ETX DEFAULT(0),
+  -- مالیات عیدی
+  [LOAN_BALANCE]  BIGINT  NOT NULL CONSTRAINT DF_SET_LBL DEFAULT(0),
+  -- مانده وام قابل کسر
+  [OTHER_DED]     BIGINT  NOT NULL CONSTRAINT DF_SET_ODE DEFAULT(0),
+  -- سایر کسورات
+  [TOTAL_DED]     AS (PREV_DEBIT + EIDI_TAX + LOAN_BALANCE + OTHER_DED),
+  -- جمع کسورات  --  محاسبه‌شده
+  -- ═══ نتیجه ═══
+  [NET_SETTLE]    AS (EIDI + BON + LEAVE_PAY + SANAVAT + PREV_CREDIT + OTHER_INCOME
+                    - PREV_DEBIT - EIDI_TAX - LOAN_BALANCE - OTHER_DED),
+  -- خالص تسویه  --  محاسبه‌شده
+  -- ═══ وضعیت و اسناد ═══
+  [STATUS]        TINYINT NOT NULL CONSTRAINT DF_SET_ST DEFAULT(1),
+  -- 1=پیش‌نویس، 2=نهایی، 3=سند صادر شده
+  [DEED_N_S]      FLOAT   NULL,        -- شماره سند حسابداری تسویه
+  [CALC_METHOD]   NVARCHAR(200)NULL,   -- روش محاسبه (برای حسابرسی  --  JSON)
+  [NOTES]         NVARCHAR(300)NULL,
+  [CREATED_AT]    DATETIME NOT NULL CONSTRAINT DF_SET_CRT DEFAULT(GETDATE()),
+  [CREATED_BY]    INT NULL,
+  [APPROVED_BY]   INT NULL,
+  [APPROVED_AT]   DATETIME NULL,
+  CONSTRAINT PK_PAY2_SETTLEMENT PRIMARY KEY ([SET_ID]),
+  CONSTRAINT FK_SET_EMP  FOREIGN KEY ([EMP_ID])     REFERENCES [PAY2_EMPLOYEE]([EMP_ID]),
+  CONSTRAINT FK_SET_WS   FOREIGN KEY ([WS_ID])      REFERENCES [PAY2_WORKSHOP]([WS_ID]),
+  CONSTRAINT FK_SET_PREV FOREIGN KEY ([PREV_SET_ID]) REFERENCES [PAY2_SETTLEMENT]([SET_ID])
+);
+
+-- Index برای جستجوی تسویه‌های یک پرسنل
+CREATE NONCLUSTERED INDEX IX_SET_EMP ON PAY2_SETTLEMENT([EMP_ID],[SETTLE_DATE]);
+
+             ۱۳-ب.۲  منطق محاسبه تسویه (SP_PAY2_CALC_SETTLE)
+                                       #
+                                 محاسبه
+                             فرمول / منبع
+                                                                             ۱
+                                                            سابقه (روز)
+END_DATE - HIRE_DATE - PREV_SENIORITY_DAYS (روزهایی که قبلاً تسویه شده)
+                                                                             ۲
+                                                          دستمزد مبنا
+آخرین PAY2_DECREE فعال --> آیتم BASE_SAL + سایر مستمرهای مشمول
+                                                                             ۳
+                                                            نرخ روزانه
+     LAST_SALARY / 30 (یا / MIN_WAGE_DAILY اگر کمتر از حداقل)
+                                                                             ۴
+                                                                       عیدی
+                                                    اگر BONUS_MODE=MIN_WAGE:
+                         MIN_WAGE_DAILY x EIDI_MIN_DAYS (حداقل 60 روز)
+                 MAX = MIN_WAGE_DAILY x EIDI_MAX_DAYS (حداکثر 90 روز)
+                                  مبنا = MIN(LAST_SALARY, MIN_WAGE_MONTHLY)
+                                     عیدی = مبنا / 30 x EIDI_MIN_DAYS
+                                                                             ۵
+                                                          مالیات عیدی
+اگر عیدی > حداقل: مازاد مشمول نرخ پایه مالیاتی
+                                          از PAY2_TAX_BRACKET سال جاری
+                                                                             ۶
+                                                                حق سنوات
+                                                اگر SENIORITY_MODE=LAST_SAL:
+                                    سنوات = LAST_SALARY x سال_کامل
+                                      + LAST_SALARY x (روز_کسری / 365)
+                                                                             ۷
+                                               مانده مرخصی ریالی
+                               v6: LEAVE_BAL_MIN / 440 x (LAST_MONTHLY / 26)
+  یعنی مبنا حقوق ماهیانه / ۲۶ روز کاری (نه / ۳۰)
+                                                                             ۸
+                                                    بستانکاری قبلی
+         از PAY2_SETTLEMENT.PREV_CREDIT اگر تسویه قبلی داشته
+                                           یا دستی وارد می‌شود
+                                                                             ۹
+                                                              مانده وام
+                       از V_PAY2_LOAN_BALANCE: SUM(BALANCE) WHERE EMP_ID=@EMP
+                                                                           ۱۰
+                                                        بدهکاری قبلی
+ مانده مساعده از V_PAY2_ADVANCE_BALANCE در تاریخ تسویه
+
+                         ۱۳-ب.۳  نمای کلی فرم تسویه حساب
+                      📌 فیلدهای نمایشی فرم (از تصویر)
+ردیف اول: پرسنل | تاریخ تسویه
+ردیف دوم: تاریخ شروع به کار | تاریخ پایان کار
+ردیف سوم: سابقه (روز) | دستمزد
+ردیف چهارم: سابقه تسویه قبلی | مانده مرخصی (دقیقه)
+ردیف پنجم: مانده مرخصی (روز)
+جدول درآمد: عیدی | بن | مانده مرخصی (ریالی) | حق سنوات | بستانکاری قبلی | جمع درآمدها
+جدول کسورات: بدهکاری قبلی | مالیات عیدی | مانده وام | جمع کسورات
+نتیجه: خالص تسویه
+
+                                 ۱۳-ب.۴  سند حسابداری تسویه
+                              شرح آرتیکل
+                                 بدهکار
+                               بستانکار
+                                   حساب
+                                                            هزینه عیدی
+                                                                           EIDI
+                                                                             --
+                                              هزینه پاداش و عیدی
+                                                     هزینه حق سنوات
+                                                                        SANAVAT
+                                                                             --
+                                                 هزینه پایان خدمت
+                                               هزینه مانده مرخصی
+                                                                      LEAVE_PAY
+                                                                             --
+                                هزینه مرخصی استفاده‌نشده
+                                                    پرداختنی تسویه
+                                                                             --
+                                                                     NET_SETTLE
+                                 بستانکاران متفرقه / صندوق
+                                                     وصول مانده وام
+                                                                             --
+                                                                   LOAN_BALANCE
+                                                     حساب وام پرسنل
+                                                        وصول بدهکاری
+                                                                             --
+                                                                     PREV_DEBIT
+                                    حساب معین پرسنل (مساعده)
+                                                          مالیات عیدی
+                                                                             --
+                                                                       EIDI_TAX
+                                                  پرداختنی مالیات
+
+--------------------------------------------------------------------------------
+۱۴.  مهاجرت از سیستم قدیم (اختیاری)
+                  ✅ هیچ اجباری به مهاجرت وجود ندارد
+سیستم PAY2 کاملاً مستقل است. اگر سازمان بخواهد از سیستم قدیم استفاده کند، هیچ تداخلی ایجاد نمی‌شود. مهاجرت فقط در صورتی که تاریخچه داده‌های قدیم باید در سیستم جدید دیده شود انجام می‌شود.
+
+                               جدول قدیم
+                               جدول جدید
+                             نکات مهاجرت
+                                                                         TAGCOD
+                                                                  PAY2_WORKSHOP
+                                              CODE-->WS_CODE، BARGAH-->WS_NAME
+                                                                       PERSONEL
+                                                                  PAY2_EMPLOYEE
+                  CODE-->EMP_CODE، MELLICOD-->NATIONAL_CODE، HESAB-->ACC_CODE
+                                                                          PHOKM
+                                                               PAY2_DECREE+LINE
+                        هر ستون PHOKM به یک ردیف PAY2_DECREE_LINE
+                                                                        WORKING
+                                                                PAY2_ATTENDANCE
+                      ستون‌های اصلی + ATT_VALUE برای ECOL/KCOL
+                                                                           PVAM
+                                                                PAY2_LOAN+SCHED
+                        MABL-->AMOUNT، MABLBZ-->INSTALLMENT، NUM-->TOTAL_INST
+                                                                        PMORAKH
+                                                                     PAY2_LEAVE
+                                            MORAKHDAY-->DAYS، KINDM-->LEV_TYPE
+                                                                 TCOD_ZARMALIAT
+                                                               PAY2_TAX_BRACKET
+                   تبدیل ساختار پله‌ای با سال مناسب
+                                                              PSANDUGH_KARKONAN
+                                                                 PAY2_ATT_VALUE
+                                    آیتم FUND_DED per پرسنل per ماه
+
+-- نمونه اسکریپت مهاجرت TAGCOD --> PAY2_WORKSHOP
+INSERT INTO PAY2_WORKSHOP (WS_CODE, WS_NAME, IS_ACTIVE, CREATED_AT)
+SELECT CAST(CODE AS NVARCHAR(20)), ISNULL(BARGAH,N'کارگاه '+CAST(CODE AS NVARCHAR)), 1, ISNULL(CRT,GETDATE())
+FROM TAGCOD;
+
+-- نمونه اسکریپت مهاجرت PERSONEL --> PAY2_EMPLOYEE
+INSERT INTO PAY2_EMPLOYEE
+  (EMP_CODE,WS_ID,FIRST_NAME,LAST_NAME,FATHER_NAME,NATIONAL_CODE,
+   HIRE_DATE,EDU_LEVEL,MARITAL,IS_MANAGER,INS_CODE,ACC_CODE,IS_ACTIVE,CREATED_AT)
+SELECT
+  CAST(P.CODE AS NVARCHAR(20)),
+  W.WS_ID,        -- از جدول mapping بعد از مهاجرت TAGCOD
+  P.PNAME, P.PFAMILY, P.FATHER,
+  ISNULL(P.MELLICOD,'0000000000'),
+  ISNULL(P.WSDATE,19800101),
+  P.MADRAK, ISNULL(P.COT,2),
+  ISNULL(P.ISCEO,0), P.BIMEH_NUM, P.HESAB,
+  CASE WHEN P.WEDATE IS NULL THEN 1 ELSE 0 END,
+  GETDATE()
+FROM PERSONEL P
+LEFT JOIN PAY2_WORKSHOP W ON CAST(P.PUNIT AS NVARCHAR(20)) = W.WS_CODE;
+
+--------------------------------------------------------------------------------
+ERD.  نمودار ارتباط موجودیت‌ها (ERD)
+نمودارهای زیر کلیه جداول PAY2 و ارتباطات بین آن‌ها را نشان می‌دهند. برای خوانایی بهتر، جداول بر اساس گروه‌های منطقی تفکیک شده‌اند.
+
+                  گروه A+B  --  پیکربندی، کارگاه، مشاغل
+
+
+                 گروه C+D  --  پرسنل، قرارداد، آیتم‌ها
+
+
+                        گروه E+F  --  احکام، کارکرد، مرخصی
+
+
+  گروه G+H+I+J  --  وام، مساعده، اجرای حقوق، تسویه
+
+
+--------------------------------------------------------------------------------
+۱۵.  کارکرد اسمی، کارکرد رسمی و حالت‌های بیمه
+                                         ۱۵-۱.  تعریف دو کارکرد
+در سیستم قدیمی (Master Karkart) برای هر پرسنل دو مقدار کارکرد جداگانه نگهداری می‌شود که هر کدام نقش متفاوتی در محاسبه دارند:
+                                  متغیر
+                                    نام
+                                 کاربرد
+                                                                           DAYS
+                                                          کارکرد اسمی
+مبنای محاسبه پایه بیمه (MABMASH)  --  ماه کامل یا تعداد روزهای حضور واقعی
+                                                                          DAYSB
+                                                          کارکرد رسمی
+مبنای پرداخت آیتم‌های روزانه  --  آنچه واقعاً پرداخت می‌شود
+
+۱۵-۲.  قانون استفاده از هر کارکرد به تفکیک آیتم
+هر آیتم حقوقی بر اساس ماهیت آن از یکی از این دو کارکرد استفاده می‌کند:
+                                   آیتم
+                             پرداخت (DAYSB)
+                           پایه بیمه (DAYS)
+                                  توضیح
+                                        حقوق پایه رسمی (BASE_SAL_B)
+                                                                       x DAYSB
+                                                                             --
+                           فقط برای پرداخت  --  مبنای شیفت
+                                          حقوق پایه اسمی (BASE_SAL)
+                                                                       x DAYSB
+                                                                        x DAYS
+                                    پرداخت رسمی + مبنای بیمه
+                                                             حق جذب (JAZB)
+                                                                       x DAYSB
+                                                                        x DAYS
+                                                روزانه برای هر دو
+                                               شرایط محیط (CONDITIONS)
+                                                                       x DAYSB
+                                                                        x DAYS
+                                                روزانه برای هر دو
+                                                    ساير مزایا (SAYER)
+                                                                       x DAYSB
+                                                                        x DAYS
+                                                روزانه برای هر دو
+                                                      حق تأهل (HAGHTAHOL)
+                                                                       x DAYSB
+                                                                        x DAYS
+                                                روزانه برای هر دو
+                                                                  حق شیفت
+                                                                       x DAYSB
+                                                                        x DAYS
+                                       درصد x BASE_SAL_B رسمی x DAYSB
+                                              خواربار و مسکن (HOME)
+                                                                قانون ۲۸
+                                                                قانون ۲۸
+                     اگر >=۲۸: کامل، اگر <۲۸: /30 x روز
+                                                     حق اولاد (CHILDREN)
+                                                                قانون ۲۸
+                                                                قانون ۲۸
+                                             همان قانون خواربار
+                                                               حق بن (BONJ)
+                                                                قانون ۲۸
+                                                                        x DAYS
+                                  مشمول بیمه  --  معاف مالیات
+                                                   اضافه‌کار (EZAFAH)
+                                                              مبلغ کامل
+                                                              مبلغ کامل
+                                       مبلغ از قبل محاسبه شده
+                                                        راندمان (PADASH)
+                                                              مبلغ کامل
+                                                              مبلغ کامل
+                                                              مبلغ کامل
+                                                            حق نهار (BON)
+                                                با کسر جمعه/مرخصی
+                                                                             --
+                                              معاف بیمه و مالیات
+
+     ۱۵-۳.  قانون ۲۸ روز برای آیتم‌های ماهیانه
+-- آیتم‌هایی مانند خواربار، حق اولاد، حق بن
+IF @DAYSB >= 28
+    SET @AMOUNT = @MONTHLY_VALUE          -- مبلغ کامل
+ELSE
+    SET @AMOUNT = ROUND(@MONTHLY_VALUE / 30.0 * @DAYSB)  -- تسهیم بر اساس ۳۰
+نکته: عدد مبنا ۳۰ است، نه تعداد واقعی روزهای ماه  --  این رفتار سیستم قدیمی است و در PAY2 نیز حفظ می‌شود.
+  ۱۵-۴.  حق نهار  --  قانون خاص (کسر جمعه و مرخصی)
+-- روزهای واجد حق نهار = کارکرد - جمعه‌های ماه - روزهای مرخصی + تعطیلات رسمی
+-- FRID = تعداد جمعه‌های ماه (از WORKHEAD)
+-- MORAKH = مجموع روزهای مرخصی / 440 دقیقه (روزانه‌سازی)
+-- TDAYS = تعطیلات رسمی‌ای که روز کاری هستند
+
+SET @BON_DAYS = @DAYSB - @FRID - @MORAKH + @TDAYS
+IF @BON_DAYS > 0
+    SET @NAHAR_AMT = @BON * @BON_DAYS
+ELSE
+    SET @NAHAR_AMT = @BON * @DAYSB  -- fallback: پرداخت کامل کارکرد
+
+                  ۱۵-۵.  پایه بیمه (MABMASH)  --  فرمول کامل
+پایه بیمه بر اساس DAYS (اسمی) محاسبه می‌شود و آیتم‌های زیر را شامل می‌شود:MABMASH =
+    (SALARY_DAYLY + JAZBx[H] + BONx[H] + SAYERx[H]
+     + CONDITIONSx[H] + HAGHTAHOLx[H]) x DAYS
+  + EZAFAHx[H]
+  + PADASHx[H]
+  + HOME   x (IF DAYS>=28: 1  ELSE DAYS/30) x [H]
+  + CHILDREN x (IF DAYS>=28: 1 ELSE DAYS/30) x [H]
+  + BONJ   x (IF DAYS>=28: 1  ELSE DAYS/30) x [H]
+  + حق شیفت: (HSHIFT% / 100) x SALARY_DAYLYB x DAYS x [H]
+
+-- [H] = فلگ مشمولیت از BASEKNOW (قابل تنظیم در PAY2_CONFIG)
+
+-- حق نهار (BON) مشمول بیمه نیست
+-- حق بن (BONJ) مشمول بیمه است ولی معاف مالیات
+
+           ۱۵-۶.  دو حالت بیمه کارفرما  --  SANAD و SANAD10
+کارگاه‌هایی که شامل "تبصره ماده ۷" قانون تامین اجتماعی هستند، محاسبه بیمه کارفرما متفاوتی دارند. این تفاوت از طریق فیلد INS_MODE در PAY2_WORKSHOP کنترل می‌شود.
+               حالت ۱  --  کارگاه معمولی (INS_MODE = 1 / SANAD)
+-- H7BIM  = جمع پایه کارگران عادی (TAB56=0, DIHARD=0, BIMEH_NUM>50)
+-- H3BIM  = جمع پایه مدیران (ISCEO=True)  --  از 3% بیکاری معاف
+-- H7BIMJANB = جمع پایه جانبازان (DIHARD=True)  --  نرخ 18%
+
+bimah10 =
+    Round(H7BIM x 0.20)              -- ۲۰% کارفرما
+  + Round((H7BIM - H3BIM) x 0.03)   -- ۳% بیکاری (غیر مدیر)
+  + Round(H7BIMJANB x 0.18)          -- ۱۸% جانباز (بدون ۳% بیکاری)
+
+        حالت ۲  --  کارگاه تبصره‌ای (INS_MODE = 2 / SANAD10)
+در این حالت برای کارگاه‌هایی که تعداد کارگران مشمول آن‌ها بیشتر از ۵ نفر باشد، ۲۰% کارفرما فقط برای مازاد ۵ نفر اول لازم است:-- EPERS = تعداد کارگران مشمول
+--   (DIHARD=0 AND BIMEH_NUM>50 AND TAB56=0 AND DAYS>0)
+-- H7BIM3 = جمع پایه همه مشمولان شامل TAB56  --  برای 3% بیکاری
+-- H7BIM  = جمع پایه کارگران عادی (TAB56=0)  --  برای 20%
+
+IF EPERS > 5
+    bimah10 =
+        Round(H7BIM3 x 0.03)                             -- ۳% بیکاری (همه)
+      + Round(H7BIM / EPERS x 0.20 x (EPERS - 5))        -- ۲۰% فقط برای مازاد ۵ نفر
+      + Round(H7BIMJANB x 0.18)                           -- ۱۸% جانباز
+ELSE
+    bimah10 =
+        Round(H7BIM3 x 0.03)                             -- ۳% بیکاری (همه)
+      + Round(H7BIMJANB x 0.18)                           -- ۱۸% جانباز
+      -- ۲۰% کارفرما صفر است (کمتر از ۵ نفر = معافیت کامل)
+
+                       ۱۵-۷.  جدول مقایسه نرخ‌های بیمه
+                                  مؤلفه
+                                    نرخ
+                                    شرط
+                                  توضیح
+                                                     بیمه سهم کارگر
+                                                                           ۷٪
+                                                              BIMEH_NUM > 50
+                                                                     DIHARD = 0
+                                                کسر از حقوق پرسنل
+                                                 بیمه سهم کارفرما
+                                                                         ۲۰٪
+                                                    INS_MODE = 1 (معمولی)
+                                                              تمام پایه
+                                      بیمه کارفرما تبصره‌ای
+                                                                         ۲۰٪
+                                                   INS_MODE = 2 و EPERS > 5
+                                                    فقط مازاد ۵ نفر
+                                                                   بیکاری
+                                                                           ۳٪
+                                             TAB56 = 0 (غیر تبصره ۵۶)
+                                          از پایه کارگران عادی
+                                                                   جانباز
+                                                                         ۱۸٪
+                                                                     DIHARD = 1
+                            بدون 3% بیکاری  --  بدون 7% کارگر
+                                                    مدیر / مشمول ISCEO
+                                                                  ۲۰٪ فقط
+                                                           ISCEO = 1, TAB56 = 0
+                                                  از 3% بیکاری معاف
+
+۱۵-۸.  تغییرات طراحی برای پشتیبانی از این قوانین
+بر اساس تحلیل کد WORKHEAD.cls، تغییرات زیر به طراحی PAY2 اضافه شد:
+                                                  اضافه به PAY2_WORKSHOP
+INS_MODE  TINYINT  NOT NULL  DEFAULT 1
+-- 1 = کارگاه معمولی  (SANAD)
+-- 2 = کارگاه تبصره ماده ۷ (SANAD10)
+
+                                                    اضافه به PAY2_CONFIG
+('INS_EXEMPT_COUNT',   '5',    'تعداد کارگران معاف در تبصره ماده ۷'),
+('INS_JANBAZ_RATE',    '0.18', 'نرخ بیمه کارفرما برای جانبازان'),
+('INS_TAB56_UNEMP',    '0',    'آیا تبصره ۵۶ مشمول 3% بیکاری هست  --  0=خیر')
+
+                                       اضافه/تصحیح در PAY2_ITEM_DEF
+-- فیلد INS_BASE_DAYS: از کدام کارکرد برای پایه بیمه استفاده شود
+INS_BASE_DAYS  TINYINT  NOT NULL  DEFAULT 1
+-- 1 = DAYS  (کارکرد اسمی)   <-- اکثر آیتم‌ها
+-- 2 = DAYSB (کارکرد رسمی)   <-- در صورت نیاز
+
+-- فیلد PAY_BASE_DAYS: از کدام کارکرد برای پرداخت استفاده شود
+PAY_BASE_DAYS  TINYINT  NOT NULL  DEFAULT 2
+-- 1 = DAYS  (کارکرد اسمی)
+-- 2 = DAYSB (کارکرد رسمی)   <-- پرداخت همیشه رسمی است
+
+                                                اضافه به PAY2_ATTENDANCE
+DAYS        DECIMAL(5,2)  NOT NULL  DEFAULT 0,  -- کارکرد اسمی (مبنای بیمه)
+DAYSB       DECIMAL(5,2)  NOT NULL  DEFAULT 0,  -- کارکرد رسمی (مبنای پرداخت)
+FRID_COUNT  TINYINT       NOT NULL  DEFAULT 0,  -- تعداد جمعه‌های ماه (برای نهار)
+TDAYS       DECIMAL(5,2)  NOT NULL  DEFAULT 0,  -- تعطیلات رسمی قابل جبران
+
+--------------------------------------------------------------------------------
+۱۶.  فهرست کامل جداول PAY2
+                                       #
+                           نام جدول / شیء
+                                   گروه
+                                  خلاصه
+                                                                             ۱
+                                                                    PAY2_CONFIG
+                                                                              A
+پیکربندی مرکزی  --  ۳۲ تنظیم آپشنال شامل MIN_WAGE_DAILY/MONTHLY، EIDI_MIN/MAX_DAYS
+                                                                             ۲
+                                                                PAY2_CONFIG_LOG
+                                                                              A
+                              لاگ خودکار تغییرات تنظیمات
+                                                                             ۳
+                                                               PAY2_TAX_BRACKET
+                                                                              A
+               جدول مالیات پلکانی  --  per سال مالیاتی
+                                                                             ۴
+                                                                  PAY2_WORKSHOP
+                                                                              B
+    کارگاه‌های مستقل با مشخصات بیمه و مالیات
+                                                                             ۵
+                                                              PAY2_WORKSHOP_ACC
+                                                                              B
+                         سرفصل‌های حسابداری هر کارگاه
+                                                                             ۶
+                                                                       PAY2_JOB
+                                                                              C
+         جدول مشاغل کد پسند (جایگزین متن آزاد) ✨
+                                                                             ۷
+                                                                  PAY2_EMPLOYEE
+                                                                              C
+پرسنل  --  محل صدور، ملیت، جانباز، کارت ساعت، حساب بانکی ✨
+                                                                             ۸
+                                                                  PAY2_CONTRACT
+                                                                              C
+                          قراردادها (دائم، موقت، ساعتی)
+                                                                             ۹
+                                                                 PAY2_LEAVE_BAL
+                                                                              C
+            مانده مرخصی به دقیقه per پرسنل per سال ✨
+                                                                           ۱۰
+                                                                  PAY2_ITEM_DEF
+                                                                              D
+تعریف آیتم‌های پویا  --  شامل حق نهار و ۲ نرخ روزانه ✨
+                                                                           ۱۱
+                                                             PAY2_ITEM_TEMPLATE
+                                                                              D
+                        قالب‌های حکم برای مشاغل یکسان
+                                                                           ۱۲
+                                                            PAY2_ITEM_TMPL_LINE
+                                                                              D
+                آیتم‌های هر قالب با مبالغ پیش‌فرض
+                                                                           ۱۳
+                                                                    PAY2_DECREE
+                                                                              E
+                                             هدر احکام کارگزینی
+                                                                           ۱۴
+                                                               PAY2_DECREE_LINE
+                                                                              E
+                                         آیتم‌های پویا هر حکم
+                                                                           ۱۵
+                                                                  PAY2_OVERRIDE
+                                                                              E
+                  استثناهای مشمولیت per پرسنل per آیتم
+                                                                           ۱۶
+                                                                    PAY2_PERIOD
+                                                                              F
+         دوره ماهیانه  --  HOLIDAY_DAYS، TENDAR_APPLY، DEED_N_S_PAY
+                                                                           ۱۷
+                                                                PAY2_ATTENDANCE
+                                                                              F
+کارکرد  --  تفکیک واحد (تولید/اداری/خدمات/فروش)، OT_ADMIN_H
+                                                                           ۱۸
+                                                                 PAY2_ATT_VALUE
+                                                                              F
+                                مقادیر متغیر اضافی per آیتم
+                                                                           ۱۹
+                                                                     PAY2_LEAVE
+                                                                              F
+مرخصی  --  روز+ساعت+دقیقه، ارجاع به، ۳ سطح تأیید ✨
+                                                                           ۲۰
+                                                                      PAY2_LOAN
+                                                                              G
+                    وام  --  LOAN_TYPE (قرض‌الحسنه/رفاهی/...)
+                                                                           ۲۱
+                                                                PAY2_LOAN_SCHED
+                                                                              G
+                                  جدول اقساط  --  per قسط per ماه
+                                                                           ۲۲
+                                                              PAY2_ADVANCE_EXCL
+                                                                              H
+                                       استثناهای دستی مساعده
+                                                                           ۲۳
+                                                           SP_PAY2_GET_ADVANCES
+                                                                              H
+                            SP مساعده هوشمند از DEED_HED+DEED_DTL
+                                                                           ۲۴
+                                                            V_PAY2_LOAN_BALANCE
+                                                                              G
+                                          View مانده وام per پرسنل
+                                                                           ۲۵
+                                                                       PAY2_RUN
+                                                                              I
+                         هدر اجرای حقوق per ماه per کارگاه
+                                                                           ۲۶
+                                                                  PAY2_RUN_LINE
+                                                                              I
+                                         نتیجه محاسبه per پرسنل
+                                                                           ۲۷
+                                                                PAY2_RUN_DETAIL
+                                                                              I
+                        ریز آیتمی نتایج (حسابرسی و فیش)
+                                                                           ۲۸
+                                                                   V_PAY2_BIMEH
+                                                                              I
+                       View لیست بیمه برای دیسکت و گزارش
+                                                                           ۲۹
+                                                               FN_PAY2_CALC_TAX
+                                                                              I
+                                تابع محاسبه مالیات پلکانی
+                                                                           ۳۰
+                                                             TR_PAY2_CONFIG_LOG
+                                                                              A
+                                     Trigger لاگ خودکار تنظیمات
+                                                                           ۳۱
+                                                                PAY2_SETTLEMENT
+                                                                              J
+تسویه حساب  --  عیدی، سنوات، مانده مرخصی، بستانکاری/بدهکاری
+
+--------------------------------------------------------------------------------
+
+
+                                          ✅ طراحی کامل و نهایی
+تمام اجزای سیستم PAY2 طراحی شده‌اند. View مساعده هوشمند (SP_PAY2_GET_ADVANCES) بر اساس ساختار واقعی DEED_HED و DEED_DTL نهایی شد. تنها کار باقی‌مانده پیکربندی اولیه: مقداردهی ADV_HES_K و ADV_HES_M در PAY2_CONFIG و مقداردهی ACC_T در PAY2_EMPLOYEE برای هر پرسنل.
+
+--------------------------------------------------------------------------------
+پایان سند  --  PAY2 v1.0  --  طراحی کامل از پایه
