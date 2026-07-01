@@ -348,8 +348,8 @@
                             style="height:38px;"
                             @onclick="ExportExcel"
                             disabled="@(RunData.Lines.Count == 0)"
-                            title="خروجی Excel از کل فیش‌های این دوره">
-                        <i class="bi bi-file-earmark-excel"></i> خروجی Excel
+                            title="خروجی Excel فرمول‌دار و قابل ردیابی از کل فیش‌های این دوره">
+                        <i class="bi bi-file-earmark-excel"></i> خروجی Excel فرمول‌دار
                     </button>
 
                     <div style="flex-grow:1;"></div>
@@ -922,8 +922,8 @@
     }
 
     // ════════════════════════════════════════════════════════════════
-    // خروجی Excel (XLSX واقعی) از کل فیش‌های دورهٔ جاری — شامل ستون‌های
-    // پویای آیتم‌های حقوقی و ردیف جمع. مستقل از موتور خروجی Syncfusion.
+    // خروجی Excel فرمول‌دار از سرور: شیت قابل مشاهده، شیت داده خام/تنظیمات،
+    // و کنترل تطابق برای توضیح دقیق مسیر محاسبه و مقایسه با موتور C#.
     // ════════════════════════════════════════════════════════════════
     async Task ExportExcel()
     {
@@ -935,8 +935,14 @@
 
         try
         {
-            var bytes = Safir.Client.Components.Grid.SalaryGridExcelExporter.Build(RunData);
-            await JS.InvokeVoidAsync("downloadFileFromBytes", $"Payroll_{SelectedPeriodDate}.xlsx", bytes);
+            if (CurrentRun == null)
+            {
+                Snackbar.Add("اجرای حقوق برای خروجی Excel مشخص نیست.", MudBlazor.Severity.Warning);
+                return;
+            }
+
+            var bytes = await RunApi.GetExcelAuditAsync(CurrentRun.RUN_ID);
+            await JS.InvokeVoidAsync("downloadFileFromBytes", $"Payroll_Audit_{SelectedPeriodDate}_{CurrentRun.RUN_ID}.xlsx", bytes);
         }
         catch (Exception ex)
         {
