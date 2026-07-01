@@ -205,9 +205,10 @@ namespace Safir.Server.Controllers
             var raw = wb.Worksheets.Add("داده خام");
             var decreeTrace = wb.Worksheets.Add("ردیابی حکم");
             var trace = wb.Worksheets.Add("ردیابی اقلام");
+            var deductionTrace = wb.Worksheets.Add("ردیابی کسورات");
             var pay = wb.Worksheets.Add("فیش حقوقی");
             var ctl = wb.Worksheets.Add("کنترل تطابق");
-            cfg.RightToLeft = raw.RightToLeft = decreeTrace.RightToLeft = trace.RightToLeft = pay.RightToLeft = ctl.RightToLeft = true;
+            cfg.RightToLeft = raw.RightToLeft = decreeTrace.RightToLeft = trace.RightToLeft = deductionTrace.RightToLeft = pay.RightToLeft = ctl.RightToLeft = true;
 
             cfg.Cell(1, 1).Value = "کلید"; cfg.Cell(1, 2).Value = "مقدار"; cfg.Cell(1, 3).Value = "عنوان";
             for (int i = 0; i < configs.Count; i++)
@@ -301,6 +302,19 @@ namespace Safir.Server.Controllers
                 }
             }
 
+            string[] deductionHeaders = { "کد", "نام", "کد کسر", "عنوان کسر", "مبلغ موتور", "مبلغ فرمولی", "فرمول", "شرح" };
+            for (int c = 0; c < deductionHeaders.Length; c++) deductionTrace.Cell(1, c + 1).Value = deductionHeaders[c];
+            int deductionRow = 2;
+            for (int r = 0; r < lines.Count; r++)
+            {
+                int rawRow = r + 2;
+                AddDeductionTraceRow(deductionTrace, deductionRow++, rawRow, "INS_DED", "بیمه کارگر", $"'فیش حقوقی'!F{rawRow}", "مبنای بیمه × INS_WORKER_RATE");
+                AddDeductionTraceRow(deductionTrace, deductionRow++, rawRow, "TAX_DED", "مالیات", $"'فیش حقوقی'!I{rawRow}", "مالیات پلکانی سالانه/۱۲ پس از معافیت‌ها");
+                AddDeductionTraceRow(deductionTrace, deductionRow++, rawRow, "LOAN_DED", "قسط وام", $"'داده خام'!{ColLetter(loanRawCol)}{rawRow}", "جمع اقساط PAY2_LOAN_SCHED ثبت‌شده برای این Run/دوره");
+                AddDeductionTraceRow(deductionTrace, deductionRow++, rawRow, "ADVANCE_DED", "مساعده", $"'داده خام'!{ColLetter(advRawCol)}{rawRow}", "خروجی مساعده هوشمند موتور در لحظه Run");
+                AddDeductionTraceRow(deductionTrace, deductionRow++, rawRow, "OTHER_DED", "سایر کسورات", $"'داده خام'!{ColLetter(otherDedRawCol)}{rawRow}", "کسورات دستی/سایر از کارکرد ماه");
+            }
+
             string[] payHeaders = { "کد", "نام", "روز کارکرد", "ناخالص فرمولی", "مبنای بیمه فرمولی", "بیمه کارگر فرمولی", "مشمول مالیات قبل معافیت", "مبنای مالیات فرمولی", "مالیات فرمولی", "کل کسورات فرمولی", "خالص پرداختی فرمولی", "شرح فرمول" };
             for (int c = 0; c < payHeaders.Length; c++) pay.Cell(1, c + 1).Value = payHeaders[c];
             for (int r = 0; r < lines.Count; r++)
@@ -315,7 +329,7 @@ namespace Safir.Server.Controllers
                 pay.Cell(rr, 7).FormulaA1 = BuildSubjectSumFormula(columns, rr, itemStartCol, x => x.TAX_SUBJECT);
                 pay.Cell(rr, 8).FormulaA1 = $"IF('داده خام'!C{rr}=1,0,ROUND(MAX(0,(G{rr}-IF(IFERROR(VLOOKUP(\"TAX_DEDUCT_INS\",'تنظیمات'!A:B,2,FALSE),1)=1,F{rr},0)-IFERROR(VLOOKUP(\"TAX_EXEMPT_MONTHLY\",'تنظیمات'!A:B,2,FALSE),0))*IF(IFERROR(VLOOKUP(\"TAX_DEPRIVATION_APPLY\",'تنظیمات'!A:B,2,FALSE),1)=1,1-'داده خام'!D{rr}/100,1)),0))";
                 pay.Cell(rr, 9).FormulaA1 = GenerateMonthlyTaxFormula($"H{rr}", taxBrackets);
-                pay.Cell(rr, 10).FormulaA1 = $"ROUND(F{rr}+I{rr}+'داده خام'!{ColLetter(loanRawCol)}{rr}+'داده خام'!{ColLetter(advRawCol)}{rr}+'داده خام'!{ColLetter(otherDedRawCol)}{rr},0)";
+                pay.Cell(rr, 10).FormulaA1 = $"ROUND(SUMIFS('ردیابی کسورات'!F:F,'ردیابی کسورات'!A:A,A{rr}),0)";
                 pay.Cell(rr, 11).FormulaA1 = $"ROUND((D{rr}-J{rr})/IFERROR(VLOOKUP(\"ROUND_MODE\",'تنظیمات'!A:B,2,FALSE),1),0)*IFERROR(VLOOKUP(\"ROUND_MODE\",'تنظیمات'!A:B,2,FALSE),1)";
                 pay.Cell(rr, 12).Value = "بیمه: MIN اقلام مشمول با سقف INS_CEILING؛ مالیات: اقلام مشمول - بیمه در صورت TAX_DEDUCT_INS - معافیت - منطقه؛ سپس مالیات سالانه/۱۲";
             }
@@ -566,12 +580,30 @@ namespace Safir.Server.Controllers
                 "OT_ADMIN" => $"ROUND({hourly}*'داده خام'!M{rawRow}*IFERROR(VLOOKUP(\"OT_NORMAL_MULT\",{cfg},2,FALSE),1.4),0)",
                 "PERF_BONUS" => $"'داده خام'!Q{rawRow}",
                 "TRANSP" => $"'داده خام'!R{rawRow}",
-                "INS_DED" => rawRef,
-                "TAX_DED" => rawRef,
-                "LOAN_DED" => rawRef,
-                "ADVANCE_DED" => rawRef,
+                "INS_DED" => BuildDeductionBackedFormula("INS_DED", rawRow, rawRef),
+                "TAX_DED" => BuildDeductionBackedFormula("TAX_DED", rawRow, rawRef),
+                "LOAN_DED" => BuildDeductionBackedFormula("LOAN_DED", rawRow, rawRef),
+                "ADVANCE_DED" => BuildDeductionBackedFormula("ADVANCE_DED", rawRow, rawRef),
                 _ => BuildDecreeBackedItemFormula(itemCode, rawRow, rawRef)
             };
+        }
+
+        private static void AddDeductionTraceRow(IXLWorksheet ws, int row, int rawRow, string code, string title, string formula, string description)
+        {
+            ws.Cell(row, 1).FormulaA1 = $"'داده خام'!A{rawRow}";
+            ws.Cell(row, 2).FormulaA1 = $"'داده خام'!B{rawRow}";
+            ws.Cell(row, 3).Value = code;
+            ws.Cell(row, 4).Value = title;
+            ws.Cell(row, 5).FormulaA1 = formula;
+            ws.Cell(row, 6).FormulaA1 = formula;
+            ws.Cell(row, 7).FormulaA1 = $"FORMULATEXT(F{row})";
+            ws.Cell(row, 8).Value = description;
+        }
+
+        private static string BuildDeductionBackedFormula(string itemCode, int rawRow, string rawRef)
+        {
+            string sum = $"SUMIFS('ردیابی کسورات'!F:F,'ردیابی کسورات'!A:A,'داده خام'!A{rawRow},'ردیابی کسورات'!C:C,\"{itemCode}\")";
+            return $"IF({sum}<>0,{sum},{rawRef})";
         }
 
         private static string BuildDecreeBackedItemFormula(string itemCode, int rawRow, string rawRef)
