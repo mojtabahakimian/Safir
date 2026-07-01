@@ -59,6 +59,9 @@ Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
 
 builder.Services.AddScoped<IPermissionService, PermissionService>();
 
+// 🚀 سرویس تولید اکسل حسابرسی با فرمول (ClosedXML)
+builder.Services.AddScoped<Pay2ExcelAuditService>();
+
 #endregion
 
 

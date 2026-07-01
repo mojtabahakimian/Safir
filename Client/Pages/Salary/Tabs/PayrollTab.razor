@@ -927,16 +927,16 @@
     // ════════════════════════════════════════════════════════════════
     async Task ExportExcel()
     {
-        if (RunData?.Lines == null || RunData.Lines.Count == 0)
+        if (CurrentRun == null || CurrentRun.RUN_ID <= 0)
         {
-            Snackbar.Add("داده‌ای برای خروجی Excel وجود ندارد.", MudBlazor.Severity.Warning);
+            Snackbar.Add("ابتدا یک محاسبه انجام دهید.", MudBlazor.Severity.Warning);
             return;
         }
 
         try
         {
-            var bytes = Safir.Client.Components.Grid.SalaryGridExcelExporter.Build(RunData);
-            await JS.InvokeVoidAsync("downloadFileFromBytes", $"Payroll_{SelectedPeriodDate}.xlsx", bytes);
+            var bytes = await RunApi.GetExcelAuditAsync(CurrentRun.RUN_ID);
+            await JS.InvokeVoidAsync("downloadFileFromBytes", $"Payroll_Audit_Run{CurrentRun.RUN_ID}.xlsx", bytes);
         }
         catch (Exception ex)
         {
