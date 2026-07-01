@@ -352,6 +352,21 @@
                         <i class="bi bi-file-earmark-excel"></i> خروجی Excel
                     </button>
 
+                    <button class="btn-outline-pay2 p2-btn-sm"
+                            style="height:38px;"
+                            @onclick="ExportExcelAudit"
+                            disabled="@(RunData.Lines.Count == 0 || _auditBusy)"
+                            title="خروجی Excel تحلیلی: هر عدد یک فرمول واقعی اکسل است که نحوهٔ محاسبه را نشان می‌دهد">
+                        @if (_auditBusy)
+                        {
+                            <i class="bi bi-hourglass-split"></i> <span>در حال ساخت…</span>
+                        }
+                        else
+                        {
+                            <i class="bi bi-calculator"></i> <span>Excel تحلیلی (فرمول‌دار)</span>
+                        }
+                    </button>
+
                     <div style="flex-grow:1;"></div>
 
                     <div class="p2-text-muted" style="font-size:12px;">
@@ -941,6 +956,37 @@
         catch (Exception ex)
         {
             Snackbar.Add("خطا در تهیهٔ خروجی Excel: " + ex.Message, MudBlazor.Severity.Error);
+        }
+    }
+
+    private bool _auditBusy;
+
+    // ════════════════════════════════════════════════════════════════
+    // خروجی Excel تحلیلیِ فرمول‌دار: فایل سمت سرور با ClosedXML ساخته می‌شود
+    // که در آن هر عددِ فیش یک «فرمول واقعی اکسل» است و زنجیرهٔ محاسبهٔ موتور را
+    // بازسازی می‌کند (شیت‌های تنظیمات/پله‌های مالیات/کارکرد خام/محاسبات ریز/فیش/کنترل تطابق).
+    // ════════════════════════════════════════════════════════════════
+    async Task ExportExcelAudit()
+    {
+        if (CurrentRun == null || RunData?.Lines == null || RunData.Lines.Count == 0)
+        {
+            Snackbar.Add("داده‌ای برای خروجی Excel تحلیلی وجود ندارد.", MudBlazor.Severity.Warning);
+            return;
+        }
+
+        _auditBusy = true;
+        try
+        {
+            var bytes = await RunApi.GetExcelAuditAsync(CurrentRun.RUN_ID);
+            await JS.InvokeVoidAsync("downloadFileFromBytes", $"PayrollAudit_{SelectedPeriodDate}.xlsx", bytes);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add("خطا در تهیهٔ اکسل تحلیلی: " + ex.Message, MudBlazor.Severity.Error);
+        }
+        finally
+        {
+            _auditBusy = false;
         }
     }
 }

@@ -98,6 +98,24 @@ namespace Safir.Server.Controllers
         }
 
         // ===================================================================
+        // خروجی اکسلِ تحلیلیِ فرمول‌دار — کل اجرا
+        // فایل XLSX که در آن «هر عددِ فیش، یک فرمولِ واقعی اکسل» است و زنجیرهٔ
+        // محاسبهٔ موتور (SP_PAY2_CALC_RUN) را بازسازی می‌کند. عملیات Read-Only است.
+        // ===================================================================
+        [HttpGet("{runId:int}/excel-audit")]
+        public async Task<IActionResult> GetExcelAudit(int runId)
+        {
+            var service = new Pay2ExcelAuditService(_db);
+            var result = await service.BuildAsync(runId);
+            if (result == null)
+                return NotFound("داده‌ای برای خروجی اکسل تحلیلی یافت نشد.");
+
+            return File(result.Value.Bytes,
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                result.Value.FileName);
+        }
+
+        // ===================================================================
         // فیش حقوقی (PDF) — یک پرسنل در یک اجرا
         // داده آماده می‌شود، PayslipReportDto پر می‌شود و با QuestPDF رندر می‌گردد.
         // قرارداد داده: مزایا از آیتم‌های نوع ۱و۲ (= GROSS_PAY) و کسورات از فیلدهای
