@@ -97,5 +97,20 @@ namespace Safir.Client.Services
             }
             return await res.Content.ReadAsByteArrayAsync();
         }
+
+        // 🚀 دریافت فایل اکسل حسابرسی با فرمول‌های واقعی (Excel Audit)
+        // شامل ۴ شیت: Settings, RawData, Payslip, Control
+        public async Task<byte[]> GetExcelAuditAsync(int runId)
+        {
+            var res = await _http.GetAsync($"api/pay2/run/{runId}/excel-audit");
+            if (!res.IsSuccessStatusCode)
+            {
+                var err = await res.Content.ReadAsStringAsync();
+                throw new Exception(string.IsNullOrWhiteSpace(err)
+                    ? $"خطا در تهیه خروجی اکسل حسابرسی (کد {(int)res.StatusCode})."
+                    : err);
+            }
+            return await res.Content.ReadAsByteArrayAsync();
+        }
     }
 }
