@@ -76,6 +76,19 @@ namespace Safir.Server.Controllers
             // فقط خطوطی که در کلاینت ویرایش شده‌اند را پردازش می‌کنیم (کاهش چشمگیر بار سرور)
             var dirtyLines = request.Lines.Where(x => !x.LOCKED).ToList();
 
+            // اعمال خودکار مجموع کارکردها بر روی WORK_DAYS برای جلوگیری از خطای Constraint دیتابیس
+            foreach (var line in dirtyLines)
+            {
+                var sumDays = line.DAYS_TOLID + line.DAYS_EDARI + line.DAYS_KHADAMAT + line.DAYS_FOROSH;
+                var maxDays = Math.Max(line.DAYS, line.DAYSB);
+                var requiredMinWorkDays = Math.Max(sumDays, maxDays);
+
+                if (line.WORK_DAYS < requiredMinWorkDays)
+                {
+                    line.WORK_DAYS = requiredMinWorkDays;
+                }
+            }
+
             try
             {
                 await _db.ExecuteInTransactionAsync(async (conn, tran) =>
@@ -110,7 +123,7 @@ namespace Safir.Server.Controllers
                 });
                 return Ok();
             }
-            catch (System.Data.SqlClient.SqlException ex) when (ex.Message.Contains("CK_ATT_DAYSB") || ex.Message.Contains("CK_ATT_DAYS"))
+            catch (Microsoft.Data.SqlClient.SqlException ex) when (ex.Message.Contains("CK_ATT_DAYSB") || ex.Message.Contains("CK_ATT_DAYS"))
             {
                 return BadRequest("خطای منطقی: کارکرد اسمی یا رسمی پرسنل نمی‌تواند از مجموع روزهای کارکرد کل بیشتر باشد.");
             }
@@ -187,7 +200,8 @@ namespace Safir.Server.Controllers
                 await _db.ExecuteInTransactionAsync(async (conn, tran) =>
                 {
                     // 🚀 مهار باگ امنیتی: فقط دوره‌ای که "بسته" است (نه محاسبه شده) اجازه باز شدن دارد
-                    var status = await conn.QuerySingleOrDefaultAsync<byte?>("SELECT STATUS FROM PAY2_PERIOD WHERE PER_ID=@perId", new { perId }, tran);
+                    // 🚀 اصلاح پرفورمنس و امنیت: اضافه شدن قفل برای جلوگیری از Race Condition
+                    var status = await conn.QuerySingleOrDefaultAsync<byte?>("SELECT STATUS FROM PAY2_PERIOD WITH (UPDLOCK) WHERE PER_ID=@perId", new { perId }, tran);
 
                     if (status == null)
                         throw new InvalidOperationException("دوره یافت نشد.");
