@@ -16,14 +16,18 @@ namespace Safir.Server.Reports
     public static class Pay2ExcelAuditWorkbook
     {
         // نام شیت‌ها
+        private const string SH_HELP = "راهنما";
         private const string SH_CONFIG = "تنظیمات";
         private const string SH_TAX = "پله‌های مالیات";
         private const string SH_RAW = "کارکرد خام";
         private const string SH_BD = "محاسبات ریز";
         private const string SH_SLIP = "فیش حقوقی";
+        private const string SH_DETAIL = "فیش تفصیلی";
         private const string SH_REC = "کنترل تطابق";
 
         private const string NUM_FMT = "#,##0";
+        private static readonly XLColor HeaderFill = XLColor.FromHtml("#D9E1F2");
+        private static readonly XLColor TitleFill = XLColor.FromHtml("#4472C4");
 
         // ── ستون‌های شیت «محاسبات ریز» (ثابت) ──
         private const int BD_EMP = 1;   // A
@@ -53,16 +57,19 @@ namespace Safir.Server.Reports
         private const int BD_TAXF = 25; // Y  مشمول مالیات؟
         private const int BD_AMT = 26;  // Z  مبلغ پرداخت (فرمول)
         private const int BD_INSAMT = 27;//AA مبلغ مشمول بیمه (فرمول)
+        private const int BD_DESC = 28; // AB  شرح فرمول (متن پویا)
 
         public static byte[] Build(Pay2ExcelAuditData d)
         {
             using var wb = new XLWorkbook();
 
+            BuildHelpSheet(wb, d);
             BuildConfigSheet(wb, d);
             BuildTaxSheet(wb, d);
             BuildRawSheet(wb, d);
-            BuildBreakdownSheet(wb, d);
+            var bdRows = BuildBreakdownSheet(wb, d);
             BuildSlipSheet(wb, d);
+            BuildDetailedSlipSheet(wb, d, bdRows);
             BuildReconciliationSheet(wb, d);
 
             using var ms = new MemoryStream();
@@ -195,7 +202,8 @@ namespace Safir.Server.Reports
         }
 
         // ════════════════════════════ شیت محاسبات ریز ════════════════════════════
-        private static void BuildBreakdownSheet(XLWorkbook wb, Pay2ExcelAuditData d)
+        // خروجی: نگاشتِ EMP_ID → شمارهٔ ردیف‌های این پرسنل (برای ساختِ فیش تفصیلی)
+        private static Dictionary<int, List<int>> BuildBreakdownSheet(XLWorkbook wb, Pay2ExcelAuditData d)
         {
             var ws = wb.Worksheets.Add(SH_BD);
             ws.RightToLeft = true;
@@ -205,10 +213,12 @@ namespace Safir.Server.Reports
                 "EMP_ID","کد پرسنلی","نام","کد آیتم","نام آیتم","منبع","نوع","basis",
                 "نرخ/مبلغ خام","روز پرداخت (خام)","روز بیمه (خام)","روزهای فعال حکم","طول ماه","ضریب تناسب",
                 "ساعت","ضریب اضافه‌کار","نرخ ساعتی مؤثر","پایه روزانه حکم","جمعه‌ها","مرخصی","تعطیل جبرانی","DAYSB",
-                "مشمول ناخالص","مشمول بیمه","مشمول مالیات","مبلغ پرداخت (فرمول)","مبلغ مشمول بیمه (فرمول)"
+                "مشمول ناخالص","مشمول بیمه","مشمول مالیات","مبلغ پرداخت (فرمول)","مبلغ مشمول بیمه (فرمول)","شرح فرمول"
             };
             for (int c = 0; c < headers.Length; c++) ws.Cell(1, c + 1).Value = headers[c];
-            ws.Range(1, 1, 1, headers.Length).Style.Font.Bold = true;
+            var head = ws.Range(1, 1, 1, headers.Length);
+            head.Style.Font.Bold = true;
+            head.Style.Fill.BackgroundColor = HeaderFill;
 
             var defByCode = d.ItemDefs.ToDictionary(x => x.ITEM_CODE, x => x, StringComparer.OrdinalIgnoreCase);
             var linesByEmp = d.DecreeLines.Where(l => l.ACTIVE_DAYS > 0)
@@ -216,11 +226,13 @@ namespace Safir.Server.Reports
                                           .ToDictionary(g => g.Key, g => g.ToList());
             var attByEmp = d.AttValues.GroupBy(a => a.EMP_ID).ToDictionary(g => g.Key, g => g.ToList());
 
+            var bdRows = new Dictionary<int, List<int>>();
             int r = 2;
             foreach (var e in d.Employees)
             {
                 var addedItemIds = new HashSet<int>();
                 var codesPresent = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                var myRows = new List<int>();
 
                 // (۱) خطوط احکام
                 if (linesByEmp.TryGetValue(e.EMP_ID, out var lines))
@@ -230,27 +242,29 @@ namespace Safir.Server.Reports
                         WriteDecreeRow(ws, r, e, l);
                         addedItemIds.Add(l.ITEM_ID);
                         codesPresent.Add(l.ITEM_CODE);
+                        myRows.Add(r);
                         r++;
                     }
                 }
 
                 // (۲) اضافه‌کارِ خودکار (گام ۶ موتور)
-                r = TryWriteAutoOt(ws, r, e, "OT_NORMAL", e.OT_NORMAL_H, "CFG_OT_NORMAL_MULT", defByCode, codesPresent, addedItemIds);
-                r = TryWriteAutoOt(ws, r, e, "OT_HOLIDAY", e.OT_HOLIDAY_H, "CFG_OT_HOLIDAY_MULT", defByCode, codesPresent, addedItemIds);
-                r = TryWriteAutoOt(ws, r, e, "OT_ADMIN", e.OT_ADMIN_H, "CFG_OT_NORMAL_MULT", defByCode, codesPresent, addedItemIds);
+                int b;
+                b = r; r = TryWriteAutoOt(ws, r, e, "OT_NORMAL", e.OT_NORMAL_H, "CFG_OT_NORMAL_MULT", defByCode, codesPresent, addedItemIds); if (r > b) myRows.Add(b);
+                b = r; r = TryWriteAutoOt(ws, r, e, "OT_HOLIDAY", e.OT_HOLIDAY_H, "CFG_OT_HOLIDAY_MULT", defByCode, codesPresent, addedItemIds); if (r > b) myRows.Add(b);
+                b = r; r = TryWriteAutoOt(ws, r, e, "OT_ADMIN", e.OT_ADMIN_H, "CFG_OT_NORMAL_MULT", defByCode, codesPresent, addedItemIds); if (r > b) myRows.Add(b);
 
                 // (۳) پاداش/ناقل از کارکرد
                 if (e.PERF_AMOUNT > 0 && defByCode.TryGetValue("PERF_BONUS", out var perf))
                 {
                     WriteLiteralRow(ws, r, e, perf.ITEM_ID, "PERF_BONUS", perf.ITEM_NAME, perf.ITEM_TYPE,
                         e.PERF_AMOUNT, perf.INS_SUBJECT, perf.TAX_SUBJECT, "کارکرد");
-                    addedItemIds.Add(perf.ITEM_ID); r++;
+                    addedItemIds.Add(perf.ITEM_ID); myRows.Add(r); r++;
                 }
                 if (e.TRANSP_AMOUNT > 0 && defByCode.TryGetValue("TRANSP", out var tr))
                 {
                     WriteLiteralRow(ws, r, e, tr.ITEM_ID, "TRANSP", tr.ITEM_NAME, tr.ITEM_TYPE,
                         e.TRANSP_AMOUNT, tr.INS_SUBJECT, tr.TAX_SUBJECT, "کارکرد");
-                    addedItemIds.Add(tr.ITEM_ID); r++;
+                    addedItemIds.Add(tr.ITEM_ID); myRows.Add(r); r++;
                 }
 
                 // (۴) مقادیر دستیِ آیتم‌ها (بدون دوبار‌شماری)
@@ -261,14 +275,29 @@ namespace Safir.Server.Reports
                         if (addedItemIds.Contains(a.ITEM_ID)) continue;
                         WriteLiteralRow(ws, r, e, a.ITEM_ID, a.ITEM_CODE, a.ITEM_NAME, a.ITEM_TYPE,
                             a.VALUE, a.INS_SUBJECT, a.TAX_SUBJECT, "دستی");
-                        addedItemIds.Add(a.ITEM_ID); r++;
+                        addedItemIds.Add(a.ITEM_ID); myRows.Add(r); r++;
                     }
                 }
+
+                bdRows[e.EMP_ID] = myRows;
             }
 
             ws.Range(2, BD_AMT, Math.Max(2, r - 1), BD_INSAMT).Style.NumberFormat.Format = NUM_FMT;
-            ws.Columns(1, headers.Length).AdjustToContents();
-            ws.Visibility = XLWorksheetVisibility.Hidden;
+            ws.Columns(1, BD_INSAMT).AdjustToContents();
+            ws.Column(BD_DESC).Width = 55;
+
+            AddComment(ws, 1, BD_RATE, "نرخ روزانه یا مبلغ ماهانهٔ آیتم طبق حکم/تنظیم.");
+            AddComment(ws, 1, BD_PDAYS, "روزهای مبنای پرداخت (اسمی یا رسمی بسته به آیتم).");
+            AddComment(ws, 1, BD_IDAYS, "روزهای مبنای بیمه (ممکن است با روزِ پرداخت فرق کند).");
+            AddComment(ws, 1, BD_PRORATE, "ضریبِ تناسب = روزهای فعال حکم ÷ طول ماه.");
+            AddComment(ws, 1, BD_AMT, "مبلغِ نهاییِ این خط (فرمولِ واقعی؛ روی سلول کلیک کنید).");
+            AddComment(ws, 1, BD_DESC, "توضیحِ خواناى همان فرمول با مقادیرِ واقعی.");
+
+            head.SetAutoFilter();
+            ws.SheetView.FreezeRows(1);
+            ws.SheetView.FreezeColumns(3);
+            ws.Visibility = XLWorksheetVisibility.Visible;
+            return bdRows;
         }
 
         private static void WriteDecreeRow(IXLWorksheet ws, int r, Pay2AuditEmpRow e, Pay2AuditDecreeLineRow l)
@@ -314,6 +343,7 @@ namespace Safir.Server.Reports
             var (amt, ins) = DecreeFormulas(l, r);
             ws.Cell(r, BD_AMT).FormulaA1 = amt;
             ws.Cell(r, BD_INSAMT).FormulaA1 = ins;
+            ws.Cell(r, BD_DESC).FormulaA1 = DecreeDescFormula(l, r);
         }
 
         // بازسازیِ شاخه‌به‌شاخهٔ منطق SP برای مبلغِ پرداخت و مبلغِ مشمولِ بیمه
@@ -371,6 +401,43 @@ namespace Safir.Server.Reports
             return (I, I);
         }
 
+        // متنِ خواناى فرمول (به‌صورت فرمولِ اکسل با TEXT/& تا با مقادیر واقعی زنده بماند)
+        private static string DecreeDescFormula(Pay2AuditDecreeLineRow l, int r)
+        {
+            string I = A(BD_RATE, r), J = A(BD_PDAYS, r), M = A(BD_MDAYS, r), N = A(BD_PRORATE, r),
+                   O = A(BD_HOURS, r), Rb = A(BD_DBASE, r), Z = A(BD_AMT, r);
+            string Num(string cell) => $"TEXT({cell},\"#,##0\")";
+            string Fac(string cell) => $"TEXT({cell},\"0.00\")";
+            string code = l.ITEM_CODE.ToUpperInvariant();
+
+            if (code == "BASE_SAL" || code == "BASE_SAL_B" || l.EFF_BASIS == 1)
+                return $"\"= نرخ روزانه \"&{Num(I)}&\" × (\"&{Num(J)}&\" روز × ضریب \"&{Fac(N)}&\") = \"&{Num(Z)}";
+
+            if (code == "HOME" || code == "CHILDREN" || code == "GROCERY")
+                return $"\"= \"&IF({J}>=28,\"کل مبلغ \"&{Num(I)},{Num(I)}&\"×\"&{Num(J)}&\"÷۳۰\")&\" × ضریب \"&{Fac(N)}&\" = \"&{Num(Z)}";
+
+            if (code == "NAHAR")
+                return $"\"= نرخ نهار \"&{Num(I)}&\" × روزهای مشمولِ نهار = \"&{Num(Z)}";
+
+            if (code == "SHIFT")
+            {
+                bool fixedMode = string.Equals(l.EFF_SHIFT_MODE, "FIXED", StringComparison.OrdinalIgnoreCase);
+                return fixedMode
+                    ? $"\"= مبلغ شیفت \"&{Num(I)}&\" × (\"&{Num(J)}&\" روز × ضریب \"&{Fac(N)}&\") ÷ طول ماه \"&{Num(M)}&\" = \"&{Num(Z)}"
+                    : $"\"= پایه روزانه حکم \"&{Num(Rb)}&\" × (روز×ضریب) × \"&{Num(I)}&\"٪ ÷ ۱۰۰ = \"&{Num(Z)}";
+            }
+
+            if (l.EFF_BASIS == 3)
+                return (code == "OT_NORMAL" || code == "OT_HOLIDAY" || code == "OT_ADMIN")
+                    ? $"\"= نرخ \"&{Num(I)}&\" × ساعت \"&{Num(O)}&\" = \"&{Num(Z)}"
+                    : $"\"= نرخ ساعتی \"&{Num(I)}&\" × (روز×ضریب) × مبنای ساعت = \"&{Num(Z)}";
+
+            if (l.EFF_BASIS == 2)
+                return $"\"= مبلغ ماهانه \"&{Num(I)}&IF(CFG_MONTHLY_PRORATE=1,\" × ضریب \"&{Fac(N)},\"\")&\" = \"&{Num(Z)}";
+
+            return $"\"مقدار = \"&{Num(Z)}";
+        }
+
         private static int TryWriteAutoOt(IXLWorksheet ws, int r, Pay2AuditEmpRow e, string code,
             decimal hours, string multName, Dictionary<string, Pay2AuditItemDefRow> defByCode,
             HashSet<string> codesPresent, HashSet<int> addedItemIds)
@@ -403,6 +470,8 @@ namespace Safir.Server.Reports
             string f = $"TRUNC({A(BD_HOURLY, r)}*{A(BD_HOURS, r)}*{A(BD_MULT, r)})";
             ws.Cell(r, BD_AMT).FormulaA1 = f;
             ws.Cell(r, BD_INSAMT).FormulaA1 = f;
+            ws.Cell(r, BD_DESC).FormulaA1 =
+                $"\"= نرخ ساعتیِ مؤثر \"&TEXT({A(BD_HOURLY, r)},\"#,##0\")&\" × ساعت \"&TEXT({A(BD_HOURS, r)},\"#,##0\")&\" × ضریب \"&TEXT({A(BD_MULT, r)},\"0.00\")&\" = \"&TEXT({A(BD_AMT, r)},\"#,##0\")";
 
             addedItemIds.Add(def.ITEM_ID);
             codesPresent.Add(code);
@@ -428,6 +497,16 @@ namespace Safir.Server.Reports
 
             ws.Cell(r, BD_AMT).FormulaA1 = A(BD_RATE, r);
             ws.Cell(r, BD_INSAMT).FormulaA1 = A(BD_RATE, r);
+            ws.Cell(r, BD_DESC).FormulaA1 =
+                $"\"مقدار ({source}) = \"&TEXT({A(BD_AMT, r)},\"#,##0\")";
+        }
+
+        private static void AddComment(IXLWorksheet ws, int row, int col, string text)
+        {
+            var cmt = ws.Cell(row, col).GetComment();
+            cmt.AddText(text);
+            cmt.Style.Size.SetWidth(28);
+            cmt.Style.Size.SetHeight(2);
         }
 
         // ════════════════════════════ شیت فیش حقوقی ════════════════════════════
@@ -471,7 +550,9 @@ namespace Safir.Server.Reports
             ws.Cell(1, cKasr).Value = "سایر کسورات";
             ws.Cell(1, cTotDed).Value = "جمع کسورات";
             ws.Cell(1, cNet).Value = "خالص پرداختی";
-            ws.Range(1, 1, 1, cNet).Style.Font.Bold = true;
+            var slipHead = ws.Range(1, 1, 1, cNet);
+            slipHead.Style.Font.Bold = true;
+            slipHead.Style.Fill.BackgroundColor = HeaderFill;
 
             string BD = SH_BD;
             string bdAmt = $"'{BD}'!{Col(BD_AMT)}:{Col(BD_AMT)}";
@@ -553,7 +634,17 @@ namespace Safir.Server.Reports
             int lastRow = Math.Max(2, r - 1);
             ws.Range(2, 5, lastRow, cNet).Style.NumberFormat.Format = NUM_FMT;
             ws.Columns(1, cNet).AdjustToContents();
+
+            AddComment(ws, 1, cGross, "جمعِ همهٔ مزایا (به‌جز BASE_SAL_B). فرمول: SUMIFS روی «محاسبات ریز».");
+            AddComment(ws, 1, cInsBase, "مبنای بیمه پس از اعمالِ سقف (در صورت فعال بودن).");
+            AddComment(ws, 1, cInsWorker, "بیمهٔ سهم کارگر = مبنای بیمه × درصدِ سهم کارگر.");
+            AddComment(ws, 1, cTaxBase, "مبنای مالیات = (مشمولِ مالیات − بیمهٔ کارگر − معافیت) با اعمالِ منطقهٔ محروم.");
+            AddComment(ws, 1, cTax, "مالیاتِ تصاعدی طبق شیت «پله‌های مالیات» (سالانه ÷ ۱۲).");
+            AddComment(ws, 1, cNet, "خالص = (ناخالص − جمعِ کسورات) با گردکردن طبق واحدِ تنظیم.");
+
+            slipHead.SetAutoFilter();
             ws.SheetView.FreezeRows(1);
+            ws.SheetView.FreezeColumns(3);
         }
 
         // مالیاتِ سالانه به‌صورت IF تودرتوی داینامیک از روی جدول پله‌ها (بدون LAMBDA)
@@ -657,6 +748,174 @@ namespace Safir.Server.Reports
 
             ws.Columns(1, c - 1).AdjustToContents();
             ws.SheetView.FreezeRows(1);
+        }
+
+        // ════════════════════════════ شیت راهنما ════════════════════════════
+        private static void BuildHelpSheet(XLWorkbook wb, Pay2ExcelAuditData d)
+        {
+            var ws = wb.Worksheets.Add(SH_HELP);
+            ws.RightToLeft = true;
+            int r = 1;
+
+            void Title(string t)
+            {
+                ws.Cell(r, 1).Value = t;
+                var rng = ws.Range(r, 1, r, 4);
+                rng.Merge();
+                rng.Style.Font.Bold = true;
+                rng.Style.Font.FontSize = 12;
+                rng.Style.Fill.BackgroundColor = HeaderFill;
+                r++;
+            }
+            void Line(string t)
+            {
+                ws.Cell(r, 1).Value = t;
+                ws.Range(r, 1, r, 4).Merge();
+                r++;
+            }
+            void Kv(string k, string v)
+            {
+                ws.Cell(r, 1).Value = k;
+                ws.Cell(r, 2).Value = v;
+                r++;
+            }
+
+            Title("راهنمای فیش حقوقیِ فرمول‌دار");
+            Line("در این فایل «چگونگیِ محاسبه» شفاف است: هر عددِ فیش یک فرمولِ واقعیِ اکسل است؛ روی هر سلول کلیک کنید تا فرمول را ببینید.");
+            r++;
+
+            Title("ترتیب و کاربردِ شیت‌ها");
+            Line("• فیش تفصیلی: برای هر پرسنل، آیتم‌به‌آیتم «نرخ × روز × ضریب = مبلغ» و سپس گام‌های کسورات تا خالص.");
+            Line("• فیش حقوقی: جدولِ همهٔ پرسنل؛ هر سلولِ عددی یک فرمولِ زنده است.");
+            Line("• محاسبات ریز: ریزِ هر خطِ حکم/آیتم به‌همراه ستونِ «شرح فرمول» (توضیحِ خواناى فرمول).");
+            Line("• کارکرد خام / تنظیمات / پله‌های مالیات: ورودی‌های محاسبه (نرخ‌ها، روزها، ضرایب، پله‌ها).");
+            Line("• کنترل تطابق: اختلافِ خروجیِ فرمولِ اکسل با موتورِ حقوق؛ باید ۰ و سبز باشد.");
+            r++;
+
+            Title("زنجیرهٔ محاسبه (به‌ترتیب)");
+            Line("۱) مبلغِ هر آیتم = نرخ × روز × ضریبِ تناسب (ضریب = روزهای فعالِ حکم ÷ طول ماه).");
+            Line("۲) ناخالص = جمعِ همهٔ مزایا.");
+            Line("۳) مبنای بیمه = جمعِ آیتم‌های مشمولِ بیمه (در صورت فعال بودن، محدود به سقف).");
+            Line("۴) بیمهٔ کارگر = مبنای بیمه × درصدِ سهم کارگر.");
+            Line("۵) مبنای مالیات = (جمعِ مشمولِ مالیات − بیمهٔ کارگر − معافیتِ ماهانه) با اعمالِ منطقهٔ محروم.");
+            Line("۶) مالیات = طبق پله‌های مالیاتِ سالانه (تصاعدی) و سپس ÷ ۱۲.");
+            Line("۷) خالص = (ناخالص − جمعِ کسورات) با گردکردن طبق واحدِ تنظیم.");
+            r++;
+
+            Title($"ضرایب و تنظیمات (لحظهٔ این اجرا — دورهٔ {d.PERIOD_TITLE})");
+            Kv("طول ماه (روز)", d.MONTH_DAYS.ToString(CultureInfo.InvariantCulture));
+            Kv("ضریب اضافه‌کار عادی", CfgDec(d, "OT_NORMAL_MULT", 1.40m).ToString(CultureInfo.InvariantCulture));
+            Kv("ضریب اضافه‌کار تعطیل", CfgDec(d, "OT_HOLIDAY_MULT", 1.40m).ToString(CultureInfo.InvariantCulture));
+            Kv("مبنای ساعتِ روزانه", CfgDec(d, "OT_HOUR_BASE", 7.33m).ToString(CultureInfo.InvariantCulture));
+            Kv("درصد بیمهٔ سهم کارگر", CfgDec(d, "INS_WORKER_RATE", 7m).ToString(CultureInfo.InvariantCulture) + "٪");
+            Kv("اعمالِ سقفِ بیمه؟", CfgInt(d, "INS_CEILING_APPLY", 1) == 1 ? "بله" : "خیر");
+            Kv("سقفِ ماهانهٔ بیمه", CfgLong(d, "INS_CEILING_MONTHLY", 999999999).ToString("#,##0", CultureInfo.InvariantCulture));
+            Kv("معافیتِ ماهانهٔ مالیات", CfgLong(d, "TAX_EXEMPT_MONTHLY", 0).ToString("#,##0", CultureInfo.InvariantCulture));
+            Kv("کسرِ بیمه از مبنای مالیات؟", CfgInt(d, "TAX_DEDUCT_INS", 1) == 1 ? "بله" : "خیر");
+            Kv("واحدِ گردکردنِ خالص", CfgInt(d, "ROUND_MODE", 1).ToString(CultureInfo.InvariantCulture));
+            Kv("سال مالیاتی", d.TAX_YEAR.ToString(CultureInfo.InvariantCulture));
+            r++;
+
+            Line("نکته: اختلافِ چند ریالیِ ناشی از تفاوتِ گردکردنِ اکسل و موتور طبیعی است و در شیتِ «کنترل تطابق» شفاف نمایش داده می‌شود.");
+
+            ws.Column(1).Width = 40;
+            ws.Column(2).Width = 28;
+            ws.Columns(3, 4).Width = 20;
+        }
+
+        // ════════════════════════════ شیت فیش تفصیلی ════════════════════════════
+        private static void BuildDetailedSlipSheet(XLWorkbook wb, Pay2ExcelAuditData d, Dictionary<int, List<int>> bdRows)
+        {
+            var ws = wb.Worksheets.Add(SH_DETAIL);
+            ws.RightToLeft = true;
+
+            int nItems = d.Columns.Count;
+            int baseCol = 4 + nItems;
+            int cGross = baseCol + 1;
+            int cInsWorker = baseCol + 5;
+            int cTax = baseCol + 8;
+            int cLoan = baseCol + 9;
+            int cAdv = baseCol + 10;
+            int cKasr = baseCol + 11;
+            int cTotDed = baseCol + 12;
+            int cNet = baseCol + 13;
+
+            int r = 1;
+            int idx = 0;
+            foreach (var e in d.Employees)
+            {
+                int slipRow = 2 + idx; // هم‌ترتیب با شیت فیش
+                idx++;
+
+                // عنوانِ پرسنل
+                ws.Cell(r, 1).Value = $"فیش حقوقی: {e.FULL_NAME}  (کد {e.EMP_CODE})";
+                var trng = ws.Range(r, 1, r, 4);
+                trng.Merge();
+                trng.Style.Font.Bold = true;
+                trng.Style.Font.FontColor = XLColor.White;
+                trng.Style.Fill.BackgroundColor = TitleFill;
+                r++;
+
+                // سرستونِ آیتم‌ها
+                ws.Cell(r, 1).Value = "آیتم";
+                ws.Cell(r, 2).Value = "منبع";
+                ws.Cell(r, 3).Value = "شرح محاسبه";
+                ws.Cell(r, 4).Value = "مبلغ";
+                var hrng = ws.Range(r, 1, r, 4);
+                hrng.Style.Font.Bold = true;
+                hrng.Style.Fill.BackgroundColor = HeaderFill;
+                r++;
+
+                if (bdRows.TryGetValue(e.EMP_ID, out var rows))
+                {
+                    foreach (var br in rows)
+                    {
+                        ws.Cell(r, 1).FormulaA1 = $"'{SH_BD}'!{A(BD_INAME, br)}";
+                        ws.Cell(r, 2).FormulaA1 = $"'{SH_BD}'!{A(BD_SRC, br)}";
+                        ws.Cell(r, 3).FormulaA1 = $"'{SH_BD}'!{A(BD_DESC, br)}";
+                        ws.Cell(r, 4).FormulaA1 = $"'{SH_BD}'!{A(BD_AMT, br)}";
+                        ws.Cell(r, 4).Style.NumberFormat.Format = NUM_FMT;
+                        r++;
+                    }
+                }
+
+                void Sub(string label, int slipCol, bool bold)
+                {
+                    ws.Cell(r, 1).Value = label;
+                    ws.Range(r, 1, r, 3).Merge();
+                    ws.Cell(r, 4).FormulaA1 = $"'{SH_SLIP}'!{A(slipCol, slipRow)}";
+                    ws.Cell(r, 4).Style.NumberFormat.Format = NUM_FMT;
+                    if (bold)
+                    {
+                        ws.Cell(r, 1).Style.Font.Bold = true;
+                        ws.Cell(r, 4).Style.Font.Bold = true;
+                    }
+                    r++;
+                }
+
+                Sub("جمعِ ناخالص", cGross, true);
+
+                ws.Cell(r, 1).Value = "—— کسورات ——";
+                var drng = ws.Range(r, 1, r, 4);
+                drng.Merge();
+                drng.Style.Font.Italic = true;
+                r++;
+
+                Sub("بیمهٔ کارگر (سهم کارگر)", cInsWorker, false);
+                Sub("مالیات (طبق پله‌ها)", cTax, false);
+                Sub("قسط وام", cLoan, false);
+                Sub("مساعده", cAdv, false);
+                Sub("سایر کسورات", cKasr, false);
+                Sub("جمعِ کسورات", cTotDed, true);
+                Sub("خالصِ پرداختی", cNet, true);
+
+                r += 2; // فاصله بین پرسنل‌ها
+            }
+
+            ws.Column(1).Width = 26;
+            ws.Column(2).Width = 16;
+            ws.Column(3).Width = 62;
+            ws.Column(4).Width = 18;
         }
 
         // ════════════════════════════ کمکی‌ها ════════════════════════════
