@@ -84,6 +84,20 @@ namespace Safir.Client.Services
             if (!res.IsSuccessStatusCode) throw new Exception(await res.Content.ReadAsStringAsync());
         }
 
+        // دریافت بایت‌های اکسلِ تحلیلیِ فرمول‌دار برای کل اجرا
+        public async Task<byte[]> GetExcelAuditAsync(int runId)
+        {
+            var res = await _http.GetAsync($"api/pay2/run/{runId}/excel-audit");
+            if (!res.IsSuccessStatusCode)
+            {
+                var err = await res.Content.ReadAsStringAsync();
+                throw new Exception(string.IsNullOrWhiteSpace(err)
+                    ? $"خطا در تهیهٔ اکسل تحلیلی (کد {(int)res.StatusCode})."
+                    : err);
+            }
+            return await res.Content.ReadAsByteArrayAsync();
+        }
+
         // دریافت بایت‌های PDF فیش حقوقی یک پرسنل (برای نمایش در نمایشگر داخلی مرورگر)
         public async Task<byte[]> GetPayslipPdfAsync(int runId, int empId, bool isOfficial = false)
         {
