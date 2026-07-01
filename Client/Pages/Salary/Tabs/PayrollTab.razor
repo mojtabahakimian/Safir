@@ -367,6 +367,15 @@
                         }
                     </button>
 
+                    <button class="btn-outline-pay2 p2-btn-sm"
+                            style="height:38px;"
+                            @onclick="ToggleDynamicColumns"
+                            disabled="@(_dynCols.Count == 0)"
+                            title="برای سرعت بیشتر، آیتم‌های ریز حقوقی در بارگذاری اولیه ساخته نمی‌شوند. در صورت نیاز آن‌ها را جداگانه نمایش دهید.">
+                        <i class="bi bi-layout-three-columns"></i>
+                        <span>@(_showDynamicPayrollColumns ? "مخفی کردن ریز آیتم‌ها" : $"نمایش ریز آیتم‌ها ({_dynCols.Count})")</span>
+                    </button>
+
                     <div style="flex-grow:1;"></div>
 
                     <div class="p2-text-muted" style="font-size:12px;">
@@ -374,7 +383,7 @@
                     </div>
                 </div>
 
-                <div @key="@($"{CurrentRun?.RUN_ID}-{_dynCols.Count}")" style="height: 62vh; min-height: 380px;">
+                <div @key="@($"{CurrentRun?.RUN_ID}-{_showDynamicPayrollColumns}-{_dynCols.Count}")" style="height: 62vh; min-height: 380px;">
                 <SfGrid @ref="_payrollGrid"
                         TValue="ExpandoObject"
                         DataSource="@_gridData"
@@ -394,19 +403,22 @@
                         <GridColumn Field="EMP_ID" IsPrimaryKey="true" Visible="false" Type="Syncfusion.Blazor.Grids.ColumnType.Number" Width="100" />
 
                         <!-- ۱) کد پرسنلی -->
-                        <GridColumn Field="EMP_CODE" HeaderText="کد پرسنلی" Width="120" TextAlign="TextAlign.Center" Type="Syncfusion.Blazor.Grids.ColumnType.String" Freeze="Syncfusion.Blazor.Grids.FreezeDirection.Right" />
+                        <GridColumn Field="EMP_CODE" HeaderText="کد پرسنلی" Width="120" TextAlign="TextAlign.Center" Type="Syncfusion.Blazor.Grids.ColumnType.String" />
 
                         <!-- ۲) نام و نام خانوادگی -->
-                        <GridColumn Field="FULL_NAME" HeaderText="نام و نام خانوادگی" Width="200" TextAlign="TextAlign.Right" Type="Syncfusion.Blazor.Grids.ColumnType.String" Freeze="Syncfusion.Blazor.Grids.FreezeDirection.Right" />
+                        <GridColumn Field="FULL_NAME" HeaderText="نام و نام خانوادگی" Width="200" TextAlign="TextAlign.Right" Type="Syncfusion.Blazor.Grids.ColumnType.String" />
 
                         <!-- ۳) کارکرد -->
                         <GridColumn Field="WORK_DAYS" HeaderText="کارکرد" Width="100" TextAlign="TextAlign.Center" Type="Syncfusion.Blazor.Grids.ColumnType.Double" Format="N2" AllowSearching="false" />
 
-                        <!-- ۴) ستون‌های پویای آیتم‌های حقوقی -->
-                        @foreach (var dc in _dynCols)
+                        <!-- ۴) ستون‌های پویای آیتم‌های حقوقی: برای سرعت اولیه فقط در صورت درخواست کاربر ساخته می‌شوند -->
+                        @if (_showDynamicPayrollColumns)
                         {
-                            var field = dc.Field;
-                            <GridColumn Field="@field" HeaderText="@dc.Header" Width="170" TextAlign="TextAlign.Center" Type="Syncfusion.Blazor.Grids.ColumnType.Double" Format="N0" AllowSearching="false" />
+                            @foreach (var dc in _dynCols)
+                            {
+                                var field = dc.Field;
+                                <GridColumn Field="@field" HeaderText="@dc.Header" Width="170" TextAlign="TextAlign.Center" Type="Syncfusion.Blazor.Grids.ColumnType.Double" Format="N0" AllowSearching="false" />
+                            }
                         }
 
                         <!-- ۵) ستون‌های مبلغیِ ثابت -->
@@ -479,6 +491,7 @@
     private List<ExpandoObject> _gridData = new();
     // ستون‌های پویا: نام Field امن (itm0، itm1، ...) + عنوان فارسی برای هدر
     private List<(string Field, string Header)> _dynCols = new();
+    private bool _showDynamicPayrollColumns;
 
     // نوار ابزار داخلی گرید Syncfusion (فقط جعبهٔ جستجو؛ خروجی Excel به‌صورت دکمهٔ سفارشی جداست)
     private readonly List<string> _gridToolbar = new() { "Search" };
@@ -487,7 +500,7 @@
     private Syncfusion.Blazor.Grids.SfGrid<ExpandoObject>? _payrollGrid;
 
     // ساخت دادهٔ گرید (ExpandoObject) + تعریف ستون‌های پویا از روی نتیجهٔ محاسبه
-    private void BuildGridData()
+    private void BuildGridData(bool includeDynamicColumns = false)
     {
         _dynCols = new();
         _gridData = new();
@@ -509,8 +522,11 @@
             row["EMP_CODE"] = l.EMP_CODE ?? "";
             row["FULL_NAME"] = l.FULL_NAME ?? "";
             row["WORK_DAYS"] = (double)l.WORK_DAYS;
-            foreach (var c in cols)
-                row[codeToField[c.ITEM_CODE]] = (double)(l.Details != null && l.Details.TryGetValue(c.ITEM_CODE, out var dv) ? dv : 0L);
+            if (includeDynamicColumns)
+            {
+                foreach (var c in cols)
+                    row[codeToField[c.ITEM_CODE]] = (double)(l.Details != null && l.Details.TryGetValue(c.ITEM_CODE, out var dv) ? dv : 0L);
+            }
             row["GROSS_PAY"] = (double)l.GROSS_PAY;
             row["INS_BASE"] = (double)l.INS_BASE;
             row["INS_WORKER"] = (double)l.INS_WORKER;
@@ -523,6 +539,12 @@
 
     bool IsLoading = false;
     bool IsProcessing = false;
+
+    private void ToggleDynamicColumns()
+    {
+        _showDynamicPayrollColumns = !_showDynamicPayrollColumns;
+        BuildGridData(includeDynamicColumns: _showDynamicPayrollColumns);
+    }
 
     protected override async Task OnInitializedAsync()
     {
@@ -562,6 +584,7 @@
         RunData = new Pay2RunResultDto();
         _gridData = new();
         _dynCols = new();
+        _showDynamicPayrollColumns = false;
         PayrollNsStr = null;
         _periodSearchTerm = "";
 
@@ -585,6 +608,7 @@
         RunData = new Pay2RunResultDto();
         _gridData = new();
         _dynCols = new();
+        _showDynamicPayrollColumns = false;
         PayrollNsStr = null;
         _periodSearchTerm = "";
         SelectedPeriodDate = 0;
@@ -612,13 +636,15 @@
             if (CurrentRun != null)
             {
                 RunData = await RunApi.GetRunLinesAsync(CurrentRun.RUN_ID);
-                BuildGridData();
+                _showDynamicPayrollColumns = false;
+                BuildGridData(includeDynamicColumns: false);
             }
             else
             {
                 RunData = new Pay2RunResultDto();
                 _gridData = new();
                 _dynCols = new();
+                _showDynamicPayrollColumns = false;
             }
         }
         catch (Exception ex)
