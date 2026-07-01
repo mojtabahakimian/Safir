@@ -107,7 +107,7 @@ namespace Safir.Server.Controllers
                 return NotFound("اجرای حقوق برای خروجی اکسل یافت نشد.");
 
             var columns = (await _db.DoGetDataSQLAsync<RunAuditColumn>(@"
-                SELECT DISTINCT I.ITEM_ID, I.ITEM_CODE, I.ITEM_NAME, I.SORT_ORDER, I.INS_SUBJECT, I.TAX_SUBJECT
+                SELECT DISTINCT I.ITEM_ID, I.ITEM_CODE, I.ITEM_NAME, I.ITEM_TYPE, I.SORT_ORDER, I.INS_SUBJECT, I.TAX_SUBJECT
                 FROM PAY2_RUN_DETAIL D WITH (NOLOCK)
                 INNER JOIN PAY2_ITEM_DEF I WITH (NOLOCK) ON D.ITEM_ID = I.ITEM_ID
                 WHERE D.RUN_ID = @runId
@@ -117,7 +117,7 @@ namespace Safir.Server.Controllers
                 SELECT RL.*, E.EMP_CODE, E.LAST_NAME + N' ' + E.FIRST_NAME AS FULL_NAME,
                        E.TAX_EXEMPT, E.REGION_DEPRIVATION, E.INS_TYPE,
                        ISNULL(A.OT_NORMAL_H,0) AS OT_NORMAL_H, ISNULL(A.OT_HOLIDAY_H,0) AS OT_HOLIDAY_H,
-                       ISNULL(A.OT_ADMIN_H,0) AS OT_ADMIN_H, ISNULL(A.LEAVE_DAYS,0) AS LEAVE_DAYS,
+                       ISNULL(A.OT_ADMIN_H,0) AS OT_ADMIN_H, ISNULL(A.DAYS,0) AS DAYS, ISNULL(A.DAYSB,0) AS DAYSB, ISNULL(A.FRID_COUNT,0) AS FRID_COUNT, ISNULL(A.TDAYS,0) AS TDAYS, ISNULL(A.LEAVE_DAYS,0) AS LEAVE_DAYS,
                        ISNULL(A.ABSENT_DAYS,0) AS ABSENT_DAYS, ISNULL(A.MISSION_DAYS,0) AS MISSION_DAYS,
                        ISNULL(A.PERF_AMOUNT,0) AS PERF_AMOUNT, ISNULL(A.TRANSP_AMOUNT,0) AS TRANSP_AMOUNT,
                        ISNULL(A.KASR_OTHER,0) AS KASR_OTHER
@@ -150,9 +150,10 @@ namespace Safir.Server.Controllers
             wb.CalculateMode = XLCalculateMode.Auto;
             var cfg = wb.Worksheets.Add("تنظیمات");
             var raw = wb.Worksheets.Add("داده خام");
+            var trace = wb.Worksheets.Add("ردیابی اقلام");
             var pay = wb.Worksheets.Add("فیش حقوقی");
             var ctl = wb.Worksheets.Add("کنترل تطابق");
-            cfg.RightToLeft = raw.RightToLeft = pay.RightToLeft = ctl.RightToLeft = true;
+            cfg.RightToLeft = raw.RightToLeft = trace.RightToLeft = pay.RightToLeft = ctl.RightToLeft = true;
 
             cfg.Cell(1, 1).Value = "کلید"; cfg.Cell(1, 2).Value = "مقدار"; cfg.Cell(1, 3).Value = "عنوان";
             for (int i = 0; i < configs.Count; i++)
@@ -171,14 +172,14 @@ namespace Safir.Server.Controllers
                 cfg.Cell(taxStart + 2 + i, 3).Value = taxBrackets[i].FIXED_TAX;
             }
 
-            var rawHeaders = new List<string> { "کد", "نام", "معاف از مالیات", "درصد منطقه محروم", "نوع بیمه", "روز کارکرد", "اضافه‌کاری عادی", "اضافه‌کاری تعطیل", "اضافه‌کاری اداری", "مرخصی", "غیبت", "ماموریت", "مبلغ کارانه", "ایاب ذهاب", "سایر کسورات خام" };
+            var rawHeaders = new List<string> { "کد", "نام", "معاف از مالیات", "درصد منطقه محروم", "نوع بیمه", "روز کارکرد", "روز اسمی", "روز رسمی", "جمعه", "روز غذا/تولید", "اضافه‌کاری عادی", "اضافه‌کاری تعطیل", "اضافه‌کاری اداری", "مرخصی", "غیبت", "ماموریت", "مبلغ کارانه", "ایاب ذهاب", "سایر کسورات خام" };
             rawHeaders.AddRange(columns.Select(c => c.ITEM_NAME));
             rawHeaders.AddRange(new[] { "ناخالص موتور", "مبنای بیمه موتور", "بیمه موتور", "مبنای مالیات موتور", "مالیات موتور", "وام", "مساعده", "سایر کسورات", "کل کسورات موتور", "خالص موتور" });
             for (int c = 0; c < rawHeaders.Count; c++) raw.Cell(1, c + 1).Value = rawHeaders[c];
             for (int r = 0; r < lines.Count; r++)
             {
                 var l = lines[r]; int rr = r + 2; int c = 1;
-                raw.Cell(rr, c++).Value = l.EMP_CODE; raw.Cell(rr, c++).Value = l.FULL_NAME; raw.Cell(rr, c++).Value = l.TAX_EXEMPT ? 1 : 0; raw.Cell(rr, c++).Value = l.REGION_DEPRIVATION; raw.Cell(rr, c++).Value = l.INS_TYPE; raw.Cell(rr, c++).Value = l.WORK_DAYS;
+                raw.Cell(rr, c++).Value = l.EMP_CODE; raw.Cell(rr, c++).Value = l.FULL_NAME; raw.Cell(rr, c++).Value = l.TAX_EXEMPT ? 1 : 0; raw.Cell(rr, c++).Value = l.REGION_DEPRIVATION; raw.Cell(rr, c++).Value = l.INS_TYPE; raw.Cell(rr, c++).Value = l.WORK_DAYS; raw.Cell(rr, c++).Value = l.DAYS; raw.Cell(rr, c++).Value = l.DAYSB; raw.Cell(rr, c++).Value = l.FRID_COUNT; raw.Cell(rr, c++).Value = l.TDAYS;
                 raw.Cell(rr, c++).Value = l.OT_NORMAL_H; raw.Cell(rr, c++).Value = l.OT_HOLIDAY_H; raw.Cell(rr, c++).Value = l.OT_ADMIN_H;
                 raw.Cell(rr, c++).Value = l.LEAVE_DAYS; raw.Cell(rr, c++).Value = l.ABSENT_DAYS; raw.Cell(rr, c++).Value = l.MISSION_DAYS;
                 raw.Cell(rr, c++).Value = l.PERF_AMOUNT; raw.Cell(rr, c++).Value = l.TRANSP_AMOUNT; raw.Cell(rr, c++).Value = l.KASR_OTHER;
@@ -189,21 +190,45 @@ namespace Safir.Server.Controllers
                 raw.Cell(rr, c++).Value = l.TOTAL_DED; raw.Cell(rr, c++).Value = l.NET_PAY;
             }
 
-            string[] payHeaders = { "کد", "نام", "روز کارکرد", "ناخالص فرمولی", "مبنای بیمه فرمولی", "بیمه کارگر فرمولی", "مشمول مالیات قبل معافیت", "مبنای مالیات فرمولی", "مالیات فرمولی", "کل کسورات فرمولی", "خالص پرداختی فرمولی", "شرح فرمول" };
-            for (int c = 0; c < payHeaders.Length; c++) pay.Cell(1, c + 1).Value = payHeaders[c];
-            int itemStartCol = 16;
-            int grossRawCol = 15 + columns.Count + 1;
+            int itemStartCol = 20;
+            int grossRawCol = 19 + columns.Count + 1;
             int loanRawCol = grossRawCol + 5;
             int advRawCol = grossRawCol + 6;
             int otherDedRawCol = grossRawCol + 7;
+
+            string[] traceHeaders = { "کد", "نام", "کد آیتم", "نام آیتم", "نوع آیتم", "مبلغ موتور", "مبلغ فرمولی", "فرمول قابل مشاهده", "شرح مسیر" };
+            for (int c = 0; c < traceHeaders.Length; c++) trace.Cell(1, c + 1).Value = traceHeaders[c];
+            int traceRow = 2;
+            for (int r = 0; r < lines.Count; r++)
+            {
+                int rawRow = r + 2;
+                for (int i = 0; i < columns.Count; i++)
+                {
+                    var col = columns[i];
+                    int itemRawCol = itemStartCol + i;
+                    string rawRef = $"'داده خام'!{ColLetter(itemRawCol)}{rawRow}";
+                    trace.Cell(traceRow, 1).FormulaA1 = $"'داده خام'!A{rawRow}";
+                    trace.Cell(traceRow, 2).FormulaA1 = $"'داده خام'!B{rawRow}";
+                    trace.Cell(traceRow, 3).Value = col.ITEM_CODE;
+                    trace.Cell(traceRow, 4).Value = col.ITEM_NAME;
+                    trace.Cell(traceRow, 5).Value = col.ITEM_TYPE;
+                    trace.Cell(traceRow, 6).FormulaA1 = rawRef;
+                    trace.Cell(traceRow, 7).FormulaA1 = BuildItemTraceFormula(col.ITEM_CODE, rawRow, rawRef, itemStartCol, columns);
+                    trace.Cell(traceRow, 8).FormulaA1 = $"FORMULATEXT(G{traceRow})";
+                    trace.Cell(traceRow, 9).Value = BuildItemTraceDescription(col.ITEM_CODE);
+                    traceRow++;
+                }
+            }
+
+            string[] payHeaders = { "کد", "نام", "روز کارکرد", "ناخالص فرمولی", "مبنای بیمه فرمولی", "بیمه کارگر فرمولی", "مشمول مالیات قبل معافیت", "مبنای مالیات فرمولی", "مالیات فرمولی", "کل کسورات فرمولی", "خالص پرداختی فرمولی", "شرح فرمول" };
+            for (int c = 0; c < payHeaders.Length; c++) pay.Cell(1, c + 1).Value = payHeaders[c];
             for (int r = 0; r < lines.Count; r++)
             {
                 int rr = r + 2;
                 pay.Cell(rr, 1).FormulaA1 = $"'داده خام'!A{rr}";
                 pay.Cell(rr, 2).FormulaA1 = $"'داده خام'!B{rr}";
                 pay.Cell(rr, 3).FormulaA1 = $"'داده خام'!F{rr}";
-                string itemRange = $"'داده خام'!{ColLetter(itemStartCol)}{rr}:{ColLetter(itemStartCol + columns.Count - 1)}{rr}";
-                pay.Cell(rr, 4).FormulaA1 = columns.Count > 0 ? $"ROUND(SUM({itemRange}),0)" : "0";
+                pay.Cell(rr, 4).FormulaA1 = columns.Count > 0 ? $"ROUND(SUMIFS('ردیابی اقلام'!G:G,'ردیابی اقلام'!A:A,A{rr},'ردیابی اقلام'!E:E,1)+SUMIFS('ردیابی اقلام'!G:G,'ردیابی اقلام'!A:A,A{rr},'ردیابی اقلام'!E:E,2)-SUMIFS('ردیابی اقلام'!G:G,'ردیابی اقلام'!A:A,A{rr},'ردیابی اقلام'!C:C,\"BASE_SAL_B\"),0)" : "0";
                 pay.Cell(rr, 5).FormulaA1 = BuildInsuranceBaseFormula(columns, rr, itemStartCol);
                 pay.Cell(rr, 6).FormulaA1 = $"IF('داده خام'!E{rr}=3,0,ROUND(E{rr}*IFERROR(VLOOKUP(\"INS_WORKER_RATE\",'تنظیمات'!A:B,2,FALSE)/100,0.07),0))";
                 pay.Cell(rr, 7).FormulaA1 = BuildSubjectSumFormula(columns, rr, itemStartCol, x => x.TAX_SUBJECT);
@@ -395,10 +420,52 @@ namespace Safir.Server.Controllers
 
 
 
+
+        private static string BuildItemTraceFormula(string itemCode, int rawRow, string rawRef, int itemStartCol, List<RunAuditColumn> columns)
+        {
+            string cfg = "'تنظیمات'!A:B";
+            string baseSum = BuildItemCodeSumExpression(rawRow, itemStartCol, columns, "BASE_SAL", "BASE_SAL_B");
+            string hourly = $"IF('داده خام'!H{rawRow}>0,(({baseSum})/'داده خام'!H{rawRow})/IFERROR(VLOOKUP(\"OT_HOUR_BASE\",{cfg},2,FALSE),7.33),0)";
+            return itemCode switch
+            {
+                "OT_NORMAL" => $"ROUND({hourly}*'داده خام'!K{rawRow}*IFERROR(VLOOKUP(\"OT_NORMAL_MULT\",{cfg},2,FALSE),1.4),0)",
+                "OT_HOLIDAY" => $"ROUND({hourly}*'داده خام'!L{rawRow}*IFERROR(VLOOKUP(\"OT_HOLIDAY_MULT\",{cfg},2,FALSE),1.4),0)",
+                "OT_ADMIN" => $"ROUND({hourly}*'داده خام'!M{rawRow}*IFERROR(VLOOKUP(\"OT_NORMAL_MULT\",{cfg},2,FALSE),1.4),0)",
+                "PERF_BONUS" => $"'داده خام'!Q{rawRow}",
+                "TRANSP" => $"'داده خام'!R{rawRow}",
+                "INS_DED" => $"'فیش حقوقی'!F{rawRow}",
+                "TAX_DED" => $"'فیش حقوقی'!I{rawRow}",
+                "LOAN_DED" => rawRef,
+                "ADVANCE_DED" => rawRef,
+                _ => rawRef
+            };
+        }
+
+        private static string BuildItemTraceDescription(string itemCode)
+        {
+            return itemCode switch
+            {
+                "OT_NORMAL" => "نرخ ساعتی موثر = جمع پایه / روز رسمی / OT_HOUR_BASE؛ سپس × ساعت اضافه‌کار عادی × OT_NORMAL_MULT",
+                "OT_HOLIDAY" => "نرخ ساعتی موثر = جمع پایه / روز رسمی / OT_HOUR_BASE؛ سپس × ساعت تعطیل‌کاری × OT_HOLIDAY_MULT",
+                "OT_ADMIN" => "نرخ ساعتی موثر = جمع پایه / روز رسمی / OT_HOUR_BASE؛ سپس × ساعت اضافه‌کار اداری × OT_NORMAL_MULT",
+                "PERF_BONUS" => "مبلغ متغیر کارانه از کارکرد ماه",
+                "TRANSP" => "مبلغ متغیر ایاب‌وذهاب از کارکرد ماه",
+                "INS_DED" => "برابر فرمول بیمه کارگر در شیت فیش حقوقی",
+                "TAX_DED" => "برابر فرمول مالیات پلکانی در شیت فیش حقوقی",
+                _ => "مبلغ محاسبه‌شده موتور؛ برای تکمیل ۱۰۰٪ باید Trace حکم/Override/Proration در موتور ثبت شود"
+            };
+        }
+
+        private static string BuildItemCodeSumExpression(int rawRow, int itemStartCol, List<RunAuditColumn> columns, params string[] itemCodes)
+        {
+            var refs = columns.Select((c, i) => new { c, i }).Where(x => itemCodes.Contains(x.c.ITEM_CODE)).Select(x => $"'داده خام'!{ColLetter(itemStartCol + x.i)}{rawRow}").ToList();
+            return refs.Count == 0 ? "0" : string.Join("+", refs);
+        }
+
         private static string BuildInsuranceBaseFormula(List<RunAuditColumn> columns, int row, int firstRawItemCol)
         {
             string subjectSum = BuildSubjectSumExpression(columns, row, firstRawItemCol, x => x.INS_SUBJECT);
-            string ceiling = $"IF(IFERROR(VLOOKUP(\"INS_CEILING_APPLY\",'تنظیمات'!A:B,2,FALSE),1)=1,IFERROR(VLOOKUP(\"INS_CEILING_MONTHLY\",'تنظیمات'!A:B,2,FALSE),{subjectSum})*'داده خام'!F{row}/30,{subjectSum})";
+            string ceiling = $"IF(IFERROR(VLOOKUP(\"INS_CEILING_APPLY\",'تنظیمات'!A:B,2,FALSE),1)=1,IFERROR(VLOOKUP(\"INS_CEILING_MONTHLY\",'تنظیمات'!A:B,2,FALSE),{subjectSum})*IF('داده خام'!H{row}>0,'داده خام'!H{row},'داده خام'!G{row})/30,{subjectSum})";
             return $"IF('داده خام'!E{row}=3,0,ROUND(MIN({subjectSum},{ceiling}),0))";
         }
 
@@ -457,10 +524,11 @@ namespace Safir.Server.Controllers
         }
 
         private class RunAuditHead { public int RUN_ID { get; set; } public int PER_ID { get; set; } public int WS_ID { get; set; } public long PERIOD_DATE { get; set; } public string WS_NAME { get; set; } = ""; }
-        private class RunAuditColumn { public int ITEM_ID { get; set; } public string ITEM_CODE { get; set; } = ""; public string ITEM_NAME { get; set; } = ""; public int SORT_ORDER { get; set; } public bool INS_SUBJECT { get; set; } public bool TAX_SUBJECT { get; set; } }
+        private class RunAuditColumn { public int ITEM_ID { get; set; } public string ITEM_CODE { get; set; } = ""; public string ITEM_NAME { get; set; } = ""; public byte ITEM_TYPE { get; set; } public int SORT_ORDER { get; set; } public bool INS_SUBJECT { get; set; } public bool TAX_SUBJECT { get; set; } }
         private class RunAuditLine : Pay2RunLineDto
         {
             public decimal OT_NORMAL_H { get; set; } public decimal OT_HOLIDAY_H { get; set; } public decimal OT_ADMIN_H { get; set; }
+            public decimal DAYS { get; set; } public decimal DAYSB { get; set; } public byte FRID_COUNT { get; set; } public decimal TDAYS { get; set; }
             public decimal LEAVE_DAYS { get; set; } public decimal ABSENT_DAYS { get; set; } public decimal MISSION_DAYS { get; set; }
             public bool TAX_EXEMPT { get; set; } public decimal REGION_DEPRIVATION { get; set; } public byte INS_TYPE { get; set; }
             public long PERF_AMOUNT { get; set; } public long TRANSP_AMOUNT { get; set; } public long KASR_OTHER { get; set; }
