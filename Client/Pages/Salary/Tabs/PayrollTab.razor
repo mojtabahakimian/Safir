@@ -382,7 +382,6 @@
                         AllowResizing="true"
                         AllowFiltering="true"
                         AllowTextWrap="false"
-                        EnableVirtualization="true"
                         RowHeight="48"
                         EnableHover="true"
                         EnableRtl="true"
@@ -392,81 +391,33 @@
                     <GridFilterSettings Type="Syncfusion.Blazor.Grids.FilterType.Excel"></GridFilterSettings>
                     <GridColumns>
                         <GridColumn Field="EMP_ID" IsPrimaryKey="true" Visible="false" Type="Syncfusion.Blazor.Grids.ColumnType.Number" Width="100" />
-
-                        <!-- ۱) کد پرسنلی -->
-                        <GridColumn Field="EMP_CODE" HeaderText="کد پرسنلی" Width="120" TextAlign="TextAlign.Center" Type="Syncfusion.Blazor.Grids.ColumnType.String" Freeze="Syncfusion.Blazor.Grids.FreezeDirection.Right">
-                            <Template>
-                                @{ var r = (IDictionary<string, object>)context; }
-                                <span class="p2-text-mono">@r["EMP_CODE"]</span>
-                            </Template>
-                        </GridColumn>
+<!-- ۱) کد پرسنلی -->
+                        <GridColumn Field="EMP_CODE" HeaderText="کد پرسنلی" Width="120" TextAlign="TextAlign.Center" Type="Syncfusion.Blazor.Grids.ColumnType.String" IsFrozen="true" CustomAttributes="@_attrMono" />
 
                         <!-- ۲) نام و نام خانوادگی -->
-                        <GridColumn Field="FULL_NAME" HeaderText="نام و نام خانوادگی" Width="200" TextAlign="TextAlign.Right" Type="Syncfusion.Blazor.Grids.ColumnType.String" Freeze="Syncfusion.Blazor.Grids.FreezeDirection.Right">
-                            <Template>
-                                @{ var r = (IDictionary<string, object>)context; }
-                                <span style="font-weight:700;">@r["FULL_NAME"]</span>
-                            </Template>
-                        </GridColumn>
+                        <GridColumn Field="FULL_NAME" HeaderText="نام و نام خانوادگی" Width="200" TextAlign="TextAlign.Right" Type="Syncfusion.Blazor.Grids.ColumnType.String" IsFrozen="true" CustomAttributes="@_attrName" />
 
-                        <!-- ۳) کارکرد -->
-                        <GridColumn Field="WORK_DAYS" HeaderText="کارکرد" Width="100" TextAlign="TextAlign.Center" Type="Syncfusion.Blazor.Grids.ColumnType.Double" AllowSearching="false">
-                            <Template>
-                                @{ var r = (IDictionary<string, object>)context; var v = ToD(r, "WORK_DAYS"); }
-                                <span class="p2-text-mono">@v.ToString("0.##")</span>
-                            </Template>
-                        </GridColumn>
+                        <GridColumn Field="WORK_DAYS" HeaderText="کارکرد" Width="100" TextAlign="TextAlign.Center" Type="Syncfusion.Blazor.Grids.ColumnType.Double" Format="0.##" AllowSearching="false" CustomAttributes="@_attrMono" />
 
-                        <!-- ۴) ستون‌های پویای آیتم‌های حقوقی -->
                         @foreach (var dc in _dynCols)
                         {
                             var field = dc.Field;
-                            <GridColumn Field="@field" HeaderText="@dc.Header" Width="170" TextAlign="TextAlign.Center" Type="Syncfusion.Blazor.Grids.ColumnType.Double" Format="N0" AllowSearching="false">
+                            <GridColumn Field="@field" HeaderText="@dc.Header" Width="170" TextAlign="TextAlign.Center" Type="Syncfusion.Blazor.Grids.ColumnType.Double" Format="N0" AllowSearching="false" CustomAttributes="@_attrMono">
                                 <HeaderTemplate>
                                     <span style="color:#2563eb;" title="@dc.Header">@dc.Header</span>
                                 </HeaderTemplate>
-                                <Template>
-                                    @{ var r = (IDictionary<string, object>)context; var v = ToD(r, field); }
-                                    <span class="p2-text-mono">@(v == 0 ? "-" : v.ToString("N0"))</span>
-                                </Template>
                             </GridColumn>
                         }
 
-                        <!-- ۵) ستون‌های مبلغیِ ثابت -->
-                        <GridColumn Field="GROSS_PAY" HeaderText="ناخالص حقوق" Width="160" TextAlign="TextAlign.Center" Type="Syncfusion.Blazor.Grids.ColumnType.Double" Format="N0" AllowSearching="false">
-                            <Template>
-                                @{ var r = (IDictionary<string, object>)context; }
-                                <span class="p2-text-mono">@ToD(r, "GROSS_PAY").ToString("N0")</span>
-                            </Template>
-                        </GridColumn>
+                        <GridColumn Field="GROSS_PAY" HeaderText="ناخالص حقوق" Width="160" TextAlign="TextAlign.Center" Type="Syncfusion.Blazor.Grids.ColumnType.Double" Format="N0" AllowSearching="false" CustomAttributes="@_attrMono" />
 
-                        <GridColumn Field="INS_BASE" HeaderText="مبنای بیمه" Width="160" TextAlign="TextAlign.Center" Type="Syncfusion.Blazor.Grids.ColumnType.Double" Format="N0" AllowSearching="false">
-                            <Template>
-                                @{ var r = (IDictionary<string, object>)context; }
-                                <span class="p2-text-mono p2-text-muted">@ToD(r, "INS_BASE").ToString("N0")</span>
-                            </Template>
-                        </GridColumn>
+                        <GridColumn Field="INS_BASE" HeaderText="مبنای بیمه" Width="160" TextAlign="TextAlign.Center" Type="Syncfusion.Blazor.Grids.ColumnType.Double" Format="N0" AllowSearching="false" CustomAttributes="@_attrInsBase" />
 
-                        <GridColumn Field="INS_WORKER" HeaderText="بیمه کارگر" Width="160" TextAlign="TextAlign.Center" Type="Syncfusion.Blazor.Grids.ColumnType.Double" Format="N0" AllowSearching="false">
-                            <Template>
-                                @{ var r = (IDictionary<string, object>)context; }
-                                <span class="p2-text-mono">@ToD(r, "INS_WORKER").ToString("N0")</span>
-                            </Template>
-                        </GridColumn>
+                        <GridColumn Field="INS_WORKER" HeaderText="بیمه کارگر" Width="160" TextAlign="TextAlign.Center" Type="Syncfusion.Blazor.Grids.ColumnType.Double" Format="N0" AllowSearching="false" CustomAttributes="@_attrMono" />
 
-                        <GridColumn Field="TAX_AMOUNT" HeaderText="مالیات" Width="160" TextAlign="TextAlign.Center" Type="Syncfusion.Blazor.Grids.ColumnType.Double" Format="N0" AllowSearching="false">
-                            <Template>
-                                @{ var r = (IDictionary<string, object>)context; }
-                                <span class="p2-text-mono">@ToD(r, "TAX_AMOUNT").ToString("N0")</span>
-                            </Template>
-                        </GridColumn>
+                        <GridColumn Field="TAX_AMOUNT" HeaderText="مالیات" Width="160" TextAlign="TextAlign.Center" Type="Syncfusion.Blazor.Grids.ColumnType.Double" Format="N0" AllowSearching="false" CustomAttributes="@_attrMono" />
 
-                        <GridColumn Field="TOTAL_DED" HeaderText="مساعده/وام/سایر کسورات" Width="230" TextAlign="TextAlign.Center" Type="Syncfusion.Blazor.Grids.ColumnType.Double" Format="N0" AllowSearching="false">
-                            <Template>
-                                @{ var r = (IDictionary<string, object>)context; }
-                                <span class="p2-text-mono" style="color:#ef4444;">@ToD(r, "TOTAL_DED").ToString("N0")</span>
-                            </Template>
-                        </GridColumn>
+                        <GridColumn Field="TOTAL_DED" HeaderText="مساعده/وام/سایر کسورات" Width="230" TextAlign="TextAlign.Center" Type="Syncfusion.Blazor.Grids.ColumnType.Double" Format="N0" AllowSearching="false" CustomAttributes="@_attrTotalDed" />
 
                         <GridColumn Field="NET_PAY" HeaderText="خالص پرداختی" Width="180" TextAlign="TextAlign.Center" Type="Syncfusion.Blazor.Grids.ColumnType.Double" Format="N0" AllowSearching="false">
                             <Template>
@@ -475,7 +426,6 @@
                             </Template>
                         </GridColumn>
 
-                        <!-- ۶) عملیات -->
                         <GridColumn HeaderText="عملیات" Width="190" TextAlign="TextAlign.Center" AllowSorting="false" AllowSearching="false" AllowFiltering="false" AllowResizing="false">
                             <Template>
                                 @{
@@ -493,10 +443,8 @@
                                 </div>
                             </Template>
                         </GridColumn>
-
                     </GridColumns>
 
-                    <!-- ردیف جمع کل دوره (Aggregate) روی همهٔ ستون‌های عددی -->
                     <GridAggregates>
                         <GridAggregate>
                             <GridAggregateColumns>
@@ -567,6 +515,13 @@
 </div>
 
 @code {
+
+
+    private readonly Dictionary<string, object> _attrMono = new() { { "class", "p2-text-mono" } };
+    private readonly Dictionary<string, object> _attrName = new() { { "style", "font-weight:700;" } };
+    private readonly Dictionary<string, object> _attrTotalDed = new() { { "class", "p2-text-mono" }, { "style", "color:#ef4444;" } };
+    private readonly Dictionary<string, object> _attrInsBase = new() { { "class", "p2-text-mono p2-text-muted" } };
+
     // === مدیریت ویو (Drill-Down) ===
     enum ViewMode { PeriodList, PayrollGrid }
     ViewMode CurrentView = ViewMode.PeriodList;
@@ -615,18 +570,20 @@
         => row.TryGetValue(field, out var o) && o is not null ? Convert.ToDouble(o) : 0d;
 
     // ساخت دادهٔ گرید (ExpandoObject) + تعریف ستون‌های پویا از روی نتیجهٔ محاسبه
+ // ساخت دادهٔ گرید (ExpandoObject) + تعریف ستون‌های پویا
     private void BuildGridData()
     {
-        _dynCols = new();
-        _gridData = new();
+        // 🚀 فیکس پرفورمنس: ایجاد لیست جدید در حافظه (لوکال) و سپس تخصیص به متغیر اصلی
+        // این کار باعث می‌شود Blazor متوجه تغییر Reference شده و فقط یک‌بار گرید را آپدیت کند.
+        var newDynCols = new List<(string Field, string Header)>();
+        var newGridData = new List<ExpandoObject>();
 
         var cols = RunData?.Columns ?? new();
-        // نگاشت ITEM_CODE → نام Field امن
         var codeToField = new Dictionary<string, string>();
         for (int i = 0; i < cols.Count; i++)
         {
             var f = "itm" + i;
-            _dynCols.Add((f, cols[i].ITEM_NAME));
+            newDynCols.Add((f, cols[i].ITEM_NAME));
             codeToField[cols[i].ITEM_CODE] = f;
         }
 
@@ -637,31 +594,38 @@
             row["EMP_CODE"] = l.EMP_CODE ?? "";
             row["FULL_NAME"] = l.FULL_NAME ?? "";
             row["WORK_DAYS"] = (double)l.WORK_DAYS;
+            
             foreach (var c in cols)
                 row[codeToField[c.ITEM_CODE]] = (double)(l.Details != null && l.Details.TryGetValue(c.ITEM_CODE, out var dv) ? dv : 0L);
+            
             row["GROSS_PAY"] = (double)l.GROSS_PAY;
             row["INS_BASE"] = (double)l.INS_BASE;
             row["INS_WORKER"] = (double)l.INS_WORKER;
             row["TAX_AMOUNT"] = (double)l.TAX_AMOUNT;
             row["TOTAL_DED"] = (double)l.TOTAL_DED;
             row["NET_PAY"] = (double)l.NET_PAY;
-            _gridData.Add((ExpandoObject)row);
+            
+            newGridData.Add((ExpandoObject)row);
         }
+
+        // تخصیص نهایی برای تریگر کردن UI
+        _dynCols = newDynCols;
+        _gridData = newGridData;
     }
 
     bool IsLoading = false;
     bool IsProcessing = false;
 
-    // پس از مونت‌شدن گرید با داده، یک‌بار Refresh می‌زنیم تا Syncfusion رکوردها را
-    // به‌درستی پردازش/نمایش دهد (راه‌حل توصیه‌شدهٔ Syncfusion برای حالت دادهٔ ناهمگامِ محلی).
-    protected override async Task OnAfterRenderAsync(bool firstRender)
-    {
-        if (_refreshGridQueued && _payrollGrid is not null)
-        {
-            _refreshGridQueued = false;
-            try { await _payrollGrid.Refresh(); } catch { /* در صورت عدم آمادگی گرید، نادیده گرفته می‌شود */ }
-        }
-    }
+    // // پس از مونت‌شدن گرید با داده، یک‌بار Refresh می‌زنیم تا Syncfusion رکوردها را
+    // // به‌درستی پردازش/نمایش دهد (راه‌حل توصیه‌شدهٔ Syncfusion برای حالت دادهٔ ناهمگامِ محلی).
+    // protected override async Task OnAfterRenderAsync(bool firstRender)
+    // {
+    //     if (_refreshGridQueued && _payrollGrid is not null)
+    //     {
+    //         _refreshGridQueued = false;
+    //         try { await _payrollGrid.Refresh(); } catch { /* در صورت عدم آمادگی گرید، نادیده گرفته می‌شود */ }
+    //     }
+    // }
 
     protected override async Task OnInitializedAsync()
     {
@@ -751,8 +715,8 @@
             if (CurrentRun != null)
             {
                 RunData = await RunApi.GetRunLinesAsync(CurrentRun.RUN_ID);
-                BuildGridData();
-                _refreshGridQueued = true; // پس از رندر، گرید را یک‌بار رفرش کن تا داده‌ها نمایش داده شوند
+                BuildGridData(); 
+                // ❌ _refreshGridQueued = true; حذف شد
             }
             else
             {
