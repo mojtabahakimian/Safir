@@ -224,7 +224,7 @@ namespace Safir.Server.Controllers
                   AND D.IS_CONFIRMED = 1
                   AND D.EFF_FROM <= P.PERIOD_DATE
                   AND (D.EFF_TO IS NULL OR D.EFF_TO >= P.PERIOD_DATE)
-                ORDER BY DL.EMP_ID, I.SORT_ORDER";
+                ORDER BY D.EMP_ID, I.SORT_ORDER";
             var decLines = (await _db.DoGetDataSQLAsync<DecLineRow>(decSql, new { runId })).ToList();
             var groupedDec = decLines.GroupBy(d => d.EMP_ID)
                 .ToDictionary(g => g.Key, g => g.ToList());

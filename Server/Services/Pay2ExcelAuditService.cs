@@ -1,4 +1,4 @@
-using ClosedXML.Excel;
+﻿using ClosedXML.Excel;
 using Safir.Shared.Models.Salary;
 
 namespace Safir.Server.Services
@@ -307,16 +307,18 @@ namespace Safir.Server.Services
             // --- خواندن تنظیمات کلیدی ---
             var cfg = data.Config;
             double insWorkerRate = GetCfgDouble(cfg, "INS_WORKER_RATE", 0.07);
-            double insCeiling   = GetCfgDouble(cfg, "INS_CEILING", 0);
+            double insCeiling   = GetCfgDouble(cfg, "INS_CEILING_MONTHLY", 0);
+            bool insCeilingApply= GetCfgBool(cfg, "INS_CEILING_APPLY", false);
             int taxYear         = GetCfgInt(cfg, "TAX_YEAR", 1403);
-            double taxExempt    = GetCfgDouble(cfg, "TAX_EXEMPT", 0);
+            double taxExempt    = GetCfgDouble(cfg, "TAX_EXEMPT_MONTHLY", 0);
             bool taxDeductIns   = GetCfgBool(cfg, "TAX_DEDUCT_INS", true);
             bool taxDepApply    = GetCfgBool(cfg, "TAX_DEP_APPLY", false);
-            double monthDaysMode= GetCfgDouble(cfg, "MONTH_DAYS_MODE", 30);
+            string monthDaysModeStr = cfg.TryGetValue("MONTH_DAYS_MODE", out var mdms) ? mdms : "30";
+            double monthDaysBase = monthDaysModeStr.Equals("REAL", StringComparison.OrdinalIgnoreCase) ? 0 : GetCfgDouble(cfg, "MONTH_DAYS_MODE", 30);
             double otNormalMult = GetCfgDouble(cfg, "OT_NORMAL_MULT", 1.4);
             double otHolidayMult= GetCfgDouble(cfg, "OT_HOLIDAY_MULT", 1.4);
             double otAdminMult  = GetCfgDouble(cfg, "OT_ADMIN_MULT", 1.0);
-            bool roundMode      = GetCfgBool(cfg, "ROUND_MODE", false);
+            int roundDivisor    = GetCfgInt(cfg, "ROUND_MODE", 0); // 0=no rounding, 1000=round to nearest 1000
 
             // --- فرمول مالیات پلکانی ---
             string taxFormula = GenerateTaxFormula(data.TaxBrackets, taxExempt, taxDeductIns);
@@ -415,11 +417,18 @@ namespace Safir.Server.Services
                 {
                     string insBaseFormula = string.Join("+", insRefs);
 
-                    // اعمال سقف بیمه: MIN(INS_BASE, INS_CEILING/30 * DAYSB)
-                    if (insCeiling > 0)
+                    // اعمال سقف بیمه: MIN(INS_BASE, INS_CEILING_MONTHLY / dayBase * DAYSB)
+                    // فقط اگر INS_CEILING_APPLY=1 و INS_CEILING_MONTHLY > 0
+                    // MONTH_DAYS_MODE=REAL → dayBase از DAYSB خود کارمند، در غیر این صورت 30
+                    if (insCeilingApply && insCeiling > 0)
                     {
                         string daysbRef = $"RawData!{ColLetter(FindRawDataFixedCol("DAYSB"))}{rawRow}";
-                        insBaseFormula = $"MIN({insBaseFormula},{insCeiling}/30*{daysbRef})";
+                        string daysRef  = $"RawData!{ColLetter(FindRawDataFixedCol("DAYS"))}{rawRow}";
+                        // dayBase: اگر REAL → DAYSB، در غیر این صورت عدد ثابت
+                        string dayBase = monthDaysBase > 0
+                            ? monthDaysBase.ToString(System.Globalization.CultureInfo.InvariantCulture)
+                            : daysbRef;
+                        insBaseFormula = $"MIN({insBaseFormula},{insCeiling}/{dayBase}*{daysbRef})";
                     }
                     ws.Cell(dataRow, insBaseCol).FormulaA1 = insBaseFormula;
                 }
@@ -429,9 +438,10 @@ namespace Safir.Server.Services
                 }
 
                 // ═══ بیمه کارگر (INS_WORKER) ═══
-                // = INS_BASE * INS_WORKER_RATE
+                // = INS_BASE * INS_WORKER_RATE / 100 (DB stores percentage: 7.00 = 7%)
+                double insWorkerRateDec = insWorkerRate / 100.0;
                 ws.Cell(dataRow, insWrkCol).FormulaA1 =
-                    $"{ColLetter(insBaseCol)}{dataRow}*{insWorkerRate}";
+                    $"{ColLetter(insBaseCol)}{dataRow}*{insWorkerRateDec}";
 
                 // ═══ مبنای مالیات (TAX_BASE) ═══
                 // = SUM(آیتم‌های مشمول مالیات) - (بیمه کارگر اگر TAX_DEDUCT_INS)
@@ -473,8 +483,18 @@ namespace Safir.Server.Services
                     $"{ColLetter(loanCol)}{dataRow}+{ColLetter(advCol)}{dataRow}+{ColLetter(otherCol)}{dataRow}";
 
                 // ═══ خالص پرداختی ═══
-                ws.Cell(dataRow, netPayCol).FormulaA1 =
-                    $"{ColLetter(grossCol)}{dataRow}-{ColLetter(totalDedCol)}{dataRow}";
+                // اگر ROUND_MODE > 0: ROUND((GROSS-TOTAL_DED)/ROUND_MODE, 0) * ROUND_MODE
+                // در غیر این صورت: GROSS - TOTAL_DED
+                if (roundDivisor > 0)
+                {
+                    ws.Cell(dataRow, netPayCol).FormulaA1 =
+                        $"ROUND(({ColLetter(grossCol)}{dataRow}-{ColLetter(totalDedCol)}{dataRow})/{roundDivisor},0)*{roundDivisor}";
+                }
+                else
+                {
+                    ws.Cell(dataRow, netPayCol).FormulaA1 =
+                        $"{ColLetter(grossCol)}{dataRow}-{ColLetter(totalDedCol)}{dataRow}";
+                }
 
                 // --- فرمت پولی ---
                 for (int c = grossCol; c <= netPayCol; c++)
