@@ -146,14 +146,68 @@ namespace Safir.Server.Controllers
                 WHERE TAX_YEAR = @taxYear
                 ORDER BY SORT_ORDER", new { taxYear })).ToList();
 
+            var configMap = configs.ToDictionary(x => x.CFG_KEY, x => x.CFG_VALUE, StringComparer.OrdinalIgnoreCase);
+            int monthDays = ResolveMonthDays(head.PERIOD_DATE, configMap);
+            int periodStart = (int)(head.PERIOD_DATE + 1);
+            int periodEnd = (int)(head.PERIOD_DATE + monthDays);
+
+            var decreeTraceRows = (await _db.DoGetDataSQLAsync<RunAuditDecreeRow>(@"
+                SELECT E.EMP_ID, E.EMP_CODE, E.LAST_NAME + N' ' + E.FIRST_NAME AS FULL_NAME,
+                       D.DEC_ID, D.EFF_FROM, ISNULL(D.EFF_TO, 99991231) AS EFF_TO,
+                       I.ITEM_CODE, I.ITEM_NAME, I.ITEM_TYPE, ISNULL(DL.AMOUNT,0) AS DEC_AMOUNT,
+                       ISNULL(OV.BASIS_OV, ISNULL(DL.BASIS_OV, I.CALC_BASIS)) AS EFFECTIVE_BASIS,
+                       ISNULL(OV.INS_OV, ISNULL(DL.INS_OV, I.INS_SUBJECT)) AS EFFECTIVE_INS,
+                       ISNULL(OV.TAX_OV, ISNULL(DL.TAX_OV, I.TAX_SUBJECT)) AS EFFECTIVE_TAX,
+                       I.PAY_BASE_DAYS, I.INS_BASE_DAYS,
+                       ISNULL(A.DAYS,0) AS DAYS, ISNULL(A.DAYSB,0) AS DAYSB, ISNULL(A.FRID_COUNT,0) AS FRID_COUNT,
+                       ISNULL(A.TDAYS,0) AS TDAYS, ISNULL(A.LEAVE_DAYS,0) AS LEAVE_DAYS,
+                       ISNULL(A.OT_NORMAL_H,0) AS OT_NORMAL_H, ISNULL(A.OT_HOLIDAY_H,0) AS OT_HOLIDAY_H, ISNULL(A.OT_ADMIN_H,0) AS OT_ADMIN_H,
+                       COALESCE(NULLIF(DL.SHIFT_MODE_OV, N''), NULLIF(D.SHIFT_MODE, N''), NULLIF(W.SHIFT_MODE, N''), @shiftMode, N'PCT') AS EFFECTIVE_SHIFT_MODE,
+                       ISNULL(BaseLine.CURRENT_DEC_DAILY_BASE,0) AS CURRENT_DEC_DAILY_BASE,
+                       CASE WHEN OV.ITEM_ID IS NULL THEN 0 ELSE 1 END AS HAS_OVERRIDE
+                FROM PAY2_RUN_LINE RL WITH (NOLOCK)
+                INNER JOIN PAY2_EMPLOYEE E WITH (NOLOCK) ON E.EMP_ID = RL.EMP_ID
+                INNER JOIN PAY2_ATTENDANCE A WITH (NOLOCK) ON A.PER_ID = @perId AND A.EMP_ID = RL.EMP_ID
+                INNER JOIN PAY2_DECREE D WITH (NOLOCK) ON D.EMP_ID = RL.EMP_ID AND D.IS_CONFIRMED = 1
+                    AND D.EFF_FROM <= @periodEnd AND (D.EFF_TO IS NULL OR D.EFF_TO >= @periodStart)
+                INNER JOIN PAY2_WORKSHOP W WITH (NOLOCK) ON W.WS_ID = @wsId
+                INNER JOIN PAY2_DECREE_LINE DL WITH (NOLOCK) ON DL.DEC_ID = D.DEC_ID
+                INNER JOIN PAY2_ITEM_DEF I WITH (NOLOCK) ON I.ITEM_ID = DL.ITEM_ID AND I.IS_ACTIVE = 1
+                OUTER APPLY (
+                    SELECT TOP 1 O.ITEM_ID, O.INS_OV, O.TAX_OV, O.BASIS_OV
+                    FROM PAY2_OVERRIDE O WITH (NOLOCK)
+                    WHERE O.EMP_ID = E.EMP_ID AND O.ITEM_ID = DL.ITEM_ID
+                      AND O.VALID_FROM <= @periodDate AND (O.VALID_TO IS NULL OR O.VALID_TO >= @periodDate)
+                    ORDER BY O.VALID_FROM DESC
+                ) OV
+                OUTER APPLY (
+                    SELECT TOP 1 DL2.AMOUNT AS CURRENT_DEC_DAILY_BASE
+                    FROM PAY2_DECREE_LINE DL2 WITH (NOLOCK)
+                    INNER JOIN PAY2_ITEM_DEF ID2 WITH (NOLOCK) ON ID2.ITEM_ID = DL2.ITEM_ID
+                    WHERE DL2.DEC_ID = D.DEC_ID AND ID2.ITEM_CODE IN ('BASE_SAL', 'BASE_SAL_B')
+                    ORDER BY CASE WHEN ID2.ITEM_CODE = 'BASE_SAL_B' THEN 1 ELSE 2 END
+                ) BaseLine
+                WHERE RL.RUN_ID = @runId AND I.ITEM_CODE NOT IN ('INS_DED','TAX_DED','LOAN_DED','ADVANCE_DED')
+                ORDER BY E.EMP_CODE, D.EFF_FROM, I.SORT_ORDER", new
+            {
+                runId,
+                perId = head.PER_ID,
+                wsId = head.WS_ID,
+                periodStart,
+                periodEnd,
+                periodDate = head.PERIOD_DATE,
+                shiftMode = GetConfigText(configMap, "SHIFT_MODE", "PCT")
+            })).ToList();
+
             using var wb = new XLWorkbook();
             wb.CalculateMode = XLCalculateMode.Auto;
             var cfg = wb.Worksheets.Add("تنظیمات");
             var raw = wb.Worksheets.Add("داده خام");
+            var decreeTrace = wb.Worksheets.Add("ردیابی حکم");
             var trace = wb.Worksheets.Add("ردیابی اقلام");
             var pay = wb.Worksheets.Add("فیش حقوقی");
             var ctl = wb.Worksheets.Add("کنترل تطابق");
-            cfg.RightToLeft = raw.RightToLeft = trace.RightToLeft = pay.RightToLeft = ctl.RightToLeft = true;
+            cfg.RightToLeft = raw.RightToLeft = decreeTrace.RightToLeft = trace.RightToLeft = pay.RightToLeft = ctl.RightToLeft = true;
 
             cfg.Cell(1, 1).Value = "کلید"; cfg.Cell(1, 2).Value = "مقدار"; cfg.Cell(1, 3).Value = "عنوان";
             for (int i = 0; i < configs.Count; i++)
@@ -195,6 +249,31 @@ namespace Safir.Server.Controllers
             int loanRawCol = grossRawCol + 5;
             int advRawCol = grossRawCol + 6;
             int otherDedRawCol = grossRawCol + 7;
+
+            string[] decreeHeaders = { "کد", "نام", "شناسه حکم", "از", "تا", "کد آیتم", "نام آیتم", "مبلغ حکم", "مبنا", "روز پرداخت", "روز بیمه", "روز فعال", "روز ماه", "ضریب حکم", "PAY_DAYS", "INS_DAYS", "BASE_DAYS", "INS_DAYS_RAW", "شیفت", "پایه شیفت", "Override", "مبلغ فرمولی", "فرمول", "شرح" };
+            for (int c = 0; c < decreeHeaders.Length; c++) decreeTrace.Cell(1, c + 1).Value = decreeHeaders[c];
+            for (int i = 0; i < decreeTraceRows.Count; i++)
+            {
+                var d = decreeTraceRows[i];
+                int rr = i + 2;
+                int activeStart = Math.Max(d.EFF_FROM, periodStart);
+                int activeEnd = Math.Min(d.EFF_TO, periodEnd);
+                int activeDays = activeStart <= activeEnd ? (activeEnd % 100) - (activeStart % 100) + 1 : 0;
+
+                decreeTrace.Cell(rr, 1).Value = d.EMP_CODE; decreeTrace.Cell(rr, 2).Value = d.FULL_NAME; decreeTrace.Cell(rr, 3).Value = d.DEC_ID;
+                decreeTrace.Cell(rr, 4).Value = d.EFF_FROM; decreeTrace.Cell(rr, 5).Value = d.EFF_TO; decreeTrace.Cell(rr, 6).Value = d.ITEM_CODE;
+                decreeTrace.Cell(rr, 7).Value = d.ITEM_NAME; decreeTrace.Cell(rr, 8).Value = d.DEC_AMOUNT; decreeTrace.Cell(rr, 9).Value = d.EFFECTIVE_BASIS;
+                decreeTrace.Cell(rr, 10).Value = d.PAY_BASE_DAYS; decreeTrace.Cell(rr, 11).Value = d.INS_BASE_DAYS; decreeTrace.Cell(rr, 12).Value = activeDays;
+                decreeTrace.Cell(rr, 13).Value = monthDays; decreeTrace.Cell(rr, 14).FormulaA1 = $"L{rr}/M{rr}";
+                decreeTrace.Cell(rr, 15).FormulaA1 = $"IF(J{rr}=1,{X(d.DAYS)},{X(d.DAYSB)})*N{rr}";
+                decreeTrace.Cell(rr, 16).FormulaA1 = $"IF(K{rr}=1,{X(d.DAYS)},{X(d.DAYSB)})*N{rr}";
+                decreeTrace.Cell(rr, 17).FormulaA1 = $"IF(J{rr}=1,{X(d.DAYS)},{X(d.DAYSB)})";
+                decreeTrace.Cell(rr, 18).FormulaA1 = $"IF(K{rr}=1,{X(d.DAYS)},{X(d.DAYSB)})";
+                decreeTrace.Cell(rr, 19).Value = d.EFFECTIVE_SHIFT_MODE; decreeTrace.Cell(rr, 20).Value = d.CURRENT_DEC_DAILY_BASE; decreeTrace.Cell(rr, 21).Value = d.HAS_OVERRIDE;
+                decreeTrace.Cell(rr, 22).FormulaA1 = BuildDecreeTraceFormula(rr, d);
+                decreeTrace.Cell(rr, 23).FormulaA1 = $"FORMULATEXT(V{rr})";
+                decreeTrace.Cell(rr, 24).Value = BuildDecreeTraceDescription(d);
+            }
 
             string[] traceHeaders = { "کد", "نام", "کد آیتم", "نام آیتم", "نوع آیتم", "مبلغ موتور", "مبلغ فرمولی", "فرمول قابل مشاهده", "شرح مسیر" };
             for (int c = 0; c < traceHeaders.Length; c++) trace.Cell(1, c + 1).Value = traceHeaders[c];
@@ -421,6 +500,58 @@ namespace Safir.Server.Controllers
 
 
 
+
+        private static int ResolveMonthDays(long periodDate, Dictionary<string, string> configMap)
+        {
+            string mode = GetConfigText(configMap, "MONTH_DAYS_MODE", "30");
+            if (mode == "30") return 30;
+
+            int year = (int)(periodDate / 10000);
+            int month = (int)((periodDate / 100) % 100);
+            bool isLeap = ((25 * year + 11) % 33) < 8;
+            if (month <= 6) return 31;
+            if (month <= 11) return 30;
+            return isLeap ? 30 : 29;
+        }
+
+        private static string GetConfigText(Dictionary<string, string> configMap, string key, string fallback)
+            => configMap.TryGetValue(key, out var value) && !string.IsNullOrWhiteSpace(value) ? value : fallback;
+
+        private static string BuildDecreeTraceFormula(int row, RunAuditDecreeRow d)
+        {
+            string monthlyProrate = "IFERROR(VLOOKUP(\"MONTHLY_ITEM_PRORATE\",'تنظیمات'!A:B,2,FALSE),0)";
+            string naharDays = $"({X(d.DAYSB)}-{d.FRID_COUNT}-{X(d.LEAVE_DAYS)}+{X(d.TDAYS)})";
+            return d.ITEM_CODE switch
+            {
+                "BASE_SAL" or "BASE_SAL_B" => $"ROUND(H{row}*O{row},0)",
+                "HOME" or "CHILDREN" or "GROCERY" => $"ROUND(IF(Q{row}>=28,H{row},H{row}*(Q{row}/30))*N{row},0)",
+                "NAHAR" => $"ROUND(IF({naharDays}*N{row}>0,H{row}*({naharDays}*N{row}),H{row}*O{row}),0)",
+                "SHIFT" => $"IF(S{row}=\"FIXED\",ROUND(H{row}*(O{row}/M{row}),0),ROUND(T{row}*O{row}*H{row}/100,0))",
+                "OT_NORMAL" when d.EFFECTIVE_BASIS == 3 => $"ROUND(H{row}*{X(d.OT_NORMAL_H)},0)",
+                "OT_HOLIDAY" when d.EFFECTIVE_BASIS == 3 => $"ROUND(H{row}*{X(d.OT_HOLIDAY_H)},0)",
+                "OT_ADMIN" when d.EFFECTIVE_BASIS == 3 => $"ROUND(H{row}*{X(d.OT_ADMIN_H)},0)",
+                _ when d.EFFECTIVE_BASIS == 3 => $"ROUND(H{row}*O{row}*IFERROR(VLOOKUP(\"OT_HOUR_BASE\",'تنظیمات'!A:B,2,FALSE),7.33),0)",
+                _ when d.EFFECTIVE_BASIS == 2 => $"IF({monthlyProrate}=1,ROUND(H{row}*(O{row}/M{row}),0),ROUND(H{row}*N{row},0))",
+                _ when d.EFFECTIVE_BASIS == 1 => $"ROUND(H{row}*O{row},0)",
+                _ => $"ROUND(H{row},0)"
+            };
+        }
+
+        private static string X(decimal value) => value.ToString(CultureInfo.InvariantCulture);
+
+        private static string BuildDecreeTraceDescription(RunAuditDecreeRow d)
+        {
+            string ov = d.HAS_OVERRIDE == 1 ? " با اعمال Override" : " بدون Override";
+            return d.ITEM_CODE switch
+            {
+                "BASE_SAL" or "BASE_SAL_B" => "مبلغ روزانه حکم × PAY_DAYS" + ov,
+                "HOME" or "CHILDREN" or "GROCERY" => "مزایای ماهانه: اگر روز مبنا >= ۲۸ مبلغ کامل، وگرنه نسبت ۳۰ روز × ضریب حکم" + ov,
+                "NAHAR" => "حق نهار: مبلغ × (DAYSB - جمعه - مرخصی + TDAYS) × ضریب حکم" + ov,
+                "SHIFT" => "حق شیفت: حالت FIXED یا درصدی طبق اولویت خط حکم/حکم/کارگاه/تنظیمات" + ov,
+                _ => $"محاسبه بر اساس CALC_BASIS={d.EFFECTIVE_BASIS} و PAY_BASE_DAYS/INS_BASE_DAYS" + ov
+            };
+        }
+
         private static string BuildItemTraceFormula(string itemCode, int rawRow, string rawRef, int itemStartCol, List<RunAuditColumn> columns)
         {
             string cfg = "'تنظیمات'!A:B";
@@ -525,6 +656,18 @@ namespace Safir.Server.Controllers
 
         private class RunAuditHead { public int RUN_ID { get; set; } public int PER_ID { get; set; } public int WS_ID { get; set; } public long PERIOD_DATE { get; set; } public string WS_NAME { get; set; } = ""; }
         private class RunAuditColumn { public int ITEM_ID { get; set; } public string ITEM_CODE { get; set; } = ""; public string ITEM_NAME { get; set; } = ""; public byte ITEM_TYPE { get; set; } public int SORT_ORDER { get; set; } public bool INS_SUBJECT { get; set; } public bool TAX_SUBJECT { get; set; } }
+        private class RunAuditDecreeRow
+        {
+            public int EMP_ID { get; set; } public string EMP_CODE { get; set; } = ""; public string FULL_NAME { get; set; } = "";
+            public int DEC_ID { get; set; } public int EFF_FROM { get; set; } public int EFF_TO { get; set; }
+            public string ITEM_CODE { get; set; } = ""; public string ITEM_NAME { get; set; } = ""; public byte ITEM_TYPE { get; set; }
+            public decimal DEC_AMOUNT { get; set; } public byte EFFECTIVE_BASIS { get; set; } public bool EFFECTIVE_INS { get; set; } public bool EFFECTIVE_TAX { get; set; }
+            public byte PAY_BASE_DAYS { get; set; } public byte INS_BASE_DAYS { get; set; }
+            public decimal DAYS { get; set; } public decimal DAYSB { get; set; } public byte FRID_COUNT { get; set; } public decimal TDAYS { get; set; } public decimal LEAVE_DAYS { get; set; }
+            public decimal OT_NORMAL_H { get; set; } public decimal OT_HOLIDAY_H { get; set; } public decimal OT_ADMIN_H { get; set; }
+            public string EFFECTIVE_SHIFT_MODE { get; set; } = "PCT"; public decimal CURRENT_DEC_DAILY_BASE { get; set; } public int HAS_OVERRIDE { get; set; }
+        }
+
         private class RunAuditLine : Pay2RunLineDto
         {
             public decimal OT_NORMAL_H { get; set; } public decimal OT_HOLIDAY_H { get; set; } public decimal OT_ADMIN_H { get; set; }
