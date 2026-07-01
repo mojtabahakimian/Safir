@@ -275,7 +275,7 @@ namespace Safir.Server.Controllers
                 decreeTrace.Cell(rr, 24).Value = BuildDecreeTraceDescription(d);
             }
 
-            string[] traceHeaders = { "کد", "نام", "کد آیتم", "نام آیتم", "نوع آیتم", "مبلغ موتور", "مبلغ فرمولی", "فرمول قابل مشاهده", "شرح مسیر" };
+            string[] traceHeaders = { "کد", "نام", "کد آیتم", "نام آیتم", "نوع آیتم", "مبلغ موتور", "مبلغ فرمولی", "فرمول قابل مشاهده", "شرح مسیر", "مشمول بیمه", "مشمول مالیات" };
             for (int c = 0; c < traceHeaders.Length; c++) trace.Cell(1, c + 1).Value = traceHeaders[c];
             int traceRow = 2;
             for (int r = 0; r < lines.Count; r++)
@@ -295,6 +295,8 @@ namespace Safir.Server.Controllers
                     trace.Cell(traceRow, 7).FormulaA1 = BuildItemTraceFormula(col.ITEM_CODE, rawRow, rawRef, itemStartCol, columns);
                     trace.Cell(traceRow, 8).FormulaA1 = $"FORMULATEXT(G{traceRow})";
                     trace.Cell(traceRow, 9).Value = BuildItemTraceDescription(col.ITEM_CODE);
+                    trace.Cell(traceRow, 10).Value = col.INS_SUBJECT ? 1 : 0;
+                    trace.Cell(traceRow, 11).Value = col.TAX_SUBJECT ? 1 : 0;
                     traceRow++;
                 }
             }
@@ -564,12 +566,19 @@ namespace Safir.Server.Controllers
                 "OT_ADMIN" => $"ROUND({hourly}*'داده خام'!M{rawRow}*IFERROR(VLOOKUP(\"OT_NORMAL_MULT\",{cfg},2,FALSE),1.4),0)",
                 "PERF_BONUS" => $"'داده خام'!Q{rawRow}",
                 "TRANSP" => $"'داده خام'!R{rawRow}",
-                "INS_DED" => $"'فیش حقوقی'!F{rawRow}",
-                "TAX_DED" => $"'فیش حقوقی'!I{rawRow}",
+                "INS_DED" => rawRef,
+                "TAX_DED" => rawRef,
                 "LOAN_DED" => rawRef,
                 "ADVANCE_DED" => rawRef,
-                _ => rawRef
+                _ => BuildDecreeBackedItemFormula(itemCode, rawRow, rawRef)
             };
+        }
+
+        private static string BuildDecreeBackedItemFormula(string itemCode, int rawRow, string rawRef)
+        {
+            string code = itemCode.Replace("\"", "\"\"");
+            string sum = $"SUMIFS('ردیابی حکم'!V:V,'ردیابی حکم'!A:A,'داده خام'!A{rawRow},'ردیابی حکم'!F:F,\"{code}\")";
+            return $"IF({sum}<>0,{sum},{rawRef})";
         }
 
         private static string BuildItemTraceDescription(string itemCode)
@@ -583,7 +592,7 @@ namespace Safir.Server.Controllers
                 "TRANSP" => "مبلغ متغیر ایاب‌وذهاب از کارکرد ماه",
                 "INS_DED" => "برابر فرمول بیمه کارگر در شیت فیش حقوقی",
                 "TAX_DED" => "برابر فرمول مالیات پلکانی در شیت فیش حقوقی",
-                _ => "مبلغ محاسبه‌شده موتور؛ برای تکمیل ۱۰۰٪ باید Trace حکم/Override/Proration در موتور ثبت شود"
+                _ => "اگر آیتم حکمی باشد از شیت ردیابی حکم با SUMIFS جمع می‌شود؛ اگر آیتم متغیر/خارج از حکم باشد به مبلغ موتور متصل می‌شود"
             };
         }
 
@@ -595,7 +604,7 @@ namespace Safir.Server.Controllers
 
         private static string BuildInsuranceBaseFormula(List<RunAuditColumn> columns, int row, int firstRawItemCol)
         {
-            string subjectSum = BuildSubjectSumExpression(columns, row, firstRawItemCol, x => x.INS_SUBJECT);
+            string subjectSum = $"SUMIFS('ردیابی اقلام'!G:G,'ردیابی اقلام'!A:A,'داده خام'!A{row},'ردیابی اقلام'!J:J,1)";
             string ceiling = $"IF(IFERROR(VLOOKUP(\"INS_CEILING_APPLY\",'تنظیمات'!A:B,2,FALSE),1)=1,IFERROR(VLOOKUP(\"INS_CEILING_MONTHLY\",'تنظیمات'!A:B,2,FALSE),{subjectSum})*IF('داده خام'!H{row}>0,'داده خام'!H{row},'داده خام'!G{row})/30,{subjectSum})";
             return $"IF('داده خام'!E{row}=3,0,ROUND(MIN({subjectSum},{ceiling}),0))";
         }
@@ -608,7 +617,7 @@ namespace Safir.Server.Controllers
 
         private static string BuildSubjectSumFormula(List<RunAuditColumn> columns, int row, int firstRawItemCol, Func<RunAuditColumn, bool> subject)
         {
-            return $"ROUND({BuildSubjectSumExpression(columns, row, firstRawItemCol, subject)},0)";
+            return $"ROUND(SUMIFS('ردیابی اقلام'!G:G,'ردیابی اقلام'!A:A,'داده خام'!A{row},'ردیابی اقلام'!K:K,1),0)";
         }
 
         private static string GenerateMonthlyTaxFormula(string monthlyBaseRef, List<Pay2TaxBracketDto> brackets)
