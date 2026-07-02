@@ -1257,6 +1257,11 @@
                                     </CellTemplate>
                                 </TemplateColumn>
                                 <PropertyColumn Property="x => x.Description" Title="توضیحات" />
+                                <TemplateColumn Title="زمان ثبت">
+                                    <CellTemplate Context="cellContext">
+                                        <span dir="ltr">@GetShamsiDateTimeString(cellContext.Item.CreatedAt)</span>
+                                    </CellTemplate>
+                                </TemplateColumn>
                             </Columns>
                         </MudDataGrid>
                     }
@@ -1629,7 +1634,7 @@
             var sb = new System.Text.StringBuilder();
 
             // Header
-            sb.AppendLine("تاریخ\tروز هفته\tشرکت\tشروع تغلیظ\tپایان تغلیظ\tآب‌پنیر (لیتر)\tماده خشک\tشروع اسپری\tپایان اسپری\tپودر (کیلوگرم)\tشماره کنتور\tنوع محصول\tراندمان (%)\tتوضیحات");
+            sb.AppendLine("تاریخ\tروز هفته\tشرکت\tشروع تغلیظ\tپایان تغلیظ\tآب‌پنیر (لیتر)\tماده خشک\tشروع اسپری\tپایان اسپری\tپودر (کیلوگرم)\tشماره کنتور\tنوع محصول\tراندمان (%)\tتوضیحات\tزمان ثبت");
 
             // Data
             foreach (var r in dataToExport)
@@ -1643,7 +1648,7 @@
                 var eff = r.ConcentrationWheyQty > 0 ? ((decimal)(r.SprayPowderQty ?? 0) / (decimal)(r.ConcentrationWheyQty ?? 0) * 100).ToString("N1") : "0.0";
                 var desc = (r.Description ?? "").Replace("\n", " ").Replace("\r", "").Replace("\t", " "); // Clean up description for TSV
 
-                sb.AppendLine($"{dateStr}\t{weekday}\t{company}\t{FmtTime(r.ConcentrationStart)}\t{FmtTime(r.ConcentrationEnd)}\t{whey}\t{r.DryMatterQty?.ToString("N0") ?? "0"}\t{FmtTime(r.SprayStart)}\t{FmtTime(r.SprayEnd)}\t{powder}\t{r.CounterNumber ?? ""}\t{prodType}\t{eff}\t{desc}");
+                sb.AppendLine($"{dateStr}\t{weekday}\t{company}\t{FmtTime(r.ConcentrationStart)}\t{FmtTime(r.ConcentrationEnd)}\t{whey}\t{r.DryMatterQty?.ToString("N0") ?? "0"}\t{FmtTime(r.SprayStart)}\t{FmtTime(r.SprayEnd)}\t{powder}\t{r.CounterNumber ?? ""}\t{prodType}\t{eff}\t{desc}\t{GetShamsiDateTimeString(r.CreatedAt)}");
             }
 
             // UTF-16LE BOM
@@ -1746,6 +1751,12 @@
     }
 
     private static string FmtTime(TimeSpan? t) => t?.ToString(@"hh\:mm") ?? "—";
+
+    private string GetShamsiDateTimeString(DateTime date)
+    {
+        var pc = new System.Globalization.PersianCalendar();
+        return $"{pc.GetYear(date):0000}/{pc.GetMonth(date):00}/{pc.GetDayOfMonth(date):00} {date:HH:mm}";
+    }
 
     private string GetShamsiDateString(DateTime? date)
     {
