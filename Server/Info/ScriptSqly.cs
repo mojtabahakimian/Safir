@@ -2381,6 +2381,21 @@ GO
                 // بخش اصلاح شده و کامل modify1
                 string modify1 = @"
 -- ================================================================
+-- تبدیل فیلد ماده خشک به نوع متنی در صورت عددی بودن
+-- ================================================================
+IF EXISTS (
+    SELECT 1 FROM sys.columns
+    WHERE object_id = OBJECT_ID(N'dbo.PRD_ProductionReports')
+      AND name = 'DryMatterQty'
+      AND (system_type_id = TYPE_ID('decimal') OR system_type_id = TYPE_ID('numeric') OR system_type_id = TYPE_ID('float') OR system_type_id = TYPE_ID('real') OR system_type_id = TYPE_ID('int'))
+)
+BEGIN
+    ALTER TABLE [dbo].[PRD_ProductionReports] ALTER COLUMN [DryMatterQty] NVARCHAR(MAX) NULL;
+    PRINT N'Column DryMatterQty in PRD_ProductionReports altered to NVARCHAR(MAX).';
+END;
+GO
+
+-- ================================================================
 -- ۱. اصلاح ساختار ستون ACC_T در صورت قدیمی بودن دیتابیس
 -- ================================================================
 IF EXISTS (

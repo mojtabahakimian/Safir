@@ -1087,7 +1087,7 @@
                                     </MudItem>
                                     <MudItem xs="12" sm="6">
                                         <MudText Typo="Typo.caption" Class="text-muted mb-1 d-block" Style="font-weight: bold;">مقدار ماده خشک:</MudText>
-                                        <MudNumericField @bind-Value="Model.DryMatterQty" Variant="Variant.Outlined" Margin="Margin.Dense" HideSpinButtons="true" />
+                                        <MudTextField @bind-Value="Model.DryMatterQty" Variant="Variant.Outlined" Margin="Margin.Dense" />
                                     </MudItem>
                                     <MudItem xs="12" sm="6">
                                         <MudText Typo="Typo.caption" Class="text-muted mb-1 d-block" Style="font-weight: bold;">شروع اسپری:</MudText>
@@ -1234,7 +1234,7 @@
                                     </CellTemplate>
                                 </TemplateColumn>
                                 <PropertyColumn Property="x => x.ConcentrationWheyQty" Title="آب‌پنیر (لیتر)" Format="N0" />
-                                <PropertyColumn Property="x => x.DryMatterQty" Title="ماده خشک" Format="N0" />
+                                <PropertyColumn Property="x => x.DryMatterQty" Title="ماده خشک" />
                                 <TemplateColumn Title="شروع اسپری">
                                     <CellTemplate Context="cellContext">
                                         <span dir="ltr">@FmtTime(cellContext.Item.SprayStart)</span>
@@ -1320,9 +1320,9 @@
                                                 <span class="mc-stat-value">@(report.SprayPowderQty?.ToString("N0") ?? "۰")</span>
                                                 <span class="mc-stat-unit">کیلوگرم</span>
                                             </div>
-                                            @if (report.DryMatterQty.HasValue)
+                                            @if (!string.IsNullOrEmpty(report.DryMatterQty))
                                             {
-                                                <div class="mc-stat-subvalue" style="font-size: 0.75rem;">ماده خشک: <span dir="ltr">@report.DryMatterQty?.ToString("N2")</span></div>
+                                                <div class="mc-stat-subvalue" style="font-size: 0.75rem;">ماده خشک: <span dir="ltr">@report.DryMatterQty</span></div>
                                             }
                                         </div>
 
@@ -1648,7 +1648,7 @@
                 var eff = r.ConcentrationWheyQty > 0 ? ((decimal)(r.SprayPowderQty ?? 0) / (decimal)(r.ConcentrationWheyQty ?? 0) * 100).ToString("N1") : "0.0";
                 var desc = (r.Description ?? "").Replace("\n", " ").Replace("\r", "").Replace("\t", " "); // Clean up description for TSV
 
-                sb.AppendLine($"{dateStr}\t{weekday}\t{company}\t{FmtTime(r.ConcentrationStart)}\t{FmtTime(r.ConcentrationEnd)}\t{whey}\t{r.DryMatterQty?.ToString("N0") ?? "0"}\t{FmtTime(r.SprayStart)}\t{FmtTime(r.SprayEnd)}\t{powder}\t{r.CounterNumber ?? ""}\t{prodType}\t{eff}\t{desc}\t{GetShamsiDateTimeString(r.CreatedAt)}");
+                sb.AppendLine($"{dateStr}\t{weekday}\t{company}\t{FmtTime(r.ConcentrationStart)}\t{FmtTime(r.ConcentrationEnd)}\t{whey}\t{r.DryMatterQty ?? ""}\t{FmtTime(r.SprayStart)}\t{FmtTime(r.SprayEnd)}\t{powder}\t{r.CounterNumber ?? ""}\t{prodType}\t{eff}\t{desc}\t{GetShamsiDateTimeString(r.CreatedAt)}");
             }
 
             // UTF-16LE BOM

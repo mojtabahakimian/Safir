@@ -14,7 +14,7 @@ namespace Safir.Shared.Models.Production
         public TimeSpan? SprayStart { get; set; }
         public TimeSpan? SprayEnd { get; set; }
         public decimal? SprayPowderQty { get; set; }
-        public decimal? DryMatterQty { get; set; }
+        public string? DryMatterQty { get; set; }
         public string? ProductType { get; set; } = "پودر";
         public string? CounterNumber { get; set; }
         public string? Description { get; set; }
