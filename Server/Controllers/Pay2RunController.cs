@@ -423,7 +423,10 @@ namespace Safir.Server.Controllers
 
                         int hesK = int.Parse(parts[0]);
                         int hesM = int.Parse(parts[1]);
-                        int? hesT = null;
+                        int hesT = parts.Length > 2 && int.TryParse(parts[2], out int parsedT) ? parsedT : 0;
+                        int? hesT2 = parts.Length > 3 && int.TryParse(parts[3], out int parsedT2) ? parsedT2 : null;
+                        int? hesT3 = parts.Length > 4 && int.TryParse(parts[4], out int parsedT3) ? parsedT3 : null;
+                        int? hesT4 = parts.Length > 5 && int.TryParse(parts[5], out int parsedT4) ? parsedT4 : null;
 
                         // اگر SP پرسنل را مشخص کرده (مثلاً برای مساعده)، کد تفصیلی او را از جدول پرسنل استخراج می‌کنیم
                         if (art.EMP_ID != null)
@@ -433,24 +436,44 @@ namespace Safir.Server.Controllers
                                 new { empId = (int)art.EMP_ID }, tran);
 
                             if (!string.IsNullOrWhiteSpace(accT) && int.TryParse(accT, out int tValue))
+                            {
                                 hesT = tValue;
+                                // بروزرسانی رشته HES_CODE تا کد جدید منعکس شود
+                                if (parts.Length > 2)
+                                {
+                                    parts[2] = tValue.ToString();
+                                    hesCode = string.Join("-", parts);
+                                }
+                                else
+                                {
+                                    hesCode = $"{hesK}-{hesM}-{tValue}";
+                                }
+                            }
                         }
 
-                        await conn.ExecuteAsync(@"
-                            INSERT INTO DEED_DTL (N_S, RADIF, HES_K, HES_M, HES_T, SHARH, BED, BES, CRT, UID)
-                            VALUES (@N_S, @RADIF, @HES_K, @HES_M, @HES_T, @SHARH, @BED, @BES, GETDATE(), @UID)",
-                            new
-                            {
-                                N_S = nextNs,
-                                RADIF = radif++,
-                                HES_K = hesK,
-                                HES_M = hesM,
-                                HES_T = hesT,
-                                SHARH = (string)art.SHARH,
-                                BED = (double)art.BED,
-                                BES = (double)art.BES,
-                                UID = userCod
-                            }, tran);
+                        var p = new DynamicParameters();
+                        p.Add("N_S", nextNs);
+                        p.Add("RADIF", radif++);
+                        p.Add("HES_K", hesK);
+                        p.Add("HES_M", hesM);
+                        p.Add("HES_T", hesT);
+                        p.Add("HES", hesCode);
+                        p.Add("SHARH", (string)art.SHARH);
+                        p.Add("BED", (double)art.BED);
+                        p.Add("BES", (double)art.BES);
+                        p.Add("UID", userCod);
+
+                        string cols = "N_S, RADIF, HES_K, HES_M, HES_T, HES, SHARH, BED, BES, CRT, UID";
+                        string vals = "@N_S, @RADIF, @HES_K, @HES_M, @HES_T, @HES, @SHARH, @BED, @BES, GETDATE(), @UID";
+
+                        if (hesT2.HasValue) { cols += ", HES_T2"; vals += ", @HES_T2"; p.Add("HES_T2", hesT2.Value); }
+                        if (hesT3.HasValue) { cols += ", HES_T3"; vals += ", @HES_T3"; p.Add("HES_T3", hesT3.Value); }
+                        if (hesT4.HasValue) { cols += ", HES_T4"; vals += ", @HES_T4"; p.Add("HES_T4", hesT4.Value); }
+
+                        await conn.ExecuteAsync($@"
+                            INSERT INTO DEED_DTL ({cols})
+                            VALUES ({vals})",
+                            p, tran);
                     }
 
                     // ۷. آپدیت وضعیت‌های سیستم حقوق
