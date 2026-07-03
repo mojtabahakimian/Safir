@@ -419,9 +419,9 @@ namespace Safir.Server.Controllers
 
         private static DeedAccount ParseDeedAccount(string hesCode, string accKey)
         {
-            var parts = hesCode.Split('-', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
-            if (parts.Length < 2 || parts.Length > 6)
-                throw new InvalidOperationException($"فرمت کد حسابداری '{hesCode}' برای کلید '{accKey}' نامعتبر است. فرمت مجاز: کل-معین[-تفصیلی[-تفصیلی2[-تفصیلی3[-تفصیلی4]]]].");
+            var parts = hesCode.Split('-', StringSplitOptions.TrimEntries);
+            if (parts.Length < 2 || parts.Length > 6 || parts.Any(string.IsNullOrWhiteSpace))
+                throw new InvalidOperationException($"فرمت کد حسابداری '{hesCode}' برای کلید '{accKey}' نامعتبر است. فرمت مجاز: کل-معین[-تفصیلی[-تفصیلی2[-تفصیلی3[-تفصیلی4]]]] و هیچ بخش خالی مجاز نیست.");
 
             int ParsePart(int index, string label)
             {
