@@ -435,18 +435,35 @@ namespace Safir.Server.Controllers
                                 "SELECT ACC_T FROM PAY2_EMPLOYEE WHERE EMP_ID = @empId",
                                 new { empId = (int)art.EMP_ID }, tran);
 
-                            if (!string.IsNullOrWhiteSpace(accT) && int.TryParse(accT, out int tValue))
+                            if (!string.IsNullOrWhiteSpace(accT))
                             {
-                                hesT = tValue;
-                                // بروزرسانی رشته HES_CODE تا کد جدید منعکس شود
-                                if (parts.Length > 2)
+                                // ممکن است رشته حساب پرسنل خط‌تیره داشته باشد مثل 213-1-386
+                                if (accT.Contains("-"))
                                 {
-                                    parts[2] = tValue.ToString();
-                                    hesCode = string.Join("-", parts);
+                                    var accParts = accT.Split('-');
+                                    if (accParts.Length > 0 && int.TryParse(accParts[0], out int pk)) hesK = pk;
+                                    if (accParts.Length > 1 && int.TryParse(accParts[1], out int pm)) hesM = pm;
+                                    if (accParts.Length > 2 && int.TryParse(accParts[2], out int pt)) hesT = pt;
+
+                                    hesT2 = accParts.Length > 3 && int.TryParse(accParts[3], out int pt2) ? pt2 : null;
+                                    hesT3 = accParts.Length > 4 && int.TryParse(accParts[4], out int pt3) ? pt3 : null;
+                                    hesT4 = accParts.Length > 5 && int.TryParse(accParts[5], out int pt4) ? pt4 : null;
+
+                                    hesCode = accT; // کاملاً جایگزین می‌شود
                                 }
-                                else
+                                else if (int.TryParse(accT, out int tValue))
                                 {
-                                    hesCode = $"{hesK}-{hesM}-{tValue}";
+                                    hesT = tValue;
+                                    // بروزرسانی رشته HES_CODE تا کد جدید منعکس شود
+                                    if (parts.Length > 2)
+                                    {
+                                        parts[2] = tValue.ToString();
+                                        hesCode = string.Join("-", parts);
+                                    }
+                                    else
+                                    {
+                                        hesCode = $"{hesK}-{hesM}-{tValue}";
+                                    }
                                 }
                             }
                         }
