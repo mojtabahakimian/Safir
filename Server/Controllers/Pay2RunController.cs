@@ -381,6 +381,16 @@ namespace Safir.Server.Controllers
             public int? HesT3 { get; set; }
             public int? HesT4 { get; set; }
 
+            public string Hes => string.Join("-", new[]
+            {
+                HesK,
+                HesM,
+                HesT,
+                HesT2,
+                HesT3,
+                HesT4
+            }.Where(x => x.HasValue).Select(x => x!.Value.ToString()));
+
             public void ApplyEmployeeDetail(int employeeDetail)
             {
                 if (HesT == 0)
@@ -490,8 +500,8 @@ namespace Safir.Server.Controllers
                         }
 
                         await conn.ExecuteAsync(@"
-                            INSERT INTO DEED_DTL (N_S, RADIF, HES_K, HES_M, HES_T, HES_T2, HES_T3, HES_T4, SHARH, BED, BES, CRT, UID)
-                            VALUES (@N_S, @RADIF, @HES_K, @HES_M, @HES_T, @HES_T2, @HES_T3, @HES_T4, @SHARH, @BED, @BES, GETDATE(), @UID)",
+                            INSERT INTO DEED_DTL (N_S, RADIF, HES_K, HES_M, HES_T, HES_T2, HES_T3, HES_T4, SHARH, BED, BES, HES, ARZD, CRT, UID)
+                            VALUES (@N_S, @RADIF, @HES_K, @HES_M, @HES_T, @HES_T2, @HES_T3, @HES_T4, @SHARH, @BED, @BES, @HES, 1, GETDATE(), @UID)",
                             new
                             {
                                 N_S = nextNs,
@@ -502,9 +512,10 @@ namespace Safir.Server.Controllers
                                 HES_T2 = account.HesT2,
                                 HES_T3 = account.HesT3,
                                 HES_T4 = account.HesT4,
+                                HES = account.Hes,
                                 SHARH = sharh,
-                                BED = (double)art.BED,
-                                BES = (double)art.BES,
+                                BED = Convert.ToDouble(art.BED),
+                                BES = Convert.ToDouble(art.BES),
                                 UID = userCod
                             }, tran);
                     }
