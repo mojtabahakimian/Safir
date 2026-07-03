@@ -372,6 +372,55 @@ namespace Safir.Server.Controllers
             catch (Exception ex) { return BadRequest(ex.Message); }
         }
 
+        private sealed class DeedAccount
+        {
+            public int HesK { get; init; }
+            public int HesM { get; init; }
+            public int HesT { get; set; }
+            public int? HesT2 { get; set; }
+            public int? HesT3 { get; set; }
+            public int? HesT4 { get; set; }
+
+            public void ApplyEmployeeDetail(int employeeDetail)
+            {
+                if (HesT == 0)
+                    HesT = employeeDetail;
+                else if (HesT2 is null)
+                    HesT2 = employeeDetail;
+                else if (HesT3 is null)
+                    HesT3 = employeeDetail;
+                else if (HesT4 is null)
+                    HesT4 = employeeDetail;
+                else
+                    throw new InvalidOperationException("کد حسابداری ظرفیت تفصیلی خالی برای اتصال پرسنل ندارد.");
+            }
+        }
+
+        private static DeedAccount ParseDeedAccount(string hesCode, string accKey)
+        {
+            var parts = hesCode.Split('-', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
+            if (parts.Length < 2 || parts.Length > 6)
+                throw new InvalidOperationException($"فرمت کد حسابداری '{hesCode}' برای کلید '{accKey}' نامعتبر است. فرمت مجاز: کل-معین[-تفصیلی[-تفصیلی2[-تفصیلی3[-تفصیلی4]]]].");
+
+            int ParsePart(int index, string label)
+            {
+                if (!int.TryParse(parts[index], out int value))
+                    throw new InvalidOperationException($"بخش {label} در کد حسابداری '{hesCode}' برای کلید '{accKey}' عددی نیست.");
+                return value;
+            }
+
+            return new DeedAccount
+            {
+                HesK = ParsePart(0, "کل"),
+                HesM = ParsePart(1, "معین"),
+                // در دیتابیس‌های مشتری ستون DEED_DTL.HES_T نال‌پذیر نیست؛ برای حساب‌های بدون تفصیلی مقدار صفر ثبت می‌شود.
+                HesT = parts.Length > 2 ? ParsePart(2, "تفصیلی") : 0,
+                HesT2 = parts.Length > 3 ? ParsePart(3, "تفصیلی۲") : null,
+                HesT3 = parts.Length > 4 ? ParsePart(4, "تفصیلی۳") : null,
+                HesT4 = parts.Length > 5 ? ParsePart(5, "تفصیلی۴") : null
+            };
+        }
+
         [HttpPost("{runId:int}/generate-deed")]
         public async Task<IActionResult> GenerateDeed(int runId)
         {
@@ -418,35 +467,42 @@ namespace Safir.Server.Controllers
                     int radif = 1;
                     foreach (var art in articles)
                     {
-                        string hesCode = (string)art.HES_CODE;
-                        var parts = hesCode.Split('-');
+                        string accKey = (string)art.ACC_KEY;
+                        string sharh = (string)art.SHARH;
+                        string? hesCode = art.HES_CODE as string;
 
-                        int hesK = int.Parse(parts[0]);
-                        int hesM = int.Parse(parts[1]);
-                        int? hesT = null;
+                        if (string.IsNullOrWhiteSpace(hesCode))
+                            throw new InvalidOperationException($"کد حسابداری برای آرتیکل '{sharh}' با کلید '{accKey}' تنظیم نشده است. لطفاً سرفصل‌های حسابداری کارگاه را کامل کنید.");
 
-                        // اگر SP پرسنل را مشخص کرده (مثلاً برای مساعده)، کد تفصیلی او را از جدول پرسنل استخراج می‌کنیم
+                        DeedAccount account = ParseDeedAccount(hesCode, accKey);
+
+                        // اگر SP پرسنل را مشخص کرده (مثلاً برای مساعده)، کد تفصیلی او را در اولین سطح تفصیلی خالی می‌گذاریم.
                         if (art.EMP_ID != null)
                         {
                             string? accT = await conn.QuerySingleOrDefaultAsync<string>(
                                 "SELECT ACC_T FROM PAY2_EMPLOYEE WHERE EMP_ID = @empId",
                                 new { empId = (int)art.EMP_ID }, tran);
 
-                            if (!string.IsNullOrWhiteSpace(accT) && int.TryParse(accT, out int tValue))
-                                hesT = tValue;
+                            if (string.IsNullOrWhiteSpace(accT) || !int.TryParse(accT, out int tValue))
+                                throw new InvalidOperationException($"کد تفصیلی حسابداری پرسنل برای آرتیکل '{sharh}' تنظیم نشده یا عددی نیست.");
+
+                            account.ApplyEmployeeDetail(tValue);
                         }
 
                         await conn.ExecuteAsync(@"
-                            INSERT INTO DEED_DTL (N_S, RADIF, HES_K, HES_M, HES_T, SHARH, BED, BES, CRT, UID)
-                            VALUES (@N_S, @RADIF, @HES_K, @HES_M, @HES_T, @SHARH, @BED, @BES, GETDATE(), @UID)",
+                            INSERT INTO DEED_DTL (N_S, RADIF, HES_K, HES_M, HES_T, HES_T2, HES_T3, HES_T4, SHARH, BED, BES, CRT, UID)
+                            VALUES (@N_S, @RADIF, @HES_K, @HES_M, @HES_T, @HES_T2, @HES_T3, @HES_T4, @SHARH, @BED, @BES, GETDATE(), @UID)",
                             new
                             {
                                 N_S = nextNs,
                                 RADIF = radif++,
-                                HES_K = hesK,
-                                HES_M = hesM,
-                                HES_T = hesT,
-                                SHARH = (string)art.SHARH,
+                                HES_K = account.HesK,
+                                HES_M = account.HesM,
+                                HES_T = account.HesT,
+                                HES_T2 = account.HesT2,
+                                HES_T3 = account.HesT3,
+                                HES_T4 = account.HesT4,
+                                SHARH = sharh,
                                 BED = (double)art.BED,
                                 BES = (double)art.BES,
                                 UID = userCod
