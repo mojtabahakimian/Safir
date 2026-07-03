@@ -381,15 +381,26 @@ namespace Safir.Server.Controllers
             public int? HesT3 { get; set; }
             public int? HesT4 { get; set; }
 
-            public string Hes => string.Join("-", new[]
+            public string Hes
             {
-                HesK,
-                HesM,
-                HesT,
-                HesT2,
-                HesT3,
-                HesT4
-            }.Where(x => x.HasValue).Select(x => x!.Value.ToString()));
+                get
+                {
+                    var parts = new List<int> { HesK, HesM };
+
+                    // HES_T may be stored as 0 only because some customer databases define it as NOT NULL.
+                    // Do not add that artificial zero to the composite HES string unless a deeper detail exists.
+                    if (HesT != 0 || HesT2 is not null || HesT3 is not null || HesT4 is not null)
+                        parts.Add(HesT);
+                    if (HesT2 is not null)
+                        parts.Add(HesT2.Value);
+                    if (HesT3 is not null)
+                        parts.Add(HesT3.Value);
+                    if (HesT4 is not null)
+                        parts.Add(HesT4.Value);
+
+                    return string.Join("-", parts);
+                }
+            }
 
             public void ApplyEmployeeDetail(int employeeDetail)
             {
