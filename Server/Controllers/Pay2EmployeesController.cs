@@ -986,20 +986,20 @@ namespace Safir.Server.Controllers
                         IF EXISTS (SELECT 1 FROM PAY2_RUN_LINE WHERE EMP_ID = @empId)
                             SELECT 1 AS ErrorCode, N'این پرسنل دارای محاسبه حقوق (فیش صادر شده) است و قابل حذف نیست.' AS ErrorMessage
                         ELSE IF EXISTS (SELECT 1 FROM PAY2_ATTENDANCE WHERE EMP_ID = @empId)
-                            SELECT 2, N'برای این پرسنل کارکرد ماهیانه ثبت شده است و قابل حذف نیست.'
+                            SELECT 2 AS ErrorCode, N'برای این پرسنل کارکرد ماهیانه ثبت شده است و قابل حذف نیست.' AS ErrorMessage
                         ELSE IF EXISTS (SELECT 1 FROM PAY2_SETTLEMENT WHERE EMP_ID = @empId)
-                            SELECT 3, N'این پرسنل دارای سابقه تسویه حساب است و قابل حذف نیست.'
+                            SELECT 3 AS ErrorCode, N'این پرسنل دارای سابقه تسویه حساب است و قابل حذف نیست.' AS ErrorMessage
                         ELSE IF EXISTS (SELECT 1 FROM PAY2_LOAN WHERE EMP_ID = @empId)
-                            SELECT 4, N'این پرسنل دارای سابقه وام است. حذف فیزیکی ممنوع است.'
+                            SELECT 4 AS ErrorCode, N'این پرسنل دارای سابقه وام است. حذف فیزیکی ممنوع است.' AS ErrorMessage
                         ELSE IF EXISTS (SELECT 1 FROM PAY2_DECREE WHERE EMP_ID = @empId AND IS_CONFIRMED = 1)
-                            SELECT 5, N'این پرسنل دارای احکام کارگزینی تأیید شده است. مدارک رسمی قابل حذف نیستند.'
+                            SELECT 5 AS ErrorCode, N'این پرسنل دارای احکام کارگزینی تأیید شده است. مدارک رسمی قابل حذف نیستند.' AS ErrorMessage
                         ELSE IF EXISTS (SELECT 1 FROM PAY2_LEAVE WHERE EMP_ID = @empId AND STATUS > 1)
-                            SELECT 6, N'این پرسنل دارای مرخصی تأیید شده است و سوابق آن قابل حذف نیست.'
+                            SELECT 6 AS ErrorCode, N'این پرسنل دارای مرخصی تأیید شده است و سوابق آن قابل حذف نیست.' AS ErrorMessage
                         -- 🚀 فیکس امنیتی: جلوگیری از حذف بدهی مالی شرکت به پرسنل
                         ELSE IF EXISTS (SELECT 1 FROM PAY2_LEAVE_BAL WHERE EMP_ID = @empId AND BALANCE_MIN > 0)
-                            SELECT 7, N'این پرسنل دارای مانده مرخصی (بدهی مالی شرکت) است. به جای حذف فیزیکی، او را غیرفعال یا تسویه کنید.'
+                            SELECT 7 AS ErrorCode, N'این پرسنل دارای مانده مرخصی (بدهی مالی شرکت) است. به جای حذف فیزیکی، او را غیرفعال یا تسویه کنید.' AS ErrorMessage
                         ELSE 
-                            SELECT 0, N'OK'";
+                            SELECT 0 AS ErrorCode, N'OK' AS ErrorMessage";
 
                     var validationResult = await conn.QuerySingleAsync(checkSql, new { empId }, tran);
 
