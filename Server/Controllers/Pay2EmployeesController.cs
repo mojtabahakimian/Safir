@@ -990,11 +990,14 @@ namespace Safir.Server.Controllers
                         ELSE IF EXISTS (SELECT 1 FROM PAY2_SETTLEMENT WHERE EMP_ID = @empId)
                             SELECT 3, N'این پرسنل دارای سابقه تسویه حساب است و قابل حذف نیست.'
                         ELSE IF EXISTS (SELECT 1 FROM PAY2_LOAN WHERE EMP_ID = @empId)
-                            SELECT 4, N'این پرسنل دارای سابقه وام است (حتی تسویه شده). به دلیل سوابق مالی، حذف فیزیکی ممنوع است.'
+                            SELECT 4, N'این پرسنل دارای سابقه وام است. حذف فیزیکی ممنوع است.'
                         ELSE IF EXISTS (SELECT 1 FROM PAY2_DECREE WHERE EMP_ID = @empId AND IS_CONFIRMED = 1)
                             SELECT 5, N'این پرسنل دارای احکام کارگزینی تأیید شده است. مدارک رسمی قابل حذف نیستند.'
                         ELSE IF EXISTS (SELECT 1 FROM PAY2_LEAVE WHERE EMP_ID = @empId AND STATUS > 1)
                             SELECT 6, N'این پرسنل دارای مرخصی تأیید شده است و سوابق آن قابل حذف نیست.'
+                        -- 🚀 فیکس امنیتی: جلوگیری از حذف بدهی مالی شرکت به پرسنل
+                        ELSE IF EXISTS (SELECT 1 FROM PAY2_LEAVE_BAL WHERE EMP_ID = @empId AND BALANCE_MIN > 0)
+                            SELECT 7, N'این پرسنل دارای مانده مرخصی (بدهی مالی شرکت) است. به جای حذف فیزیکی، او را غیرفعال یا تسویه کنید.'
                         ELSE 
                             SELECT 0, N'OK'";
 

@@ -209,6 +209,11 @@ namespace Safir.Server.Controllers
                     if (status >= 3)
                         throw new InvalidOperationException("این دوره محاسبه شده است و قابل بازگشت نیست. ابتدا از تب محاسبه حقوق، عملیات لغو را انجام دهید.");
 
+                    // 🚀 فیکس معماری: جلوگیری از ایجاد تضاد (Desync) بین کارکرد و پیش‌نویس فیش‌ها
+                    int runCount = await conn.QuerySingleAsync<int>("SELECT COUNT(1) FROM PAY2_RUN WHERE PER_ID = @perId", new { perId }, tran);
+                    if (runCount > 0)
+                        throw new InvalidOperationException("برای این دوره فیش حقوقی (حتی پیش‌نویس) صادر شده است. برای ویرایش کارکرد، ابتدا باید در تب محاسبه حقوق، فیش را لغو (Revert) کنید.");
+
                     await conn.ExecuteAsync("UPDATE PAY2_PERIOD SET STATUS = 1, CLOSED_AT = NULL WHERE PER_ID = @perId", new { perId }, tran);
                 });
 
