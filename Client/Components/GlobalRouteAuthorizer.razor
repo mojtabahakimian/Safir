@@ -13,9 +13,18 @@
         await CheckAccessAsync(NavigationManager.Uri);
     }
 
+    // 🚀 فیکس پایداری کلاینت: مهار خطاهای احتمالی در async void
     private async void OnLocationChanged(object? sender, LocationChangedEventArgs e)
     {
-        await CheckAccessAsync(e.Location);
+        try
+        {
+            await CheckAccessAsync(e.Location);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[Routing Guard Error]: {ex.Message}");
+            // جلوگیری از کرش کردن کل کلاینت در صورت خطای احراز هویت
+        }
     }
 
     private async Task CheckAccessAsync(string location)

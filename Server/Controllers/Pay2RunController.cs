@@ -297,7 +297,6 @@ namespace Safir.Server.Controllers
             {
                 int newRunId = await _db.ExecuteInTransactionAsync(async (conn, tran) =>
                 {
-                    // ۱. بررسی وضعیت دوره
                     var periodStatus = await conn.QuerySingleOrDefaultAsync<byte?>(
                         "SELECT STATUS FROM PAY2_PERIOD WITH (UPDLOCK) WHERE PER_ID = @PER_ID",
                         new { request.PER_ID }, tran);
@@ -305,7 +304,6 @@ namespace Safir.Server.Controllers
                     if (periodStatus == null || periodStatus == 1)
                         throw new InvalidOperationException("دوره کارکرد هنوز باز است. لطفاً ابتدا در تب کارکرد، دکمه 'بستن کارکرد' را بزنید.");
 
-                    // ۲. بررسی وضعیت آخرین فیش
                     var latestRunStatus = await conn.QuerySingleOrDefaultAsync<byte?>(
                         "SELECT STATUS FROM PAY2_RUN WITH (UPDLOCK) WHERE PER_ID = @PER_ID AND IS_LATEST = 1",
                         new { request.PER_ID }, tran);
@@ -313,10 +311,9 @@ namespace Safir.Server.Controllers
                     if (latestRunStatus >= 2)
                         throw new InvalidOperationException("برای این دوره فیش حقوقیِ تأیید شده وجود دارد. امکان بازمحاسبه نیست.");
 
-                    // 🚀 FIX: گارد امنیتی بک‌اند. نادیده گرفتن مقدار ارسالی از کلاینت و تعیین قطعی آن توسط دیتابیس
-                    request.IsReRun = latestRunStatus.HasValue;
+                    // 🚀 فیکس امنیتی: هرگز به کلاینت اعتماد نکن. سرور خودش وضعیت را بررسی می‌کند!
+                    bool isReRun = latestRunStatus.HasValue;
 
-                    // ۳. فراخوانی SP محاسبات
                     var sql = @"
                         DECLARE @NewId INT;
                         EXEC SP_PAY2_CALC_RUN 
@@ -330,6 +327,7 @@ namespace Safir.Server.Controllers
 
                     var p = new DynamicParameters(request);
                     p.Add("UserCod", userCod);
+                    p.Add("IsReRun", isReRun); // پاس دادن متغیر امنِ سرور
 
                     return await conn.QuerySingleAsync<int>(sql, p, tran, commandTimeout: 180);
                 });

@@ -209,6 +209,20 @@ namespace Safir.Server.Controllers
                     if (status >= 3)
                         throw new InvalidOperationException("این دوره محاسبه شده است و قابل بازگشت نیست. ابتدا از تب محاسبه حقوق، عملیات لغو را انجام دهید.");
 
+                    // 🚀 فیکس معماری: جلوگیری از ایجاد تضاد (Desync) بین کارکرد و پیش‌نویس فیش‌ها
+                    // P1 Badge Restrict the run check to unreverted runs
+                    // After revert, PAY2_RUN headers remain with STATUS = 1 but their details (PAY2_RUN_LINE) are deleted.
+                    // We must block reopening ONLY if there's an ACTIVE run (which has PAY2_RUN_LINE items).
+                    int runCount = await conn.QuerySingleAsync<int>(@"
+                        SELECT COUNT(1)
+                        FROM PAY2_RUN R
+                        WHERE R.PER_ID = @perId
+                          AND EXISTS (SELECT 1 FROM PAY2_RUN_LINE RL WHERE RL.RUN_ID = R.RUN_ID)",
+                        new { perId }, tran);
+
+                    if (runCount > 0)
+                        throw new InvalidOperationException("برای این دوره فیش حقوقی (حتی پیش‌نویس) صادر شده است. برای ویرایش کارکرد، ابتدا باید در تب محاسبه حقوق، فیش را لغو (Revert) کنید.");
+
                     await conn.ExecuteAsync("UPDATE PAY2_PERIOD SET STATUS = 1, CLOSED_AT = NULL WHERE PER_ID = @perId", new { perId }, tran);
                 });
 
