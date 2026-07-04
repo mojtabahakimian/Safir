@@ -1111,9 +1111,9 @@ BEGIN
     FROM PAY2_RUN R INNER JOIN PAY2_PERIOD P ON R.PER_ID = P.PER_ID
     WHERE R.RUN_ID = @RUN_ID;
 
-    IF @STATUS <> 2
+    IF @STATUS NOT IN (2, 3)
     BEGIN
-        RAISERROR(N'اجرای %d باید ابتدا نهایی شود.', 16, 1, @RUN_ID);
+        RAISERROR(N'اجرای %d باید ابتدا نهایی یا سند آن صادر شده باشد.', 16, 1, @RUN_ID);
         RETURN;
     END;
 
@@ -1144,25 +1144,29 @@ BEGIN
         SELECT 
             RL.EMP_ID, 
             RL.GROSS_PAY,
-            CAST(CASE WHEN A.WORK_DAYS > 0 THEN ROUND(RL.GROSS_PAY * (A.DAYS_TOLID / A.WORK_DAYS), 0) ELSE 0 END AS BIGINT) AS EXP_TOLID,
-            CAST(CASE WHEN A.WORK_DAYS > 0 THEN ROUND(RL.GROSS_PAY * (A.DAYS_EDARI / A.WORK_DAYS), 0) ELSE 0 END AS BIGINT) AS EXP_EDARI,
-            CAST(CASE WHEN A.WORK_DAYS > 0 THEN ROUND(RL.GROSS_PAY * (A.DAYS_FOROSH / A.WORK_DAYS), 0) ELSE 0 END AS BIGINT) AS EXP_FOROSH,
-            A.WORK_DAYS, A.DAYS_KHADAMAT
+            A.WORK_DAYS, A.DAYS_TOLID, A.DAYS_EDARI, A.DAYS_FOROSH, A.DAYS_KHADAMAT,
+            CAST(CASE WHEN A.WORK_DAYS > 0 THEN ROUND(RL.GROSS_PAY * (A.DAYS_TOLID / A.WORK_DAYS), 0) ELSE 0 END AS BIGINT) AS R_T,
+            CAST(CASE WHEN A.WORK_DAYS > 0 THEN ROUND(RL.GROSS_PAY * (A.DAYS_EDARI / A.WORK_DAYS), 0) ELSE 0 END AS BIGINT) AS R_E,
+            CAST(CASE WHEN A.WORK_DAYS > 0 THEN ROUND(RL.GROSS_PAY * (A.DAYS_FOROSH / A.WORK_DAYS), 0) ELSE 0 END AS BIGINT) AS R_F,
+            CAST(CASE WHEN A.WORK_DAYS > 0 THEN ROUND(RL.GROSS_PAY * (A.DAYS_KHADAMAT / A.WORK_DAYS), 0) ELSE 0 END AS BIGINT) AS R_K
         FROM PAY2_RUN_LINE RL
         INNER JOIN PAY2_ATTENDANCE A ON RL.EMP_ID = A.EMP_ID AND A.PER_ID = @PER_ID
         WHERE RL.RUN_ID = @RUN_ID
     ),
+    SalarySplitDiff AS (
+        -- پیدا کردن دقیق میزان اختلاف گرد کردن برای هر پرسنل
+        SELECT *, (GROSS_PAY - (R_T + R_E + R_F + R_K)) AS Diff FROM SalarySplitBase
+    ),
     SalarySplit AS (
+        -- اعمال آبشاری اختلاف فقط روی اولین دپارتمانی که کارکردش بزرگتر از صفر است
         SELECT 
-            EMP_ID, GROSS_PAY, EXP_TOLID, EXP_EDARI, EXP_FOROSH,
-            -- شاهکار ریاضی: واحد آخر (خدمات) برابر است با: کل حقوق منهای هزینه‌های قبلی
-            -- این کار تمام ریال‌های گمشده ناشی از گرد کردن را برمی‌گرداند و سند را تراز می‌کند
-            CASE 
-                WHEN WORK_DAYS > 0 AND DAYS_KHADAMAT > 0 
-                THEN GROSS_PAY - (EXP_TOLID + EXP_EDARI + EXP_FOROSH)
-                ELSE 0 
-            END AS EXP_KHADAMAT
-        FROM SalarySplitBase
+            EMP_ID, GROSS_PAY,
+            CASE WHEN DAYS_TOLID > 0 THEN R_T + Diff ELSE R_T END AS EXP_TOLID,
+            CASE WHEN DAYS_TOLID = 0 AND DAYS_EDARI > 0 THEN R_E + Diff ELSE R_E END AS EXP_EDARI,
+            CASE WHEN DAYS_TOLID = 0 AND DAYS_EDARI = 0 AND DAYS_FOROSH > 0 THEN R_F + Diff ELSE R_F END AS EXP_FOROSH,
+            -- 🚀 FIX: حذف شرط DAYS_KHADAMAT > 0 برای تبدیل شدن به سوپاپ اطمینان مطلق (ضمانت ۱۰۰٪ تراز سند)
+            CASE WHEN DAYS_TOLID = 0 AND DAYS_EDARI = 0 AND DAYS_FOROSH = 0 THEN R_K + Diff ELSE R_K END AS EXP_KHADAMAT
+        FROM SalarySplitDiff
     )
     -- خروجی نهایی برای صدور سند
     SELECT @ACC_SALARY_TOLID AS HES_CODE, N'هزینه حقوق تولید' AS SHARH, SUM(EXP_TOLID) AS BED, 0 AS BES, 'EXP_TOLID' AS ACC_KEY, NULL AS EMP_ID
