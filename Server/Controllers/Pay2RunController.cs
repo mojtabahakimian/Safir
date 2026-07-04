@@ -338,6 +338,76 @@ namespace Safir.Server.Controllers
             catch (Exception ex) { return StatusCode(500, "خطای موتور محاسبه: " + ex.Message); }
         }
 
+        // ===================================================================
+        // لغو صدور سند (STATUS 3 → 2) — قفل‌گشایی برای صدور مجدد
+        // شرط: سند حسابداری در سیستم حسابداری قطعی (OKF≠1) نشده باشد.
+        // عملیات: حذف DEED_DTL + DEED_HED، صفر کردن DEED_ID_SAL، برگشت
+        //         وضعیت PAY2_RUN به ۲ (تأیید نهایی) و PAY2_PERIOD به ۳.
+        // ===================================================================
+        [HttpPut("{runId:int}/unfinalize-deed")]
+        public async Task<IActionResult> UnfinalizeDeed(int runId)
+        {
+            var userIdString = User.FindFirstValue(ClaimTypes.NameIdentifier);
+            if (!int.TryParse(userIdString, out int userCod)) return Unauthorized();
+
+            try
+            {
+                await _db.ExecuteInTransactionAsync(async (conn, tran) =>
+                {
+                    // ۱. خواندن اطلاعات اجرا
+                    var runInfo = await conn.QuerySingleOrDefaultAsync(
+                        @"SELECT R.STATUS, R.PER_ID, R.DEED_ID_SAL, P.DEED_N_S_PAY
+                          FROM PAY2_RUN R
+                          INNER JOIN PAY2_PERIOD P ON R.PER_ID = P.PER_ID
+                          WHERE R.RUN_ID = @runId",
+                        new { runId }, tran);
+
+                    if (runInfo == null)
+                        throw new InvalidOperationException("محاسبه‌ای با این شناسه یافت نشد.");
+
+                    byte status = (byte)runInfo.STATUS;
+                    if (status != 3)
+                        throw new InvalidOperationException("این عملیات فقط برای اجراهایی که سند صادر کرده‌اند (وضعیت ۳) مجاز است.");
+
+                    double? deedNs = (double?)runInfo.DEED_N_S_PAY;
+
+                    // ۲. بررسی امنیتی: اگر سند در حسابداری قطعی شده باشد، اجازه داده نمی‌شود
+                    if (deedNs.HasValue && deedNs.Value > 0)
+                    {
+                        var okfStatus = await conn.QuerySingleOrDefaultAsync<byte?>(
+                            "SELECT OKF FROM DEED_HED WHERE N_S = @N_S",
+                            new { N_S = deedNs.Value }, tran);
+
+                        if (okfStatus.HasValue && okfStatus.Value != 1)
+                            throw new InvalidOperationException(
+                                "این سند در سیستم حسابداری بررسی و قطعی شده است. امکان لغو صدور سند از طریق ماژول حقوق وجود ندارد.");
+
+                        // ۳. حذف ریز سند و هدر سند حسابداری
+                        await conn.ExecuteAsync("DELETE FROM DEED_DTL WHERE N_S = @N_S", new { N_S = deedNs.Value }, tran);
+                        await conn.ExecuteAsync("DELETE FROM DEED_HED WHERE N_S = @N_S", new { N_S = deedNs.Value }, tran);
+                    }
+
+                    int perId = (int)runInfo.PER_ID;
+
+                    // ۴. برگشت وضعیت: PAY2_RUN → STATUS=2، PAY2_PERIOD → STATUS=3
+                    await conn.ExecuteAsync(@"
+                        UPDATE PAY2_RUN
+                        SET STATUS = 2, DEED_ID_SAL = NULL,
+                            NOTES = SUBSTRING(ISNULL(NOTES,'') + N' | DeedUnfinalized by ' + CAST(@userCod AS NVARCHAR), 1, 300)
+                        WHERE RUN_ID = @runId;
+
+                        UPDATE PAY2_PERIOD
+                        SET STATUS = 3, DEED_N_S_PAY = NULL
+                        WHERE PER_ID = @perId;",
+                        new { runId, perId, userCod }, tran);
+                });
+
+                return Ok();
+            }
+            catch (InvalidOperationException ex) { return BadRequest(ex.Message); }
+            catch (Exception ex) { return StatusCode(500, "خطا در لغو صدور سند: " + ex.Message); }
+        }
+
         [HttpPut("{runId:int}/revert")]
         public async Task<IActionResult> RevertRun(int runId)
         {

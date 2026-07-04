@@ -320,13 +320,14 @@
                         }
                         else if (CurrentRun.STATUS == 3)
                         {
-                            <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 0 12px; height: 42px; display: flex; align-items: center; gap: 8px;">
-                                <i class="bi bi-hash p2-text-muted"></i>
+                            <div style="background-color: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 6px; padding: 0 14px; height: 42px; display: flex; align-items: center; gap: 8px;">
+                                <i class="bi bi-lock-fill" style="color: #16a34a;"></i>
                                 <span class="p2-text-muted" style="font-size: 11px;">شماره سند صادره:</span>
                                 <span style="font-weight: 800; font-family: monospace; font-size: 14px; color: var(--p2-primary);">@(CurrentRun.DEED_ID_SAL?.ToString() ?? "-")</span>
+                                <span style="font-size: 11px; color: #16a34a; font-weight: 600; margin-right: 8px;">سند قفل شده</span>
                             </div>
-                            <button class="btn-outline-pay2" @onclick="GenerateDeed" disabled="@IsProcessing" style="height: 42px;" title="به روز رسانی / صدور مجدد سند حسابداری">
-                                <i class="bi bi-arrow-repeat"></i> صدور مجدد سند
+                            <button class="btn-outline-danger-pay2" @onclick="UnfinalizeDeed" disabled="@IsProcessing" style="height: 42px;" title="لغو صدور سند — بازگشت به وضعیت تأیید نهایی برای صدور مجدد">
+                                <i class="bi bi-unlock"></i> لغو صدور سند
                             </button>
                         }
                     }
@@ -877,6 +878,38 @@
                 await RunApi.GenerateDeedAsync(CurrentRun.RUN_ID);
                 Snackbar.Add(isReIssue ? "سند حسابداری با موفقیت بروزرسانی شد." : "سند حسابداری با موفقیت صادر شد.", MudBlazor.Severity.Success);
 
+                await LoadRunData();
+            }
+            catch (Exception ex)
+            {
+                Snackbar.Add(ex.Message, MudBlazor.Severity.Error);
+            }
+            finally
+            {
+                IsProcessing = false;
+            }
+        }
+    }
+
+    async Task UnfinalizeDeed()
+    {
+        var parameters = new MudBlazor.DialogParameters
+        {
+            ["Title"] = "لغو صدور سند حسابداری",
+            ["ContentText"] = "آیا از لغو صدور سند حسابداری اطمینان دارید؟ با این کار، سند تولید شده در سیستم حسابداری حذف شده و محاسبات حقوق مجدداً به وضعیت 'تأیید نهایی' جهت اصلاح یا بازصدور باز می‌گردد.",
+            ["ConfirmButtonText"] = "بله، لغو صدور سند",
+            ["CancelButtonText"] = "انصراف"
+        };
+        var dialog = DialogService.Show<Safir.Client.Shared.ConfirmDialog>("تایید", parameters, new MudBlazor.DialogOptions { MaxWidth = MudBlazor.MaxWidth.ExtraSmall, CloseButton = false });
+        var result = await dialog.Result;
+
+        if (!result.Cancelled && CurrentRun != null)
+        {
+            IsProcessing = true;
+            try
+            {
+                await RunApi.UnfinalizeDeedAsync(CurrentRun.RUN_ID);
+                Snackbar.Add("صدور سند با موفقیت لغو شد و محاسبات قفل‌گشایی گردید.", MudBlazor.Severity.Success);
                 await LoadRunData();
             }
             catch (Exception ex)

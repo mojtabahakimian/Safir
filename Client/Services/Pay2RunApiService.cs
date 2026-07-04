@@ -84,6 +84,12 @@ namespace Safir.Client.Services
             if (!res.IsSuccessStatusCode) throw new Exception(await res.Content.ReadAsStringAsync());
         }
 
+        public async Task UnfinalizeDeedAsync(int runId)
+        {
+            var res = await _http.PutAsync($"api/pay2/run/{runId}/unfinalize-deed", null);
+            if (!res.IsSuccessStatusCode) throw new Exception(await res.Content.ReadAsStringAsync());
+        }
+
         // دریافت بایت‌های اکسلِ تحلیلیِ فرمول‌دار برای کل اجرا
         public async Task<byte[]> GetExcelAuditAsync(int runId)
         {
