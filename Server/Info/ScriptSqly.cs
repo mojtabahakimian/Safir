@@ -1804,6 +1804,26 @@ BEGIN
         RETURN;
     END;
 
+    -- ===== محاسبه برچسب ماه (مثال: 03-خرداد) =====
+    DECLARE @MonthNum INT = (@PER_DATE / 100) % 100;
+    DECLARE @MonthName NVARCHAR(10) = CASE @MonthNum
+        WHEN 1  THEN N'فروردین'
+        WHEN 2  THEN N'اردیبهشت'
+        WHEN 3  THEN N'خرداد'
+        WHEN 4  THEN N'تیر'
+        WHEN 5  THEN N'مرداد'
+        WHEN 6  THEN N'شهریور'
+        WHEN 7  THEN N'مهر'
+        WHEN 8  THEN N'آبان'
+        WHEN 9  THEN N'آذر'
+        WHEN 10 THEN N'دی'
+        WHEN 11 THEN N'بهمن'
+        WHEN 12 THEN N'اسفند'
+        ELSE N'نامشخص'
+    END;
+    DECLARE @ML NVARCHAR(20) = RIGHT('0' + CAST(@MonthNum AS NVARCHAR(2)), 2) + N'-' + @MonthName;
+    -- ================================================
+
     -- متغیرهای حساب‌ها
     DECLARE 
         @ACC_SALARY_TOLID NVARCHAR(50), @ACC_SALARY_EDARI NVARCHAR(50), 
@@ -1856,24 +1876,24 @@ BEGIN
         FROM SalarySplitDiff
     )
     -- خروجی نهایی برای صدور سند
-    SELECT @ACC_SALARY_TOLID AS HES_CODE, N'هزینه حقوق تولید' AS SHARH, SUM(EXP_TOLID) AS BED, 0 AS BES, 'EXP_TOLID' AS ACC_KEY, NULL AS EMP_ID
+    SELECT @ACC_SALARY_TOLID AS HES_CODE, N'هزینه حقوق تولید ' + @ML AS SHARH, SUM(EXP_TOLID) AS BED, 0 AS BES, 'EXP_TOLID' AS ACC_KEY, NULL AS EMP_ID
     FROM SalarySplit HAVING SUM(EXP_TOLID) > 0
     UNION ALL 
-    SELECT @ACC_SALARY_EDARI, N'هزینه حقوق اداری', SUM(EXP_EDARI), 0, 'EXP_EDARI', NULL
+    SELECT @ACC_SALARY_EDARI, N'هزینه حقوق اداری ' + @ML, SUM(EXP_EDARI), 0, 'EXP_EDARI', NULL
     FROM SalarySplit HAVING SUM(EXP_EDARI) > 0
     UNION ALL 
-    SELECT @ACC_SALARY_FOROSH, N'هزینه حقوق فروش', SUM(EXP_FOROSH), 0, 'EXP_FOROSH', NULL
+    SELECT @ACC_SALARY_FOROSH, N'هزینه حقوق فروش ' + @ML, SUM(EXP_FOROSH), 0, 'EXP_FOROSH', NULL
     FROM SalarySplit HAVING SUM(EXP_FOROSH) > 0
     UNION ALL 
-    SELECT @ACC_SALARY_KHADAMAT, N'هزینه حقوق خدمات', SUM(EXP_KHADAMAT), 0, 'EXP_KHADAMAT', NULL
+    SELECT @ACC_SALARY_KHADAMAT, N'هزینه حقوق خدمات ' + @ML, SUM(EXP_KHADAMAT), 0, 'EXP_KHADAMAT', NULL
     FROM SalarySplit HAVING SUM(EXP_KHADAMAT) > 0
     UNION ALL 
-    SELECT @ACC_INS_EXP, N'هزینه بیمه کارفرما', SUM(INS_EMPLOYER), 0, 'INS_EXP', NULL
+    SELECT @ACC_INS_EXP, N'هزینه بیمه کارفرما ' + @ML, SUM(INS_EMPLOYER), 0, 'INS_EXP', NULL
     FROM PAY2_RUN_LINE WHERE RUN_ID = @RUN_ID HAVING SUM(INS_EMPLOYER) > 0
     UNION ALL 
     SELECT 
         ISNULL(E.ACC_T, @ACC_SALARY_PAY),
-        N'حقوق پرداختنی: ' + E.LAST_NAME + N' ' + E.FIRST_NAME, 
+        N'حقوق پرداختنی: ' + @ML + N' | ' + E.LAST_NAME + N' ' + E.FIRST_NAME, 
         CASE WHEN RL.NET_PAY < 0 THEN ABS(RL.NET_PAY) ELSE 0 END, 
         CASE WHEN RL.NET_PAY > 0 THEN RL.NET_PAY ELSE 0 END, 
         'SALARY_PAYABLE', 
@@ -1881,17 +1901,17 @@ BEGIN
     FROM PAY2_RUN_LINE RL INNER JOIN PAY2_EMPLOYEE E ON RL.EMP_ID = E.EMP_ID
     WHERE RL.RUN_ID = @RUN_ID AND RL.NET_PAY <> 0
     UNION ALL 
-    SELECT @ACC_INS_PAYABLE, N'بیمه تأمین اجتماعی', 0, SUM(INS_WORKER + INS_EMPLOYER), 'INS_PAYABLE', NULL
+    SELECT @ACC_INS_PAYABLE, N'بیمه تأمین اجتماعی ' + @ML, 0, SUM(INS_WORKER + INS_EMPLOYER), 'INS_PAYABLE', NULL
     FROM PAY2_RUN_LINE WHERE RUN_ID = @RUN_ID HAVING SUM(INS_WORKER + INS_EMPLOYER) > 0
     UNION ALL 
-    SELECT @ACC_TAX_PAYABLE, N'مالیات حقوق', 0, SUM(TAX_AMOUNT), 'TAX_PAYABLE', NULL
+    SELECT @ACC_TAX_PAYABLE, N'مالیات حقوق ' + @ML, 0, SUM(TAX_AMOUNT), 'TAX_PAYABLE', NULL
     FROM PAY2_RUN_LINE WHERE RUN_ID = @RUN_ID HAVING SUM(TAX_AMOUNT) > 0
     UNION ALL 
-    SELECT ISNULL(E.ACC_T, @ACC_LOAN_HES), N'کسر اقساط وام: ' + E.LAST_NAME + N' ' + E.FIRST_NAME, 0, RL.LOAN_DED, 'LOAN_HES', E.EMP_ID
+    SELECT ISNULL(E.ACC_T, @ACC_LOAN_HES), N'کسر اقساط وام: ' + @ML + N' | ' + E.LAST_NAME + N' ' + E.FIRST_NAME, 0, RL.LOAN_DED, 'LOAN_HES', E.EMP_ID
     FROM PAY2_RUN_LINE RL INNER JOIN PAY2_EMPLOYEE E ON RL.EMP_ID = E.EMP_ID
     WHERE RL.RUN_ID = @RUN_ID AND RL.LOAN_DED > 0
     UNION ALL 
-    SELECT ISNULL(E.ACC_T, @ACC_ADV_HES), N'تصفیه مساعده: ' + E.LAST_NAME + N' ' + E.FIRST_NAME, 0, RL.ADVANCE_DED, 'ADVANCE_SETTLE', E.EMP_ID
+    SELECT ISNULL(E.ACC_T, @ACC_ADV_HES), N'تصفیه مساعده: ' + @ML + N' | ' + E.LAST_NAME + N' ' + E.FIRST_NAME, 0, RL.ADVANCE_DED, 'ADVANCE_SETTLE', E.EMP_ID
     FROM PAY2_RUN_LINE RL INNER JOIN PAY2_EMPLOYEE E ON RL.EMP_ID = E.EMP_ID
     WHERE RL.RUN_ID = @RUN_ID AND RL.ADVANCE_DED > 0;
 END;
