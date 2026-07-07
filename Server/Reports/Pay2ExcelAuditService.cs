@@ -102,7 +102,8 @@ namespace Safir.Server.Reports
                            - ((CASE WHEN D.EFF_FROM > @perStart THEN D.EFF_FROM ELSE @perStart END) % 100) + 1
                         ELSE 0
                     END AS ACTIVE_DAYS,
-                    ISNULL(DB.DAILY_BASE, 0) AS DEC_DAILY_BASE
+                    ISNULL(NULLIF(DB.OFF_BASE, 0), DB.NOM_BASE) AS DEC_DAILY_BASE,
+                    ISNULL(NULLIF(DB.NOM_BASE, 0), DB.OFF_BASE) AS DEC_DAILY_NOM
                   FROM PAY2_DECREE D WITH (NOLOCK)
                   INNER JOIN PAY2_DECREE_LINE DL WITH (NOLOCK) ON D.DEC_ID = DL.DEC_ID
                   INNER JOIN PAY2_ITEM_DEF ID WITH (NOLOCK) ON DL.ITEM_ID = ID.ITEM_ID
@@ -115,11 +116,12 @@ namespace Safir.Server.Reports
                       ORDER BY O.VALID_FROM DESC
                   ) OV
                   OUTER APPLY (
-                      SELECT TOP 1 DL2.AMOUNT AS DAILY_BASE
+                      SELECT
+                          MAX(CASE WHEN ID2.ITEM_CODE = 'BASE_SAL_B' THEN DL2.AMOUNT END) AS OFF_BASE,
+                          MAX(CASE WHEN ID2.ITEM_CODE = 'BASE_SAL'   THEN DL2.AMOUNT END) AS NOM_BASE
                       FROM PAY2_DECREE_LINE DL2 WITH (NOLOCK)
                       INNER JOIN PAY2_ITEM_DEF ID2 WITH (NOLOCK) ON DL2.ITEM_ID = ID2.ITEM_ID
                       WHERE DL2.DEC_ID = D.DEC_ID AND ID2.ITEM_CODE IN ('BASE_SAL', 'BASE_SAL_B')
-                      ORDER BY CASE WHEN ID2.ITEM_CODE = 'BASE_SAL_B' THEN 1 ELSE 2 END
                   ) DB
                   WHERE D.IS_CONFIRMED = 1 AND ID.IS_ACTIVE = 1
                     AND ID.ITEM_CODE NOT IN ('INS_DED','TAX_DED','LOAN_DED','ADVANCE_DED')
