@@ -470,8 +470,8 @@ public async Task<IActionResult> GenerateDeed(int runId)
             long periodDate = (long)periodInfo.PERIOD_DATE;
             double? existingNs = (double?)periodInfo.DEED_N_S_PAY;
 
-            // 🚀 تولید تاریخ شمسی امروز برای هدر سند به صورت Long
-            long todayShamsi = Safir.Shared.Utility.CL_Tarikh.GetCurrentPersianDateAsLong();
+            // 🚀 تاریخ سند = آخرین روزِ ماهِ دورهٔ حقوق (مثال: خرداد ۱۴۰۵ ⇒ 14050331)
+            long deedDate = Safir.Shared.Utility.CL_Tarikh.GetPersianMonthEndAsLong(periodDate);
             string hedSharh = $"سند حقوق و دستمزد دوره {periodDate}";
             double targetNs;
 
@@ -496,7 +496,7 @@ public async Task<IActionResult> GenerateDeed(int runId)
                     UPDATE DEED_HED
                     SET DATE_S = @DATE_S, SHARH_S = @SHARH, NO_S = 11, USER_NAME = @USER, UID = @UID
                     WHERE N_S = @N_S",
-                    new { N_S = targetNs, DATE_S = todayShamsi, SHARH = hedSharh, USER = userName, UID = userCod }, tran);
+                    new { N_S = targetNs, DATE_S = deedDate, SHARH = hedSharh, USER = userName, UID = userCod }, tran);
             }
             // 🚀 صدور سند جدید (INSERT DEED_HED)
             else
@@ -506,7 +506,7 @@ public async Task<IActionResult> GenerateDeed(int runId)
                 await conn.ExecuteAsync(@"
                     INSERT INTO DEED_HED (N_S, DATE_S, SHARH_S, NO_S, USER_NAME, OKF, CRT, UID)
                     VALUES (@N_S, @DATE_S, @SHARH, 11, @USER, 1, GETDATE(), @UID)",
-                    new { N_S = targetNs, DATE_S = todayShamsi, SHARH = hedSharh, USER = userName, UID = userCod }, tran);
+                    new { N_S = targetNs, DATE_S = deedDate, SHARH = hedSharh, USER = userName, UID = userCod }, tran);
             }
 
             var articles = await conn.QueryAsync(

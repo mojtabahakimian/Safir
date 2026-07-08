@@ -14,6 +14,21 @@ namespace Safir.Shared.Utility
             return (long)(pc.GetYear(now) * 10000) + (pc.GetMonth(now) * 100) + pc.GetDayOfMonth(now);
         }
 
+        /// <summary>
+        /// آخرین روزِ ماهِ شمسیِ یک دورهٔ حقوق را به‌صورت Long برمی‌گرداند.
+        /// مثال: 14050300 (خرداد ۱۴۰۵) ⇒ 14050331
+        /// </summary>
+        public static long GetPersianMonthEndAsLong(long persianDateLong)
+        {
+            int year = (int)(persianDateLong / 10000);
+            int month = (int)((persianDateLong / 100) % 100);
+            if (year <= 0 || month < 1 || month > 12) return persianDateLong;
+
+            PersianCalendar pc = new PersianCalendar();
+            int lastDay = pc.GetDaysInMonth(year, month);
+            return (long)year * 10000 + (long)month * 100 + lastDay;
+        }
+
         public static long? ConvertToPersianDateLong(DateTime? dt)
         {
             if (!dt.HasValue) return null;
