@@ -78,7 +78,8 @@
         public string? EFF_SHIFT_MODE { get; set; } // PCT | FIXED (برای آیتم SHIFT)
 
         public int ACTIVE_DAYS { get; set; }        // تعداد روزهای فعالِ حکم در این دوره (برای prorate)
-        public decimal DEC_DAILY_BASE { get; set; } // پایهٔ روزانهٔ حکم (BASE_SAL_B یا BASE_SAL) برای شیفتِ درصدی
+        public decimal DEC_DAILY_BASE { get; set; } // پایهٔ روزانهٔ رسمی حکم (BASE_SAL_B با fallback به BASE_SAL) — ریلِ بیمهٔ شیفتِ درصدی
+        public decimal DEC_DAILY_NOM { get; set; }  // پایهٔ روزانهٔ اسمی حکم (BASE_SAL با fallback به BASE_SAL_B) — ریلِ پرداختِ شیفتِ درصدی
     }
 
     /// <summary>مقدار دستیِ یک آیتم برای پرسنل در دوره (PAY2_ATT_VALUE) — مقدار قطعی، بدون فرمولِ ساخت.</summary>
