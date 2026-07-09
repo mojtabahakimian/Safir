@@ -244,12 +244,19 @@ namespace Safir.Server.Reports
                     && lines.Any(l => l.ITEM_CODE.Equals("BASE_SAL", StringComparison.OrdinalIgnoreCase))
                     && lines.Any(l => l.ITEM_CODE.Equals("BASE_SAL_B", StringComparison.OrdinalIgnoreCase));
 
+                // آیا ریلِ حقوقِ رسمی (BASE_SAL_B) واقعاً مشمولِ بیمه/مالیات و غیرصفر است؟ (منطبق با SP)
+                // اگر رسمی معاف/صفر باشد، پایهٔ بیمه/مالیات به حقوقِ اسمی (BASE_SAL) fallback می‌شود.
+                bool insOfficialValid = hasBothSal && lines!.Any(l =>
+                    l.ITEM_CODE.Equals("BASE_SAL_B", StringComparison.OrdinalIgnoreCase) && l.EFF_INS && l.RAW_AMOUNT != 0);
+                bool taxOfficialValid = hasBothSal && lines!.Any(l =>
+                    l.ITEM_CODE.Equals("BASE_SAL_B", StringComparison.OrdinalIgnoreCase) && l.EFF_TAX && l.RAW_AMOUNT != 0);
+
                 // (۱) خطوط احکام
                 if (lines != null)
                 {
                     foreach (var l in lines)
                     {
-                        WriteDecreeRow(ws, r, e, l, hasBothSal);
+                        WriteDecreeRow(ws, r, e, l, hasBothSal, insOfficialValid, taxOfficialValid);
                         addedItemIds.Add(l.ITEM_ID);
                         codesPresent.Add(l.ITEM_CODE);
                         myRows.Add(r);
@@ -312,7 +319,7 @@ namespace Safir.Server.Reports
             return bdRows;
         }
 
-        private static void WriteDecreeRow(IXLWorksheet ws, int r, Pay2AuditEmpRow e, Pay2AuditDecreeLineRow l, bool hasBothSal)
+        private static void WriteDecreeRow(IXLWorksheet ws, int r, Pay2AuditEmpRow e, Pay2AuditDecreeLineRow l, bool hasBothSal, bool insOfficialValid, bool taxOfficialValid)
         {
             decimal payDaysRaw = l.PAY_BASE_DAYS == 1 ? e.DAYS : e.DAYSB;
             decimal insDaysRaw = l.INS_BASE_DAYS == 1 ? e.DAYS : e.DAYSB;
@@ -356,9 +363,14 @@ namespace Safir.Server.Reports
             // ناخالص از AMOUNT: وقتی هر دو حقوق هست BASE_SAL_B کنار می‌رود؛ اگر فقط رسمی باشد، خودش لحاظ می‌شود.
             bool isEarnItem = l.ITEM_TYPE == 1 || l.ITEM_TYPE == 2;
             bool earn = isEarnItem && !(hasBothSal && isOfficialSal);
-            // بیمه و مالیات از INS_AMOUNT: وقتی هر دو حقوق هست BASE_SAL (اسمی) کنار می‌رود.
-            bool insf = isEarnItem && l.EFF_INS && !(hasBothSal && isNominalSal);
-            bool taxf = isEarnItem && l.EFF_TAX && !(hasBothSal && isNominalSal);
+            // بیمه و مالیات از INS_AMOUNT: وقتی هر دو حقوق هست، دقیقاً یک ریلِ پایه لحاظ می‌شود:
+            // رسمی (BASE_SAL_B) اگر مشمول و غیرصفر باشد، وگرنه fallback به اسمی (BASE_SAL).
+            bool insDropNominal  = hasBothSal &&  insOfficialValid;
+            bool insDropOfficial = hasBothSal && !insOfficialValid;
+            bool taxDropNominal  = hasBothSal &&  taxOfficialValid;
+            bool taxDropOfficial = hasBothSal && !taxOfficialValid;
+            bool insf = isEarnItem && l.EFF_INS && !(isNominalSal && insDropNominal) && !(isOfficialSal && insDropOfficial);
+            bool taxf = isEarnItem && l.EFF_TAX && !(isNominalSal && taxDropNominal) && !(isOfficialSal && taxDropOfficial);
             ws.Cell(r, BD_EARN).Value = earn ? 1 : 0;
             ws.Cell(r, BD_INSF).Value = insf ? 1 : 0;
             ws.Cell(r, BD_TAXF).Value = taxf ? 1 : 0;
