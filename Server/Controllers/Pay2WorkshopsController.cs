@@ -28,7 +28,8 @@ public class Pay2WorkshopsController : ControllerBase
         const string sql = @"
             SELECT WS_ID, WS_CODE, WS_NAME, NATIONAL_ID, SOCIAL_INS_CODE, TAX_CODE,
                    ADDRESS, PHONE, POSTAL_CODE, EMPLOYER_NAME, IS_ACTIVE, ISNULL(INS_MODE, 1) AS INS_MODE, SHIFT_MODE,
-                   PROVINCE, CITY, REGISTRATION_NUMBER, SSO_BRANCH, FINANCIAL_MANAGER, ADMIN_MANAGER
+                   PROVINCE, CITY, REGISTRATION_NUMBER, SSO_BRANCH, FINANCIAL_MANAGER, ADMIN_MANAGER,
+                   ISNULL(DEFAULT_DEED_MODE, 1) AS DEFAULT_DEED_MODE
             FROM   PAY2_WORKSHOP
             ORDER  BY WS_ID";
 
@@ -63,6 +64,7 @@ public class Pay2WorkshopsController : ControllerBase
                 case "TAX_PAYABLE": acc.TAX_PAYABLE = row.ACC_CODE; break;
                 case "LOAN_HES": acc.LOAN_HES = row.ACC_CODE; break;
                 case "BANK_PAY_HES": acc.BANK_PAY_HES = row.ACC_CODE; break;
+                case "OTHER_DED_ACCOUNT": acc.OTHER_DED_ACCOUNT = row.ACC_CODE; break;
             }
         }
 
@@ -112,12 +114,12 @@ public class Pay2WorkshopsController : ControllerBase
                         INSERT INTO PAY2_WORKSHOP
                         (WS_CODE, WS_NAME, NATIONAL_ID, SOCIAL_INS_CODE, TAX_CODE,
                          ADDRESS, PHONE, POSTAL_CODE, EMPLOYER_NAME, IS_ACTIVE, INS_MODE, CREATED_BY, SHIFT_MODE,
-                         PROVINCE, CITY, REGISTRATION_NUMBER, SSO_BRANCH, FINANCIAL_MANAGER, ADMIN_MANAGER)
+                         PROVINCE, CITY, REGISTRATION_NUMBER, SSO_BRANCH, FINANCIAL_MANAGER, ADMIN_MANAGER, DEFAULT_DEED_MODE)
                         OUTPUT INSERTED.WS_ID
                         VALUES
                         (@WS_CODE, @WS_NAME, @NATIONAL_ID, @SOCIAL_INS_CODE, @TAX_CODE,
                          @ADDRESS, @PHONE, @POSTAL_CODE, @EMPLOYER_NAME, @IS_ACTIVE, @INS_MODE, @CREATED_BY, @SHIFT_MODE,
-                         @PROVINCE, @CITY, @REGISTRATION_NUMBER, @SSO_BRANCH, @FINANCIAL_MANAGER, @ADMIN_MANAGER)";
+                         @PROVINCE, @CITY, @REGISTRATION_NUMBER, @SSO_BRANCH, @FINANCIAL_MANAGER, @ADMIN_MANAGER, @DEFAULT_DEED_MODE)";
 
                     newOrUpdatedWsId = await conn.QueryFirstAsync<int>(insertSql, new
                     {
@@ -139,7 +141,8 @@ public class Pay2WorkshopsController : ControllerBase
                         w.REGISTRATION_NUMBER,
                         w.SSO_BRANCH,
                         w.FINANCIAL_MANAGER,
-                        w.ADMIN_MANAGER
+                        w.ADMIN_MANAGER,
+                        w.DEFAULT_DEED_MODE
                     }, tran);
                 }
                 else
@@ -164,7 +167,8 @@ public class Pay2WorkshopsController : ControllerBase
                         REGISTRATION_NUMBER = @REGISTRATION_NUMBER,
                         SSO_BRANCH      = @SSO_BRANCH,
                         FINANCIAL_MANAGER = @FINANCIAL_MANAGER,
-                        ADMIN_MANAGER   = @ADMIN_MANAGER
+                        ADMIN_MANAGER   = @ADMIN_MANAGER,
+                        DEFAULT_DEED_MODE = @DEFAULT_DEED_MODE
                         WHERE WS_ID = @WS_ID";
 
                     await conn.ExecuteAsync(updateSql, w, tran);
@@ -182,7 +186,8 @@ public class Pay2WorkshopsController : ControllerBase
                     ("INS_PAYABLE",         a.INS_PAYABLE),
                     ("TAX_PAYABLE",         a.TAX_PAYABLE),
                     ("LOAN_HES",            a.LOAN_HES),
-                    ("BANK_PAY_HES",        a.BANK_PAY_HES)
+                    ("BANK_PAY_HES",        a.BANK_PAY_HES),
+                    ("OTHER_DED_ACCOUNT",  a.OTHER_DED_ACCOUNT)
                 };
 
                 var sqlBuilder = new System.Text.StringBuilder();
@@ -299,6 +304,8 @@ public class Pay2WorkshopsController : ControllerBase
         w.SSO_BRANCH = CleanText(w.SSO_BRANCH, 50);
         w.FINANCIAL_MANAGER = CleanText(w.FINANCIAL_MANAGER, 100);
         w.ADMIN_MANAGER = CleanText(w.ADMIN_MANAGER, 100);
+        if (w.DEFAULT_DEED_MODE != 1 && w.DEFAULT_DEED_MODE != 2)
+            return "روش پیش‌فرض صدور سند حقوق نامعتبر است.";
 
         a.ADV_HES = NormalizeAccountCode(a.ADV_HES, 20);
         a.SALARY_EXP = CleanText(a.SALARY_EXP, 20);
@@ -312,6 +319,7 @@ public class Pay2WorkshopsController : ControllerBase
         a.TAX_PAYABLE = NormalizeAccountCode(a.TAX_PAYABLE, 20);
         a.LOAN_HES = NormalizeAccountCode(a.LOAN_HES, 20);
         a.BANK_PAY_HES = NormalizeAccountCode(a.BANK_PAY_HES, 20);
+        a.OTHER_DED_ACCOUNT = NormalizeAccountCode(a.OTHER_DED_ACCOUNT, 20);
 
         if (!string.IsNullOrWhiteSpace(w.POSTAL_CODE) && !Regex.IsMatch(w.POSTAL_CODE, @"^\d+$"))
             return "کد پستی فقط باید عدد باشد.";
