@@ -296,8 +296,10 @@ CREATE TABLE [dbo].[PAY2_WORKSHOP]
     [IS_ACTIVE]       BIT           NOT NULL CONSTRAINT DF_WS_ACT DEFAULT(1),
     [CREATED_AT]      DATETIME      NOT NULL CONSTRAINT DF_WS_CRT DEFAULT(GETDATE()),
     [CREATED_BY]      INT           NULL,
+    [DEFAULT_DEED_MODE] TINYINT     NOT NULL CONSTRAINT DF_WS_DDM DEFAULT(1),
 
     CONSTRAINT PK_PAY2_WORKSHOP PRIMARY KEY ([WS_ID]),
+    CONSTRAINT CK_WS_DEED_MODE CHECK ([DEFAULT_DEED_MODE] IN (1, 2)),
     CONSTRAINT UQ_WS_CODE UNIQUE ([WS_CODE])
 );
 GO
@@ -1001,6 +1003,8 @@ CREATE TABLE [dbo].[PAY2_RUN]
     [PREV_RUN_ID] INT          NULL,                                         -- ارجاع به نسخه قبلی — v6
     [DEED_ID_SAL] INT          NULL,                                         -- شماره سند حقوق در حسابداری
     [DEED_ID_INS] INT          NULL,                                         -- شماره سند بیمه
+    [DEED_MODE]  TINYINT       NULL,                                         -- 1=CURRENT_SUMMARY, 2=PERSON_TRACEABLE
+    [DEED_GENERATOR_VERSION] SMALLINT NULL,                                  -- نسخه ساخت سند
     [NOTES]      NVARCHAR(300) NULL,
 
     CONSTRAINT PK_PAY2_RUN          PRIMARY KEY ([RUN_ID]),

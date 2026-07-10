@@ -315,6 +315,7 @@
                         }
                         else if (CurrentRun.STATUS == 2)
                         {
+                            <button class="btn-primary-pay2" @onclick="ShowDeedPreview" disabled="@IsProcessing" style="height: 42px; background-color: var(--p2-accent); border-color: var(--p2-accent);"><i class="bi bi-eye"></i> پیش‌نمایش سند</button>
                             <button class="btn-primary-pay2" @onclick="GenerateDeed" disabled="@IsProcessing" style="height: 42px;"><i class="bi bi-journal-check"></i> صدور سند حسابداری</button>
                             <button class="btn-outline-danger-pay2" @onclick="RevertRun" disabled="@IsProcessing" style="height: 42px;"><i class="bi bi-unlock"></i> لغو تأیید (بازگشت به پیش‌نویس)</button>
                         }
@@ -888,6 +889,32 @@
             {
                 IsProcessing = false;
             }
+        }
+    }
+
+    async Task ShowDeedPreview()
+    {
+        if (CurrentRun == null) return;
+
+        IsProcessing = true;
+        try
+        {
+            var preview = await RunApi.GetDeedPreviewAsync(CurrentRun.RUN_ID);
+
+            var parameters = new MudBlazor.DialogParameters
+            {
+                ["Preview"] = preview
+            };
+            var options = new MudBlazor.DialogOptions { MaxWidth = MudBlazor.MaxWidth.Large, FullWidth = true, CloseButton = true };
+            DialogService.Show<Safir.Client.Pages.Salary.Tabs.EmployeeComponents.DeedPreviewModal>("پیش‌نمایش سند حسابداری", parameters, options);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add(ex.Message, MudBlazor.Severity.Error);
+        }
+        finally
+        {
+            IsProcessing = false;
         }
     }
 

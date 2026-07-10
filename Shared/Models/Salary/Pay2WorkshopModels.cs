@@ -3,6 +3,12 @@
     /// <summary>
     /// DTO کارگاه — مطابق PAY2_WORKSHOP
     /// </summary>
+    public enum Pay2DeedMode : byte
+    {
+        CurrentSummary = 1,
+        PersonTraceable = 2
+    }
+
     public class Pay2WorkshopDto
     {
         public int WS_ID { get; set; }
@@ -25,6 +31,7 @@
         public string? SSO_BRANCH { get; set; }
         public string? FINANCIAL_MANAGER { get; set; }
         public string? ADMIN_MANAGER { get; set; }
+        public byte DEFAULT_DEED_MODE { get; set; } = 1;
 
         public string InsModeText => INS_MODE switch
         {
@@ -70,6 +77,7 @@
         public string? SALARY_EXP_KHADAMAT { get; set; }
         public string? LOAN_HES { get; set; }
         public string? BANK_PAY_HES { get; set; }
+        public string? OTHER_DED_ACCOUNT { get; set; }
     }
 
     /// <summary>

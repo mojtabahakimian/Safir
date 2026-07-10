@@ -1,5 +1,8 @@
-﻿using Safir.Shared.Models.Salary;
+using Safir.Shared.Models.Salary;
+using System;
+using System.Net.Http;
 using System.Net.Http.Json;
+using System.Threading.Tasks;
 
 namespace Safir.Client.Services
 {
@@ -21,7 +24,6 @@ namespace Safir.Client.Services
             }
             catch (System.Text.Json.JsonException)
             {
-                // در صورتی که بادی کاملاً خالی باشد
                 return null;
             }
         }
@@ -78,6 +80,13 @@ namespace Safir.Client.Services
             if (!res.IsSuccessStatusCode) throw new Exception(await res.Content.ReadAsStringAsync());
         }
 
+        public async Task<Pay2DeedPreviewDto> GetDeedPreviewAsync(int runId)
+        {
+            var res = await _http.GetAsync($"api/pay2/run/{runId}/deed-preview");
+            if (!res.IsSuccessStatusCode) throw new Exception(await res.Content.ReadAsStringAsync());
+            return await res.Content.ReadFromJsonAsync<Pay2DeedPreviewDto>() ?? new Pay2DeedPreviewDto();
+        }
+
         public async Task GenerateDeedAsync(int runId)
         {
             var res = await _http.PostAsync($"api/pay2/run/{runId}/generate-deed", null);
@@ -90,7 +99,6 @@ namespace Safir.Client.Services
             if (!res.IsSuccessStatusCode) throw new Exception(await res.Content.ReadAsStringAsync());
         }
 
-        // دریافت بایت‌های اکسلِ تحلیلیِ فرمول‌دار برای کل اجرا
         public async Task<byte[]> GetExcelAuditAsync(int runId)
         {
             var res = await _http.GetAsync($"api/pay2/run/{runId}/excel-audit");
@@ -104,7 +112,6 @@ namespace Safir.Client.Services
             return await res.Content.ReadAsByteArrayAsync();
         }
 
-        // دریافت بایت‌های PDF فیش حقوقی یک پرسنل (برای نمایش در نمایشگر داخلی مرورگر)
         public async Task<byte[]> GetPayslipPdfAsync(int runId, int empId, bool isOfficial = false)
         {
             var res = await _http.GetAsync($"api/pay2/run/{runId}/employee/{empId}/payslip?isOfficial={isOfficial}");

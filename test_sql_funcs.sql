@@ -1,0 +1,5 @@
+-- Check structure of accounting tables
+SELECT TOP 1 * FROM TOTA_HES;
+SELECT TOP 1 * FROM DETA_HES;
+SELECT TOP 1 * FROM TDETA_HES;
+SELECT TOP 1 * FROM TDETA_HES2;

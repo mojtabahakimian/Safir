@@ -549,6 +549,29 @@
                     }
                 </div>
 
+                <div class="form-field" style="grid-column: span 2;">
+                    <label>حساب سایر کسورات <span class="p2-text-muted" style="font-size:11px;">(OTHER_DED_ACCOUNT)</span></label>
+                    <Pay2Select TItem="LookupDto<string>" TValue="string" SearchItems="SearchAccountsAsync" Items="Init_OTHER_DED_ACCOUNT"
+                                Value="CurrentWorkshopAcc.OTHER_DED_ACCOUNT"
+                                ValueChanged="@(v => { CurrentWorkshopAcc.OTHER_DED_ACCOUNT = v; ValidateAccount(v, nameof(CurrentWorkshopAcc.OTHER_DED_ACCOUNT), "سایر کسورات"); })"
+                                TextSelector="@(x => $"\u200E{x.Id}\u200E\u200F  -  {x.Name}")" ValueSelector="@(x => x.Id)"
+                                Placeholder="جستجو..." CssClass="@(HasError(nameof(CurrentWorkshopAcc.OTHER_DED_ACCOUNT)) ? "error" : "")"
+                                Clearable="true" Editable="true" MaxVisibleItems="50" DebounceMilliseconds="400" ClearValueOnTextEdit="true" />
+                    @if (HasError(nameof(CurrentWorkshopAcc.OTHER_DED_ACCOUNT)))
+                    {
+                        <span class="field-error">@GetError(nameof(CurrentWorkshopAcc.OTHER_DED_ACCOUNT))</span>
+                    }
+                </div>
+            </div>
+
+            <div style="margin-top:20px;">
+                <div class="form-field" style="grid-column: span 2;">
+                    <label>حالت پیش‌فرض تولید سند حسابداری</label>
+                    <select class="p2-select" @bind="CurrentWorkshop.DEFAULT_DEED_MODE">
+                        <option value="1">تجمیعی (CURRENT_SUMMARY)</option>
+                        <option value="2">تفکیک پرسنل (PERSON_TRACEABLE)</option>
+                    </select>
+                </div>
             </div>
 
             <div style="display:flex; justify-content:space-between; margin-top:28px; flex-wrap:wrap; width: 100%;">
@@ -602,6 +625,7 @@
     readonly Dictionary<string, string> _fieldErrors = new();
 
     List<LookupDto<string>> Init_ADV_HES = new();
+    List<LookupDto<string>> Init_OTHER_DED_ACCOUNT = new();
     List<LookupDto<string>> Init_SALARY_EXP_TOLID = new();
     List<LookupDto<string>> Init_SALARY_EXP_EDARI = new();
     List<LookupDto<string>> Init_SALARY_EXP_FOROSH = new();
@@ -746,6 +770,7 @@
             var tasks = new List<Task>
             {
                 LoadAccountNameAsync(CurrentWorkshopAcc.ADV_HES, Init_ADV_HES),
+                LoadAccountNameAsync(CurrentWorkshopAcc.OTHER_DED_ACCOUNT, Init_OTHER_DED_ACCOUNT),
                 LoadAccountNameAsync(CurrentWorkshopAcc.SALARY_EXP_TOLID, Init_SALARY_EXP_TOLID),
                 LoadAccountNameAsync(CurrentWorkshopAcc.SALARY_EXP_EDARI, Init_SALARY_EXP_EDARI),
                 LoadAccountNameAsync(CurrentWorkshopAcc.SALARY_EXP_FOROSH, Init_SALARY_EXP_FOROSH),
@@ -795,6 +820,7 @@
     void ClearInitialAccountLists()
     {
         Init_ADV_HES.Clear();
+        Init_OTHER_DED_ACCOUNT.Clear();
         Init_SALARY_EXP_TOLID.Clear();
         Init_SALARY_EXP_EDARI.Clear();
         Init_SALARY_EXP_FOROSH.Clear();

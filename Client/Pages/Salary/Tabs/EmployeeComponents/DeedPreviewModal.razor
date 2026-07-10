@@ -1,0 +1,81 @@
+@using Safir.Shared.Models.Salary
+@using MudBlazor
+
+<MudDialog>
+    <DialogContent>
+        @if (Preview == null)
+        {
+            <MudProgressCircular Color="Color.Primary" Indeterminate="true" />
+        }
+        else
+        {
+            <div style="margin-bottom: 20px;">
+                <strong>حالت سند:</strong>
+                <span class="p2-badge @(Preview.DEED_MODE == 1 ? "bg-info" : "bg-warning")">
+                    @(Preview.DEED_MODE == 1 ? "تجمیعی (CURRENT_SUMMARY)" : "تفکیک پرسنل (PERSON_TRACEABLE)")
+                </span>
+            </div>
+
+            @if (Preview.ValidationErrors.Any())
+            {
+                <div class="alert alert-danger">
+                    <i class="bi bi-x-circle-fill"></i> <strong>خطاهای اعتبارسنجی:</strong>
+                    <ul style="margin-top: 8px; margin-bottom: 0;">
+                        @foreach (var err in Preview.ValidationErrors)
+                        {
+                            <li>@err</li>
+                        }
+                    </ul>
+                </div>
+            }
+
+            <div class="table-responsive">
+                <table class="table table-bordered table-striped" style="font-size: 13px;">
+                    <thead style="background-color: var(--p2-bg-secondary);">
+                        <tr>
+                            <th>شرح</th>
+                            <th>کد حساب</th>
+                            <th>بدهکار</th>
+                            <th>بستانکار</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var line in Preview.Articles)
+                        {
+                            <tr>
+                                <td>@line.SHARH</td>
+                                <td style="direction: ltr; text-align: left; font-family: monospace;">@line.HES_CODE</td>
+                                <td style="color: #16a34a;">@(line.BED > 0 ? line.BED.ToString("N0") : "-")</td>
+                                <td style="color: #dc2626;">@(line.BES > 0 ? line.BES.ToString("N0") : "-")</td>
+                            </tr>
+                        }
+                    </tbody>
+                    <tfoot style="background-color: var(--p2-bg-secondary); font-weight: bold;">
+                        <tr>
+                            <td colspan="2" class="text-start">جمع کل:</td>
+                            <td style="color: #16a34a;">@Preview.TotalBed.ToString("N0")</td>
+                            <td style="color: #dc2626;">@Preview.TotalBes.ToString("N0")</td>
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
+
+            @if (!Preview.IsBalanced)
+            {
+                <div class="alert alert-danger" style="margin-top: 15px;">
+                    <i class="bi bi-exclamation-triangle-fill"></i> سند نامتوازن است! اختلاف: @(Math.Abs(Preview.Difference).ToString("N0"))
+                </div>
+            }
+        }
+    </DialogContent>
+    <DialogActions>
+        <button class="btn-outline-secondary-pay2" @onclick="Close" style="height: 38px;">بستن</button>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] MudDialogInstance MudDialog { get; set; } = default!;
+    [Parameter] public Pay2DeedPreviewDto Preview { get; set; }
+
+    void Close() => MudDialog.Close(DialogResult.Ok(true));
+}

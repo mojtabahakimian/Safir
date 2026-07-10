@@ -2520,6 +2520,88 @@ BEGIN
 END;
 GO
 ";
+                // Migration 012: توابع اکانت برای حقوق و دستمزد
+                try
+                {
+                    db.Execute(@"
+CREATE OR ALTER FUNCTION [dbo].[FN_PAY2_BUILD_ACC_CODE]
+(
+    @HES_K INT, @HES_M INT, @HES_T INT = NULL, @HES_T2 INT = NULL, @HES_T3 INT = NULL, @HES_T4 INT = NULL
+)
+RETURNS NVARCHAR(100) AS BEGIN
+    IF @HES_K IS NULL OR @HES_M IS NULL RETURN NULL;
+    DECLARE @Result NVARCHAR(100) = CAST(@HES_K AS NVARCHAR) + N'-' + CAST(@HES_M AS NVARCHAR);
+    IF @HES_T IS NOT NULL SET @Result = @Result + N'-' + CAST(@HES_T AS NVARCHAR);
+    IF @HES_T2 IS NOT NULL SET @Result = @Result + N'-' + CAST(@HES_T2 AS NVARCHAR);
+    IF @HES_T3 IS NOT NULL SET @Result = @Result + N'-' + CAST(@HES_T3 AS NVARCHAR);
+    IF @HES_T4 IS NOT NULL SET @Result = @Result + N'-' + CAST(@HES_T4 AS NVARCHAR);
+    RETURN @Result;
+END;
+");
+                    db.Execute(@"
+CREATE OR ALTER FUNCTION [dbo].[FN_PAY2_RESOLVE_ACCOUNT]
+(
+    @TargetBase NVARCHAR(50), @EmployeeAccount NVARCHAR(50)
+)
+RETURNS NVARCHAR(100) AS BEGIN
+    IF @TargetBase IS NULL OR LTRIM(RTRIM(@TargetBase)) = N'' RETURN NULL;
+    IF @EmployeeAccount IS NULL OR LTRIM(RTRIM(@EmployeeAccount)) = N'' RETURN NULL;
+    DECLARE @NormEmp NVARCHAR(100) = REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(@EmployeeAccount, N' ', N''), N'ـ', N'-'), N'−', N'-'), N'–', N'-'), N'—', N'-');
+    SET @NormEmp = REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(@NormEmp, N'۰', N'0'), N'۱', N'1'), N'۲', N'2'), N'۳', N'3'), N'۴', N'4'), N'۵', N'5'), N'۶', N'6'), N'۷', N'7'), N'۸', N'8'), N'۹', N'9');
+    SET @NormEmp = REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(@NormEmp, N'٠', N'0'), N'١', N'1'), N'٢', N'2'), N'٣', N'3'), N'٤', N'4'), N'٥', N'5'), N'٦', N'6'), N'٧', N'7'), N'٨', N'8'), N'٩', N'9');
+    DECLARE @NormBase NVARCHAR(50) = REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(@TargetBase, N' ', N''), N'ـ', N'-'), N'−', N'-'), N'–', N'-'), N'—', N'-');
+    SET @NormBase = REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(@NormBase, N'۰', N'0'), N'۱', N'1'), N'۲', N'2'), N'۳', N'3'), N'۴', N'4'), N'۵', N'5'), N'۶', N'6'), N'۷', N'7'), N'۸', N'8'), N'۹', N'9');
+    SET @NormBase = REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(@NormBase, N'٠', N'0'), N'١', N'1'), N'٢', N'2'), N'٣', N'3'), N'٤', N'4'), N'٥', N'5'), N'٦', N'6'), N'٧', N'7'), N'٨', N'8'), N'٩', N'9');
+    IF @NormEmp LIKE N'%--%' OR @NormEmp LIKE N'-%' OR @NormEmp LIKE N'%-' RETURN NULL;
+    IF @NormBase LIKE N'%--%' OR @NormBase LIKE N'-%' OR @NormBase LIKE N'%-' RETURN NULL;
+    IF @NormEmp LIKE N'%[^0-9-]%' OR @NormBase LIKE N'%[^0-9-]%' RETURN NULL;
+    DECLARE @TargetPartsCount INT = LEN(@NormBase) - LEN(REPLACE(@NormBase, '-', '')) + 1;
+    DECLARE @EmpPartsCount INT = LEN(@NormEmp) - LEN(REPLACE(@NormEmp, '-', '')) + 1;
+    IF @TargetPartsCount > 6 OR @EmpPartsCount > 6 RETURN NULL;
+    DECLARE @Result NVARCHAR(100);
+    IF @EmpPartsCount > 1 BEGIN
+        DECLARE @FirstDash INT = CHARINDEX('-', @NormEmp);
+        DECLARE @SecondDash INT = CHARINDEX('-', @NormEmp, @FirstDash + 1);
+        IF @SecondDash = 0 RETURN NULL;
+        DECLARE @PersonDetails NVARCHAR(50) = SUBSTRING(@NormEmp, @SecondDash + 1, LEN(@NormEmp));
+        SET @Result = @NormBase + '-' + @PersonDetails;
+    END ELSE BEGIN
+        SET @Result = @NormBase + '-' + @NormEmp;
+    END
+    DECLARE @FinalPartsCount INT = LEN(@Result) - LEN(REPLACE(@Result, '-', '')) + 1;
+    IF @FinalPartsCount > 6 OR @FinalPartsCount < 2 RETURN NULL;
+    RETURN @Result;
+END;
+");
+                    db.Execute(@"
+CREATE OR ALTER FUNCTION [dbo].[FN_PAY2_VALIDATE_ACC_EXISTS]
+(
+    @AccountCode NVARCHAR(100)
+)
+RETURNS TABLE AS RETURN (
+    WITH Parsed AS (
+        SELECT @AccountCode AS FullCode,
+            CAST(JSON_VALUE('["' + REPLACE(@AccountCode, '-', '","') + '"]', '$[0]') AS INT) AS HES_K,
+            CAST(JSON_VALUE('["' + REPLACE(@AccountCode, '-', '","') + '"]', '$[1]') AS INT) AS HES_M,
+            CAST(JSON_VALUE('["' + REPLACE(@AccountCode, '-', '","') + '"]', '$[2]') AS INT) AS HES_T,
+            CAST(JSON_VALUE('["' + REPLACE(@AccountCode, '-', '","') + '"]', '$[3]') AS INT) AS HES_T2,
+            CAST(JSON_VALUE('["' + REPLACE(@AccountCode, '-', '","') + '"]', '$[4]') AS INT) AS HES_T3,
+            CAST(JSON_VALUE('["' + REPLACE(@AccountCode, '-', '","') + '"]', '$[5]') AS INT) AS HES_T4,
+            LEN(@AccountCode) - LEN(REPLACE(@AccountCode, '-', '')) + 1 AS LevelCount
+    )
+    SELECT FullCode,
+        CASE WHEN LevelCount = 2 THEN CASE WHEN EXISTS (SELECT 1 FROM DETA_HES WHERE N_KOL = HES_K AND NUMBER = HES_M) THEN 1 ELSE 0 END
+             WHEN LevelCount = 3 THEN CASE WHEN EXISTS (SELECT 1 FROM TDETA_HES WHERE N_KOL = HES_K AND NUMBER = HES_M AND TNUMBER = HES_T) THEN 1 ELSE 0 END
+             WHEN LevelCount = 4 THEN CASE WHEN EXISTS (SELECT 1 FROM TDETA_HES2 WHERE N_KOL = HES_K AND NUMBER = HES_M AND TNUMBER = HES_T AND TNUMBER2 = HES_T2) THEN 1 ELSE 0 END
+             WHEN LevelCount = 5 THEN CASE WHEN EXISTS (SELECT 1 FROM TDETA_HES3 WHERE N_KOL = HES_K AND NUMBER = HES_M AND TNUMBER = HES_T AND TNUMBER2 = HES_T2 AND TNUMBER3 = HES_T3) THEN 1 ELSE 0 END
+             WHEN LevelCount = 6 THEN CASE WHEN EXISTS (SELECT 1 FROM TDETA_HES4 WHERE N_KOL = HES_K AND NUMBER = HES_M AND TNUMBER = HES_T AND TNUMBER2 = HES_T2 AND TNUMBER3 = HES_T3 AND TNUMBER4 = HES_T4) THEN 1 ELSE 0 END
+             ELSE 0 END AS IsValid
+    FROM Parsed WHERE LevelCount BETWEEN 2 AND 6 AND HES_K IS NOT NULL AND HES_M IS NOT NULL
+);
+");
+                }
+                catch { }
+
                 ExecuteBatches(db, procScript);
 
                 // ===========================================================
@@ -2543,7 +2625,7 @@ END;
 GO
 
 -- ================================================================
--- ۲. SP_PAY2_GET_ADVANCES — محاسبه مساعده هوشمند (نسخه نهایی — JSON_VALUE)
+-- ۲. SP_PAY2_GET_ADVANCES — محاسبه مساعده هوشمند (Refactored)
 -- ================================================================
 CREATE OR ALTER PROCEDURE [dbo].[SP_PAY2_GET_ADVANCES]
     @PERIOD_DATE  BIGINT,
@@ -2553,60 +2635,22 @@ AS
 BEGIN
     SET NOCOUNT ON;
 
-    -- 1. خواندن کد کامل حساب مساعده
     DECLARE @FULL_HES NVARCHAR(100);
     SELECT @FULL_HES = ACC_CODE 
     FROM PAY2_WORKSHOP_ACC WITH (NOLOCK)
     WHERE WS_ID = @WS_ID AND ACC_KEY = 'ADV_HES';
 
-    IF @FULL_HES IS NULL
+    IF @FULL_HES IS NULL OR LTRIM(RTRIM(@FULL_HES)) = N''
     BEGIN
         RAISERROR(N'حساب مساعده (ADV_HES) برای این کارگاه تنظیم نشده است.', 16, 1);
         RETURN;
     END;
 
-    -- 2. پارس کردن کد ترکیبی با استفاده از JSON_VALUE 
-    DECLARE @JsonArr NVARCHAR(250) = N'[""' + REPLACE(@FULL_HES, '-', '"",""') + N'""]';
-    
-    DECLARE @HES_K  INT = TRY_CAST(NULLIF(JSON_VALUE(@JsonArr, '$[0]'), '') AS INT);
-    DECLARE @HES_M  INT = TRY_CAST(NULLIF(JSON_VALUE(@JsonArr, '$[1]'), '') AS INT);
-    DECLARE @HES_T  INT = TRY_CAST(NULLIF(JSON_VALUE(@JsonArr, '$[2]'), '') AS INT);
-    DECLARE @HES_T2 INT = TRY_CAST(NULLIF(JSON_VALUE(@JsonArr, '$[3]'), '') AS INT);
-    DECLARE @HES_T3 INT = TRY_CAST(NULLIF(JSON_VALUE(@JsonArr, '$[4]'), '') AS INT);
-    DECLARE @HES_T4 INT = TRY_CAST(NULLIF(JSON_VALUE(@JsonArr, '$[5]'), '') AS INT);
+    DECLARE @MIN_POS   BIT           = ISNULL(CAST((SELECT CFG_VALUE FROM PAY2_CONFIG WITH (NOLOCK) WHERE CFG_KEY='ADV_MIN_POSITIVE') AS BIT), 1);
+    DECLARE @ADV_SCOPE NVARCHAR(20)  = ISNULL((SELECT CFG_VALUE FROM PAY2_CONFIG WITH (NOLOCK) WHERE CFG_KEY='ADV_SCOPE'), 'CURRENT_MONTH');
+    DECLARE @MONTH_START BIGINT = (@PERIOD_DATE / 100) * 100;
+    DECLARE @MONTH_END   BIGINT = @MONTH_START + 99;
 
-    -- بررسی امنیتی حساب
-    IF @HES_K IS NULL OR @HES_M IS NULL
-    BEGIN
-        RAISERROR(N'فرمت حساب مساعده نادرست است. باید حداقل شامل کل و معین باشد (مثال: 112-1).', 16, 1);
-        RETURN;
-    END;
-
-    -- 3. تعیین سطح اعمال فیلتر کد پرسنل (ACC_T)
-    DECLARE @EMP_FILTER_LEVEL TINYINT =
-        CASE
-            WHEN @HES_T  IS NULL THEN 3   
-            WHEN @HES_T2 IS NULL THEN 4   
-            WHEN @HES_T3 IS NULL THEN 5   
-            ELSE                     6    
-        END;
-
-    -- 4. خواندن تنظیمات اضافی به صورت ایمن
-    DECLARE @USE_T BIT = 1, @MIN_POS BIT = 1, @ADV_SCOPE NVARCHAR(20) = 'CURRENT_MONTH';
-    
-    SELECT 
-        @USE_T     = ISNULL(CAST(MAX(CASE WHEN CFG_KEY = 'ADV_USE_HES_T_FILTER' THEN TRY_CAST(CFG_VALUE AS INT) END) AS BIT), 1),
-        @MIN_POS   = ISNULL(CAST(MAX(CASE WHEN CFG_KEY = 'ADV_MIN_POSITIVE'   THEN TRY_CAST(CFG_VALUE AS INT) END) AS BIT), 1),
-        @ADV_SCOPE = ISNULL(MAX(CASE WHEN CFG_KEY = 'ADV_SCOPE' THEN CFG_VALUE END), 'CURRENT_MONTH')
-    FROM PAY2_CONFIG WITH (NOLOCK)
-    WHERE CFG_KEY IN ('ADV_USE_HES_T_FILTER', 'ADV_MIN_POSITIVE', 'ADV_SCOPE');
-
-    -- 5. محاسبه بازه تاریخ به صورت امن و بدون تقسیم خطرناک
-    -- تبدیل 14030700 به بازه 14030700 تا 14030799
-    DECLARE @MONTH_START BIGINT = (@PERIOD_DATE / 100) * 100;       
-    DECLARE @MONTH_END   BIGINT = @MONTH_START + 99;  
-
-    -- 6. اجرای کوئری نهایی مالی
     ;WITH AdvBase AS
     (
         SELECT
@@ -2614,46 +2658,22 @@ BEGIN
             E.ACC_T                            AS PCODE,
             E.LAST_NAME + N' ' + E.FIRST_NAME  AS FULL_NAME,
 
-            -- مانده خام از حسابداری
+            -- ── مانده خام ──────────────────────────────────────────────
             ISNULL((
                 SELECT CAST(SUM(D.BED - D.BES) AS BIGINT)
                 FROM DEED_HED H WITH (NOLOCK)
                 INNER JOIN DEED_DTL D WITH (NOLOCK) ON H.N_S = D.N_S
                 WHERE
-                    D.HES_K = @HES_K
-                    AND D.HES_M = @HES_M
-                    -- 🚀 فیلتر دقیق سطوح بالادستی (باید دقیقاً برابر با مقدار کانفیگ باشند)
-                    AND (@EMP_FILTER_LEVEL <= 3 OR D.HES_T  = @HES_T)
-                    AND (@EMP_FILTER_LEVEL <= 4 OR D.HES_T2 = @HES_T2)
-                    AND (@EMP_FILTER_LEVEL <= 5 OR D.HES_T3 = @HES_T3)
-                    AND (@EMP_FILTER_LEVEL <= 6 OR D.HES_T4 = @HES_T4)
-                    
-                    -- 🚀 فیلتر سطح پرسنل (یا فعال نیست، یا باید دقیقاً برابر با کد پرسنل باشد)
-                    AND (
-                        @USE_T = 0
-                        OR TRY_CAST(NULLIF(TRIM(E.ACC_T), '') AS INT) = 
-                           CASE @EMP_FILTER_LEVEL 
-                                WHEN 3 THEN D.HES_T 
-                                WHEN 4 THEN D.HES_T2 
-                                WHEN 5 THEN D.HES_T3 
-                                WHEN 6 THEN D.HES_T4 
-                           END
-                    )
-
-                    -- 🚀 جلوگیری از نشت داده (سطوح پایین‌تر از پرسنل باید خالی یا صفر باشند)
-                    AND (@EMP_FILTER_LEVEL >= 4 OR ISNULL(D.HES_T2, 0) = 0)
-                    AND (@EMP_FILTER_LEVEL >= 5 OR ISNULL(D.HES_T3, 0) = 0)
-                    AND (@EMP_FILTER_LEVEL >= 6 OR ISNULL(D.HES_T4, 0) = 0)
-
+                    ISNULL(D.HES, dbo.FN_PAY2_BUILD_ACC_CODE(D.HES_K, D.HES_M, D.HES_T, D.HES_T2, D.HES_T3, D.HES_T4)) = dbo.FN_PAY2_RESOLVE_ACCOUNT(@FULL_HES, ISNULL(E.ACC_T, N''))
                     AND H.N_S < ISNULL(@PAYROLL_N_S, 999999999)
-                    AND H.OKF = 1
                     AND (
                         @ADV_SCOPE = 'OPEN_BALANCE'
-                        OR (H.DATE_S BETWEEN @MONTH_START AND @MONTH_END) 
+                        OR (H.DATE_S BETWEEN @MONTH_START AND @MONTH_END)
                     )
+                    AND H.OKF = 1
             ), 0) AS RAW_BALANCE,
 
-            -- استثناهای دستی مساعده
+            -- ── استثناهای دستی ─────────────────────────────────────────
             ISNULL((
                 SELECT SUM(EXCL_AMOUNT)
                 FROM PAY2_ADVANCE_EXCL WITH (NOLOCK)
@@ -2668,6 +2688,7 @@ BEGIN
         WHERE E.WS_ID     = @WS_ID
           AND E.IS_ACTIVE = 1
           AND E.ACC_T IS NOT NULL
+          AND dbo.FN_PAY2_RESOLVE_ACCOUNT(@FULL_HES, ISNULL(E.ACC_T, N'')) IS NOT NULL
     )
     SELECT
         EMP_ID,
@@ -2757,6 +2778,37 @@ GO
                 try { db.Execute($@"CREATE NONCLUSTERED INDEX IX_PAY2_JOB_PERFORMANCE 
 ON [dbo].[PAY2_JOB] ([IS_ACTIVE], [JOB_NAME]) 
 INCLUDE ([JOB_ID]);"); } catch { }
+
+                // Migration 011: افزودن Mode صدور سند به کارگاه و محاسبه
+                try
+                {
+                    db.Execute(@"
+                        IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.PAY2_WORKSHOP') AND name = 'DEFAULT_DEED_MODE')
+                        BEGIN
+                            ALTER TABLE [dbo].[PAY2_WORKSHOP] ADD [DEFAULT_DEED_MODE] TINYINT NULL;
+                            EXEC('UPDATE [dbo].[PAY2_WORKSHOP] SET [DEFAULT_DEED_MODE] = 1 WHERE [DEFAULT_DEED_MODE] IS NULL');
+                            ALTER TABLE [dbo].[PAY2_WORKSHOP] ALTER COLUMN [DEFAULT_DEED_MODE] TINYINT NOT NULL;
+                            ALTER TABLE [dbo].[PAY2_WORKSHOP] ADD CONSTRAINT [DF_WS_DDM] DEFAULT (1) FOR [DEFAULT_DEED_MODE];
+                            ALTER TABLE [dbo].[PAY2_WORKSHOP] ADD CONSTRAINT [CK_WS_DEED_MODE] CHECK ([DEFAULT_DEED_MODE] IN (1, 2));
+                        END
+                    ");
+                }
+                catch { }
+
+                try
+                {
+                    db.Execute(@"
+                        IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.PAY2_RUN') AND name = 'DEED_MODE')
+                        BEGIN
+                            ALTER TABLE [dbo].[PAY2_RUN] ADD [DEED_MODE] TINYINT NULL;
+                            ALTER TABLE [dbo].[PAY2_RUN] ADD [DEED_GENERATOR_VERSION] SMALLINT NULL;
+
+                            -- Backfill: فقط اجراهایی که در حسابداری شماره سند حقوق دارند
+                            EXEC('UPDATE [dbo].[PAY2_RUN] SET [DEED_MODE] = 1, [DEED_GENERATOR_VERSION] = 0 WHERE [DEED_ID_SAL] IS NOT NULL AND [STATUS] = 3');
+                        END
+                    ");
+                }
+                catch { }
 
                 // Migration 009: افزودن تنظیمات حق شیفت به تفکیک کارگاه و پرسنل
                 try
