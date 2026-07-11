@@ -562,8 +562,11 @@ namespace Safir.Server.Controllers
                     }
                     else
                     {
-                        // 🚀 رفع باگ Critical: استفاده از TABLOCK برای جلوگیری از تصادم Primary Key در محیط‌های Concurrent
-                        targetNs = (await conn.QuerySingleOrDefaultAsync<double?>("SELECT MAX(N_S) FROM DEED_HED WITH (UPDLOCK, TABLOCK)", null, tran) ?? 0) + 1;
+                        // 🟢 اصلاح معماری و پرفورمنس: استفاده از Application Lock به جای TABLOCKِ مخرب
+                        // این کار تداخل همزمان (Race Condition) را مسدود می‌کند بدون اینکه کل سیستم حسابداری قفل شود.
+                        await conn.ExecuteAsync("EXEC sp_getapplock @Resource = 'DeedNumberAllocation', @LockMode = 'Exclusive', @LockOwner = 'Transaction', @LockTimeout = 15000", null, tran);
+
+                        targetNs = (await conn.QuerySingleOrDefaultAsync<double?>("SELECT MAX(N_S) FROM DEED_HED WITH (UPDLOCK)", null, tran) ?? 0) + 1;
 
                         await conn.ExecuteAsync(@"
                             INSERT INTO DEED_HED (N_S, DATE_S, SHARH_S, NO_S, USER_NAME, OKF, CRT, UID)
