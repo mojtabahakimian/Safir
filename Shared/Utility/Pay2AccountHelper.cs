@@ -1,4 +1,4 @@
-﻿using System.Collections.Generic;
+﻿using System;
 
 namespace Safir.Shared.Utility
 {
@@ -34,19 +34,23 @@ namespace Safir.Shared.Utility
             if (string.IsNullOrWhiteSpace(code))
                 return Pay2AccountParseResult.Fail($"کد حساب برای «{fieldName}» تنظیم نشده یا خالی است.");
 
-            var parts = code.Split('-');
-            int len = parts.Length;
+            // 🚀 پرفورمنس: استفاده از Span برای جلوگیری از Memory Allocation
+            ReadOnlySpan<char> span = code.AsSpan();
+            Span<Range> ranges = stackalloc Range[10]; // حداکثر ۶ سطح داریم، ۱۰ برای احتیاط
 
-            if (len < 2)
+            int count = span.Split(ranges, '-');
+
+            if (count < 2)
                 return Pay2AccountParseResult.Fail($"فرمت حساب «{fieldName}» نامعتبر است ({code}). حداقل ۲ سطح با خط‌فاصله الزامی است.");
 
-            if (len > 6)
+            if (count > 6)
                 return Pay2AccountParseResult.Fail($"فرمت حساب «{fieldName}» نامعتبر است ({code}). سیستم حداکثر ۶ سطح را پشتیبانی می‌کند.");
 
-            var parsedInts = new int[len];
-            for (int i = 0; i < len; i++)
+            Span<int> parsedInts = stackalloc int[count];
+            for (int i = 0; i < count; i++)
             {
-                if (string.IsNullOrWhiteSpace(parts[i]) || !int.TryParse(parts[i], out int val) || val < 0)
+                var segment = span[ranges[i]];
+                if (segment.IsWhiteSpace() || !int.TryParse(segment, out int val) || val < 0)
                     return Pay2AccountParseResult.Fail($"فرمت حساب «{fieldName}» نامعتبر است ({code}). تمام بخش‌ها باید عدد صحیح مثبت باشند.");
 
                 parsedInts[i] = val;
@@ -54,14 +58,14 @@ namespace Safir.Shared.Utility
 
             var result = new Pay2ParsedAccount
             {
-                FullCode = code, // چون ورودی ولید است، نیازی به string.Join مجدد نیست
-                LevelCount = len,
+                FullCode = code,
+                LevelCount = count,
                 HesK = parsedInts[0],
                 HesM = parsedInts[1],
-                HesT = len > 2 ? parsedInts[2] : null,
-                HesT2 = len > 3 ? parsedInts[3] : null,
-                HesT3 = len > 4 ? parsedInts[4] : null,
-                HesT4 = len > 5 ? parsedInts[5] : null
+                HesT = count > 2 ? parsedInts[2] : null,
+                HesT2 = count > 3 ? parsedInts[3] : null,
+                HesT3 = count > 4 ? parsedInts[4] : null,
+                HesT4 = count > 5 ? parsedInts[5] : null
             };
 
             return Pay2AccountParseResult.Success(result);
