@@ -1176,7 +1176,7 @@ BEGIN
     END
 
     -- ─────────────────────────────────────────────────────────────────
-    -- گاردهای امنیتی (بدون تغییر - بی‌نقص است)
+    -- گاردهای امنیتی
     -- ─────────────────────────────────────────────────────────────────
     DECLARE @NegEmpId INT, @NegEmpName NVARCHAR(100), @NegAmount BIGINT;
     SELECT TOP 1 @NegEmpId = RL.EMP_ID, @NegEmpName = E.LAST_NAME + N' ' + E.FIRST_NAME, @NegAmount = RL.NET_PAY
@@ -1297,7 +1297,7 @@ BEGIN
     INNER JOIN EmpAcc E ON B.EMP_ID = E.EMP_ID;
 
     -- ─────────────────────────────────────────────────────────────────
-    -- تولید خروجی قطعی با مرتب‌سازی تضمین‌شده (ORDER BY)
+    -- تولید خروجی قطعی با مرتب‌سازی تضمین‌شده
     -- ─────────────────────────────────────────────────────────────────
     IF @DEED_MODE = 1
     BEGIN
@@ -1376,7 +1376,8 @@ BEGIN
             SELECT CAST(CONCAT_WS('-', @ACC_OTHER_DED_HES, SUFFIX) AS NVARCHAR(100)), CAST(N'سایر کسورات: ' + @ML + N' | ' + FULL_NAME AS NVARCHAR(500)), CAST(0 AS BIGINT), CAST(OTHER_DED AS BIGINT), CAST('OTHER_DED' AS NVARCHAR(50)), CAST(EMP_ID AS INT), CAST(FULL_NAME AS NVARCHAR(150)), 12
             FROM #SalarySplit WHERE OTHER_DED > 0
         ) AS Res
-        ORDER BY EmployeeName, SortOrder;
+        -- 🚀 رفع باگ حسابداری: اولویت‌بندی مطلق بدهکاران نسبت به بستانکاران برای صدور ترازِ منظم
+        ORDER BY SortOrder, EmployeeName;
     END
 
     DROP TABLE #SalarySplit;

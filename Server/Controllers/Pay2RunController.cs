@@ -519,10 +519,10 @@ namespace Safir.Server.Controllers
                 // واکشی هدر بدون آپدیت‌لاک تا فقط دیتا را بخوانیم و آرتیکل‌ها را تولید کنیم
                 var runInfo = await _db.DoGetDataSQLAsyncSingle<dynamic>(
                     @"SELECT R.STATUS, R.PER_ID, R.DEED_ID_SAL, R.DEED_MODE, W.DEFAULT_DEED_MODE 
-                      FROM PAY2_RUN R 
-                      INNER JOIN PAY2_PERIOD P ON R.PER_ID = P.PER_ID 
-                      INNER JOIN PAY2_WORKSHOP W ON P.WS_ID = W.WS_ID
-                      WHERE R.RUN_ID = @runId", new { runId });
+              FROM PAY2_RUN R 
+              INNER JOIN PAY2_PERIOD P ON R.PER_ID = P.PER_ID 
+              INNER JOIN PAY2_WORKSHOP W ON P.WS_ID = W.WS_ID
+              WHERE R.RUN_ID = @runId", new { runId });
 
                 if (runInfo == null)
                     return BadRequest("محاسبه یافت نشد.");
@@ -553,7 +553,8 @@ namespace Safir.Server.Controllers
                 // ─────────────────────────────────────────────────────────────────
                 // 2. پردازش و پارس کردن اکانت‌ها (خارج از قفل تراکنش)
                 // ─────────────────────────────────────────────────────────────────
-                var detailsToInsert = new List<object>();
+                // 🚀 فیکس معماری: استفاده از یک تایپ قوی به جای Anonymous/ExpandoObject برای جلوگیری از Reflection و Memory Leak
+                var parsedArticles = new List<(int Radif, Pay2ParsedAccount Acc, string Sharh, double Bed, double Bes)>();
                 int radif = 1;
 
                 foreach (var art in articles)
@@ -565,21 +566,7 @@ namespace Safir.Server.Controllers
                     if (!parsedAcc.IsValid)
                         return BadRequest($"خطا در حساب {art.ACC_KEY}: {parsedAcc.ErrorMessage}");
 
-                    detailsToInsert.Add(new
-                    {
-                        RADIF = radif++,
-                        HES_K = parsedAcc.Account!.HesK,
-                        HES_M = parsedAcc.Account.HesM,
-                        HES_T = parsedAcc.Account.HesT ?? 0,
-                        HES_T2 = parsedAcc.Account.HesT2,
-                        HES_T3 = parsedAcc.Account.HesT3,
-                        HES_T4 = parsedAcc.Account.HesT4,
-                        HES = art.HES_CODE,
-                        SHARH = art.SHARH,
-                        BED = (double)art.BED,
-                        BES = (double)art.BES,
-                        UID = userCod
-                    });
+                    parsedArticles.Add((radif++, parsedAcc.Account!, art.SHARH, (double)art.BED, (double)art.BES));
                 }
 
                 // ─────────────────────────────────────────────────────────────────
@@ -611,7 +598,7 @@ namespace Safir.Server.Controllers
 
                         await conn.ExecuteAsync("DELETE FROM DEED_DTL WHERE N_S = @N_S", new { N_S = targetNs }, tran);
                         await conn.ExecuteAsync(@"
-                            UPDATE DEED_HED SET DATE_S = @DATE_S, SHARH_S = @SHARH, NO_S = 11, USER_NAME = @USER, UID = @UID WHERE N_S = @N_S",
+                    UPDATE DEED_HED SET DATE_S = @DATE_S, SHARH_S = @SHARH, NO_S = 11, USER_NAME = @USER, UID = @UID WHERE N_S = @N_S",
                             new { N_S = targetNs, DATE_S = deedDate, SHARH = hedSharh, USER = userName, UID = userCod }, tran);
                     }
                     else
@@ -621,32 +608,38 @@ namespace Safir.Server.Controllers
                         targetNs = (await conn.QuerySingleOrDefaultAsync<double?>("SELECT MAX(N_S) FROM DEED_HED WITH (UPDLOCK)", null, tran) ?? 0) + 1;
 
                         await conn.ExecuteAsync(@"
-                            INSERT INTO DEED_HED (N_S, DATE_S, SHARH_S, NO_S, USER_NAME, OKF, CRT, UID)
-                            VALUES (@N_S, @DATE_S, @SHARH, 11, @USER, 1, GETDATE(), @UID)",
+                    INSERT INTO DEED_HED (N_S, DATE_S, SHARH_S, NO_S, USER_NAME, OKF, CRT, UID)
+                    VALUES (@N_S, @DATE_S, @SHARH, 11, @USER, 1, GETDATE(), @UID)",
                             new { N_S = targetNs, DATE_S = deedDate, SHARH = hedSharh, USER = userName, UID = userCod }, tran);
                     }
 
-                    // اضافه کردن N_S به تمامی ردیف‌ها
-                    foreach (dynamic item in detailsToInsert)
+                    // 🚀 مپ کردن نهایی و سریع مقادیر با N_S محاسبه شده درون تراکنش بدون Reflection
+                    var finalDetailsToInsert = parsedArticles.Select(a => new
                     {
-                        // چون anonymous typeها immutable هستند، یک کپی با N_S آپدیت شده می‌سازیم
-                        var dict = (IDictionary<string, object>)new System.Dynamic.ExpandoObject();
-                        foreach (var prop in item.GetType().GetProperties())
-                            dict.Add(prop.Name, prop.GetValue(item));
-
-                        dict["N_S"] = targetNs;
-                    }
+                        N_S = targetNs,
+                        RADIF = a.Radif,
+                        HES_K = a.Acc.HesK,
+                        HES_M = a.Acc.HesM,
+                        HES_T = a.Acc.HesT ?? 0,
+                        HES_T2 = a.Acc.HesT2,
+                        HES_T3 = a.Acc.HesT3,
+                        HES_T4 = a.Acc.HesT4,
+                        HES = a.Acc.FullCode,
+                        SHARH = a.Sharh,
+                        BED = a.Bed,
+                        BES = a.Bes,
+                        UID = userCod
+                    }).ToList();
 
                     const string insertSql = @"
-    INSERT INTO DEED_DTL (N_S, RADIF, HES_K, HES_M, HES_T, HES_T2, HES_T3, HES_T4, HES, SHARH, BED, BES, CRT, UID)
-    VALUES (@N_S, @RADIF, @HES_K, @HES_M, @HES_T, @HES_T2, @HES_T3, @HES_T4, @HES, @SHARH, @BED, @BES, GETDATE(), @UID)";
+INSERT INTO DEED_DTL (N_S, RADIF, HES_K, HES_M, HES_T, HES_T2, HES_T3, HES_T4, HES, SHARH, BED, BES, CRT, UID)
+VALUES (@N_S, @RADIF, @HES_K, @HES_M, @HES_T, @HES_T2, @HES_T3, @HES_T4, @HES, @SHARH, @BED, @BES, GETDATE(), @UID)";
 
-                    // Dapper ExpandoObject Collection
-                    await conn.ExecuteAsync(insertSql, detailsToInsert, tran);
+                    await conn.ExecuteAsync(insertSql, finalDetailsToInsert, tran);
 
                     await conn.ExecuteAsync(@"
-                        UPDATE PAY2_RUN SET STATUS = 3, DEED_ID_SAL = @deedId, DEED_MODE = @mode, DEED_GENERATOR_VERSION = 1 WHERE RUN_ID = @runId;
-                        UPDATE PAY2_PERIOD SET STATUS = 4, DEED_N_S_PAY = @targetNs WHERE PER_ID = @perId;",
+                UPDATE PAY2_RUN SET STATUS = 3, DEED_ID_SAL = @deedId, DEED_MODE = @mode, DEED_GENERATOR_VERSION = 1 WHERE RUN_ID = @runId;
+                UPDATE PAY2_PERIOD SET STATUS = 4, DEED_N_S_PAY = @targetNs WHERE PER_ID = @perId;",
                         new { runId, deedId = (int)targetNs, targetNs, perId, mode = effectiveMode }, tran);
                 });
 
