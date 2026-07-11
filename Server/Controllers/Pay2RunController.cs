@@ -507,41 +507,96 @@ namespace Safir.Server.Controllers
 
             try
             {
+                // ─────────────────────────────────────────────────────────────────
+                // 1. واکشی دیتای اولیه و تولید آرتیکل‌ها در RAM (بدون قفل کردن کل دیتابیس)
+                // ─────────────────────────────────────────────────────────────────
+                byte status;
+                int perId;
+                long periodDate;
+                double? existingNs;
+                byte effectiveMode;
+
+                // واکشی هدر بدون آپدیت‌لاک تا فقط دیتا را بخوانیم و آرتیکل‌ها را تولید کنیم
+                var runInfo = await _db.DoGetDataSQLAsyncSingle<dynamic>(
+                    @"SELECT R.STATUS, R.PER_ID, R.DEED_ID_SAL, R.DEED_MODE, W.DEFAULT_DEED_MODE 
+                      FROM PAY2_RUN R 
+                      INNER JOIN PAY2_PERIOD P ON R.PER_ID = P.PER_ID 
+                      INNER JOIN PAY2_WORKSHOP W ON P.WS_ID = W.WS_ID
+                      WHERE R.RUN_ID = @runId", new { runId });
+
+                if (runInfo == null)
+                    return BadRequest("محاسبه یافت نشد.");
+
+                status = (byte)runInfo.STATUS;
+                if (status != 2 && status != 3)
+                    return BadRequest("اجرا باید در وضعیت 'تأیید نهایی' یا 'سند صادر شده' باشد.");
+
+                perId = (int)runInfo.PER_ID;
+                effectiveMode = (byte)(runInfo.DEED_MODE ?? runInfo.DEFAULT_DEED_MODE);
+
+                var periodInfo = await _db.DoGetDataSQLAsyncSingle<dynamic>(
+                    "SELECT PERIOD_DATE, DEED_N_S_PAY FROM PAY2_PERIOD WHERE PER_ID = @perId", new { perId });
+
+                periodDate = (long)periodInfo.PERIOD_DATE;
+                existingNs = (double?)periodInfo.DEED_N_S_PAY;
+
+                // فراخوانی SP برای دریافت آرتیکل‌ها
+                var articles = (await _db.DoGetDataSQLAsync<Pay2DeedArticleDto>(
+                    "EXEC SP_PAY2_GEN_DEED @RUN_ID = @runId, @CALC_BY = @userCod, @DEED_MODE = @mode",
+                    new { runId, userCod, mode = effectiveMode })).ToList();
+
+                long sumBed = articles.Sum(x => x.BED);
+                long sumBes = articles.Sum(x => x.BES);
+                if (sumBed != sumBes)
+                    return BadRequest($"سند تراز نیست! بدهکار: {sumBed:N0}، بستانکار: {sumBes:N0}");
+
+                // ─────────────────────────────────────────────────────────────────
+                // 2. پردازش و پارس کردن اکانت‌ها (خارج از قفل تراکنش)
+                // ─────────────────────────────────────────────────────────────────
+                var detailsToInsert = new List<object>();
+                int radif = 1;
+
+                foreach (var art in articles)
+                {
+                    if (art.BED < 0 || art.BES < 0)
+                        return BadRequest($"آرتیکل با مبلغ منفی مجاز نیست (حساب: {art.HES_CODE}). لطفاً مقادیر منفی در حقوق پرسنل بررسی شود.");
+
+                    var parsedAcc = Pay2AccountHelper.Parse(art.HES_CODE, art.ACC_KEY);
+                    if (!parsedAcc.IsValid)
+                        return BadRequest($"خطا در حساب {art.ACC_KEY}: {parsedAcc.ErrorMessage}");
+
+                    detailsToInsert.Add(new
+                    {
+                        RADIF = radif++,
+                        HES_K = parsedAcc.Account!.HesK,
+                        HES_M = parsedAcc.Account.HesM,
+                        HES_T = parsedAcc.Account.HesT ?? 0,
+                        HES_T2 = parsedAcc.Account.HesT2,
+                        HES_T3 = parsedAcc.Account.HesT3,
+                        HES_T4 = parsedAcc.Account.HesT4,
+                        HES = art.HES_CODE,
+                        SHARH = art.SHARH,
+                        BED = (double)art.BED,
+                        BES = (double)art.BES,
+                        UID = userCod
+                    });
+                }
+
+                // ─────────────────────────────────────────────────────────────────
+                // 3. آغاز تراکنش و قفل‌گذاری فیزیکی (فقط برای عملیات Write)
+                // ─────────────────────────────────────────────────────────────────
+                long deedDate = Safir.Shared.Utility.CL_Tarikh.GetPersianMonthEndAsLong(periodDate);
+                string hedSharh = $"سند حقوق و دستمزد دوره {periodDate}";
+
                 await _db.ExecuteInTransactionAsync(async (conn, tran) =>
                 {
-                    var runInfo = await conn.QuerySingleAsync<dynamic>(
-                        @"SELECT R.STATUS, R.PER_ID, R.DEED_ID_SAL, R.DEED_MODE, W.DEFAULT_DEED_MODE 
-                          FROM PAY2_RUN R WITH (UPDLOCK) 
-                          INNER JOIN PAY2_PERIOD P WITH (UPDLOCK) ON R.PER_ID = P.PER_ID 
-                          INNER JOIN PAY2_WORKSHOP W ON P.WS_ID = W.WS_ID
-                          WHERE R.RUN_ID = @runId",
-                        new { runId }, tran);
+                    // دوباره وضعیت را با قفل چِک می‌کنیم تا از Race Condition در فاصله تولید آرتیکل تا این لحظه جلوگیری شود
+                    var lockCheck = await conn.QuerySingleAsync<dynamic>(
+                        "SELECT STATUS FROM PAY2_RUN WITH (UPDLOCK) WHERE RUN_ID = @runId", new { runId }, tran);
 
-                    byte status = (byte)runInfo.STATUS;
-                    if (status != 2 && status != 3)
-                        throw new InvalidOperationException("اجرا باید در وضعیت 'تأیید نهایی' یا 'سند صادر شده' باشد.");
+                    if ((byte)lockCheck.STATUS != 2 && (byte)lockCheck.STATUS != 3)
+                        throw new InvalidOperationException("وضعیت اجرا در حین پردازش تغییر کرده است.");
 
-                    int perId = (int)runInfo.PER_ID;
-                    byte effectiveMode = (byte)(runInfo.DEED_MODE ?? runInfo.DEFAULT_DEED_MODE);
-
-                    var periodInfo = await conn.QuerySingleAsync(
-                        "SELECT PERIOD_DATE, DEED_N_S_PAY FROM PAY2_PERIOD WITH (UPDLOCK) WHERE PER_ID = @perId",
-                        new { perId }, tran);
-
-                    long periodDate = (long)periodInfo.PERIOD_DATE;
-                    double? existingNs = (double?)periodInfo.DEED_N_S_PAY;
-
-                    var articles = (await conn.QueryAsync<Pay2DeedArticleDto>(
-                        "EXEC SP_PAY2_GEN_DEED @RUN_ID = @runId, @CALC_BY = @userCod, @DEED_MODE = @mode",
-                        new { runId, userCod, mode = effectiveMode }, tran, commandTimeout: 120)).ToList();
-
-                    long sumBed = articles.Sum(x => x.BED);
-                    long sumBes = articles.Sum(x => x.BES);
-                    if (sumBed != sumBes)
-                        throw new InvalidOperationException($"سند تراز نیست! بدهکار: {sumBed:N0}، بستانکار: {sumBes:N0}");
-
-                    long deedDate = Safir.Shared.Utility.CL_Tarikh.GetPersianMonthEndAsLong(periodDate);
-                    string hedSharh = $"سند حقوق و دستمزد دوره {periodDate}";
                     double targetNs;
 
                     if (status == 3 && existingNs.HasValue && existingNs.Value > 0)
@@ -549,8 +604,7 @@ namespace Safir.Server.Controllers
                         targetNs = existingNs.Value;
 
                         var okfStatus = await conn.QuerySingleOrDefaultAsync<byte?>(
-                            "SELECT OKF FROM DEED_HED WITH (UPDLOCK) WHERE N_S = @N_S",
-                            new { N_S = targetNs }, tran);
+                            "SELECT OKF FROM DEED_HED WITH (UPDLOCK) WHERE N_S = @N_S", new { N_S = targetNs }, tran);
 
                         if (okfStatus.HasValue && okfStatus.Value != 1)
                             throw new InvalidOperationException("این سند در سیستم حسابداری بررسی و قطعی شده است. امکان بازصدور وجود ندارد.");
@@ -562,8 +616,6 @@ namespace Safir.Server.Controllers
                     }
                     else
                     {
-                        // 🟢 اصلاح معماری و پرفورمنس: استفاده از Application Lock به جای TABLOCKِ مخرب
-                        // این کار تداخل همزمان (Race Condition) را مسدود می‌کند بدون اینکه کل سیستم حسابداری قفل شود.
                         await conn.ExecuteAsync("EXEC sp_getapplock @Resource = 'DeedNumberAllocation', @LockMode = 'Exclusive', @LockOwner = 'Transaction', @LockTimeout = 15000", null, tran);
 
                         targetNs = (await conn.QuerySingleOrDefaultAsync<double?>("SELECT MAX(N_S) FROM DEED_HED WITH (UPDLOCK)", null, tran) ?? 0) + 1;
@@ -574,44 +626,22 @@ namespace Safir.Server.Controllers
                             new { N_S = targetNs, DATE_S = deedDate, SHARH = hedSharh, USER = userName, UID = userCod }, tran);
                     }
 
-                    // 🚀 رفع باگ N+1 Query: ساخت لیست پارامترها در رم (RAM)
-                    var detailsToInsert = new List<object>();
-                    int radif = 1;
-
-                    foreach (var art in articles)
+                    // اضافه کردن N_S به تمامی ردیف‌ها
+                    foreach (dynamic item in detailsToInsert)
                     {
-                        // 🚀 گارد امنیتی جلوگیری از نشت مبالغ منفی
-                        if (art.BED < 0 || art.BES < 0)
-                            throw new InvalidOperationException($"آرتیکل با مبلغ منفی مجاز نیست (حساب: {art.HES_CODE}). لطفاً مقادیر منفی در حقوق پرسنل بررسی شود.");
+                        // چون anonymous typeها immutable هستند، یک کپی با N_S آپدیت شده می‌سازیم
+                        var dict = (IDictionary<string, object>)new System.Dynamic.ExpandoObject();
+                        foreach (var prop in item.GetType().GetProperties())
+                            dict.Add(prop.Name, prop.GetValue(item));
 
-                        var parsedAcc = Pay2AccountHelper.Parse(art.HES_CODE, art.ACC_KEY);
-                        if (!parsedAcc.IsValid)
-                            throw new InvalidOperationException($"خطا در حساب {art.ACC_KEY}: {parsedAcc.ErrorMessage}");
-
-                        // نگاشت آبجکت برای Dapper
-                        detailsToInsert.Add(new
-                        {
-                            N_S = targetNs,
-                            RADIF = radif++,
-                            HES_K = parsedAcc.Account.HesK,
-                            HES_M = parsedAcc.Account.HesM,
-                            HES_T = parsedAcc.Account.HesT ?? 0,
-                            HES_T2 = parsedAcc.Account.HesT2,
-                            HES_T3 = parsedAcc.Account.HesT3,
-                            HES_T4 = parsedAcc.Account.HesT4,
-                            HES = art.HES_CODE,
-                            SHARH = art.SHARH,
-                            BED = (double)art.BED,
-                            BES = (double)art.BES,
-                            UID = userCod
-                        });
+                        dict["N_S"] = targetNs;
                     }
 
-                    // 🚀 ارسال دسته‌ای (Batch Execution) به SQL Server در یک رفت و برگشت شبکه
                     const string insertSql = @"
     INSERT INTO DEED_DTL (N_S, RADIF, HES_K, HES_M, HES_T, HES_T2, HES_T3, HES_T4, HES, SHARH, BED, BES, CRT, UID)
     VALUES (@N_S, @RADIF, @HES_K, @HES_M, @HES_T, @HES_T2, @HES_T3, @HES_T4, @HES, @SHARH, @BED, @BES, GETDATE(), @UID)";
 
+                    // Dapper ExpandoObject Collection
                     await conn.ExecuteAsync(insertSql, detailsToInsert, tran);
 
                     await conn.ExecuteAsync(@"
