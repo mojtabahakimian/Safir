@@ -63,6 +63,7 @@ public class Pay2WorkshopsController : ControllerBase
                 case "TAX_PAYABLE": acc.TAX_PAYABLE = row.ACC_CODE; break;
                 case "LOAN_HES": acc.LOAN_HES = row.ACC_CODE; break;
                 case "BANK_PAY_HES": acc.BANK_PAY_HES = row.ACC_CODE; break;
+                case "OTHER_DED_HES": acc.OTHER_DED_HES = row.ACC_CODE; break;
             }
         }
 
@@ -182,7 +183,8 @@ public class Pay2WorkshopsController : ControllerBase
                     ("INS_PAYABLE",         a.INS_PAYABLE),
                     ("TAX_PAYABLE",         a.TAX_PAYABLE),
                     ("LOAN_HES",            a.LOAN_HES),
-                    ("BANK_PAY_HES",        a.BANK_PAY_HES)
+                    ("BANK_PAY_HES",        a.BANK_PAY_HES),
+                    ("OTHER_DED_HES",       a.OTHER_DED_HES)
                 };
 
                 var sqlBuilder = new System.Text.StringBuilder();
@@ -312,6 +314,7 @@ public class Pay2WorkshopsController : ControllerBase
         a.TAX_PAYABLE = NormalizeAccountCode(a.TAX_PAYABLE, 20);
         a.LOAN_HES = NormalizeAccountCode(a.LOAN_HES, 20);
         a.BANK_PAY_HES = NormalizeAccountCode(a.BANK_PAY_HES, 20);
+        a.OTHER_DED_HES = NormalizeAccountCode(a.OTHER_DED_HES, 20);
 
         if (!string.IsNullOrWhiteSpace(w.POSTAL_CODE) && !Regex.IsMatch(w.POSTAL_CODE, @"^\d+$"))
             return "کد پستی فقط باید عدد باشد.";

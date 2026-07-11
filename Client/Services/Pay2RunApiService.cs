@@ -89,7 +89,17 @@ namespace Safir.Client.Services
             var res = await _http.PutAsync($"api/pay2/run/{runId}/unfinalize-deed", null);
             if (!res.IsSuccessStatusCode) throw new Exception(await res.Content.ReadAsStringAsync());
         }
+        public async Task<Pay2DeedPreviewDto> PreviewDeedAsync(int runId, byte? overrideMode = null)
+        {
+            var url = $"api/pay2/run/{runId}/preview-deed";
+            if (overrideMode.HasValue) url += $"?overrideMode={overrideMode.Value}";
 
+            var res = await _http.GetAsync(url);
+            if (!res.IsSuccessStatusCode)
+                throw new Exception(await res.Content.ReadAsStringAsync());
+
+            return await res.Content.ReadFromJsonAsync<Pay2DeedPreviewDto>() ?? new Pay2DeedPreviewDto();
+        }
         // دریافت بایت‌های اکسلِ تحلیلیِ فرمول‌دار برای کل اجرا
         public async Task<byte[]> GetExcelAuditAsync(int runId)
         {

@@ -26,6 +26,8 @@
         public string? FINANCIAL_MANAGER { get; set; }
         public string? ADMIN_MANAGER { get; set; }
 
+        public byte DEFAULT_DEED_MODE { get; set; } = 1;
+
         public string InsModeText => INS_MODE switch
         {
             1 => "معمولی",
@@ -70,6 +72,9 @@
         public string? SALARY_EXP_KHADAMAT { get; set; }
         public string? LOAN_HES { get; set; }
         public string? BANK_PAY_HES { get; set; }
+
+        // 👇 فیلد جدید اضافه شد (برای حساب سایر کسورات)
+        public string? OTHER_DED_HES { get; set; }
     }
 
     /// <summary>
