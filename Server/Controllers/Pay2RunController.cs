@@ -574,7 +574,10 @@ namespace Safir.Server.Controllers
                             new { N_S = targetNs, DATE_S = deedDate, SHARH = hedSharh, USER = userName, UID = userCod }, tran);
                     }
 
+                    // 🚀 رفع باگ N+1 Query: ساخت لیست پارامترها در رم (RAM)
+                    var detailsToInsert = new List<object>();
                     int radif = 1;
+
                     foreach (var art in articles)
                     {
                         // 🚀 گارد امنیتی جلوگیری از نشت مبالغ منفی
@@ -585,27 +588,31 @@ namespace Safir.Server.Controllers
                         if (!parsedAcc.IsValid)
                             throw new InvalidOperationException($"خطا در حساب {art.ACC_KEY}: {parsedAcc.ErrorMessage}");
 
-                        var p = new DynamicParameters();
-                        p.Add("N_S", targetNs);
-                        p.Add("RADIF", radif++);
-                        p.Add("HES_K", parsedAcc.Account.HesK);
-                        p.Add("HES_M", parsedAcc.Account.HesM);
-                        p.Add("HES_T", parsedAcc.Account.HesT ?? 0);
-                        p.Add("HES", art.HES_CODE);
-                        p.Add("SHARH", art.SHARH);
-                        p.Add("BED", (double)art.BED);
-                        p.Add("BES", (double)art.BES);
-                        p.Add("UID", userCod);
-
-                        string cols = "N_S, RADIF, HES_K, HES_M, HES_T, HES, SHARH, BED, BES, CRT, UID";
-                        string vals = "@N_S, @RADIF, @HES_K, @HES_M, @HES_T, @HES, @SHARH, @BED, @BES, GETDATE(), @UID";
-
-                        if (parsedAcc.Account.HesT2.HasValue) { cols += ", HES_T2"; vals += ", @HES_T2"; p.Add("HES_T2", parsedAcc.Account.HesT2.Value); }
-                        if (parsedAcc.Account.HesT3.HasValue) { cols += ", HES_T3"; vals += ", @HES_T3"; p.Add("HES_T3", parsedAcc.Account.HesT3.Value); }
-                        if (parsedAcc.Account.HesT4.HasValue) { cols += ", HES_T4"; vals += ", @HES_T4"; p.Add("HES_T4", parsedAcc.Account.HesT4.Value); }
-
-                        await conn.ExecuteAsync($@"INSERT INTO DEED_DTL ({cols}) VALUES ({vals})", p, tran);
+                        // نگاشت آبجکت برای Dapper
+                        detailsToInsert.Add(new
+                        {
+                            N_S = targetNs,
+                            RADIF = radif++,
+                            HES_K = parsedAcc.Account.HesK,
+                            HES_M = parsedAcc.Account.HesM,
+                            HES_T = parsedAcc.Account.HesT ?? 0,
+                            HES_T2 = parsedAcc.Account.HesT2,
+                            HES_T3 = parsedAcc.Account.HesT3,
+                            HES_T4 = parsedAcc.Account.HesT4,
+                            HES = art.HES_CODE,
+                            SHARH = art.SHARH,
+                            BED = (double)art.BED,
+                            BES = (double)art.BES,
+                            UID = userCod
+                        });
                     }
+
+                    // 🚀 ارسال دسته‌ای (Batch Execution) به SQL Server در یک رفت و برگشت شبکه
+                    const string insertSql = @"
+    INSERT INTO DEED_DTL (N_S, RADIF, HES_K, HES_M, HES_T, HES_T2, HES_T3, HES_T4, HES, SHARH, BED, BES, CRT, UID)
+    VALUES (@N_S, @RADIF, @HES_K, @HES_M, @HES_T, @HES_T2, @HES_T3, @HES_T4, @HES, @SHARH, @BED, @BES, GETDATE(), @UID)";
+
+                    await conn.ExecuteAsync(insertSql, detailsToInsert, tran);
 
                     await conn.ExecuteAsync(@"
                         UPDATE PAY2_RUN SET STATUS = 3, DEED_ID_SAL = @deedId, DEED_MODE = @mode, DEED_GENERATOR_VERSION = 1 WHERE RUN_ID = @runId;
