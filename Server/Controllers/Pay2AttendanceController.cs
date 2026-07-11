@@ -76,16 +76,15 @@ namespace Safir.Server.Controllers
             // فقط خطوطی که در کلاینت ویرایش شده‌اند را پردازش می‌کنیم (کاهش چشمگیر بار سرور)
             var dirtyLines = request.Lines.Where(x => !x.LOCKED).ToList();
 
-            // اعمال خودکار مجموع کارکردها بر روی WORK_DAYS برای جلوگیری از خطای Constraint دیتابیس
+            // اعتبارسنجی دقیق بدون دستکاری مخفیانه WORK_DAYS 
             foreach (var line in dirtyLines)
             {
                 var sumDays = line.DAYS_TOLID + line.DAYS_EDARI + line.DAYS_KHADAMAT + line.DAYS_FOROSH;
                 var maxDays = Math.Max(line.DAYS, line.DAYSB);
-                var requiredMinWorkDays = Math.Max(sumDays, maxDays);
 
-                if (line.WORK_DAYS < requiredMinWorkDays)
+                if (sumDays > line.WORK_DAYS || maxDays > line.WORK_DAYS)
                 {
-                    line.WORK_DAYS = requiredMinWorkDays;
+                    return BadRequest($"خطا برای پرسنل {line.FULL_NAME}: مجموع کارکرد تخصیص‌یافته ({sumDays}) یا کارکرد ثبت‌شده ({maxDays}) نمی‌تواند از کل روزهای ماه ({line.WORK_DAYS}) بیشتر باشد.");
                 }
             }
 

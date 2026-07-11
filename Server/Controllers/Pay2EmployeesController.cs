@@ -995,9 +995,9 @@ namespace Safir.Server.Controllers
                             SELECT 5 AS ErrorCode, N'این پرسنل دارای احکام کارگزینی تأیید شده است. مدارک رسمی قابل حذف نیستند.' AS ErrorMessage
                         ELSE IF EXISTS (SELECT 1 FROM PAY2_LEAVE WHERE EMP_ID = @empId AND STATUS > 1)
                             SELECT 6 AS ErrorCode, N'این پرسنل دارای مرخصی تأیید شده است و سوابق آن قابل حذف نیست.' AS ErrorMessage
-                        -- 🚀 فیکس امنیتی: جلوگیری از حذف بدهی مالی شرکت به پرسنل
-                        ELSE IF EXISTS (SELECT 1 FROM PAY2_LEAVE_BAL WHERE EMP_ID = @empId AND BALANCE_MIN > 0)
-                            SELECT 7 AS ErrorCode, N'این پرسنل دارای مانده مرخصی (بدهی مالی شرکت) است. به جای حذف فیزیکی، او را غیرفعال یا تسویه کنید.' AS ErrorMessage
+                        -- 🚀 فیکس امنیتی: جلوگیری از حذف بدهی مالی شرکت به پرسنل و بالعکس 
+                        ELSE IF EXISTS (SELECT 1 FROM PAY2_LEAVE_BAL WHERE EMP_ID = @empId AND BALANCE_MIN <> 0) 
+                            SELECT 7 AS ErrorCode, N'این پرسنل دارای مانده مرخصی (بستانکار/بدهکار) است. به جای حذف فیزیکی، او را غیرفعال یا تسویه کنید.' AS ErrorMessage 
                         ELSE 
                             SELECT 0 AS ErrorCode, N'OK' AS ErrorMessage";
 
