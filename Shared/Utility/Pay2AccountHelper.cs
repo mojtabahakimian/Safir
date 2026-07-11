@@ -34,9 +34,8 @@ namespace Safir.Shared.Utility
             if (string.IsNullOrWhiteSpace(code))
                 return Pay2AccountParseResult.Fail($"کد حساب برای «{fieldName}» تنظیم نشده یا خالی است.");
 
-            // 🚀 پرفورمنس: استفاده از Span برای جلوگیری از Memory Allocation
             ReadOnlySpan<char> span = code.AsSpan();
-            Span<Range> ranges = stackalloc Range[10]; // حداکثر ۶ سطح داریم، ۱۰ برای احتیاط
+            Span<Range> ranges = stackalloc Range[10];
 
             int count = span.Split(ranges, '-');
 
@@ -69,55 +68,6 @@ namespace Safir.Shared.Utility
             };
 
             return Pay2AccountParseResult.Success(result);
-        }
-
-        public static Pay2AccountParseResult ResolveEmployeeAccount(string? targetBaseCode, string? empAccT, string targetFieldName, string? salaryPayableBase)
-        {
-            if (string.IsNullOrWhiteSpace(empAccT))
-                return Pay2AccountParseResult.Fail($"کد تفصیلی پرسنل (ACC_T) مشخص نیست.");
-
-            var targetBaseResult = Parse(targetBaseCode, targetFieldName);
-            if (!targetBaseResult.IsValid) return targetBaseResult;
-
-            var accTResult = Parse(empAccT, "ACC_T پرسنل");
-            string finalCode;
-
-            if (!accTResult.IsValid)
-            {
-                if (int.TryParse(empAccT, out int leaf) && leaf >= 0 && !empAccT.Contains("-"))
-                {
-                    finalCode = $"{targetBaseResult.Account!.FullCode}-{leaf}";
-                }
-                else
-                {
-                    return Pay2AccountParseResult.Fail($"کد تفصیلی پرسنل (ACC_T={empAccT}) فرمت معتبری ندارد.");
-                }
-            }
-            else
-            {
-                var salaryBaseResult = Parse(salaryPayableBase, "پایه پرداختنی حقوق (SALARY_PAYABLE)");
-                if (!salaryBaseResult.IsValid)
-                    return Pay2AccountParseResult.Fail("حساب پایه حقوق (SALARY_PAYABLE) برای استخراج تفصیلی پرسنل نامعتبر است.");
-
-                string salaryBaseStr = salaryBaseResult.Account!.FullCode;
-                string accTStr = accTResult.Account!.FullCode;
-
-                if (accTStr.StartsWith(salaryBaseStr + "-"))
-                {
-                    string suffix = accTStr.Substring(salaryBaseStr.Length + 1);
-                    finalCode = $"{targetBaseResult.Account.FullCode}-{suffix}";
-                }
-                else if (accTStr == salaryBaseStr)
-                {
-                    return Pay2AccountParseResult.Fail($"کد تفصیلی پرسنل ({accTStr}) فاقد شناسه فردی است.");
-                }
-                else
-                {
-                    return Pay2AccountParseResult.Fail($"کد تفصیلی پرسنل ({accTStr}) با پایه حساب حقوق ({salaryBaseStr}) مطابقت ندارد.");
-                }
-            }
-
-            return Parse(finalCode, targetFieldName + " (حساب شخص)");
         }
     }
 }

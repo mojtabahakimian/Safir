@@ -923,7 +923,8 @@
 
         var parts = cleanedValue.Split('-', StringSplitOptions.RemoveEmptyEntries);
 
-        var valid = parts.Length >= 2
+        // 🚀 اصلاح شد: بررسی حداقل 3 بخش (کل-معین-تفصیلی) الزامی است
+        var valid = parts.Length >= 3
                     && parts.All(part => part.All(char.IsDigit))
                     && !cleanedValue.StartsWith("-")
                     && !cleanedValue.EndsWith("-")
@@ -931,7 +932,7 @@
 
         if (!valid)
         {
-            _fieldErrors[fieldName] = $"فرمت حساب {fieldLabel} نادرست است. حداقل دو عدد با خط‌فاصله وارد کنید. مثال: 112-1";
+            _fieldErrors[fieldName] = $"فرمت حساب {fieldLabel} نادرست است. در این سیستم حداقل ۳ سطح (کل-معین-تفصیلی) با خط‌فاصله الزامی است. مثال: 112-1-5";
         }
         else
         {
