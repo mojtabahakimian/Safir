@@ -549,6 +549,34 @@
                     }
                 </div>
 
+                <div class="form-field" style="grid-column: span 2;">
+                    <label>روش پیش‌فرض صدور سند حقوق</label>
+                    <select class="pay2-input" @bind="CurrentWorkshop.DEFAULT_DEED_MODE">
+                        <option value="1">سند کلی ـ روش فعلی</option>
+                        <option value="2">سند نیمه‌تفصیلی اشخاص</option>
+                    </select>
+                    <div class="p2-text-muted" style="font-size:11px; margin-top:6px;">
+                        سند کلی ساختار فعلی سند حقوق را حفظ می‌کند. سند نیمه‌تفصیلی، هزینه‌ها را تجمیعی و حقوق پرداختنی، مساعده، وام و سایر کسورات را برای هر شخص جداگانه ثبت می‌کند.
+                    </div>
+                </div>
+
+                <div class="form-field" style="grid-column: span 2;">
+                    <label>حساب سایر کسورات حقوق</label>
+                    <Pay2Select TItem="LookupDto<string>" TValue="string" SearchItems="SearchAccountsAsync" Items="Init_OTHER_DED_ACCOUNT"
+                                Value="CurrentWorkshopAcc.OTHER_DED_ACCOUNT"
+                                ValueChanged="@(v => { CurrentWorkshopAcc.OTHER_DED_ACCOUNT = v; ValidateAccount(v, nameof(CurrentWorkshopAcc.OTHER_DED_ACCOUNT), "سایر کسورات حقوق"); })"
+                                TextSelector="@(x => $"‎{x.Id}‎‏  -  {x.Name}")" ValueSelector="@(x => x.Id)"
+                                Placeholder="در صورت وجود سایر کسورات لازم است" CssClass="@(HasError(nameof(CurrentWorkshopAcc.OTHER_DED_ACCOUNT)) ? "error" : "")"
+                                Clearable="true" Editable="true" MaxVisibleItems="50" DebounceMilliseconds="400" ClearValueOnTextEdit="true" />
+                    <div class="p2-text-muted" style="font-size:11px; margin-top:6px;">
+                        این حساب فقط زمانی الزامی است که در محاسبه حقوق، مبلغ سایر کسورات وجود داشته باشد.
+                    </div>
+                    @if (HasError(nameof(CurrentWorkshopAcc.OTHER_DED_ACCOUNT)))
+                    {
+                        <span class="field-error">@GetError(nameof(CurrentWorkshopAcc.OTHER_DED_ACCOUNT))</span>
+                    }
+                </div>
+
             </div>
 
             <div style="display:flex; justify-content:space-between; margin-top:28px; flex-wrap:wrap; width: 100%;">
@@ -612,6 +640,7 @@
     List<LookupDto<string>> Init_INS_PAYABLE = new();
     List<LookupDto<string>> Init_TAX_PAYABLE = new();
     List<LookupDto<string>> Init_BANK_PAY_HES = new();
+    List<LookupDto<string>> Init_OTHER_DED_ACCOUNT = new();
 
     CancellationTokenSource? _selectWorkshopCts;
     long _selectWorkshopVersion = 0;
@@ -755,7 +784,8 @@
                 LoadAccountNameAsync(CurrentWorkshopAcc.INS_EXP, Init_INS_EXP),
                 LoadAccountNameAsync(CurrentWorkshopAcc.INS_PAYABLE, Init_INS_PAYABLE),
                 LoadAccountNameAsync(CurrentWorkshopAcc.TAX_PAYABLE, Init_TAX_PAYABLE),
-                LoadAccountNameAsync(CurrentWorkshopAcc.BANK_PAY_HES, Init_BANK_PAY_HES)
+                LoadAccountNameAsync(CurrentWorkshopAcc.BANK_PAY_HES, Init_BANK_PAY_HES),
+                LoadAccountNameAsync(CurrentWorkshopAcc.OTHER_DED_ACCOUNT, Init_OTHER_DED_ACCOUNT)
             };
 
             await Task.WhenAll(tasks);
@@ -805,6 +835,7 @@
         Init_INS_PAYABLE.Clear();
         Init_TAX_PAYABLE.Clear();
         Init_BANK_PAY_HES.Clear();
+        Init_OTHER_DED_ACCOUNT.Clear();
     }
 
     async Task SaveWorkshopAsync()
@@ -838,6 +869,7 @@
         ValidateAccount(CurrentWorkshopAcc.INS_PAYABLE, nameof(CurrentWorkshopAcc.INS_PAYABLE), "پرداختنی بیمه");
         ValidateAccount(CurrentWorkshopAcc.TAX_PAYABLE, nameof(CurrentWorkshopAcc.TAX_PAYABLE), "مالیات");
         ValidateAccount(CurrentWorkshopAcc.BANK_PAY_HES, nameof(CurrentWorkshopAcc.BANK_PAY_HES), "محل پرداخت");
+        ValidateAccount(CurrentWorkshopAcc.OTHER_DED_ACCOUNT, nameof(CurrentWorkshopAcc.OTHER_DED_ACCOUNT), "سایر کسورات حقوق");
 
         if (_fieldErrors.Any())
         {
@@ -1037,6 +1069,7 @@
         CurrentWorkshopAcc.INS_PAYABLE = CleanAccount(CurrentWorkshopAcc.INS_PAYABLE, 20);
         CurrentWorkshopAcc.TAX_PAYABLE = CleanAccount(CurrentWorkshopAcc.TAX_PAYABLE, 20);
         CurrentWorkshopAcc.BANK_PAY_HES = CleanAccount(CurrentWorkshopAcc.BANK_PAY_HES, 20);
+        CurrentWorkshopAcc.OTHER_DED_ACCOUNT = CleanAccount(CurrentWorkshopAcc.OTHER_DED_ACCOUNT, 20);
     }
 
     static string? OnlyDigits(string? value, int maxLength)
