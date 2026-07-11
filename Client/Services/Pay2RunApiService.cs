@@ -78,6 +78,13 @@ namespace Safir.Client.Services
             if (!res.IsSuccessStatusCode) throw new Exception(await res.Content.ReadAsStringAsync());
         }
 
+        public async Task<Pay2DeedPreviewDto> GetDeedPreviewAsync(int runId)
+        {
+            var res = await _http.GetAsync($"api/pay2/run/{runId}/deed-preview");
+            if (!res.IsSuccessStatusCode) throw new Exception(await res.Content.ReadAsStringAsync());
+            return await res.Content.ReadFromJsonAsync<Pay2DeedPreviewDto>() ?? new Pay2DeedPreviewDto { RUN_ID = runId };
+        }
+
         public async Task GenerateDeedAsync(int runId)
         {
             var res = await _http.PostAsync($"api/pay2/run/{runId}/generate-deed", null);

@@ -315,7 +315,8 @@
                         }
                         else if (CurrentRun.STATUS == 2)
                         {
-                            <button class="btn-primary-pay2" @onclick="GenerateDeed" disabled="@IsProcessing" style="height: 42px;"><i class="bi bi-journal-check"></i> صدور سند حسابداری</button>
+                            <button class="btn-outline-pay2" @onclick="LoadDeedPreview" disabled="@IsProcessing" style="height: 42px;"><i class="bi bi-eye"></i> پیش‌نمایش سند حسابداری</button>
+                            <button class="btn-primary-pay2" @onclick="GenerateDeed" disabled="@(IsProcessing || (DeedPreview != null && !DeedPreview.IsValid))" style="height: 42px;"><i class="bi bi-journal-check"></i> صدور سند حسابداری</button>
                             <button class="btn-outline-danger-pay2" @onclick="RevertRun" disabled="@IsProcessing" style="height: 42px;"><i class="bi bi-unlock"></i> لغو تأیید (بازگشت به پیش‌نویس)</button>
                         }
                         else if (CurrentRun.STATUS == 3)
@@ -326,6 +327,7 @@
                                 <span style="font-weight: 800; font-family: monospace; font-size: 14px; color: var(--p2-primary);">@(CurrentRun.DEED_ID_SAL?.ToString() ?? "-")</span>
                                 <span style="font-size: 11px; color: #16a34a; font-weight: 600; margin-right: 8px;">سند قفل شده</span>
                             </div>
+                            <button class="btn-outline-pay2" @onclick="LoadDeedPreview" disabled="@IsProcessing" style="height: 42px;"><i class="bi bi-eye"></i> پیش‌نمایش سند</button>
                             <button class="btn-outline-danger-pay2" @onclick="UnfinalizeDeed" disabled="@IsProcessing" style="height: 42px;" title="لغو صدور سند — بازگشت به وضعیت تأیید نهایی برای صدور مجدد">
                                 <i class="bi bi-unlock"></i> لغو صدور سند
                             </button>
@@ -334,6 +336,55 @@
                 </div>
             }
         </div>
+
+        @if (DeedPreview != null)
+        {
+            <div class="p2-card" style="margin: 0 24px 18px 24px; padding:16px; border:1px solid var(--p2-border);">
+                <div style="display:flex; justify-content:space-between; gap:12px; flex-wrap:wrap; align-items:center; margin-bottom:12px;">
+                    <div>
+                        <b>روش صدور این Run:</b> @DeedPreview.DEED_MODE_TITLE
+                        <span class="p2-text-muted" style="margin-right:12px;">تعداد آرتیکل: @DeedPreview.Articles.Count</span>
+                    </div>
+                    <div>
+                        <span>جمع بدهکار: <b>@DeedPreview.TotalBed.ToString("N0")</b></span>
+                        <span style="margin-right:12px;">جمع بستانکار: <b>@DeedPreview.TotalBes.ToString("N0")</b></span>
+                        <span style="margin-right:12px; color:@(DeedPreview.IsBalanced ? "#16a34a" : "#dc2626")">اختلاف: <b>@DeedPreview.Difference.ToString("N0")</b></span>
+                    </div>
+                </div>
+                @if (DeedPreview.ValidationErrors.Any())
+                {
+                    <div style="background:#fef2f2; color:#991b1b; padding:10px; border-radius:8px; margin-bottom:12px;">
+                        @foreach (var err in DeedPreview.ValidationErrors)
+                        {
+                            <div>@err</div>
+                        }
+                    </div>
+                }
+                <div style="max-height:260px; overflow:auto; border:1px solid var(--p2-border); border-radius:8px;">
+                    <table class="table table-sm" style="width:100%; font-size:12px;">
+                        <thead>
+                            <tr>
+                                <th>#</th><th>کد حساب</th><th>شرح</th><th>بدهکار</th><th>بستانکار</th><th>نوع</th><th>پرسنل</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var row in DeedPreview.Articles.Select((x, i) => new { x, i }))
+                            {
+                                <tr>
+                                    <td>@(row.i + 1)</td>
+                                    <td style="direction:ltr; text-align:left;">@row.x.HES_CODE</td>
+                                    <td>@row.x.SHARH</td>
+                                    <td>@row.x.BED.ToString("N0")</td>
+                                    <td>@row.x.BES.ToString("N0")</td>
+                                    <td>@row.x.ACC_KEY</td>
+                                    <td>@(row.x.EMP_ID?.ToString() ?? "-")</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        }
 
         @if (IsLoading)
         {
@@ -627,6 +678,7 @@
 
     bool IsLoading = false;
     bool IsProcessing = false;
+    Pay2DeedPreviewDto? DeedPreview;
 
     // // پس از مونت‌شدن گرید با داده، یک‌بار Refresh می‌زنیم تا Syncfusion رکوردها را
     // // به‌درستی پردازش/نمایش دهد (راه‌حل توصیه‌شدهٔ Syncfusion برای حالت دادهٔ ناهمگامِ محلی).
@@ -727,6 +779,7 @@
             if (CurrentRun != null)
             {
                 RunData = await RunApi.GetRunLinesAsync(CurrentRun.RUN_ID);
+                DeedPreview = null;
                 BuildGridData(); 
                 // ❌ _refreshGridQueued = true; حذف شد
             }
@@ -852,6 +905,19 @@
             catch (Exception ex) { Snackbar.Add(ex.Message, MudBlazor.Severity.Error); }
             finally { IsProcessing = false; }
         }
+    }
+
+    async Task LoadDeedPreview()
+    {
+        if (CurrentRun == null) return;
+        IsProcessing = true;
+        try
+        {
+            DeedPreview = await RunApi.GetDeedPreviewAsync(CurrentRun.RUN_ID);
+            Snackbar.Add(DeedPreview.IsValid ? "پیش‌نمایش سند معتبر و تراز است." : "پیش‌نمایش سند دارای خطا است.", DeedPreview.IsValid ? MudBlazor.Severity.Success : MudBlazor.Severity.Warning);
+        }
+        catch (Exception ex) { Snackbar.Add(ex.Message, MudBlazor.Severity.Error); }
+        finally { IsProcessing = false; }
     }
 
     async Task GenerateDeed()

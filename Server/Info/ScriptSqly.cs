@@ -349,6 +349,7 @@ CREATE TABLE [dbo].[PAY2_WORKSHOP]
     [IS_ACTIVE]       BIT           NOT NULL CONSTRAINT DF_WS_ACT DEFAULT(1),
     [CREATED_AT]      DATETIME      NOT NULL CONSTRAINT DF_WS_CRT DEFAULT(GETDATE()),
     [CREATED_BY]      INT           NULL,
+    [DEFAULT_DEED_MODE] TINYINT       NOT NULL CONSTRAINT DF_WS_DEED_MODE DEFAULT(1), -- 1=سند کلی، 2=نیمه‌تفصیلی اشخاص
 
     CONSTRAINT PK_PAY2_WORKSHOP PRIMARY KEY ([WS_ID]),
     CONSTRAINT UQ_WS_CODE UNIQUE ([WS_CODE])
@@ -968,6 +969,8 @@ CREATE TABLE [dbo].[PAY2_RUN]
     [PREV_RUN_ID] INT          NULL,                                         -- ارجاع به نسخه قبلی — v6
     [DEED_ID_SAL] INT          NULL,                                         -- شماره سند حقوق در حسابداری
     [DEED_ID_INS] INT          NULL,                                         -- شماره سند بیمه
+    [DEED_MODE] TINYINT NULL,                                             -- 1=CURRENT_SUMMARY | 2=PERSON_TRACEABLE
+    [DEED_GENERATOR_VERSION] SMALLINT NULL,
     [NOTES]      NVARCHAR(300) NULL,
 
     CONSTRAINT PK_PAY2_RUN          PRIMARY KEY ([RUN_ID]),
@@ -1802,6 +1805,50 @@ GO
 -- ================================================================
 -- ۲. SP_PAY2_GEN_DEED — تولید سند حسابداری حقوق و بیمه
 -- ================================================================
+CREATE OR ALTER FUNCTION [dbo].[FN_PAY2_RESOLVE_PERSON_ACCOUNT]
+(
+    @TargetBaseAccount NVARCHAR(100),
+    @EmployeeAccount NVARCHAR(100),
+    @SalaryPayableReference NVARCHAR(100)
+)
+RETURNS NVARCHAR(100)
+AS
+BEGIN
+    DECLARE @Target NVARCHAR(100) = LTRIM(RTRIM(ISNULL(@TargetBaseAccount, N'')));
+    DECLARE @Emp NVARCHAR(100) = LTRIM(RTRIM(ISNULL(@EmployeeAccount, N'')));
+    DECLARE @Salary NVARCHAR(100) = LTRIM(RTRIM(ISNULL(@SalaryPayableReference, N'')));
+    DECLARE @Suffix NVARCHAR(100);
+    DECLARE @Resolved NVARCHAR(100);
+
+    SET @Target = REPLACE(REPLACE(REPLACE(REPLACE(@Target, N'–', N'-'), N'—', N'-'), N'−', N'-'), N' ', N'');
+    SET @Emp = REPLACE(REPLACE(REPLACE(REPLACE(@Emp, N'–', N'-'), N'—', N'-'), N'−', N'-'), N' ', N'');
+    SET @Salary = REPLACE(REPLACE(REPLACE(REPLACE(@Salary, N'–', N'-'), N'—', N'-'), N'−', N'-'), N' ', N'');
+
+    IF @Target = N'' OR @Emp = N'' OR @Salary = N'' RETURN NULL;
+    IF @Target LIKE N'%[^0-9-]%' OR @Emp LIKE N'%[^0-9-]%' OR @Salary LIKE N'%[^0-9-]%' RETURN NULL;
+    IF @Target LIKE N'-%' OR @Target LIKE N'%-' OR @Target LIKE N'%--%' RETURN NULL;
+    IF @Emp LIKE N'-%' OR @Emp LIKE N'%-' OR @Emp LIKE N'%--%' RETURN NULL;
+    IF @Salary LIKE N'-%' OR @Salary LIKE N'%-' OR @Salary LIKE N'%--%' RETURN NULL;
+
+    IF CHARINDEX(N'-', @Emp) = 0
+    BEGIN
+        SET @Suffix = @Emp;
+    END
+    ELSE IF LEFT(@Emp, LEN(@Salary) + 1) = @Salary + N'-'
+    BEGIN
+        SET @Suffix = SUBSTRING(@Emp, LEN(@Salary) + 2, 100);
+    END
+    ELSE
+    BEGIN
+        RETURN NULL;
+    END;
+
+    IF @Suffix IS NULL OR @Suffix = N'' RETURN NULL;
+    SET @Resolved = @Target + N'-' + @Suffix;
+    IF (LEN(@Resolved) - LEN(REPLACE(@Resolved, N'-', N'')) + 1) NOT BETWEEN 2 AND 6 RETURN NULL;
+    RETURN @Resolved;
+END;
+GO
 CREATE OR ALTER PROCEDURE [dbo].[SP_PAY2_GEN_DEED]
     @RUN_ID  INT,
     @CALC_BY INT = NULL
@@ -1909,7 +1956,7 @@ BEGIN
     FROM PAY2_RUN_LINE WHERE RUN_ID = @RUN_ID HAVING SUM(INS_EMPLOYER) > 0
     UNION ALL 
     SELECT 
-        ISNULL(E.ACC_T, @ACC_SALARY_PAY),
+        dbo.FN_PAY2_RESOLVE_PERSON_ACCOUNT(@ACC_SALARY_PAY, E.ACC_T, @ACC_SALARY_PAY),
         N'حقوق پرداختنی: ' + @ML + N' | ' + E.LAST_NAME + N' ' + E.FIRST_NAME, 
         CASE WHEN RL.NET_PAY < 0 THEN ABS(RL.NET_PAY) ELSE 0 END, 
         CASE WHEN RL.NET_PAY > 0 THEN RL.NET_PAY ELSE 0 END, 
@@ -1924,11 +1971,11 @@ BEGIN
     SELECT @ACC_TAX_PAYABLE, N'مالیات حقوق ' + @ML, 0, SUM(TAX_AMOUNT), 'TAX_PAYABLE', NULL
     FROM PAY2_RUN_LINE WHERE RUN_ID = @RUN_ID HAVING SUM(TAX_AMOUNT) > 0
     UNION ALL 
-    SELECT ISNULL(E.ACC_T, @ACC_LOAN_HES), N'کسر اقساط وام: ' + @ML + N' | ' + E.LAST_NAME + N' ' + E.FIRST_NAME, 0, RL.LOAN_DED, 'LOAN_HES', E.EMP_ID
+    SELECT dbo.FN_PAY2_RESOLVE_PERSON_ACCOUNT(@ACC_LOAN_HES, E.ACC_T, @ACC_SALARY_PAY), N'کسر اقساط وام: ' + @ML + N' | ' + E.LAST_NAME + N' ' + E.FIRST_NAME, 0, RL.LOAN_DED, 'LOAN_HES', E.EMP_ID
     FROM PAY2_RUN_LINE RL INNER JOIN PAY2_EMPLOYEE E ON RL.EMP_ID = E.EMP_ID
     WHERE RL.RUN_ID = @RUN_ID AND RL.LOAN_DED > 0
     UNION ALL 
-    SELECT ISNULL(E.ACC_T, @ACC_ADV_HES), N'تصفیه مساعده: ' + @ML + N' | ' + E.LAST_NAME + N' ' + E.FIRST_NAME, 0, RL.ADVANCE_DED, 'ADVANCE_SETTLE', E.EMP_ID
+    SELECT dbo.FN_PAY2_RESOLVE_PERSON_ACCOUNT(@ACC_ADV_HES, E.ACC_T, @ACC_SALARY_PAY), N'تصفیه مساعده: ' + @ML + N' | ' + E.LAST_NAME + N' ' + E.FIRST_NAME, 0, RL.ADVANCE_DED, 'ADVANCE_SETTLE', E.EMP_ID
     FROM PAY2_RUN_LINE RL INNER JOIN PAY2_EMPLOYEE E ON RL.EMP_ID = E.EMP_ID
     WHERE RL.RUN_ID = @RUN_ID AND RL.ADVANCE_DED > 0;
 END;
@@ -2142,13 +2189,13 @@ BEGIN
     SELECT @ACC_COST_LEAVE, N'هزینه بازخرید مرخصی', LEAVE_PAY, 0, 'COST_LEAVE', NULL 
     FROM PAY2_SETTLEMENT WHERE SET_ID=@SET_ID AND LEAVE_PAY > 0
     UNION ALL
-    SELECT ISNULL(E.ACC_T, @ACC_SALARY_PAY), N'پرداختنی تسویه حساب: ' + @EMP_NAME, 0, CAST(EIDI+BON+LEAVE_PAY+SANAVAT+PREV_CREDIT+OTHER_INCOME-PREV_DEBIT-EIDI_TAX-LOAN_BALANCE-OTHER_DED AS BIGINT), 'SETTLE_PAYABLE', S.EMP_ID
+    SELECT dbo.FN_PAY2_RESOLVE_PERSON_ACCOUNT(@ACC_SALARY_PAY, E.ACC_T, @ACC_SALARY_PAY), N'پرداختنی تسویه حساب: ' + @EMP_NAME, 0, CAST(EIDI+BON+LEAVE_PAY+SANAVAT+PREV_CREDIT+OTHER_INCOME-PREV_DEBIT-EIDI_TAX-LOAN_BALANCE-OTHER_DED AS BIGINT), 'SETTLE_PAYABLE', S.EMP_ID
     FROM PAY2_SETTLEMENT S INNER JOIN PAY2_EMPLOYEE E ON S.EMP_ID = E.EMP_ID WHERE SET_ID=@SET_ID
     UNION ALL
-    SELECT ISNULL(E.ACC_T, @ACC_LOAN_HES), N'وصول مانده وام از تسویه: ' + @EMP_NAME, 0, LOAN_BALANCE, 'LOAN_COLLECT', @EMP_ID 
+    SELECT dbo.FN_PAY2_RESOLVE_PERSON_ACCOUNT(@ACC_LOAN_HES, E.ACC_T, @ACC_SALARY_PAY), N'وصول مانده وام از تسویه: ' + @EMP_NAME, 0, LOAN_BALANCE, 'LOAN_COLLECT', @EMP_ID 
     FROM PAY2_SETTLEMENT S INNER JOIN PAY2_EMPLOYEE E ON S.EMP_ID = E.EMP_ID WHERE SET_ID=@SET_ID AND LOAN_BALANCE > 0
     UNION ALL
-    SELECT ISNULL(E.ACC_T, @ACC_ADV_HES), N'وصول بدهکاری (مساعده): ' + @EMP_NAME, 0, PREV_DEBIT, 'ADV_COLLECT', @EMP_ID 
+    SELECT dbo.FN_PAY2_RESOLVE_PERSON_ACCOUNT(@ACC_ADV_HES, E.ACC_T, @ACC_SALARY_PAY), N'وصول بدهکاری (مساعده): ' + @EMP_NAME, 0, PREV_DEBIT, 'ADV_COLLECT', @EMP_ID 
     FROM PAY2_SETTLEMENT S INNER JOIN PAY2_EMPLOYEE E ON S.EMP_ID = E.EMP_ID WHERE SET_ID=@SET_ID AND PREV_DEBIT > 0
     UNION ALL
     SELECT @ACC_TAX_PAYABLE, N'مالیات عیدی', 0, EIDI_TAX, 'TAX_PAYABLE', NULL 
@@ -2800,6 +2847,444 @@ INCLUDE ([JOB_ID]);"); } catch { }
                             ALTER TABLE [dbo].[PAY2_ITEM_TMPL_LINE] ADD [SHIFT_MODE_OV] NVARCHAR(10) NULL CONSTRAINT [CK_TL_SHIFT_MODE_OV] CHECK ([SHIFT_MODE_OV] IN ('PCT','FIXED'));
                         END
                     ");
+                }
+                catch { }
+
+                // Migration 010: زیرساخت دو روش صدور سند حقوق
+                try
+                {
+                    db.Execute(@"
+                        IF COL_LENGTH('dbo.PAY2_WORKSHOP','DEFAULT_DEED_MODE') IS NULL
+                            ALTER TABLE dbo.PAY2_WORKSHOP ADD DEFAULT_DEED_MODE TINYINT NULL;
+                        UPDATE dbo.PAY2_WORKSHOP SET DEFAULT_DEED_MODE = 1 WHERE DEFAULT_DEED_MODE IS NULL;
+                        IF NOT EXISTS (SELECT 1 FROM sys.check_constraints WHERE name = 'CK_PAY2_WORKSHOP_DEFAULT_DEED_MODE')
+                            ALTER TABLE dbo.PAY2_WORKSHOP ADD CONSTRAINT CK_PAY2_WORKSHOP_DEFAULT_DEED_MODE CHECK (DEFAULT_DEED_MODE IN (1,2));
+                        IF COL_LENGTH('dbo.PAY2_RUN','DEED_MODE') IS NULL
+                            ALTER TABLE dbo.PAY2_RUN ADD DEED_MODE TINYINT NULL;
+                        IF COL_LENGTH('dbo.PAY2_RUN','DEED_GENERATOR_VERSION') IS NULL
+                            ALTER TABLE dbo.PAY2_RUN ADD DEED_GENERATOR_VERSION SMALLINT NULL;
+                        UPDATE R
+                           SET DEED_MODE = ISNULL(DEED_MODE, 1),
+                               DEED_GENERATOR_VERSION = ISNULL(DEED_GENERATOR_VERSION, 0)
+                        FROM dbo.PAY2_RUN R
+                        WHERE (R.DEED_ID_SAL IS NOT NULL OR EXISTS (SELECT 1 FROM dbo.PAY2_PERIOD P WHERE P.PER_ID=R.PER_ID AND P.DEED_N_S_PAY IS NOT NULL));
+                        IF NOT EXISTS (SELECT 1 FROM sys.check_constraints WHERE name = 'CK_PAY2_RUN_DEED_MODE')
+                            ALTER TABLE dbo.PAY2_RUN ADD CONSTRAINT CK_PAY2_RUN_DEED_MODE CHECK (DEED_MODE IS NULL OR DEED_MODE IN (1,2));
+                    ");
+                }
+                catch { }
+
+                try
+                {
+                    string deedModeProceduresScript = @"
+
+/* PAY2 dual deed mode schema migration */
+IF COL_LENGTH('dbo.PAY2_WORKSHOP','DEFAULT_DEED_MODE') IS NULL
+BEGIN
+    ALTER TABLE dbo.PAY2_WORKSHOP ADD DEFAULT_DEED_MODE TINYINT NULL;
+END;
+GO
+UPDATE dbo.PAY2_WORKSHOP SET DEFAULT_DEED_MODE = 1 WHERE DEFAULT_DEED_MODE IS NULL;
+GO
+IF NOT EXISTS (SELECT 1 FROM sys.check_constraints WHERE name = 'CK_PAY2_WORKSHOP_DEFAULT_DEED_MODE')
+BEGIN
+    ALTER TABLE dbo.PAY2_WORKSHOP ADD CONSTRAINT CK_PAY2_WORKSHOP_DEFAULT_DEED_MODE CHECK (DEFAULT_DEED_MODE IN (1,2));
+END;
+GO
+IF COL_LENGTH('dbo.PAY2_RUN','DEED_MODE') IS NULL
+BEGIN
+    ALTER TABLE dbo.PAY2_RUN ADD DEED_MODE TINYINT NULL;
+END;
+GO
+IF COL_LENGTH('dbo.PAY2_RUN','DEED_GENERATOR_VERSION') IS NULL
+BEGIN
+    ALTER TABLE dbo.PAY2_RUN ADD DEED_GENERATOR_VERSION SMALLINT NULL;
+END;
+GO
+UPDATE R
+   SET DEED_MODE = ISNULL(DEED_MODE, 1),
+       DEED_GENERATOR_VERSION = ISNULL(DEED_GENERATOR_VERSION, 0)
+FROM dbo.PAY2_RUN R
+WHERE (R.DEED_ID_SAL IS NOT NULL OR EXISTS (SELECT 1 FROM dbo.PAY2_PERIOD P WHERE P.PER_ID=R.PER_ID AND P.DEED_N_S_PAY IS NOT NULL));
+GO
+IF NOT EXISTS (SELECT 1 FROM sys.check_constraints WHERE name = 'CK_PAY2_RUN_DEED_MODE')
+BEGIN
+    ALTER TABLE dbo.PAY2_RUN ADD CONSTRAINT CK_PAY2_RUN_DEED_MODE CHECK (DEED_MODE IS NULL OR DEED_MODE IN (1,2));
+END;
+GO
+
+CREATE OR ALTER FUNCTION [dbo].[FN_PAY2_RESOLVE_PERSON_ACCOUNT]
+(
+    @TargetBaseAccount NVARCHAR(100),
+    @EmployeeAccount NVARCHAR(100),
+    @SalaryPayableReference NVARCHAR(100)
+)
+RETURNS NVARCHAR(100)
+AS
+BEGIN
+    DECLARE @Target NVARCHAR(100) = LTRIM(RTRIM(ISNULL(@TargetBaseAccount, N'')));
+    DECLARE @Emp NVARCHAR(100) = LTRIM(RTRIM(ISNULL(@EmployeeAccount, N'')));
+    DECLARE @Salary NVARCHAR(100) = LTRIM(RTRIM(ISNULL(@SalaryPayableReference, N'')));
+    DECLARE @Suffix NVARCHAR(100);
+    DECLARE @Resolved NVARCHAR(100);
+
+    SET @Target = REPLACE(REPLACE(REPLACE(REPLACE(@Target, N'–', N'-'), N'—', N'-'), N'−', N'-'), N' ', N'');
+    SET @Emp = REPLACE(REPLACE(REPLACE(REPLACE(@Emp, N'–', N'-'), N'—', N'-'), N'−', N'-'), N' ', N'');
+    SET @Salary = REPLACE(REPLACE(REPLACE(REPLACE(@Salary, N'–', N'-'), N'—', N'-'), N'−', N'-'), N' ', N'');
+
+    IF @Target = N'' OR @Emp = N'' OR @Salary = N'' RETURN NULL;
+    IF @Target LIKE N'%[^0-9-]%' OR @Emp LIKE N'%[^0-9-]%' OR @Salary LIKE N'%[^0-9-]%' RETURN NULL;
+    IF @Target LIKE N'-%' OR @Target LIKE N'%-' OR @Target LIKE N'%--%' RETURN NULL;
+    IF @Emp LIKE N'-%' OR @Emp LIKE N'%-' OR @Emp LIKE N'%--%' RETURN NULL;
+    IF @Salary LIKE N'-%' OR @Salary LIKE N'%-' OR @Salary LIKE N'%--%' RETURN NULL;
+
+    IF CHARINDEX(N'-', @Emp) = 0
+    BEGIN
+        SET @Suffix = @Emp;
+    END
+    ELSE IF LEFT(@Emp, LEN(@Salary) + 1) = @Salary + N'-'
+    BEGIN
+        SET @Suffix = SUBSTRING(@Emp, LEN(@Salary) + 2, 100);
+    END
+    ELSE
+    BEGIN
+        RETURN NULL;
+    END;
+
+    IF @Suffix IS NULL OR @Suffix = N'' RETURN NULL;
+    SET @Resolved = @Target + N'-' + @Suffix;
+    IF (LEN(@Resolved) - LEN(REPLACE(@Resolved, N'-', N'')) + 1) NOT BETWEEN 2 AND 6 RETURN NULL;
+    RETURN @Resolved;
+END;
+GO
+CREATE OR ALTER PROCEDURE [dbo].[SP_PAY2_GEN_DEED_SUMMARY]
+    @RUN_ID  INT,
+    @CALC_BY INT = NULL
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    DECLARE @STATUS TINYINT, @PER_ID INT, @WS_ID INT, @PER_DATE BIGINT;
+
+    SELECT @STATUS = R.STATUS, @PER_ID = R.PER_ID, @WS_ID = P.WS_ID, @PER_DATE = P.PERIOD_DATE
+    FROM PAY2_RUN R INNER JOIN PAY2_PERIOD P ON R.PER_ID = P.PER_ID
+    WHERE R.RUN_ID = @RUN_ID;
+
+    IF @STATUS NOT IN (2, 3)
+    BEGIN
+        RAISERROR(N'اجرای %d باید ابتدا نهایی یا سند آن صادر شده باشد.', 16, 1, @RUN_ID);
+        RETURN;
+    END;
+
+    -- ===== محاسبه برچسب ماه (مثال: 03-خرداد) =====
+    DECLARE @MonthNum INT = (@PER_DATE / 100) % 100;
+    DECLARE @MonthName NVARCHAR(10) = CASE @MonthNum
+        WHEN 1  THEN N'فروردین'
+        WHEN 2  THEN N'اردیبهشت'
+        WHEN 3  THEN N'خرداد'
+        WHEN 4  THEN N'تیر'
+        WHEN 5  THEN N'مرداد'
+        WHEN 6  THEN N'شهریور'
+        WHEN 7  THEN N'مهر'
+        WHEN 8  THEN N'آبان'
+        WHEN 9  THEN N'آذر'
+        WHEN 10 THEN N'دی'
+        WHEN 11 THEN N'بهمن'
+        WHEN 12 THEN N'اسفند'
+        ELSE N'نامشخص'
+    END;
+    DECLARE @ML NVARCHAR(20) = RIGHT('0' + CAST(@MonthNum AS NVARCHAR(2)), 2) + N'-' + @MonthName;
+    -- ================================================
+
+    -- متغیرهای حساب‌ها
+    DECLARE 
+        @ACC_SALARY_TOLID NVARCHAR(50), @ACC_SALARY_EDARI NVARCHAR(50), 
+        @ACC_SALARY_FOROSH NVARCHAR(50), @ACC_SALARY_KHADAMAT NVARCHAR(50),
+        @ACC_SALARY_PAY NVARCHAR(50), @ACC_INS_PAYABLE NVARCHAR(50),
+        @ACC_TAX_PAYABLE NVARCHAR(50), @ACC_INS_EXP NVARCHAR(50),
+        @ACC_ADV_HES NVARCHAR(50), @ACC_LOAN_HES NVARCHAR(50), @ACC_OTHER_DED NVARCHAR(50);
+
+    -- خواندن کدهای حسابداری از تنظیمات کارگاه
+    SELECT
+        @ACC_SALARY_TOLID   = MAX(CASE WHEN ACC_KEY='SALARY_EXP_TOLID'    THEN ACC_CODE END),
+        @ACC_SALARY_EDARI   = MAX(CASE WHEN ACC_KEY='SALARY_EXP_EDARI'    THEN ACC_CODE END),
+        @ACC_SALARY_FOROSH  = MAX(CASE WHEN ACC_KEY='SALARY_EXP_FOROSH'   THEN ACC_CODE END),
+        @ACC_SALARY_KHADAMAT= MAX(CASE WHEN ACC_KEY='SALARY_EXP_KHADAMAT' THEN ACC_CODE END),
+        @ACC_SALARY_PAY     = MAX(CASE WHEN ACC_KEY='SALARY_PAYABLE'      THEN ACC_CODE END),
+        @ACC_INS_PAYABLE    = MAX(CASE WHEN ACC_KEY='INS_PAYABLE'         THEN ACC_CODE END),
+        @ACC_TAX_PAYABLE    = MAX(CASE WHEN ACC_KEY='TAX_PAYABLE'         THEN ACC_CODE END),
+        @ACC_INS_EXP        = MAX(CASE WHEN ACC_KEY='INS_EXP'             THEN ACC_CODE END),
+        @ACC_ADV_HES        = MAX(CASE WHEN ACC_KEY='ADV_HES'             THEN ACC_CODE END),
+        @ACC_LOAN_HES       = MAX(CASE WHEN ACC_KEY='LOAN_HES'            THEN ACC_CODE END),
+        @ACC_OTHER_DED     = MAX(CASE WHEN ACC_KEY='OTHER_DED_ACCOUNT'   THEN ACC_CODE END)
+    FROM PAY2_WORKSHOP_ACC WHERE WS_ID = @WS_ID;
+
+
+    IF EXISTS (SELECT 1 FROM PAY2_RUN_LINE RL INNER JOIN PAY2_EMPLOYEE E ON E.EMP_ID=RL.EMP_ID WHERE RL.RUN_ID=@RUN_ID AND RL.NET_PAY < 0)
+    BEGIN
+        DECLARE @NEG_EMP NVARCHAR(200) = (SELECT TOP 1 E.LAST_NAME + N' ' + E.FIRST_NAME FROM PAY2_RUN_LINE RL INNER JOIN PAY2_EMPLOYEE E ON E.EMP_ID=RL.EMP_ID WHERE RL.RUN_ID=@RUN_ID AND RL.NET_PAY < 0);
+        RAISERROR(N'خالص حقوق «%s» منفی است. مبلغ مساعده، وام یا سایر کسورات را اصلاح کنید.', 16, 1, @NEG_EMP);
+        RETURN;
+    END;
+
+    IF (SELECT ISNULL(SUM(OTHER_DED),0) FROM PAY2_RUN_LINE WHERE RUN_ID=@RUN_ID) > 0 AND NULLIF(@ACC_OTHER_DED, N'') IS NULL
+    BEGIN
+        RAISERROR(N'حساب سایر کسورات حقوق (OTHER_DED_ACCOUNT) برای این کارگاه تنظیم نشده است.', 16, 1);
+        RETURN;
+    END;
+
+    -- 🚀 FIX 2: الگوریتم آبشاری دقیق (Waterfall Remainder Allocation) برای تراز ریالی
+    ;WITH SalarySplitBase AS (
+        SELECT 
+            RL.EMP_ID, 
+            RL.GROSS_PAY,
+            A.WORK_DAYS, A.DAYS_TOLID, A.DAYS_EDARI, A.DAYS_FOROSH, A.DAYS_KHADAMAT,
+            CAST(CASE WHEN A.WORK_DAYS > 0 THEN ROUND(RL.GROSS_PAY * (A.DAYS_TOLID / A.WORK_DAYS), 0) ELSE 0 END AS BIGINT) AS R_T,
+            CAST(CASE WHEN A.WORK_DAYS > 0 THEN ROUND(RL.GROSS_PAY * (A.DAYS_EDARI / A.WORK_DAYS), 0) ELSE 0 END AS BIGINT) AS R_E,
+            CAST(CASE WHEN A.WORK_DAYS > 0 THEN ROUND(RL.GROSS_PAY * (A.DAYS_FOROSH / A.WORK_DAYS), 0) ELSE 0 END AS BIGINT) AS R_F,
+            CAST(CASE WHEN A.WORK_DAYS > 0 THEN ROUND(RL.GROSS_PAY * (A.DAYS_KHADAMAT / A.WORK_DAYS), 0) ELSE 0 END AS BIGINT) AS R_K
+        FROM PAY2_RUN_LINE RL
+        INNER JOIN PAY2_ATTENDANCE A ON RL.EMP_ID = A.EMP_ID AND A.PER_ID = @PER_ID
+        WHERE RL.RUN_ID = @RUN_ID
+    ),
+    SalarySplitDiff AS (
+        -- پیدا کردن دقیق میزان اختلاف گرد کردن برای هر پرسنل
+        SELECT *, (GROSS_PAY - (R_T + R_E + R_F + R_K)) AS Diff FROM SalarySplitBase
+    ),
+    SalarySplit AS (
+        -- اعمال آبشاری اختلاف فقط روی اولین دپارتمانی که کارکردش بزرگتر از صفر است
+        SELECT 
+            EMP_ID, GROSS_PAY,
+            CASE WHEN DAYS_TOLID > 0 THEN R_T + Diff ELSE R_T END AS EXP_TOLID,
+            CASE WHEN DAYS_TOLID = 0 AND DAYS_EDARI > 0 THEN R_E + Diff ELSE R_E END AS EXP_EDARI,
+            CASE WHEN DAYS_TOLID = 0 AND DAYS_EDARI = 0 AND DAYS_FOROSH > 0 THEN R_F + Diff ELSE R_F END AS EXP_FOROSH,
+            -- 🚀 FIX: حذف شرط DAYS_KHADAMAT > 0 برای تبدیل شدن به سوپاپ اطمینان مطلق (ضمانت ۱۰۰٪ تراز سند)
+            CASE WHEN DAYS_TOLID = 0 AND DAYS_EDARI = 0 AND DAYS_FOROSH = 0 THEN R_K + Diff ELSE R_K END AS EXP_KHADAMAT
+        FROM SalarySplitDiff
+    )
+    -- خروجی نهایی برای صدور سند
+    SELECT @ACC_SALARY_TOLID AS HES_CODE, N'هزینه حقوق تولید ' + @ML AS SHARH, SUM(EXP_TOLID) AS BED, 0 AS BES, 'EXP_TOLID' AS ACC_KEY, NULL AS EMP_ID
+    FROM SalarySplit HAVING SUM(EXP_TOLID) > 0
+    UNION ALL 
+    SELECT @ACC_SALARY_EDARI, N'هزینه حقوق اداری ' + @ML, SUM(EXP_EDARI), 0, 'EXP_EDARI', NULL
+    FROM SalarySplit HAVING SUM(EXP_EDARI) > 0
+    UNION ALL 
+    SELECT @ACC_SALARY_FOROSH, N'هزینه حقوق فروش ' + @ML, SUM(EXP_FOROSH), 0, 'EXP_FOROSH', NULL
+    FROM SalarySplit HAVING SUM(EXP_FOROSH) > 0
+    UNION ALL 
+    SELECT @ACC_SALARY_KHADAMAT, N'هزینه حقوق خدمات ' + @ML, SUM(EXP_KHADAMAT), 0, 'EXP_KHADAMAT', NULL
+    FROM SalarySplit HAVING SUM(EXP_KHADAMAT) > 0
+    UNION ALL 
+    SELECT @ACC_INS_EXP, N'هزینه بیمه کارفرما ' + @ML, SUM(INS_EMPLOYER), 0, 'INS_EXP', NULL
+    FROM PAY2_RUN_LINE WHERE RUN_ID = @RUN_ID HAVING SUM(INS_EMPLOYER) > 0
+    UNION ALL 
+    SELECT 
+        dbo.FN_PAY2_RESOLVE_PERSON_ACCOUNT(@ACC_SALARY_PAY, E.ACC_T, @ACC_SALARY_PAY),
+        N'حقوق پرداختنی: ' + @ML + N' | ' + E.LAST_NAME + N' ' + E.FIRST_NAME, 
+        CASE WHEN RL.NET_PAY < 0 THEN ABS(RL.NET_PAY) ELSE 0 END, 
+        CASE WHEN RL.NET_PAY > 0 THEN RL.NET_PAY ELSE 0 END, 
+        'SALARY_PAYABLE', 
+        E.EMP_ID
+    FROM PAY2_RUN_LINE RL INNER JOIN PAY2_EMPLOYEE E ON RL.EMP_ID = E.EMP_ID
+    WHERE RL.RUN_ID = @RUN_ID AND RL.NET_PAY <> 0
+    UNION ALL 
+    SELECT @ACC_INS_PAYABLE, N'بیمه تأمین اجتماعی ' + @ML, 0, SUM(INS_WORKER + INS_EMPLOYER), 'INS_PAYABLE', NULL
+    FROM PAY2_RUN_LINE WHERE RUN_ID = @RUN_ID HAVING SUM(INS_WORKER + INS_EMPLOYER) > 0
+    UNION ALL 
+    SELECT @ACC_TAX_PAYABLE, N'مالیات حقوق ' + @ML, 0, SUM(TAX_AMOUNT), 'TAX_PAYABLE', NULL
+    FROM PAY2_RUN_LINE WHERE RUN_ID = @RUN_ID HAVING SUM(TAX_AMOUNT) > 0
+    UNION ALL 
+    SELECT dbo.FN_PAY2_RESOLVE_PERSON_ACCOUNT(@ACC_LOAN_HES, E.ACC_T, @ACC_SALARY_PAY), N'کسر اقساط وام: ' + @ML + N' | ' + E.LAST_NAME + N' ' + E.FIRST_NAME, 0, RL.LOAN_DED, 'LOAN_HES', E.EMP_ID
+    FROM PAY2_RUN_LINE RL INNER JOIN PAY2_EMPLOYEE E ON RL.EMP_ID = E.EMP_ID
+    WHERE RL.RUN_ID = @RUN_ID AND RL.LOAN_DED > 0
+    UNION ALL 
+    SELECT dbo.FN_PAY2_RESOLVE_PERSON_ACCOUNT(@ACC_ADV_HES, E.ACC_T, @ACC_SALARY_PAY), N'تصفیه مساعده: ' + @ML + N' | ' + E.LAST_NAME + N' ' + E.FIRST_NAME, 0, RL.ADVANCE_DED, 'ADVANCE_SETTLE', E.EMP_ID
+    FROM PAY2_RUN_LINE RL INNER JOIN PAY2_EMPLOYEE E ON RL.EMP_ID = E.EMP_ID
+    WHERE RL.RUN_ID = @RUN_ID AND RL.ADVANCE_DED > 0
+    UNION ALL
+    SELECT @ACC_OTHER_DED, N'سایر کسورات حقوق ' + @ML, 0, SUM(OTHER_DED), 'OTHER_DED_ACCOUNT', NULL
+    FROM PAY2_RUN_LINE WHERE RUN_ID = @RUN_ID HAVING SUM(OTHER_DED) > 0;
+END;
+GO
+GO
+CREATE OR ALTER PROCEDURE [dbo].[SP_PAY2_GEN_DEED_PERSON]
+    @RUN_ID  INT,
+    @CALC_BY INT = NULL
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    DECLARE @STATUS TINYINT, @PER_ID INT, @WS_ID INT, @PER_DATE BIGINT;
+
+    SELECT @STATUS = R.STATUS, @PER_ID = R.PER_ID, @WS_ID = P.WS_ID, @PER_DATE = P.PERIOD_DATE
+    FROM PAY2_RUN R INNER JOIN PAY2_PERIOD P ON R.PER_ID = P.PER_ID
+    WHERE R.RUN_ID = @RUN_ID;
+
+    IF @STATUS NOT IN (2, 3)
+    BEGIN
+        RAISERROR(N'اجرای %d باید ابتدا نهایی یا سند آن صادر شده باشد.', 16, 1, @RUN_ID);
+        RETURN;
+    END;
+
+    -- ===== محاسبه برچسب ماه (مثال: 03-خرداد) =====
+    DECLARE @MonthNum INT = (@PER_DATE / 100) % 100;
+    DECLARE @MonthName NVARCHAR(10) = CASE @MonthNum
+        WHEN 1  THEN N'فروردین'
+        WHEN 2  THEN N'اردیبهشت'
+        WHEN 3  THEN N'خرداد'
+        WHEN 4  THEN N'تیر'
+        WHEN 5  THEN N'مرداد'
+        WHEN 6  THEN N'شهریور'
+        WHEN 7  THEN N'مهر'
+        WHEN 8  THEN N'آبان'
+        WHEN 9  THEN N'آذر'
+        WHEN 10 THEN N'دی'
+        WHEN 11 THEN N'بهمن'
+        WHEN 12 THEN N'اسفند'
+        ELSE N'نامشخص'
+    END;
+    DECLARE @ML NVARCHAR(20) = RIGHT('0' + CAST(@MonthNum AS NVARCHAR(2)), 2) + N'-' + @MonthName;
+    -- ================================================
+
+    -- متغیرهای حساب‌ها
+    DECLARE 
+        @ACC_SALARY_TOLID NVARCHAR(50), @ACC_SALARY_EDARI NVARCHAR(50), 
+        @ACC_SALARY_FOROSH NVARCHAR(50), @ACC_SALARY_KHADAMAT NVARCHAR(50),
+        @ACC_SALARY_PAY NVARCHAR(50), @ACC_INS_PAYABLE NVARCHAR(50),
+        @ACC_TAX_PAYABLE NVARCHAR(50), @ACC_INS_EXP NVARCHAR(50),
+        @ACC_ADV_HES NVARCHAR(50), @ACC_LOAN_HES NVARCHAR(50), @ACC_OTHER_DED NVARCHAR(50);
+
+    -- خواندن کدهای حسابداری از تنظیمات کارگاه
+    SELECT
+        @ACC_SALARY_TOLID   = MAX(CASE WHEN ACC_KEY='SALARY_EXP_TOLID'    THEN ACC_CODE END),
+        @ACC_SALARY_EDARI   = MAX(CASE WHEN ACC_KEY='SALARY_EXP_EDARI'    THEN ACC_CODE END),
+        @ACC_SALARY_FOROSH  = MAX(CASE WHEN ACC_KEY='SALARY_EXP_FOROSH'   THEN ACC_CODE END),
+        @ACC_SALARY_KHADAMAT= MAX(CASE WHEN ACC_KEY='SALARY_EXP_KHADAMAT' THEN ACC_CODE END),
+        @ACC_SALARY_PAY     = MAX(CASE WHEN ACC_KEY='SALARY_PAYABLE'      THEN ACC_CODE END),
+        @ACC_INS_PAYABLE    = MAX(CASE WHEN ACC_KEY='INS_PAYABLE'         THEN ACC_CODE END),
+        @ACC_TAX_PAYABLE    = MAX(CASE WHEN ACC_KEY='TAX_PAYABLE'         THEN ACC_CODE END),
+        @ACC_INS_EXP        = MAX(CASE WHEN ACC_KEY='INS_EXP'             THEN ACC_CODE END),
+        @ACC_ADV_HES        = MAX(CASE WHEN ACC_KEY='ADV_HES'             THEN ACC_CODE END),
+        @ACC_LOAN_HES       = MAX(CASE WHEN ACC_KEY='LOAN_HES'            THEN ACC_CODE END),
+        @ACC_OTHER_DED     = MAX(CASE WHEN ACC_KEY='OTHER_DED_ACCOUNT'   THEN ACC_CODE END)
+    FROM PAY2_WORKSHOP_ACC WHERE WS_ID = @WS_ID;
+
+
+    IF EXISTS (SELECT 1 FROM PAY2_RUN_LINE RL INNER JOIN PAY2_EMPLOYEE E ON E.EMP_ID=RL.EMP_ID WHERE RL.RUN_ID=@RUN_ID AND RL.NET_PAY < 0)
+    BEGIN
+        DECLARE @NEG_EMP NVARCHAR(200) = (SELECT TOP 1 E.LAST_NAME + N' ' + E.FIRST_NAME FROM PAY2_RUN_LINE RL INNER JOIN PAY2_EMPLOYEE E ON E.EMP_ID=RL.EMP_ID WHERE RL.RUN_ID=@RUN_ID AND RL.NET_PAY < 0);
+        RAISERROR(N'خالص حقوق «%s» منفی است. مبلغ مساعده، وام یا سایر کسورات را اصلاح کنید.', 16, 1, @NEG_EMP);
+        RETURN;
+    END;
+
+    IF (SELECT ISNULL(SUM(OTHER_DED),0) FROM PAY2_RUN_LINE WHERE RUN_ID=@RUN_ID) > 0 AND NULLIF(@ACC_OTHER_DED, N'') IS NULL
+    BEGIN
+        RAISERROR(N'حساب سایر کسورات حقوق (OTHER_DED_ACCOUNT) برای این کارگاه تنظیم نشده است.', 16, 1);
+        RETURN;
+    END;
+
+    -- 🚀 FIX 2: الگوریتم آبشاری دقیق (Waterfall Remainder Allocation) برای تراز ریالی
+    ;WITH SalarySplitBase AS (
+        SELECT 
+            RL.EMP_ID, 
+            RL.GROSS_PAY,
+            A.WORK_DAYS, A.DAYS_TOLID, A.DAYS_EDARI, A.DAYS_FOROSH, A.DAYS_KHADAMAT,
+            CAST(CASE WHEN A.WORK_DAYS > 0 THEN ROUND(RL.GROSS_PAY * (A.DAYS_TOLID / A.WORK_DAYS), 0) ELSE 0 END AS BIGINT) AS R_T,
+            CAST(CASE WHEN A.WORK_DAYS > 0 THEN ROUND(RL.GROSS_PAY * (A.DAYS_EDARI / A.WORK_DAYS), 0) ELSE 0 END AS BIGINT) AS R_E,
+            CAST(CASE WHEN A.WORK_DAYS > 0 THEN ROUND(RL.GROSS_PAY * (A.DAYS_FOROSH / A.WORK_DAYS), 0) ELSE 0 END AS BIGINT) AS R_F,
+            CAST(CASE WHEN A.WORK_DAYS > 0 THEN ROUND(RL.GROSS_PAY * (A.DAYS_KHADAMAT / A.WORK_DAYS), 0) ELSE 0 END AS BIGINT) AS R_K
+        FROM PAY2_RUN_LINE RL
+        INNER JOIN PAY2_ATTENDANCE A ON RL.EMP_ID = A.EMP_ID AND A.PER_ID = @PER_ID
+        WHERE RL.RUN_ID = @RUN_ID
+    ),
+    SalarySplitDiff AS (
+        -- پیدا کردن دقیق میزان اختلاف گرد کردن برای هر پرسنل
+        SELECT *, (GROSS_PAY - (R_T + R_E + R_F + R_K)) AS Diff FROM SalarySplitBase
+    ),
+    SalarySplit AS (
+        -- اعمال آبشاری اختلاف فقط روی اولین دپارتمانی که کارکردش بزرگتر از صفر است
+        SELECT 
+            EMP_ID, GROSS_PAY,
+            CASE WHEN DAYS_TOLID > 0 THEN R_T + Diff ELSE R_T END AS EXP_TOLID,
+            CASE WHEN DAYS_TOLID = 0 AND DAYS_EDARI > 0 THEN R_E + Diff ELSE R_E END AS EXP_EDARI,
+            CASE WHEN DAYS_TOLID = 0 AND DAYS_EDARI = 0 AND DAYS_FOROSH > 0 THEN R_F + Diff ELSE R_F END AS EXP_FOROSH,
+            -- 🚀 FIX: حذف شرط DAYS_KHADAMAT > 0 برای تبدیل شدن به سوپاپ اطمینان مطلق (ضمانت ۱۰۰٪ تراز سند)
+            CASE WHEN DAYS_TOLID = 0 AND DAYS_EDARI = 0 AND DAYS_FOROSH = 0 THEN R_K + Diff ELSE R_K END AS EXP_KHADAMAT
+        FROM SalarySplitDiff
+    )
+    -- خروجی نهایی برای صدور سند
+    SELECT @ACC_SALARY_TOLID AS HES_CODE, N'هزینه حقوق تولید ' + @ML AS SHARH, SUM(EXP_TOLID) AS BED, 0 AS BES, 'EXP_TOLID' AS ACC_KEY, NULL AS EMP_ID
+    FROM SalarySplit HAVING SUM(EXP_TOLID) > 0
+    UNION ALL 
+    SELECT @ACC_SALARY_EDARI, N'هزینه حقوق اداری ' + @ML, SUM(EXP_EDARI), 0, 'EXP_EDARI', NULL
+    FROM SalarySplit HAVING SUM(EXP_EDARI) > 0
+    UNION ALL 
+    SELECT @ACC_SALARY_FOROSH, N'هزینه حقوق فروش ' + @ML, SUM(EXP_FOROSH), 0, 'EXP_FOROSH', NULL
+    FROM SalarySplit HAVING SUM(EXP_FOROSH) > 0
+    UNION ALL 
+    SELECT @ACC_SALARY_KHADAMAT, N'هزینه حقوق خدمات ' + @ML, SUM(EXP_KHADAMAT), 0, 'EXP_KHADAMAT', NULL
+    FROM SalarySplit HAVING SUM(EXP_KHADAMAT) > 0
+    UNION ALL 
+    SELECT @ACC_INS_EXP, N'هزینه بیمه کارفرما ' + @ML, SUM(INS_EMPLOYER), 0, 'INS_EXP', NULL
+    FROM PAY2_RUN_LINE WHERE RUN_ID = @RUN_ID HAVING SUM(INS_EMPLOYER) > 0
+    UNION ALL 
+    SELECT 
+        dbo.FN_PAY2_RESOLVE_PERSON_ACCOUNT(@ACC_SALARY_PAY, E.ACC_T, @ACC_SALARY_PAY),
+        N'حقوق پرداختنی: ' + @ML + N' | ' + E.LAST_NAME + N' ' + E.FIRST_NAME, 
+        CASE WHEN RL.NET_PAY < 0 THEN ABS(RL.NET_PAY) ELSE 0 END, 
+        CASE WHEN RL.NET_PAY > 0 THEN RL.NET_PAY ELSE 0 END, 
+        'SALARY_PAYABLE', 
+        E.EMP_ID
+    FROM PAY2_RUN_LINE RL INNER JOIN PAY2_EMPLOYEE E ON RL.EMP_ID = E.EMP_ID
+    WHERE RL.RUN_ID = @RUN_ID AND RL.NET_PAY <> 0
+    UNION ALL 
+    SELECT @ACC_INS_PAYABLE, N'بیمه تأمین اجتماعی ' + @ML, 0, SUM(INS_WORKER + INS_EMPLOYER), 'INS_PAYABLE', NULL
+    FROM PAY2_RUN_LINE WHERE RUN_ID = @RUN_ID HAVING SUM(INS_WORKER + INS_EMPLOYER) > 0
+    UNION ALL 
+    SELECT @ACC_TAX_PAYABLE, N'مالیات حقوق ' + @ML, 0, SUM(TAX_AMOUNT), 'TAX_PAYABLE', NULL
+    FROM PAY2_RUN_LINE WHERE RUN_ID = @RUN_ID HAVING SUM(TAX_AMOUNT) > 0
+    UNION ALL 
+    SELECT dbo.FN_PAY2_RESOLVE_PERSON_ACCOUNT(@ACC_LOAN_HES, E.ACC_T, @ACC_SALARY_PAY), N'کسر اقساط وام: ' + @ML + N' | ' + E.LAST_NAME + N' ' + E.FIRST_NAME, 0, RL.LOAN_DED, 'LOAN_HES', E.EMP_ID
+    FROM PAY2_RUN_LINE RL INNER JOIN PAY2_EMPLOYEE E ON RL.EMP_ID = E.EMP_ID
+    WHERE RL.RUN_ID = @RUN_ID AND RL.LOAN_DED > 0
+    UNION ALL 
+    SELECT dbo.FN_PAY2_RESOLVE_PERSON_ACCOUNT(@ACC_ADV_HES, E.ACC_T, @ACC_SALARY_PAY), N'تصفیه مساعده: ' + @ML + N' | ' + E.LAST_NAME + N' ' + E.FIRST_NAME, 0, RL.ADVANCE_DED, 'ADVANCE_SETTLE', E.EMP_ID
+    FROM PAY2_RUN_LINE RL INNER JOIN PAY2_EMPLOYEE E ON RL.EMP_ID = E.EMP_ID
+    WHERE RL.RUN_ID = @RUN_ID AND RL.ADVANCE_DED > 0
+    UNION ALL
+    SELECT dbo.FN_PAY2_RESOLVE_PERSON_ACCOUNT(@ACC_OTHER_DED, E.ACC_T, @ACC_SALARY_PAY), N'سایر کسورات حقوق: ' + @ML + N' | ' + E.LAST_NAME + N' ' + E.FIRST_NAME, 0, RL.OTHER_DED, 'OTHER_DED_ACCOUNT', E.EMP_ID
+    FROM PAY2_RUN_LINE RL INNER JOIN PAY2_EMPLOYEE E ON RL.EMP_ID = E.EMP_ID
+    WHERE RL.RUN_ID = @RUN_ID AND RL.OTHER_DED > 0;
+END;
+GO
+
+GO
+CREATE OR ALTER PROCEDURE [dbo].[SP_PAY2_GEN_DEED]
+    @RUN_ID INT,
+    @DEED_MODE TINYINT,
+    @CALC_BY INT = NULL
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    IF @DEED_MODE = 1
+    BEGIN
+        EXEC dbo.SP_PAY2_GEN_DEED_SUMMARY @RUN_ID=@RUN_ID, @CALC_BY=@CALC_BY;
+        RETURN;
+    END;
+
+    IF @DEED_MODE = 2
+    BEGIN
+        EXEC dbo.SP_PAY2_GEN_DEED_PERSON @RUN_ID=@RUN_ID, @CALC_BY=@CALC_BY;
+        RETURN;
+    END;
+
+    RAISERROR(N'روش صدور سند حقوق نامعتبر است.', 16, 1);
+END;
+GO
+
+";
+                    ExecuteBatches(db, deedModeProceduresScript);
                 }
                 catch { }
 
