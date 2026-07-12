@@ -24,11 +24,11 @@ public class Pay2WorkshopsController : ControllerBase
     [HttpGet]
     public async Task<ActionResult<IEnumerable<Pay2WorkshopDto>>> GetAll()
     {
-        // 🚀 فیلدهای جدید به SELECT اضافه شدند
         const string sql = @"
             SELECT WS_ID, WS_CODE, WS_NAME, NATIONAL_ID, SOCIAL_INS_CODE, TAX_CODE,
                    ADDRESS, PHONE, POSTAL_CODE, EMPLOYER_NAME, IS_ACTIVE, ISNULL(INS_MODE, 1) AS INS_MODE, SHIFT_MODE,
-                   PROVINCE, CITY, REGISTRATION_NUMBER, SSO_BRANCH, FINANCIAL_MANAGER, ADMIN_MANAGER
+                   PROVINCE, CITY, REGISTRATION_NUMBER, SSO_BRANCH, FINANCIAL_MANAGER, ADMIN_MANAGER,
+                   ISNULL(DEFAULT_DEED_MODE, 1) AS DEFAULT_DEED_MODE
             FROM   PAY2_WORKSHOP
             ORDER  BY WS_ID";
 
@@ -63,6 +63,7 @@ public class Pay2WorkshopsController : ControllerBase
                 case "TAX_PAYABLE": acc.TAX_PAYABLE = row.ACC_CODE; break;
                 case "LOAN_HES": acc.LOAN_HES = row.ACC_CODE; break;
                 case "BANK_PAY_HES": acc.BANK_PAY_HES = row.ACC_CODE; break;
+                case "OTHER_DED_HES": acc.OTHER_DED_HES = row.ACC_CODE; break;
             }
         }
 
@@ -107,17 +108,16 @@ public class Pay2WorkshopsController : ControllerBase
 
                 if (w.WS_ID == 0)
                 {
-                    // 🚀 فیلدهای جدید به INSERT اضافه شدند
                     const string insertSql = @"
                         INSERT INTO PAY2_WORKSHOP
                         (WS_CODE, WS_NAME, NATIONAL_ID, SOCIAL_INS_CODE, TAX_CODE,
                          ADDRESS, PHONE, POSTAL_CODE, EMPLOYER_NAME, IS_ACTIVE, INS_MODE, CREATED_BY, SHIFT_MODE,
-                         PROVINCE, CITY, REGISTRATION_NUMBER, SSO_BRANCH, FINANCIAL_MANAGER, ADMIN_MANAGER)
+                         PROVINCE, CITY, REGISTRATION_NUMBER, SSO_BRANCH, FINANCIAL_MANAGER, ADMIN_MANAGER, DEFAULT_DEED_MODE)
                         OUTPUT INSERTED.WS_ID
                         VALUES
                         (@WS_CODE, @WS_NAME, @NATIONAL_ID, @SOCIAL_INS_CODE, @TAX_CODE,
                          @ADDRESS, @PHONE, @POSTAL_CODE, @EMPLOYER_NAME, @IS_ACTIVE, @INS_MODE, @CREATED_BY, @SHIFT_MODE,
-                         @PROVINCE, @CITY, @REGISTRATION_NUMBER, @SSO_BRANCH, @FINANCIAL_MANAGER, @ADMIN_MANAGER)";
+                         @PROVINCE, @CITY, @REGISTRATION_NUMBER, @SSO_BRANCH, @FINANCIAL_MANAGER, @ADMIN_MANAGER, @DEFAULT_DEED_MODE)";
 
                     newOrUpdatedWsId = await conn.QueryFirstAsync<int>(insertSql, new
                     {
@@ -139,12 +139,12 @@ public class Pay2WorkshopsController : ControllerBase
                         w.REGISTRATION_NUMBER,
                         w.SSO_BRANCH,
                         w.FINANCIAL_MANAGER,
-                        w.ADMIN_MANAGER
+                        w.ADMIN_MANAGER,
+                        w.DEFAULT_DEED_MODE
                     }, tran);
                 }
                 else
                 {
-                    // 🚀 فیلدهای جدید به UPDATE اضافه شدند
                     const string updateSql = @"
                         UPDATE PAY2_WORKSHOP SET
                         WS_CODE         = @WS_CODE,
@@ -164,7 +164,8 @@ public class Pay2WorkshopsController : ControllerBase
                         REGISTRATION_NUMBER = @REGISTRATION_NUMBER,
                         SSO_BRANCH      = @SSO_BRANCH,
                         FINANCIAL_MANAGER = @FINANCIAL_MANAGER,
-                        ADMIN_MANAGER   = @ADMIN_MANAGER
+                        ADMIN_MANAGER   = @ADMIN_MANAGER,
+                        DEFAULT_DEED_MODE = @DEFAULT_DEED_MODE
                         WHERE WS_ID = @WS_ID";
 
                     await conn.ExecuteAsync(updateSql, w, tran);
@@ -182,7 +183,8 @@ public class Pay2WorkshopsController : ControllerBase
                     ("INS_PAYABLE",         a.INS_PAYABLE),
                     ("TAX_PAYABLE",         a.TAX_PAYABLE),
                     ("LOAN_HES",            a.LOAN_HES),
-                    ("BANK_PAY_HES",        a.BANK_PAY_HES)
+                    ("BANK_PAY_HES",        a.BANK_PAY_HES),
+                    ("OTHER_DED_HES",       a.OTHER_DED_HES)
                 };
 
                 var sqlBuilder = new System.Text.StringBuilder();
@@ -234,28 +236,23 @@ public class Pay2WorkshopsController : ControllerBase
         {
             await _db.ExecuteInTransactionAsync(async (conn, tran) =>
             {
-                // ۱. بررسی پرسنل مرتبط
                 int empCount = await conn.QuerySingleAsync<int>(
                     "SELECT COUNT(1) FROM PAY2_EMPLOYEE WHERE WS_ID = @wsId", new { wsId }, tran);
                 if (empCount > 0)
                     throw new InvalidOperationException($"این کارگاه دارای {empCount} پرسنل است. لطفاً به جای حذف، وضعیت آن را «غیرفعال» کنید.");
 
-                // ۲. بررسی دوره‌های کارکرد/حقوق
                 int periodCount = await conn.QuerySingleAsync<int>(
                     "SELECT COUNT(1) FROM PAY2_PERIOD WHERE WS_ID = @wsId", new { wsId }, tran);
                 if (periodCount > 0)
                     throw new InvalidOperationException($"برای این کارگاه {periodCount} دوره حقوق ثبت شده است و قابل حذف فیزیکی نیست.");
 
-                // ۳. بررسی قالب‌های حقوقی مرتبط
                 int tmplCount = await conn.QuerySingleAsync<int>(
                     "SELECT COUNT(1) FROM PAY2_ITEM_TEMPLATE WHERE WS_ID = @wsId", new { wsId }, tran);
                 if (tmplCount > 0)
                     throw new InvalidOperationException("قالب‌های حقوقی به این کارگاه متصل هستند. ابتدا ارتباط آن‌ها را حذف کنید.");
 
-                // ۴. حذف سرفصل‌های حسابداری کارگاه (جدول فرزند)
                 await conn.ExecuteAsync("DELETE FROM PAY2_WORKSHOP_ACC WHERE WS_ID = @wsId", new { wsId }, tran);
 
-                // ۵. حذف خود کارگاه
                 int rows = await conn.ExecuteAsync("DELETE FROM PAY2_WORKSHOP WHERE WS_ID = @wsId", new { wsId }, tran);
                 if (rows == 0)
                     throw new InvalidOperationException("کارگاه یافت نشد.");
@@ -265,12 +262,10 @@ public class Pay2WorkshopsController : ControllerBase
         }
         catch (InvalidOperationException ex)
         {
-            // خطاهای مربوط به بیزینس لاجیک که خودمون پرتاب کردیم
             return BadRequest(ex.Message);
         }
         catch (System.Data.SqlClient.SqlException sqlEx) when (sqlEx.Number == 547)
         {
-            // خطای درگیری کلید خارجی دیتابیس (محض اطمینان)
             return BadRequest("این کارگاه در بخش‌های دیگر سیستم در حال استفاده است و قابل حذف نیست.");
         }
         catch (Exception ex)
@@ -289,13 +284,13 @@ public class Pay2WorkshopsController : ControllerBase
         w.TAX_CODE = CleanText(w.TAX_CODE, 20);
         w.ADDRESS = CleanText(w.ADDRESS, 300);
         w.INS_MODE = w.INS_MODE == 2 ? 2 : 1;
+        w.DEFAULT_DEED_MODE = (byte)(w.DEFAULT_DEED_MODE == 2 ? 2 : 1);
         w.POSTAL_CODE = NormalizeOptionalDigits(w.POSTAL_CODE, 20);
         w.EMPLOYER_NAME = CleanText(w.EMPLOYER_NAME, 100);
 
-        // 🚀 نرمال‌سازی فیلدهای جدید
         w.PROVINCE = CleanText(w.PROVINCE, 50);
         w.CITY = CleanText(w.CITY, 50);
-        w.REGISTRATION_NUMBER = CleanText(w.REGISTRATION_NUMBER, 20); // شماره ثبت ممکن است ممیز یا حرف داشته باشد
+        w.REGISTRATION_NUMBER = CleanText(w.REGISTRATION_NUMBER, 20);
         w.SSO_BRANCH = CleanText(w.SSO_BRANCH, 50);
         w.FINANCIAL_MANAGER = CleanText(w.FINANCIAL_MANAGER, 100);
         w.ADMIN_MANAGER = CleanText(w.ADMIN_MANAGER, 100);
@@ -312,6 +307,7 @@ public class Pay2WorkshopsController : ControllerBase
         a.TAX_PAYABLE = NormalizeAccountCode(a.TAX_PAYABLE, 20);
         a.LOAN_HES = NormalizeAccountCode(a.LOAN_HES, 20);
         a.BANK_PAY_HES = NormalizeAccountCode(a.BANK_PAY_HES, 20);
+        a.OTHER_DED_HES = NormalizeAccountCode(a.OTHER_DED_HES, 20);
 
         if (!string.IsNullOrWhiteSpace(w.POSTAL_CODE) && !Regex.IsMatch(w.POSTAL_CODE, @"^\d+$"))
             return "کد پستی فقط باید عدد باشد.";
@@ -324,11 +320,6 @@ public class Pay2WorkshopsController : ControllerBase
 
         if (string.IsNullOrWhiteSpace(w.WS_NAME))
             return "نام کارگاه نمی‌تواند خالی باشد.";
-
-        // فعلا کامنت شده چون ممکنه بعدا طولش تغییر کنه
-        //if (!string.IsNullOrWhiteSpace(w.NATIONAL_ID) &&
-        //    !Regex.IsMatch(w.NATIONAL_ID, @"^\d{11}$"))
-        //    return "شناسه ملی باید دقیقاً ۱۱ رقم عددی باشد.";
 
         if (!string.IsNullOrWhiteSpace(w.SOCIAL_INS_CODE) &&
             !Regex.IsMatch(w.SOCIAL_INS_CODE, @"^\d+$"))
@@ -413,7 +404,7 @@ public class Pay2WorkshopsController : ControllerBase
         return string.IsNullOrWhiteSpace(text) ? null : text;
     }
 
-    private static string? CleanText(string? value, int maxLength)
+    private static string? CleanText(string? value, int maxLength = 0)
     {
         if (string.IsNullOrWhiteSpace(value))
             return null;

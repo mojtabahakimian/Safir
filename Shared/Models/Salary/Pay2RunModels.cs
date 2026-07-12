@@ -1,5 +1,34 @@
 ﻿namespace Safir.Shared.Models.Salary
 {
+    public enum Pay2DeedMode : byte
+    {
+        CurrentSummary = 1,
+        PersonTraceable = 2
+    }
+    public class Pay2DeedArticleDto
+    {
+        public string HES_CODE { get; set; } = string.Empty;
+        public string SHARH { get; set; } = string.Empty;
+        public long BED { get; set; }
+        public long BES { get; set; }
+        public string ACC_KEY { get; set; } = string.Empty;
+        public int? EMP_ID { get; set; }
+        public string? EmployeeName { get; set; } // برای نمایش در UI
+    }
+
+    public class Pay2DeedPreviewDto
+    {
+        public Pay2DeedMode ModeUsed { get; set; }
+        public string ModeTitle { get; set; } = string.Empty;
+        public List<Pay2DeedArticleDto> Articles { get; set; } = new();
+        public List<string> ValidationErrors { get; set; } = new();
+
+        public long TotalDebit => Articles.Sum(x => x.BED);
+        public long TotalCredit => Articles.Sum(x => x.BES);
+        public long Difference => Math.Abs(TotalDebit - TotalCredit);
+        public bool IsBalanced => TotalDebit > 0 && Difference == 0;
+        public bool HasErrors => ValidationErrors.Any();
+    }
     public class Pay2RunCalcRequest
     {
         public int WS_ID { get; set; }
@@ -18,6 +47,9 @@
         public byte STATUS { get; set; }
         public int? DEED_ID_SAL { get; set; }
         public string? NOTES { get; set; }
+
+        public byte? DEED_MODE { get; set; }
+        public short? DEED_GENERATOR_VERSION { get; set; }
 
         public string StatusText => STATUS switch
         {

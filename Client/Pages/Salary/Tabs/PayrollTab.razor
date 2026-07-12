@@ -313,13 +313,15 @@
                             <button class="btn-success-pay2" @onclick="FinalizeRun" disabled="@IsProcessing" style="height: 42px;"><i class="bi bi-check-circle"></i> تأیید نهایی</button>
                             <button class="btn-danger-pay2" @onclick="RevertRun" disabled="@IsProcessing" style="height: 42px;"><i class="bi bi-arrow-counterclockwise"></i> برگشت محاسبه</button>
                         }
-                        else if (CurrentRun.STATUS == 2)
+                    else if (CurrentRun.STATUS == 2)
                         {
-                            <button class="btn-primary-pay2" @onclick="GenerateDeed" disabled="@IsProcessing" style="height: 42px;"><i class="bi bi-journal-check"></i> صدور سند حسابداری</button>
-                            <button class="btn-outline-danger-pay2" @onclick="RevertRun" disabled="@IsProcessing" style="height: 42px;"><i class="bi bi-unlock"></i> لغو تأیید (بازگشت به پیش‌نویس)</button>
+                            <button class="btn-outline-pay2" @onclick="OpenPreviewModal" disabled="@IsProcessing" style="height: 42px; background: #fff;"><i class="bi bi-eye"></i> پیش‌نمایش سند</button>
+                            <button class="btn-primary-pay2" @onclick="GenerateDeed" disabled="@IsProcessing" style="height: 42px;"><i class="bi bi-journal-check"></i> صدور قطعی سند</button>
+                            <button class="btn-outline-danger-pay2" @onclick="RevertRun" disabled="@IsProcessing" style="height: 42px;"><i class="bi bi-unlock"></i> لغو تأیید</button>
                         }
                         else if (CurrentRun.STATUS == 3)
                         {
+                            <button class="btn-outline-pay2" @onclick="OpenPreviewModal" disabled="@IsProcessing" style="height: 42px; background: #fff;"><i class="bi bi-eye"></i> مشاهده آرتیکل‌های سند</button>
                             <div style="background-color: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 6px; padding: 0 14px; height: 42px; display: flex; align-items: center; gap: 8px;">
                                 <i class="bi bi-lock-fill" style="color: #16a34a;"></i>
                                 <span class="p2-text-muted" style="font-size: 11px;">شماره سند صادره:</span>
@@ -526,6 +528,91 @@
     }
 </div>
 
+@if (ShowPreviewModal && PreviewData != null)
+{
+    <div class="pay2-select-backdrop" style="background: rgba(15,23,42,0.6); z-index: 2999;" @onclick="ClosePreviewModal"></div>
+    <div class="card-custom pay2-modal-container" style="max-width: 950px; height: 85vh;">
+        <div class="pay2-modal-header p2-card-header" style="margin:0;">
+            <h5 style="margin:0; font-size:16px;">
+                پیش‌نمایش سند حسابداری — <span class="p2-text-primary">@PreviewData.ModeTitle</span>
+            </h5>
+            <button class="btn-ghost-pay2" @onclick="ClosePreviewModal"><i class="bi bi-x-lg"></i></button>
+        </div>
+
+        <div class="pay2-modal-body" style="padding: 16px; overflow: hidden; display: flex; flex-direction: column;">
+            
+            @if (CurrentRun?.STATUS == 2)
+            {
+                <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:12px; background:var(--p2-bg-main); padding:10px 14px; border-radius:8px; border:1px solid var(--p2-border);">
+                    <div style="display:flex; align-items:center; gap:12px;">
+                        <label style="font-weight:bold; font-size:12px; margin:0;">شبیه‌سازی روش صدور:</label>
+                        <select class="pay2-input" style="width:250px; height:32px;" value="@_previewModeOverride" @onchange="ChangePreviewMode">
+                            <option value="1">سند کلی (تجمیعی) - روش فعلی</option>
+                            <option value="2">سند نیمه‌تفصیلی اشخاص</option>
+                        </select>
+                    </div>
+                    <span style="font-size:11px; color:var(--p2-text-muted);">برای تغییر دائمی روش صدور، به تب مدیریت کارگاه‌ها بروید.</span>
+                </div>
+            }
+
+            @if (PreviewData.HasErrors)
+            {
+                <div style="margin-bottom:12px; max-height: 120px; overflow-y: auto;">
+                    @foreach (var err in PreviewData.ValidationErrors)
+                    {
+                        <div style="background: var(--p2-danger-bg); border: 1px solid var(--p2-danger-border); color: var(--p2-danger-text); padding: 8px 12px; border-radius: 6px; margin-bottom: 6px; font-weight: bold; font-size:12px;">
+                            <i class="bi bi-exclamation-triangle-fill"></i> @err
+                        </div>
+                    }
+                </div>
+            }
+
+            <div class="pay2-table-responsive" style="flex-grow: 1; overflow-y: auto; border: 1px solid var(--p2-border); border-radius: 8px;">
+                <table class="p2-table" style="margin:0;">
+                    <thead style="position: sticky; top: 0; z-index: 10;">
+                        <tr>
+                            <th style="width: 140px;">کد حساب</th>
+                            <th>شرح آرتیکل</th>
+                            <th style="text-align:center; width: 100px;">کد پرسنل</th>
+                            <th style="text-align:left; width: 150px;">بدهکار (ریال)</th>
+                            <th style="text-align:left; width: 150px;">بستانکار (ریال)</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @if (!PreviewData.Articles.Any())
+                        {
+                            <tr><td colspan="5" style="text-align:center; padding: 20px;">داده‌ای برای نمایش وجود ندارد.</td></tr>
+                        }
+                        @foreach (var art in PreviewData.Articles)
+                        {
+                            <tr>
+                                <td class="p2-text-mono" style="font-weight:bold; color:var(--p2-primary);">@art.HES_CODE</td>
+                                <td style="font-size:12px;">@art.SHARH</td>
+                                <td class="p2-text-mono" style="text-align:center;">@(art.EMP_ID?.ToString() ?? "—")</td>
+                                <td class="p2-text-mono" style="text-align:left; font-weight:bold;">@(art.BED > 0 ? art.BED.ToString("N0") : "-")</td>
+                                <td class="p2-text-mono" style="text-align:left; font-weight:bold;">@(art.BES > 0 ? art.BES.ToString("N0") : "-")</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+
+            <div style="background: var(--p2-bg-main); border: 1px solid var(--p2-border); border-radius: 8px; padding: 12px 16px; margin-top: 12px; display: flex; justify-content: space-between; font-weight: 800; align-items:center;">
+                <span style="font-size: 13px;">جمع کل سند:</span>
+                <div style="display:flex; gap: 30px;">
+                    <span style="color:var(--p2-success-text); font-family:Consolas; font-size:15px;" title="جمع بدهکار">@PreviewData.TotalDebit.ToString("N0")</span>
+                    <span style="color:var(--p2-success-text); font-family:Consolas; font-size:15px;" title="جمع بستانکار">@PreviewData.TotalCredit.ToString("N0")</span>
+                </div>
+            </div>
+
+        </div>
+
+        <div class="pay2-modal-footer" style="justify-content: flex-end;">
+            <button class="btn-outline-pay2" @onclick="ClosePreviewModal" style="min-width:120px;">بستن صفحه</button>
+        </div>
+    </div>
+}
+
 @code {
 
 
@@ -533,6 +620,8 @@
     private readonly Dictionary<string, object> _attrName = new() { { "style", "font-weight:700;" } };
     private readonly Dictionary<string, object> _attrTotalDed = new() { { "class", "p2-text-mono" }, { "style", "color:#ef4444;" } };
     private readonly Dictionary<string, object> _attrInsBase = new() { { "class", "p2-text-mono p2-text-muted" } };
+
+
 
     // === مدیریت ویو (Drill-Down) ===
     enum ViewMode { PeriodList, PayrollGrid }
@@ -547,11 +636,60 @@
         set { _periodSearchTerm = value; StateHasChanged(); }
     }
 
+    bool ShowPreviewModal = false;
+    Pay2DeedPreviewDto? PreviewData;
+    byte _previewModeOverride = 1;
+
     IEnumerable<Pay2PeriodLookupDto> FilteredPeriodOptions =>
         string.IsNullOrWhiteSpace(_periodSearchTerm)
             ? PeriodOptions
             : PeriodOptions.Where(x => x.PERIOD_TITLE.Contains(_periodSearchTerm, StringComparison.OrdinalIgnoreCase));
 
+               async Task OpenPreviewModal()
+    {
+        if (CurrentRun == null) return;
+        
+        var ws = Workshops.FirstOrDefault(w => w.WS_ID == SelectedWsId);
+        _previewModeOverride = CurrentRun.DEED_MODE ?? ws?.DEFAULT_DEED_MODE ?? (byte)1;
+        
+        await LoadPreviewData();
+        ShowPreviewModal = true;
+    }
+
+    async Task ChangePreviewMode(ChangeEventArgs e)
+    {
+        if (byte.TryParse(e.Value?.ToString(), out byte newMode))
+        {
+            _previewModeOverride = newMode;
+            await LoadPreviewData();
+        }
+    }
+
+    async Task LoadPreviewData()
+    {
+        if (CurrentRun == null) return;
+        IsProcessing = true;
+        try
+        {
+            // اگر سند صادر شده باشد (Status=3) هیچ تغییری در Mode برای Preview مجاز نیست و null می‌فرستیم
+            PreviewData = await RunApi.PreviewDeedAsync(CurrentRun.RUN_ID, CurrentRun.STATUS == 2 ? _previewModeOverride : null);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add(ex.Message, MudBlazor.Severity.Error);
+            ShowPreviewModal = false;
+        }
+        finally
+        {
+            IsProcessing = false;
+        }
+    }
+
+    void ClosePreviewModal()
+    {
+        ShowPreviewModal = false;
+        PreviewData = null;
+    }
 
     List<Pay2WorkshopDto> Workshops = new();
     List<Pay2PeriodLookupDto> PeriodOptions = new();

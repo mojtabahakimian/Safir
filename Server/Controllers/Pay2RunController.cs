@@ -89,7 +89,6 @@ namespace Safir.Server.Controllers
             return Ok(result);
         }
 
-        // کلاس کمکی برای Dapper
         private class RunDetailFlat
         {
             public int EMP_ID { get; set; }
@@ -338,76 +337,6 @@ namespace Safir.Server.Controllers
             catch (Exception ex) { return StatusCode(500, "خطای موتور محاسبه: " + ex.Message); }
         }
 
-        // ===================================================================
-        // لغو صدور سند (STATUS 3 → 2) — قفل‌گشایی برای صدور مجدد
-        // شرط: سند حسابداری در سیستم حسابداری قطعی (OKF≠1) نشده باشد.
-        // عملیات: حذف DEED_DTL + DEED_HED، صفر کردن DEED_ID_SAL، برگشت
-        //         وضعیت PAY2_RUN به ۲ (تأیید نهایی) و PAY2_PERIOD به ۳.
-        // ===================================================================
-        [HttpPut("{runId:int}/unfinalize-deed")]
-        public async Task<IActionResult> UnfinalizeDeed(int runId)
-        {
-            var userIdString = User.FindFirstValue(ClaimTypes.NameIdentifier);
-            if (!int.TryParse(userIdString, out int userCod)) return Unauthorized();
-
-            try
-            {
-                await _db.ExecuteInTransactionAsync(async (conn, tran) =>
-                {
-                    // ۱. خواندن اطلاعات اجرا
-                    var runInfo = await conn.QuerySingleOrDefaultAsync(
-                        @"SELECT R.STATUS, R.PER_ID, R.DEED_ID_SAL, P.DEED_N_S_PAY
-                          FROM PAY2_RUN R
-                          INNER JOIN PAY2_PERIOD P ON R.PER_ID = P.PER_ID
-                          WHERE R.RUN_ID = @runId",
-                        new { runId }, tran);
-
-                    if (runInfo == null)
-                        throw new InvalidOperationException("محاسبه‌ای با این شناسه یافت نشد.");
-
-                    byte status = (byte)runInfo.STATUS;
-                    if (status != 3)
-                        throw new InvalidOperationException("این عملیات فقط برای اجراهایی که سند صادر کرده‌اند (وضعیت ۳) مجاز است.");
-
-                    double? deedNs = (double?)runInfo.DEED_N_S_PAY;
-
-                    // ۲. بررسی امنیتی: اگر سند در حسابداری قطعی شده باشد، اجازه داده نمی‌شود
-                    if (deedNs.HasValue && deedNs.Value > 0)
-                    {
-                        var okfStatus = await conn.QuerySingleOrDefaultAsync<byte?>(
-                            "SELECT OKF FROM DEED_HED WHERE N_S = @N_S",
-                            new { N_S = deedNs.Value }, tran);
-
-                        if (okfStatus.HasValue && okfStatus.Value != 1)
-                            throw new InvalidOperationException(
-                                "این سند در سیستم حسابداری بررسی و قطعی شده است. امکان لغو صدور سند از طریق ماژول حقوق وجود ندارد.");
-
-                        // ۳. حذف ریز سند و هدر سند حسابداری
-                        await conn.ExecuteAsync("DELETE FROM DEED_DTL WHERE N_S = @N_S", new { N_S = deedNs.Value }, tran);
-                        await conn.ExecuteAsync("DELETE FROM DEED_HED WHERE N_S = @N_S", new { N_S = deedNs.Value }, tran);
-                    }
-
-                    int perId = (int)runInfo.PER_ID;
-
-                    // ۴. برگشت وضعیت: PAY2_RUN → STATUS=2، PAY2_PERIOD → STATUS=3
-                    await conn.ExecuteAsync(@"
-                        UPDATE PAY2_RUN
-                        SET STATUS = 2, DEED_ID_SAL = NULL,
-                            NOTES = SUBSTRING(ISNULL(NOTES,'') + N' | DeedUnfinalized by ' + CAST(@userCod AS NVARCHAR), 1, 300)
-                        WHERE RUN_ID = @runId;
-
-                        UPDATE PAY2_PERIOD
-                        SET STATUS = 3, DEED_N_S_PAY = NULL
-                        WHERE PER_ID = @perId;",
-                        new { runId, perId, userCod }, tran);
-                });
-
-                return Ok();
-            }
-            catch (InvalidOperationException ex) { return BadRequest(ex.Message); }
-            catch (Exception ex) { return StatusCode(500, "خطا در لغو صدور سند: " + ex.Message); }
-        }
-
         [HttpPut("{runId:int}/revert")]
         public async Task<IActionResult> RevertRun(int runId)
         {
@@ -442,6 +371,75 @@ namespace Safir.Server.Controllers
             catch (Exception ex) { return BadRequest(ex.Message); }
         }
 
+        public class RunDeedInfoRow
+        {
+            public byte STATUS { get; set; }
+            public int PER_ID { get; set; }
+            public double? DEED_ID_SAL { get; set; }
+            public byte? DEED_MODE { get; set; }
+            public byte DEFAULT_DEED_MODE { get; set; }
+        }
+
+        [HttpGet("{runId:int}/preview-deed")]
+        public async Task<ActionResult<Pay2DeedPreviewDto>> PreviewDeed(int runId, [FromQuery] byte? overrideMode = null)
+        {
+            var result = new Pay2DeedPreviewDto();
+            try
+            {
+                var runInfo = await _db.DoGetDataSQLAsyncSingle<RunDeedInfoRow>(
+                    @"SELECT R.STATUS, R.PER_ID, R.DEED_ID_SAL, R.DEED_MODE, W.DEFAULT_DEED_MODE 
+                      FROM PAY2_RUN R 
+                      INNER JOIN PAY2_PERIOD P ON R.PER_ID = P.PER_ID 
+                      INNER JOIN PAY2_WORKSHOP W ON P.WS_ID = W.WS_ID 
+                      WHERE R.RUN_ID = @runId", new { runId });
+
+                if (runInfo == null)
+                    return NotFound("محاسبه یافت نشد.");
+
+                byte effectiveMode = overrideMode ?? runInfo.DEED_MODE ?? runInfo.DEFAULT_DEED_MODE;
+
+                result.ModeUsed = (Pay2DeedMode)effectiveMode;
+                result.ModeTitle = effectiveMode == 1 ? "سند کلی ـ روش فعلی" : "سند نیمه‌تفصیلی اشخاص";
+
+                var articles = await _db.DoGetDataSQLAsync<Pay2DeedArticleDto>(
+                    "EXEC SP_PAY2_GEN_DEED @RUN_ID = @runId, @DEED_MODE = @mode",
+                    new { runId, mode = effectiveMode });
+
+                result.Articles = articles.ToList();
+
+                foreach (var art in result.Articles)
+                {
+                    if (art.BED < 0 || art.BES < 0)
+                        result.ValidationErrors.Add($"خطای ساختاری: مبلغ منفی در آرتیکل (حساب: {art.HES_CODE}, بدهکار: {art.BED}, بستانکار: {art.BES}). حقوق این شخص نیازمند بررسی است.");
+
+                    var parsed = Pay2AccountHelper.Parse(art.HES_CODE, art.ACC_KEY);
+                    if (!parsed.IsValid)
+                    {
+                        result.ValidationErrors.Add($"خطا در قالب‌بندی حساب {art.ACC_KEY} ({(art.EmployeeName ?? "تجمیعی")}): {parsed.ErrorMessage}");
+                    }
+                    // 🚀 گارد امنیتی جدید: جلوگیری از ورود حساب ناقص (کمتر از ۳ سطح)
+                    else if (parsed.Account!.HesT == null)
+                    {
+                        result.ValidationErrors.Add($"حساب {art.ACC_KEY} ({(art.EmployeeName ?? "تجمیعی")}) ناقص است ({art.HES_CODE}). ثبت حداقل ۳ سطح (کل-معین-تفصیلی) در حسابداری حقوق الزامی است.");
+                    }
+                }
+
+                if (!result.IsBalanced)
+                    result.ValidationErrors.Add($"سند تراز نیست. جمع بدهکار: {result.TotalDebit:N0}، جمع بستانکار: {result.TotalCredit:N0}، اختلاف: {result.Difference:N0}");
+
+                return Ok(result);
+            }
+            catch (Microsoft.Data.SqlClient.SqlException ex)
+            {
+                result.ValidationErrors.Add(ex.Message);
+                return Ok(result);
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, "خطای سرور: " + ex.Message);
+            }
+        }
+
         [HttpPost("{runId:int}/generate-deed")]
         public async Task<IActionResult> GenerateDeed(int runId)
         {
@@ -451,112 +449,200 @@ namespace Safir.Server.Controllers
 
             try
             {
+                var runInfo = await _db.DoGetDataSQLAsyncSingle<RunDeedInfoRow>(
+                    @"SELECT R.STATUS, R.PER_ID, R.DEED_ID_SAL, R.DEED_MODE, W.DEFAULT_DEED_MODE 
+                      FROM PAY2_RUN R 
+                      INNER JOIN PAY2_PERIOD P ON R.PER_ID = P.PER_ID 
+                      INNER JOIN PAY2_WORKSHOP W ON P.WS_ID = W.WS_ID
+                      WHERE R.RUN_ID = @runId", new { runId });
+
+                if (runInfo == null)
+                    return BadRequest("محاسبه یافت نشد.");
+
+                byte status = runInfo.STATUS;
+                if (status != 2 && status != 3)
+                    return BadRequest("اجرا باید در وضعیت 'تأیید نهایی' یا 'سند صادر شده' باشد.");
+
+                int perId = runInfo.PER_ID;
+                byte effectiveMode = runInfo.DEED_MODE ?? runInfo.DEFAULT_DEED_MODE;
+
+                var periodInfo = await _db.DoGetDataSQLAsyncSingle<dynamic>(
+                    "SELECT PERIOD_DATE, DEED_N_S_PAY FROM PAY2_PERIOD WHERE PER_ID = @perId", new { perId });
+
+                long periodDate = (long)periodInfo.PERIOD_DATE;
+                double? existingNs = (double?)periodInfo.DEED_N_S_PAY;
+
+                var articles = (await _db.DoGetDataSQLAsync<Pay2DeedArticleDto>(
+                    "EXEC SP_PAY2_GEN_DEED @RUN_ID = @runId, @CALC_BY = @userCod, @DEED_MODE = @mode",
+                    new { runId, userCod, mode = effectiveMode })).ToList();
+
+                long sumBed = articles.Sum(x => x.BED);
+                long sumBes = articles.Sum(x => x.BES);
+                if (sumBed != sumBes)
+                    return BadRequest($"سند تراز نیست! بدهکار: {sumBed:N0}، بستانکار: {sumBes:N0}");
+
+                var parsedArticles = new List<(int Radif, Pay2ParsedAccount Acc, string Sharh, double Bed, double Bes)>();
+                int radif = 1;
+
+                foreach (var art in articles)
+                {
+                    if (art.BED < 0 || art.BES < 0)
+                        return BadRequest($"آرتیکل با مبلغ منفی مجاز نیست (حساب: {art.HES_CODE}).");
+
+                    var parsedAcc = Pay2AccountHelper.Parse(art.HES_CODE, art.ACC_KEY);
+                    if (!parsedAcc.IsValid)
+                        return BadRequest($"خطا در حساب {art.ACC_KEY}: {parsedAcc.ErrorMessage}");
+
+                    // 🚀 گارد امنیتی جدید (Hard Block)
+                    if (parsedAcc.Account!.HesT == null)
+                        return BadRequest($"خطا در صدور سند: حساب {art.ACC_KEY} ناقص است ({art.HES_CODE}). دیتابیس حسابداری اجازه ثبت حساب کمتر از ۳ سطح (تفصیلی) را نمی‌دهد.");
+
+                    parsedArticles.Add((radif++, parsedAcc.Account!, art.SHARH, (double)art.BED, (double)art.BES));
+                }
+
+                long deedDate = Safir.Shared.Utility.CL_Tarikh.GetPersianMonthEndAsLong(periodDate);
+                string hedSharh = $"سند حقوق و دستمزد دوره {periodDate}";
+
                 await _db.ExecuteInTransactionAsync(async (conn, tran) =>
                 {
-                    var runInfo = await conn.QuerySingleAsync(
-                        "SELECT STATUS, PER_ID, DEED_ID_SAL FROM PAY2_RUN WITH (UPDLOCK) WHERE RUN_ID = @runId",
-                        new { runId }, tran);
+                    var lockCheck = await conn.QuerySingleAsync<byte>(
+                        "SELECT STATUS FROM PAY2_RUN WITH (UPDLOCK) WHERE RUN_ID = @runId", new { runId }, tran);
 
-                    byte status = (byte)runInfo.STATUS;
-                    if (status != 2 && status != 3)
-                        throw new InvalidOperationException("اجرا باید در وضعیت 'تأیید نهایی' یا 'سند صادر شده' باشد.");
+                    if (lockCheck != 2 && lockCheck != 3)
+                        throw new InvalidOperationException("وضعیت اجرا در حین پردازش تغییر کرده است.");
 
-                    int perId = (int)runInfo.PER_ID;
-
-                    var periodInfo = await conn.QuerySingleAsync(
-                        "SELECT PERIOD_DATE, DEED_N_S_PAY FROM PAY2_PERIOD WITH (UPDLOCK) WHERE PER_ID = @perId",
-                        new { perId }, tran);
-
-                    long periodDate = (long)periodInfo.PERIOD_DATE;
-                    double? existingNs = (double?)periodInfo.DEED_N_S_PAY;
-
-                    // 🚀 تاریخ سند = آخرین روزِ ماهِ دورهٔ حقوق (مثال: خرداد ۱۴۰۵ ⇒ 14050331)
-                    long deedDate = Safir.Shared.Utility.CL_Tarikh.GetPersianMonthEndAsLong(periodDate);
-                    string hedSharh = $"سند حقوق و دستمزد دوره {periodDate}";
                     double targetNs;
 
-                    // 🚀 بازصدور سند (UPDATE DEED_HED)
                     if (status == 3 && existingNs.HasValue && existingNs.Value > 0)
                     {
                         targetNs = existingNs.Value;
 
-                        // 🚀 FIX: گارد امنیتی حسابداری. جلوگیری از تخریب اسنادی که توسط مدیر مالی قطعی شده‌اند.
                         var okfStatus = await conn.QuerySingleOrDefaultAsync<byte?>(
-                            "SELECT OKF FROM DEED_HED WITH (UPDLOCK) WHERE N_S = @N_S",
-                            new { N_S = targetNs }, tran);
+                            "SELECT OKF FROM DEED_HED WITH (UPDLOCK) WHERE N_S = @N_S", new { N_S = targetNs }, tran);
 
                         if (okfStatus.HasValue && okfStatus.Value != 1)
-                            throw new InvalidOperationException("این سند در سیستم حسابداری بررسی و قطعی شده است. امکان بازصدور و تغییر ارقام آن از طریق ماژول حقوق وجود ندارد.");
+                            throw new InvalidOperationException("این سند در سیستم حسابداری بررسی و قطعی شده است. امکان بازصدور وجود ندارد.");
 
-                        // حذف ریزسندهای قبلی
                         await conn.ExecuteAsync("DELETE FROM DEED_DTL WHERE N_S = @N_S", new { N_S = targetNs }, tran);
-
-                        // آپدیت هدر سند
                         await conn.ExecuteAsync(@"
-                    UPDATE DEED_HED
-                    SET DATE_S = @DATE_S, SHARH_S = @SHARH, NO_S = 11, USER_NAME = @USER, UID = @UID
-                    WHERE N_S = @N_S",
+                            UPDATE DEED_HED SET DATE_S = @DATE_S, SHARH_S = @SHARH, NO_S = 11, USER_NAME = @USER, UID = @UID WHERE N_S = @N_S",
                             new { N_S = targetNs, DATE_S = deedDate, SHARH = hedSharh, USER = userName, UID = userCod }, tran);
                     }
-                    // 🚀 صدور سند جدید (INSERT DEED_HED)
                     else
                     {
+                        await conn.ExecuteAsync("EXEC sp_getapplock @Resource = 'DeedNumberAllocation', @LockMode = 'Exclusive', @LockOwner = 'Transaction', @LockTimeout = 15000", null, tran);
+
                         targetNs = (await conn.QuerySingleOrDefaultAsync<double?>("SELECT MAX(N_S) FROM DEED_HED WITH (UPDLOCK)", null, tran) ?? 0) + 1;
-                        // ایجاد هدر سند جدید با مقدار NO_S = 11
+
                         await conn.ExecuteAsync(@"
-                    INSERT INTO DEED_HED (N_S, DATE_S, SHARH_S, NO_S, USER_NAME, OKF, CRT, UID)
-                    VALUES (@N_S, @DATE_S, @SHARH, 11, @USER, 1, GETDATE(), @UID)",
+                            INSERT INTO DEED_HED (N_S, DATE_S, SHARH_S, NO_S, USER_NAME, OKF, CRT, UID)
+                            VALUES (@N_S, @DATE_S, @SHARH, 11, @USER, 1, GETDATE(), @UID)",
                             new { N_S = targetNs, DATE_S = deedDate, SHARH = hedSharh, USER = userName, UID = userCod }, tran);
                     }
 
-                    var articles = await conn.QueryAsync(
-                        "EXEC SP_PAY2_GEN_DEED @RUN_ID = @runId, @CALC_BY = @userCod",
-                        new { runId, userCod }, tran, commandTimeout: 120);
-
-                    int radif = 1;
-                    foreach (var art in articles)
+                    var finalDetailsToInsert = parsedArticles.Select(a => new
                     {
-                        string hesCode = (string)art.HES_CODE;
-                        var parts = hesCode.Split('-');
-                        int hesK = int.Parse(parts[0]);
-                        int hesM = int.Parse(parts[1]);
-                        int hesT = parts.Length > 2 && int.TryParse(parts[2], out int parsedT) ? parsedT : 0;
-                        int? hesT2 = parts.Length > 3 && int.TryParse(parts[3], out int parsedT2) ? parsedT2 : null;
-                        int? hesT3 = parts.Length > 4 && int.TryParse(parts[4], out int parsedT3) ? parsedT3 : null;
-                        int? hesT4 = parts.Length > 5 && int.TryParse(parts[5], out int parsedT4) ? parsedT4 : null;
+                        N_S = targetNs,
+                        RADIF = a.Radif,
+                        HES_K = a.Acc.HesK,
+                        HES_M = a.Acc.HesM,
+                        HES_T = a.Acc.HesT!.Value, // 🚀 اصلاح شد: مقدار واقعی جایگزین شد، بدون ?? 0
+                        HES_T2 = a.Acc.HesT2,
+                        HES_T3 = a.Acc.HesT3,
+                        HES_T4 = a.Acc.HesT4,
+                        HES = a.Acc.FullCode,
+                        SHARH = a.Sharh,
+                        BED = a.Bed,
+                        BES = a.Bes,
+                        UID = userCod
+                    }).ToList();
 
-                        var p = new DynamicParameters();
-                        p.Add("N_S", targetNs);
-                        p.Add("RADIF", radif++);
-                        p.Add("HES_K", hesK);
-                        p.Add("HES_M", hesM);
-                        p.Add("HES_T", hesT);
-                        p.Add("HES", hesCode);
-                        p.Add("SHARH", (string)art.SHARH);
-                        p.Add("BED", (double)art.BED);
-                        p.Add("BES", (double)art.BES);
-                        p.Add("UID", userCod);
+                    const string insertSql = @"
+INSERT INTO DEED_DTL (N_S, RADIF, HES_K, HES_M, HES_T, HES_T2, HES_T3, HES_T4, HES, SHARH, BED, BES, CRT, UID)
+VALUES (@N_S, @RADIF, @HES_K, @HES_M, @HES_T, @HES_T2, @HES_T3, @HES_T4, @HES, @SHARH, @BED, @BES, GETDATE(), @UID)";
 
-                        string cols = "N_S, RADIF, HES_K, HES_M, HES_T, HES, SHARH, BED, BES, CRT, UID";
-                        string vals = "@N_S, @RADIF, @HES_K, @HES_M, @HES_T, @HES, @SHARH, @BED, @BES, GETDATE(), @UID";
-
-                        if (hesT2.HasValue) { cols += ", HES_T2"; vals += ", @HES_T2"; p.Add("HES_T2", hesT2.Value); }
-                        if (hesT3.HasValue) { cols += ", HES_T3"; vals += ", @HES_T3"; p.Add("HES_T3", hesT3.Value); }
-                        if (hesT4.HasValue) { cols += ", HES_T4"; vals += ", @HES_T4"; p.Add("HES_T4", hesT4.Value); }
-
-                        await conn.ExecuteAsync($@"INSERT INTO DEED_DTL ({cols}) VALUES ({vals})", p, tran);
-                    }
+                    await conn.ExecuteAsync(insertSql, finalDetailsToInsert, tran);
 
                     await conn.ExecuteAsync(@"
-                UPDATE PAY2_RUN SET STATUS = 3, DEED_ID_SAL = @deedId WHERE RUN_ID = @runId;
-                UPDATE PAY2_PERIOD SET STATUS = 4, DEED_N_S_PAY = @targetNs WHERE PER_ID = @perId;",
-                        new { runId, deedId = (int)targetNs, targetNs, perId }, tran);
+                        UPDATE PAY2_RUN SET STATUS = 3, DEED_ID_SAL = @deedId, DEED_MODE = @mode, DEED_GENERATOR_VERSION = 1 WHERE RUN_ID = @runId;
+                        UPDATE PAY2_PERIOD SET STATUS = 4, DEED_N_S_PAY = @targetNs WHERE PER_ID = @perId;",
+                        new { runId, deedId = (int)targetNs, targetNs, perId, mode = effectiveMode }, tran);
                 });
 
                 return Ok();
             }
+            catch (Microsoft.Data.SqlClient.SqlException ex)
+            {
+                return BadRequest(ex.Message);
+            }
             catch (InvalidOperationException ex) { return BadRequest(ex.Message); }
             catch (Exception ex) { return StatusCode(500, "خطا در صدور سند: " + ex.Message); }
+        }
+
+        [HttpPut("{runId:int}/unfinalize-deed")]
+        public async Task<IActionResult> UnfinalizeDeed(int runId)
+        {
+            var userIdString = User.FindFirstValue(ClaimTypes.NameIdentifier);
+            if (!int.TryParse(userIdString, out int userCod)) return Unauthorized();
+
+            try
+            {
+                await _db.ExecuteInTransactionAsync(async (conn, tran) =>
+                {
+                    var runInfo = await conn.QuerySingleOrDefaultAsync<RunDeedInfoRow>(
+                        @"SELECT R.STATUS, R.PER_ID, R.DEED_ID_SAL, R.DEED_MODE, W.DEFAULT_DEED_MODE 
+                          FROM PAY2_RUN R 
+                          INNER JOIN PAY2_PERIOD P ON R.PER_ID = P.PER_ID 
+                          INNER JOIN PAY2_WORKSHOP W ON P.WS_ID = W.WS_ID
+                          WHERE R.RUN_ID = @runId", new { runId }, tran);
+
+                    if (runInfo == null)
+                        throw new InvalidOperationException("محاسبه‌ای با این شناسه یافت نشد.");
+
+                    byte status = runInfo.STATUS;
+                    if (status != 3)
+                        throw new InvalidOperationException("این عملیات فقط برای اجراهایی که سند صادر کرده‌اند مجاز است.");
+
+                    var periodInfo = await conn.QuerySingleOrDefaultAsync<dynamic>(
+                        "SELECT DEED_N_S_PAY FROM PAY2_PERIOD WHERE PER_ID = @perId", new { perId = runInfo.PER_ID }, tran);
+
+                    double? deedNs = (double?)periodInfo.DEED_N_S_PAY;
+
+                    if (deedNs.HasValue && deedNs.Value > 0)
+                    {
+                        var okfStatus = await conn.QuerySingleOrDefaultAsync<byte?>(
+                            "SELECT OKF FROM DEED_HED WITH (UPDLOCK) WHERE N_S = @N_S",
+                            new { N_S = deedNs.Value }, tran);
+
+                        if (okfStatus.HasValue && okfStatus.Value != 1)
+                            throw new InvalidOperationException("این سند در سیستم حسابداری بررسی و قطعی شده است. امکان لغو صدور سند وجود ندارد.");
+
+                        await conn.ExecuteAsync("DELETE FROM DEED_DTL WHERE N_S = @N_S", new { N_S = deedNs.Value }, tran);
+                        await conn.ExecuteAsync("DELETE FROM DEED_HED WHERE N_S = @N_S", new { N_S = deedNs.Value }, tran);
+                    }
+
+                    int perId = runInfo.PER_ID;
+
+                    await conn.ExecuteAsync(@"
+                        UPDATE PAY2_RUN
+                        SET STATUS = 2, DEED_ID_SAL = NULL,
+                            NOTES = SUBSTRING(ISNULL(NOTES,'') + N' | DeedUnfinalized by ' + CAST(@userCod AS NVARCHAR), 1, 300)
+                        WHERE RUN_ID = @runId;
+
+                        UPDATE PAY2_PERIOD
+                        SET STATUS = 3, DEED_N_S_PAY = NULL
+                        WHERE PER_ID = @perId;",
+                        new { runId, perId, userCod }, tran);
+                });
+
+                return Ok();
+            }
+            catch (Microsoft.Data.SqlClient.SqlException ex)
+            {
+                return BadRequest(ex.Message);
+            }
+            catch (InvalidOperationException ex) { return BadRequest(ex.Message); }
+            catch (Exception ex) { return StatusCode(500, "خطا در لغو صدور سند: " + ex.Message); }
         }
     }
 }

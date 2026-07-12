@@ -361,12 +361,20 @@
                     </div>
                 </div>
 
-                                <div class="form-field">
+                <div class="form-field">
                     <label>محاسبه حق شیفت</label>
                     <select class="pay2-input" @bind="CurrentWorkshop.SHIFT_MODE">
                         <option value="">سیستم (پیش‌فرض)</option>
                         <option value="PCT">درصدی</option>
                         <option value="FIXED">مبلغ ثابت</option>
+                    </select>
+                </div>
+
+                <div class="form-field">
+                    <label style="color: var(--p2-primary);">روش صدور سند حقوق *</label>
+                    <select class="pay2-input" @bind="CurrentWorkshop.DEFAULT_DEED_MODE">
+                        <option value="1">سند کلی (تجمیعی) - روش فعلی</option>
+                        <option value="2">سند نیمه‌تفصیلی (به تفکیک اشخاص)</option>
                     </select>
                 </div>
 
@@ -549,6 +557,20 @@
                     }
                 </div>
 
+                <div class="form-field">
+                    <label>سایر کسورات <span class="p2-text-muted" style="font-size:11px;">(اختیاری)</span></label>
+                    <Pay2Select TItem="LookupDto<string>" TValue="string" SearchItems="SearchAccountsAsync" Items="Init_OTHER_DED_HES"
+                                Value="CurrentWorkshopAcc.OTHER_DED_HES"
+                                ValueChanged="@(v => { CurrentWorkshopAcc.OTHER_DED_HES = v; ValidateAccount(v, nameof(CurrentWorkshopAcc.OTHER_DED_HES), "سایر کسورات"); })"
+                                TextSelector="@(x => $"\u200E{x.Id}\u200E\u200F  -  {x.Name}")" ValueSelector="@(x => x.Id)"
+                                Placeholder="جستجو..." CssClass="@(HasError(nameof(CurrentWorkshopAcc.OTHER_DED_HES)) ? "error" : "")"
+                                Clearable="true" Editable="true" MaxVisibleItems="50" DebounceMilliseconds="400" ClearValueOnTextEdit="true" />
+                    @if (HasError(nameof(CurrentWorkshopAcc.OTHER_DED_HES)))
+                    {
+                        <span class="field-error">@GetError(nameof(CurrentWorkshopAcc.OTHER_DED_HES))</span>
+                    }
+                </div>
+
             </div>
 
             <div style="display:flex; justify-content:space-between; margin-top:28px; flex-wrap:wrap; width: 100%;">
@@ -612,6 +634,7 @@
     List<LookupDto<string>> Init_INS_PAYABLE = new();
     List<LookupDto<string>> Init_TAX_PAYABLE = new();
     List<LookupDto<string>> Init_BANK_PAY_HES = new();
+    List<LookupDto<string>> Init_OTHER_DED_HES = new();
 
     CancellationTokenSource? _selectWorkshopCts;
     long _selectWorkshopVersion = 0;
@@ -755,7 +778,8 @@
                 LoadAccountNameAsync(CurrentWorkshopAcc.INS_EXP, Init_INS_EXP),
                 LoadAccountNameAsync(CurrentWorkshopAcc.INS_PAYABLE, Init_INS_PAYABLE),
                 LoadAccountNameAsync(CurrentWorkshopAcc.TAX_PAYABLE, Init_TAX_PAYABLE),
-                LoadAccountNameAsync(CurrentWorkshopAcc.BANK_PAY_HES, Init_BANK_PAY_HES)
+                LoadAccountNameAsync(CurrentWorkshopAcc.BANK_PAY_HES, Init_BANK_PAY_HES),
+                LoadAccountNameAsync(CurrentWorkshopAcc.OTHER_DED_HES, Init_OTHER_DED_HES)
             };
 
             await Task.WhenAll(tasks);
@@ -805,6 +829,7 @@
         Init_INS_PAYABLE.Clear();
         Init_TAX_PAYABLE.Clear();
         Init_BANK_PAY_HES.Clear();
+        Init_OTHER_DED_HES.Clear();
     }
 
     async Task SaveWorkshopAsync()
@@ -898,7 +923,8 @@
 
         var parts = cleanedValue.Split('-', StringSplitOptions.RemoveEmptyEntries);
 
-        var valid = parts.Length >= 2
+        // 🚀 اصلاح شد: بررسی حداقل 3 بخش (کل-معین-تفصیلی) الزامی است
+        var valid = parts.Length >= 3
                     && parts.All(part => part.All(char.IsDigit))
                     && !cleanedValue.StartsWith("-")
                     && !cleanedValue.EndsWith("-")
@@ -906,7 +932,7 @@
 
         if (!valid)
         {
-            _fieldErrors[fieldName] = $"فرمت حساب {fieldLabel} نادرست است. حداقل دو عدد با خط‌فاصله وارد کنید. مثال: 112-1";
+            _fieldErrors[fieldName] = $"فرمت حساب {fieldLabel} نادرست است. در این سیستم حداقل ۳ سطح (کل-معین-تفصیلی) با خط‌فاصله الزامی است. مثال: 112-1-5";
         }
         else
         {
@@ -1013,6 +1039,7 @@
         CurrentWorkshop.POSTAL_CODE = OnlyDigits(CurrentWorkshop.POSTAL_CODE, 20);
         CurrentWorkshop.EMPLOYER_NAME = CleanText(CurrentWorkshop.EMPLOYER_NAME, 100);
         CurrentWorkshop.INS_MODE = NormalizeInsMode(CurrentWorkshop.INS_MODE);
+        CurrentWorkshop.DEFAULT_DEED_MODE = (byte)(CurrentWorkshop.DEFAULT_DEED_MODE == 2 ? 2 : 1);
 
         CurrentWorkshop.PROVINCE = CleanText(CurrentWorkshop.PROVINCE, 50);
         CurrentWorkshop.CITY = CleanText(CurrentWorkshop.CITY, 50);
@@ -1037,6 +1064,8 @@
         CurrentWorkshopAcc.INS_PAYABLE = CleanAccount(CurrentWorkshopAcc.INS_PAYABLE, 20);
         CurrentWorkshopAcc.TAX_PAYABLE = CleanAccount(CurrentWorkshopAcc.TAX_PAYABLE, 20);
         CurrentWorkshopAcc.BANK_PAY_HES = CleanAccount(CurrentWorkshopAcc.BANK_PAY_HES, 20);
+        CurrentWorkshopAcc.OTHER_DED_HES = CleanAccount(CurrentWorkshopAcc.OTHER_DED_HES, 20);
+
     }
 
     static string? OnlyDigits(string? value, int maxLength)
