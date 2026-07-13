@@ -1,6 +1,8 @@
 const installTimeoutMs = 30000;
 const activationTimeoutMs = 5000;
 const operationTimeoutMs = 10000;
+const recoveryTimeoutMs = 1000;
+const cleanupTimeoutMs = 2000;
 
 function withTimeout(operation, timeoutMs, message) {
     return new Promise((resolve, reject) => {
@@ -120,15 +122,27 @@ export async function refresh() {
     }
 
     if (!registration && 'serviceWorker' in navigator) {
-        registration = await navigator.serviceWorker.getRegistration().catch(() => null);
+        registration = await withTimeout(
+            navigator.serviceWorker.getRegistration(),
+            recoveryTimeoutMs,
+            'Service worker registration recovery timed out.')
+            .catch(error => {
+                console.warn('Service worker registration recovery failed. Continuing cleanup.', error);
+                return null;
+            });
     }
 
     try {
-        await clearApplicationCaches();
+        const cleanupOperations = [clearApplicationCaches()];
 
         if (registration) {
-            await registration.unregister();
+            cleanupOperations.push(registration.unregister());
         }
+
+        await withTimeout(
+            Promise.all(cleanupOperations),
+            cleanupTimeoutMs,
+            'Application cache cleanup timed out.');
     } catch (error) {
         console.warn('Application cache cleanup failed. Reloading from the network.', error);
     }
