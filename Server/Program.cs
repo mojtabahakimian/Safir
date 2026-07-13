@@ -179,6 +179,25 @@ else
 
 app.UseHttpsRedirection();
 
+app.Use(async (context, next) =>
+{
+    var path = context.Request.Path.Value ?? string.Empty;
+    var acceptsHtml = context.Request.Headers.Accept
+        .ToString()
+        .Contains("text/html", StringComparison.OrdinalIgnoreCase);
+    var isUpdateMetadata = path.Equals("/service-worker.js", StringComparison.OrdinalIgnoreCase)
+        || path.Equals("/service-worker-assets.js", StringComparison.OrdinalIgnoreCase);
+
+    if (isUpdateMetadata || (HttpMethods.IsGet(context.Request.Method) && acceptsHtml))
+    {
+        context.Response.Headers.CacheControl = "no-cache, no-store, must-revalidate";
+        context.Response.Headers.Pragma = "no-cache";
+        context.Response.Headers.Expires = "0";
+    }
+
+    await next();
+});
+
 app.UseBlazorFrameworkFiles();
 app.UseStaticFiles();
 

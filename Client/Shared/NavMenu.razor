@@ -257,9 +257,16 @@
         {
             try
             {
-                await JSRuntime.InvokeAsync<bool>("appCleanup.softRefresh");
-                Snackbar.Add("کش سیستم پاک شد. صفحه در حال بارگذاری مجدد است...", MudBlazor.Severity.Success);
-                NavigationManager.NavigateTo("/", forceLoad: true);
+                Snackbar.Add("در حال بررسی و دریافت آخرین نسخه...", MudBlazor.Severity.Info);
+                var moduleVersion = System.Reflection.Assembly
+                    .GetExecutingAssembly()
+                    .ManifestModule
+                    .ModuleVersionId
+                    .ToString("N");
+                var updateModule = await JSRuntime.InvokeAsync<IJSObjectReference>(
+                    "import",
+                    $"./js/app-update.js?v={moduleVersion}");
+                await updateModule.InvokeVoidAsync("refresh");
             }
             catch (Exception ex)
             {
