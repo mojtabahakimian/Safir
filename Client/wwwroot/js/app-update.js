@@ -1,5 +1,22 @@
 const installTimeoutMs = 30000;
 const activationTimeoutMs = 5000;
+const operationTimeoutMs = 10000;
+
+function withTimeout(operation, timeoutMs, message) {
+    return new Promise((resolve, reject) => {
+        const timeout = window.setTimeout(() => reject(new Error(message)), timeoutMs);
+
+        Promise.resolve(operation).then(
+            value => {
+                window.clearTimeout(timeout);
+                resolve(value);
+            },
+            error => {
+                window.clearTimeout(timeout);
+                reject(error);
+            });
+    });
+}
 
 function waitForWorkerState(worker, acceptedStates, timeoutMs) {
     if (acceptedStates.includes(worker.state)) {
@@ -68,11 +85,17 @@ export async function refresh() {
 
     if ('serviceWorker' in navigator) {
         try {
-            registration = await navigator.serviceWorker.register('service-worker.js', {
-                updateViaCache: 'none'
-            });
+            registration = await withTimeout(
+                navigator.serviceWorker.register('service-worker.js', {
+                    updateViaCache: 'none'
+                }),
+                operationTimeoutMs,
+                'Service worker registration timed out.');
 
-            await registration.update();
+            await withTimeout(
+                registration.update(),
+                operationTimeoutMs,
+                'Service worker update check timed out.');
 
             const candidate = registration.waiting || registration.installing;
             if (candidate && !['installed', 'activated'].includes(candidate.state)) {
@@ -96,10 +119,18 @@ export async function refresh() {
         }
     }
 
-    await clearApplicationCaches();
+    if (!registration && 'serviceWorker' in navigator) {
+        registration = await navigator.serviceWorker.getRegistration().catch(() => null);
+    }
 
-    if (registration) {
-        await registration.unregister();
+    try {
+        await clearApplicationCaches();
+
+        if (registration) {
+            await registration.unregister();
+        }
+    } catch (error) {
+        console.warn('Application cache cleanup failed. Reloading from the network.', error);
     }
 
     reloadFromNetwork();
