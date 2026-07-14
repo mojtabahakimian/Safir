@@ -1,0 +1,170 @@
+{
+"_hierarchy":"TOTA_HES(کل)->DETA_HES(معین)->TDETA_HES(تفصیلی۱)->TDETA_HES2->TDETA_HES3->TDETA_HES4 | DEED_HED(هدر سند)->DEED_DTL(ردیف سند)",
+"TOTA_HES":{
+"cap":"سرفصل حساب کل",
+"pk":["NUMBER"],
+"cols":{
+"ID":"BIGINT identity - شناسه داخلی",
+"NUMBER":"INT PK - شماره حساب کل، نمونه:111",
+"NAME":"NVARCHAR(50) unique - نام حساب، نمونه:موجودی نقد",
+"NO_HES":"FLOAT FK->TCOD_HESKIND.CODE - نوع حساب",
+"M_D":"FLOAT FK->TCOD_HESVAZ.CODE - وضعیت بدهکار/بستانکار پیش‌فرض",
+"GROUP":"FLOAT FK->TCOD_HESGROUP.CODE - گروه حساب",
+"CRT":"DATETIME - تاریخ ایجاد",
+"UID":"INT - کاربر ایجادکننده"
+},
+"ref_by":"DETA_HES.N_KOL"
+},
+"DETA_HES":{
+"cap":"سرفصل حساب معین",
+"pk":["N_KOL","NUMBER"],
+"note":"PK منطقی نانکلاسترد؛ ID فقط identity داخلی است نه PK",
+"cols":{
+"N_KOL":"INT PK FK->TOTA_HES.NUMBER - کد حساب کل",
+"NUMBER":"INT PK - شماره حساب معین",
+"NAME":"NVARCHAR(100) unique(N_KOL) - نام حساب معین",
+"TOZIH":"NVARCHAR(40) - توضیحات",
+"BED_BES":"FLOAT - مانده بدهکار/بستانکار",
+"ADDRESS":"NVARCHAR(100) - آدرس (برای اشخاص)",
+"TEL":"NVARCHAR(50) - تلفن",
+"CODE_E":"NVARCHAR(20) indexed - کد اقتصادی/شناسه ملی",
+"USERCO":"INT - کد کاربر",
+"USER_NAME":"NVARCHAR(50) - نام کاربر",
+"CRT":"DATETIME - تاریخ ایجاد",
+"UID":"INT - کاربر ایجادکننده",
+"ID":"BIGINT identity - شناسه داخلی، PK نیست"
+},
+"ref_by":"TDETA_HES.(N_KOL,NUMBER)"
+},
+"TDETA_HES":{
+"cap":"سرفصل تفصیلی سطح۱ (اشخاص/مشتریان/تامین‌کنندگان)",
+"pk":["N_KOL","NUMBER","TNUMBER"],
+"unique":["N_KOL","NUMBER","NAME"],
+"cols":{
+"N_KOL":"INT PK - کد کل",
+"NUMBER":"INT PK FK->DETA_HES.(N_KOL,NUMBER) - کد معین",
+"TNUMBER":"INT PK - شماره تفصیلی۱",
+"NAME":"NVARCHAR(100) - نام (شخص/شرکت)",
+"TOZIH":"NVARCHAR(255) - توضیحات",
+"BED_BES":"FLOAT - مانده",
+"ADDRESS":"NVARCHAR(100) - آدرس",
+"TEL":"NVARCHAR(50) - تلفن",
+"CODE_E":"NVARCHAR(20) default'0' - کد اختصاصی",
+"IDD":"INT identity - شناسه داخلی",
+"ECODE":"NVARCHAR(20) - کد اقتصادی رسمی",
+"PCODE":"NVARCHAR(10) - کد پستی",
+"IYALAT":"NVARCHAR(20) - استان(متنی)",
+"CITY":"NVARCHAR(20) - شهرستان(متنی)",
+"MCODEM":"NVARCHAR(20) - کد ملی",
+"CUST_COD":"INT - نوع مشتری؛ ارتباط مفهومی با CUSTKIND.CUST_COD اما در DDL هیچ FK رسمی برایش تعریف نشده",
+"MOBILE":"NVARCHAR(55) - موبایل جهت پیامک",
+"ROUTE_NAME":"NVARCHAR(50) - مسیر ویزیت",
+"Longitude":"FLOAT - طول جغرافیایی",
+"Latitude":"FLOAT - عرض جغرافیایی",
+"OSTANID":"INT - کد استان(استاندارد)",
+"SHAHRID":"INT - کد شهرستان(استاندارد)",
+"USERCO":"INT - کد کاربر",
+"USER_NAME":"NVARCHAR(50) - نام کاربر",
+"CRT":"DATETIME default getdate() - تاریخ ایجاد",
+"UID":"INT - کاربر ایجادکننده",
+"tob":"INT default2 - شخصیت حقیقی/حقوقی"
+},
+"fk_to_deed":"DEED_DTL.(HES_K,HES_M,HES_T)->این جدول رسمی FK دارد",
+"ref_by":"TDETA_HES2.(N_KOL,NUMBER,TNUMBER); DEED_DTL.(HES_K,HES_M,HES_T)"
+},
+"TDETA_HES2":{
+"cap":"سرفصل تفصیلی سطح۲ - ساختار مشابه TDETA_HES + TNUMBER2",
+"pk":["N_KOL","NUMBER","TNUMBER","TNUMBER2"],
+"cols_extra_vs_TDETA_HES":"TNUMBER2:INT PK - شماره تفصیلی۲؛ بقیه فیلدها عیناً مثل TDETA_HES (TEL همچنان NVARCHAR(50)، CODE_E بدون default اینجا) شامل:NAME,TOZIH,BED_BES,ADDRESS,TEL,CODE_E,IDD,ECODE,PCODE,IYALAT,CITY,MCODEM,CUST_COD,MOBILE,ROUTE_NAME,Longitude,Latitude,OSTANID,SHAHRID,USERCO,USER_NAME,CRT,UID,tob",
+"fk":"(N_KOL,NUMBER,TNUMBER)->TDETA_HES",
+"note":"DEED_DTL.HES_T2 هیچ FK رسمی به این جدول ندارد؛ CODE_E اینجا بدون default('0') است(برخلاف TDETA_HES)",
+"ref_by":"TDETA_HES3.(N_KOL,NUMBER,TNUMBER,TNUMBER2)"
+},
+"TDETA_HES3":{
+"cap":"سرفصل تفصیلی سطح۳ - ساختار مشابه + TNUMBER3",
+"pk":["N_KOL","NUMBER","TNUMBER","TNUMBER2","TNUMBER3"],
+"cols_extra_vs_TDETA_HES2":"TNUMBER3:INT PK - شماره تفصیلی۳؛ بقیه فیلدها مثل TDETA_HES2 با ۲ تفاوت: TEL اینجا NVARCHAR(20) است(نه 50)، و CODE_E بدون default",
+"fk":"(N_KOL,NUMBER,TNUMBER,TNUMBER2)->TDETA_HES2",
+"note":"DEED_DTL.HES_T3 هیچ FK رسمی ندارد",
+"ref_by":"TDETA_HES4.(...,TNUMBER3)"
+},
+"TDETA_HES4":{
+"cap":"سرفصل تفصیلی سطح۴ (عمیق‌ترین سطح) - ساختار مشابه + TNUMBER4",
+"pk":["N_KOL","NUMBER","TNUMBER","TNUMBER2","TNUMBER3","TNUMBER4"],
+"cols_extra_vs_TDETA_HES3":"TNUMBER4:INT PK - شماره تفصیلی۴؛ بقیه فیلدها عیناً مثل TDETA_HES3 (TEL همچنان NVARCHAR(20)، CODE_E بدون default)",
+"fk":"(...,TNUMBER3)->TDETA_HES3",
+"note":"DEED_DTL.HES_T4 هیچ FK رسمی ندارد",
+"ref_by":"هیچ"
+},
+"DEED_HED":{
+"cap":"هدر سند حسابداری",
+"pk":["N_S"],
+"note":"PK نانکلاسترد؛ base فقط identity جداگانه است",
+"cols":{
+"N_S":"FLOAT PK - شماره سند",
+"DATE_S":"BIGINT NOT NULL check>=10101 - تاریخ شمسی عددی مثلا 14040507",
+"SHARH_S":"NVARCHAR(255) - شرح کلی سند",
+"NO_S":"FLOAT NOT NULL - نوع سند، مقادیر:{0:عمومی/نامشخص,1:فاکتور خرید,2:فاکتور فروش,3:برگشت خرید,4:برگشت فروش,5:خزانه‌داری,6:وصول چک دریافتی,7:وصول چک پرداختی,8:حواله خروج مواد از انبار,9:ورود کالا به انبار,10:حواله انتقالی بین انبارها,11:حقوق و دستمزد,12:حواله خروج سایر مواد,17:انبارگردانی}",
+"ANBAR":"FLOAT DEPRECATED - کد انبار، منسوخ‌شده بدون کاربرد فعلی",
+"N_FACTOR":"FLOAT - شماره فاکتور مرتبط",
+"GHATEI":"BIT NOT NULL default0 - قطعیت سند(غیرقابل ویرایش/حذف)؛ مستقل از OKF؛ عملا همیشه تقریبا صفر",
+"USER_NAME":"NVARCHAR(40) - کاربر ثبت‌کننده",
+"base":"INT identity - شماره پایه ثابت برای اداره مالیات؛ با ویرایش سند تغییر نمی‌کند",
+"SGN1":"BIT default0 - امضای تنظیم‌کننده",
+"SGN2":"BIT default0 - امضای مدیر مالی",
+"SGN3":"BIT default0 - امضای مدیر عامل",
+"SGN4":"BIT default0 - امضای سطح۴؛ در عمل تقریبا هرگز ست نمی‌شود",
+"OKF":"BIT - تایید عملیاتی/جاری سند(اکثر اسناد=1)؛ متفاوت از GHATEI",
+"sgn1usid":"INT - شناسه امضاکننده سطح۱",
+"sgn2usid":"INT - شناسه امضاکننده سطح۲",
+"sgn3usid":"INT - شناسه امضاکننده سطح۳",
+"CRT":"DATETIME - تاریخ ایجاد رکورد",
+"UID":"INT - کاربر ایجادکننده",
+"BAYEG":"INT - شماره بایگانی فیزیکی سند"
+},
+"ref_by":"DEED_DTL.N_S"
+},
+"DEED_DTL":{
+"cap":"ردیف‌های سند حسابداری (آرتیکل‌های بدهکار/بستانکار)",
+"pk":["id"],
+"note":"PK واقعی id(identity,clustered) است؛ RADIF غیرقابل‌اتکا",
+"cols":{
+"N_S":"FLOAT FK->DEED_HED.N_S NOT NULL - شماره سند",
+"RADIF":"FLOAT nullable - ردیف در سند؛ ~94% NULL؛ گاهی مقدار ثابت غیرواقعی مثل 13541354 برای چندین ردیف مختلف(placeholder)؛ برای ترتیب واقعی از id استفاده شود",
+"HES_K":"INT NOT NULL - کد حساب کل (بخش۱ HES)",
+"HES_M":"INT NOT NULL - کد حساب معین (بخش۲ HES)",
+"HES_T":"INT NOT NULL FK-composite(HES_K,HES_M,HES_T)->TDETA_HES(N_KOL,NUMBER,TNUMBER) - کد تفصیلی۱ (بخش۳ HES)",
+"SHARH":"NVARCHAR(255) - شرح ردیف",
+"BED":"FLOAT NOT NULL default0 - مبلغ بدهکار",
+"BES":"FLOAT NOT NULL default0 - مبلغ بستانکار",
+"N_SERI":"FLOAT nullable - شماره سریال چک؛ فقط ~2.9% رکوردها پر؛ صرفا لینک به چک، جزئیات کامل در PAY_GETD(دریافتی)/PAY_GETP(پرداختی)",
+"BANK":"INT FK->TCOD_BANKS.CODE - کد بانک چک",
+"NUMBER":"FLOAT - شماره فاکتور؛ همراه TAG به HEAD_LST لینک می‌شود",
+"TAG":"FLOAT FK-composite(NUMBER,TAG)->HEAD_LST(NUMBER,TAG) - نوع فاکتور",
+"HES":"NVARCHAR(40) NOT NULL - کد حساب ترکیبی نمایشی، فرمت:N_KOL-NUMBER-TNUMBER[-TNUMBER2-TNUMBER3-TNUMBER4]، جداکننده '-'، سطوح خالی حذف می‌شوند نه صفر؛ نمونه:115-1-3-4-225-7",
+"id":"BIGINT identity PK - شناسه یکتای ردیف، ترتیب واقعی درج از این ستون استخراج شود",
+"ARZD":"FLOAT default1 - نرخ ارز",
+"MHAZ_NO":"INT - کد مرکز هزینه؛ جدول مرجع رسمی شناسایی نشد؛ مقادیر دیده‌شده:0,1",
+"HES_T2":"INT - کد تفصیلی۲؛ بدون FK رسمی به TDETA_HES2",
+"HES_T3":"INT - کد تفصیلی۳؛ بدون FK رسمی",
+"HES_T4":"INT - کد تفصیلی۴؛ بدون FK رسمی",
+"CRT":"DATETIME default getdate() - تاریخ ایجاد",
+"UID":"INT - کاربر ایجادکننده"
+},
+"checks":"BED NOT NULL, BES NOT NULL"
+},
+"cross_notes":[
+"زنجیره حساب: TOTA_HES->DETA_HES->TDETA_HES->TDETA_HES2->TDETA_HES3->TDETA_HES4، هر سطح FK به سطح بالادست",
+"DEED_DTL.(HES_K,HES_M,HES_T) فقط تا TDETA_HES رسما FK دارد؛ HES_T2/T3/T4 بدون FK",
+"DEED_DTL.(NUMBER,TAG)->HEAD_LST.(NUMBER,TAG): NUMBER=شماره فاکتور، TAG=نوع فاکتور",
+"DEED_DTL.(N_SERI,BANK) فقط شناسه/لینک چک است؛ جزئیات کامل در PAY_GETD/PAY_GETP",
+"GHATEI=قطعیت نهایی غیرقابل‌برگشت(نادر) vs OKF=تایید عملیاتی جاری(اکثر اسناد)؛ مستقل از هم",
+"DEED_HED.base=identity ثابت برای رهگیری مالیاتی، با ویرایش سند تغییر نمی‌کند",
+"DEED_DTL.RADIF غیرقابل‌اتکا و اغلب NULL؛ id منبع درست ترتیب است",
+"DEED_HED.ANBAR منسوخ شده(deprecated)",
+"نگاشت مقادیر NO_S از تحلیل تجربی یک نمونه داده واقعی استخراج شده؛ ممکن است کدهای دیگری هم در محیط‌های دیگر وجود داشته باشد که در این نمونه دیده نشده",
+"CUST_COD در TDETA_HES/2/3/4 صرفاً ارتباط مفهومی با CUSTKIND دارد نه FK رسمی دیتابیسی؛ همچنین هیچ FK رسمی ای برای HES_T2/HES_T3/HES_T4 در DEED_DTL تعریف نشده"
+]
+}
+
+نمونه کد حساب شخص : "115-1-25-3-4-6"
