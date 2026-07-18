@@ -814,5 +814,155 @@ VALUES (@N_S, @RADIF, @HES_K, @HES_M, @HES_T, @HES_T2, @HES_T3, @HES_T4, @HES, @
                 return StatusCode(500, ex.Message);
             }
         }
+
+        // ===================================================================
+        // تولید دیسکت بیمه تامین اجتماعی (فرمت DBF)
+        // ===================================================================
+        [HttpGet("{runId:int}/insurance-diskette")]
+        public async Task<IActionResult> GetInsuranceDiskette([FromServices] Safir.Server.Services.Pay2DisketteService disketteService, int runId)
+        {
+            try
+            {
+                var result = await disketteService.GenerateInsuranceDisketteAsync(runId);
+
+                if (result == null)
+                    return NotFound("اطلاعات محاسبه مورد نظر یافت نشد.");
+
+                return File(result.Value.ZipBytes, "application/zip", result.Value.FileName);
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, "خطا در تولید فایل دیسکت: " + ex.Message);
+            }
+        }
+
+        [HttpGet("{runId:int}/insurance-diskette-preview")]
+        public async Task<ActionResult<DiskettePreviewDto>> GetInsuranceDiskettePreview([FromServices] Safir.Server.Services.Pay2DisketteService disketteService, int runId)
+        {
+            try
+            {
+                var result = await disketteService.GetInsuranceDiskettePreviewAsync(runId);
+                if (result == null)
+                    return NotFound("اطلاعات محاسبه مورد نظر یافت نشد.");
+
+                return Ok(result);
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, "خطا در بارگذاری پیش‌نمایش دیسکت: " + ex.Message);
+            }
+        }
+
+        // ===================================================================
+        // چاپ لیست مالیات حقوق (برای یک ماه یا تجمیعی)
+        // ===================================================================
+        [HttpGet("{runId:int}/tax-report")]
+        public async Task<IActionResult> GetTaxReportPdf(int runId, [FromQuery] int wsId = 0)
+        {
+            try
+            {
+                var reportDto = new Safir.Shared.Models.Salary.Reports.TaxReportDto();
+                List<int> targetRunIds = new List<int>();
+
+                if (runId > 0)
+                {
+                    targetRunIds.Add(runId);
+                }
+                else if (wsId > 0)
+                {
+                    var runsSql = @"
+                        SELECT R.RUN_ID 
+                        FROM PAY2_RUN R WITH (NOLOCK)
+                        INNER JOIN PAY2_PERIOD P WITH (NOLOCK) ON R.PER_ID = P.PER_ID
+                        WHERE P.WS_ID = @wsId AND R.IS_LATEST = 1 AND R.STATUS >= 2
+                        ORDER BY P.PERIOD_DATE ASC";
+
+                    targetRunIds = (await _db.DoGetDataSQLAsync<int>(runsSql, new { wsId })).ToList();
+
+                    if (!targetRunIds.Any())
+                        return NotFound("هیچ ماهِ محاسبه و تایید شده‌ای برای این کارگاه یافت نشد.");
+                }
+                else
+                {
+                    return BadRequest("پارامترهای ورودی نامعتبر است.");
+                }
+
+                int firstRunId = targetRunIds.First();
+                const string headSql = @"
+                    SELECT 
+                        P.PERIOD_DATE, W.WS_CODE, W.WS_NAME, W.EMPLOYER_NAME, W.TAX_CODE
+                    FROM PAY2_RUN R WITH (NOLOCK)
+                    INNER JOIN PAY2_PERIOD P WITH (NOLOCK) ON R.PER_ID = P.PER_ID
+                    INNER JOIN PAY2_WORKSHOP W WITH (NOLOCK) ON P.WS_ID = W.WS_ID
+                    WHERE R.RUN_ID = @firstRunId";
+
+                var head = await _db.DoGetDataSQLAsyncSingle<dynamic>(headSql, new { firstRunId });
+                if (head == null) return NotFound("اطلاعات کارگاه/دوره یافت نشد.");
+
+                long periodDate = (long)head.PERIOD_DATE;
+                string year = (periodDate / 10000).ToString();
+                int month = (int)((periodDate / 100) % 100);
+                string[] monthNames = { "فروردین", "اردیبهشت", "خرداد", "تیر", "مرداد", "شهریور", "مهر", "آبان", "آذر", "دی", "بهمن", "اسفند" };
+
+                string monthName = runId > 0
+                    ? ((month >= 1 && month <= 12) ? monthNames[month - 1] : month.ToString())
+                    : "تجمیعی تمام ماه‌ها";
+
+                reportDto.WorkshopCode = head.WS_CODE?.ToString() ?? "";
+                reportDto.WorkshopName = head.WS_NAME?.ToString() ?? "";
+                reportDto.EmployerName = head.EMPLOYER_NAME?.ToString() ?? "";
+                reportDto.TaxCode = head.TAX_CODE?.ToString() ?? "";
+                reportDto.PeriodYear = year;
+                reportDto.PeriodMonthName = monthName;
+
+                int rowIndex = 1;
+
+                foreach (var currentRunId in targetRunIds)
+                {
+                    string monthLabel = "";
+                    if (runId == 0)
+                    {
+                        var pDate = await _db.DoGetDataSQLAsyncSingle<long>("SELECT P.PERIOD_DATE FROM PAY2_RUN R INNER JOIN PAY2_PERIOD P ON R.PER_ID = P.PER_ID WHERE R.RUN_ID = @currentRunId", new { currentRunId });
+                        int m = (int)((pDate / 100) % 100);
+                        monthLabel = $" [{(m >= 1 && m <= 12 ? monthNames[m - 1] : m.ToString())}]";
+                    }
+
+                    const string linesSql = @"
+                        SELECT 
+                            RL.EMP_ID, E.LAST_NAME + N' ' + E.FIRST_NAME AS FULL_NAME,
+                            E.NATIONAL_CODE, J.JOB_NAME,
+                            RL.WORK_DAYS, RL.GROSS_PAY, RL.TAX_BASE, RL.TAX_AMOUNT
+                        FROM PAY2_RUN_LINE RL WITH (NOLOCK)
+                        INNER JOIN PAY2_EMPLOYEE E WITH (NOLOCK) ON RL.EMP_ID = E.EMP_ID
+                        LEFT JOIN PAY2_JOB J WITH (NOLOCK) ON E.JOB_ID = J.JOB_ID
+                        WHERE RL.RUN_ID = @currentRunId AND RL.GROSS_PAY > 0
+                        ORDER BY E.LAST_NAME, E.FIRST_NAME";
+
+                    var lines = await _db.DoGetDataSQLAsync<dynamic>(linesSql, new { currentRunId });
+
+                    foreach (var line in lines)
+                    {
+                        reportDto.Rows.Add(new Safir.Shared.Models.Salary.Reports.TaxEmployeeRowDto
+                        {
+                            RowIndex = rowIndex++,
+                            FullName = (line.FULL_NAME?.ToString() ?? "") + monthLabel,
+                            NationalCode = line.NATIONAL_CODE?.ToString() ?? "",
+                            JobTitle = line.JOB_NAME?.ToString() ?? "",
+                            WorkDays = (decimal)line.WORK_DAYS,
+                            GrossPay = (long)line.GROSS_PAY,
+                            TaxBase = (long)line.TAX_BASE,
+                            TaxAmount = (long)line.TAX_AMOUNT
+                        });
+                    }
+                }
+
+                byte[] pdfBytes = new Safir.Server.Reports.TaxListDocument(reportDto).GeneratePdf();
+                return File(pdfBytes, "application/pdf", $"TaxList_{reportDto.PeriodYear}_{reportDto.PeriodMonthName}.pdf");
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, ex.Message);
+            }
+        }
     }
 }

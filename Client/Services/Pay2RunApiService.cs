@@ -1,5 +1,7 @@
 ﻿using Safir.Shared.Models.Salary;
+using Safir.Shared.Models.Salary.Reports;
 using System.Net.Http.Json;
+using static Safir.Shared.Models.Salary.Reports.InsuranceReportDto;
 
 namespace Safir.Client.Services
 {
@@ -138,6 +140,43 @@ namespace Safir.Client.Services
                 var err = await res.Content.ReadAsStringAsync();
                 throw new Exception(string.IsNullOrWhiteSpace(err)
                     ? $"خطا در دریافت لیست بیمه (کد {(int)res.StatusCode})."
+                    : err);
+            }
+            return await res.Content.ReadAsByteArrayAsync();
+        }
+
+        // دریافت بایت‌های فایل ZIP دیسکت بیمه
+        public async Task<byte[]> GetInsuranceDisketteZipAsync(int runId)
+        {
+            var res = await _http.GetAsync($"api/pay2/run/{runId}/insurance-diskette");
+            if (!res.IsSuccessStatusCode)
+            {
+                var err = await res.Content.ReadAsStringAsync();
+                throw new Exception(string.IsNullOrWhiteSpace(err) ? "خطا در دریافت دیسکت بیمه." : err);
+            }
+            return await res.Content.ReadAsByteArrayAsync();
+        }
+
+        public async Task<DiskettePreviewDto> GetInsuranceDiskettePreviewAsync(int runId)
+        {
+            var res = await _http.GetAsync($"api/pay2/run/{runId}/insurance-diskette-preview");
+            if (!res.IsSuccessStatusCode)
+            {
+                var err = await res.Content.ReadAsStringAsync();
+                throw new Exception(string.IsNullOrWhiteSpace(err) ? "خطا در دریافت پیش‌نمایش دیسکت." : err);
+            }
+            return await res.Content.ReadFromJsonAsync<DiskettePreviewDto>() ?? new DiskettePreviewDto();
+        }
+
+        // دریافت بایت‌های PDF لیست مالیات حقوق
+        public async Task<byte[]> GetTaxReportPdfAsync(int runId, int wsId = 0)
+        {
+            var res = await _http.GetAsync($"api/pay2/run/{runId}/tax-report?wsId={wsId}");
+            if (!res.IsSuccessStatusCode)
+            {
+                var err = await res.Content.ReadAsStringAsync();
+                throw new Exception(string.IsNullOrWhiteSpace(err)
+                    ? $"خطا در دریافت لیست مالیات (کد {(int)res.StatusCode})."
                     : err);
             }
             return await res.Content.ReadAsByteArrayAsync();
