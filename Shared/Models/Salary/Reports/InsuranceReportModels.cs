@@ -92,4 +92,47 @@ namespace Safir.Shared.Models.Salary.Reports
         public long DSW_INC { get; set; }
         public string DSW_SPOUS { get; set; } = "0";
     }
+    // =================================================================
+    // کلاس‌های پیش‌نمایش دیسکت مالیات (WP و WH)
+    // =================================================================
+    public class TaxDiskettePreviewDto
+    {
+        public List<TaxDisketteWpDto> WpList { get; set; } = new();
+        public List<TaxDisketteWhDto> WhList { get; set; } = new();
+    }
+
+    public class TaxDisketteWpDto
+    {
+        public string NATIONAL_CODE { get; set; } = "";
+        public string NATIONALITY { get; set; } = "";
+        public string FIRST_NAME { get; set; } = "";
+        public string LAST_NAME { get; set; } = "";
+        public string FATHER_NAME { get; set; } = "";
+        public string ID_NUMBER { get; set; } = "";
+        public string BIRTH_PLACE { get; set; } = "";
+        public string BIRTH_DATE { get; set; } = "";
+        public string MARITAL { get; set; } = "";
+        public string INS_CODE { get; set; } = "";
+        public string JOB_NAME { get; set; } = "";
+        public string HIRE_DATE { get; set; } = "";
+        public string FIRE_DATE { get; set; } = "";
+        public string POSTAL_CODE { get; set; } = "";
+        public string MOBILE { get; set; } = "";
+    }
+
+    public class TaxDisketteWhDto
+    {
+        public string NATIONAL_CODE { get; set; } = "";
+        public string YEAR { get; set; } = "";
+        public string MONTH { get; set; } = "";
+        public decimal WORK_DAYS { get; set; }
+        public long BASE_SALARY { get; set; }
+        public long MOSTAMAR { get; set; }
+        public long GHEYRE_MOSTAMAR { get; set; }
+        public long INS_WORKER { get; set; }
+        public long TAX_AMOUNT { get; set; }
+        public long EYDI { get; set; }
+        public long SANAVAT { get; set; }
+        public long TAX_BASE { get; set; }
+    }
 }

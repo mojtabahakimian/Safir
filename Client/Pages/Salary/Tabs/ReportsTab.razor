@@ -197,27 +197,34 @@
                 </button>
             </div>
 
-            <!-- کارت گزارش مالیات حقوق (فعال شد) -->
+         <!-- کارت گزارش مالیات حقوق (دارایی) -->
             <div class="card-custom" style="background: var(--p2-bg-main); border: 1px solid var(--p2-border);">
                 <div style="display: flex; align-items: center; gap: 15px; margin-bottom: 15px;">
                     <div class="stat-icon-box" style="background: #fce7f3; color: #db2777;">
-                        <i class="bi bi-building"></i>
+                        <i class="bi bi-bank"></i>
                     </div>
                     <div>
-                        <h6 style="margin: 0; font-weight: bold;">مالیات حقوق (اظهارنامه سالانه)</h6>
-                        <span class="p2-text-muted" style="font-size: 11px;">خروجی Excel تجمیعی پرسنل در سال جاری</span>
+                        <h6 style="margin: 0; font-weight: bold;">مالیات حقوق (دارایی)</h6>
+                        <span class="p2-text-muted" style="font-size: 11px;">تولید اکسل تجمیعی سالانه و دیسکت استاندارد (WP/WH)</span>
                     </div>
                 </div>
-                <button class="btn-primary-pay2" style="background-color: #db2777; border-color: #db2777; width: 100%;" @onclick="GenerateTaxReportExcel" disabled="@IsProcessing">
-                    @if (IsProcessing)
-                    {
-                        <span class="p2-spinner"></span>
-                    }
-                    else
-                    {
-                        <i class="bi bi-download"></i> <span>دریافت فایل Excel</span>
-                    }
-                </button>
+                
+                <div style="display:flex; gap:10px; width:100%;">
+                    <button class="btn-primary-pay2" style="background-color: #db2777; border-color: #db2777; flex:1;" @onclick="GenerateTaxReportExcel" disabled="@IsProcessing">
+                        @if (IsProcessing)
+                        {
+                            <span class="p2-spinner"></span>
+                        }
+                        else
+                        {
+                            <i class="bi bi-file-earmark-excel"></i> <span>اکسل سالانه</span>
+                        }
+                    </button>
+                    
+                    <button class="btn-outline-pay2" style="color: #db2777; border-color: #db2777; padding: 0 16px;" @onclick="GenerateTaxDiskette" disabled="@IsProcessing" title="دریافت دیسکت متنی (فایل ZIP شامل WP و WH)">
+                        <i class="bi bi-download"></i> دیسکت TXT
+                    </button>
+                </div>
             </div>
 
         </div>
@@ -557,6 +564,47 @@
             await JS.InvokeVoidAsync("downloadFileFromBytes", $"Tax_Report_{targetYear}.xlsx", bytes);
             
             Snackbar.Add("فایل اکسل اظهارنامه مالیاتی با موفقیت تولید و دانلود شد.", MudBlazor.Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add(ex.Message, MudBlazor.Severity.Error);
+        }
+        finally
+        {
+            IsProcessing = false;
+        }
+    }
+
+    async Task GenerateTaxDiskette()
+    {
+        if (SelectedWsId <= 0 || SelectedPeriodDate <= 0) 
+        {
+            Snackbar.Add("لطفاً یک ماه مشخص را برای تولید دیسکت مالیات انتخاب کنید (حالت تجمیعی مجاز نیست).", MudBlazor.Severity.Warning);
+            return;
+        }
+
+        var period = Periods.FirstOrDefault(p => p.PERIOD_DATE == SelectedPeriodDate);
+        if (period == null) return;
+
+        IsProcessing = true;
+        try
+        {
+            var latestRun = await RunApi.GetLatestRunAsync(period.PER_ID);
+            if (latestRun == null)
+            {
+                Snackbar.Add("هیچ محاسبه حقوقی برای این ماه انجام نشده است.", MudBlazor.Severity.Warning);
+                return;
+            }
+
+            // فراخوانی API و دریافت فایل زیپ دیسکت مالیات
+            var bytes = await RunApi.GetTaxDisketteZipAsync(latestRun.RUN_ID);
+            
+            // دانلود فایل
+            long pDate = period.PERIOD_DATE;
+            string prefix = $"{pDate / 10000}{(pDate / 100) % 100:D2}";
+            await JS.InvokeVoidAsync("downloadFileFromBytes", $"Tax_Diskette_{prefix}.zip", bytes);
+            
+            Snackbar.Add("دیسکت مالیات (فایل‌های WP و WH) با موفقیت تولید و دانلود شد.", MudBlazor.Severity.Success);
         }
         catch (Exception ex)
         {

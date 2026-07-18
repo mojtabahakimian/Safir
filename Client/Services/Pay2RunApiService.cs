@@ -204,5 +204,28 @@ namespace Safir.Client.Services
             }
             return await res.Content.ReadAsByteArrayAsync();
         }
+
+        // دریافت بایت‌های فایل ZIP دیسکت مالیات (WP و WH)
+        public async Task<byte[]> GetTaxDisketteZipAsync(int runId)
+        {
+            var res = await _http.GetAsync($"api/pay2/run/{runId}/tax-diskette");
+            if (!res.IsSuccessStatusCode)
+            {
+                var err = await res.Content.ReadAsStringAsync();
+                throw new Exception(string.IsNullOrWhiteSpace(err) ? "خطا در دریافت دیسکت مالیات." : err);
+            }
+            return await res.Content.ReadAsByteArrayAsync();
+        }
+
+        public async Task<TaxDiskettePreviewDto> GetTaxDiskettePreviewAsync(int runId)
+        {
+            var res = await _http.GetAsync($"api/pay2/run/{runId}/tax-diskette-preview");
+            if (!res.IsSuccessStatusCode)
+            {
+                var err = await res.Content.ReadAsStringAsync();
+                throw new Exception(string.IsNullOrWhiteSpace(err) ? "خطا در دریافت پیش‌نمایش دیسکت مالیات." : err);
+            }
+            return await res.Content.ReadFromJsonAsync<TaxDiskettePreviewDto>() ?? new TaxDiskettePreviewDto();
+        }
     }
 }
