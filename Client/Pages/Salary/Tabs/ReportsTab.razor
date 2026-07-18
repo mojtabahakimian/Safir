@@ -6,6 +6,7 @@
 @inject ISnackbar Snackbar
 @inject MudBlazor.IDialogService DialogService
 @inject Safir.Client.Services.ConnectionManagerService ConnectionManager
+@inject Microsoft.JSInterop.IJSRuntime JS
 
 <div class="pay2-tab-container">
     <div class="card-custom p2-fade-content">
@@ -66,6 +67,28 @@
                     else
                     {
                         <i class="bi bi-printer"></i> <span>چاپ لیست بیمه</span>
+                    }
+                </button>
+            </div>
+
+            <div class="card-custom" style="background: var(--p2-bg-main); border: 1px solid var(--p2-border);">
+                <div style="display: flex; align-items: center; gap: 15px; margin-bottom: 15px;">
+                    <div class="stat-icon-box" style="background: #e0f2fe; color: #0284c7;">
+                        <i class="bi bi-save"></i>
+                    </div>
+                    <div>
+                        <h6 style="margin: 0; font-weight: bold;">خروجی بانک (دیسکت بیمه DBF)</h6>
+                        <span class="p2-text-muted" style="font-size: 11px;">تولید DSKKAR00 و DSKWOR00</span>
+                    </div>
+                </div>
+                <button class="btn-primary-pay2" style="background-color: #0284c7; border-color: #0284c7; width: 100%;" @onclick="GenerateInsuranceDiskette" disabled="@IsProcessing">
+                    @if (IsProcessing)
+                    {
+                        <span class="p2-spinner"></span>
+                    }
+                    else
+                    {
+                        <i class="bi bi-download"></i> <span>دریافت فایل ZIP</span>
                     }
                 </button>
             </div>
@@ -213,6 +236,45 @@ async Task GenerateInsuranceReport()
             };
 
             DialogService.Show<PdfPreviewDialog>("چاپ لیست بیمه", parameters, options);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add(ex.Message, MudBlazor.Severity.Error);
+        }
+        finally
+        {
+            IsProcessing = false;
+        }
+    }
+
+    async Task GenerateInsuranceDiskette()
+    {
+        if (SelectedWsId <= 0 || SelectedPeriodDate <= 0) // برای دیسکت حتماً یک ماه خاص لازم است
+        {
+            Snackbar.Add("لطفاً یک ماه مشخص را برای تولید دیسکت انتخاب کنید (حالت تجمیعی مجاز نیست).", MudBlazor.Severity.Warning);
+            return;
+        }
+
+        var period = Periods.FirstOrDefault(p => p.PERIOD_DATE == SelectedPeriodDate);
+        if (period == null) return;
+
+        IsProcessing = true;
+        try
+        {
+            var latestRun = await RunApi.GetLatestRunAsync(period.PER_ID);
+            if (latestRun == null)
+            {
+                Snackbar.Add("هیچ محاسبه حقوقی برای این ماه انجام نشده است.", MudBlazor.Severity.Warning);
+                return;
+            }
+
+            // فراخوانی API و دریافت فایل زیپ
+            var bytes = await RunApi.GetInsuranceDisketteZipAsync(latestRun.RUN_ID);
+            
+            // دانلود فایل با استفاده از هلپر JS شما
+            await JS.InvokeVoidAsync("downloadFileFromBytes", $"Tamin_Diskette_{period.PERIOD_TITLE}.zip", bytes);
+            
+            Snackbar.Add("دیسکت بیمه (DBF) با موفقیت تولید و دانلود شد.", MudBlazor.Severity.Success);
         }
         catch (Exception ex)
         {

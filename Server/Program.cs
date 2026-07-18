@@ -58,7 +58,7 @@ builder.Services.AddAuthentication(options =>
 Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
 
 builder.Services.AddScoped<IPermissionService, PermissionService>();
-
+builder.Services.AddScoped<Safir.Server.Services.Pay2DisketteService>();
 #endregion
 
 

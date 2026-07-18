@@ -1,15 +1,14 @@
-﻿// In Safir.Server/Controllers directory
-using Microsoft.AspNetCore.Mvc;
-using Microsoft.IdentityModel.Tokens; // For JWT
+﻿using Microsoft.AspNetCore.Mvc;
+using Microsoft.IdentityModel.Tokens;
 using Safir.Client.Services;
 using Safir.Shared.Constants;
 using Safir.Shared.Interfaces;
 using Safir.Shared.Models;
 using Safir.Shared.Models.User_Model;
 using Safir.Shared.Utility;
-using System.IdentityModel.Tokens.Jwt; // For JWT
-using System.Security.Claims; // For JWT
-using System.Text; // For JWT key encoding
+using System.IdentityModel.Tokens.Jwt;
+using System.Security.Claims;
+using System.Text;
 
 
 

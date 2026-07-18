@@ -142,5 +142,17 @@ namespace Safir.Client.Services
             }
             return await res.Content.ReadAsByteArrayAsync();
         }
+
+        // دریافت بایت‌های فایل ZIP دیسکت بیمه
+        public async Task<byte[]> GetInsuranceDisketteZipAsync(int runId)
+        {
+            var res = await _http.GetAsync($"api/pay2/run/{runId}/insurance-diskette");
+            if (!res.IsSuccessStatusCode)
+            {
+                var err = await res.Content.ReadAsStringAsync();
+                throw new Exception(string.IsNullOrWhiteSpace(err) ? "خطا در دریافت دیسکت بیمه." : err);
+            }
+            return await res.Content.ReadAsByteArrayAsync();
+        }
     }
 }
