@@ -1,4 +1,5 @@
-﻿@using Safir.Shared.Models.Salary
+﻿@using Safir.Shared.Models
+@using Safir.Shared.Models.Salary
 @using Safir.Client.Components.Reports
 @inject Safir.Client.Services.Pay2RunApiService RunApi
 @inject Safir.Client.Services.Pay2AttendanceApiService AttApi
@@ -7,6 +8,7 @@
 @inject MudBlazor.IDialogService DialogService
 @inject Safir.Client.Services.ConnectionManagerService ConnectionManager
 @inject Microsoft.JSInterop.IJSRuntime JS
+@inject Safir.Client.Services.Pay2EmployeeApiService EmployeeApi
 
 <div class="pay2-tab-container">
     <div class="card-custom p2-fade-content">
@@ -60,7 +62,7 @@
                     </div>
                 </div>
                 <button class="btn-primary-pay2" style="width: 100%;" @onclick="GenerateInsuranceReport" disabled="@IsProcessing">
-                    @if (IsProcessing)
+                    @if (_processingAction == "InsReport")
                     {
                         <span class="p2-spinner"></span>
                     }
@@ -71,6 +73,7 @@
                 </button>
             </div>
 
+            <!-- کارت دیسکت بیمه (DBF) -->
             <div class="card-custom" style="background: var(--p2-bg-main); border: 1px solid var(--p2-border);">
                 <div style="display: flex; align-items: center; gap: 15px; margin-bottom: 15px;">
                     <div class="stat-icon-box" style="background: #e0f2fe; color: #0284c7;">
@@ -81,9 +84,9 @@
                         <span class="p2-text-muted" style="font-size: 11px;">تولید DSKKAR00 و DSKWOR00</span>
                     </div>
                 </div>
-            <div style="display:flex; gap:10px; width:100%;">
+                <div style="display:flex; gap:10px; width:100%;">
                     <button class="btn-primary-pay2" style="background-color: #0284c7; border-color: #0284c7; flex:1;" @onclick="GenerateInsuranceDiskette" disabled="@IsProcessing">
-                        @if (IsProcessing)
+                        @if (_processingAction == "InsDiskette")
                         {
                             <span class="p2-spinner"></span>
                         }
@@ -94,12 +97,61 @@
                     </button>
                     
                     <button class="btn-outline-pay2" style="color: #0284c7; border-color: #0284c7; padding: 0 16px;" @onclick="OpenDiskettePreview" disabled="@IsProcessing" title="پیش‌نمایش محتوای فایل DBF">
-                        <i class="bi bi-eye"></i> پیش‌نمایش
+                        @if (_processingAction == "InsDiskPreview")
+                        {
+                            <span class="p2-spinner" style="width:16px; height:16px; border-width:2px; margin-left: 5px;"></span>
+                        }
+                        else
+                        {
+                            <i class="bi bi-eye"></i>
+                        }
+                        پیش‌نمایش
                     </button>
                 </div>
             </div>
 
-            <!-- جایگاه برای گزارشات آینده (مالیات، بانک و...) -->
+            <!-- گزارش مانده مرخصی -->
+            <div class="card-custom" style="background: var(--p2-bg-main); border: 1px solid var(--p2-border);">
+                <div style="display: flex; align-items: center; gap: 15px; margin-bottom: 15px;">
+                    <div class="stat-icon-box" style="background: #dcfce7; color: #10b981;">
+                        <i class="bi bi-calendar-check"></i>
+                    </div>
+                    <div>
+                        <h6 style="margin: 0; font-weight: bold;">گزارش مانده مرخصی سالانه</h6>
+                        <span class="p2-text-muted" style="font-size: 11px;">محاسبه استحقاق تا تاریخ روز (Pro-Rata)</span>
+                    </div>
+                </div>
+                
+                <div style="margin-bottom: 12px;">
+                     <label style="font-size:12px; font-weight:bold; margin-bottom:4px; display:block;">فیلتر پرسنل (اختیاری):</label>
+                     <Safir.Client.Pages.Salary.Tabs.Pay2Select TItem="Safir.Shared.Models.LookupDto<int>" TValue="int" 
+                                Items="EmployeeLookup" 
+                                @bind-Value="SelectedEmpId" 
+                                TextSelector="x => x.Name" 
+                                ValueSelector="x => x.Id" 
+                                Placeholder="همه پرسنل کارگاه"
+                                Clearable="true" />
+                </div>
+
+                <div style="display:flex; gap:10px; width:100%;">
+                    <button class="btn-primary-pay2" style="background-color: #10b981; border-color: #10b981; flex:1;" @onclick="GenerateLeaveReport" disabled="@IsProcessing">
+                        @if (_processingAction == "LeaveExcel") 
+                        { 
+                            <span class="p2-spinner"></span> 
+                        }
+                        else 
+                        { 
+                            <i class="bi bi-file-earmark-excel"></i> <span>فایل اکسل</span> 
+                        }
+                    </button>
+                    
+                    <button class="btn-outline-pay2" style="color: #10b981; border-color: #10b981; padding: 0 16px;" @onclick="PrintLeaveReportPdf" disabled="@IsProcessing" title="چاپ PDF">
+                        <i class="bi bi-printer"></i> چاپ PDF
+                    </button>
+                </div>
+            </div>
+
+            <!-- جایگاه برای گزارشات آینده -->
             <div class="card-custom" style="background: #f8fafc; border: 1px dashed #cbd5e1; opacity: 0.6;">
                 <div style="display: flex; align-items: center; gap: 15px; margin-bottom: 15px;">
                     <div class="stat-icon-box" style="background: #f1f5f9; color: #94a3b8;">
@@ -115,11 +167,27 @@
                 </button>
             </div>
 
-            <!-- کارت گزارش مالیات -->
+            <!-- کارت مقایسه ماه‌ها -->
+            <div class="card-custom" style="background: var(--p2-bg-main); border: 1px solid var(--p2-border);">
+                <div style="display: flex; align-items: center; gap: 15px; margin-bottom: 15px;">
+                    <div class="stat-icon-box" style="background: #f3e8ff; color: #8b5cf6;">
+                        <i class="bi bi-arrow-left-right"></i>
+                    </div>
+                    <div>
+                        <h6 style="margin: 0; font-weight: bold;">گزارش مقایسه و تغییرات</h6>
+                        <span class="p2-text-muted" style="font-size: 11px;">مقایسه ماهانه حقوق، مالیات و کسورات</span>
+                    </div>
+                </div>
+                <button class="btn-primary-pay2" style="background-color: #8b5cf6; border-color: #8b5cf6; width: 100%;" @onclick="() => ShowCompareModal = true" disabled="@IsProcessing">
+                    <i class="bi bi-bar-chart-steps"></i> <span>مشاهده گزارش مقایسه</span>
+                </button>
+            </div>
+
+            <!-- کارت چاپ لیست مالیات -->
             <div class="card-custom" style="background: var(--p2-bg-main); border: 1px solid var(--p2-border);">
                 <div style="display: flex; align-items: center; gap: 15px; margin-bottom: 15px;">
                     <div class="stat-icon-box" style="background: #fce7f3; color: #db2777;">
-                        <i class="bi bi-building"></i>
+                        <i class="bi bi-file-earmark-ruled"></i>
                     </div>
                     <div>
                         <h6 style="margin: 0; font-weight: bold;">مالیات حقوق کارکنان</h6>
@@ -127,7 +195,7 @@
                     </div>
                 </div>
                 <button class="btn-primary-pay2" style="background-color: #db2777; border-color: #db2777; width: 100%;" @onclick="GenerateTaxReport" disabled="@IsProcessing">
-                    @if (IsProcessing)
+                    @if (_processingAction == "TaxReport")
                     {
                         <span class="p2-spinner"></span>
                     }
@@ -138,23 +206,99 @@
                 </button>
             </div>
 
+            <!-- 🚀 کارت مالیات حقوق (دارایی) -->
+            <div class="card-custom" style="background: var(--p2-bg-main); border: 1px solid var(--p2-border);">
+                <div style="display: flex; align-items: center; gap: 15px; margin-bottom: 20px;">
+                    <div class="stat-icon-box" style="background: #fce7f3; color: #db2777;">
+                        <i class="bi bi-bank"></i>
+                    </div>
+                    <div>
+                        <h6 style="margin: 0; font-weight: bold;">مالیات حقوق (دارایی)</h6>
+                        <span class="p2-text-muted" style="font-size: 11px;">تولید اکسل تجمیعی سالانه و دیسکت استاندارد (WP/WH)</span>
+                    </div>
+                </div>
+                
+                <div style="display: flex; align-items: center; gap: 10px; width: 100%;">
+                    <!-- دکمه اصلی: اکسل سالانه (بزرگتر) -->
+                    <button class="btn-primary-pay2" style="background-color: #db2777; border-color: #db2777; flex: 1.5; padding: 10px;" @onclick="GenerateTaxReportExcel" disabled="@IsProcessing">
+                        @if (_processingAction == "TaxExcel")
+                        {
+                            <span class="p2-spinner" style="border-width: 2px;"></span>
+                        }
+                        else
+                        {
+                            <i class="bi bi-file-earmark-excel" style="font-size: 16px;"></i> <span>اکسل سالانه</span>
+                        }
+                    </button>
+                    
+                    <!-- دکمه‌های ثانویه: دیسکت و پیش‌نمایش -->
+                    <div style="display: flex; flex: 1; gap: 8px;">
+                        <button class="btn-outline-pay2 sm" style="color: #db2777; border-color: #fbcfe8; background-color: white; flex: 1; height: 42px;" @onclick="GenerateTaxDiskette" disabled="@IsProcessing" title="دریافت دیسکت متنی (فایل ZIP شامل WP و WH)">
+                            @if (_processingAction == "TaxDiskette")
+                            {
+                                <span class="p2-spinner" style="width:16px; height:16px; border-width:2px;"></span>
+                            }
+                            else
+                            {
+                                <i class="bi bi-file-zip" style="font-size: 16px;"></i> <span>دیسکت TXT</span>
+                            }
+                        </button>
+
+                        <button class="btn-outline-pay2 sm" style="color: #db2777; border-color: #fbcfe8; background-color: white; width: 42px; height: 42px; padding: 0; display: flex; justify-content: center; align-items: center; flex-shrink: 0;" @onclick="OpenTaxDiskettePreview" disabled="@IsProcessing" title="پیش‌نمایش محتوای دیسکت مالیات">
+                            @if (_processingAction == "TaxDiskPreview")
+                            {
+                                <span class="p2-spinner" style="width:16px; height:16px; border-width:2px; margin: 0;"></span>
+                            }
+                            else
+                            {
+                                <i class="bi bi-eye" style="font-size: 16px; margin: 0;"></i>
+                            }
+                        </button>
+                    </div>
+                </div>
+            </div>
+
         </div>
     </div>
 </div>
 
 <!-- مدال پیش‌نمایش دیسکت بیمه -->
-    <Safir.Client.Pages.Salary.Tabs.EmployeeComponents.InsuranceDiskettePreviewModal 
-        IsOpen="ShowDiskettePreviewModal" 
-        RunId="PreviewRunId" 
-        OnClose="() => ShowDiskettePreviewModal = false" />
+<Safir.Client.Pages.Salary.Tabs.EmployeeComponents.InsuranceDiskettePreviewModal 
+    IsOpen="ShowDiskettePreviewModal" 
+    RunId="PreviewRunId" 
+    OnClose="() => ShowDiskettePreviewModal = false" />
+
+<!-- مدال مقایسه ماه‌ها -->
+<Safir.Client.Pages.Salary.Tabs.EmployeeComponents.CompareMonthsModal 
+    IsOpen="ShowCompareModal" 
+    WsId="SelectedWsId"
+    Periods="Periods"
+    OnClose="() => ShowCompareModal = false" />
+
+<!-- مدال پیش‌نمایش دیسکت مالیات -->
+<Safir.Client.Pages.Salary.Tabs.EmployeeComponents.TaxDiskettePreviewModal 
+    IsOpen="ShowTaxDiskettePreviewModal" 
+    RunId="PreviewTaxRunId" 
+    OnClose="() => ShowTaxDiskettePreviewModal = false" />
 
 @code {
     List<Pay2WorkshopDto> Workshops = new();
     List<Pay2PeriodLookupDto> Periods = new();
-    
+
     int SelectedWsId;
     long SelectedPeriodDate;
-    bool IsProcessing = false;
+    int SelectedEmpId = 0;
+    List<LookupDto<int>> EmployeeLookup = new();
+
+    // 🚀 مدیریت وضعیت پراسس برای تفکیک اسپینرها
+    string _processingAction = "";
+    bool IsProcessing => !string.IsNullOrEmpty(_processingAction);
+
+    bool ShowCompareModal = false;
+    bool ShowDiskettePreviewModal = false;
+    int PreviewRunId = 0;
+    bool ShowTaxDiskettePreviewModal = false;
+    int PreviewTaxRunId = 0;
 
     protected override async Task OnInitializedAsync()
     {
@@ -166,6 +310,7 @@
             {
                 SelectedWsId = Workshops.First().WS_ID;
                 await LoadPeriodsAsync();
+                await LoadEmployeesLookupAsync();
             }
         }
         catch (Exception ex)
@@ -188,7 +333,6 @@
         {
             Periods = await AttApi.GetPeriodsAsync(SelectedWsId);
             
-            // 🚀 اضافه کردن یک گزینه فیک به ابتدای لیست برای "همه ماه‌ها"
             Periods.Insert(0, new Pay2PeriodLookupDto 
             { 
                 PERIOD_DATE = 0, 
@@ -206,9 +350,19 @@
         }
     }
 
+    async Task LoadEmployeesLookupAsync()
+    {
+        try
+        {
+            EmployeeLookup = await EmployeeApi.GetEmployeesLookupAsync();
+        }
+        catch { }
+    }
+
+    // ─── توابع بیمه تامین اجتماعی ───
+
     async Task GenerateInsuranceReport()
     {
-        // 🚀 تغییر مهم: شرط SelectedPeriodDate < 0 شد تا مقدار 0 (همه ماه‌ها) را قبول کند
         if (SelectedWsId <= 0 || SelectedPeriodDate < 0)
         {
             Snackbar.Add("لطفاً کارگاه و ماه را انتخاب کنید.", MudBlazor.Severity.Warning);
@@ -218,18 +372,17 @@
         var period = Periods.FirstOrDefault(p => p.PERIOD_DATE == SelectedPeriodDate);
         if (period == null) return;
 
-        IsProcessing = true;
+        _processingAction = "InsReport";
         try
         {
             int targetRunId = 0;
             string dialogTitle = "لیست بیمه تامین اجتماعی";
 
-            if (SelectedPeriodDate == 0) // حالت همه ماه‌ها
+            if (SelectedPeriodDate == 0) 
             {
                 dialogTitle += " - تجمیعی کل سال";
-                // targetRunId صفر باقی می‌ماند. به بک‌اند می‌گوییم کارگاه فلان را کامل بده
             }
-            else // حالت یک ماه خاص
+            else 
             {
                 var latestRun = await RunApi.GetLatestRunAsync(period.PER_ID);
                 if (latestRun == null)
@@ -244,7 +397,6 @@
             var parameters = new MudBlazor.DialogParameters
             {
                 ["Title"] = dialogTitle,
-                // 🚀 استفاده استاندارد از RunApi که به تازگی اصلاح کردیم
                 ["FetchPdfBytes"] = (Func<Task<byte[]>>)(() => RunApi.GetInsuranceReportPdfAsync(targetRunId, SelectedWsId))
             };
 
@@ -264,13 +416,13 @@
         }
         finally
         {
-            IsProcessing = false;
+            _processingAction = "";
         }
     }
 
     async Task GenerateInsuranceDiskette()
     {
-        if (SelectedWsId <= 0 || SelectedPeriodDate <= 0) // برای دیسکت حتماً یک ماه خاص لازم است
+        if (SelectedWsId <= 0 || SelectedPeriodDate <= 0) 
         {
             Snackbar.Add("لطفاً یک ماه مشخص را برای تولید دیسکت انتخاب کنید (حالت تجمیعی مجاز نیست).", MudBlazor.Severity.Warning);
             return;
@@ -279,7 +431,7 @@
         var period = Periods.FirstOrDefault(p => p.PERIOD_DATE == SelectedPeriodDate);
         if (period == null) return;
 
-        IsProcessing = true;
+        _processingAction = "InsDiskette";
         try
         {
             var latestRun = await RunApi.GetLatestRunAsync(period.PER_ID);
@@ -289,10 +441,7 @@
                 return;
             }
 
-            // فراخوانی API و دریافت فایل زیپ
             var bytes = await RunApi.GetInsuranceDisketteZipAsync(latestRun.RUN_ID);
-            
-            // دانلود فایل با استفاده از هلپر JS شما
             await JS.InvokeVoidAsync("downloadFileFromBytes", $"Tamin_Diskette_{period.PERIOD_TITLE}.zip", bytes);
             
             Snackbar.Add("دیسکت بیمه (DBF) با موفقیت تولید و دانلود شد.", MudBlazor.Severity.Success);
@@ -303,12 +452,9 @@
         }
         finally
         {
-            IsProcessing = false;
+            _processingAction = "";
         }
     }
-
-    bool ShowDiskettePreviewModal = false;
-    int PreviewRunId = 0;
 
     async Task OpenDiskettePreview()
     {
@@ -321,7 +467,7 @@
         var period = Periods.FirstOrDefault(p => p.PERIOD_DATE == SelectedPeriodDate);
         if (period == null) return;
 
-        IsProcessing = true;
+        _processingAction = "InsDiskPreview";
         try
         {
             var latestRun = await RunApi.GetLatestRunAsync(period.PER_ID);
@@ -340,9 +486,11 @@
         }
         finally
         {
-            IsProcessing = false;
+            _processingAction = "";
         }
     }
+
+    // ─── توابع مالیات دارایی ───
 
     async Task GenerateTaxReport()
     {
@@ -355,17 +503,17 @@
         var period = Periods.FirstOrDefault(p => p.PERIOD_DATE == SelectedPeriodDate);
         if (period == null) return;
 
-        IsProcessing = true;
+        _processingAction = "TaxReport";
         try
         {
             int targetRunId = 0;
             string dialogTitle = "لیست مالیات حقوق";
 
-            if (SelectedPeriodDate == 0) // تجمیعی
+            if (SelectedPeriodDate == 0) 
             {
                 dialogTitle += " - تجمیعی کل سال";
             }
-            else // یک ماه خاص
+            else 
             {
                 var latestRun = await RunApi.GetLatestRunAsync(period.PER_ID);
                 if (latestRun == null)
@@ -399,7 +547,140 @@
         }
         finally
         {
-            IsProcessing = false;
+            _processingAction = "";
         }
+    }
+
+    async Task GenerateTaxReportExcel()
+    {
+        if (SelectedWsId <= 0 || SelectedPeriodDate < 0)
+        {
+            Snackbar.Add("لطفاً کارگاه را انتخاب کنید.", MudBlazor.Severity.Warning);
+            return;
+        }
+
+        _processingAction = "TaxExcel";
+        try
+        {
+            var bytes = await RunApi.GetAnnualTaxReportExcelAsync(SelectedWsId, SelectedPeriodDate);
+            long targetYear = SelectedPeriodDate > 0 ? SelectedPeriodDate / 10000 : 1403; 
+            
+            await JS.InvokeVoidAsync("downloadFileFromBytes", $"Tax_Report_{targetYear}.xlsx", bytes);
+            Snackbar.Add("فایل اکسل اظهارنامه مالیاتی با موفقیت تولید و دانلود شد.", MudBlazor.Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add(ex.Message, MudBlazor.Severity.Error);
+        }
+        finally
+        {
+            _processingAction = "";
+        }
+    }
+
+    async Task GenerateTaxDiskette()
+    {
+        if (SelectedWsId <= 0 || SelectedPeriodDate <= 0) 
+        {
+            Snackbar.Add("لطفاً یک ماه مشخص را برای تولید دیسکت مالیات انتخاب کنید (حالت تجمیعی مجاز نیست).", MudBlazor.Severity.Warning);
+            return;
+        }
+
+        var period = Periods.FirstOrDefault(p => p.PERIOD_DATE == SelectedPeriodDate);
+        if (period == null) return;
+
+        _processingAction = "TaxDiskette";
+        try
+        {
+            var latestRun = await RunApi.GetLatestRunAsync(period.PER_ID);
+            if (latestRun == null)
+            {
+                Snackbar.Add("هیچ محاسبه حقوقی برای این ماه انجام نشده است.", MudBlazor.Severity.Warning);
+                return;
+            }
+
+            var bytes = await RunApi.GetTaxDisketteZipAsync(latestRun.RUN_ID);
+            
+            long pDate = period.PERIOD_DATE;
+            string prefix = $"{pDate / 10000}{(pDate / 100) % 100:D2}";
+            await JS.InvokeVoidAsync("downloadFileFromBytes", $"Tax_Diskette_{prefix}.zip", bytes);
+            
+            Snackbar.Add("دیسکت مالیات (فایل‌های WP و WH) با موفقیت تولید و دانلود شد.", MudBlazor.Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add(ex.Message, MudBlazor.Severity.Error);
+        }
+        finally
+        {
+            _processingAction = "";
+        }
+    }
+
+    async Task OpenTaxDiskettePreview()
+    {
+        if (SelectedWsId <= 0 || SelectedPeriodDate <= 0)
+        {
+            Snackbar.Add("لطفاً یک ماه مشخص را برای پیش‌نمایش دیسکت مالیات انتخاب کنید (حالت تجمیعی مجاز نیست).", MudBlazor.Severity.Warning);
+            return;
+        }
+
+        var period = Periods.FirstOrDefault(p => p.PERIOD_DATE == SelectedPeriodDate);
+        if (period == null) return;
+
+        _processingAction = "TaxDiskPreview";
+        try
+        {
+            var latestRun = await RunApi.GetLatestRunAsync(period.PER_ID);
+            if (latestRun == null)
+            {
+                Snackbar.Add("هیچ محاسبه حقوقی برای این ماه انجام نشده است.", MudBlazor.Severity.Warning);
+                return;
+            }
+
+            PreviewTaxRunId = latestRun.RUN_ID;
+            ShowTaxDiskettePreviewModal = true;
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add(ex.Message, MudBlazor.Severity.Error);
+        }
+        finally
+        {
+            _processingAction = "";
+        }
+    }
+
+    // ─── توابع مرخصی ───
+
+    async Task GenerateLeaveReport()
+    {
+        if (SelectedWsId <= 0) { Snackbar.Add("کارگاه انتخاب نشده.", MudBlazor.Severity.Warning); return; }
+        int year = (SelectedPeriodDate > 0) ? (int)(SelectedPeriodDate / 10000) : (Periods.Count > 1 ? (int)(Periods[1].PERIOD_DATE / 10000) : 1403);
+        long currentDate = Safir.Shared.Utility.CL_Tarikh.GetCurrentPersianDateAsLong();
+
+        _processingAction = "LeaveExcel";
+        try
+        {
+            var bytes = await EmployeeApi.GetLeaveReportExcelAsync(SelectedWsId, year, SelectedEmpId, currentDate);
+            await JS.InvokeVoidAsync("downloadFileFromBytes", $"LeaveBalance_{year}.xlsx", bytes);
+            Snackbar.Add("فایل اکسل تولید شد.", MudBlazor.Severity.Success);
+        }
+        catch (Exception ex) { Snackbar.Add(ex.Message, MudBlazor.Severity.Error); }
+        finally { _processingAction = ""; }
+    }
+
+    void PrintLeaveReportPdf()
+    {
+        if (SelectedWsId <= 0) { Snackbar.Add("کارگاه انتخاب نشده.", MudBlazor.Severity.Warning); return; }
+        int year = (SelectedPeriodDate > 0) ? (int)(SelectedPeriodDate / 10000) : (Periods.Count > 1 ? (int)(Periods[1].PERIOD_DATE / 10000) : 1403);
+        long currentDate = Safir.Shared.Utility.CL_Tarikh.GetCurrentPersianDateAsLong();
+
+        var parameters = new MudBlazor.DialogParameters
+        {
+            ["Title"] = $"گزارش مانده مرخصی تا تاریخ {currentDate}",
+            ["FetchPdfBytes"] = (Func<Task<byte[]>>)(() => EmployeeApi.GetLeaveReportPdfAsync(SelectedWsId, year, SelectedEmpId, currentDate))
+        };
+        DialogService.Show<PdfPreviewDialog>("چاپ مرخصی", parameters, new MudBlazor.DialogOptions { MaxWidth = MudBlazor.MaxWidth.ExtraExtraLarge, FullWidth = true, CloseButton = true });
     }
 }

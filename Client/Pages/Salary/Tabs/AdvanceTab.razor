@@ -1,10 +1,11 @@
 ﻿@using Safir.Shared.Models.Salary
+@using Safir.Shared.Models
+@using Safir.Client.Components.Grid
 @inject Safir.Client.Services.Pay2AdvanceApiService AdvanceApi
 @inject Safir.Client.Services.Pay2WorkshopApiService WorkshopApi
 @inject Safir.Client.Services.Pay2EmployeeApiService EmployeeApi
 @inject Safir.Client.Services.LookupApiService LookupService
 @inject ISnackbar Snackbar
-@using Safir.Shared.Models
 @inject ConnectionManagerService ConnectionManager
 
 <div class="pay2-tab-container">
@@ -122,62 +123,16 @@
     }
     else
     {
-        <div class="card-custom" style="padding:0;">
-            <div class="pay2-table-responsive">
-                <table class="p2-table">
-                    <thead>
-                        <tr>
-                            <th style="text-align:right;">پرسنل</th>
-                            <th style="text-align:center;">کد تفصیلی</th>
-                            <th style="text-align:left;">مانده خام حسابداری</th>
-                            <th style="text-align:left;">استثنا دستی</th>
-                            <th style="text-align:left;">کسر در موتور حقوق</th>
-                            <th style="text-align:center;">عملیات</th>
-                        </tr>
-                    </thead>
-
-                    <tbody>
-                        @foreach (var row in FilteredRows)
-                        {
-                            <tr>
-                                <td>
-                                    <div style="font-weight:800;">@row.FULL_NAME</div>
-                                    <div class="p2-text-muted p2-text-mono" style="font-size:11px;">@row.PCODE</div>
-                                </td>
-
-                                <td class="p2-text-mono" style="text-align:center;">
-                                    @(string.IsNullOrWhiteSpace(row.PCODE) ? "—" : row.PCODE)
-                                </td>
-
-                                <td class="p2-text-mono" style="text-align:left; font-weight:700;">
-                                    @row.RAW_BALANCE.ToString("N0")
-                                </td>
-
-                                <td class="p2-text-mono" style="text-align:left; color:#ef4444; font-weight:700;">
-                                    @row.MANUAL_EXCL.ToString("N0")
-                                </td>
-
-                                <td class="p2-text-mono p2-text-primary" style="text-align:left; font-weight:900;">
-                                    @row.ADVANCE_DEDUCTION.ToString("N0")
-                                </td>
-
-                                <td style="text-align:center;">
-                                    <button class="btn-outline-pay2 sm" @onclick="() => OpenExclModal(row)">
-                                        استثنا
-                                    </button>
-                                </td>
-                            </tr>
-                        }
-                    </tbody>
-                </table>
-            </div>
-
-            <div style="padding:10px 16px; border-top:1px solid var(--p2-border-light); font-size:12px; color:var(--p2-text-muted);">
-                تعداد کل: <b>@Rows.Count</b> |
-                تعداد نمایش داده‌شده: <b>@FilteredRows.Count</b> |
-                جمع مانده خام: <b>@FilteredRows.Sum(x => x.RAW_BALANCE).ToString("N0")</b> |
-                جمع استثنا: <b>@FilteredRows.Sum(x => x.MANUAL_EXCL).ToString("N0")</b>
-            </div>
+        <div class="card-custom" style="padding:0; overflow:hidden;">
+            <!-- 🚀 جایگزینی جدول سنتی با گرید پیشرفته (دارای قابلیت اکسل و Footer) -->
+            <Pay2DataGrid TItem="Pay2SmartAdvanceRowDto"
+                          Items="FilteredRows"
+                          Columns="AdvanceColumns"
+                          Exportable="true"
+                          Searchable="false"
+                          ExportFileName="@($"AdvanceReport_{SelectedPeriodDate}")"
+                          FooterLabel="جمع کل"
+                          MaxHeight="60vh" />
         </div>
     }
 </div>
@@ -407,6 +362,43 @@
         ? "کل مانده باز تا سند حقوق"
         : "اسناد ماه جاری";
 
+    // 🚀 پیکربندی گرید برای گزارش مساعده
+    List<Pay2GridColumn<Pay2SmartAdvanceRowDto>> AdvanceColumns => new()
+    {
+        new() {
+            Title = "پرسنل", Width = 200, Sticky = true, CellClass = "p2-text-bold",
+            Display = x => x.FULL_NAME ?? "", SortBy = x => x.FULL_NAME
+        },
+        new() {
+            Title = "کد تفصیلی", Width = 120, Align = "center", CellClass = "p2-text-mono p2-text-muted",
+            Display = x => string.IsNullOrWhiteSpace(x.PCODE) ? "—" : x.PCODE, SortBy = x => x.PCODE
+        },
+        new() {
+            Title = "مانده خام حسابداری", Width = 160, Align = "left", CellClass = "p2-text-mono",
+            Display = x => x.RAW_BALANCE.ToString("N0"), SortBy = x => x.RAW_BALANCE,
+            Sum = x => x.RAW_BALANCE, ExportNumber = x => x.RAW_BALANCE, ExportMoney = true
+        },
+        new() {
+            Title = "استثنا دستی", Width = 140, Align = "left", CellClass = "p2-text-mono p2-text-danger",
+            Display = x => x.MANUAL_EXCL.ToString("N0"), SortBy = x => x.MANUAL_EXCL,
+            Sum = x => x.MANUAL_EXCL, ExportNumber = x => x.MANUAL_EXCL, ExportMoney = true
+        },
+        new() {
+            Title = "کسر در موتور حقوق", Width = 160, Align = "left", CellClass = "p2-text-mono p2-text-primary p2-text-bold",
+            Display = x => x.ADVANCE_DEDUCTION.ToString("N0"), SortBy = x => x.ADVANCE_DEDUCTION,
+            Sum = x => x.ADVANCE_DEDUCTION, ExportNumber = x => x.ADVANCE_DEDUCTION, ExportMoney = true
+        },
+        new() {
+            Title = "عملیات", Width = 100, Align = "center", Sortable = false, ExportText = _ => "",
+            CellTemplate = (row) => __builder =>
+            {
+<button class="btn-outline-pay2 sm" @onclick="() => OpenExclModal(row)" title="ثبت یا ویرایش استثنا برای این پرسنل">
+    <i class="bi bi-sliders"></i> استثنا
+</button>
+            }
+        }
+    };
+
     protected override async Task OnInitializedAsync()
     {
         await ConnectionManager.LoadSettingsAsync();
@@ -424,11 +416,13 @@
             Snackbar.Add(ex.Message, Severity.Error);
         }
     }
+
     private async Task<IEnumerable<LookupDto<string>>> SearchAccountsAsync(string? searchTerm, CancellationToken cancellationToken)
     {
         var result = await LookupService.GetCustomerLookupAsync(searchTerm);
         return result ?? Enumerable.Empty<LookupDto<string>>();
     }
+
     async Task OnWorkshopChangedAsync()
     {
         Rows.Clear();

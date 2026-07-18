@@ -1,0 +1,158 @@
+﻿@using Safir.Shared.Models.Salary.Reports
+@using Safir.Client.Components.Grid
+@inject Safir.Client.Services.Pay2RunApiService RunApi
+@inject ISnackbar Snackbar
+
+@if (IsOpen)
+{
+    <div class="pay2-select-backdrop" style="background: rgba(15,23,42,0.6); z-index: 2999;" @onclick="Close"></div>
+
+    <div class="card-custom pay2-modal-container" style="max-width: 1300px; height: 95vh;">
+
+        <div class="pay2-modal-header p2-card-header" style="margin:0;">
+            <h5 style="margin:0; font-size:18px;">پیش‌نمایش دیسکت مالیات (دارایی)</h5>
+            <button class="btn-ghost-pay2" @onclick="Close"><i class="bi bi-x-lg"></i></button>
+        </div>
+
+        <div class="pay2-modal-body" style="display:flex; flex-direction:column; overflow:hidden; padding: 16px;">
+            @if (_isLoading)
+            {
+                <div style="display:flex; justify-content:center; align-items:center; height:100%; flex-direction:column; gap:15px;">
+                    <span class="p2-spinner" style="width:40px; height:40px; border-color:var(--p2-primary); border-top-color:transparent;"></span>
+                    <span style="font-size:14px; color:var(--p2-primary); font-weight:600;">در حال پردازش و استخراج داده‌های مالیاتی...</span>
+                </div>
+            }
+            else if (PreviewData != null)
+            {
+                <div style="display:flex; gap:10px; margin-bottom: 12px; flex-shrink:0;">
+                    <button class="btn-outline-pay2 sm @(_activeTab == "WH" ? "p2-text-primary" : "")"
+                            style="@(_activeTab == "WH" ? "background:var(--p2-bg-hover); font-weight:bold; border-color:var(--p2-primary);" : "")"
+                            @onclick='() => _activeTab = "WH"'>
+                        <i class="bi bi-currency-dollar"></i> اطلاعات عملکردی (فایل WH)
+                    </button>
+                    <button class="btn-outline-pay2 sm @(_activeTab == "WP" ? "p2-text-primary" : "")"
+                            style="@(_activeTab == "WP" ? "background:var(--p2-bg-hover); font-weight:bold; border-color:var(--p2-primary);" : "")"
+                            @onclick='() => _activeTab = "WP"'>
+                        <i class="bi bi-person-badge"></i> اطلاعات هویتی (فایل WP)
+                    </button>
+                </div>
+
+                <div style="flex-grow: 1; display:flex; flex-direction:column; overflow:hidden; border:1px solid var(--p2-border); border-radius: 8px;">
+                    @if (_activeTab == "WH")
+                    {
+                        <div style="flex-grow:1; min-height:0;">
+                            <Pay2DataGrid TItem="TaxDisketteWhDto"
+                                          Items="PreviewData.WhList"
+                                          Columns="WhColumns"
+                                          Exportable="false"
+                                          Searchable="true"
+                                          SearchPlaceholder="جستجو کد ملی..."
+                                          MaxHeight="100%" />
+                        </div>
+                    }
+                    else
+                    {
+                        <div style="flex-grow:1; min-height:0;">
+                            <Pay2DataGrid TItem="TaxDisketteWpDto"
+                                          Items="PreviewData.WpList"
+                                          Columns="WpColumns"
+                                          Exportable="false"
+                                          Searchable="true"
+                                          SearchPlaceholder="جستجو کد ملی یا نام..."
+                                          MaxHeight="100%" />
+                        </div>
+                    }
+                </div>
+            }
+        </div>
+
+        <div class="pay2-modal-footer">
+            <button class="btn-outline-pay2" @onclick="Close" style="border-radius:20px; padding:8px 24px;">بستن صفحه</button>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public bool IsOpen { get; set; }
+    [Parameter] public EventCallback OnClose { get; set; }
+    [Parameter] public int RunId { get; set; }
+
+    TaxDiskettePreviewDto? PreviewData;
+    bool _isLoading;
+    bool _lastOpenState = false;
+    int _lastProcessedRunId = 0;
+    string _activeTab = "WH"; // WH = عملکردی، WP = هویتی
+
+    List<Pay2GridColumn<TaxDisketteWhDto>> WhColumns = new()
+    {
+        new() { Title = "کد ملی", Width = 110, Display = x => x.NATIONAL_CODE, Searchable = true, Sticky = true, CellClass = "p2-text-mono", Align = "center" },
+        new() { Title = "سال", Width = 60, Display = x => x.YEAR, CellClass = "p2-text-mono", Align = "center" },
+        new() { Title = "ماه", Width = 50, Display = x => x.MONTH, CellClass = "p2-text-mono", Align = "center" },
+        new() { Title = "روز", Width = 60, Display = x => x.WORK_DAYS.ToString("0.##"), CellClass = "p2-text-mono", Align = "center" },
+        new() { Title = "حقوق مبنا", Width = 110, Display = x => x.BASE_SALARY.ToString("N0"), CellClass = "p2-text-mono" },
+        new() { Title = "مزایای مستمر", Width = 110, Display = x => x.MOSTAMAR.ToString("N0"), CellClass = "p2-text-mono" },
+        new() { Title = "غیر مستمر", Width = 110, Display = x => x.GHEYRE_MOSTAMAR.ToString("N0"), CellClass = "p2-text-mono" },
+        new() { Title = "خالص مشمول", Width = 120, Display = x => x.TAX_BASE.ToString("N0"), CellClass = "p2-text-mono p2-text-bold" },
+        new() { Title = "بیمه سهم کارگر", Width = 110, Display = x => x.INS_WORKER.ToString("N0"), CellClass = "p2-text-mono" },
+        new() { Title = "مالیات", Width = 110, Display = x => x.TAX_AMOUNT.ToString("N0"), CellClass = "p2-text-mono p2-text-danger p2-text-bold" },
+        new() { Title = "عیدی", Width = 90, Display = x => x.EYDI.ToString("N0"), CellClass = "p2-text-mono" },
+        new() { Title = "حق سنوات", Width = 90, Display = x => x.SANAVAT.ToString("N0"), CellClass = "p2-text-mono" },
+    };
+
+    List<Pay2GridColumn<TaxDisketteWpDto>> WpColumns = new()
+    {
+        new() { Title = "کد ملی", Width = 110, Display = x => x.NATIONAL_CODE, Searchable = true, Sticky = true, CellClass = "p2-text-mono p2-text-bold", Align = "center" },
+        new() { Title = "نام", Width = 100, Display = x => x.FIRST_NAME, Searchable = true },
+        new() { Title = "نام خانوادگی", Width = 120, Display = x => x.LAST_NAME, Searchable = true },
+        new() { Title = "نام پدر", Width = 100, Display = x => x.FATHER_NAME },
+        new() { Title = "شماره بیمه", Width = 110, Display = x => x.INS_CODE, CellClass = "p2-text-mono", Align = "center" },
+        new() { Title = "ملیت", Width = 90, Display = x => x.NATIONALITY, Align = "center" },
+        new() { Title = "ش.شناسنامه", Width = 100, Display = x => x.ID_NUMBER, CellClass = "p2-text-mono" },
+        new() { Title = "ت.تولد", Width = 90, Display = x => x.BIRTH_DATE, CellClass = "p2-text-mono", Align = "center" },
+        new() { Title = "ت.استخدام", Width = 90, Display = x => x.HIRE_DATE, CellClass = "p2-text-mono", Align = "center" },
+        new() { Title = "شغل", Width = 120, Display = x => x.JOB_NAME },
+        new() { Title = "محل صدور", Width = 90, Display = x => x.BIRTH_PLACE },
+        new() { Title = "تأهل", Width = 90, Display = x => x.MARITAL, Align = "center" },
+    };
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (IsOpen && (!_lastOpenState || RunId != _lastProcessedRunId))
+        {
+            _lastOpenState = true;
+            _lastProcessedRunId = RunId;
+            _activeTab = "WH";
+            await LoadDataAsync();
+        }
+        else if (!IsOpen)
+        {
+            _lastOpenState = false;
+            _lastProcessedRunId = 0;
+            PreviewData = null;
+        }
+    }
+
+    async Task LoadDataAsync()
+    {
+        if (RunId <= 0) return;
+        _isLoading = true;
+        StateHasChanged();
+
+        try
+        {
+            PreviewData = await RunApi.GetTaxDiskettePreviewAsync(RunId);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add(ex.Message, MudBlazor.Severity.Error);
+            await Close();
+        }
+        finally
+        {
+            _isLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    async Task Close() => await OnClose.InvokeAsync();
+}

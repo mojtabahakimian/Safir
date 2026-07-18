@@ -3,6 +3,7 @@ using FuzzySharp;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Caching.Memory;
+using QuestPDF.Fluent;
 using Safir.Shared.Interfaces;
 using Safir.Shared.Models;
 using Safir.Shared.Models.Salary;
@@ -1459,6 +1460,108 @@ namespace Safir.Server.Controllers
                 return Ok();
             }
             catch (Exception ex) { return BadRequest(ex.Message); }
+        }
+
+        private async Task<List<Pay2LeaveReportRowDto>> FetchLeaveReportDataAsync(int wsId, int year, int empId, long currentDate)
+        {
+            // محاسبه درصد گذشته از سال (برای استحقاق Pro-rata)
+            int currentMonth = (int)((currentDate / 100) % 100);
+            int currentDay = (int)(currentDate % 100);
+
+            int passedDays = 0;
+            for (int i = 1; i < currentMonth; i++) passedDays += (i <= 6) ? 31 : 30;
+            passedDays += currentDay;
+
+            double ratio = Math.Min(1.0, passedDays / 365.0);
+
+            string sql = @"
+                SELECT 
+                    E.EMP_CODE, 
+                    E.LAST_NAME + N' ' + E.FIRST_NAME AS FULL_NAME,
+                    ISNULL(LB.ENTITLEMENT_MIN, 11440) AS ENTITLEMENT_MIN,
+                    ISNULL(LB.CARRIED_IN_MIN, 0) AS CARRIED_IN_MIN,
+                    ISNULL(LB.USED_MIN, 0) AS USED_MIN,
+                    (ISNULL(LB.ENTITLEMENT_MIN, 11440) + ISNULL(LB.CARRIED_IN_MIN, 0) - ISNULL(LB.USED_MIN, 0)) AS BALANCE_MIN,
+                    CAST((ISNULL(LB.ENTITLEMENT_MIN, 11440) + ISNULL(LB.CARRIED_IN_MIN, 0) - ISNULL(LB.USED_MIN, 0)) AS DECIMAL(10,2)) / 440.0 AS BALANCE_DAYS,
+                    
+                    CAST(ISNULL(LB.ENTITLEMENT_MIN, 11440) * @Ratio AS INT) AS PRORATA_ENTITLEMENT_MIN,
+                    (CAST(ISNULL(LB.ENTITLEMENT_MIN, 11440) * @Ratio AS INT) + ISNULL(LB.CARRIED_IN_MIN, 0) - ISNULL(LB.USED_MIN, 0)) AS PRORATA_BALANCE_MIN,
+                    CAST((CAST(ISNULL(LB.ENTITLEMENT_MIN, 11440) * @Ratio AS INT) + ISNULL(LB.CARRIED_IN_MIN, 0) - ISNULL(LB.USED_MIN, 0)) AS DECIMAL(10,2)) / 440.0 AS PRORATA_BALANCE_DAYS
+                FROM PAY2_EMPLOYEE E WITH (NOLOCK)
+                LEFT JOIN PAY2_LEAVE_BAL LB WITH (NOLOCK) ON E.EMP_ID = LB.EMP_ID AND LB.YEAR = @year
+                WHERE E.WS_ID = @wsId AND E.IS_ACTIVE = 1
+                AND (@empId = 0 OR E.EMP_ID = @empId)
+                ORDER BY E.LAST_NAME, E.FIRST_NAME";
+
+            return (await _db.DoGetDataSQLAsync<Pay2LeaveReportRowDto>(sql, new { wsId, year, Ratio = ratio, empId })).ToList();
+        }
+
+        [HttpGet("leave-report/excel")]
+        [AllowAnonymous]
+        public async Task<IActionResult> GetLeaveReportExcel([FromQuery] int wsId, [FromQuery] int year, [FromQuery] int empId, [FromQuery] long currentDate)
+        {
+            try
+            {
+                var data = await FetchLeaveReportDataAsync(wsId, year, empId, currentDate);
+                var wsName = await _db.DoGetDataSQLAsyncSingle<string>("SELECT WS_NAME FROM PAY2_WORKSHOP WHERE WS_ID = @wsId", new { wsId });
+
+                using var wb = new ClosedXML.Excel.XLWorkbook();
+                var sheet = wb.Worksheets.Add($"مرخصی {year}");
+                sheet.RightToLeft = true;
+
+                sheet.Cell(1, 1).Value = $"گزارش مانده مرخصی پرسنل - کارگاه: {wsName} - سال: {year} - (محاسبه تا تاریخ: {currentDate})";
+                sheet.Range(1, 1, 1, 9).Merge().Style.Font.SetBold().Font.SetFontSize(14).Fill.SetBackgroundColor(ClosedXML.Excel.XLColor.LightBlue);
+
+                string[] headers = { "کد پرسنلی", "نام و نام خانوادگی", "استحقاق پایان سال (دقیقه)", "انتقالی از قبل (دقیقه)", "استحقاق تا امروز (دقیقه)", "استفاده شده (دقیقه)", "مانده پایان سال (روز)", "مانده تا امروز (روز)" };
+                for (int i = 0; i < headers.Length; i++)
+                {
+                    var cell = sheet.Cell(2, i + 1);
+                    cell.Value = headers[i];
+                    cell.Style.Font.SetBold().Fill.SetBackgroundColor(ClosedXML.Excel.XLColor.LightGray);
+                }
+
+                int r = 3;
+                foreach (var item in data)
+                {
+                    sheet.Cell(r, 1).Value = item.EMP_CODE;
+                    sheet.Cell(r, 2).Value = item.FULL_NAME;
+                    sheet.Cell(r, 3).Value = item.ENTITLEMENT_MIN;
+                    sheet.Cell(r, 4).Value = item.CARRIED_IN_MIN;
+                    sheet.Cell(r, 5).Value = item.PRORATA_ENTITLEMENT_MIN;
+                    sheet.Cell(r, 6).Value = item.USED_MIN;
+                    sheet.Cell(r, 7).Value = item.BALANCE_DAYS;
+                    sheet.Cell(r, 8).Value = item.PRORATA_BALANCE_DAYS;
+
+                    sheet.Range(r, 3, r, 6).Style.NumberFormat.Format = "#,##0";
+                    sheet.Range(r, 7, r, 8).Style.NumberFormat.Format = "0.00";
+                    r++;
+                }
+
+                sheet.Columns(1, 9).AdjustToContents();
+
+                using var ms = new MemoryStream();
+                wb.SaveAs(ms);
+                return File(ms.ToArray(), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", $"LeaveBalance_{year}.xlsx");
+            }
+            catch (Exception ex) { return StatusCode(500, ex.Message); }
+        }
+
+        [HttpGet("leave-report/pdf")]
+        public async Task<IActionResult> GetLeaveReportPdf([FromQuery] int wsId, [FromQuery] int year, [FromQuery] int empId, [FromQuery] long currentDate)
+        {
+            try
+            {
+                var data = await FetchLeaveReportDataAsync(wsId, year, empId, currentDate);
+                var wsName = await _db.DoGetDataSQLAsyncSingle<string>("SELECT WS_NAME FROM PAY2_WORKSHOP WHERE WS_ID = @wsId", new { wsId });
+
+                string formattedDate = $"{currentDate.ToString()[..4]}/{currentDate.ToString().Substring(4, 2)}/{currentDate.ToString().Substring(6, 2)}";
+
+                var document = new Safir.Server.Reports.LeaveReportDocument(data, wsName ?? "", year, formattedDate);
+                byte[] pdfBytes = document.GeneratePdf();
+
+                return File(pdfBytes, "application/pdf", $"LeaveReport_{year}.pdf");
+            }
+            catch (Exception ex) { return StatusCode(500, ex.Message); }
         }
 
     }

@@ -964,5 +964,232 @@ VALUES (@N_S, @RADIF, @HES_K, @HES_M, @HES_T, @HES_T2, @HES_T3, @HES_T4, @HES, @
                 return StatusCode(500, ex.Message);
             }
         }
+
+        // ===================================================================
+        // گزارش مقایسه ماه به ماه (روند تغییرات حقوق)
+        // ===================================================================
+        [HttpGet("compare-months")]
+        public async Task<ActionResult<Pay2MonthCompareResultDto>> CompareMonths([FromQuery] int wsId, [FromQuery] long period1, [FromQuery] long period2)
+        {
+            try
+            {
+                var result = new Pay2MonthCompareResultDto();
+
+                // ۱. پیدا کردن شناسه آخرین محاسبه قطعی برای ماه اول
+                var run1Sql = "SELECT TOP 1 R.RUN_ID FROM PAY2_RUN R INNER JOIN PAY2_PERIOD P ON R.PER_ID = P.PER_ID WHERE P.WS_ID = @wsId AND P.PERIOD_DATE = @period1 AND R.IS_LATEST = 1 AND R.STATUS >= 2 ORDER BY R.RUN_ID DESC";
+                var run1Id = await _db.DoGetDataSQLAsyncSingle<int?>(run1Sql, new { wsId, period1 });
+
+                // ۲. پیدا کردن شناسه آخرین محاسبه قطعی برای ماه دوم
+                var run2Sql = "SELECT TOP 1 R.RUN_ID FROM PAY2_RUN R INNER JOIN PAY2_PERIOD P ON R.PER_ID = P.PER_ID WHERE P.WS_ID = @wsId AND P.PERIOD_DATE = @period2 AND R.IS_LATEST = 1 AND R.STATUS >= 2 ORDER BY R.RUN_ID DESC";
+                var run2Id = await _db.DoGetDataSQLAsyncSingle<int?>(run2Sql, new { wsId, period2 });
+
+                if (!run1Id.HasValue && !run2Id.HasValue)
+                    return BadRequest("برای هیچ‌کدام از ماه‌های انتخاب شده، محاسبه تایید شده‌ای یافت نشد.");
+
+                result.Period1Title = BuildPeriodTitle(period1);
+                result.Period2Title = BuildPeriodTitle(period2);
+
+                // ۳. اجرای FULL OUTER JOIN برای مقایسه دقیق و کشف پرسنل جدید/حذف شده
+                string compareSql = @"
+                    SELECT 
+                        COALESCE(R1.EMP_ID, R2.EMP_ID) AS EMP_ID,
+                        E.EMP_CODE,
+                        E.LAST_NAME + N' ' + E.FIRST_NAME AS FULL_NAME,
+                        ISNULL(R1.GROSS_PAY, 0) AS GROSS_PAY_1,
+                        ISNULL(R2.GROSS_PAY, 0) AS GROSS_PAY_2,
+                        ISNULL(R1.TOTAL_DED, 0) AS TOTAL_DED_1,
+                        ISNULL(R2.TOTAL_DED, 0) AS TOTAL_DED_2,
+                        ISNULL(R1.NET_PAY, 0) AS NET_PAY_1,
+                        ISNULL(R2.NET_PAY, 0) AS NET_PAY_2
+                    FROM (SELECT * FROM PAY2_RUN_LINE WHERE RUN_ID = @r1) R1
+                    FULL OUTER JOIN (SELECT * FROM PAY2_RUN_LINE WHERE RUN_ID = @r2) R2 ON R1.EMP_ID = R2.EMP_ID
+                    INNER JOIN PAY2_EMPLOYEE E ON COALESCE(R1.EMP_ID, R2.EMP_ID) = E.EMP_ID
+                    ORDER BY E.LAST_NAME, E.FIRST_NAME";
+
+                var rows = await _db.DoGetDataSQLAsync<Pay2MonthCompareRowDto>(compareSql, new { r1 = run1Id ?? 0, r2 = run2Id ?? 0 });
+                result.Rows = rows.ToList();
+
+                return Ok(result);
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, "خطا در مقایسه ماه‌ها: " + ex.Message);
+            }
+        }
+
+        // ===================================================================
+        // تولید فایل اکسل اظهارنامه سالانه مالیات (خلاصه وضعیت پرسنل در سال)
+        // ===================================================================
+        [HttpGet("tax-report-excel")]
+        public async Task<IActionResult> GetAnnualTaxReportExcel([FromQuery] int wsId, [FromQuery] long periodDate)
+        {
+            if (wsId <= 0)
+                return BadRequest("کارگاه نامعتبر است.");
+
+            try
+            {
+                // ۱. استخراج سال هدف
+                long targetYear;
+                if (periodDate > 0)
+                {
+                    targetYear = periodDate / 10000;
+                }
+                else
+                {
+                    // اگر کاربر "تجمیعی کل سال" را انتخاب کرده بود، سال آخرین دوره کارگاه را می‌گیریم
+                    var maxDate = await _db.DoGetDataSQLAsyncSingle<long?>(
+                        "SELECT MAX(PERIOD_DATE) FROM PAY2_PERIOD WITH (NOLOCK) WHERE WS_ID = @wsId AND STATUS >= 3", new { wsId });
+
+                    if (maxDate == null)
+                        return NotFound("هیچ دوره‌ی محاسبه‌شده‌ای برای این کارگاه یافت نشد.");
+
+                    targetYear = maxDate.Value / 10000;
+                }
+
+                // ۲. خواندن نام کارگاه
+                var wsName = await _db.DoGetDataSQLAsyncSingle<string>(
+                    "SELECT WS_NAME FROM PAY2_WORKSHOP WITH (NOLOCK) WHERE WS_ID = @wsId", new { wsId });
+
+                // ۳. کوئری تجمیع اطلاعات پرسنل در سال هدف (فقط اجراهای تأیید شده یا قطعی)
+                const string sql = @"
+                    SELECT 
+                        E.EMP_CODE,
+                        E.NATIONAL_CODE,
+                        E.LAST_NAME + N' ' + E.FIRST_NAME AS FULL_NAME,
+                        SUM(RL.WORK_DAYS) AS TOTAL_WORK_DAYS,
+                        SUM(RL.GROSS_PAY) AS TOTAL_GROSS_PAY,
+                        SUM(RL.TAX_BASE) AS TOTAL_TAX_BASE,
+                        SUM(RL.TAX_AMOUNT) AS TOTAL_TAX_AMOUNT
+                    FROM PAY2_RUN_LINE RL WITH (NOLOCK)
+                    INNER JOIN PAY2_RUN R WITH (NOLOCK) ON RL.RUN_ID = R.RUN_ID
+                    INNER JOIN PAY2_PERIOD P WITH (NOLOCK) ON R.PER_ID = P.PER_ID
+                    INNER JOIN PAY2_EMPLOYEE E WITH (NOLOCK) ON RL.EMP_ID = E.EMP_ID
+                    WHERE P.WS_ID = @wsId
+                      AND R.IS_LATEST = 1
+                      AND R.STATUS >= 2
+                      AND (P.PERIOD_DATE / 10000) = @targetYear
+                    GROUP BY 
+                        E.EMP_ID, E.EMP_CODE, E.NATIONAL_CODE, E.LAST_NAME, E.FIRST_NAME
+                    HAVING SUM(RL.GROSS_PAY) > 0
+                    ORDER BY 
+                        E.LAST_NAME, E.FIRST_NAME";
+
+                var reportData = await _db.DoGetDataSQLAsync<dynamic>(sql, new { wsId, targetYear });
+
+                var dataList = reportData.ToList();
+                if (!dataList.Any())
+                    return NotFound($"هیچ داده مالیاتی برای سال {targetYear} یافت نشد.");
+
+                // ۴. تولید فایل اکسل با ClosedXML
+                using var wb = new ClosedXML.Excel.XLWorkbook();
+                var ws = wb.Worksheets.Add($"مالیات_{targetYear}");
+                ws.RightToLeft = true;
+
+                // هدر گزارش
+                ws.Cell(1, 1).Value = $"گزارش تجمیعی مالیات حقوق سال {targetYear}";
+                ws.Cell(2, 1).Value = $"کارگاه: {wsName}";
+                var titleRange = ws.Range(1, 1, 1, 8);
+                titleRange.Merge();
+                titleRange.Style.Font.Bold = true;
+                titleRange.Style.Font.FontSize = 14;
+                titleRange.Style.Fill.BackgroundColor = ClosedXML.Excel.XLColor.FromHtml("#4472C4");
+                titleRange.Style.Font.FontColor = ClosedXML.Excel.XLColor.White;
+                titleRange.Style.Alignment.Horizontal = ClosedXML.Excel.XLAlignmentHorizontalValues.Center;
+
+                // هدر ستون‌ها
+                string[] headers = { "ردیف", "کد پرسنلی", "کد ملی", "نام و نام خانوادگی", "کارکرد (روز)", "جمع حقوق و مزایا", "درآمد مشمول مالیات", "مالیات کسر شده" };
+                for (int i = 0; i < headers.Length; i++)
+                {
+                    var cell = ws.Cell(4, i + 1);
+                    cell.Value = headers[i];
+                    cell.Style.Font.Bold = true;
+                    cell.Style.Fill.BackgroundColor = ClosedXML.Excel.XLColor.FromHtml("#D9E1F2");
+                    cell.Style.Border.SetOutsideBorder(ClosedXML.Excel.XLBorderStyleValues.Thin);
+                }
+
+                // تزریق داده‌ها
+                int r = 5;
+                int rowIdx = 1;
+                foreach (var item in dataList)
+                {
+                    ws.Cell(r, 1).Value = rowIdx++;
+                    ws.Cell(r, 2).Value = item.EMP_CODE?.ToString();
+                    ws.Cell(r, 3).Value = item.NATIONAL_CODE?.ToString();
+                    ws.Cell(r, 4).Value = item.FULL_NAME?.ToString();
+                    ws.Cell(r, 5).Value = (decimal)item.TOTAL_WORK_DAYS;
+                    ws.Cell(r, 6).Value = (long)item.TOTAL_GROSS_PAY;
+                    ws.Cell(r, 7).Value = (long)item.TOTAL_TAX_BASE;
+                    ws.Cell(r, 8).Value = (long)item.TOTAL_TAX_AMOUNT;
+                    r++;
+                }
+
+                // ردیف جمع کل
+                ws.Cell(r, 1).Value = "جمع کل";
+                ws.Range(r, 1, r, 4).Merge().Style.Alignment.Horizontal = ClosedXML.Excel.XLAlignmentHorizontalValues.Left;
+                ws.Cell(r, 5).FormulaA1 = $"SUM(E5:E{r - 1})";
+                ws.Cell(r, 6).FormulaA1 = $"SUM(F5:F{r - 1})";
+                ws.Cell(r, 7).FormulaA1 = $"SUM(G5:G{r - 1})";
+                ws.Cell(r, 8).FormulaA1 = $"SUM(H5:H{r - 1})";
+
+                var footerRange = ws.Range(r, 1, r, 8);
+                footerRange.Style.Font.Bold = true;
+                footerRange.Style.Fill.BackgroundColor = ClosedXML.Excel.XLColor.LightGray;
+
+                // تنظیم فرمت اعداد (جداکننده هزارگان)
+                ws.Range(5, 6, r, 8).Style.NumberFormat.Format = "#,##0";
+
+                // تنظیم بوردر کل جدول
+                ws.Range(4, 1, r, 8).Style.Border.SetOutsideBorder(ClosedXML.Excel.XLBorderStyleValues.Thin);
+                ws.Range(4, 1, r, 8).Style.Border.SetInsideBorder(ClosedXML.Excel.XLBorderStyleValues.Thin);
+
+                ws.Columns(1, 8).AdjustToContents();
+                ws.Column(3).Width = 15; // کد ملی
+                ws.Column(4).Width = 30; // نام
+
+                using var ms = new MemoryStream();
+                wb.SaveAs(ms);
+
+                return File(ms.ToArray(), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", $"TaxReport_{targetYear}.xlsx");
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, "خطا در تولید گزارش مالیات: " + ex.Message);
+            }
+        }
+
+        [HttpGet("{runId:int}/tax-diskette")]
+        public async Task<IActionResult> GetTaxDiskette([FromServices] Safir.Server.Services.Pay2DisketteService disketteService, int runId)
+        {
+            try
+            {
+                var result = await disketteService.GenerateTaxDisketteAsync(runId);
+
+                if (result == null)
+                    return NotFound("اطلاعات محاسبه مورد نظر یافت نشد.");
+
+                return File(result.Value.ZipBytes, "application/zip", result.Value.FileName);
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, "خطا در تولید فایل دیسکت مالیات: " + ex.Message);
+            }
+        }
+
+        [HttpGet("{runId:int}/tax-diskette-preview")]
+        public async Task<ActionResult<TaxDiskettePreviewDto>> GetTaxDiskettePreview([FromServices] Safir.Server.Services.Pay2DisketteService disketteService, int runId)
+        {
+            try
+            {
+                var result = await disketteService.GetTaxDiskettePreviewAsync(runId);
+                if (result == null)
+                    return NotFound("اطلاعات محاسبه مورد نظر یافت نشد.");
+
+                return Ok(result);
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, "خطا در بارگذاری پیش‌نمایش دیسکت مالیات: " + ex.Message);
+            }
+        }
     }
 }

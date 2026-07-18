@@ -359,5 +359,271 @@ namespace Safir.Server.Services
 
             return result;
         }
+
+        // ===================================================================
+        // تولید دیسکت مالیات بر درآمد حقوق (قوانین جدید ۱۴۰۵ - سامانه Salary)
+        // فایل‌های WP (اطلاعات پرسنل) و WH (ریز کارکرد) با فرمت UTF-8
+        // فایل WK به طور کامل منسوخ و حذف شده است.
+        // ===================================================================
+        public async Task<(byte[] ZipBytes, string FileName)?> GenerateTaxDisketteAsync(int runId)
+        {
+            const string headSql = @"
+                SELECT P.PERIOD_DATE, W.WS_CODE
+                FROM PAY2_RUN R WITH (NOLOCK)
+                INNER JOIN PAY2_PERIOD P WITH (NOLOCK) ON R.PER_ID = P.PER_ID
+                INNER JOIN PAY2_WORKSHOP W WITH (NOLOCK) ON P.WS_ID = W.WS_ID
+                WHERE R.RUN_ID = @runId";
+
+            var head = await _db.DoGetDataSQLAsyncSingle<dynamic>(headSql, new { runId });
+            if (head == null) return null;
+
+            long periodDate = (long)head.PERIOD_DATE;
+            int year = (int)(periodDate / 10000);
+            int month = (int)((periodDate / 100) % 100);
+            string wsCode = head.WS_CODE?.ToString() ?? "";
+
+            // 🚀 اصلاح شد: ADDRESS و POSTAL_CODE از کوئری حذف شدند
+            const string linesSql = @"
+                SELECT 
+                    RL.EMP_ID, E.EMP_CODE, E.NATIONAL_CODE, E.FIRST_NAME, E.LAST_NAME, E.FATHER_NAME,
+                    E.ID_NUMBER, E.BIRTH_PLACE, E.BIRTH_DATE, E.NATIONALITY, E.HIRE_DATE, E.FIRE_DATE,
+                    E.INS_CODE, E.MOBILE, E.MARITAL,
+                    J.JOB_NAME,
+                    RL.WORK_DAYS, RL.GROSS_PAY, RL.INS_WORKER, RL.TAX_BASE, RL.TAX_AMOUNT
+                FROM PAY2_RUN_LINE RL WITH (NOLOCK)
+                INNER JOIN PAY2_EMPLOYEE E WITH (NOLOCK) ON RL.EMP_ID = E.EMP_ID
+                LEFT JOIN PAY2_JOB J WITH (NOLOCK) ON E.JOB_ID = J.JOB_ID
+                WHERE RL.RUN_ID = @runId AND E.TAX_EXEMPT = 0
+                ORDER BY E.LAST_NAME, E.FIRST_NAME";
+
+            var lines = (await _db.DoGetDataSQLAsync<dynamic>(linesSql, new { runId })).ToList();
+
+            const string detailsSql = @"
+                SELECT D.EMP_ID, I.ITEM_CODE, D.AMOUNT, I.CALC_BASIS
+                FROM PAY2_RUN_DETAIL D WITH (NOLOCK)
+                INNER JOIN PAY2_ITEM_DEF I WITH (NOLOCK) ON D.ITEM_ID = I.ITEM_ID
+                WHERE D.RUN_ID = @runId AND I.TAX_SUBJECT = 1";
+
+            var details = await _db.DoGetDataSQLAsync<dynamic>(detailsSql, new { runId });
+            var groupedDetails = details.GroupBy(x => (int)x.EMP_ID).ToDictionary(g => g.Key, g => g.ToList());
+
+            var wpLines = new List<string>();
+            var whLines = new List<string>();
+
+            // فرمت UTF-8 بدون BOM (پیش‌نیاز اجباری سامانه دارایی)
+            var utf8WithoutBom = new UTF8Encoding(false);
+
+            foreach (var line in lines)
+            {
+                int empId = (int)line.EMP_ID;
+                string natCode = line.NATIONAL_CODE?.ToString() ?? "";
+                if (string.IsNullOrWhiteSpace(natCode)) continue;
+
+                // ─── تولید خط فایل WP (اطلاعات هویتی) ───
+                string wpLine = string.Join(",",
+                    natCode,
+                    ((byte)line.NATIONALITY == 1 ? "1" : "2"),
+                    "",
+                    line.FIRST_NAME?.ToString() ?? "",
+                    line.LAST_NAME?.ToString() ?? "",
+                    line.FATHER_NAME?.ToString() ?? "",
+                    line.ID_NUMBER?.ToString() ?? "",
+                    line.BIRTH_PLACE?.ToString() ?? "",
+                    line.BIRTH_DATE?.ToString() ?? "",
+                    ((byte)line.MARITAL == 1 ? "1" : "2"),
+                    "0",
+                    "",
+                    line.INS_CODE?.ToString() ?? "",
+                    "",
+                    line.JOB_NAME?.ToString() ?? "",
+                    "1",
+                    line.HIRE_DATE?.ToString() ?? "",
+                    line.FIRE_DATE?.ToString() ?? "",
+                    "", // 🚀 کد پستی خالی ارسال می‌شود
+                    "", // 🚀 آدرس خالی ارسال می‌شود
+                    "",
+                    line.MOBILE?.ToString() ?? "",
+                    "0"
+                );
+                wpLines.Add(wpLine);
+
+                // ─── تولید خط فایل WH (اطلاعات عملکرد ریالی) ───
+                long baseSalary = 0, mostamar = 0, gheyreMostamar = 0, eydi = 0, sanavat = 0;
+
+                if (groupedDetails.TryGetValue(empId, out var empDetails))
+                {
+                    foreach (var det in empDetails)
+                    {
+                        string code = det.ITEM_CODE.ToString().ToUpper();
+                        long amt = (long)det.AMOUNT;
+                        byte basis = (byte)det.CALC_BASIS;
+
+                        if (code == "BASE_SAL" || code == "BASE_SAL_B") baseSalary += amt;
+                        else if (code == "EIDI") eydi += amt;
+                        else if (code == "SANAVAT" || code == "SENIORITY") sanavat += amt;
+                        else if (basis == 2) mostamar += amt;
+                        else gheyreMostamar += amt;
+                    }
+                }
+
+                string whLine = string.Join(",",
+                    natCode,
+                    year.ToString(),
+                    month.ToString("D2"),
+                    "",
+                    ((decimal)line.WORK_DAYS).ToString("0", System.Globalization.CultureInfo.InvariantCulture),
+                    baseSalary.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                    mostamar.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                    gheyreMostamar.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                    "0",
+                    "0",
+                    ((long)line.INS_WORKER).ToString(System.Globalization.CultureInfo.InvariantCulture),
+                    ((long)line.TAX_AMOUNT).ToString(System.Globalization.CultureInfo.InvariantCulture),
+                    "0",
+                    "0",
+                    eydi.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                    sanavat.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                    ((long)line.TAX_BASE).ToString(System.Globalization.CultureInfo.InvariantCulture)
+                );
+                whLines.Add(whLine);
+            }
+
+            string tempDir = Path.Combine(Path.GetTempPath(), $"TaxDiskette_{Guid.NewGuid()}");
+            Directory.CreateDirectory(tempDir);
+
+            string prefix = $"{year}{month:D2}";
+            string pathWp = Path.Combine(tempDir, $"WP{prefix}.txt");
+            string pathWh = Path.Combine(tempDir, $"WH{prefix}.txt");
+
+            try
+            {
+                await System.IO.File.WriteAllLinesAsync(pathWp, wpLines, utf8WithoutBom);
+                await System.IO.File.WriteAllLinesAsync(pathWh, whLines, utf8WithoutBom);
+
+                using var memoryStream = new MemoryStream();
+                using (var archive = new ZipArchive(memoryStream, ZipArchiveMode.Create, true))
+                {
+                    archive.CreateEntryFromFile(pathWp, $"WP{prefix}.txt");
+                    archive.CreateEntryFromFile(pathWh, $"WH{prefix}.txt");
+                }
+
+                return (memoryStream.ToArray(), $"Tax_Diskette_{prefix}.zip");
+            }
+            finally
+            {
+                if (Directory.Exists(tempDir))
+                    Directory.Delete(tempDir, true);
+            }
+        }
+
+
+        // متد جدید: پیش‌نمایش دیسکت مالیات به صورت JSON
+        public async Task<TaxDiskettePreviewDto?> GetTaxDiskettePreviewAsync(int runId)
+        {
+            var result = new TaxDiskettePreviewDto();
+
+            const string headSql = @"
+                SELECT P.PERIOD_DATE, W.WS_CODE
+                FROM PAY2_RUN R WITH (NOLOCK)
+                INNER JOIN PAY2_PERIOD P WITH (NOLOCK) ON R.PER_ID = P.PER_ID
+                INNER JOIN PAY2_WORKSHOP W WITH (NOLOCK) ON P.WS_ID = W.WS_ID
+                WHERE R.RUN_ID = @runId";
+
+            var head = await _db.DoGetDataSQLAsyncSingle<dynamic>(headSql, new { runId });
+            if (head == null) return null;
+
+            long periodDate = (long)head.PERIOD_DATE;
+            int year = (int)(periodDate / 10000);
+            int month = (int)((periodDate / 100) % 100);
+
+            // 🚀 اصلاح شد: ADDRESS و POSTAL_CODE از کوئری حذف شدند
+            const string linesSql = @"
+                SELECT 
+                    RL.EMP_ID, E.EMP_CODE, E.NATIONAL_CODE, E.FIRST_NAME, E.LAST_NAME, E.FATHER_NAME,
+                    E.ID_NUMBER, E.BIRTH_PLACE, E.BIRTH_DATE, E.NATIONALITY, E.HIRE_DATE, E.FIRE_DATE,
+                    E.INS_CODE, E.MOBILE, E.MARITAL,
+                    J.JOB_NAME,
+                    RL.WORK_DAYS, RL.GROSS_PAY, RL.INS_WORKER, RL.TAX_BASE, RL.TAX_AMOUNT
+                FROM PAY2_RUN_LINE RL WITH (NOLOCK)
+                INNER JOIN PAY2_EMPLOYEE E WITH (NOLOCK) ON RL.EMP_ID = E.EMP_ID
+                LEFT JOIN PAY2_JOB J WITH (NOLOCK) ON E.JOB_ID = J.JOB_ID
+                WHERE RL.RUN_ID = @runId AND E.TAX_EXEMPT = 0
+                ORDER BY E.LAST_NAME, E.FIRST_NAME";
+
+            var lines = (await _db.DoGetDataSQLAsync<dynamic>(linesSql, new { runId })).ToList();
+
+            const string detailsSql = @"
+                SELECT D.EMP_ID, I.ITEM_CODE, D.AMOUNT, I.CALC_BASIS
+                FROM PAY2_RUN_DETAIL D WITH (NOLOCK)
+                INNER JOIN PAY2_ITEM_DEF I WITH (NOLOCK) ON D.ITEM_ID = I.ITEM_ID
+                WHERE D.RUN_ID = @runId AND I.TAX_SUBJECT = 1";
+
+            var details = await _db.DoGetDataSQLAsync<dynamic>(detailsSql, new { runId });
+            var groupedDetails = details.GroupBy(x => (int)x.EMP_ID).ToDictionary(g => g.Key, g => g.ToList());
+
+            foreach (var line in lines)
+            {
+                int empId = (int)line.EMP_ID;
+                string natCode = line.NATIONAL_CODE?.ToString() ?? "";
+                if (string.IsNullOrWhiteSpace(natCode)) continue;
+
+                // ── پر کردن مدل WP ──
+                result.WpList.Add(new TaxDisketteWpDto
+                {
+                    NATIONAL_CODE = natCode,
+                    NATIONALITY = (byte)line.NATIONALITY == 1 ? "1 (ایرانی)" : "2 (اتباع)",
+                    FIRST_NAME = line.FIRST_NAME?.ToString() ?? "",
+                    LAST_NAME = line.LAST_NAME?.ToString() ?? "",
+                    FATHER_NAME = line.FATHER_NAME?.ToString() ?? "",
+                    ID_NUMBER = line.ID_NUMBER?.ToString() ?? "",
+                    BIRTH_PLACE = line.BIRTH_PLACE?.ToString() ?? "",
+                    BIRTH_DATE = line.BIRTH_DATE?.ToString() ?? "",
+                    MARITAL = (byte)line.MARITAL == 1 ? "1 (متاهل)" : "2 (مجرد)",
+                    INS_CODE = line.INS_CODE?.ToString() ?? "",
+                    JOB_NAME = line.JOB_NAME?.ToString() ?? "",
+                    HIRE_DATE = line.HIRE_DATE?.ToString() ?? "",
+                    FIRE_DATE = line.FIRE_DATE?.ToString() ?? "",
+                    POSTAL_CODE = "", // 🚀 به جای دیتابیس رشته خالی ارسال می‌شود
+                    MOBILE = line.MOBILE?.ToString() ?? ""
+                });
+
+                // ── پر کردن مدل WH ──
+                long baseSalary = 0, mostamar = 0, gheyreMostamar = 0, eydi = 0, sanavat = 0;
+
+                if (groupedDetails.TryGetValue(empId, out var empDetails))
+                {
+                    foreach (var det in empDetails)
+                    {
+                        string code = det.ITEM_CODE.ToString().ToUpper();
+                        long amt = (long)det.AMOUNT;
+                        byte basis = (byte)det.CALC_BASIS;
+
+                        if (code == "BASE_SAL" || code == "BASE_SAL_B") baseSalary += amt;
+                        else if (code == "EIDI") eydi += amt;
+                        else if (code == "SANAVAT" || code == "SENIORITY") sanavat += amt;
+                        else if (basis == 2) mostamar += amt;
+                        else gheyreMostamar += amt;
+                    }
+                }
+
+                result.WhList.Add(new TaxDisketteWhDto
+                {
+                    NATIONAL_CODE = natCode,
+                    YEAR = year.ToString(),
+                    MONTH = month.ToString("D2"),
+                    WORK_DAYS = (decimal)line.WORK_DAYS,
+                    BASE_SALARY = baseSalary,
+                    MOSTAMAR = mostamar,
+                    GHEYRE_MOSTAMAR = gheyreMostamar,
+                    INS_WORKER = (long)line.INS_WORKER,
+                    TAX_AMOUNT = (long)line.TAX_AMOUNT,
+                    EYDI = eydi,
+                    SANAVAT = sanavat,
+                    TAX_BASE = (long)line.TAX_BASE
+                });
+            }
+
+            return result;
+        }
     }
 }

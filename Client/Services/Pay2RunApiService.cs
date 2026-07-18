@@ -181,5 +181,51 @@ namespace Safir.Client.Services
             }
             return await res.Content.ReadAsByteArrayAsync();
         }
+
+        public async Task<Pay2MonthCompareResultDto> CompareMonthsAsync(int wsId, long period1, long period2)
+        {
+            var res = await _http.GetAsync($"api/pay2/run/compare-months?wsId={wsId}&period1={period1}&period2={period2}");
+            if (!res.IsSuccessStatusCode)
+            {
+                var err = await res.Content.ReadAsStringAsync();
+                throw new Exception(string.IsNullOrWhiteSpace(err) ? "خطا در دریافت گزارش مقایسه ماه‌ها." : err);
+            }
+            return await res.Content.ReadFromJsonAsync<Pay2MonthCompareResultDto>() ?? new Pay2MonthCompareResultDto();
+        }
+
+        // دریافت فایل اکسل گزارش مالیات سالانه
+        public async Task<byte[]> GetAnnualTaxReportExcelAsync(int wsId, long periodDate)
+        {
+            var res = await _http.GetAsync($"api/pay2/run/tax-report-excel?wsId={wsId}&periodDate={periodDate}");
+            if (!res.IsSuccessStatusCode)
+            {
+                var err = await res.Content.ReadAsStringAsync();
+                throw new Exception(string.IsNullOrWhiteSpace(err) ? "خطا در دریافت گزارش مالیات." : err);
+            }
+            return await res.Content.ReadAsByteArrayAsync();
+        }
+
+        // دریافت بایت‌های فایل ZIP دیسکت مالیات (WP و WH)
+        public async Task<byte[]> GetTaxDisketteZipAsync(int runId)
+        {
+            var res = await _http.GetAsync($"api/pay2/run/{runId}/tax-diskette");
+            if (!res.IsSuccessStatusCode)
+            {
+                var err = await res.Content.ReadAsStringAsync();
+                throw new Exception(string.IsNullOrWhiteSpace(err) ? "خطا در دریافت دیسکت مالیات." : err);
+            }
+            return await res.Content.ReadAsByteArrayAsync();
+        }
+
+        public async Task<TaxDiskettePreviewDto> GetTaxDiskettePreviewAsync(int runId)
+        {
+            var res = await _http.GetAsync($"api/pay2/run/{runId}/tax-diskette-preview");
+            if (!res.IsSuccessStatusCode)
+            {
+                var err = await res.Content.ReadAsStringAsync();
+                throw new Exception(string.IsNullOrWhiteSpace(err) ? "خطا در دریافت پیش‌نمایش دیسکت مالیات." : err);
+            }
+            return await res.Content.ReadFromJsonAsync<TaxDiskettePreviewDto>() ?? new TaxDiskettePreviewDto();
+        }
     }
 }

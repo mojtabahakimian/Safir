@@ -299,4 +299,22 @@
         public bool IS_ACTIVE { get; set; } = true;
     }
 
+    // --- کلاس مخصوص گزارش کلان مرخصی ---
+    public class Pay2LeaveReportRowDto
+    {
+        public string EMP_CODE { get; set; } = "";
+        public string FULL_NAME { get; set; } = "";
+
+        // کل سال
+        public int ENTITLEMENT_MIN { get; set; }
+        public int CARRIED_IN_MIN { get; set; }
+        public int USED_MIN { get; set; }
+        public int BALANCE_MIN { get; set; }
+        public decimal BALANCE_DAYS { get; set; }
+
+        // تا تاریخ روز (Pro-rata)
+        public int PRORATA_ENTITLEMENT_MIN { get; set; }
+        public int PRORATA_BALANCE_MIN { get; set; }
+        public decimal PRORATA_BALANCE_DAYS { get; set; }
+    }
 }
