@@ -1,4 +1,5 @@
-﻿@using Safir.Shared.Models.Salary
+﻿@using Safir.Shared.Models
+@using Safir.Shared.Models.Salary
 @using Safir.Client.Components.Reports
 @inject Safir.Client.Services.Pay2RunApiService RunApi
 @inject Safir.Client.Services.Pay2AttendanceApiService AttApi
@@ -7,6 +8,7 @@
 @inject MudBlazor.IDialogService DialogService
 @inject Safir.Client.Services.ConnectionManagerService ConnectionManager
 @inject Microsoft.JSInterop.IJSRuntime JS
+@inject Safir.Client.Services.Pay2EmployeeApiService EmployeeApi
 
 <div class="pay2-tab-container">
     <div class="card-custom p2-fade-content">
@@ -99,6 +101,47 @@
                 </div>
             </div>
 
+            <!-- گزارش مانده مرخصی -->
+            <div class="card-custom" style="background: var(--p2-bg-main); border: 1px solid var(--p2-border);">
+                <div style="display: flex; align-items: center; gap: 15px; margin-bottom: 15px;">
+                    <div class="stat-icon-box" style="background: #dcfce7; color: #10b981;">
+                        <i class="bi bi-calendar-check"></i>
+                    </div>
+                    <div>
+                        <h6 style="margin: 0; font-weight: bold;">گزارش مانده مرخصی سالانه</h6>
+                        <span class="p2-text-muted" style="font-size: 11px;">محاسبه استحقاق تا تاریخ روز (Pro-Rata)</span>
+                    </div>
+                </div>
+                
+                <div style="margin-bottom: 12px;">
+                     <label style="font-size:12px; font-weight:bold; margin-bottom:4px; display:block;">فیلتر پرسنل (اختیاری):</label>
+                     <Safir.Client.Pages.Salary.Tabs.Pay2Select TItem="Safir.Shared.Models.LookupDto<int>" TValue="int" 
+                                Items="EmployeeLookup" 
+                                @bind-Value="SelectedEmpId" 
+                                TextSelector="x => x.Name" 
+                                ValueSelector="x => x.Id" 
+                                Placeholder="همه پرسنل کارگاه"
+                                Clearable="true" />
+                </div>
+
+                <div style="display:flex; gap:10px; width:100%;">
+                    <button class="btn-primary-pay2" style="background-color: #10b981; border-color: #10b981; flex:1;" @onclick="GenerateLeaveReport" disabled="@IsProcessing">
+                        @if (IsProcessing) 
+                        { 
+                            <span class="p2-spinner"></span> 
+                        }
+                        else 
+                        { 
+                            <i class="bi bi-file-earmark-excel"></i> <span>فایل اکسل</span> 
+                        }
+                    </button>
+                    
+                    <button class="btn-outline-pay2" style="color: #10b981; border-color: #10b981; padding: 0 16px;" @onclick="PrintLeaveReportPdf" disabled="@IsProcessing" title="چاپ PDF">
+                        <i class="bi bi-printer"></i> چاپ PDF
+                    </button>
+                </div>
+            </div>
+
             <!-- جایگاه برای گزارشات آینده (مالیات، بانک و...) -->
             <div class="card-custom" style="background: #f8fafc; border: 1px dashed #cbd5e1; opacity: 0.6;">
                 <div style="display: flex; align-items: center; gap: 15px; margin-bottom: 15px;">
@@ -151,10 +194,13 @@
 @code {
     List<Pay2WorkshopDto> Workshops = new();
     List<Pay2PeriodLookupDto> Periods = new();
-    
+
     int SelectedWsId;
     long SelectedPeriodDate;
     bool IsProcessing = false;
+
+    int SelectedEmpId = 0;
+    List<LookupDto<int>> EmployeeLookup = new();
 
     protected override async Task OnInitializedAsync()
     {
@@ -166,6 +212,7 @@
             {
                 SelectedWsId = Workshops.First().WS_ID;
                 await LoadPeriodsAsync();
+                await LoadEmployeesLookupAsync();
             }
         }
         catch (Exception ex)
@@ -401,5 +448,45 @@
         {
             IsProcessing = false;
         }
+    }
+
+    async Task GenerateLeaveReport()
+    {
+        if (SelectedWsId <= 0) { Snackbar.Add("کارگاه انتخاب نشده.", MudBlazor.Severity.Warning); return; }
+        int year = (SelectedPeriodDate > 0) ? (int)(SelectedPeriodDate / 10000) : (Periods.Count > 1 ? (int)(Periods[1].PERIOD_DATE / 10000) : 1403);
+        long currentDate = Safir.Shared.Utility.CL_Tarikh.GetCurrentPersianDateAsLong();
+
+        IsProcessing = true;
+        try
+        {
+            var bytes = await EmployeeApi.GetLeaveReportExcelAsync(SelectedWsId, year, SelectedEmpId, currentDate);
+            await JS.InvokeVoidAsync("downloadFileFromBytes", $"LeaveBalance_{year}.xlsx", bytes);
+            Snackbar.Add("فایل اکسل تولید شد.", MudBlazor.Severity.Success);
+        }
+        catch (Exception ex) { Snackbar.Add(ex.Message, MudBlazor.Severity.Error); }
+        finally { IsProcessing = false; }
+    }
+
+    void PrintLeaveReportPdf()
+    {
+        if (SelectedWsId <= 0) { Snackbar.Add("کارگاه انتخاب نشده.", MudBlazor.Severity.Warning); return; }
+        int year = (SelectedPeriodDate > 0) ? (int)(SelectedPeriodDate / 10000) : (Periods.Count > 1 ? (int)(Periods[1].PERIOD_DATE / 10000) : 1403);
+        long currentDate = Safir.Shared.Utility.CL_Tarikh.GetCurrentPersianDateAsLong();
+
+        var parameters = new MudBlazor.DialogParameters
+        {
+            ["Title"] = $"گزارش مانده مرخصی تا تاریخ {currentDate}",
+            ["FetchPdfBytes"] = (Func<Task<byte[]>>)(() => EmployeeApi.GetLeaveReportPdfAsync(SelectedWsId, year, SelectedEmpId, currentDate))
+        };
+        DialogService.Show<PdfPreviewDialog>("چاپ مرخصی", parameters, new MudBlazor.DialogOptions { MaxWidth = MudBlazor.MaxWidth.ExtraExtraLarge, FullWidth = true, CloseButton = true });
+    }
+
+    async Task LoadEmployeesLookupAsync()
+    {
+        try
+        {
+            EmployeeLookup = await EmployeeApi.GetEmployeesLookupAsync();
+        }
+        catch { }
     }
 }

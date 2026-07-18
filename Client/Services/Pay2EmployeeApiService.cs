@@ -296,5 +296,32 @@ namespace Safir.Client.Services
             if (!res.IsSuccessStatusCode) throw new Exception(await res.Content.ReadAsStringAsync());
         }
 
+        public async Task<byte[]> GetLeaveReportExcelAsync(int wsId, int year)
+        {
+            var res = await _http.GetAsync($"api/pay2/employees/leave-report/excel?wsId={wsId}&year={year}");
+            if (!res.IsSuccessStatusCode)
+            {
+                var err = await res.Content.ReadAsStringAsync();
+                throw new Exception(string.IsNullOrWhiteSpace(err) ? "خطا در دریافت گزارش مرخصی." : err);
+            }
+            return await res.Content.ReadAsByteArrayAsync();
+        }
+
+        public async Task<byte[]> GetLeaveReportExcelAsync(int wsId, int year, int empId, long currentDate)
+        {
+            var res = await _http.GetAsync($"api/pay2/employees/leave-report/excel?wsId={wsId}&year={year}&empId={empId}&currentDate={currentDate}");
+            if (!res.IsSuccessStatusCode)
+                throw new Exception(await res.Content.ReadAsStringAsync());
+            return await res.Content.ReadAsByteArrayAsync();
+        }
+
+        public async Task<byte[]> GetLeaveReportPdfAsync(int wsId, int year, int empId, long currentDate)
+        {
+            var res = await _http.GetAsync($"api/pay2/employees/leave-report/pdf?wsId={wsId}&year={year}&empId={empId}&currentDate={currentDate}");
+            if (!res.IsSuccessStatusCode)
+                throw new Exception(await res.Content.ReadAsStringAsync());
+            return await res.Content.ReadAsByteArrayAsync();
+        }
+
     }
 }
