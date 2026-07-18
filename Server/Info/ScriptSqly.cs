@@ -2120,6 +2120,12 @@ BEGIN
         RETURN;
     END;
 
+    -- گارد Idempotency: جلوگیری از برگشت دوباره مرخصی یا اقساط پس از حذف خروجی‌های RUN.
+    IF NOT EXISTS (SELECT 1 FROM PAY2_RUN_LINE WHERE RUN_ID = @RUN_ID)
+    BEGIN
+        RETURN;
+    END;
+
     -- 1. بازگرداندن دقیق تعداد اقساط کسر شده در این RUN (فقط وام‌های درگیر همین RUN)
     UPDATE L SET L.PAID_INST = L.PAID_INST - (
         SELECT COUNT(1) FROM PAY2_LOAN_SCHED LS
@@ -2304,7 +2310,13 @@ BEGIN
     BEGIN
         DECLARE @THIS_AMT BIGINT =
             CASE WHEN @I = @TOTAL_INST
-                 THEN (SELECT AMOUNT - @INSTALLMENT*(@TOTAL_INST-1) FROM PAY2_LOAN WHERE LOAN_ID=@LOAN_ID)
+                 THEN (
+                    SELECT CASE
+                             WHEN AMOUNT - (@INSTALLMENT * (@TOTAL_INST - 1)) < 0 THEN 0
+                             ELSE AMOUNT - (@INSTALLMENT * (@TOTAL_INST - 1))
+                           END
+                    FROM PAY2_LOAN WHERE LOAN_ID = @LOAN_ID
+                 )
                  ELSE @INSTALLMENT
             END;
 
@@ -2499,8 +2511,8 @@ BEGIN
             -- مانده خام از حسابداری
             ISNULL((
                 SELECT CAST(SUM(D.BED - D.BES) AS BIGINT)
-                FROM DEED_HED H WITH (NOLOCK)
-                INNER JOIN DEED_DTL D WITH (NOLOCK) ON H.N_S = D.N_S
+                FROM DEED_HED H
+                INNER JOIN DEED_DTL D ON H.N_S = D.N_S
                 WHERE
                     D.HES_K = @HES_K
                     AND D.HES_M = @HES_M
