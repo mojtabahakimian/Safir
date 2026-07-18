@@ -55,6 +55,58 @@
             <div style="flex-grow: 1; display:flex; flex-direction:column; overflow:hidden;">
                 @if (ReportData != null)
                 {
+                    <!-- 🚀 داشبورد مینیاتوری ویژه مدیران -->
+                    <div style="display: grid; grid-template-columns: 3fr 1fr; gap: 16px; margin-bottom: 16px; flex-shrink: 0;">
+                        
+                        <!-- نمودار مقایسه‌ای -->
+                        <div class="card-custom" style="padding: 10px; border: 1px solid var(--p2-border); box-shadow: none;">
+                            <div style="font-weight: 800; font-size: 14px; color: var(--p2-text-main); margin-bottom: 10px; text-align: center;">
+                                نمودار مقایسه کلی (ریال)
+                            </div>
+                            <MudChart ChartType="ChartType.Bar" 
+                                      ChartSeries="@_chartSeries" 
+                                      XAxisLabels="@_xAxisLabels" 
+                                      Width="100%" 
+                                      Height="200px" 
+                                      ChartOptions="@_chartOptions" />
+                        </div>
+
+                        <!-- کارت‌های خلاصه وضعیت (KPIs) -->
+                        <div style="display: flex; flex-direction: column; gap: 12px;">
+                            
+                            <!-- کارت خالص پرداختی -->
+                            <div style="background: @(_netDiff > 0 ? "#f0fdf4" : (_netDiff < 0 ? "#fef2f2" : "#f8fafc")); border: 1px solid @(_netDiff > 0 ? "#bbf7d0" : (_netDiff < 0 ? "#fecaca" : "var(--p2-border)")); border-radius: 8px; padding: 12px; display:flex; flex-direction:column; justify-content:center; flex-grow:1;">
+                                <div style="font-size: 11px; color: var(--p2-text-muted); font-weight: 600;">اختلاف خالص پرداختی</div>
+                                <div style="font-family: Consolas; font-size: 18px; font-weight: 900; color: @(_netDiff > 0 ? "#16a34a" : (_netDiff < 0 ? "#dc2626" : "var(--p2-text-main)")); margin-top: 4px;">
+                                    @(_netDiff > 0 ? "+" : "")@_netDiff.ToString("N0")
+                                </div>
+                                <div style="font-size: 11px; margin-top: 4px; color: @(_netDiff > 0 ? "#16a34a" : (_netDiff < 0 ? "#dc2626" : "var(--p2-text-muted)"));">
+                                    <i class="bi @(_netDiff > 0 ? "bi-arrow-up-right" : (_netDiff < 0 ? "bi-arrow-down-right" : "bi-dash"))"></i> 
+                                    @_netDiffPercent.ToString("0.##")٪ نسبت به ماه قبل
+                                </div>
+                            </div>
+
+                            <!-- کارت ناخالص -->
+                            <div style="background: var(--p2-bg-main); border: 1px solid var(--p2-border); border-radius: 8px; padding: 12px; display:flex; flex-direction:column; justify-content:center; flex-grow:1;">
+                                <div style="font-size: 11px; color: var(--p2-text-muted); font-weight: 600;">اختلاف ناخالص حقوق</div>
+                                <div style="font-family: Consolas; font-size: 16px; font-weight: 800; color: var(--p2-primary); margin-top: 4px;">
+                                    @(_grossDiff > 0 ? "+" : "")@_grossDiff.ToString("N0")
+                                </div>
+                            </div>
+
+                            <!-- کارت آمار پرسنل -->
+                            <div style="background: var(--p2-bg-main); border: 1px solid var(--p2-border); border-radius: 8px; padding: 12px; display:flex; flex-direction:column; justify-content:center; flex-grow:1;">
+                                <div style="font-size: 11px; color: var(--p2-text-muted); font-weight: 600;">وضعیت ریزش/رویش پرسنل</div>
+                                <div style="font-family: Consolas; font-size: 15px; font-weight: 800; color: var(--p2-text-main); margin-top: 4px;">
+                                    @if(_empDiff > 0) { <span style="color:#16a34a;">+@_empDiff نفر (افزایش)</span> }
+                                    else if(_empDiff < 0) { <span style="color:#dc2626;">@_empDiff نفر (کاهش)</span> }
+                                    else { <span style="color:var(--p2-text-muted);">بدون تغییر تعداد</span> }
+                                </div>
+                            </div>
+
+                        </div>
+                    </div>
+
                     <div style="flex-grow:1; min-height:0;">
                         <Pay2DataGrid TItem="Pay2MonthCompareRowDto"
                                       Items="ReportData.Rows"
@@ -75,6 +127,7 @@
                     </div>
                 }
             </div>
+
         </div>
 
         <div class="pay2-modal-footer">
@@ -95,6 +148,16 @@
     Pay2MonthCompareResultDto? ReportData;
     bool _isLoading;
     bool _lastOpenState = false;
+
+    // متغیرهای داشبورد و نمودار
+    public List<MudBlazor.ChartSeries> _chartSeries = new();
+    public string[] _xAxisLabels = { "حقوق ناخالص", "کل کسورات", "خالص پرداختی" };
+    public MudBlazor.ChartOptions _chartOptions = new() { YAxisFormat = "N0" };
+
+    long _netDiff = 0;
+    long _grossDiff = 0;
+    decimal _netDiffPercent = 0;
+    int _empDiff = 0;
 
     // کانفیگ گرید برای نمایش مقایسه‌ها (با پشتیبانی از جمع Footer و خروجی Excel)
     List<Pay2GridColumn<Pay2MonthCompareRowDto>> GridColumns = new()
@@ -167,6 +230,8 @@
             GridColumns[7].Title = $"کسورات ({ReportData.Period2Title})";
             GridColumns[8].Title = $"خالص ({ReportData.Period1Title})";
             GridColumns[9].Title = $"خالص ({ReportData.Period2Title})";
+
+            UpdateDashboardData();
         }
         catch (Exception ex)
         {
@@ -178,6 +243,37 @@
             StateHasChanged();
         }
     }
+    // 🚀 متد محاسبه و تغذیه داده‌های نمودار و کارت‌های مدیر
+    private void UpdateDashboardData()
+    {
+        _chartSeries.Clear();
 
+        if (ReportData == null || !ReportData.Rows.Any()) return;
+
+        // محاسبه جمع کل‌ها برای ماه مبدأ
+        double gross1 = ReportData.Rows.Sum(x => (double)x.GROSS_PAY_1);
+        double ded1 = ReportData.Rows.Sum(x => (double)x.TOTAL_DED_1);
+        double net1 = ReportData.Rows.Sum(x => (double)x.NET_PAY_1);
+
+        // محاسبه جمع کل‌ها برای ماه مقصد
+        double gross2 = ReportData.Rows.Sum(x => (double)x.GROSS_PAY_2);
+        double ded2 = ReportData.Rows.Sum(x => (double)x.TOTAL_DED_2);
+        double net2 = ReportData.Rows.Sum(x => (double)x.NET_PAY_2);
+
+        // پر کردن داده‌های نمودار میله‌ای
+        _chartSeries.Add(new MudBlazor.ChartSeries() { Name = ReportData.Period1Title, Data = new double[] { gross1, ded1, net1 } });
+        _chartSeries.Add(new MudBlazor.ChartSeries() { Name = ReportData.Period2Title, Data = new double[] { gross2, ded2, net2 } });
+
+        // محاسبه KPI ها
+        _netDiff = (long)(net2 - net1);
+        _grossDiff = (long)(gross2 - gross1);
+        
+        _netDiffPercent = net1 > 0 ? Math.Round((decimal)(_netDiff / net1) * 100m, 2) : 0;
+
+        // محاسبه تعداد پرسنل فعال در هر ماه (کسانی که حقوق ناخالص داشته‌اند)
+        int emp1Count = ReportData.Rows.Count(x => x.GROSS_PAY_1 > 0);
+        int emp2Count = ReportData.Rows.Count(x => x.GROSS_PAY_2 > 0);
+        _empDiff = emp2Count - emp1Count;
+    }
     async Task Close() => await OnClose.InvokeAsync();
 }
