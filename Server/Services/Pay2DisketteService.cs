@@ -382,11 +382,12 @@ namespace Safir.Server.Services
             int month = (int)((periodDate / 100) % 100);
             string wsCode = head.WS_CODE?.ToString() ?? "";
 
+            // 🚀 اصلاح شد: ADDRESS و POSTAL_CODE از کوئری حذف شدند
             const string linesSql = @"
                 SELECT 
                     RL.EMP_ID, E.EMP_CODE, E.NATIONAL_CODE, E.FIRST_NAME, E.LAST_NAME, E.FATHER_NAME,
                     E.ID_NUMBER, E.BIRTH_PLACE, E.BIRTH_DATE, E.NATIONALITY, E.HIRE_DATE, E.FIRE_DATE,
-                    E.INS_CODE, E.POSTAL_CODE, E.ADDRESS, E.MOBILE, E.MARITAL,
+                    E.INS_CODE, E.MOBILE, E.MARITAL,
                     J.JOB_NAME,
                     RL.WORK_DAYS, RL.GROSS_PAY, RL.INS_WORKER, RL.TAX_BASE, RL.TAX_AMOUNT
                 FROM PAY2_RUN_LINE RL WITH (NOLOCK)
@@ -416,34 +417,33 @@ namespace Safir.Server.Services
             {
                 int empId = (int)line.EMP_ID;
                 string natCode = line.NATIONAL_CODE?.ToString() ?? "";
-                if (string.IsNullOrWhiteSpace(natCode)) continue; // مودی بدون کد ملی برای دارایی نامعتبر است
+                if (string.IsNullOrWhiteSpace(natCode)) continue;
 
                 // ─── تولید خط فایل WP (اطلاعات هویتی) ───
-                // فرمت استاندارد دارایی: کد ملی، نوع ملیت، کشور، نام، نام خانوادگی، نام پدر، ش.شناسنامه، محل صدور، تاریخ تولد، وضعیت تاهل، ...
                 string wpLine = string.Join(",",
                     natCode,
-                    ((byte)line.NATIONALITY == 1 ? "1" : "2"), // 1=ایرانی
-                    "", // کشور (برای ایرانی‌ها خالی)
+                    ((byte)line.NATIONALITY == 1 ? "1" : "2"),
+                    "",
                     line.FIRST_NAME?.ToString() ?? "",
                     line.LAST_NAME?.ToString() ?? "",
                     line.FATHER_NAME?.ToString() ?? "",
                     line.ID_NUMBER?.ToString() ?? "",
                     line.BIRTH_PLACE?.ToString() ?? "",
                     line.BIRTH_DATE?.ToString() ?? "",
-                    ((byte)line.MARITAL == 1 ? "1" : "2"), // 1=متاهل
-                    "0", // تعداد فرزند (در سیستم فعلی نداریم)
-                    "", // نوع بیمه (خالی=تامین اجتماعی)
+                    ((byte)line.MARITAL == 1 ? "1" : "2"),
+                    "0",
+                    "",
                     line.INS_CODE?.ToString() ?? "",
-                    "", // مدرک تحصیلی (کد دارایی می‌خواهد، خالی می‌گذاریم)
+                    "",
                     line.JOB_NAME?.ToString() ?? "",
-                    "1", // نوع قرارداد (1=دائم/اصلی)
+                    "1",
                     line.HIRE_DATE?.ToString() ?? "",
                     line.FIRE_DATE?.ToString() ?? "",
-                    line.POSTAL_CODE?.ToString() ?? "",
-                    "", // آدرس
-                    "", // تلفن
+                    "", // 🚀 کد پستی خالی ارسال می‌شود
+                    "", // 🚀 آدرس خالی ارسال می‌شود
+                    "",
                     line.MOBILE?.ToString() ?? "",
-                    "0" // وضعیت معلولیت/جانبازی
+                    "0"
                 );
                 wpLines.Add(wpLine);
 
@@ -461,30 +461,29 @@ namespace Safir.Server.Services
                         if (code == "BASE_SAL" || code == "BASE_SAL_B") baseSalary += amt;
                         else if (code == "EIDI") eydi += amt;
                         else if (code == "SANAVAT" || code == "SENIORITY") sanavat += amt;
-                        else if (basis == 2) mostamar += amt; // مزایای مستمر
-                        else gheyreMostamar += amt; // مزایای غیرمستمر (اضافه کار، پاداش و...)
+                        else if (basis == 2) mostamar += amt;
+                        else gheyreMostamar += amt;
                     }
                 }
 
-                // فرمت استاندارد دارایی: کدملی، سال، ماه، تاریخ ثبت، روز کارکرد، حقوق مبنا، مزایای مستمر، غیرمستمر، بیمه سهم کارگر، مالیات کسر شده، ...
                 string whLine = string.Join(",",
                     natCode,
                     year.ToString(),
                     month.ToString("D2"),
-                    "", // تاریخ ثبت در دفتر روزنامه
-                    ((decimal)line.WORK_DAYS).ToString("0", System.Globalization.CultureInfo.InvariantCulture), // بدون اعشار و بدون کاما
+                    "",
+                    ((decimal)line.WORK_DAYS).ToString("0", System.Globalization.CultureInfo.InvariantCulture),
                     baseSalary.ToString(System.Globalization.CultureInfo.InvariantCulture),
                     mostamar.ToString(System.Globalization.CultureInfo.InvariantCulture),
                     gheyreMostamar.ToString(System.Globalization.CultureInfo.InvariantCulture),
-                    "0", // مزایای غیرنقدی مستمر
-                    "0", // مزایای غیرنقدی غیرمستمر
-                    ((long)line.INS_WORKER).ToString(System.Globalization.CultureInfo.InvariantCulture), // حق بیمه کارگر
-                    ((long)line.TAX_AMOUNT).ToString(System.Globalization.CultureInfo.InvariantCulture), // مالیات محاسبه شده (جهت تطبیق)
-                    "0", // معافیت ۲/۷ بیمه
-                    "0", // معافیت ماده ۱۳۷
+                    "0",
+                    "0",
+                    ((long)line.INS_WORKER).ToString(System.Globalization.CultureInfo.InvariantCulture),
+                    ((long)line.TAX_AMOUNT).ToString(System.Globalization.CultureInfo.InvariantCulture),
+                    "0",
+                    "0",
                     eydi.ToString(System.Globalization.CultureInfo.InvariantCulture),
                     sanavat.ToString(System.Globalization.CultureInfo.InvariantCulture),
-                    ((long)line.TAX_BASE).ToString(System.Globalization.CultureInfo.InvariantCulture) // خالص مشمول
+                    ((long)line.TAX_BASE).ToString(System.Globalization.CultureInfo.InvariantCulture)
                 );
                 whLines.Add(whLine);
             }
@@ -492,7 +491,6 @@ namespace Safir.Server.Services
             string tempDir = Path.Combine(Path.GetTempPath(), $"TaxDiskette_{Guid.NewGuid()}");
             Directory.CreateDirectory(tempDir);
 
-            // نام‌گذاری استاندارد: WH و WP به همراه سال و ماه
             string prefix = $"{year}{month:D2}";
             string pathWp = Path.Combine(tempDir, $"WP{prefix}.txt");
             string pathWh = Path.Combine(tempDir, $"WH{prefix}.txt");
@@ -518,6 +516,7 @@ namespace Safir.Server.Services
             }
         }
 
+
         // متد جدید: پیش‌نمایش دیسکت مالیات به صورت JSON
         public async Task<TaxDiskettePreviewDto?> GetTaxDiskettePreviewAsync(int runId)
         {
@@ -537,11 +536,12 @@ namespace Safir.Server.Services
             int year = (int)(periodDate / 10000);
             int month = (int)((periodDate / 100) % 100);
 
+            // 🚀 اصلاح شد: ADDRESS و POSTAL_CODE از کوئری حذف شدند
             const string linesSql = @"
                 SELECT 
                     RL.EMP_ID, E.EMP_CODE, E.NATIONAL_CODE, E.FIRST_NAME, E.LAST_NAME, E.FATHER_NAME,
                     E.ID_NUMBER, E.BIRTH_PLACE, E.BIRTH_DATE, E.NATIONALITY, E.HIRE_DATE, E.FIRE_DATE,
-                    E.INS_CODE, E.POSTAL_CODE, E.ADDRESS, E.MOBILE, E.MARITAL,
+                    E.INS_CODE, E.MOBILE, E.MARITAL,
                     J.JOB_NAME,
                     RL.WORK_DAYS, RL.GROSS_PAY, RL.INS_WORKER, RL.TAX_BASE, RL.TAX_AMOUNT
                 FROM PAY2_RUN_LINE RL WITH (NOLOCK)
@@ -583,7 +583,7 @@ namespace Safir.Server.Services
                     JOB_NAME = line.JOB_NAME?.ToString() ?? "",
                     HIRE_DATE = line.HIRE_DATE?.ToString() ?? "",
                     FIRE_DATE = line.FIRE_DATE?.ToString() ?? "",
-                    POSTAL_CODE = line.POSTAL_CODE?.ToString() ?? "",
+                    POSTAL_CODE = "", // 🚀 به جای دیتابیس رشته خالی ارسال می‌شود
                     MOBILE = line.MOBILE?.ToString() ?? ""
                 });
 
