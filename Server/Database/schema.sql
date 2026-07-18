@@ -3826,8 +3826,7 @@ BEGIN
         RETURN;
     END;
 
-    -- گارد Idempotency: اگر خروجی‌های RUN قبلاً پاک شده‌اند، برگشت دوباره نباید
-    -- مرخصی یا اقساط را مجدداً دستکاری کند.
+    -- گارد Idempotency: جلوگیری از برگشت دوباره مرخصی یا اقساط پس از حذف خروجی‌های RUN.
     IF NOT EXISTS (SELECT 1 FROM PAY2_RUN_LINE WHERE RUN_ID = @RUN_ID)
     BEGIN
         RETURN;
