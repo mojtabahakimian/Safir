@@ -81,16 +81,22 @@
                         <span class="p2-text-muted" style="font-size: 11px;">تولید DSKKAR00 و DSKWOR00</span>
                     </div>
                 </div>
-                <button class="btn-primary-pay2" style="background-color: #0284c7; border-color: #0284c7; width: 100%;" @onclick="GenerateInsuranceDiskette" disabled="@IsProcessing">
-                    @if (IsProcessing)
-                    {
-                        <span class="p2-spinner"></span>
-                    }
-                    else
-                    {
-                        <i class="bi bi-download"></i> <span>دریافت فایل ZIP</span>
-                    }
-                </button>
+<div style="display:flex; gap:10px; width:100%;">
+                    <button class="btn-primary-pay2" style="background-color: #0284c7; border-color: #0284c7; flex:1;" @onclick="GenerateInsuranceDiskette" disabled="@IsProcessing">
+                        @if (IsProcessing)
+                        {
+                            <span class="p2-spinner"></span>
+                        }
+                        else
+                        {
+                            <i class="bi bi-download"></i> <span>دریافت فایل ZIP</span>
+                        }
+                    </button>
+                    
+                    <button class="btn-outline-pay2" style="color: #0284c7; border-color: #0284c7; padding: 0 16px;" @onclick="OpenDiskettePreview" disabled="@IsProcessing" title="پیش‌نمایش محتوای فایل DBF">
+                        <i class="bi bi-eye"></i> پیش‌نمایش
+                    </button>
+                </div>
             </div>
 
             <!-- جایگاه برای گزارشات آینده (مالیات، بانک و...) -->
@@ -127,6 +133,12 @@
     </div>
 </div>
 
+<!-- مدال پیش‌نمایش دیسکت بیمه -->
+    <Safir.Client.Pages.Salary.Tabs.EmployeeComponents.InsuranceDiskettePreviewModal 
+        IsOpen="ShowDiskettePreviewModal" 
+        RunId="PreviewRunId" 
+        OnClose="() => ShowDiskettePreviewModal = false" />
+
 @code {
     List<Pay2WorkshopDto> Workshops = new();
     List<Pay2PeriodLookupDto> Periods = new();
@@ -159,7 +171,7 @@
         await LoadPeriodsAsync();
     }
 
-async Task LoadPeriodsAsync()
+    async Task LoadPeriodsAsync()
     {
         if (SelectedWsId <= 0) return;
 
@@ -185,7 +197,7 @@ async Task LoadPeriodsAsync()
         }
     }
 
-async Task GenerateInsuranceReport()
+    async Task GenerateInsuranceReport()
     {
         // 🚀 تغییر مهم: شرط SelectedPeriodDate < 0 شد تا مقدار 0 (همه ماه‌ها) را قبول کند
         if (SelectedWsId <= 0 || SelectedPeriodDate < 0)
@@ -275,6 +287,43 @@ async Task GenerateInsuranceReport()
             await JS.InvokeVoidAsync("downloadFileFromBytes", $"Tamin_Diskette_{period.PERIOD_TITLE}.zip", bytes);
             
             Snackbar.Add("دیسکت بیمه (DBF) با موفقیت تولید و دانلود شد.", MudBlazor.Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add(ex.Message, MudBlazor.Severity.Error);
+        }
+        finally
+        {
+            IsProcessing = false;
+        }
+    }
+
+    bool ShowDiskettePreviewModal = false;
+    int PreviewRunId = 0;
+
+    async Task OpenDiskettePreview()
+    {
+        if (SelectedWsId <= 0 || SelectedPeriodDate <= 0)
+        {
+            Snackbar.Add("لطفاً یک ماه مشخص را برای پیش‌نمایش دیسکت انتخاب کنید (حالت تجمیعی مجاز نیست).", MudBlazor.Severity.Warning);
+            return;
+        }
+
+        var period = Periods.FirstOrDefault(p => p.PERIOD_DATE == SelectedPeriodDate);
+        if (period == null) return;
+
+        IsProcessing = true;
+        try
+        {
+            var latestRun = await RunApi.GetLatestRunAsync(period.PER_ID);
+            if (latestRun == null)
+            {
+                Snackbar.Add("هیچ محاسبه حقوقی برای این ماه انجام نشده است.", MudBlazor.Severity.Warning);
+                return;
+            }
+
+            PreviewRunId = latestRun.RUN_ID;
+            ShowDiskettePreviewModal = true;
         }
         catch (Exception ex)
         {

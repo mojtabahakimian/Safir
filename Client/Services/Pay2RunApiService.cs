@@ -1,5 +1,7 @@
 ﻿using Safir.Shared.Models.Salary;
+using Safir.Shared.Models.Salary.Reports;
 using System.Net.Http.Json;
+using static Safir.Shared.Models.Salary.Reports.InsuranceReportDto;
 
 namespace Safir.Client.Services
 {
@@ -153,6 +155,17 @@ namespace Safir.Client.Services
                 throw new Exception(string.IsNullOrWhiteSpace(err) ? "خطا در دریافت دیسکت بیمه." : err);
             }
             return await res.Content.ReadAsByteArrayAsync();
+        }
+
+        public async Task<DiskettePreviewDto> GetInsuranceDiskettePreviewAsync(int runId)
+        {
+            var res = await _http.GetAsync($"api/pay2/run/{runId}/insurance-diskette-preview");
+            if (!res.IsSuccessStatusCode)
+            {
+                var err = await res.Content.ReadAsStringAsync();
+                throw new Exception(string.IsNullOrWhiteSpace(err) ? "خطا در دریافت پیش‌نمایش دیسکت." : err);
+            }
+            return await res.Content.ReadFromJsonAsync<DiskettePreviewDto>() ?? new DiskettePreviewDto();
         }
     }
 }

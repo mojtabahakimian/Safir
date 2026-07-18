@@ -1,0 +1,138 @@
+﻿@using Safir.Shared.Models.Salary.Reports
+@using Safir.Client.Components.Grid
+@inject Safir.Client.Services.Pay2RunApiService RunApi
+@inject ISnackbar Snackbar
+
+@if (IsOpen)
+{
+    <div class="pay2-select-backdrop" style="background: rgba(15,23,42,0.6); z-index: 2999;" @onclick="Close"></div>
+
+    <div class="card-custom pay2-modal-container" style="max-width: 1300px; height: 90vh;">
+
+        <div class="pay2-modal-header p2-card-header" style="margin:0;">
+            <h5 style="margin:0; font-size:18px;">پیش‌نمایش دیسکت بیمه (DSKWOR / DSKKAR)</h5>
+            <button class="btn-ghost-pay2" @onclick="Close"><i class="bi bi-x-lg"></i></button>
+        </div>
+
+        <div class="pay2-modal-body" style="display:flex; flex-direction:column; overflow:hidden; padding: 16px;">
+            @if (_isLoading)
+            {
+                <div style="display:flex; justify-content:center; align-items:center; height:100%; flex-direction:column; gap:15px;">
+                    <span class="p2-spinner" style="width:40px; height:40px; border-color:var(--p2-primary); border-top-color:transparent;"></span>
+                    <span style="font-size:14px; color:var(--p2-primary); font-weight:600;">در حال بارگذاری و شبیه‌سازی دیسکت...</span>
+                </div>
+            }
+            else if (PreviewData != null)
+            {
+                <!-- هدر کارگاه (DSKKAR00) -->
+                <div style="background: var(--p2-bg-main); border: 1px solid var(--p2-border); border-radius: 8px; padding: 14px; margin-bottom: 16px; flex-shrink:0;">
+                    <div style="color: var(--p2-primary); font-weight: 800; font-size: 14px; margin-bottom: 10px;">
+                        <i class="bi bi-building"></i> خلاصه کارگاه (DSKKAR00.DBF)
+                    </div>
+                    <div class="form-grid-5">
+                        <div><span class="p2-text-muted" style="font-size:11px;">کد کارگاه:</span><br /><span class="p2-text-mono" style="font-weight:bold;">@PreviewData.Kar.DSK_ID</span></div>
+                        <div><span class="p2-text-muted" style="font-size:11px;">تعداد پرسنل:</span><br /><span class="p2-text-mono" style="font-weight:bold;">@PreviewData.Kar.DSK_NUM</span></div>
+                        <div><span class="p2-text-muted" style="font-size:11px;">مجموع روزها:</span><br /><span class="p2-text-mono" style="font-weight:bold;">@PreviewData.Kar.DSK_TDD</span></div>
+                        <div><span class="p2-text-muted" style="font-size:11px;">پایه سنوات:</span><br /><span class="p2-text-mono" style="font-weight:bold;">@PreviewData.Kar.DSK_INC.ToString("N0")</span></div>
+                        <div><span class="p2-text-muted" style="font-size:11px;">حق تاهل:</span><br /><span class="p2-text-mono" style="font-weight:bold;">@long.Parse(PreviewData.Kar.DSK_SPOUS).ToString("N0")</span></div>
+
+                        <div><span class="p2-text-muted" style="font-size:11px;">مجموع مشمول (MASH):</span><br /><span class="p2-text-mono" style="color:var(--p2-success-text); font-weight:bold;">@PreviewData.Kar.DSK_TMASH.ToString("N0")</span></div>
+                        <div><span class="p2-text-muted" style="font-size:11px;">مجموع ناخالص (TOTL):</span><br /><span class="p2-text-mono" style="font-weight:bold;">@PreviewData.Kar.DSK_TTOTL.ToString("N0")</span></div>
+                        <div><span class="p2-text-muted" style="font-size:11px;">سهم کارگر (7%):</span><br /><span class="p2-text-mono" style="font-weight:bold;">@PreviewData.Kar.DSK_TBIME.ToString("N0")</span></div>
+                        <div><span class="p2-text-muted" style="font-size:11px;">سهم کارفرما (ماده 7):</span><br /><span class="p2-text-mono" style="font-weight:bold;">@PreviewData.Kar.DSK_TKARF.ToString("N0")</span></div>
+                        <div><span class="p2-text-muted" style="font-size:11px;">بیمه بیکاری (3%):</span><br /><span class="p2-text-mono" style="font-weight:bold;">@PreviewData.Kar.DSK_TBIC.ToString("N0")</span></div>
+                    </div>
+                </div>
+
+                <!-- لیست پرسنل (DSKWOR00) -->
+                <div style="flex-grow: 1; display:flex; flex-direction:column; overflow:hidden;">
+                    <div style="color: var(--p2-primary); font-weight: 800; font-size: 14px; margin-bottom: 10px; flex-shrink:0;">
+                        <i class="bi bi-people"></i> جزئیات پرسنل (DSKWOR00.DBF)
+                    </div>
+
+                    <div style="flex-grow:1; min-height:0;">
+                        <Pay2DataGrid TItem="DisketteWorDto"
+                                      Items="PreviewData.WorList"
+                                      Columns="GridColumns"
+                                      Exportable="false"
+                                      Searchable="true"
+                                      SearchPlaceholder="جستجو کد ملی، شماره بیمه یا نام..."
+                                      MaxHeight="100%" />
+                    </div>
+                </div>
+            }
+        </div>
+
+        <div class="pay2-modal-footer">
+            <button class="btn-outline-pay2" @onclick="Close" style="border-radius:20px; padding:8px 24px;">بستن صفحه</button>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public bool IsOpen { get; set; }
+    [Parameter] public EventCallback OnClose { get; set; }
+    [Parameter] public int RunId { get; set; }
+
+    DiskettePreviewDto? PreviewData;
+    bool _isLoading;
+    bool _lastOpenState = false;
+    int _lastProcessedRunId = 0; // 🚀 اصلاح شد: ذخیره RunId
+
+    List<Pay2GridColumn<DisketteWorDto>> GridColumns = new()
+    {
+        new() { Title = "نام و نام خانوادگی", Width = 150, Display = x => x.FULL_NAME, Searchable = true, Sticky = true, CellClass = "p2-text-bold" },
+        new() { Title = "کد ملی", Width = 110, Display = x => x.PER_NATCOD, Searchable = true, CellClass = "p2-text-mono", Align = "center" },
+        new() { Title = "شماره بیمه", Width = 120, Display = x => x.DSW_ID1, Searchable = true, CellClass = "p2-text-mono", Align = "center" },
+        new() { Title = "کد شغل", Width = 90, Display = x => x.DSW_OCP, CellClass = "p2-text-mono p2-text-muted", Align = "center" },
+        new() { Title = "کارکرد", Width = 70, Display = x => x.DSW_DD.ToString(), CellClass = "p2-text-mono", Align = "center" },
+        new() { Title = "دستمزد ماهانه", Width = 110, Display = x => x.DSW_MAH.ToString("N0"), CellClass = "p2-text-mono" },
+        new() { Title = "سایر مزایا", Width = 110, Display = x => x.DSW_MAZ.ToString("N0"), CellClass = "p2-text-mono" },
+        new() { Title = "حق تاهل", Width = 100, Display = x => long.Parse(x.DSW_SPOUS).ToString("N0"), CellClass = "p2-text-mono" },
+        new() { Title = "پایه سنوات", Width = 100, Display = x => x.DSW_INC.ToString("N0"), CellClass = "p2-text-mono" },
+        new() { Title = "جمع مشمول", Width = 120, Display = x => x.DSW_MASH.ToString("N0"), CellClass = "p2-text-mono p2-text-success p2-text-bold" },
+        new() { Title = "ناخالص", Width = 120, Display = x => x.DSW_TOTL.ToString("N0"), CellClass = "p2-text-mono" },
+        new() { Title = "بیمه کارگر", Width = 110, Display = x => x.DSW_BIME.ToString("N0"), CellClass = "p2-text-mono p2-text-bold" },
+    };
+
+    protected override async Task OnParametersSetAsync()
+    {
+        // 🚀 اصلاح شد: اطمینان از بارگذاری مجدد در صورت تغییر دوره (RunId)
+        if (IsOpen && (!_lastOpenState || RunId != _lastProcessedRunId))
+        {
+            _lastOpenState = true;
+            _lastProcessedRunId = RunId;
+            await LoadDataAsync();
+        }
+        else if (!IsOpen)
+        {
+            _lastOpenState = false;
+            _lastProcessedRunId = 0;
+            PreviewData = null;
+        }
+    }
+
+    async Task LoadDataAsync()
+    {
+        if (RunId <= 0) return;
+        _isLoading = true;
+        StateHasChanged();
+
+        try
+        {
+            PreviewData = await RunApi.GetInsuranceDiskettePreviewAsync(RunId);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add(ex.Message, MudBlazor.Severity.Error);
+            await Close();
+        }
+        finally
+        {
+            _isLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    async Task Close() => await OnClose.InvokeAsync();
+}

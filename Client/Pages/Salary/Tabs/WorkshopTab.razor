@@ -363,19 +363,22 @@
 
                 <div class="form-field">
                     <label>محاسبه حق شیفت</label>
-                    <select class="pay2-input" @bind="CurrentWorkshop.SHIFT_MODE">
-                        <option value="">سیستم (پیش‌فرض)</option>
-                        <option value="PCT">درصدی</option>
-                        <option value="FIXED">مبلغ ثابت</option>
-                    </select>
+                    <Pay2Select TItem="LookupDto<string>" TValue="string"
+                                Items="ShiftModeOptions"
+                                @bind-Value="CurrentWorkshop.SHIFT_MODE"
+                                TextSelector="x => x.Name"
+                                ValueSelector="x => x.Id"
+                                Clearable="false" />
                 </div>
 
                 <div class="form-field">
                     <label style="color: var(--p2-primary);">روش صدور سند حقوق *</label>
-                    <select class="pay2-input" @bind="CurrentWorkshop.DEFAULT_DEED_MODE">
-                        <option value="1">سند کلی (تجمیعی) - روش فعلی</option>
-                        <option value="2">سند نیمه‌تفصیلی (به تفکیک اشخاص)</option>
-                    </select>
+                    <Pay2Select TItem="LookupDto<byte>" TValue="byte"
+                                Items="DeedModeOptions"
+                                @bind-Value="CurrentWorkshop.DEFAULT_DEED_MODE"
+                                TextSelector="x => x.Name"
+                                ValueSelector="x => x.Id"
+                                Clearable="false" />
                 </div>
 
                 <div class="form-field">
@@ -612,6 +615,8 @@
 </div>
 
 @code {
+
+
     [Parameter] public EventCallback<string> OnToast { get; set; }
 
     List<Pay2WorkshopDto> Workshops = new();
@@ -681,6 +686,18 @@
         }
     };
 
+    List<LookupDto<string>> ShiftModeOptions = new()
+    {
+        new(null!, "سیستم (پیش‌فرض)"),
+        new("PCT", "درصدی"),
+        new("FIXED", "مبلغ ثابت")
+    };
+
+    List<LookupDto<byte>> DeedModeOptions = new()
+    {
+        new((byte)1, "سند کلی (تجمیعی) - روش فعلی"),
+        new((byte)2, "سند نیمه‌تفصیلی (به تفکیک اشخاص)")
+    };
     sealed class Pay2InsModeOption
     {
         public int Id { get; set; }
@@ -976,7 +993,7 @@
         var dialog = DialogService.Show<Safir.Client.Shared.ConfirmDialog>("تایید حذف", parameters, options);
         var result = await dialog.Result;
 
-        if (!result.Cancelled)
+        if (!result.Canceled)
         {
             IsSavingWorkshop = true;
             StateHasChanged();

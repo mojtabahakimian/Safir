@@ -1,6 +1,7 @@
 ﻿using Dapper;
 using Dbf;
 using Safir.Shared.Interfaces;
+using Safir.Shared.Models.Salary.Reports;
 using System.Data;
 using System.IO.Compression;
 using System.Text;
@@ -234,6 +235,129 @@ namespace Safir.Server.Services
         {
             if (string.IsNullOrWhiteSpace(code)) return "0000000000";
             return code.Trim().PadLeft(10, '0');
+        }
+
+        // متد جدید: پیش‌نمایش دیسکت (DBF) به صورت JSON
+        public async Task<DiskettePreviewDto?> GetInsuranceDiskettePreviewAsync(int runId)
+        {
+            var result = new DiskettePreviewDto();
+
+            const string headSql = @"
+                SELECT 
+                    P.PERIOD_DATE, W.WS_CODE, W.WS_NAME, W.EMPLOYER_NAME
+                FROM PAY2_RUN R WITH (NOLOCK)
+                INNER JOIN PAY2_PERIOD P WITH (NOLOCK) ON R.PER_ID = P.PER_ID
+                INNER JOIN PAY2_WORKSHOP W WITH (NOLOCK) ON P.WS_ID = W.WS_ID
+                WHERE R.RUN_ID = @runId";
+
+            var head = await _db.DoGetDataSQLAsyncSingle<dynamic>(headSql, new { runId });
+            if (head == null) return null;
+
+            long periodDate = (long)head.PERIOD_DATE;
+            int year = (int)(periodDate / 10000);
+            int month = (int)((periodDate / 100) % 100);
+            string wsCode = head.WS_CODE?.ToString() ?? "";
+
+            const string linesSql = @"
+                SELECT 
+                    RL.EMP_ID, E.FIRST_NAME, E.LAST_NAME, E.NATIONAL_CODE, E.INS_CODE, J.JOB_CODE,
+                    RL.WORK_DAYS, RL.INS_BASE, RL.INS_WORKER, RL.INS_EMPLOYER, RL.GROSS_PAY
+                FROM PAY2_RUN_LINE RL WITH (NOLOCK)
+                INNER JOIN PAY2_EMPLOYEE E WITH (NOLOCK) ON RL.EMP_ID = E.EMP_ID
+                LEFT JOIN PAY2_JOB J WITH (NOLOCK) ON E.JOB_ID = J.JOB_ID
+                WHERE RL.RUN_ID = @runId AND E.INS_TYPE <> 3
+                ORDER BY E.LAST_NAME, E.FIRST_NAME";
+
+            var lines = (await _db.DoGetDataSQLAsync<dynamic>(linesSql, new { runId })).ToList();
+
+            const string detailsSql = @"
+                SELECT D.EMP_ID, I.ITEM_CODE, D.AMOUNT
+                FROM PAY2_RUN_DETAIL D WITH (NOLOCK)
+                INNER JOIN PAY2_ITEM_DEF I WITH (NOLOCK) ON D.ITEM_ID = I.ITEM_ID
+                WHERE D.RUN_ID = @runId AND I.INS_SUBJECT = 1";
+
+            var details = await _db.DoGetDataSQLAsync<dynamic>(detailsSql, new { runId });
+            var groupedDetails = details.GroupBy(x => (int)x.EMP_ID).ToDictionary(g => g.Key, g => g.ToList());
+
+            long totalMash = 0, totalTotl = 0, totalWorkerIns = 0;
+            long totalMarital = 0, totalSeniority = 0;
+
+            foreach (var line in lines)
+            {
+                int empId = (int)line.EMP_ID;
+                decimal workDays = (decimal)line.WORK_DAYS;
+                long monthlyWage = 0, maritalAllowance = 0, seniorityBase = 0;
+
+                if (groupedDetails.TryGetValue(empId, out var empDetails))
+                {
+                    foreach (var det in empDetails)
+                    {
+                        string code = det.ITEM_CODE.ToString().ToUpper();
+                        long amt = (long)det.AMOUNT;
+                        if (code == "BASE_SAL_B" || code == "BASE_SAL") monthlyWage += amt;
+                        else if (code == "FAMILY_ALLOW") maritalAllowance += amt;
+                        else if (code == "SENIORITY" || code == "SANOVAT_PAYE") seniorityBase += amt;
+                    }
+                }
+
+                long dailyWage = workDays > 0 ? (long)(monthlyWage / workDays) : 0;
+                long insBase = (long)line.INS_BASE;
+                long otherBenefits = insBase - monthlyWage - maritalAllowance - seniorityBase;
+                if (otherBenefits < 0) otherBenefits = 0;
+
+                totalMash += insBase;
+                totalTotl += (long)line.GROSS_PAY;
+                totalWorkerIns += (long)line.INS_WORKER;
+                totalMarital += maritalAllowance;
+                totalSeniority += seniorityBase;
+
+                string insCodeStr = line.INS_CODE?.ToString() ?? "";
+
+                result.WorList.Add(new DisketteWorDto
+                {
+                    DSW_ID1 = string.IsNullOrWhiteSpace(insCodeStr) ? "0000000000" : insCodeStr.Trim().PadLeft(10, '0'),
+                    FULL_NAME = $"{line.LAST_NAME} {line.FIRST_NAME}",
+                    PER_NATCOD = line.NATIONAL_CODE?.ToString() ?? "",
+                    DSW_OCP = line.JOB_CODE?.ToString() ?? "000000",
+                    DSW_DD = (int)workDays,
+                    DSW_ROOZ = dailyWage,
+                    DSW_MAH = monthlyWage,
+                    DSW_MAZ = otherBenefits,
+                    DSW_MASH = insBase,
+                    DSW_TOTL = (long)line.GROSS_PAY,
+                    DSW_BIME = (long)line.INS_WORKER,
+                    DSW_INC = seniorityBase,
+                    DSW_SPOUS = maritalAllowance.ToString()
+                });
+            }
+
+            long totalEmployerInsRaw = lines.Sum(l => (long)l.INS_EMPLOYER);
+            long totalBikari = (long)(totalMash * 0.03m);
+            long totalKarf = (long)(totalMash * 0.20m);
+
+            if (totalEmployerInsRaw < (totalKarf + totalBikari))
+            {
+                totalKarf = totalEmployerInsRaw - totalBikari;
+                if (totalKarf < 0) totalKarf = 0;
+            }
+
+            result.Kar = new DisketteKarDto
+            {
+                DSK_ID = wsCode,
+                DSK_NAME = head.WS_NAME?.ToString() ?? "",
+                DSK_FARM = head.EMPLOYER_NAME?.ToString() ?? "",
+                DSK_NUM = lines.Count,
+                DSK_TDD = (int)lines.Sum(x => (decimal)x.WORK_DAYS),
+                DSK_TMASH = totalMash,
+                DSK_TTOTL = totalTotl,
+                DSK_TBIME = totalWorkerIns,
+                DSK_TKARF = totalKarf,
+                DSK_TBIC = totalBikari,
+                DSK_INC = totalSeniority,
+                DSK_SPOUS = totalMarital.ToString()
+            };
+
+            return result;
         }
     }
 }

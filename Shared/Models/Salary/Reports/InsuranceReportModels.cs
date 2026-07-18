@@ -29,7 +29,6 @@ namespace Safir.Shared.Models.Salary.Reports
 
     public class InsuranceReportDto
     {
-        // مشخصات هدر
         public string WorkshopCode { get; set; } = string.Empty;
         public string WorkshopName { get; set; } = string.Empty;
         public string EmployerName { get; set; } = string.Empty;
@@ -38,10 +37,8 @@ namespace Safir.Shared.Models.Salary.Reports
         public string PeriodYear { get; set; } = string.Empty;
         public string PeriodMonthName { get; set; } = string.Empty;
 
-        // لیست پرسنل
         public List<InsuranceEmployeeRowDto> Rows { get; set; } = new();
 
-        // جمع کل‌ها (برای فوتر)
         public decimal TotalWorkDays => Rows.Sum(x => x.WorkDays);
         public long TotalMonthlyWage => Rows.Sum(x => x.MonthlyWage);
         public long TotalOtherBenefits => Rows.Sum(x => x.OtherSubjectBenefits);
@@ -51,9 +48,48 @@ namespace Safir.Shared.Models.Salary.Reports
         public long TotalGrossPay => Rows.Sum(x => x.TotalGrossPay);
         public long TotalWorkerPremium => Rows.Sum(x => x.WorkerPremium);
 
-        // محاسبات کارفرما
-        public long TotalEmployerPremium => (long)(TotalSubjectToInsurance * 0.20m); // 20% سهم کارفرما
-        public long TotalUnemploymentPremium => (long)(TotalSubjectToInsurance * 0.03m); // 3% بیکاری
-        public long TotalPayablePremium => TotalWorkerPremium + TotalEmployerPremium + TotalUnemploymentPremium; // جمع 30%
+        public long TotalEmployerPremium => (long)(TotalSubjectToInsurance * 0.20m);
+        public long TotalUnemploymentPremium => (long)(TotalSubjectToInsurance * 0.03m);
+        public long TotalPayablePremium => TotalWorkerPremium + TotalEmployerPremium + TotalUnemploymentPremium;
+    }
+
+    // 🚀 اصلاح شد: کلاس‌ها از داخل InsuranceReportDto خارج شدند
+    public class DiskettePreviewDto
+    {
+        public DisketteKarDto Kar { get; set; } = new();
+        public List<DisketteWorDto> WorList { get; set; } = new();
+    }
+
+    public class DisketteKarDto
+    {
+        public string DSK_ID { get; set; } = "";
+        public string DSK_NAME { get; set; } = "";
+        public string DSK_FARM { get; set; } = "";
+        public int DSK_NUM { get; set; }
+        public int DSK_TDD { get; set; }
+        public long DSK_TMASH { get; set; }
+        public long DSK_TTOTL { get; set; }
+        public long DSK_TBIME { get; set; }
+        public long DSK_TKARF { get; set; }
+        public long DSK_TBIC { get; set; }
+        public long DSK_INC { get; set; }
+        public string DSK_SPOUS { get; set; } = "0";
+    }
+
+    public class DisketteWorDto
+    {
+        public string DSW_ID1 { get; set; } = "";
+        public string FULL_NAME { get; set; } = "";
+        public string PER_NATCOD { get; set; } = "";
+        public string DSW_OCP { get; set; } = "";
+        public int DSW_DD { get; set; }
+        public long DSW_ROOZ { get; set; }
+        public long DSW_MAH { get; set; }
+        public long DSW_MAZ { get; set; }
+        public long DSW_MASH { get; set; }
+        public long DSW_TOTL { get; set; }
+        public long DSW_BIME { get; set; }
+        public long DSW_INC { get; set; }
+        public string DSW_SPOUS { get; set; } = "0";
     }
 }

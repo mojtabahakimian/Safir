@@ -835,5 +835,22 @@ VALUES (@N_S, @RADIF, @HES_K, @HES_M, @HES_T, @HES_T2, @HES_T3, @HES_T4, @HES, @
                 return StatusCode(500, "خطا در تولید فایل دیسکت: " + ex.Message);
             }
         }
+
+        [HttpGet("{runId:int}/insurance-diskette-preview")]
+        public async Task<ActionResult<DiskettePreviewDto>> GetInsuranceDiskettePreview([FromServices] Safir.Server.Services.Pay2DisketteService disketteService, int runId)
+        {
+            try
+            {
+                var result = await disketteService.GetInsuranceDiskettePreviewAsync(runId);
+                if (result == null)
+                    return NotFound("اطلاعات محاسبه مورد نظر یافت نشد.");
+
+                return Ok(result);
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, "خطا در بارگذاری پیش‌نمایش دیسکت: " + ex.Message);
+            }
+        }
     }
 }
