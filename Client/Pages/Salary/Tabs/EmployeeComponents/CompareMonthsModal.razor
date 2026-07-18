@@ -3,19 +3,68 @@
 @inject Safir.Client.Services.Pay2RunApiService RunApi
 @inject ISnackbar Snackbar
 
+<style>
+    /* استایل‌های ریسپانسیو و حالت تمام‌صفحه مخصوص همین مودال */
+    .compare-modal-maximized {
+        width: 100% !important;
+        max-width: 100% !important;
+        height: 100vh !important;
+        border-radius: 0 !important;
+    }
+
+    .compare-dashboard {
+        display: flex;
+        flex-direction: row;
+        gap: 16px;
+        margin-bottom: 16px;
+        flex-shrink: 0;
+    }
+
+    .compare-chart-section {
+        flex: 3;
+        min-width: 0; /* جلوگیری از سرریز شدن نمودار */
+        padding: 10px;
+        border: 1px solid var(--p2-border);
+        border-radius: 8px;
+        background: var(--p2-bg-white);
+    }
+
+    .compare-kpi-section {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+        min-width: 260px;
+    }
+
+    /* در مانیتورهای کوچکتر از 1024 پیکسل، کارت‌ها می‌روند زیر نمودار */
+    @@media (max-width: 1024px) {
+        .compare-dashboard {
+            flex-direction: column;
+        }
+    }
+</style>
+
 @if (IsOpen)
 {
     <div class="pay2-select-backdrop" style="background: rgba(15,23,42,0.6); z-index: 2999;" @onclick="Close"></div>
 
-    <div class="card-custom pay2-modal-container" style="max-width: 1200px; height: 85vh;">
+    <div class="card-custom pay2-modal-container @(_isMaximized ? "compare-modal-maximized" : "")" 
+         style="max-width: 1300px; height: 90vh; transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);">
 
         <div class="pay2-modal-header p2-card-header" style="margin:0;">
             <h5 style="margin:0; font-size:18px;">گزارش مقایسه و تغییرات حقوق پرسنل</h5>
-            <button class="btn-ghost-pay2" @onclick="Close"><i class="bi bi-x-lg"></i></button>
+            <div style="display: flex; gap: 8px;">
+                <button class="btn-ghost-pay2" @onclick="ToggleMaximize" title="@(_isMaximized ? "کوچک کردن" : "تمام صفحه")">
+                    <i class="bi @(_isMaximized ? "bi-fullscreen-exit" : "bi-arrows-fullscreen")"></i>
+                </button>
+                <button class="btn-ghost-pay2" @onclick="Close"><i class="bi bi-x-lg"></i></button>
+            </div>
         </div>
 
         <div class="pay2-modal-body" style="display:flex; flex-direction:column; overflow:hidden; padding: 16px;">
             
+            <!-- فیلترهای جستجو -->
             <div style="background: var(--p2-bg-main); border: 1px solid var(--p2-border); border-radius: 8px; padding: 14px; margin-bottom: 16px; flex-shrink:0;">
                 <div style="display:flex; flex-wrap:wrap; gap:16px; align-items:flex-end;">
                     
@@ -56,23 +105,24 @@
                 @if (ReportData != null)
                 {
                     <!-- 🚀 داشبورد مینیاتوری ویژه مدیران -->
-                    <div style="display: grid; grid-template-columns: 3fr 1fr; gap: 16px; margin-bottom: 16px; flex-shrink: 0;">
+                    <div class="compare-dashboard">
                         
                         <!-- نمودار مقایسه‌ای -->
-                        <div class="card-custom" style="padding: 10px; border: 1px solid var(--p2-border); box-shadow: none;">
-                            <div style="font-weight: 800; font-size: 14px; color: var(--p2-text-main); margin-bottom: 10px; text-align: center;">
-                                نمودار مقایسه کلی (ریال)
+                        <div class="compare-chart-section">
+                            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 10px;">
+                                <div style="font-weight: 800; font-size: 14px; color: var(--p2-text-main);">نمودار مقایسه کلی</div>
+                                <div class="p2-badge-warning">مبالغ به میلیون ریال</div>
                             </div>
                             <MudChart ChartType="ChartType.Bar" 
                                       ChartSeries="@_chartSeries" 
                                       XAxisLabels="@_xAxisLabels" 
                                       Width="100%" 
-                                      Height="200px" 
+                                      Height="220px" 
                                       ChartOptions="@_chartOptions" />
                         </div>
 
                         <!-- کارت‌های خلاصه وضعیت (KPIs) -->
-                        <div style="display: flex; flex-direction: column; gap: 12px;">
+                        <div class="compare-kpi-section">
                             
                             <!-- کارت خالص پرداختی -->
                             <div style="background: @(_netDiff > 0 ? "#f0fdf4" : (_netDiff < 0 ? "#fef2f2" : "#f8fafc")); border: 1px solid @(_netDiff > 0 ? "#bbf7d0" : (_netDiff < 0 ? "#fecaca" : "var(--p2-border)")); border-radius: 8px; padding: 12px; display:flex; flex-direction:column; justify-content:center; flex-grow:1;">
@@ -107,7 +157,8 @@
                         </div>
                     </div>
 
-                    <div style="flex-grow:1; min-height:0;">
+                    <!-- گرید جزئیات -->
+                    <div style="flex-grow:1; min-height:0; border: 1px solid var(--p2-border); border-radius: 8px;">
                         <Pay2DataGrid TItem="Pay2MonthCompareRowDto"
                                       Items="ReportData.Rows"
                                       Columns="GridColumns"
@@ -127,11 +178,6 @@
                     </div>
                 }
             </div>
-
-        </div>
-
-        <div class="pay2-modal-footer">
-            <button class="btn-outline-pay2" @onclick="Close" style="border-radius:20px; padding:8px 24px;">بستن صفحه</button>
         </div>
     </div>
 }
@@ -148,6 +194,7 @@
     Pay2MonthCompareResultDto? ReportData;
     bool _isLoading;
     bool _lastOpenState = false;
+    bool _isMaximized = false; // متغیر کنترل حالت تمام صفحه
 
     // متغیرهای داشبورد و نمودار
     public List<MudBlazor.ChartSeries> _chartSeries = new();
@@ -159,7 +206,7 @@
     decimal _netDiffPercent = 0;
     int _empDiff = 0;
 
-    // کانفیگ گرید برای نمایش مقایسه‌ها (با پشتیبانی از جمع Footer و خروجی Excel)
+    // کانفیگ گرید برای نمایش مقایسه‌ها
     List<Pay2GridColumn<Pay2MonthCompareRowDto>> GridColumns = new()
     {
         new() { Title = "نام و نام خانوادگی", Width = 150, Display = x => x.FULL_NAME, Searchable = true, Sticky = true, CellClass = "p2-text-bold" },
@@ -186,6 +233,7 @@
         if (IsOpen && !_lastOpenState)
         {
             _lastOpenState = true;
+            _isMaximized = false; // رسیت حالت تمام‌صفحه در هربار باز شدن
             ReportData = null;
             
             // انتخاب هوشمند دو ماه آخر به عنوان دیفالت
@@ -200,6 +248,11 @@
         {
             _lastOpenState = false;
         }
+    }
+
+    void ToggleMaximize()
+    {
+        _isMaximized = !_isMaximized;
     }
 
     async Task LoadComparison()
@@ -231,6 +284,7 @@
             GridColumns[8].Title = $"خالص ({ReportData.Period1Title})";
             GridColumns[9].Title = $"خالص ({ReportData.Period2Title})";
 
+            // 🚀 فراخوانی آپدیت نمودار و KPIها
             UpdateDashboardData();
         }
         catch (Exception ex)
@@ -243,6 +297,7 @@
             StateHasChanged();
         }
     }
+
     // 🚀 متد محاسبه و تغذیه داده‌های نمودار و کارت‌های مدیر
     private void UpdateDashboardData()
     {
@@ -250,30 +305,35 @@
 
         if (ReportData == null || !ReportData.Rows.Any()) return;
 
-        // محاسبه جمع کل‌ها برای ماه مبدأ
-        double gross1 = ReportData.Rows.Sum(x => (double)x.GROSS_PAY_1);
-        double ded1 = ReportData.Rows.Sum(x => (double)x.TOTAL_DED_1);
-        double net1 = ReportData.Rows.Sum(x => (double)x.NET_PAY_1);
+        // تبدیل به میلیون ریال برای نمایش تمیز در نمودار
+        double divisor = 1_000_000;
 
-        // محاسبه جمع کل‌ها برای ماه مقصد
-        double gross2 = ReportData.Rows.Sum(x => (double)x.GROSS_PAY_2);
-        double ded2 = ReportData.Rows.Sum(x => (double)x.TOTAL_DED_2);
-        double net2 = ReportData.Rows.Sum(x => (double)x.NET_PAY_2);
+        double gross1 = Math.Round(ReportData.Rows.Sum(x => (double)x.GROSS_PAY_1) / divisor, 2);
+        double ded1   = Math.Round(ReportData.Rows.Sum(x => (double)x.TOTAL_DED_1) / divisor, 2);
+        double net1   = Math.Round(ReportData.Rows.Sum(x => (double)x.NET_PAY_1)   / divisor, 2);
 
-        // پر کردن داده‌های نمودار میله‌ای
+        double gross2 = Math.Round(ReportData.Rows.Sum(x => (double)x.GROSS_PAY_2) / divisor, 2);
+        double ded2   = Math.Round(ReportData.Rows.Sum(x => (double)x.TOTAL_DED_2) / divisor, 2);
+        double net2   = Math.Round(ReportData.Rows.Sum(x => (double)x.NET_PAY_2)   / divisor, 2);
+
         _chartSeries.Add(new MudBlazor.ChartSeries() { Name = ReportData.Period1Title, Data = new double[] { gross1, ded1, net1 } });
         _chartSeries.Add(new MudBlazor.ChartSeries() { Name = ReportData.Period2Title, Data = new double[] { gross2, ded2, net2 } });
 
-        // محاسبه KPI ها
-        _netDiff = (long)(net2 - net1);
-        _grossDiff = (long)(gross2 - gross1);
-        
-        _netDiffPercent = net1 > 0 ? Math.Round((decimal)(_netDiff / net1) * 100m, 2) : 0;
+        // محاسبه KPI ها با مقادیر اصلی (تقسیم نشده)
+        long realNet1 = ReportData.Rows.Sum(x => x.NET_PAY_1);
+        long realNet2 = ReportData.Rows.Sum(x => x.NET_PAY_2);
+        long realGross1 = ReportData.Rows.Sum(x => x.GROSS_PAY_1);
+        long realGross2 = ReportData.Rows.Sum(x => x.GROSS_PAY_2);
 
-        // محاسبه تعداد پرسنل فعال در هر ماه (کسانی که حقوق ناخالص داشته‌اند)
+        _netDiff = realNet2 - realNet1;
+        _grossDiff = realGross2 - realGross1;
+        
+        _netDiffPercent = realNet1 > 0 ? Math.Round((decimal)(_netDiff / (double)realNet1) * 100m, 2) : 0;
+
         int emp1Count = ReportData.Rows.Count(x => x.GROSS_PAY_1 > 0);
         int emp2Count = ReportData.Rows.Count(x => x.GROSS_PAY_2 > 0);
         _empDiff = emp2Count - emp1Count;
     }
+
     async Task Close() => await OnClose.InvokeAsync();
 }
