@@ -964,5 +964,57 @@ VALUES (@N_S, @RADIF, @HES_K, @HES_M, @HES_T, @HES_T2, @HES_T3, @HES_T4, @HES, @
                 return StatusCode(500, ex.Message);
             }
         }
+
+        // ===================================================================
+        // گزارش مقایسه ماه به ماه (روند تغییرات حقوق)
+        // ===================================================================
+        [HttpGet("compare-months")]
+        public async Task<ActionResult<Pay2MonthCompareResultDto>> CompareMonths([FromQuery] int wsId, [FromQuery] long period1, [FromQuery] long period2)
+        {
+            try
+            {
+                var result = new Pay2MonthCompareResultDto();
+
+                // ۱. پیدا کردن شناسه آخرین محاسبه قطعی برای ماه اول
+                var run1Sql = "SELECT TOP 1 R.RUN_ID FROM PAY2_RUN R INNER JOIN PAY2_PERIOD P ON R.PER_ID = P.PER_ID WHERE P.WS_ID = @wsId AND P.PERIOD_DATE = @period1 AND R.IS_LATEST = 1 AND R.STATUS >= 2 ORDER BY R.RUN_ID DESC";
+                var run1Id = await _db.DoGetDataSQLAsyncSingle<int?>(run1Sql, new { wsId, period1 });
+
+                // ۲. پیدا کردن شناسه آخرین محاسبه قطعی برای ماه دوم
+                var run2Sql = "SELECT TOP 1 R.RUN_ID FROM PAY2_RUN R INNER JOIN PAY2_PERIOD P ON R.PER_ID = P.PER_ID WHERE P.WS_ID = @wsId AND P.PERIOD_DATE = @period2 AND R.IS_LATEST = 1 AND R.STATUS >= 2 ORDER BY R.RUN_ID DESC";
+                var run2Id = await _db.DoGetDataSQLAsyncSingle<int?>(run2Sql, new { wsId, period2 });
+
+                if (!run1Id.HasValue && !run2Id.HasValue)
+                    return BadRequest("برای هیچ‌کدام از ماه‌های انتخاب شده، محاسبه تایید شده‌ای یافت نشد.");
+
+                result.Period1Title = BuildPeriodTitle(period1);
+                result.Period2Title = BuildPeriodTitle(period2);
+
+                // ۳. اجرای FULL OUTER JOIN برای مقایسه دقیق و کشف پرسنل جدید/حذف شده
+                string compareSql = @"
+                    SELECT 
+                        COALESCE(R1.EMP_ID, R2.EMP_ID) AS EMP_ID,
+                        E.EMP_CODE,
+                        E.LAST_NAME + N' ' + E.FIRST_NAME AS FULL_NAME,
+                        ISNULL(R1.GROSS_PAY, 0) AS GROSS_PAY_1,
+                        ISNULL(R2.GROSS_PAY, 0) AS GROSS_PAY_2,
+                        ISNULL(R1.TOTAL_DED, 0) AS TOTAL_DED_1,
+                        ISNULL(R2.TOTAL_DED, 0) AS TOTAL_DED_2,
+                        ISNULL(R1.NET_PAY, 0) AS NET_PAY_1,
+                        ISNULL(R2.NET_PAY, 0) AS NET_PAY_2
+                    FROM (SELECT * FROM PAY2_RUN_LINE WHERE RUN_ID = @r1) R1
+                    FULL OUTER JOIN (SELECT * FROM PAY2_RUN_LINE WHERE RUN_ID = @r2) R2 ON R1.EMP_ID = R2.EMP_ID
+                    INNER JOIN PAY2_EMPLOYEE E ON COALESCE(R1.EMP_ID, R2.EMP_ID) = E.EMP_ID
+                    ORDER BY E.LAST_NAME, E.FIRST_NAME";
+
+                var rows = await _db.DoGetDataSQLAsync<Pay2MonthCompareRowDto>(compareSql, new { r1 = run1Id ?? 0, r2 = run2Id ?? 0 });
+                result.Rows = rows.ToList();
+
+                return Ok(result);
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, "خطا در مقایسه ماه‌ها: " + ex.Message);
+            }
+        }
     }
 }

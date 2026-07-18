@@ -1,0 +1,183 @@
+﻿@using Safir.Shared.Models.Salary
+@using Safir.Client.Components.Grid
+@inject Safir.Client.Services.Pay2RunApiService RunApi
+@inject ISnackbar Snackbar
+
+@if (IsOpen)
+{
+    <div class="pay2-select-backdrop" style="background: rgba(15,23,42,0.6); z-index: 2999;" @onclick="Close"></div>
+
+    <div class="card-custom pay2-modal-container" style="max-width: 1200px; height: 85vh;">
+
+        <div class="pay2-modal-header p2-card-header" style="margin:0;">
+            <h5 style="margin:0; font-size:18px;">گزارش مقایسه و تغییرات حقوق پرسنل</h5>
+            <button class="btn-ghost-pay2" @onclick="Close"><i class="bi bi-x-lg"></i></button>
+        </div>
+
+        <div class="pay2-modal-body" style="display:flex; flex-direction:column; overflow:hidden; padding: 16px;">
+            
+            <div style="background: var(--p2-bg-main); border: 1px solid var(--p2-border); border-radius: 8px; padding: 14px; margin-bottom: 16px; flex-shrink:0;">
+                <div style="display:flex; flex-wrap:wrap; gap:16px; align-items:flex-end;">
+                    
+                    <div class="form-field" style="width: 250px;">
+                        <label>ماه مبدأ (ماه اول) *</label>
+                        <Safir.Client.Pages.Salary.Tabs.Pay2Select TItem="Pay2PeriodLookupDto" TValue="long"
+                                                                   Items="Periods"
+                                                                   @bind-Value="Period1"
+                                                                   TextSelector="x => x.PERIOD_TITLE"
+                                                                   ValueSelector="x => x.PERIOD_DATE"
+                                                                   Clearable="false" />
+                    </div>
+
+                    <div class="form-field" style="width: 250px;">
+                        <label>ماه مقصد (ماه دوم) *</label>
+                        <Safir.Client.Pages.Salary.Tabs.Pay2Select TItem="Pay2PeriodLookupDto" TValue="long"
+                                                                   Items="Periods"
+                                                                   @bind-Value="Period2"
+                                                                   TextSelector="x => x.PERIOD_TITLE"
+                                                                   ValueSelector="x => x.PERIOD_DATE"
+                                                                   Clearable="false" />
+                    </div>
+
+                    <button class="btn-primary-pay2" @onclick="LoadComparison" disabled="@_isLoading">
+                        @if (_isLoading)
+                        {
+                            <span class="p2-spinner"></span>
+                        }
+                        else
+                        {
+                            <i class="bi bi-arrow-left-right"></i> <span>مقایسه و تحلیل</span>
+                        }
+                    </button>
+                </div>
+            </div>
+
+            <div style="flex-grow: 1; display:flex; flex-direction:column; overflow:hidden;">
+                @if (ReportData != null)
+                {
+                    <div style="flex-grow:1; min-height:0;">
+                        <Pay2DataGrid TItem="Pay2MonthCompareRowDto"
+                                      Items="ReportData.Rows"
+                                      Columns="GridColumns"
+                                      Exportable="true"
+                                      Searchable="true"
+                                      ExportFileName="Salary_Comparison"
+                                      SearchPlaceholder="جستجوی نام یا کد..."
+                                      MaxHeight="100%" />
+                    </div>
+                }
+                else if (!_isLoading)
+                {
+                    <div class="p2-empty-state" style="padding-top: 50px;">
+                        <i class="bi bi-bar-chart-steps" style="color: var(--p2-border); font-size: 4rem;"></i>
+                        <p style="margin-top:10px;">ماه‌های مورد نظر را انتخاب کرده و روی دکمه مقایسه کلیک کنید.</p>
+                        <span style="font-size:11px; color:var(--p2-text-muted);">این گزارش فقط روی ماه‌هایی که محاسبه آنها تایید شده است کار می‌کند.</span>
+                    </div>
+                }
+            </div>
+        </div>
+
+        <div class="pay2-modal-footer">
+            <button class="btn-outline-pay2" @onclick="Close" style="border-radius:20px; padding:8px 24px;">بستن صفحه</button>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public bool IsOpen { get; set; }
+    [Parameter] public EventCallback OnClose { get; set; }
+    [Parameter] public int WsId { get; set; }
+    [Parameter] public List<Pay2PeriodLookupDto> Periods { get; set; } = new();
+
+    long Period1;
+    long Period2;
+
+    Pay2MonthCompareResultDto? ReportData;
+    bool _isLoading;
+    bool _lastOpenState = false;
+
+    // کانفیگ گرید برای نمایش مقایسه‌ها (با پشتیبانی از جمع Footer و خروجی Excel)
+    List<Pay2GridColumn<Pay2MonthCompareRowDto>> GridColumns = new()
+    {
+        new() { Title = "نام و نام خانوادگی", Width = 150, Display = x => x.FULL_NAME, Searchable = true, Sticky = true, CellClass = "p2-text-bold" },
+        new() { Title = "کد پرسنل", Width = 100, Display = x => x.EMP_CODE, Searchable = true, CellClass = "p2-text-mono" },
+        new() { Title = "وضعیت", Width = 110, Display = x => x.Status, Align = "center" },
+        
+        // ناخالص
+        new() { Title = "ناخالص (مبدأ)", Width = 110, Display = x => x.GROSS_PAY_1.ToString("N0"), CellClass = "p2-text-mono", Sum = x => x.GROSS_PAY_1, ExportNumber = x => x.GROSS_PAY_1 },
+        new() { Title = "ناخالص (مقصد)", Width = 110, Display = x => x.GROSS_PAY_2.ToString("N0"), CellClass = "p2-text-mono", Sum = x => x.GROSS_PAY_2, ExportNumber = x => x.GROSS_PAY_2 },
+        new() { Title = "اختلاف ناخالص", Width = 110, Display = x => x.GROSS_PAY_DIFF.ToString("N0"), CellClass = "p2-text-mono p2-text-bold", Sum = x => x.GROSS_PAY_DIFF, ExportNumber = x => x.GROSS_PAY_DIFF, CellStyle = "background-color: #f1f5f9;" },
+        
+        // کسورات
+        new() { Title = "کسورات (مبدأ)", Width = 110, Display = x => x.TOTAL_DED_1.ToString("N0"), CellClass = "p2-text-mono p2-text-danger", Sum = x => x.TOTAL_DED_1, ExportNumber = x => x.TOTAL_DED_1 },
+        new() { Title = "کسورات (مقصد)", Width = 110, Display = x => x.TOTAL_DED_2.ToString("N0"), CellClass = "p2-text-mono p2-text-danger", Sum = x => x.TOTAL_DED_2, ExportNumber = x => x.TOTAL_DED_2 },
+        
+        // خالص پرداختی
+        new() { Title = "خالص (مبدأ)", Width = 110, Display = x => x.NET_PAY_1.ToString("N0"), CellClass = "p2-text-mono p2-text-success", Sum = x => x.NET_PAY_1, ExportNumber = x => x.NET_PAY_1 },
+        new() { Title = "خالص (مقصد)", Width = 110, Display = x => x.NET_PAY_2.ToString("N0"), CellClass = "p2-text-mono p2-text-success", Sum = x => x.NET_PAY_2, ExportNumber = x => x.NET_PAY_2 },
+        new() { Title = "اختلاف خالص", Width = 110, Display = x => x.NET_PAY_DIFF.ToString("N0"), CellClass = "p2-text-mono p2-text-bold p2-text-primary", Sum = x => x.NET_PAY_DIFF, ExportNumber = x => x.NET_PAY_DIFF, CellStyle = "background-color: #eff6ff;" }
+    };
+
+    protected override void OnParametersSet()
+    {
+        if (IsOpen && !_lastOpenState)
+        {
+            _lastOpenState = true;
+            ReportData = null;
+            
+            // انتخاب هوشمند دو ماه آخر به عنوان دیفالت
+            var validPeriods = Periods.Where(p => p.PERIOD_DATE > 0).ToList();
+            if (validPeriods.Count >= 2)
+            {
+                Period2 = validPeriods[0].PERIOD_DATE;
+                Period1 = validPeriods[1].PERIOD_DATE;
+            }
+        }
+        else if (!IsOpen)
+        {
+            _lastOpenState = false;
+        }
+    }
+
+    async Task LoadComparison()
+    {
+        if (WsId <= 0 || Period1 <= 0 || Period2 <= 0)
+        {
+            Snackbar.Add("انتخاب کارگاه و هر دو ماه الزامی است.", MudBlazor.Severity.Warning);
+            return;
+        }
+
+        if (Period1 == Period2)
+        {
+            Snackbar.Add("ماه‌های مبدأ و مقصد نمی‌توانند یکسان باشند.", MudBlazor.Severity.Warning);
+            return;
+        }
+
+        _isLoading = true;
+        StateHasChanged();
+
+        try
+        {
+            ReportData = await RunApi.CompareMonthsAsync(WsId, Period1, Period2);
+            
+            // اصلاح عناوین گرید بر اساس ماه‌های انتخاب شده
+            GridColumns[3].Title = $"ناخالص ({ReportData.Period1Title})";
+            GridColumns[4].Title = $"ناخالص ({ReportData.Period2Title})";
+            GridColumns[6].Title = $"کسورات ({ReportData.Period1Title})";
+            GridColumns[7].Title = $"کسورات ({ReportData.Period2Title})";
+            GridColumns[8].Title = $"خالص ({ReportData.Period1Title})";
+            GridColumns[9].Title = $"خالص ({ReportData.Period2Title})";
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add(ex.Message, MudBlazor.Severity.Error);
+        }
+        finally
+        {
+            _isLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    async Task Close() => await OnClose.InvokeAsync();
+}

@@ -158,6 +158,22 @@
                 </button>
             </div>
 
+            <!-- کارت مقایسه ماه‌ها -->
+            <div class="card-custom" style="background: var(--p2-bg-main); border: 1px solid var(--p2-border);">
+                <div style="display: flex; align-items: center; gap: 15px; margin-bottom: 15px;">
+                    <div class="stat-icon-box" style="background: #f3e8ff; color: #8b5cf6;">
+                        <i class="bi bi-arrow-left-right"></i>
+                    </div>
+                    <div>
+                        <h6 style="margin: 0; font-weight: bold;">گزارش مقایسه و تغییرات</h6>
+                        <span class="p2-text-muted" style="font-size: 11px;">مقایسه ماهانه حقوق، مالیات و کسورات</span>
+                    </div>
+                </div>
+                <button class="btn-primary-pay2" style="background-color: #8b5cf6; border-color: #8b5cf6; width: 100%;" @onclick="() => ShowCompareModal = true" disabled="@IsProcessing">
+                    <i class="bi bi-bar-chart-steps"></i> <span>مشاهده گزارش مقایسه</span>
+                </button>
+            </div>
+
             <!-- کارت گزارش مالیات -->
             <div class="card-custom" style="background: var(--p2-bg-main); border: 1px solid var(--p2-border);">
                 <div style="display: flex; align-items: center; gap: 15px; margin-bottom: 15px;">
@@ -191,6 +207,13 @@
         RunId="PreviewRunId" 
         OnClose="() => ShowDiskettePreviewModal = false" />
 
+        <!-- مدال مقایسه ماه‌ها -->
+    <Safir.Client.Pages.Salary.Tabs.EmployeeComponents.CompareMonthsModal 
+        IsOpen="ShowCompareModal" 
+        WsId="SelectedWsId"
+        Periods="Periods"
+        OnClose="() => ShowCompareModal = false" />
+
 @code {
     List<Pay2WorkshopDto> Workshops = new();
     List<Pay2PeriodLookupDto> Periods = new();
@@ -198,7 +221,7 @@
     int SelectedWsId;
     long SelectedPeriodDate;
     bool IsProcessing = false;
-
+    bool ShowCompareModal = false;
     int SelectedEmpId = 0;
     List<LookupDto<int>> EmployeeLookup = new();
 

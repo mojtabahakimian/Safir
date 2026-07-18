@@ -94,4 +94,35 @@
         // 🚀 دیکشنری جدید برای نگهداری مقادیر ریزِ هر آیتم بر اساس ITEM_CODE
         public Dictionary<string, long> Details { get; set; } = new();
     }
+
+    // ─── کلاس‌های گزارش مقایسه ماه‌ها ───
+    public class Pay2MonthCompareRowDto
+    {
+        public int EMP_ID { get; set; }
+        public string EMP_CODE { get; set; } = "";
+        public string FULL_NAME { get; set; } = "";
+
+        public long GROSS_PAY_1 { get; set; }
+        public long GROSS_PAY_2 { get; set; }
+        public long GROSS_PAY_DIFF => GROSS_PAY_2 - GROSS_PAY_1;
+
+        public long TOTAL_DED_1 { get; set; }
+        public long TOTAL_DED_2 { get; set; }
+        public long TOTAL_DED_DIFF => TOTAL_DED_2 - TOTAL_DED_1;
+
+        public long NET_PAY_1 { get; set; }
+        public long NET_PAY_2 { get; set; }
+        public long NET_PAY_DIFF => NET_PAY_2 - NET_PAY_1;
+
+        // وضعیت تحلیلی (استخدام جدید، ترک کار یا عادی)
+        public string Status => (GROSS_PAY_1 > 0 && GROSS_PAY_2 == 0) ? "قطع حقوق/ترک کار" :
+                                (GROSS_PAY_1 == 0 && GROSS_PAY_2 > 0) ? "جدید/شروع کار" : "عادی";
+    }
+
+    public class Pay2MonthCompareResultDto
+    {
+        public string Period1Title { get; set; } = "";
+        public string Period2Title { get; set; } = "";
+        public List<Pay2MonthCompareRowDto> Rows { get; set; } = new();
+    }
 }
