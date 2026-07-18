@@ -62,7 +62,7 @@
                     </div>
                 </div>
                 <button class="btn-primary-pay2" style="width: 100%;" @onclick="GenerateInsuranceReport" disabled="@IsProcessing">
-                    @if (IsProcessing)
+                    @if (_processingAction == "InsReport")
                     {
                         <span class="p2-spinner"></span>
                     }
@@ -86,7 +86,7 @@
                 </div>
                 <div style="display:flex; gap:10px; width:100%;">
                     <button class="btn-primary-pay2" style="background-color: #0284c7; border-color: #0284c7; flex:1;" @onclick="GenerateInsuranceDiskette" disabled="@IsProcessing">
-                        @if (IsProcessing)
+                        @if (_processingAction == "InsDiskette")
                         {
                             <span class="p2-spinner"></span>
                         }
@@ -97,7 +97,15 @@
                     </button>
                     
                     <button class="btn-outline-pay2" style="color: #0284c7; border-color: #0284c7; padding: 0 16px;" @onclick="OpenDiskettePreview" disabled="@IsProcessing" title="پیش‌نمایش محتوای فایل DBF">
-                        <i class="bi bi-eye"></i> پیش‌نمایش
+                        @if (_processingAction == "InsDiskPreview")
+                        {
+                            <span class="p2-spinner" style="width:16px; height:16px; border-width:2px; margin-left: 5px;"></span>
+                        }
+                        else
+                        {
+                            <i class="bi bi-eye"></i>
+                        }
+                        پیش‌نمایش
                     </button>
                 </div>
             </div>
@@ -127,7 +135,7 @@
 
                 <div style="display:flex; gap:10px; width:100%;">
                     <button class="btn-primary-pay2" style="background-color: #10b981; border-color: #10b981; flex:1;" @onclick="GenerateLeaveReport" disabled="@IsProcessing">
-                        @if (IsProcessing) 
+                        @if (_processingAction == "LeaveExcel") 
                         { 
                             <span class="p2-spinner"></span> 
                         }
@@ -187,7 +195,7 @@
                     </div>
                 </div>
                 <button class="btn-primary-pay2" style="background-color: #db2777; border-color: #db2777; width: 100%;" @onclick="GenerateTaxReport" disabled="@IsProcessing">
-                    @if (IsProcessing)
+                    @if (_processingAction == "TaxReport")
                     {
                         <span class="p2-spinner"></span>
                     }
@@ -198,7 +206,7 @@
                 </button>
             </div>
 
-            <!-- 🚀 کارت جدید مالیات حقوق (دارایی) -->
+            <!-- 🚀 کارت مالیات حقوق (دارایی) -->
             <div class="card-custom" style="background: var(--p2-bg-main); border: 1px solid var(--p2-border);">
                 <div style="display: flex; align-items: center; gap: 15px; margin-bottom: 20px;">
                     <div class="stat-icon-box" style="background: #fce7f3; color: #db2777;">
@@ -213,7 +221,7 @@
                 <div style="display: flex; align-items: center; gap: 10px; width: 100%;">
                     <!-- دکمه اصلی: اکسل سالانه (بزرگتر) -->
                     <button class="btn-primary-pay2" style="background-color: #db2777; border-color: #db2777; flex: 1.5; padding: 10px;" @onclick="GenerateTaxReportExcel" disabled="@IsProcessing">
-                        @if (IsProcessing)
+                        @if (_processingAction == "TaxExcel")
                         {
                             <span class="p2-spinner" style="border-width: 2px;"></span>
                         }
@@ -223,14 +231,28 @@
                         }
                     </button>
                     
-                    <!-- دکمه‌های ثانویه: دیسکت و پیش‌نمایش (با استایل ظریف‌تر) -->
+                    <!-- دکمه‌های ثانویه: دیسکت و پیش‌نمایش -->
                     <div style="display: flex; flex: 1; gap: 8px;">
                         <button class="btn-outline-pay2 sm" style="color: #db2777; border-color: #fbcfe8; background-color: white; flex: 1; height: 42px;" @onclick="GenerateTaxDiskette" disabled="@IsProcessing" title="دریافت دیسکت متنی (فایل ZIP شامل WP و WH)">
-                            <i class="bi bi-file-zip" style="font-size: 16px;"></i> <span>دیسکت TXT</span>
+                            @if (_processingAction == "TaxDiskette")
+                            {
+                                <span class="p2-spinner" style="width:16px; height:16px; border-width:2px;"></span>
+                            }
+                            else
+                            {
+                                <i class="bi bi-file-zip" style="font-size: 16px;"></i> <span>دیسکت TXT</span>
+                            }
                         </button>
 
                         <button class="btn-outline-pay2 sm" style="color: #db2777; border-color: #fbcfe8; background-color: white; width: 42px; height: 42px; padding: 0; display: flex; justify-content: center; align-items: center; flex-shrink: 0;" @onclick="OpenTaxDiskettePreview" disabled="@IsProcessing" title="پیش‌نمایش محتوای دیسکت مالیات">
-                            <i class="bi bi-eye" style="font-size: 16px; margin: 0;"></i>
+                            @if (_processingAction == "TaxDiskPreview")
+                            {
+                                <span class="p2-spinner" style="width:16px; height:16px; border-width:2px; margin: 0;"></span>
+                            }
+                            else
+                            {
+                                <i class="bi bi-eye" style="font-size: 16px; margin: 0;"></i>
+                            }
                         </button>
                     </div>
                 </div>
@@ -265,14 +287,16 @@
 
     int SelectedWsId;
     long SelectedPeriodDate;
-    bool IsProcessing = false;
-    bool ShowCompareModal = false;
     int SelectedEmpId = 0;
     List<LookupDto<int>> EmployeeLookup = new();
 
+    // 🚀 مدیریت وضعیت پراسس برای تفکیک اسپینرها
+    string _processingAction = "";
+    bool IsProcessing => !string.IsNullOrEmpty(_processingAction);
+
+    bool ShowCompareModal = false;
     bool ShowDiskettePreviewModal = false;
     int PreviewRunId = 0;
-
     bool ShowTaxDiskettePreviewModal = false;
     int PreviewTaxRunId = 0;
 
@@ -348,7 +372,7 @@
         var period = Periods.FirstOrDefault(p => p.PERIOD_DATE == SelectedPeriodDate);
         if (period == null) return;
 
-        IsProcessing = true;
+        _processingAction = "InsReport";
         try
         {
             int targetRunId = 0;
@@ -392,7 +416,7 @@
         }
         finally
         {
-            IsProcessing = false;
+            _processingAction = "";
         }
     }
 
@@ -407,7 +431,7 @@
         var period = Periods.FirstOrDefault(p => p.PERIOD_DATE == SelectedPeriodDate);
         if (period == null) return;
 
-        IsProcessing = true;
+        _processingAction = "InsDiskette";
         try
         {
             var latestRun = await RunApi.GetLatestRunAsync(period.PER_ID);
@@ -428,7 +452,7 @@
         }
         finally
         {
-            IsProcessing = false;
+            _processingAction = "";
         }
     }
 
@@ -443,7 +467,7 @@
         var period = Periods.FirstOrDefault(p => p.PERIOD_DATE == SelectedPeriodDate);
         if (period == null) return;
 
-        IsProcessing = true;
+        _processingAction = "InsDiskPreview";
         try
         {
             var latestRun = await RunApi.GetLatestRunAsync(period.PER_ID);
@@ -462,7 +486,7 @@
         }
         finally
         {
-            IsProcessing = false;
+            _processingAction = "";
         }
     }
 
@@ -479,7 +503,7 @@
         var period = Periods.FirstOrDefault(p => p.PERIOD_DATE == SelectedPeriodDate);
         if (period == null) return;
 
-        IsProcessing = true;
+        _processingAction = "TaxReport";
         try
         {
             int targetRunId = 0;
@@ -523,7 +547,7 @@
         }
         finally
         {
-            IsProcessing = false;
+            _processingAction = "";
         }
     }
 
@@ -535,7 +559,7 @@
             return;
         }
 
-        IsProcessing = true;
+        _processingAction = "TaxExcel";
         try
         {
             var bytes = await RunApi.GetAnnualTaxReportExcelAsync(SelectedWsId, SelectedPeriodDate);
@@ -550,7 +574,7 @@
         }
         finally
         {
-            IsProcessing = false;
+            _processingAction = "";
         }
     }
 
@@ -565,7 +589,7 @@
         var period = Periods.FirstOrDefault(p => p.PERIOD_DATE == SelectedPeriodDate);
         if (period == null) return;
 
-        IsProcessing = true;
+        _processingAction = "TaxDiskette";
         try
         {
             var latestRun = await RunApi.GetLatestRunAsync(period.PER_ID);
@@ -589,7 +613,7 @@
         }
         finally
         {
-            IsProcessing = false;
+            _processingAction = "";
         }
     }
 
@@ -604,7 +628,7 @@
         var period = Periods.FirstOrDefault(p => p.PERIOD_DATE == SelectedPeriodDate);
         if (period == null) return;
 
-        IsProcessing = true;
+        _processingAction = "TaxDiskPreview";
         try
         {
             var latestRun = await RunApi.GetLatestRunAsync(period.PER_ID);
@@ -623,7 +647,7 @@
         }
         finally
         {
-            IsProcessing = false;
+            _processingAction = "";
         }
     }
 
@@ -635,7 +659,7 @@
         int year = (SelectedPeriodDate > 0) ? (int)(SelectedPeriodDate / 10000) : (Periods.Count > 1 ? (int)(Periods[1].PERIOD_DATE / 10000) : 1403);
         long currentDate = Safir.Shared.Utility.CL_Tarikh.GetCurrentPersianDateAsLong();
 
-        IsProcessing = true;
+        _processingAction = "LeaveExcel";
         try
         {
             var bytes = await EmployeeApi.GetLeaveReportExcelAsync(SelectedWsId, year, SelectedEmpId, currentDate);
@@ -643,7 +667,7 @@
             Snackbar.Add("فایل اکسل تولید شد.", MudBlazor.Severity.Success);
         }
         catch (Exception ex) { Snackbar.Add(ex.Message, MudBlazor.Severity.Error); }
-        finally { IsProcessing = false; }
+        finally { _processingAction = ""; }
     }
 
     void PrintLeaveReportPdf()
