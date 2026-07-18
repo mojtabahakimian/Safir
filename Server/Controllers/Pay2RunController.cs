@@ -1016,5 +1016,145 @@ VALUES (@N_S, @RADIF, @HES_K, @HES_M, @HES_T, @HES_T2, @HES_T3, @HES_T4, @HES, @
                 return StatusCode(500, "خطا در مقایسه ماه‌ها: " + ex.Message);
             }
         }
+
+        // ===================================================================
+        // تولید فایل اکسل اظهارنامه سالانه مالیات (خلاصه وضعیت پرسنل در سال)
+        // ===================================================================
+        [HttpGet("tax-report-excel")]
+        public async Task<IActionResult> GetAnnualTaxReportExcel([FromQuery] int wsId, [FromQuery] long periodDate)
+        {
+            if (wsId <= 0)
+                return BadRequest("کارگاه نامعتبر است.");
+
+            try
+            {
+                // ۱. استخراج سال هدف
+                long targetYear;
+                if (periodDate > 0)
+                {
+                    targetYear = periodDate / 10000;
+                }
+                else
+                {
+                    // اگر کاربر "تجمیعی کل سال" را انتخاب کرده بود، سال آخرین دوره کارگاه را می‌گیریم
+                    var maxDate = await _db.DoGetDataSQLAsyncSingle<long?>(
+                        "SELECT MAX(PERIOD_DATE) FROM PAY2_PERIOD WITH (NOLOCK) WHERE WS_ID = @wsId AND STATUS >= 3", new { wsId });
+
+                    if (maxDate == null)
+                        return NotFound("هیچ دوره‌ی محاسبه‌شده‌ای برای این کارگاه یافت نشد.");
+
+                    targetYear = maxDate.Value / 10000;
+                }
+
+                // ۲. خواندن نام کارگاه
+                var wsName = await _db.DoGetDataSQLAsyncSingle<string>(
+                    "SELECT WS_NAME FROM PAY2_WORKSHOP WITH (NOLOCK) WHERE WS_ID = @wsId", new { wsId });
+
+                // ۳. کوئری تجمیع اطلاعات پرسنل در سال هدف (فقط اجراهای تأیید شده یا قطعی)
+                const string sql = @"
+                    SELECT 
+                        E.EMP_CODE,
+                        E.NATIONAL_CODE,
+                        E.LAST_NAME + N' ' + E.FIRST_NAME AS FULL_NAME,
+                        SUM(RL.WORK_DAYS) AS TOTAL_WORK_DAYS,
+                        SUM(RL.GROSS_PAY) AS TOTAL_GROSS_PAY,
+                        SUM(RL.TAX_BASE) AS TOTAL_TAX_BASE,
+                        SUM(RL.TAX_AMOUNT) AS TOTAL_TAX_AMOUNT
+                    FROM PAY2_RUN_LINE RL WITH (NOLOCK)
+                    INNER JOIN PAY2_RUN R WITH (NOLOCK) ON RL.RUN_ID = R.RUN_ID
+                    INNER JOIN PAY2_PERIOD P WITH (NOLOCK) ON R.PER_ID = P.PER_ID
+                    INNER JOIN PAY2_EMPLOYEE E WITH (NOLOCK) ON RL.EMP_ID = E.EMP_ID
+                    WHERE P.WS_ID = @wsId
+                      AND R.IS_LATEST = 1
+                      AND R.STATUS >= 2
+                      AND (P.PERIOD_DATE / 10000) = @targetYear
+                    GROUP BY 
+                        E.EMP_ID, E.EMP_CODE, E.NATIONAL_CODE, E.LAST_NAME, E.FIRST_NAME
+                    HAVING SUM(RL.GROSS_PAY) > 0
+                    ORDER BY 
+                        E.LAST_NAME, E.FIRST_NAME";
+
+                var reportData = await _db.DoGetDataSQLAsync<dynamic>(sql, new { wsId, targetYear });
+
+                var dataList = reportData.ToList();
+                if (!dataList.Any())
+                    return NotFound($"هیچ داده مالیاتی برای سال {targetYear} یافت نشد.");
+
+                // ۴. تولید فایل اکسل با ClosedXML
+                using var wb = new ClosedXML.Excel.XLWorkbook();
+                var ws = wb.Worksheets.Add($"مالیات_{targetYear}");
+                ws.RightToLeft = true;
+
+                // هدر گزارش
+                ws.Cell(1, 1).Value = $"گزارش تجمیعی مالیات حقوق سال {targetYear}";
+                ws.Cell(2, 1).Value = $"کارگاه: {wsName}";
+                var titleRange = ws.Range(1, 1, 1, 8);
+                titleRange.Merge();
+                titleRange.Style.Font.Bold = true;
+                titleRange.Style.Font.FontSize = 14;
+                titleRange.Style.Fill.BackgroundColor = ClosedXML.Excel.XLColor.FromHtml("#4472C4");
+                titleRange.Style.Font.FontColor = ClosedXML.Excel.XLColor.White;
+                titleRange.Style.Alignment.Horizontal = ClosedXML.Excel.XLAlignmentHorizontalValues.Center;
+
+                // هدر ستون‌ها
+                string[] headers = { "ردیف", "کد پرسنلی", "کد ملی", "نام و نام خانوادگی", "کارکرد (روز)", "جمع حقوق و مزایا", "درآمد مشمول مالیات", "مالیات کسر شده" };
+                for (int i = 0; i < headers.Length; i++)
+                {
+                    var cell = ws.Cell(4, i + 1);
+                    cell.Value = headers[i];
+                    cell.Style.Font.Bold = true;
+                    cell.Style.Fill.BackgroundColor = ClosedXML.Excel.XLColor.FromHtml("#D9E1F2");
+                    cell.Style.Border.SetOutsideBorder(ClosedXML.Excel.XLBorderStyleValues.Thin);
+                }
+
+                // تزریق داده‌ها
+                int r = 5;
+                int rowIdx = 1;
+                foreach (var item in dataList)
+                {
+                    ws.Cell(r, 1).Value = rowIdx++;
+                    ws.Cell(r, 2).Value = item.EMP_CODE?.ToString();
+                    ws.Cell(r, 3).Value = item.NATIONAL_CODE?.ToString();
+                    ws.Cell(r, 4).Value = item.FULL_NAME?.ToString();
+                    ws.Cell(r, 5).Value = (decimal)item.TOTAL_WORK_DAYS;
+                    ws.Cell(r, 6).Value = (long)item.TOTAL_GROSS_PAY;
+                    ws.Cell(r, 7).Value = (long)item.TOTAL_TAX_BASE;
+                    ws.Cell(r, 8).Value = (long)item.TOTAL_TAX_AMOUNT;
+                    r++;
+                }
+
+                // ردیف جمع کل
+                ws.Cell(r, 1).Value = "جمع کل";
+                ws.Range(r, 1, r, 4).Merge().Style.Alignment.Horizontal = ClosedXML.Excel.XLAlignmentHorizontalValues.Left;
+                ws.Cell(r, 5).FormulaA1 = $"SUM(E5:E{r - 1})";
+                ws.Cell(r, 6).FormulaA1 = $"SUM(F5:F{r - 1})";
+                ws.Cell(r, 7).FormulaA1 = $"SUM(G5:G{r - 1})";
+                ws.Cell(r, 8).FormulaA1 = $"SUM(H5:H{r - 1})";
+
+                var footerRange = ws.Range(r, 1, r, 8);
+                footerRange.Style.Font.Bold = true;
+                footerRange.Style.Fill.BackgroundColor = ClosedXML.Excel.XLColor.LightGray;
+
+                // تنظیم فرمت اعداد (جداکننده هزارگان)
+                ws.Range(5, 6, r, 8).Style.NumberFormat.Format = "#,##0";
+
+                // تنظیم بوردر کل جدول
+                ws.Range(4, 1, r, 8).Style.Border.SetOutsideBorder(ClosedXML.Excel.XLBorderStyleValues.Thin);
+                ws.Range(4, 1, r, 8).Style.Border.SetInsideBorder(ClosedXML.Excel.XLBorderStyleValues.Thin);
+
+                ws.Columns(1, 8).AdjustToContents();
+                ws.Column(3).Width = 15; // کد ملی
+                ws.Column(4).Width = 30; // نام
+
+                using var ms = new MemoryStream();
+                wb.SaveAs(ms);
+
+                return File(ms.ToArray(), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", $"TaxReport_{targetYear}.xlsx");
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, "خطا در تولید گزارش مالیات: " + ex.Message);
+            }
+        }
     }
 }

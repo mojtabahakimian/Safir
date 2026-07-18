@@ -192,5 +192,17 @@ namespace Safir.Client.Services
             }
             return await res.Content.ReadFromJsonAsync<Pay2MonthCompareResultDto>() ?? new Pay2MonthCompareResultDto();
         }
+
+        // دریافت فایل اکسل گزارش مالیات سالانه
+        public async Task<byte[]> GetAnnualTaxReportExcelAsync(int wsId, long periodDate)
+        {
+            var res = await _http.GetAsync($"api/pay2/run/tax-report-excel?wsId={wsId}&periodDate={periodDate}");
+            if (!res.IsSuccessStatusCode)
+            {
+                var err = await res.Content.ReadAsStringAsync();
+                throw new Exception(string.IsNullOrWhiteSpace(err) ? "خطا در دریافت گزارش مالیات." : err);
+            }
+            return await res.Content.ReadAsByteArrayAsync();
+        }
     }
 }

@@ -197,6 +197,29 @@
                 </button>
             </div>
 
+            <!-- کارت گزارش مالیات حقوق (فعال شد) -->
+            <div class="card-custom" style="background: var(--p2-bg-main); border: 1px solid var(--p2-border);">
+                <div style="display: flex; align-items: center; gap: 15px; margin-bottom: 15px;">
+                    <div class="stat-icon-box" style="background: #fce7f3; color: #db2777;">
+                        <i class="bi bi-building"></i>
+                    </div>
+                    <div>
+                        <h6 style="margin: 0; font-weight: bold;">مالیات حقوق (اظهارنامه سالانه)</h6>
+                        <span class="p2-text-muted" style="font-size: 11px;">خروجی Excel تجمیعی پرسنل در سال جاری</span>
+                    </div>
+                </div>
+                <button class="btn-primary-pay2" style="background-color: #db2777; border-color: #db2777; width: 100%;" @onclick="GenerateTaxReportExcel" disabled="@IsProcessing">
+                    @if (IsProcessing)
+                    {
+                        <span class="p2-spinner"></span>
+                    }
+                    else
+                    {
+                        <i class="bi bi-download"></i> <span>دریافت فایل Excel</span>
+                    }
+                </button>
+            </div>
+
         </div>
     </div>
 </div>
@@ -511,5 +534,37 @@
             EmployeeLookup = await EmployeeApi.GetEmployeesLookupAsync();
         }
         catch { }
+    }
+
+    async Task GenerateTaxReportExcel()
+    {
+        if (SelectedWsId <= 0 || SelectedPeriodDate < 0)
+        {
+            Snackbar.Add("لطفاً کارگاه را انتخاب کنید.", MudBlazor.Severity.Warning);
+            return;
+        }
+
+        IsProcessing = true;
+        try
+        {
+            // فراخوانی API
+            var bytes = await RunApi.GetAnnualTaxReportExcelAsync(SelectedWsId, SelectedPeriodDate);
+            
+            // استخراج سال برای نام فایل
+            long targetYear = SelectedPeriodDate > 0 ? SelectedPeriodDate / 10000 : 1403; // در صورت تجمیعی، 1403 دیفالت در نام (سرور سال درست را محاسبه کرده)
+            
+            // دانلود فایل
+            await JS.InvokeVoidAsync("downloadFileFromBytes", $"Tax_Report_{targetYear}.xlsx", bytes);
+            
+            Snackbar.Add("فایل اکسل اظهارنامه مالیاتی با موفقیت تولید و دانلود شد.", MudBlazor.Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add(ex.Message, MudBlazor.Severity.Error);
+        }
+        finally
+        {
+            IsProcessing = false;
+        }
     }
 }
