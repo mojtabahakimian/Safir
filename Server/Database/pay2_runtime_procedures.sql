@@ -49,6 +49,12 @@ BEGIN
         RETURN;
     END;
 
+    -- Idempotency guard: once run lines are gone, do not restore leave or loan state again.
+    IF NOT EXISTS (SELECT 1 FROM dbo.PAY2_RUN_LINE WHERE RUN_ID = @RUN_ID)
+    BEGIN
+        RETURN;
+    END;
+
     -- Restore the number of loan installments consumed by this run.
     UPDATE L
     SET L.PAID_INST = L.PAID_INST -
