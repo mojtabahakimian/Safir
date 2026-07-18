@@ -167,5 +167,19 @@ namespace Safir.Client.Services
             }
             return await res.Content.ReadFromJsonAsync<DiskettePreviewDto>() ?? new DiskettePreviewDto();
         }
+
+        // دریافت بایت‌های PDF لیست مالیات حقوق
+        public async Task<byte[]> GetTaxReportPdfAsync(int runId, int wsId = 0)
+        {
+            var res = await _http.GetAsync($"api/pay2/run/{runId}/tax-report?wsId={wsId}");
+            if (!res.IsSuccessStatusCode)
+            {
+                var err = await res.Content.ReadAsStringAsync();
+                throw new Exception(string.IsNullOrWhiteSpace(err)
+                    ? $"خطا در دریافت لیست مالیات (کد {(int)res.StatusCode})."
+                    : err);
+            }
+            return await res.Content.ReadAsByteArrayAsync();
+        }
     }
 }

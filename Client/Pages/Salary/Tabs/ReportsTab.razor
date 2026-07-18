@@ -81,7 +81,7 @@
                         <span class="p2-text-muted" style="font-size: 11px;">تولید DSKKAR00 و DSKWOR00</span>
                     </div>
                 </div>
-<div style="display:flex; gap:10px; width:100%;">
+            <div style="display:flex; gap:10px; width:100%;">
                     <button class="btn-primary-pay2" style="background-color: #0284c7; border-color: #0284c7; flex:1;" @onclick="GenerateInsuranceDiskette" disabled="@IsProcessing">
                         @if (IsProcessing)
                         {
@@ -115,20 +115,29 @@
                 </button>
             </div>
 
-            <div class="card-custom" style="background: #f8fafc; border: 1px dashed #cbd5e1; opacity: 0.6;">
+            <!-- کارت گزارش مالیات -->
+            <div class="card-custom" style="background: var(--p2-bg-main); border: 1px solid var(--p2-border);">
                 <div style="display: flex; align-items: center; gap: 15px; margin-bottom: 15px;">
-                    <div class="stat-icon-box" style="background: #f1f5f9; color: #94a3b8;">
+                    <div class="stat-icon-box" style="background: #fce7f3; color: #db2777;">
                         <i class="bi bi-building"></i>
                     </div>
                     <div>
-                        <h6 style="margin: 0; font-weight: bold;">مالیات حقوق</h6>
-                        <span class="p2-text-muted" style="font-size: 11px;">به زودی...</span>
+                        <h6 style="margin: 0; font-weight: bold;">مالیات حقوق کارکنان</h6>
+                        <span class="p2-text-muted" style="font-size: 11px;">مبتنی بر ماده ۸۶ قانون مالیات‌ها</span>
                     </div>
                 </div>
-                <button class="btn-outline-pay2" style="width: 100%;" disabled>
-                    <i class="bi bi-download"></i> دریافت فایل
+                <button class="btn-primary-pay2" style="background-color: #db2777; border-color: #db2777; width: 100%;" @onclick="GenerateTaxReport" disabled="@IsProcessing">
+                    @if (IsProcessing)
+                    {
+                        <span class="p2-spinner"></span>
+                    }
+                    else
+                    {
+                        <i class="bi bi-printer"></i> <span>چاپ لیست مالیات</span>
+                    }
                 </button>
             </div>
+
         </div>
     </div>
 </div>
@@ -324,6 +333,65 @@
 
             PreviewRunId = latestRun.RUN_ID;
             ShowDiskettePreviewModal = true;
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add(ex.Message, MudBlazor.Severity.Error);
+        }
+        finally
+        {
+            IsProcessing = false;
+        }
+    }
+
+    async Task GenerateTaxReport()
+    {
+        if (SelectedWsId <= 0 || SelectedPeriodDate < 0)
+        {
+            Snackbar.Add("لطفاً کارگاه و ماه را انتخاب کنید.", MudBlazor.Severity.Warning);
+            return;
+        }
+
+        var period = Periods.FirstOrDefault(p => p.PERIOD_DATE == SelectedPeriodDate);
+        if (period == null) return;
+
+        IsProcessing = true;
+        try
+        {
+            int targetRunId = 0;
+            string dialogTitle = "لیست مالیات حقوق";
+
+            if (SelectedPeriodDate == 0) // تجمیعی
+            {
+                dialogTitle += " - تجمیعی کل سال";
+            }
+            else // یک ماه خاص
+            {
+                var latestRun = await RunApi.GetLatestRunAsync(period.PER_ID);
+                if (latestRun == null)
+                {
+                    Snackbar.Add("هیچ محاسبه حقوقی برای این ماه انجام نشده است.", MudBlazor.Severity.Warning);
+                    return;
+                }
+                targetRunId = latestRun.RUN_ID;
+                dialogTitle += $" - {period.PERIOD_TITLE}";
+            }
+
+            var parameters = new MudBlazor.DialogParameters
+            {
+                ["Title"] = dialogTitle,
+                ["FetchPdfBytes"] = (Func<Task<byte[]>>)(() => RunApi.GetTaxReportPdfAsync(targetRunId, SelectedWsId))
+            };
+
+            var options = new MudBlazor.DialogOptions
+            {
+                MaxWidth = MudBlazor.MaxWidth.ExtraExtraLarge,
+                FullWidth = true,
+                CloseButton = true,
+                CloseOnEscapeKey = true
+            };
+
+            DialogService.Show<PdfPreviewDialog>("چاپ لیست مالیات", parameters, options);
         }
         catch (Exception ex)
         {
