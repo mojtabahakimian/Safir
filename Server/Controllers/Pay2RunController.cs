@@ -644,5 +644,175 @@ VALUES (@N_S, @RADIF, @HES_K, @HES_M, @HES_T, @HES_T2, @HES_T3, @HES_T4, @HES, @
             catch (InvalidOperationException ex) { return BadRequest(ex.Message); }
             catch (Exception ex) { return StatusCode(500, "خطا در لغو صدور سند: " + ex.Message); }
         }
+
+        // ===================================================================
+        // چاپ لیست بیمه تامین اجتماعی (برای یک ماه یا تمام ماه‌های کارگاه)
+        // اگر runId = 0 باشد و wsId ارسال شود، گزارش تجمیعی کل سال/ماه‌ها صادر می‌شود
+        // ===================================================================
+        [HttpGet("{runId:int}/insurance-report")]
+        public async Task<IActionResult> GetInsuranceReportPdf(int runId, [FromQuery] int wsId = 0)
+        {
+            try
+            {
+                var reportDto = new InsuranceReportDto();
+                List<int> targetRunIds = new List<int>();
+
+                // ۱. پیدا کردن Run ها (یا یک دانه، یا همه ماه‌های تایید شده یک کارگاه)
+                if (runId > 0)
+                {
+                    targetRunIds.Add(runId);
+                }
+                else if (wsId > 0)
+                {
+                    // گرفتن تمام Runهای تایید شده (Status >= 2) برای این کارگاه
+                    var runsSql = @"
+                        SELECT R.RUN_ID 
+                        FROM PAY2_RUN R WITH (NOLOCK)
+                        INNER JOIN PAY2_PERIOD P WITH (NOLOCK) ON R.PER_ID = P.PER_ID
+                        WHERE P.WS_ID = @wsId AND R.IS_LATEST = 1 AND R.STATUS >= 2
+                        ORDER BY P.PERIOD_DATE ASC"; // به ترتیب ماه
+
+                    targetRunIds = (await _db.DoGetDataSQLAsync<int>(runsSql, new { wsId })).ToList();
+
+                    if (!targetRunIds.Any())
+                        return NotFound("هیچ ماهِ محاسبه و تایید شده‌ای برای این کارگاه یافت نشد.");
+                }
+                else
+                {
+                    return BadRequest("پارامترهای ورودی نامعتبر است.");
+                }
+
+                // گرفتن اطلاعات هدر از اولین Run موجود
+                int firstRunId = targetRunIds.First();
+                const string headSql = @"
+                    SELECT 
+                        P.PERIOD_DATE, W.WS_CODE, W.WS_NAME, W.EMPLOYER_NAME, 
+                        W.ADDRESS, W.SSO_BRANCH
+                    FROM PAY2_RUN R WITH (NOLOCK)
+                    INNER JOIN PAY2_PERIOD P WITH (NOLOCK) ON R.PER_ID = P.PER_ID
+                    INNER JOIN PAY2_WORKSHOP W WITH (NOLOCK) ON P.WS_ID = W.WS_ID
+                    WHERE R.RUN_ID = @firstRunId";
+
+                var head = await _db.DoGetDataSQLAsyncSingle<dynamic>(headSql, new { firstRunId });
+                if (head == null) return NotFound("اطلاعات کارگاه/دوره یافت نشد.");
+
+                long periodDate = (long)head.PERIOD_DATE;
+                string year = (periodDate / 10000).ToString();
+                int month = (int)((periodDate / 100) % 100);
+                string[] monthNames = { "فروردین", "اردیبهشت", "خرداد", "تیر", "مرداد", "شهریور", "مهر", "آبان", "آذر", "دی", "بهمن", "اسفند" };
+
+                string monthName = runId > 0
+                    ? ((month >= 1 && month <= 12) ? monthNames[month - 1] : month.ToString())
+                    : "تجمیعی تمام ماه‌ها";
+
+                reportDto = new InsuranceReportDto
+                {
+                    WorkshopCode = head.WS_CODE?.ToString() ?? "",
+                    WorkshopName = head.WS_NAME?.ToString() ?? "",
+                    EmployerName = head.EMPLOYER_NAME?.ToString() ?? "",
+                    Address = head.ADDRESS?.ToString() ?? "",
+                    BranchName = head.SSO_BRANCH?.ToString() ?? "",
+                    PeriodYear = year,
+                    PeriodMonthName = monthName
+                };
+
+                int rowIndex = 1;
+
+                // پردازش تمام Runها (یک یا چندتا)
+                foreach (var currentRunId in targetRunIds)
+                {
+                    // اگر تجمیعی است، عنوان ماه را به نام پرسنل اضافه می‌کنیم تا مشخص شود
+                    string monthLabel = "";
+                    if (runId == 0)
+                    {
+                        var pDateSql = "SELECT P.PERIOD_DATE FROM PAY2_RUN R INNER JOIN PAY2_PERIOD P ON R.PER_ID = P.PER_ID WHERE R.RUN_ID = @currentRunId";
+                        var pDate = await _db.DoGetDataSQLAsyncSingle<long>(pDateSql, new { currentRunId });
+                        int m = (int)((pDate / 100) % 100);
+                        monthLabel = $" [{(m >= 1 && m <= 12 ? monthNames[m - 1] : m.ToString())}]";
+                    }
+
+                    const string linesSql = @"
+                        SELECT 
+                            RL.EMP_ID, E.LAST_NAME + N' ' + E.FIRST_NAME AS FULL_NAME,
+                            E.NATIONAL_CODE, E.INS_CODE, E.FATHER_NAME, J.JOB_NAME,
+                            RL.WORK_DAYS, RL.INS_BASE, RL.INS_WORKER, RL.GROSS_PAY
+                        FROM PAY2_RUN_LINE RL WITH (NOLOCK)
+                        INNER JOIN PAY2_EMPLOYEE E WITH (NOLOCK) ON RL.EMP_ID = E.EMP_ID
+                        LEFT JOIN PAY2_JOB J WITH (NOLOCK) ON E.JOB_ID = J.JOB_ID
+                        WHERE RL.RUN_ID = @currentRunId AND E.INS_TYPE <> 3
+                        ORDER BY E.LAST_NAME, E.FIRST_NAME";
+
+                    var lines = await _db.DoGetDataSQLAsync<dynamic>(linesSql, new { currentRunId });
+
+                    const string detailsSql = @"
+                        SELECT D.EMP_ID, I.ITEM_CODE, D.AMOUNT
+                        FROM PAY2_RUN_DETAIL D WITH (NOLOCK)
+                        INNER JOIN PAY2_ITEM_DEF I WITH (NOLOCK) ON D.ITEM_ID = I.ITEM_ID
+                        WHERE D.RUN_ID = @currentRunId AND I.INS_SUBJECT = 1";
+
+                    var details = await _db.DoGetDataSQLAsync<dynamic>(detailsSql, new { currentRunId });
+
+                    var groupedDetails = details.GroupBy(x => (int)x.EMP_ID)
+                                                .ToDictionary(g => g.Key, g => g.ToList());
+
+                    foreach (var line in lines)
+                    {
+                        int empId = (int)line.EMP_ID;
+                        decimal workDays = (decimal)line.WORK_DAYS;
+                        long monthlyWage = 0;
+                        long maritalAllowance = 0;
+                        long seniorityBase = 0;
+                        long totalInsDetails = 0;
+
+                        if (groupedDetails.TryGetValue(empId, out var empDetails))
+                        {
+                            foreach (var det in empDetails)
+                            {
+                                string code = det.ITEM_CODE.ToString().ToUpper();
+                                long amt = (long)det.AMOUNT;
+                                totalInsDetails += amt;
+
+                                if (code == "BASE_SAL_B" || code == "BASE_SAL") monthlyWage += amt;
+                                else if (code == "FAMILY_ALLOW") maritalAllowance += amt;
+                                else if (code == "SENIORITY" || code == "SANOVAT_PAYE") seniorityBase += amt;
+                            }
+                        }
+
+                        long dailyWage = workDays > 0 ? (long)(monthlyWage / workDays) : 0;
+                        long insBase = (long)line.INS_BASE;
+                        long otherBenefits = insBase - monthlyWage - maritalAllowance - seniorityBase;
+                        if (otherBenefits < 0) otherBenefits = 0;
+
+                        var rowDto = new InsuranceEmployeeRowDto
+                        {
+                            RowIndex = rowIndex++,
+                            FullName = (line.FULL_NAME?.ToString() ?? "") + monthLabel,
+                            NationalCode = line.NATIONAL_CODE?.ToString() ?? "",
+                            InsuranceCode = line.INS_CODE?.ToString() ?? "",
+                            FatherName = line.FATHER_NAME?.ToString() ?? "",
+                            JobTitle = line.JOB_NAME?.ToString() ?? "",
+                            WorkDays = workDays,
+                            DailyWage = dailyWage,
+                            MonthlyWage = monthlyWage,
+                            MaritalAllowance = maritalAllowance,
+                            SeniorityBase = seniorityBase,
+                            OtherSubjectBenefits = otherBenefits,
+                            TotalSubjectToInsurance = insBase,
+                            TotalGrossPay = (long)line.GROSS_PAY,
+                            WorkerPremium = (long)line.INS_WORKER
+                        };
+
+                        reportDto.Rows.Add(rowDto);
+                    }
+                }
+
+                byte[] pdfBytes = new InsuranceListDocument(reportDto).GeneratePdf();
+                return File(pdfBytes, "application/pdf", $"InsuranceList_{reportDto.PeriodYear}_{reportDto.PeriodMonthName}.pdf");
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, ex.Message);
+            }
+        }
     }
 }

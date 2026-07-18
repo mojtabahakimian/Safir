@@ -1,0 +1,226 @@
+﻿@using Safir.Shared.Models.Salary
+@using Safir.Client.Components.Reports
+@inject Safir.Client.Services.Pay2RunApiService RunApi
+@inject Safir.Client.Services.Pay2AttendanceApiService AttApi
+@inject Safir.Client.Services.Pay2WorkshopApiService WorkshopApi
+@inject ISnackbar Snackbar
+@inject MudBlazor.IDialogService DialogService
+@inject Safir.Client.Services.ConnectionManagerService ConnectionManager
+
+<div class="pay2-tab-container">
+    <div class="card-custom p2-fade-content">
+        <div class="p2-card-header" style="border-bottom: 1px solid var(--p2-border-light); padding-bottom: 16px; margin-bottom: 24px;">
+            <h5 style="margin: 0; color: var(--p2-primary);"><i class="bi bi-file-earmark-text"></i> مرکز گزارشات حقوق و دستمزد</h5>
+            <div class="p2-text-muted" style="font-size: 12px; margin-top: 5px;">
+                تولید و چاپ گزارشات قانونی (بیمه، مالیات و...) برای دوره‌های محاسبه شده
+            </div>
+        </div>
+
+        <div style="display: flex; flex-wrap: wrap; gap: 24px; align-items: flex-end;">
+            
+            <div class="form-field" style="width: 250px;">
+                <label>انتخاب کارگاه *</label>
+                <Safir.Client.Pages.Salary.Tabs.Pay2Select TItem="Pay2WorkshopDto"
+                                                           TValue="int"
+                                                           Items="Workshops"
+                                                           @bind-Value="SelectedWsId"
+                                                           @bind-Value:after="OnWorkshopChangedAsync"
+                                                           TextSelector="x => x.WS_NAME"
+                                                           ValueSelector="x => x.WS_ID"
+                                                           Clearable="false" />
+            </div>
+
+            <div class="form-field" style="width: 250px;">
+                <label>انتخاب ماه (دوره) *</label>
+                <Safir.Client.Pages.Salary.Tabs.Pay2Select TItem="Pay2PeriodLookupDto"
+                                                           TValue="long"
+                                                           Items="Periods"
+                                                           @bind-Value="SelectedPeriodDate"
+                                                           TextSelector="x => x.PERIOD_TITLE"
+                                                           ValueSelector="x => x.PERIOD_DATE"
+                                                           Clearable="false" />
+            </div>
+
+            <div style="flex-grow: 1;"></div>
+        </div>
+
+        <hr class="p2-divider" style="margin: 24px 0;" />
+
+        <div class="dashboard-top-grid">
+            <!-- کارت گزارش لیست بیمه -->
+            <div class="card-custom" style="background: var(--p2-bg-main); border: 1px solid var(--p2-border);">
+                <div style="display: flex; align-items: center; gap: 15px; margin-bottom: 15px;">
+                    <div class="stat-icon-box" style="background: #e0e7ff; color: #2563eb;">
+                        <i class="bi bi-shield-check"></i>
+                    </div>
+                    <div>
+                        <h6 style="margin: 0; font-weight: bold;">لیست بیمه تامین اجتماعی</h6>
+                        <span class="p2-text-muted" style="font-size: 11px;">تولید PDF بر اساس فرمت قانون ۱۴۰۵</span>
+                    </div>
+                </div>
+                <button class="btn-primary-pay2" style="width: 100%;" @onclick="GenerateInsuranceReport" disabled="@IsProcessing">
+                    @if (IsProcessing)
+                    {
+                        <span class="p2-spinner"></span>
+                    }
+                    else
+                    {
+                        <i class="bi bi-printer"></i> <span>چاپ لیست بیمه</span>
+                    }
+                </button>
+            </div>
+
+            <!-- جایگاه برای گزارشات آینده (مالیات، بانک و...) -->
+            <div class="card-custom" style="background: #f8fafc; border: 1px dashed #cbd5e1; opacity: 0.6;">
+                <div style="display: flex; align-items: center; gap: 15px; margin-bottom: 15px;">
+                    <div class="stat-icon-box" style="background: #f1f5f9; color: #94a3b8;">
+                        <i class="bi bi-bank"></i>
+                    </div>
+                    <div>
+                        <h6 style="margin: 0; font-weight: bold;">خروجی بانک (دیسکت)</h6>
+                        <span class="p2-text-muted" style="font-size: 11px;">به زودی...</span>
+                    </div>
+                </div>
+                <button class="btn-outline-pay2" style="width: 100%;" disabled>
+                    <i class="bi bi-download"></i> دریافت فایل
+                </button>
+            </div>
+
+            <div class="card-custom" style="background: #f8fafc; border: 1px dashed #cbd5e1; opacity: 0.6;">
+                <div style="display: flex; align-items: center; gap: 15px; margin-bottom: 15px;">
+                    <div class="stat-icon-box" style="background: #f1f5f9; color: #94a3b8;">
+                        <i class="bi bi-building"></i>
+                    </div>
+                    <div>
+                        <h6 style="margin: 0; font-weight: bold;">مالیات حقوق</h6>
+                        <span class="p2-text-muted" style="font-size: 11px;">به زودی...</span>
+                    </div>
+                </div>
+                <button class="btn-outline-pay2" style="width: 100%;" disabled>
+                    <i class="bi bi-download"></i> دریافت فایل
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    List<Pay2WorkshopDto> Workshops = new();
+    List<Pay2PeriodLookupDto> Periods = new();
+    
+    int SelectedWsId;
+    long SelectedPeriodDate;
+    bool IsProcessing = false;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await ConnectionManager.LoadSettingsAsync();
+        try
+        {
+            Workshops = await WorkshopApi.GetWorkshopsAsync() ?? new();
+            if (Workshops.Any())
+            {
+                SelectedWsId = Workshops.First().WS_ID;
+                await LoadPeriodsAsync();
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add(ex.Message, MudBlazor.Severity.Error);
+        }
+    }
+
+    async Task OnWorkshopChangedAsync()
+    {
+        SelectedPeriodDate = 0;
+        await LoadPeriodsAsync();
+    }
+
+async Task LoadPeriodsAsync()
+    {
+        if (SelectedWsId <= 0) return;
+
+        try
+        {
+            Periods = await AttApi.GetPeriodsAsync(SelectedWsId);
+            
+            // 🚀 اضافه کردن یک گزینه فیک به ابتدای لیست برای "همه ماه‌ها"
+            Periods.Insert(0, new Pay2PeriodLookupDto 
+            { 
+                PERIOD_DATE = 0, 
+                PERIOD_TITLE = "همه ماه‌ها (گزارش تجمیعی سال)" 
+            });
+
+            if (Periods.Any())
+            {
+                SelectedPeriodDate = Periods.First().PERIOD_DATE;
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add("خطا در بارگذاری دوره‌ها: " + ex.Message, MudBlazor.Severity.Error);
+        }
+    }
+
+async Task GenerateInsuranceReport()
+    {
+        // 🚀 تغییر مهم: شرط SelectedPeriodDate < 0 شد تا مقدار 0 (همه ماه‌ها) را قبول کند
+        if (SelectedWsId <= 0 || SelectedPeriodDate < 0)
+        {
+            Snackbar.Add("لطفاً کارگاه و ماه را انتخاب کنید.", MudBlazor.Severity.Warning);
+            return;
+        }
+
+        var period = Periods.FirstOrDefault(p => p.PERIOD_DATE == SelectedPeriodDate);
+        if (period == null) return;
+
+        IsProcessing = true;
+        try
+        {
+            int targetRunId = 0;
+            string dialogTitle = "لیست بیمه تامین اجتماعی";
+
+            if (SelectedPeriodDate == 0) // حالت همه ماه‌ها
+            {
+                dialogTitle += " - تجمیعی کل سال";
+                // targetRunId صفر باقی می‌ماند. به بک‌اند می‌گوییم کارگاه فلان را کامل بده
+            }
+            else // حالت یک ماه خاص
+            {
+                var latestRun = await RunApi.GetLatestRunAsync(period.PER_ID);
+                if (latestRun == null)
+                {
+                    Snackbar.Add("هیچ محاسبه حقوقی برای این ماه انجام نشده است. ابتدا به تب محاسبه حقوق مراجعه کنید.", MudBlazor.Severity.Warning);
+                    return;
+                }
+                targetRunId = latestRun.RUN_ID;
+                dialogTitle += $" - {period.PERIOD_TITLE}";
+            }
+
+            var parameters = new MudBlazor.DialogParameters
+            {
+                ["Title"] = dialogTitle,
+                // 🚀 استفاده استاندارد از RunApi که به تازگی اصلاح کردیم
+                ["FetchPdfBytes"] = (Func<Task<byte[]>>)(() => RunApi.GetInsuranceReportPdfAsync(targetRunId, SelectedWsId))
+            };
+
+            var options = new MudBlazor.DialogOptions
+            {
+                MaxWidth = MudBlazor.MaxWidth.ExtraExtraLarge,
+                FullWidth = true,
+                CloseButton = true,
+                CloseOnEscapeKey = true
+            };
+
+            DialogService.Show<PdfPreviewDialog>("چاپ لیست بیمه", parameters, options);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add(ex.Message, MudBlazor.Severity.Error);
+        }
+        finally
+        {
+            IsProcessing = false;
+        }
+    }
+}

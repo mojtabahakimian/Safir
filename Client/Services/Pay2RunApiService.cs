@@ -127,5 +127,20 @@ namespace Safir.Client.Services
             }
             return await res.Content.ReadAsByteArrayAsync();
         }
+
+        // دریافت بایت‌های PDF لیست بیمه
+        public async Task<byte[]> GetInsuranceReportPdfAsync(int runId, int wsId = 0)
+        {
+            // 🚀 اضافه شدن کوئری پارامتر wsId برای پشتیبانی از گزارش تجمیعی کل سال
+            var res = await _http.GetAsync($"api/pay2/run/{runId}/insurance-report?wsId={wsId}");
+            if (!res.IsSuccessStatusCode)
+            {
+                var err = await res.Content.ReadAsStringAsync();
+                throw new Exception(string.IsNullOrWhiteSpace(err)
+                    ? $"خطا در دریافت لیست بیمه (کد {(int)res.StatusCode})."
+                    : err);
+            }
+            return await res.Content.ReadAsByteArrayAsync();
+        }
     }
 }

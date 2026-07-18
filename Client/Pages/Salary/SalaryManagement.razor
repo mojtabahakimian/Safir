@@ -109,6 +109,12 @@
                 مدیریت مشاغل
             </li>
 
+            <li class="pay2-nav-item @(ActiveTab == "reports" ? "active" : "")"
+                @onclick='() => SetActiveTab("reports")'>
+                <i class="bi bi-file-earmark-pdf"></i>
+                مرکز گزارشات
+            </li>
+
         </ul>
 
         @* فوتر سایدبار *@
@@ -207,12 +213,17 @@
             {
                 <Safir.Client.Pages.Salary.Tabs.PayrollTab />
             }
+            @if (ActiveTab == "reports")
+            {
+                <Safir.Client.Pages.Salary.Tabs.ReportsTab />
+            }
             @if (ActiveTab != "dashboard" &&
                         ActiveTab != "workshops" &&
                         ActiveTab != "employees" &&
                         ActiveTab != "attendance" &&
                         ActiveTab != "advances" &&
                         ActiveTab != "itemdefs" &&
+                        ActiveTab != "reports" &&    // <--- این خط اضافه شود
                         ActiveTab != "payroll" &&
                         ActiveTab != "settings")
             {
@@ -308,6 +319,7 @@
         "attendance" => "کارکرد پرسنل",
         "advances" => "مساعده هوشمند",
         "payroll" => "مدیریت اجرای حقوق",
+        "reports" => "مرکز گزارشات", // <--- این خط اضافه شود
         "settings" => "تنظیمات سیستم",
         "itemdefs" => "آیتم‌های حقوقی",
         _ => "سیستم حقوق و دستمزد"

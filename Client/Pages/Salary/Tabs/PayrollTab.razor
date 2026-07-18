@@ -313,7 +313,7 @@
                             <button class="btn-success-pay2" @onclick="FinalizeRun" disabled="@IsProcessing" style="height: 42px;"><i class="bi bi-check-circle"></i> تأیید نهایی</button>
                             <button class="btn-danger-pay2" @onclick="RevertRun" disabled="@IsProcessing" style="height: 42px;"><i class="bi bi-arrow-counterclockwise"></i> برگشت محاسبه</button>
                         }
-                    else if (CurrentRun.STATUS == 2)
+                        else if (CurrentRun.STATUS == 2)
                         {
                             <button class="btn-outline-pay2" @onclick="OpenPreviewModal" disabled="@IsProcessing" style="height: 42px; background: #fff;"><i class="bi bi-eye"></i> پیش‌نمایش سند</button>
                             <button class="btn-primary-pay2" @onclick="GenerateDeed" disabled="@IsProcessing" style="height: 42px;"><i class="bi bi-journal-check"></i> صدور قطعی سند</button>
@@ -332,6 +332,9 @@
                                 <i class="bi bi-unlock"></i> لغو صدور سند
                             </button>
                         }
+                        <button class="btn-outline-pay2" @onclick="OpenInsuranceReport" disabled="@IsProcessing" style="height: 42px; background: #fff;">
+    <i class="bi bi-printer"></i> چاپ لیست بیمه
+</button>
                     }
                 </div>
             }
@@ -689,6 +692,31 @@
     {
         ShowPreviewModal = false;
         PreviewData = null;
+    }
+
+    void OpenInsuranceReport()
+    {
+        if (CurrentRun == null) return;
+    
+        int runId = CurrentRun.RUN_ID;
+    
+        var parameters = new MudBlazor.DialogParameters
+        {
+            ["Title"] = $"لیست بیمه تامین اجتماعی - {PeriodOptions.FirstOrDefault(x => x.PERIOD_DATE == SelectedPeriodDate)?.PERIOD_TITLE}",
+            
+            // 🚀 اصلاح شد: فراخوانی متد صحیح و بازگرداندن خروجی
+            ["FetchPdfBytes"] = (Func<Task<byte[]>>)(() => RunApi.GetInsuranceReportPdfAsync(runId))
+        };
+    
+        var options = new MudBlazor.DialogOptions
+        {
+            MaxWidth = MudBlazor.MaxWidth.ExtraExtraLarge,
+            FullWidth = true,
+            CloseButton = true,
+            CloseOnEscapeKey = true
+        };
+    
+        DialogService.Show<PdfPreviewDialog>("چاپ لیست بیمه", parameters, options);
     }
 
     List<Pay2WorkshopDto> Workshops = new();
