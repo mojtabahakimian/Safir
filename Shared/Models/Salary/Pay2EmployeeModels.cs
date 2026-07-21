@@ -67,6 +67,8 @@
         public int ITEM_ID { get; set; }
         public string? ITEM_NAME { get; set; }
         public decimal AMOUNT { get; set; }
+        public decimal? NOMINAL_AMOUNT_OV { get; set; }
+        public decimal? OFFICIAL_AMOUNT_OV { get; set; }
 
         public bool? INS_OV { get; set; }
         public bool? TAX_OV { get; set; }

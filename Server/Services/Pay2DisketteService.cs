@@ -24,9 +24,9 @@ namespace Safir.Server.Services
                 SELECT 
                     P.PERIOD_DATE, P.TENDAR_APPLY, W.WS_CODE, W.WS_NAME, W.EMPLOYER_NAME, 
                     W.ADDRESS, W.SSO_BRANCH
-                FROM PAY2_RUN R WITH (NOLOCK)
-                INNER JOIN PAY2_PERIOD P WITH (NOLOCK) ON R.PER_ID = P.PER_ID
-                INNER JOIN PAY2_WORKSHOP W WITH (NOLOCK) ON P.WS_ID = W.WS_ID
+                FROM PAY2_RUN R
+                INNER JOIN PAY2_PERIOD P ON R.PER_ID = P.PER_ID
+                INNER JOIN PAY2_WORKSHOP W ON P.WS_ID = W.WS_ID
                 WHERE R.RUN_ID = @runId";
 
             var head = await _db.DoGetDataSQLAsyncSingle<dynamic>(headSql, new { runId });
@@ -60,7 +60,7 @@ namespace Safir.Server.Services
                 long monthlyWage = (long)Math.Round((dailyWage + seniorityBase) * workDays, MidpointRounding.AwayFromZero);
                 long maritalAllowance = (long)line.MARITAL_ALLOWANCE;
                 long otherBenefits = (long)line.DBF_GENERAL_BENEFITS;
-                long insBase = monthlyWage + otherBenefits + maritalAllowance;
+                long insBase = (long)line.INS_BASE;
                 long grossPay = (long)line.NOMINAL_GROSS;
                 long workerIns = (long)line.INS_WORKER;
 
@@ -194,9 +194,9 @@ namespace Safir.Server.Services
             const string headSql = @"
                 SELECT 
                     P.PERIOD_DATE, W.WS_CODE, W.WS_NAME, W.EMPLOYER_NAME
-                FROM PAY2_RUN R WITH (NOLOCK)
-                INNER JOIN PAY2_PERIOD P WITH (NOLOCK) ON R.PER_ID = P.PER_ID
-                INNER JOIN PAY2_WORKSHOP W WITH (NOLOCK) ON P.WS_ID = W.WS_ID
+                FROM PAY2_RUN R
+                INNER JOIN PAY2_PERIOD P ON R.PER_ID = P.PER_ID
+                INNER JOIN PAY2_WORKSHOP W ON P.WS_ID = W.WS_ID
                 WHERE R.RUN_ID = @runId";
 
             var head = await _db.DoGetDataSQLAsyncSingle<dynamic>(headSql, new { runId });
@@ -225,7 +225,7 @@ namespace Safir.Server.Services
                 long monthlyWage = (long)Math.Round((dailyWage + seniorityBase) * workDays, MidpointRounding.AwayFromZero);
                 long maritalAllowance = (long)line.MARITAL_ALLOWANCE;
                 long otherBenefits = (long)line.DBF_GENERAL_BENEFITS;
-                long insBase = monthlyWage + otherBenefits + maritalAllowance;
+                long insBase = (long)line.INS_BASE;
 
                 totalMash += insBase;
                 totalTotl += (long)line.NOMINAL_GROSS;
@@ -286,9 +286,9 @@ namespace Safir.Server.Services
         {
             const string headSql = @"
                 SELECT P.PERIOD_DATE, W.WS_CODE
-                FROM PAY2_RUN R WITH (NOLOCK)
-                INNER JOIN PAY2_PERIOD P WITH (NOLOCK) ON R.PER_ID = P.PER_ID
-                INNER JOIN PAY2_WORKSHOP W WITH (NOLOCK) ON P.WS_ID = W.WS_ID
+                FROM PAY2_RUN R
+                INNER JOIN PAY2_PERIOD P ON R.PER_ID = P.PER_ID
+                INNER JOIN PAY2_WORKSHOP W ON P.WS_ID = W.WS_ID
                 WHERE R.RUN_ID = @runId";
 
             var head = await _db.DoGetDataSQLAsyncSingle<dynamic>(headSql, new { runId });
@@ -306,20 +306,25 @@ namespace Safir.Server.Services
                     E.ID_NUMBER, E.BIRTH_PLACE, E.BIRTH_DATE, E.NATIONALITY, COALESCE(RL.HIRE_DATE_SNAP,E.HIRE_DATE) HIRE_DATE, COALESCE(RL.FIRE_DATE_SNAP,E.FIRE_DATE) FIRE_DATE,
                     E.INS_CODE, E.MOBILE, E.MARITAL,
                     J.JOB_NAME,
-                    COALESCE(RL.NOMINAL_DAYS,RL.WORK_DAYS) WORK_DAYS, COALESCE(RL.NOMINAL_GROSS,RL.GROSS_PAY) GROSS_PAY, RL.INS_WORKER, RL.TAX_BASE, RL.TAX_AMOUNT
-                FROM PAY2_RUN_LINE RL WITH (NOLOCK)
-                INNER JOIN PAY2_EMPLOYEE E WITH (NOLOCK) ON RL.EMP_ID = E.EMP_ID
-                LEFT JOIN PAY2_JOB J WITH (NOLOCK) ON E.JOB_ID = J.JOB_ID
+                    RL.NOMINAL_DAYS WORK_DAYS, RL.NOMINAL_GROSS GROSS_PAY, RL.INS_WORKER, RL.TAX_BASE, RL.TAX_AMOUNT
+                FROM PAY2_RUN_LINE RL
+                INNER JOIN PAY2_EMPLOYEE E ON RL.EMP_ID = E.EMP_ID
+                LEFT JOIN PAY2_JOB J ON E.JOB_ID = J.JOB_ID
                 WHERE RL.RUN_ID = @runId AND E.TAX_EXEMPT = 0
                 ORDER BY E.LAST_NAME, E.FIRST_NAME";
 
             var lines = (await _db.DoGetDataSQLAsync<dynamic>(linesSql, new { runId })).ToList();
+            if (lines.Any(x => x.WORK_DAYS is null || x.GROSS_PAY is null))
+                throw new InvalidOperationException("خروجی مالیات ممکن نیست: Snapshot اسمی روزکرد/ناخالص در Run کامل نیست.");
+            var missingNominalDetails = await _db.DoGetDataSQLAsyncSingle<int>(
+                "SELECT COUNT(*) FROM PAY2_RUN_DETAIL WHERE RUN_ID=@runId AND (NOMINAL_AMOUNT IS NULL OR ITEM_CODE_SNAP IS NULL OR CALC_BASIS_SNAP IS NULL)", new { runId });
+            if (missingNominalDetails > 0)
+                throw new InvalidOperationException("خروجی مالیات ممکن نیست: Snapshot مبلغ اسمی اقلام Run کامل نیست.");
 
             const string detailsSql = @"
-                SELECT D.EMP_ID, COALESCE(D.ITEM_CODE_SNAP,I.ITEM_CODE) ITEM_CODE, COALESCE(D.NOMINAL_AMOUNT,D.AMOUNT) AMOUNT, COALESCE(D.CALC_BASIS_SNAP,I.CALC_BASIS) CALC_BASIS
-                FROM PAY2_RUN_DETAIL D WITH (NOLOCK)
-                INNER JOIN PAY2_ITEM_DEF I WITH (NOLOCK) ON D.ITEM_ID = I.ITEM_ID
-                WHERE D.RUN_ID = @runId AND D.TAX_SUBJECT = 1";
+                SELECT D.EMP_ID, D.ITEM_CODE_SNAP ITEM_CODE, D.NOMINAL_AMOUNT AMOUNT, D.CALC_BASIS_SNAP CALC_BASIS
+                FROM PAY2_RUN_DETAIL D
+                WHERE D.RUN_ID = @runId AND D.TAX_SUBJECT = 1 AND D.NOMINAL_AMOUNT IS NOT NULL";
 
             var details = await _db.DoGetDataSQLAsync<dynamic>(detailsSql, new { runId });
             var groupedDetails = details.GroupBy(x => (int)x.EMP_ID).ToDictionary(g => g.Key, g => g.ToList());
@@ -442,9 +447,9 @@ namespace Safir.Server.Services
 
             const string headSql = @"
                 SELECT P.PERIOD_DATE, W.WS_CODE
-                FROM PAY2_RUN R WITH (NOLOCK)
-                INNER JOIN PAY2_PERIOD P WITH (NOLOCK) ON R.PER_ID = P.PER_ID
-                INNER JOIN PAY2_WORKSHOP W WITH (NOLOCK) ON P.WS_ID = W.WS_ID
+                FROM PAY2_RUN R
+                INNER JOIN PAY2_PERIOD P ON R.PER_ID = P.PER_ID
+                INNER JOIN PAY2_WORKSHOP W ON P.WS_ID = W.WS_ID
                 WHERE R.RUN_ID = @runId";
 
             var head = await _db.DoGetDataSQLAsyncSingle<dynamic>(headSql, new { runId });
@@ -461,20 +466,25 @@ namespace Safir.Server.Services
                     E.ID_NUMBER, E.BIRTH_PLACE, E.BIRTH_DATE, E.NATIONALITY, COALESCE(RL.HIRE_DATE_SNAP,E.HIRE_DATE) HIRE_DATE, COALESCE(RL.FIRE_DATE_SNAP,E.FIRE_DATE) FIRE_DATE,
                     E.INS_CODE, E.MOBILE, E.MARITAL,
                     J.JOB_NAME,
-                    COALESCE(RL.NOMINAL_DAYS,RL.WORK_DAYS) WORK_DAYS, COALESCE(RL.NOMINAL_GROSS,RL.GROSS_PAY) GROSS_PAY, RL.INS_WORKER, RL.TAX_BASE, RL.TAX_AMOUNT
-                FROM PAY2_RUN_LINE RL WITH (NOLOCK)
-                INNER JOIN PAY2_EMPLOYEE E WITH (NOLOCK) ON RL.EMP_ID = E.EMP_ID
-                LEFT JOIN PAY2_JOB J WITH (NOLOCK) ON E.JOB_ID = J.JOB_ID
+                    RL.NOMINAL_DAYS WORK_DAYS, RL.NOMINAL_GROSS GROSS_PAY, RL.INS_WORKER, RL.TAX_BASE, RL.TAX_AMOUNT
+                FROM PAY2_RUN_LINE RL
+                INNER JOIN PAY2_EMPLOYEE E ON RL.EMP_ID = E.EMP_ID
+                LEFT JOIN PAY2_JOB J ON E.JOB_ID = J.JOB_ID
                 WHERE RL.RUN_ID = @runId AND E.TAX_EXEMPT = 0
                 ORDER BY E.LAST_NAME, E.FIRST_NAME";
 
             var lines = (await _db.DoGetDataSQLAsync<dynamic>(linesSql, new { runId })).ToList();
+            if (lines.Any(x => x.WORK_DAYS is null || x.GROSS_PAY is null))
+                throw new InvalidOperationException("خروجی مالیات ممکن نیست: Snapshot اسمی روزکرد/ناخالص در Run کامل نیست.");
+            var missingNominalDetails = await _db.DoGetDataSQLAsyncSingle<int>(
+                "SELECT COUNT(*) FROM PAY2_RUN_DETAIL WHERE RUN_ID=@runId AND (NOMINAL_AMOUNT IS NULL OR ITEM_CODE_SNAP IS NULL OR CALC_BASIS_SNAP IS NULL)", new { runId });
+            if (missingNominalDetails > 0)
+                throw new InvalidOperationException("خروجی مالیات ممکن نیست: Snapshot مبلغ اسمی اقلام Run کامل نیست.");
 
             const string detailsSql = @"
-                SELECT D.EMP_ID, COALESCE(D.ITEM_CODE_SNAP,I.ITEM_CODE) ITEM_CODE, COALESCE(D.NOMINAL_AMOUNT,D.AMOUNT) AMOUNT, COALESCE(D.CALC_BASIS_SNAP,I.CALC_BASIS) CALC_BASIS
-                FROM PAY2_RUN_DETAIL D WITH (NOLOCK)
-                INNER JOIN PAY2_ITEM_DEF I WITH (NOLOCK) ON D.ITEM_ID = I.ITEM_ID
-                WHERE D.RUN_ID = @runId AND D.TAX_SUBJECT = 1";
+                SELECT D.EMP_ID, D.ITEM_CODE_SNAP ITEM_CODE, D.NOMINAL_AMOUNT AMOUNT, D.CALC_BASIS_SNAP CALC_BASIS
+                FROM PAY2_RUN_DETAIL D
+                WHERE D.RUN_ID = @runId AND D.TAX_SUBJECT = 1 AND D.NOMINAL_AMOUNT IS NOT NULL";
 
             var details = await _db.DoGetDataSQLAsync<dynamic>(detailsSql, new { runId });
             var groupedDetails = details.GroupBy(x => (int)x.EMP_ID).ToDictionary(g => g.Key, g => g.ToList());
@@ -546,8 +556,8 @@ namespace Safir.Server.Services
         }
         private static void ValidateLegalInsuranceSnapshots(IEnumerable<dynamic> lines)
         {
-            if (lines.Any(x => !(bool)x.HAS_NOMINAL_RAIL))
-                throw new InvalidOperationException("خروجی قانونی بیمه ممکن نیست: حداقل یک پرسنل فاقد ریل اسمی BASE_SAL است.");
+            if (lines.Any(x => !(bool)x.HAS_NOMINAL_RAIL || !(bool)x.HAS_COMPLETE_NOMINAL_SNAPSHOT))
+                throw new InvalidOperationException("خروجی قانونی بیمه ممکن نیست: Snapshot کامل ریل اسمی برای حداقل یک پرسنل وجود ندارد.");
             if (lines.Any(x => !(bool)x.PREMIUM_SNAPSHOT_AVAILABLE))
                 throw new InvalidOperationException("DBF قابل تولید نیست: تفکیک Snapshot سهم کارفرما و بیمه بیکاری برای این Run ذخیره نشده است؛ تخمین مجاز نیست.");
         }

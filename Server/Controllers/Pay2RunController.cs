@@ -43,8 +43,8 @@ namespace Safir.Server.Controllers
             // 1. استخراج ستون‌های پویا (فقط آیتم‌هایی که در این ماه برای حداقل یک نفر محاسبه شده‌اند)
             string colSql = @"
                 SELECT DISTINCT D.ITEM_ID, I.ITEM_CODE, I.ITEM_NAME, I.SORT_ORDER
-                FROM PAY2_RUN_DETAIL D WITH (NOLOCK)
-                INNER JOIN PAY2_ITEM_DEF I WITH (NOLOCK) ON D.ITEM_ID = I.ITEM_ID
+                FROM PAY2_RUN_DETAIL D
+                INNER JOIN PAY2_ITEM_DEF I ON D.ITEM_ID = I.ITEM_ID
                 WHERE D.RUN_ID = @runId
                 ORDER BY I.SORT_ORDER";
 
@@ -53,8 +53,8 @@ namespace Safir.Server.Controllers
             // 2. استخراج ردیف‌های اصلی فیش حقوقی
             string lineSql = @"
                 SELECT L.*, E.EMP_CODE, E.LAST_NAME + ' ' + E.FIRST_NAME AS FULL_NAME
-                FROM PAY2_RUN_LINE L WITH (NOLOCK)
-                INNER JOIN PAY2_EMPLOYEE E WITH (NOLOCK) ON L.EMP_ID = E.EMP_ID
+                FROM PAY2_RUN_LINE L
+                INNER JOIN PAY2_EMPLOYEE E ON L.EMP_ID = E.EMP_ID
                 WHERE L.RUN_ID = @runId
                 ORDER BY E.LAST_NAME, E.FIRST_NAME";
 
@@ -63,8 +63,8 @@ namespace Safir.Server.Controllers
             // 3. استخراج مبالغ ریز (Details) و اتصال آن‌ها به ردیف‌ها
             string detSql = @"
                 SELECT D.EMP_ID, I.ITEM_CODE, D.AMOUNT
-                FROM PAY2_RUN_DETAIL D WITH (NOLOCK)
-                INNER JOIN PAY2_ITEM_DEF I WITH (NOLOCK) ON D.ITEM_ID = I.ITEM_ID
+                FROM PAY2_RUN_DETAIL D
+                INNER JOIN PAY2_ITEM_DEF I ON D.ITEM_ID = I.ITEM_ID
                 WHERE D.RUN_ID = @runId";
 
             // استفاده از یک کلاس داخلی موقت برای خواندن سریع داده‌ها از Dapper
@@ -134,12 +134,12 @@ namespace Safir.Server.Controllers
                     J.JOB_NAME,
                     P.PERIOD_DATE,
                     W.WS_NAME
-                FROM PAY2_RUN_LINE RL WITH (NOLOCK)
-                INNER JOIN PAY2_RUN      R WITH (NOLOCK) ON RL.RUN_ID = R.RUN_ID
-                INNER JOIN PAY2_PERIOD   P WITH (NOLOCK) ON R.PER_ID  = P.PER_ID
-                INNER JOIN PAY2_WORKSHOP W WITH (NOLOCK) ON P.WS_ID   = W.WS_ID
-                INNER JOIN PAY2_EMPLOYEE E WITH (NOLOCK) ON RL.EMP_ID = E.EMP_ID
-                LEFT  JOIN PAY2_JOB      J WITH (NOLOCK) ON E.JOB_ID  = J.JOB_ID
+                FROM PAY2_RUN_LINE RL
+                INNER JOIN PAY2_RUN      R ON RL.RUN_ID = R.RUN_ID
+                INNER JOIN PAY2_PERIOD   P ON R.PER_ID  = P.PER_ID
+                INNER JOIN PAY2_WORKSHOP W ON P.WS_ID   = W.WS_ID
+                INNER JOIN PAY2_EMPLOYEE E ON RL.EMP_ID = E.EMP_ID
+                LEFT  JOIN PAY2_JOB      J ON E.JOB_ID  = J.JOB_ID
                 WHERE RL.RUN_ID = @runId AND RL.EMP_ID = @empId";
 
             var head = await _db.DoGetDataSQLAsyncSingle<PayslipHeadRow>(headSql, new { runId, empId });
@@ -151,14 +151,14 @@ namespace Safir.Server.Controllers
             // سازگاری API نگه داشته شده، اما اجازه تغییر ریل محاسبه را ندارد.
             const string earnSql = @"
                 SELECT I.ITEM_NAME AS Title, D.AMOUNT AS Amount
-                FROM PAY2_RUN_DETAIL D WITH (NOLOCK)
-                INNER JOIN PAY2_ITEM_DEF I WITH (NOLOCK) ON D.ITEM_ID = I.ITEM_ID
+                FROM PAY2_RUN_DETAIL D
+                INNER JOIN PAY2_ITEM_DEF I ON D.ITEM_ID = I.ITEM_ID
                 WHERE D.RUN_ID = @runId AND D.EMP_ID = @empId
                   AND COALESCE(D.ITEM_TYPE_SNAP,I.ITEM_TYPE) IN (1,2)
                   AND D.AMOUNT <> 0
                   AND (COALESCE(D.ITEM_CODE_SNAP,I.ITEM_CODE) <> 'BASE_SAL'
-                       OR NOT EXISTS (SELECT 1 FROM PAY2_RUN_DETAIL X WITH (NOLOCK)
-                                      INNER JOIN PAY2_ITEM_DEF XI WITH (NOLOCK) ON XI.ITEM_ID=X.ITEM_ID
+                       OR NOT EXISTS (SELECT 1 FROM PAY2_RUN_DETAIL X
+                                      INNER JOIN PAY2_ITEM_DEF XI ON XI.ITEM_ID=X.ITEM_ID
                                       WHERE X.RUN_ID=D.RUN_ID AND X.EMP_ID=D.EMP_ID
                                         AND COALESCE(X.ITEM_CODE_SNAP,XI.ITEM_CODE)='BASE_SAL_B' AND X.AMOUNT<>0))
                 ORDER BY I.SORT_ORDER";
@@ -640,8 +640,8 @@ VALUES (@N_S, @RADIF, @HES_K, @HES_M, @HES_T, @HES_T2, @HES_T3, @HES_T4, @HES, @
                     // گرفتن تمام Runهای تایید شده (Status >= 2) برای این کارگاه
                     var runsSql = @"
                         SELECT R.RUN_ID 
-                        FROM PAY2_RUN R WITH (NOLOCK)
-                        INNER JOIN PAY2_PERIOD P WITH (NOLOCK) ON R.PER_ID = P.PER_ID
+                        FROM PAY2_RUN R
+                        INNER JOIN PAY2_PERIOD P ON R.PER_ID = P.PER_ID
                         WHERE P.WS_ID = @wsId AND R.IS_LATEST = 1 AND R.STATUS >= 2
                         ORDER BY P.PERIOD_DATE ASC"; // به ترتیب ماه
 
@@ -661,9 +661,9 @@ VALUES (@N_S, @RADIF, @HES_K, @HES_M, @HES_T, @HES_T2, @HES_T3, @HES_T4, @HES, @
                     SELECT 
                         P.PERIOD_DATE, W.WS_CODE, W.WS_NAME, W.EMPLOYER_NAME, 
                         W.ADDRESS, W.SSO_BRANCH
-                    FROM PAY2_RUN R WITH (NOLOCK)
-                    INNER JOIN PAY2_PERIOD P WITH (NOLOCK) ON R.PER_ID = P.PER_ID
-                    INNER JOIN PAY2_WORKSHOP W WITH (NOLOCK) ON P.WS_ID = W.WS_ID
+                    FROM PAY2_RUN R
+                    INNER JOIN PAY2_PERIOD P ON R.PER_ID = P.PER_ID
+                    INNER JOIN PAY2_WORKSHOP W ON P.WS_ID = W.WS_ID
                     WHERE R.RUN_ID = @firstRunId";
 
                 var head = await _db.DoGetDataSQLAsyncSingle<dynamic>(headSql, new { firstRunId });
@@ -706,8 +706,8 @@ VALUES (@N_S, @RADIF, @HES_K, @HES_M, @HES_T, @HES_T2, @HES_T3, @HES_T4, @HES, @
 
                     var lines = (await _db.DoGetDataSQLAsync<dynamic>(
                         Safir.Server.Services.Pay2PayrollSnapshotQuery.Sql, new { runId = currentRunId })).ToList();
-                    if (lines.Any(x => !(bool)x.HAS_NOMINAL_RAIL))
-                        return UnprocessableEntity("خروجی قانونی ممکن نیست: حداقل یک پرسنل در Run فاقد ریل اسمی BASE_SAL است.");
+                    if (lines.Any(x => !(bool)x.HAS_NOMINAL_RAIL || !(bool)x.HAS_COMPLETE_NOMINAL_SNAPSHOT))
+                        return UnprocessableEntity("خروجی قانونی ممکن نیست: Snapshot کامل ریل اسمی برای حداقل یک پرسنل وجود ندارد.");
 
                     foreach (var line in lines)
                     {
@@ -717,7 +717,8 @@ VALUES (@N_S, @RADIF, @HES_K, @HES_M, @HES_T, @HES_T2, @HES_T3, @HES_T4, @HES, @
                         long baseDaily = workDays > 0 ? (long)Math.Round(baseMonthly / workDays, MidpointRounding.AwayFromZero) : 0;
                         long seniorityDaily = workDays > 0 ? (long)Math.Round(seniorityMonthly / workDays, MidpointRounding.AwayFromZero) : 0;
                         long monthlyWage = baseMonthly + seniorityMonthly;
-                        long otherBenefits = (long)line.OTHER_SUBJECT_BENEFITS;
+                        long otherBenefits = (long)line.DISPLAY_OTHER_BENEFITS;
+                        long otherInsuranceItems = (long)line.OTHER_INSURANCE_SUBJECT_ITEMS;
 
                         reportDto.Rows.Add(new InsuranceEmployeeRowDto
                         {
@@ -734,7 +735,7 @@ VALUES (@N_S, @RADIF, @HES_K, @HES_M, @HES_T, @HES_T2, @HES_T3, @HES_T4, @HES, @
                             SeniorityDailyBase = seniorityDaily,
                             MonthlyWage = monthlyWage,
                             OtherSubjectBenefits = otherBenefits,
-                            TotalSubjectToInsurance = monthlyWage + otherBenefits,
+                            TotalSubjectToInsurance = (long)line.INSURANCE_WAGE_MONTHLY + (long)line.DIRECT_INSURANCE_BENEFITS + otherInsuranceItems,
                             TotalGrossPay = (long)line.NOMINAL_GROSS,
                             WorkerPremium = (long)line.INS_WORKER,
                             TaxAmount = (long)line.TAX_AMOUNT,
@@ -809,8 +810,8 @@ VALUES (@N_S, @RADIF, @HES_K, @HES_M, @HES_T, @HES_T2, @HES_T3, @HES_T4, @HES, @
                 {
                     var runsSql = @"
                         SELECT R.RUN_ID 
-                        FROM PAY2_RUN R WITH (NOLOCK)
-                        INNER JOIN PAY2_PERIOD P WITH (NOLOCK) ON R.PER_ID = P.PER_ID
+                        FROM PAY2_RUN R
+                        INNER JOIN PAY2_PERIOD P ON R.PER_ID = P.PER_ID
                         WHERE P.WS_ID = @wsId AND R.IS_LATEST = 1 AND R.STATUS >= 2
                         ORDER BY P.PERIOD_DATE ASC";
 
@@ -828,9 +829,9 @@ VALUES (@N_S, @RADIF, @HES_K, @HES_M, @HES_T, @HES_T2, @HES_T3, @HES_T4, @HES, @
                 const string headSql = @"
                     SELECT 
                         P.PERIOD_DATE, W.WS_CODE, W.WS_NAME, W.EMPLOYER_NAME, W.TAX_CODE
-                    FROM PAY2_RUN R WITH (NOLOCK)
-                    INNER JOIN PAY2_PERIOD P WITH (NOLOCK) ON R.PER_ID = P.PER_ID
-                    INNER JOIN PAY2_WORKSHOP W WITH (NOLOCK) ON P.WS_ID = W.WS_ID
+                    FROM PAY2_RUN R
+                    INNER JOIN PAY2_PERIOD P ON R.PER_ID = P.PER_ID
+                    INNER JOIN PAY2_WORKSHOP W ON P.WS_ID = W.WS_ID
                     WHERE R.RUN_ID = @firstRunId";
 
                 var head = await _db.DoGetDataSQLAsyncSingle<dynamic>(headSql, new { firstRunId });
@@ -866,8 +867,8 @@ VALUES (@N_S, @RADIF, @HES_K, @HES_M, @HES_T, @HES_T2, @HES_T3, @HES_T4, @HES, @
 
                     var lines = (await _db.DoGetDataSQLAsync<dynamic>(
                         Safir.Server.Services.Pay2PayrollSnapshotQuery.Sql, new { runId = currentRunId })).ToList();
-                    if (lines.Any(x => !(bool)x.HAS_NOMINAL_RAIL))
-                        return UnprocessableEntity("خروجی قانونی ممکن نیست: حداقل یک پرسنل در Run فاقد ریل اسمی BASE_SAL است.");
+                    if (lines.Any(x => !(bool)x.HAS_NOMINAL_RAIL || !(bool)x.HAS_COMPLETE_NOMINAL_SNAPSHOT))
+                        return UnprocessableEntity("خروجی قانونی ممکن نیست: Snapshot کامل ریل اسمی برای حداقل یک پرسنل وجود ندارد.");
 
                     foreach (var line in lines)
                     {
@@ -875,7 +876,7 @@ VALUES (@N_S, @RADIF, @HES_K, @HES_M, @HES_T, @HES_T2, @HES_T3, @HES_T4, @HES, @
                         long baseMonthly = (long)line.BASE_WAGE_MONTHLY;
                         long seniorityMonthly = (long)line.SENIORITY_MONTHLY;
                         long monthlyWage = baseMonthly + seniorityMonthly;
-                        long otherBenefits = (long)line.OTHER_SUBJECT_BENEFITS;
+                        long otherBenefits = (long)line.OTHER_TAXABLE_ITEMS;
                         reportDto.Rows.Add(new TaxEmployeeRowDto
                         {
                             RowIndex = rowIndex++,
@@ -889,7 +890,7 @@ VALUES (@N_S, @RADIF, @HES_K, @HES_M, @HES_T, @HES_T2, @HES_T3, @HES_T4, @HES, @
                             SeniorityDailyBase = workDays > 0 ? (long)Math.Round(seniorityMonthly / workDays, MidpointRounding.AwayFromZero) : 0,
                             MonthlyWage = monthlyWage,
                             OtherSubjectBenefits = otherBenefits,
-                            TotalSubject = monthlyWage + otherBenefits,
+                            TotalSubject = (long)line.TAXABLE_WAGE_MONTHLY + otherBenefits,
                             GrossPay = (long)line.NOMINAL_GROSS,
                             TaxBase = (long)line.TAX_BASE,
                             TaxAmount = (long)line.TAX_AMOUNT,
@@ -981,7 +982,7 @@ VALUES (@N_S, @RADIF, @HES_K, @HES_M, @HES_T, @HES_T2, @HES_T3, @HES_T4, @HES, @
                 {
                     // اگر کاربر "تجمیعی کل سال" را انتخاب کرده بود، سال آخرین دوره کارگاه را می‌گیریم
                     var maxDate = await _db.DoGetDataSQLAsyncSingle<long?>(
-                        "SELECT MAX(PERIOD_DATE) FROM PAY2_PERIOD WITH (NOLOCK) WHERE WS_ID = @wsId AND STATUS >= 3", new { wsId });
+                        "SELECT MAX(PERIOD_DATE) FROM PAY2_PERIOD WHERE WS_ID = @wsId AND STATUS >= 3", new { wsId });
 
                     if (maxDate == null)
                         return NotFound("هیچ دوره‌ی محاسبه‌شده‌ای برای این کارگاه یافت نشد.");
@@ -991,7 +992,7 @@ VALUES (@N_S, @RADIF, @HES_K, @HES_M, @HES_T, @HES_T2, @HES_T3, @HES_T4, @HES, @
 
                 // ۲. خواندن نام کارگاه
                 var wsName = await _db.DoGetDataSQLAsyncSingle<string>(
-                    "SELECT WS_NAME FROM PAY2_WORKSHOP WITH (NOLOCK) WHERE WS_ID = @wsId", new { wsId });
+                    "SELECT WS_NAME FROM PAY2_WORKSHOP WHERE WS_ID = @wsId", new { wsId });
 
                 var missingAnnualSnapshots = await _db.DoGetDataSQLAsyncSingle<int>(@"
                     SELECT COUNT(*) FROM PAY2_RUN_LINE RL
@@ -1013,10 +1014,10 @@ VALUES (@N_S, @RADIF, @HES_K, @HES_M, @HES_T, @HES_T2, @HES_T3, @HES_T4, @HES, @
                         SUM(RL.NOMINAL_GROSS) AS TOTAL_GROSS_PAY,
                         SUM(RL.TAX_BASE) AS TOTAL_TAX_BASE,
                         SUM(RL.TAX_AMOUNT) AS TOTAL_TAX_AMOUNT
-                    FROM PAY2_RUN_LINE RL WITH (NOLOCK)
-                    INNER JOIN PAY2_RUN R WITH (NOLOCK) ON RL.RUN_ID = R.RUN_ID
-                    INNER JOIN PAY2_PERIOD P WITH (NOLOCK) ON R.PER_ID = P.PER_ID
-                    INNER JOIN PAY2_EMPLOYEE E WITH (NOLOCK) ON RL.EMP_ID = E.EMP_ID
+                    FROM PAY2_RUN_LINE RL
+                    INNER JOIN PAY2_RUN R ON RL.RUN_ID = R.RUN_ID
+                    INNER JOIN PAY2_PERIOD P ON R.PER_ID = P.PER_ID
+                    INNER JOIN PAY2_EMPLOYEE E ON RL.EMP_ID = E.EMP_ID
                     WHERE P.WS_ID = @wsId
                       AND R.IS_LATEST = 1
                       AND R.STATUS >= 2
