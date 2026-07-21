@@ -1,0 +1,56 @@
+﻿/* Read-only release audit. Run after ScriptSqly on a production-database clone. */
+SET NOCOUNT ON;
+
+-- 1) Scenario inventory. A release clone must contain all four rail/day combinations.
+SELECT R.RUN_ID,RL.EMP_ID,E.EMP_CODE,E.LAST_NAME+N' '+E.FIRST_NAME FULL_NAME,
+       RL.NOMINAL_DAYS,A.DAYSB,RL.NOMINAL_GROSS,RL.GROSS_PAY,
+       MAX(CASE WHEN COALESCE(D.ITEM_CODE_SNAP,I.ITEM_CODE)='BASE_SAL' THEN 1 ELSE 0 END) HAS_NOMINAL,
+       MAX(CASE WHEN COALESCE(D.ITEM_CODE_SNAP,I.ITEM_CODE)='BASE_SAL_B' THEN 1 ELSE 0 END) HAS_OFFICIAL
+FROM dbo.PAY2_RUN R
+JOIN dbo.PAY2_RUN_LINE RL ON RL.RUN_ID=R.RUN_ID
+JOIN dbo.PAY2_EMPLOYEE E ON E.EMP_ID=RL.EMP_ID
+JOIN dbo.PAY2_PERIOD P ON P.PER_ID=R.PER_ID
+LEFT JOIN dbo.PAY2_ATTENDANCE A ON A.PER_ID=R.PER_ID AND A.EMP_ID=RL.EMP_ID
+LEFT JOIN dbo.PAY2_RUN_DETAIL D ON D.RUN_ID=RL.RUN_ID AND D.EMP_ID=RL.EMP_ID
+LEFT JOIN dbo.PAY2_ITEM_DEF I ON I.ITEM_ID=D.ITEM_ID
+GROUP BY R.RUN_ID,RL.EMP_ID,E.EMP_CODE,E.LAST_NAME,E.FIRST_NAME,RL.NOMINAL_DAYS,A.DAYSB,RL.NOMINAL_GROSS,RL.GROSS_PAY
+ORDER BY R.RUN_ID,RL.EMP_ID;
+
+-- 2) Official gross invariant: with both rails, BASE_SAL must not be included in GROSS_PAY.
+IF EXISTS(
+ SELECT 1 FROM dbo.PAY2_RUN_LINE RL
+ CROSS APPLY(SELECT SUM(CASE WHEN COALESCE(D.ITEM_TYPE_SNAP,I.ITEM_TYPE) IN(1,2)
+                              AND COALESCE(D.ITEM_CODE_SNAP,I.ITEM_CODE)<>'BASE_SAL' THEN D.AMOUNT ELSE 0 END) V,
+                    MAX(CASE WHEN COALESCE(D.ITEM_CODE_SNAP,I.ITEM_CODE)='BASE_SAL_B' AND D.AMOUNT<>0 THEN 1 ELSE 0 END) HAS_B
+             FROM dbo.PAY2_RUN_DETAIL D JOIN dbo.PAY2_ITEM_DEF I ON I.ITEM_ID=D.ITEM_ID
+             WHERE D.RUN_ID=RL.RUN_ID AND D.EMP_ID=RL.EMP_ID) X
+ WHERE X.HAS_B=1 AND ABS((X.V+ISNULL(RL.ROUNDING_ADJ,0))-RL.GROSS_PAY)>1)
+ THROW 52001,N'خطا: ناخالص رسمی با Snapshot اقلام رسمی تراز نیست.',1;
+
+-- 3) Nominal gross invariant and legal-rail presence for new snapshot runs.
+IF EXISTS(
+ SELECT 1 FROM dbo.PAY2_RUN_LINE RL
+ WHERE RL.NOMINAL_GROSS IS NOT NULL AND NOT EXISTS(
+   SELECT 1 FROM dbo.PAY2_RUN_DETAIL D JOIN dbo.PAY2_ITEM_DEF I ON I.ITEM_ID=D.ITEM_ID
+   WHERE D.RUN_ID=RL.RUN_ID AND D.EMP_ID=RL.EMP_ID
+     AND COALESCE(D.ITEM_CODE_SNAP,I.ITEM_CODE)='BASE_SAL' AND D.NOMINAL_AMOUNT IS NOT NULL AND D.NOMINAL_AMOUNT<>0))
+ THROW 52002,N'خطا: Run دارای Snapshot قانونی ولی فاقد BASE_SAL است.',1;
+
+-- 4) Exact DBF premium split; estimates are forbidden.
+IF EXISTS(SELECT 1 FROM dbo.PAY2_RUN_LINE WHERE NOMINAL_GROSS IS NOT NULL AND (INS_EMPLOYER_BASE IS NULL OR INS_UNEMPLOYMENT IS NULL))
+ THROW 52003,N'خطا: Snapshot تفکیک سهم کارفرما/بیکاری ناقص است.',1;
+IF EXISTS(SELECT 1 FROM dbo.PAY2_RUN_LINE WHERE INS_EMPLOYER_BASE IS NOT NULL AND INS_EMPLOYER<>INS_EMPLOYER_BASE+INS_UNEMPLOYMENT)
+ THROW 52004,N'خطا: جمع سهم کارفرما و بیکاری با INS_EMPLOYER تراز نیست.',1;
+
+-- 5) Manager unemployment must be zero.
+IF EXISTS(SELECT 1 FROM dbo.PAY2_RUN_LINE RL JOIN dbo.PAY2_EMPLOYEE E ON E.EMP_ID=RL.EMP_ID WHERE E.IS_MANAGER=1 AND ISNULL(RL.INS_UNEMPLOYMENT,0)<>0)
+ THROW 52005,N'خطا: برای مدیر بیمه بیکاری ثبت شده است.',1;
+
+-- 6) Seniority migration preview provides independent before/after numbers for both rails.
+EXEC dbo.SP_PAY2_PREVIEW_SANOVAT_MIGRATION;
+
+-- 7) Locate the real Beyzaei row explicitly; absence is a failed test-data prerequisite.
+IF NOT EXISTS(SELECT 1 FROM dbo.PAY2_EMPLOYEE WHERE LAST_NAME LIKE N'%بیضائی%' OR LAST_NAME LIKE N'%بيضائي%')
+ THROW 52006,N'پیش‌نیاز داده تست برقرار نیست: رکورد آقای بیضائی در Clone یافت نشد.',1;
+
+SELECT N'PAY2 blocker release audit passed' RESULT;

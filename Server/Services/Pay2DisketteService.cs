@@ -40,6 +40,7 @@ namespace Safir.Server.Services
             // تمام مبالغ از Snapshot مؤثر همان Run خوانده می‌شوند.
             var lines = (await _db.DoGetDataSQLAsync<dynamic>(Pay2PayrollSnapshotQuery.Sql, new { runId }))
                 .Where(x => (byte)x.INS_TYPE != 3).ToList();
+            ValidateLegalInsuranceSnapshots(lines);
 
             // ─── آماده‌سازی لیست‌های DBF ───
             var dskworList = new List<Dictionary<string, object>>();
@@ -109,22 +110,9 @@ namespace Safir.Server.Services
                 dskworList.Add(wor);
             }
 
-            // محاسبه سهم کارفرما (با رعایت دقیق آنچه در دیتابیس ذخیره شده)
-            long totalEmployerInsRaw = lines.Sum(l => (long)l.INS_EMPLOYER);
-
-            // حق بیمه بیکاری (۳٪) همیشه ۳/۲۳ سهم کارفرماست (مگر اینکه معافیت یا ماده ۷ باشد)
-            // به عنوان تقریب امن، مستقیماً از پایه مشمول حساب می‌کنیم.
-            long totalBikari = (long)(totalMash * 0.03m);
-            long totalKarf = (long)(totalMash * 0.20m);
-
-            // 🚀 جادوی ماده ۷ (معافیت کارگاه تا ۵ نفر): در SP ما ذخیره شده، اینجا فقط استخراج می‌کنیم
-            if (totalEmployerInsRaw < (totalKarf + totalBikari))
-            {
-                // اگر در دیتابیس کسر کمتری خورده، یعنی کارگاه معافیت داشته.
-                // تامین اجتماعی خودش می‌داند، ما فقط عدد کارفرما را می‌فرستیم.
-                totalKarf = totalEmployerInsRaw - totalBikari;
-                if (totalKarf < 0) totalKarf = 0;
-            }
+            // اجزای حق بیمه دقیقاً از Snapshot همان Run خوانده می‌شوند.
+            long totalKarf = lines.Sum(l => (long)l.INS_EMPLOYER_BASE);
+            long totalBikari = lines.Sum(l => (long)l.INS_UNEMPLOYMENT);
 
             var dskkarList = new List<Dictionary<string, object>>();
             var kar = new Dictionary<string, object>
@@ -221,6 +209,7 @@ namespace Safir.Server.Services
 
             var lines = (await _db.DoGetDataSQLAsync<dynamic>(Pay2PayrollSnapshotQuery.Sql, new { runId }))
                 .Where(x => (byte)x.INS_TYPE != 3).ToList();
+            ValidateLegalInsuranceSnapshots(lines);
 
             long totalMash = 0, totalTotl = 0, totalWorkerIns = 0;
             long totalMarital = 0, totalSeniority = 0;
@@ -266,15 +255,8 @@ namespace Safir.Server.Services
                 });
             }
 
-            long totalEmployerInsRaw = lines.Sum(l => (long)l.INS_EMPLOYER);
-            long totalBikari = (long)(totalMash * 0.03m);
-            long totalKarf = (long)(totalMash * 0.20m);
-
-            if (totalEmployerInsRaw < (totalKarf + totalBikari))
-            {
-                totalKarf = totalEmployerInsRaw - totalBikari;
-                if (totalKarf < 0) totalKarf = 0;
-            }
+            long totalKarf = lines.Sum(l => (long)l.INS_EMPLOYER_BASE);
+            long totalBikari = lines.Sum(l => (long)l.INS_UNEMPLOYMENT);
 
             result.Kar = new DisketteKarDto
             {
@@ -394,7 +376,7 @@ namespace Safir.Server.Services
                         byte basis = (byte)det.CALC_BASIS;
 
                         if (code == "BASE_SAL") baseSalary += amt;
-                        else if (code == "SANOVAT_PAYE") sanavat += amt;
+                        else if (code == "SANOVAT_PAYE") baseSalary += amt;
                         else if (code == "EIDI") eydi += amt;
                         else if (code == "SANAVAT" || code == "SENIORITY") sanavat += amt;
                         else if (basis == 2) mostamar += amt;
@@ -535,7 +517,7 @@ namespace Safir.Server.Services
                         byte basis = (byte)det.CALC_BASIS;
 
                         if (code == "BASE_SAL") baseSalary += amt;
-                        else if (code == "SANOVAT_PAYE") sanavat += amt;
+                        else if (code == "SANOVAT_PAYE") baseSalary += amt;
                         else if (code == "EIDI") eydi += amt;
                         else if (code == "SANAVAT" || code == "SENIORITY") sanavat += amt;
                         else if (basis == 2) mostamar += amt;
@@ -562,6 +544,14 @@ namespace Safir.Server.Services
 
             return result;
         }
+        private static void ValidateLegalInsuranceSnapshots(IEnumerable<dynamic> lines)
+        {
+            if (lines.Any(x => !(bool)x.HAS_NOMINAL_RAIL))
+                throw new InvalidOperationException("خروجی قانونی بیمه ممکن نیست: حداقل یک پرسنل فاقد ریل اسمی BASE_SAL است.");
+            if (lines.Any(x => !(bool)x.PREMIUM_SNAPSHOT_AVAILABLE))
+                throw new InvalidOperationException("DBF قابل تولید نیست: تفکیک Snapshot سهم کارفرما و بیمه بیکاری برای این Run ذخیره نشده است؛ تخمین مجاز نیست.");
+        }
+
         internal static string DateInOccurrenceMonth(object? value, long periodDate)
         {
             if (value is null || value is DBNull) return string.Empty;

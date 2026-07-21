@@ -156,7 +156,11 @@ namespace Safir.Server.Controllers
                 WHERE D.RUN_ID = @runId AND D.EMP_ID = @empId
                   AND COALESCE(D.ITEM_TYPE_SNAP,I.ITEM_TYPE) IN (1,2)
                   AND D.AMOUNT <> 0
-                  AND COALESCE(D.ITEM_CODE_SNAP,I.ITEM_CODE) <> 'BASE_SAL'
+                  AND (COALESCE(D.ITEM_CODE_SNAP,I.ITEM_CODE) <> 'BASE_SAL'
+                       OR NOT EXISTS (SELECT 1 FROM PAY2_RUN_DETAIL X WITH (NOLOCK)
+                                      INNER JOIN PAY2_ITEM_DEF XI WITH (NOLOCK) ON XI.ITEM_ID=X.ITEM_ID
+                                      WHERE X.RUN_ID=D.RUN_ID AND X.EMP_ID=D.EMP_ID
+                                        AND COALESCE(X.ITEM_CODE_SNAP,XI.ITEM_CODE)='BASE_SAL_B' AND X.AMOUNT<>0))
                 ORDER BY I.SORT_ORDER";
 
             var earnings = (await _db.DoGetDataSQLAsync<PayslipLineDto>(earnSql, new { runId, empId })).ToList();
@@ -700,8 +704,10 @@ VALUES (@N_S, @RADIF, @HES_K, @HES_M, @HES_T, @HES_T2, @HES_T3, @HES_T4, @HES, @
                         monthLabel = $" [{(m >= 1 && m <= 12 ? monthNames[m - 1] : m.ToString())}]";
                     }
 
-                    var lines = await _db.DoGetDataSQLAsync<dynamic>(
-                        Safir.Server.Services.Pay2PayrollSnapshotQuery.Sql, new { runId = currentRunId });
+                    var lines = (await _db.DoGetDataSQLAsync<dynamic>(
+                        Safir.Server.Services.Pay2PayrollSnapshotQuery.Sql, new { runId = currentRunId })).ToList();
+                    if (lines.Any(x => !(bool)x.HAS_NOMINAL_RAIL))
+                        return UnprocessableEntity("خروجی قانونی ممکن نیست: حداقل یک پرسنل در Run فاقد ریل اسمی BASE_SAL است.");
 
                     foreach (var line in lines)
                     {
@@ -858,8 +864,10 @@ VALUES (@N_S, @RADIF, @HES_K, @HES_M, @HES_T, @HES_T2, @HES_T3, @HES_T4, @HES, @
                         monthLabel = $" [{(m >= 1 && m <= 12 ? monthNames[m - 1] : m.ToString())}]";
                     }
 
-                    var lines = await _db.DoGetDataSQLAsync<dynamic>(
-                        Safir.Server.Services.Pay2PayrollSnapshotQuery.Sql, new { runId = currentRunId });
+                    var lines = (await _db.DoGetDataSQLAsync<dynamic>(
+                        Safir.Server.Services.Pay2PayrollSnapshotQuery.Sql, new { runId = currentRunId })).ToList();
+                    if (lines.Any(x => !(bool)x.HAS_NOMINAL_RAIL))
+                        return UnprocessableEntity("خروجی قانونی ممکن نیست: حداقل یک پرسنل در Run فاقد ریل اسمی BASE_SAL است.");
 
                     foreach (var line in lines)
                     {
@@ -985,14 +993,24 @@ VALUES (@N_S, @RADIF, @HES_K, @HES_M, @HES_T, @HES_T2, @HES_T3, @HES_T4, @HES, @
                 var wsName = await _db.DoGetDataSQLAsyncSingle<string>(
                     "SELECT WS_NAME FROM PAY2_WORKSHOP WITH (NOLOCK) WHERE WS_ID = @wsId", new { wsId });
 
+                var missingAnnualSnapshots = await _db.DoGetDataSQLAsyncSingle<int>(@"
+                    SELECT COUNT(*) FROM PAY2_RUN_LINE RL
+                    INNER JOIN PAY2_RUN R ON R.RUN_ID=RL.RUN_ID
+                    INNER JOIN PAY2_PERIOD P ON P.PER_ID=R.PER_ID
+                    WHERE P.WS_ID=@wsId AND R.IS_LATEST=1 AND R.STATUS>=2
+                      AND P.PERIOD_DATE/10000=@targetYear
+                      AND (RL.NOMINAL_DAYS IS NULL OR RL.NOMINAL_GROSS IS NULL)", new { wsId, targetYear });
+                if (missingAnnualSnapshots > 0)
+                    return UnprocessableEntity("گزارش سالانه قانونی قابل تولید نیست: Snapshot روزکرد یا ناخالص اسمی در یک یا چند Run موجود نیست.");
+
                 // ۳. کوئری تجمیع اطلاعات پرسنل در سال هدف (فقط اجراهای تأیید شده یا قطعی)
                 const string sql = @"
                     SELECT 
                         E.EMP_CODE,
                         E.NATIONAL_CODE,
                         E.LAST_NAME + N' ' + E.FIRST_NAME AS FULL_NAME,
-                        SUM(RL.WORK_DAYS) AS TOTAL_WORK_DAYS,
-                        SUM(RL.GROSS_PAY) AS TOTAL_GROSS_PAY,
+                        SUM(RL.NOMINAL_DAYS) AS TOTAL_WORK_DAYS,
+                        SUM(RL.NOMINAL_GROSS) AS TOTAL_GROSS_PAY,
                         SUM(RL.TAX_BASE) AS TOTAL_TAX_BASE,
                         SUM(RL.TAX_AMOUNT) AS TOTAL_TAX_AMOUNT
                     FROM PAY2_RUN_LINE RL WITH (NOLOCK)
@@ -1005,7 +1023,7 @@ VALUES (@N_S, @RADIF, @HES_K, @HES_M, @HES_T, @HES_T2, @HES_T3, @HES_T4, @HES, @
                       AND (P.PERIOD_DATE / 10000) = @targetYear
                     GROUP BY 
                         E.EMP_ID, E.EMP_CODE, E.NATIONAL_CODE, E.LAST_NAME, E.FIRST_NAME
-                    HAVING SUM(RL.GROSS_PAY) > 0
+                    HAVING SUM(RL.NOMINAL_GROSS) > 0
                     ORDER BY 
                         E.LAST_NAME, E.FIRST_NAME";
 
