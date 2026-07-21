@@ -14,17 +14,21 @@ namespace Safir.Shared.Models.Salary.Reports
 
         // کارکرد
         public decimal WorkDays { get; set; }
+        public string HireDate { get; set; } = string.Empty;
+        public string FireDate { get; set; } = string.Empty;
 
         // مبالغ
-        public long DailyWage { get; set; }
+        public long BaseDailyWage { get; set; }
+        public long SeniorityDailyBase { get; set; }
+        public long TotalDailyWage => BaseDailyWage + SeniorityDailyBase;
         public long MonthlyWage { get; set; }
-        public long OtherSubjectBenefits { get; set; } // مزایای مشمول غیر از تاهل و سنوات
-        public long MaritalAllowance { get; set; }     // حق تاهل (قانون 1405)
-        public long SeniorityBase { get; set; }        // پایه سنوات (قانون 1405)
+        public long OtherSubjectBenefits { get; set; }
 
         public long TotalSubjectToInsurance { get; set; } // جمع مشمول
         public long TotalGrossPay { get; set; }           // جمع ناخالص
         public long WorkerPremium { get; set; }           // حق بیمه سهم کارگر (7%)
+        public long TaxAmount { get; set; }
+        public long NetPayable { get; set; }
     }
 
     public class InsuranceReportDto
@@ -42,11 +46,12 @@ namespace Safir.Shared.Models.Salary.Reports
         public decimal TotalWorkDays => Rows.Sum(x => x.WorkDays);
         public long TotalMonthlyWage => Rows.Sum(x => x.MonthlyWage);
         public long TotalOtherBenefits => Rows.Sum(x => x.OtherSubjectBenefits);
-        public long TotalMaritalAllowance => Rows.Sum(x => x.MaritalAllowance);
-        public long TotalSeniorityBase => Rows.Sum(x => x.SeniorityBase);
+        public long TotalSeniorityBase => Rows.Sum(x => x.SeniorityDailyBase);
         public long TotalSubjectToInsurance => Rows.Sum(x => x.TotalSubjectToInsurance);
         public long TotalGrossPay => Rows.Sum(x => x.TotalGrossPay);
         public long TotalWorkerPremium => Rows.Sum(x => x.WorkerPremium);
+        public long TotalTaxAmount => Rows.Sum(x => x.TaxAmount);
+        public long TotalNetPayable => Rows.Sum(x => x.NetPayable);
 
         public long TotalEmployerPremium => (long)(TotalSubjectToInsurance * 0.20m);
         public long TotalUnemploymentPremium => (long)(TotalSubjectToInsurance * 0.03m);
@@ -91,6 +96,8 @@ namespace Safir.Shared.Models.Salary.Reports
         public long DSW_BIME { get; set; }
         public long DSW_INC { get; set; }
         public string DSW_SPOUS { get; set; } = "0";
+        public string DSW_SDATE { get; set; } = "";
+        public string DSW_EDATE { get; set; } = "";
     }
     // =================================================================
     // کلاس‌های پیش‌نمایش دیسکت مالیات (WP و WH)
