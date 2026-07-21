@@ -335,7 +335,7 @@ namespace Safir.Server.Controllers
         public async Task<ActionResult<IEnumerable<Pay2DecreeLineDto>>> GetDecreeLines(int decId)
         {
             const string sql = @"
-                SELECT L.DEC_ID, L.ITEM_ID, I.ITEM_NAME, L.AMOUNT, L.INS_OV, L.TAX_OV, L.BASIS_OV, L.SHIFT_MODE_OV
+                SELECT L.DEC_ID, L.ITEM_ID, I.ITEM_NAME, L.AMOUNT, L.NOMINAL_AMOUNT_OV, L.OFFICIAL_AMOUNT_OV, L.INS_OV, L.TAX_OV, L.BASIS_OV, L.SHIFT_MODE_OV
                 FROM PAY2_DECREE_LINE L
                 INNER JOIN PAY2_ITEM_DEF I ON L.ITEM_ID = I.ITEM_ID
                 WHERE L.DEC_ID = @decId
@@ -369,6 +369,19 @@ namespace Safir.Server.Controllers
                     if (itemType != 1 && itemType != 2)
                         throw new InvalidOperationException("فقط آیتم‌های پرداختی (نوع ۱ و ۲) در احکام مجاز هستند.");
                     string? itemCode = (string?)itemInfo.ITEM_CODE;
+                    if (itemCode == "SANOVAT_PAYE")
+                    {
+                        line.NOMINAL_AMOUNT_OV ??= line.AMOUNT;
+                        line.OFFICIAL_AMOUNT_OV ??= line.AMOUNT;
+                        if (line.NOMINAL_AMOUNT_OV < 0 || line.OFFICIAL_AMOUNT_OV < 0)
+                            throw new InvalidOperationException("مقادیر اسمی و رسمی پایه سنوات نمی‌توانند منفی باشند.");
+                        line.AMOUNT = line.OFFICIAL_AMOUNT_OV.Value;
+                    }
+                    else
+                    {
+                        line.NOMINAL_AMOUNT_OV = null;
+                        line.OFFICIAL_AMOUNT_OV = null;
+                    }
                     if (itemCode != null && _autoDeductionCodes.Contains(itemCode))
                         throw new InvalidOperationException("آیتم‌های کسر اتوماتیک را نمی‌توان به صورت دستی به حکم اضافه کرد.");
 
@@ -386,14 +399,14 @@ namespace Safir.Server.Controllers
 
                     if (count == 0)
                     {
-                        const string insertSql = @"INSERT INTO PAY2_DECREE_LINE (DEC_ID, ITEM_ID, AMOUNT, INS_OV, TAX_OV, BASIS_OV, SHIFT_MODE_OV)
-                                           VALUES (@DEC_ID, @ITEM_ID, @AMOUNT, @INS_OV, @TAX_OV, @BASIS_OV, @SHIFT_MODE_OV)";
+                        const string insertSql = @"INSERT INTO PAY2_DECREE_LINE (DEC_ID, ITEM_ID, AMOUNT, NOMINAL_AMOUNT_OV, OFFICIAL_AMOUNT_OV, INS_OV, TAX_OV, BASIS_OV, SHIFT_MODE_OV)
+                                           VALUES (@DEC_ID, @ITEM_ID, @AMOUNT, @NOMINAL_AMOUNT_OV, @OFFICIAL_AMOUNT_OV, @INS_OV, @TAX_OV, @BASIS_OV, @SHIFT_MODE_OV)";
                         await conn.ExecuteAsync(insertSql, line, tran);
                     }
                     else
                     {
                         const string updateSql = @"UPDATE PAY2_DECREE_LINE 
-                                           SET AMOUNT=@AMOUNT, INS_OV=@INS_OV, TAX_OV=@TAX_OV, BASIS_OV=@BASIS_OV, SHIFT_MODE_OV=@SHIFT_MODE_OV
+                                           SET AMOUNT=@AMOUNT, NOMINAL_AMOUNT_OV=@NOMINAL_AMOUNT_OV, OFFICIAL_AMOUNT_OV=@OFFICIAL_AMOUNT_OV, INS_OV=@INS_OV, TAX_OV=@TAX_OV, BASIS_OV=@BASIS_OV, SHIFT_MODE_OV=@SHIFT_MODE_OV
                                            WHERE DEC_ID=@DEC_ID AND ITEM_ID=@ITEM_ID";
                         await conn.ExecuteAsync(updateSql, line, tran);
                     }
