@@ -718,7 +718,6 @@ VALUES (@N_S, @RADIF, @HES_K, @HES_M, @HES_T, @HES_T2, @HES_T3, @HES_T4, @HES, @
                         long seniorityDaily = workDays > 0 ? (long)Math.Round(seniorityMonthly / workDays, MidpointRounding.AwayFromZero) : 0;
                         long monthlyWage = baseMonthly + seniorityMonthly;
                         long otherBenefits = (long)line.DISPLAY_OTHER_BENEFITS;
-                        long otherInsuranceItems = (long)line.OTHER_INSURANCE_SUBJECT_ITEMS;
 
                         reportDto.Rows.Add(new InsuranceEmployeeRowDto
                         {
@@ -735,7 +734,7 @@ VALUES (@N_S, @RADIF, @HES_K, @HES_M, @HES_T, @HES_T2, @HES_T3, @HES_T4, @HES, @
                             SeniorityDailyBase = seniorityDaily,
                             MonthlyWage = monthlyWage,
                             OtherSubjectBenefits = otherBenefits,
-                            TotalSubjectToInsurance = (long)line.INSURANCE_WAGE_MONTHLY + (long)line.DIRECT_INSURANCE_BENEFITS + otherInsuranceItems,
+                            TotalSubjectToInsurance = (long)line.INS_BASE,
                             TotalGrossPay = (long)line.NOMINAL_GROSS,
                             WorkerPremium = (long)line.INS_WORKER,
                             TaxAmount = (long)line.TAX_AMOUNT,

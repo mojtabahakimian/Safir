@@ -320,11 +320,15 @@ namespace Safir.Server.Services
                 "SELECT COUNT(*) FROM PAY2_RUN_DETAIL WHERE RUN_ID=@runId AND (NOMINAL_AMOUNT IS NULL OR ITEM_CODE_SNAP IS NULL OR CALC_BASIS_SNAP IS NULL OR INS_SUBJECT_AMOUNT IS NULL OR TAX_SUBJECT_AMOUNT IS NULL)", new { runId });
             if (missingNominalDetails > 0)
                 throw new InvalidOperationException("خروجی مالیات ممکن نیست: Snapshot مبلغ اسمی اقلام Run کامل نیست.");
+            var illegalOfficialSubjects = await _db.DoGetDataSQLAsyncSingle<int>(
+                "SELECT COUNT(*) FROM PAY2_RUN_DETAIL WHERE RUN_ID=@runId AND ITEM_CODE_SNAP='BASE_SAL_B' AND (ISNULL(INS_SUBJECT_AMOUNT,0)<>0 OR ISNULL(TAX_SUBJECT_AMOUNT,0)<>0)", new { runId });
+            if (illegalOfficialSubjects > 0)
+                throw new InvalidOperationException("خروجی قانونی ممکن نیست: BASE_SAL_B رسمی دارای مبلغ مشمول بیمه یا مالیات است.");
 
             const string detailsSql = @"
                 SELECT D.EMP_ID, D.ITEM_CODE_SNAP ITEM_CODE, D.TAX_SUBJECT_AMOUNT AMOUNT, D.CALC_BASIS_SNAP CALC_BASIS
                 FROM PAY2_RUN_DETAIL D
-                WHERE D.RUN_ID = @runId AND D.TAX_SUBJECT_AMOUNT > 0 AND D.NOMINAL_AMOUNT IS NOT NULL";
+                WHERE D.RUN_ID = @runId AND D.ITEM_CODE_SNAP <> 'BASE_SAL_B' AND D.TAX_SUBJECT_AMOUNT > 0 AND D.NOMINAL_AMOUNT IS NOT NULL";
 
             var details = await _db.DoGetDataSQLAsync<dynamic>(detailsSql, new { runId });
             var groupedDetails = details.GroupBy(x => (int)x.EMP_ID).ToDictionary(g => g.Key, g => g.ToList());
@@ -380,6 +384,8 @@ namespace Safir.Server.Services
                         long amt = (long)det.AMOUNT;
                         byte basis = (byte)det.CALC_BASIS;
 
+                        if (code == "BASE_SAL_B")
+                            throw new InvalidOperationException("BASE_SAL_B رسمی نباید در BASE_SALARY، MOSTAMAR یا GHEYRE_MOSTAMAR مالیات وارد شود.");
                         if (code == "BASE_SAL") baseSalary += amt;
                         else if (code == "SANOVAT_PAYE") baseSalary += amt;
                         else if (code == "EIDI") eydi += amt;
@@ -480,11 +486,15 @@ namespace Safir.Server.Services
                 "SELECT COUNT(*) FROM PAY2_RUN_DETAIL WHERE RUN_ID=@runId AND (NOMINAL_AMOUNT IS NULL OR ITEM_CODE_SNAP IS NULL OR CALC_BASIS_SNAP IS NULL OR INS_SUBJECT_AMOUNT IS NULL OR TAX_SUBJECT_AMOUNT IS NULL)", new { runId });
             if (missingNominalDetails > 0)
                 throw new InvalidOperationException("خروجی مالیات ممکن نیست: Snapshot مبلغ اسمی اقلام Run کامل نیست.");
+            var illegalOfficialSubjects = await _db.DoGetDataSQLAsyncSingle<int>(
+                "SELECT COUNT(*) FROM PAY2_RUN_DETAIL WHERE RUN_ID=@runId AND ITEM_CODE_SNAP='BASE_SAL_B' AND (ISNULL(INS_SUBJECT_AMOUNT,0)<>0 OR ISNULL(TAX_SUBJECT_AMOUNT,0)<>0)", new { runId });
+            if (illegalOfficialSubjects > 0)
+                throw new InvalidOperationException("خروجی قانونی ممکن نیست: BASE_SAL_B رسمی دارای مبلغ مشمول بیمه یا مالیات است.");
 
             const string detailsSql = @"
                 SELECT D.EMP_ID, D.ITEM_CODE_SNAP ITEM_CODE, D.TAX_SUBJECT_AMOUNT AMOUNT, D.CALC_BASIS_SNAP CALC_BASIS
                 FROM PAY2_RUN_DETAIL D
-                WHERE D.RUN_ID = @runId AND D.TAX_SUBJECT_AMOUNT > 0 AND D.NOMINAL_AMOUNT IS NOT NULL";
+                WHERE D.RUN_ID = @runId AND D.ITEM_CODE_SNAP <> 'BASE_SAL_B' AND D.TAX_SUBJECT_AMOUNT > 0 AND D.NOMINAL_AMOUNT IS NOT NULL";
 
             var details = await _db.DoGetDataSQLAsync<dynamic>(detailsSql, new { runId });
             var groupedDetails = details.GroupBy(x => (int)x.EMP_ID).ToDictionary(g => g.Key, g => g.ToList());
@@ -526,6 +536,8 @@ namespace Safir.Server.Services
                         long amt = (long)det.AMOUNT;
                         byte basis = (byte)det.CALC_BASIS;
 
+                        if (code == "BASE_SAL_B")
+                            throw new InvalidOperationException("BASE_SAL_B رسمی نباید در BASE_SALARY، MOSTAMAR یا GHEYRE_MOSTAMAR مالیات وارد شود.");
                         if (code == "BASE_SAL") baseSalary += amt;
                         else if (code == "SANOVAT_PAYE") baseSalary += amt;
                         else if (code == "EIDI") eydi += amt;
