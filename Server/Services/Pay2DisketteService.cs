@@ -317,14 +317,14 @@ namespace Safir.Server.Services
             if (lines.Any(x => x.WORK_DAYS is null || x.GROSS_PAY is null))
                 throw new InvalidOperationException("خروجی مالیات ممکن نیست: Snapshot اسمی روزکرد/ناخالص در Run کامل نیست.");
             var missingNominalDetails = await _db.DoGetDataSQLAsyncSingle<int>(
-                "SELECT COUNT(*) FROM PAY2_RUN_DETAIL WHERE RUN_ID=@runId AND (NOMINAL_AMOUNT IS NULL OR ITEM_CODE_SNAP IS NULL OR CALC_BASIS_SNAP IS NULL)", new { runId });
+                "SELECT COUNT(*) FROM PAY2_RUN_DETAIL WHERE RUN_ID=@runId AND (NOMINAL_AMOUNT IS NULL OR ITEM_CODE_SNAP IS NULL OR CALC_BASIS_SNAP IS NULL OR INS_SUBJECT_AMOUNT IS NULL OR TAX_SUBJECT_AMOUNT IS NULL)", new { runId });
             if (missingNominalDetails > 0)
                 throw new InvalidOperationException("خروجی مالیات ممکن نیست: Snapshot مبلغ اسمی اقلام Run کامل نیست.");
 
             const string detailsSql = @"
-                SELECT D.EMP_ID, D.ITEM_CODE_SNAP ITEM_CODE, D.NOMINAL_AMOUNT AMOUNT, D.CALC_BASIS_SNAP CALC_BASIS
+                SELECT D.EMP_ID, D.ITEM_CODE_SNAP ITEM_CODE, D.TAX_SUBJECT_AMOUNT AMOUNT, D.CALC_BASIS_SNAP CALC_BASIS
                 FROM PAY2_RUN_DETAIL D
-                WHERE D.RUN_ID = @runId AND D.TAX_SUBJECT = 1 AND D.NOMINAL_AMOUNT IS NOT NULL";
+                WHERE D.RUN_ID = @runId AND D.TAX_SUBJECT_AMOUNT > 0 AND D.NOMINAL_AMOUNT IS NOT NULL";
 
             var details = await _db.DoGetDataSQLAsync<dynamic>(detailsSql, new { runId });
             var groupedDetails = details.GroupBy(x => (int)x.EMP_ID).ToDictionary(g => g.Key, g => g.ToList());
@@ -477,14 +477,14 @@ namespace Safir.Server.Services
             if (lines.Any(x => x.WORK_DAYS is null || x.GROSS_PAY is null))
                 throw new InvalidOperationException("خروجی مالیات ممکن نیست: Snapshot اسمی روزکرد/ناخالص در Run کامل نیست.");
             var missingNominalDetails = await _db.DoGetDataSQLAsyncSingle<int>(
-                "SELECT COUNT(*) FROM PAY2_RUN_DETAIL WHERE RUN_ID=@runId AND (NOMINAL_AMOUNT IS NULL OR ITEM_CODE_SNAP IS NULL OR CALC_BASIS_SNAP IS NULL)", new { runId });
+                "SELECT COUNT(*) FROM PAY2_RUN_DETAIL WHERE RUN_ID=@runId AND (NOMINAL_AMOUNT IS NULL OR ITEM_CODE_SNAP IS NULL OR CALC_BASIS_SNAP IS NULL OR INS_SUBJECT_AMOUNT IS NULL OR TAX_SUBJECT_AMOUNT IS NULL)", new { runId });
             if (missingNominalDetails > 0)
                 throw new InvalidOperationException("خروجی مالیات ممکن نیست: Snapshot مبلغ اسمی اقلام Run کامل نیست.");
 
             const string detailsSql = @"
-                SELECT D.EMP_ID, D.ITEM_CODE_SNAP ITEM_CODE, D.NOMINAL_AMOUNT AMOUNT, D.CALC_BASIS_SNAP CALC_BASIS
+                SELECT D.EMP_ID, D.ITEM_CODE_SNAP ITEM_CODE, D.TAX_SUBJECT_AMOUNT AMOUNT, D.CALC_BASIS_SNAP CALC_BASIS
                 FROM PAY2_RUN_DETAIL D
-                WHERE D.RUN_ID = @runId AND D.TAX_SUBJECT = 1 AND D.NOMINAL_AMOUNT IS NOT NULL";
+                WHERE D.RUN_ID = @runId AND D.TAX_SUBJECT_AMOUNT > 0 AND D.NOMINAL_AMOUNT IS NOT NULL";
 
             var details = await _db.DoGetDataSQLAsync<dynamic>(detailsSql, new { runId });
             var groupedDetails = details.GroupBy(x => (int)x.EMP_ID).ToDictionary(g => g.Key, g => g.ToList());
