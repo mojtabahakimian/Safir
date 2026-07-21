@@ -42,9 +42,9 @@ namespace Safir.Server.Services
                 SELECT 
                     RL.EMP_ID, E.FIRST_NAME, E.LAST_NAME, E.FATHER_NAME,
                     E.NATIONAL_CODE, E.INS_CODE, E.BIRTH_DATE, E.GENDER, E.NATIONALITY,
-                    E.BIRTH_PLACE, E.ID_NUMBER,
+                    E.BIRTH_PLACE, E.ID_NUMBER, E.HIRE_DATE, E.FIRE_DATE,
                     J.JOB_NAME, J.JOB_CODE,
-                    RL.WORK_DAYS, RL.INS_BASE, RL.INS_WORKER, RL.INS_EMPLOYER, RL.GROSS_PAY,
+                    RL.WORK_DAYS, RL.INS_WORKER, RL.INS_EMPLOYER,
                     A.DAYSB
                 FROM PAY2_RUN_LINE RL WITH (NOLOCK)
                 INNER JOIN PAY2_EMPLOYEE E WITH (NOLOCK) ON RL.EMP_ID = E.EMP_ID
@@ -55,12 +55,12 @@ namespace Safir.Server.Services
 
             var lines = (await _db.DoGetDataSQLAsync<dynamic>(linesSql, new { runId })).ToList();
 
-            // ۳. خواندن ریزمبالغ برای تفکیک (حق تاهل، سنوات، حقوق پایه)
+            // ۳. خواندن ریزمبالغ (فقط ریل اسمی؛ مشمولیت از Snapshot همان Run — D.INS_SUBJECT)
             const string detailsSql = @"
-                SELECT D.EMP_ID, I.ITEM_CODE, D.AMOUNT
+                SELECT D.EMP_ID, I.ITEM_CODE, I.ITEM_TYPE, D.AMOUNT, D.INS_SUBJECT
                 FROM PAY2_RUN_DETAIL D WITH (NOLOCK)
                 INNER JOIN PAY2_ITEM_DEF I WITH (NOLOCK) ON D.ITEM_ID = I.ITEM_ID
-                WHERE D.RUN_ID = @runId AND I.INS_SUBJECT = 1";
+                WHERE D.RUN_ID = @runId";
 
             var details = await _db.DoGetDataSQLAsync<dynamic>(detailsSql, new { runId });
             var groupedDetails = details.GroupBy(x => (int)x.EMP_ID).ToDictionary(g => g.Key, g => g.ToList());
@@ -77,39 +77,30 @@ namespace Safir.Server.Services
                 int empId = (int)line.EMP_ID;
                 decimal workDays = (decimal)line.WORK_DAYS;
 
-                long monthlyWage = 0;
-                long maritalAllowance = 0;
-                long seniorityBase = 0;
+                var agg = BuildAggregate(groupedDetails, empId, workDays);
 
-                if (groupedDetails.TryGetValue(empId, out var empDetails))
-                {
-                    foreach (var det in empDetails)
-                    {
-                        string code = det.ITEM_CODE.ToString().ToUpper();
-                        long amt = (long)det.AMOUNT;
-
-                        if (code == "BASE_SAL_B" || code == "BASE_SAL") monthlyWage += amt;
-                        else if (code == "FAMILY_ALLOW") maritalAllowance += amt;
-                        else if (code == "SENIORITY" || code == "SANOVAT_PAYE") seniorityBase += amt;
-                    }
-                }
-
-                long dailyWage = workDays > 0 ? (long)(monthlyWage / workDays) : 0;
-                long insBase = (long)line.INS_BASE;
-                long otherBenefits = insBase - monthlyWage - maritalAllowance - seniorityBase;
-                if (otherBenefits < 0) otherBenefits = 0;
-
-                long grossPay = (long)line.GROSS_PAY;
+                long marital = agg.MaritalAllowance;
+                long seniorityBase = agg.SeniorityMonthly;
+                long monthlyWage = agg.MonthlyWage;
+                long dailyWage = agg.DailyBaseWage;
+                long generalBenefits = agg.OtherSubjectBenefits - marital; // حق تأهل در فیلد اختصاصی می‌رود، اینجا دوباره جمع نمی‌شود
+                if (generalBenefits < 0) generalBenefits = 0;
+                long insBase = agg.TotalSubjectToInsurance;
+                long grossPay = agg.NominalGross;
                 long workerIns = (long)line.INS_WORKER;
+
+                // تاریخ شروع فقط در ماه استخدام و تاریخ ترک فقط در ماه ترک کار ارسال می‌شود
+                string startDate = EventDateForMonth(line.HIRE_DATE, year, month);
+                string endDate = EventDateForMonth(line.FIRE_DATE, year, month);
 
                 // جمع‌زن‌ها برای هدر کارگاه
                 totalDailyWage += dailyWage;
                 totalMonthlyWage += monthlyWage;
-                totalOtherBenefits += otherBenefits;
+                totalOtherBenefits += generalBenefits;
                 totalMash += insBase;
                 totalTotl += grossPay;
                 totalWorkerIns += workerIns;
-                totalMarital += maritalAllowance;
+                totalMarital += marital;
                 totalSeniority += seniorityBase;
 
                 // ساخت یک رکورد کارمند
@@ -130,20 +121,20 @@ namespace Safir.Server.Services
                     ["DSW_SEX"] = (byte)line.GENDER == 1 ? "مرد" : "زن",
                     ["DSW_NAT"] = (byte)line.NATIONALITY == 1 ? "ایران" : "اتباع",
                     ["DSW_OCP"] = line.JOB_CODE?.ToString() ?? "000000",
-                    ["DSW_SDATE"] = "", // فیلد استخدام در ماه جاری (پیچیدگی اضافی، خالی می‌ماند)
-                    ["DSW_EDATE"] = "", // فیلد ترک کار
+                    ["DSW_SDATE"] = startDate, // تاریخ شروع به کار — فقط در ماه استخدام
+                    ["DSW_EDATE"] = endDate,   // تاریخ ترک کار — فقط در ماه ترک
                     ["DSW_DD"] = (int)workDays,
                     ["DSW_ROOZ"] = dailyWage,
                     ["DSW_MAH"] = monthlyWage,
-                    ["DSW_MAZ"] = otherBenefits,
+                    ["DSW_MAZ"] = generalBenefits,
                     ["DSW_MASH"] = insBase,
                     ["DSW_TOTL"] = grossPay,
                     ["DSW_BIME"] = workerIns,
                     ["DSW_PRATE"] = 0,
                     ["DSW_JOB"] = "1",
                     ["PER_NATCOD"] = line.NATIONAL_CODE?.ToString() ?? "",
-                    ["DSW_INC"] = seniorityBase, // پایه سنوات (قانون ۱۴۰۵)
-                    ["DSW_SPOUS"] = maritalAllowance.ToString() // حق تاهل (در فرمت بیمه String است)
+                    ["DSW_INC"] = seniorityBase, // پایه سنوات (قانون ۱۴۰۵) — بخشی از دستمزد ماهانه، فقط یک‌بار شمرده می‌شود
+                    ["DSW_SPOUS"] = marital.ToString() // حق تاهل (در فرمت بیمه String است)
                 };
                 dskworList.Add(wor);
             }
@@ -237,6 +228,40 @@ namespace Safir.Server.Services
             return code.Trim().PadLeft(10, '0');
         }
 
+        // تفکیک اقلام یک پرسنل بر پایه ریل اسمی (BASE_SAL) با مشمولیت Snapshot همان Run
+        private static Pay2InsuranceAggregate BuildAggregate(
+            Dictionary<int, List<dynamic>> groupedDetails, int empId, decimal workDays)
+        {
+            var items = new List<Pay2DetailItem>();
+            if (groupedDetails.TryGetValue(empId, out var empDetails))
+            {
+                foreach (var det in empDetails)
+                {
+                    items.Add(new Pay2DetailItem(
+                        det.ITEM_CODE?.ToString() ?? "",
+                        (int)(byte)det.ITEM_TYPE,
+                        (long)det.AMOUNT,
+                        (bool)det.INS_SUBJECT));
+                }
+            }
+            return Pay2InsuranceAggregator.Aggregate(items, workDays);
+        }
+
+        // تاریخ رویداد (استخدام/ترک) فقط در همان ماه دوره برگردانده می‌شود؛ در سایر ماه‌ها خالی است.
+        // ورودی تاریخ شمسی به‌صورت YYYYMMDD (BIGINT) است.
+        private static string EventDateForMonth(object? eventDateObj, int periodYear, int periodMonth)
+        {
+            if (eventDateObj == null) return "";
+            long eventDate;
+            try { eventDate = Convert.ToInt64(eventDateObj); }
+            catch { return ""; }
+            if (eventDate <= 0) return "";
+
+            int y = (int)(eventDate / 10000);
+            int m = (int)((eventDate / 100) % 100);
+            return (y == periodYear && m == periodMonth) ? eventDate.ToString() : "";
+        }
+
         // متد جدید: پیش‌نمایش دیسکت (DBF) به صورت JSON
         public async Task<DiskettePreviewDto?> GetInsuranceDiskettePreviewAsync(int runId)
         {
@@ -260,8 +285,8 @@ namespace Safir.Server.Services
 
             const string linesSql = @"
                 SELECT 
-                    RL.EMP_ID, E.FIRST_NAME, E.LAST_NAME, E.NATIONAL_CODE, E.INS_CODE, J.JOB_CODE,
-                    RL.WORK_DAYS, RL.INS_BASE, RL.INS_WORKER, RL.INS_EMPLOYER, RL.GROSS_PAY
+                    RL.EMP_ID, E.FIRST_NAME, E.LAST_NAME, E.NATIONAL_CODE, E.INS_CODE, E.HIRE_DATE, E.FIRE_DATE, J.JOB_CODE,
+                    RL.WORK_DAYS, RL.INS_WORKER, RL.INS_EMPLOYER
                 FROM PAY2_RUN_LINE RL WITH (NOLOCK)
                 INNER JOIN PAY2_EMPLOYEE E WITH (NOLOCK) ON RL.EMP_ID = E.EMP_ID
                 LEFT JOIN PAY2_JOB J WITH (NOLOCK) ON E.JOB_ID = J.JOB_ID
@@ -270,11 +295,12 @@ namespace Safir.Server.Services
 
             var lines = (await _db.DoGetDataSQLAsync<dynamic>(linesSql, new { runId })).ToList();
 
+            // مشمولیت از Snapshot همان Run (D.INS_SUBJECT)، نه تعریف جاری آیتم
             const string detailsSql = @"
-                SELECT D.EMP_ID, I.ITEM_CODE, D.AMOUNT
+                SELECT D.EMP_ID, I.ITEM_CODE, I.ITEM_TYPE, D.AMOUNT, D.INS_SUBJECT
                 FROM PAY2_RUN_DETAIL D WITH (NOLOCK)
                 INNER JOIN PAY2_ITEM_DEF I WITH (NOLOCK) ON D.ITEM_ID = I.ITEM_ID
-                WHERE D.RUN_ID = @runId AND I.INS_SUBJECT = 1";
+                WHERE D.RUN_ID = @runId";
 
             var details = await _db.DoGetDataSQLAsync<dynamic>(detailsSql, new { runId });
             var groupedDetails = details.GroupBy(x => (int)x.EMP_ID).ToDictionary(g => g.Key, g => g.ToList());
@@ -286,29 +312,22 @@ namespace Safir.Server.Services
             {
                 int empId = (int)line.EMP_ID;
                 decimal workDays = (decimal)line.WORK_DAYS;
-                long monthlyWage = 0, maritalAllowance = 0, seniorityBase = 0;
 
-                if (groupedDetails.TryGetValue(empId, out var empDetails))
-                {
-                    foreach (var det in empDetails)
-                    {
-                        string code = det.ITEM_CODE.ToString().ToUpper();
-                        long amt = (long)det.AMOUNT;
-                        if (code == "BASE_SAL_B" || code == "BASE_SAL") monthlyWage += amt;
-                        else if (code == "FAMILY_ALLOW") maritalAllowance += amt;
-                        else if (code == "SENIORITY" || code == "SANOVAT_PAYE") seniorityBase += amt;
-                    }
-                }
+                var agg = BuildAggregate(groupedDetails, empId, workDays);
 
-                long dailyWage = workDays > 0 ? (long)(monthlyWage / workDays) : 0;
-                long insBase = (long)line.INS_BASE;
-                long otherBenefits = insBase - monthlyWage - maritalAllowance - seniorityBase;
-                if (otherBenefits < 0) otherBenefits = 0;
+                long marital = agg.MaritalAllowance;
+                long seniorityBase = agg.SeniorityMonthly;
+                long monthlyWage = agg.MonthlyWage;
+                long dailyWage = agg.DailyBaseWage;
+                long generalBenefits = agg.OtherSubjectBenefits - marital;
+                if (generalBenefits < 0) generalBenefits = 0;
+                long insBase = agg.TotalSubjectToInsurance;
+                long grossPay = agg.NominalGross;
 
                 totalMash += insBase;
-                totalTotl += (long)line.GROSS_PAY;
+                totalTotl += grossPay;
                 totalWorkerIns += (long)line.INS_WORKER;
-                totalMarital += maritalAllowance;
+                totalMarital += marital;
                 totalSeniority += seniorityBase;
 
                 string insCodeStr = line.INS_CODE?.ToString() ?? "";
@@ -320,14 +339,16 @@ namespace Safir.Server.Services
                     PER_NATCOD = line.NATIONAL_CODE?.ToString() ?? "",
                     DSW_OCP = line.JOB_CODE?.ToString() ?? "000000",
                     DSW_DD = (int)workDays,
+                    DSW_SDATE = EventDateForMonth(line.HIRE_DATE, year, month),
+                    DSW_EDATE = EventDateForMonth(line.FIRE_DATE, year, month),
                     DSW_ROOZ = dailyWage,
                     DSW_MAH = monthlyWage,
-                    DSW_MAZ = otherBenefits,
+                    DSW_MAZ = generalBenefits,
                     DSW_MASH = insBase,
-                    DSW_TOTL = (long)line.GROSS_PAY,
+                    DSW_TOTL = grossPay,
                     DSW_BIME = (long)line.INS_WORKER,
                     DSW_INC = seniorityBase,
-                    DSW_SPOUS = maritalAllowance.ToString()
+                    DSW_SPOUS = marital.ToString()
                 });
             }
 
@@ -398,11 +419,12 @@ namespace Safir.Server.Services
 
             var lines = (await _db.DoGetDataSQLAsync<dynamic>(linesSql, new { runId })).ToList();
 
+            // مشمولیت مالیات از Snapshot همان Run (D.TAX_SUBJECT)، نه تعریف جاری آیتم
             const string detailsSql = @"
-                SELECT D.EMP_ID, I.ITEM_CODE, D.AMOUNT, I.CALC_BASIS
+                SELECT D.EMP_ID, I.ITEM_CODE, D.AMOUNT, I.CALC_BASIS, D.TAX_SUBJECT
                 FROM PAY2_RUN_DETAIL D WITH (NOLOCK)
                 INNER JOIN PAY2_ITEM_DEF I WITH (NOLOCK) ON D.ITEM_ID = I.ITEM_ID
-                WHERE D.RUN_ID = @runId AND I.TAX_SUBJECT = 1";
+                WHERE D.RUN_ID = @runId AND D.TAX_SUBJECT = 1";
 
             var details = await _db.DoGetDataSQLAsync<dynamic>(detailsSql, new { runId });
             var groupedDetails = details.GroupBy(x => (int)x.EMP_ID).ToDictionary(g => g.Key, g => g.ToList());
@@ -448,7 +470,9 @@ namespace Safir.Server.Services
                 wpLines.Add(wpLine);
 
                 // ─── تولید خط فایل WH (اطلاعات عملکرد ریالی) ───
-                long baseSalary = 0, mostamar = 0, gheyreMostamar = 0, eydi = 0, sanavat = 0;
+                // مالیات فقط بر ریل اسمی BASE_SAL؛ BASE_SAL_B (رسمی) هرگز با آن جمع نمی‌شود.
+                long baseNominal = 0, baseOfficial = 0;
+                long mostamar = 0, gheyreMostamar = 0, eydi = 0, sanavat = 0;
 
                 if (groupedDetails.TryGetValue(empId, out var empDetails))
                 {
@@ -458,13 +482,17 @@ namespace Safir.Server.Services
                         long amt = (long)det.AMOUNT;
                         byte basis = (byte)det.CALC_BASIS;
 
-                        if (code == "BASE_SAL" || code == "BASE_SAL_B") baseSalary += amt;
+                        if (code == "BASE_SAL") baseNominal += amt;
+                        else if (code == "BASE_SAL_B") baseOfficial += amt;
                         else if (code == "EIDI") eydi += amt;
-                        else if (code == "SANAVAT" || code == "SENIORITY") sanavat += amt;
+                        else if (code == "SANAVAT" || code == "SENIORITY" || code == "SANOVAT_PAYE") sanavat += amt;
                         else if (basis == 2) mostamar += amt;
                         else gheyreMostamar += amt;
                     }
                 }
+
+                // در نبود حقوق اسمی، حقوق رسمی جایگزین پایه می‌شود (بدون جمع‌شدن این دو)
+                long baseSalary = baseNominal > 0 ? baseNominal : baseOfficial;
 
                 string whLine = string.Join(",",
                     natCode,

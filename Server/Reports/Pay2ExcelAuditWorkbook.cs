@@ -244,19 +244,19 @@ namespace Safir.Server.Reports
                     && lines.Any(l => l.ITEM_CODE.Equals("BASE_SAL", StringComparison.OrdinalIgnoreCase))
                     && lines.Any(l => l.ITEM_CODE.Equals("BASE_SAL_B", StringComparison.OrdinalIgnoreCase));
 
-                // آیا ریلِ حقوقِ رسمی (BASE_SAL_B) واقعاً مشمولِ بیمه/مالیات و غیرصفر است؟ (منطبق با SP)
-                // اگر رسمی معاف/صفر باشد، پایهٔ بیمه/مالیات به حقوقِ اسمی (BASE_SAL) fallback می‌شود.
-                bool insOfficialValid = hasBothSal && lines!.Any(l =>
-                    l.ITEM_CODE.Equals("BASE_SAL_B", StringComparison.OrdinalIgnoreCase) && l.EFF_INS && l.RAW_AMOUNT != 0);
-                bool taxOfficialValid = hasBothSal && lines!.Any(l =>
-                    l.ITEM_CODE.Equals("BASE_SAL_B", StringComparison.OrdinalIgnoreCase) && l.EFF_TAX && l.RAW_AMOUNT != 0);
+                // آیا ریلِ حقوقِ اسمی (BASE_SAL) واقعاً مشمولِ بیمه/مالیات و غیرصفر است؟ (منطبق با SP)
+                // بیمه/مالیات از حقوقِ اسمی (BASE_SAL) است؛ اگر اسمی معاف/صفر باشد، به حقوقِ رسمی (BASE_SAL_B) fallback می‌شود.
+                bool insNominalValid = hasBothSal && lines!.Any(l =>
+                    l.ITEM_CODE.Equals("BASE_SAL", StringComparison.OrdinalIgnoreCase) && l.EFF_INS && l.RAW_AMOUNT != 0);
+                bool taxNominalValid = hasBothSal && lines!.Any(l =>
+                    l.ITEM_CODE.Equals("BASE_SAL", StringComparison.OrdinalIgnoreCase) && l.EFF_TAX && l.RAW_AMOUNT != 0);
 
                 // (۱) خطوط احکام
                 if (lines != null)
                 {
                     foreach (var l in lines)
                     {
-                        WriteDecreeRow(ws, r, e, l, hasBothSal, insOfficialValid, taxOfficialValid);
+                        WriteDecreeRow(ws, r, e, l, hasBothSal, insNominalValid, taxNominalValid);
                         addedItemIds.Add(l.ITEM_ID);
                         codesPresent.Add(l.ITEM_CODE);
                         myRows.Add(r);
@@ -319,7 +319,7 @@ namespace Safir.Server.Reports
             return bdRows;
         }
 
-        private static void WriteDecreeRow(IXLWorksheet ws, int r, Pay2AuditEmpRow e, Pay2AuditDecreeLineRow l, bool hasBothSal, bool insOfficialValid, bool taxOfficialValid)
+        private static void WriteDecreeRow(IXLWorksheet ws, int r, Pay2AuditEmpRow e, Pay2AuditDecreeLineRow l, bool hasBothSal, bool insNominalValid, bool taxNominalValid)
         {
             decimal payDaysRaw = l.PAY_BASE_DAYS == 1 ? e.DAYS : e.DAYSB;
             decimal insDaysRaw = l.INS_BASE_DAYS == 1 ? e.DAYS : e.DAYSB;
@@ -360,15 +360,15 @@ namespace Safir.Server.Reports
             ws.Cell(r, BD_HOURS).Value = hours;
 
             // ── پرچم‌های دو-ریلی (منطبق با SP_PAY2_CALC_RUN) ──
-            // ناخالص از AMOUNT: وقتی هر دو حقوق هست BASE_SAL_B کنار می‌رود؛ اگر فقط رسمی باشد، خودش لحاظ می‌شود.
+            // ناخالص پرداختی از AMOUNT (ریلِ رسمی): وقتی هر دو حقوق هست BASE_SAL (اسمی) کنار می‌رود؛ اگر فقط اسمی باشد، خودش لحاظ می‌شود.
             bool isEarnItem = l.ITEM_TYPE == 1 || l.ITEM_TYPE == 2;
-            bool earn = isEarnItem && !(hasBothSal && isOfficialSal);
-            // بیمه و مالیات از INS_AMOUNT: وقتی هر دو حقوق هست، دقیقاً یک ریلِ پایه لحاظ می‌شود:
-            // رسمی (BASE_SAL_B) اگر مشمول و غیرصفر باشد، وگرنه fallback به اسمی (BASE_SAL).
-            bool insDropNominal  = hasBothSal &&  insOfficialValid;
-            bool insDropOfficial = hasBothSal && !insOfficialValid;
-            bool taxDropNominal  = hasBothSal &&  taxOfficialValid;
-            bool taxDropOfficial = hasBothSal && !taxOfficialValid;
+            bool earn = isEarnItem && !(hasBothSal && isNominalSal);
+            // بیمه و مالیات از INS_AMOUNT (ریلِ اسمی): وقتی هر دو حقوق هست، دقیقاً یک ریلِ پایه لحاظ می‌شود:
+            // اسمی (BASE_SAL) اگر مشمول و غیرصفر باشد، وگرنه fallback به رسمی (BASE_SAL_B).
+            bool insDropOfficial = hasBothSal &&  insNominalValid;
+            bool insDropNominal  = hasBothSal && !insNominalValid;
+            bool taxDropOfficial = hasBothSal &&  taxNominalValid;
+            bool taxDropNominal  = hasBothSal && !taxNominalValid;
             bool insf = isEarnItem && l.EFF_INS && !(isNominalSal && insDropNominal) && !(isOfficialSal && insDropOfficial);
             bool taxf = isEarnItem && l.EFF_TAX && !(isNominalSal && taxDropNominal) && !(isOfficialSal && taxDropOfficial);
             ws.Cell(r, BD_EARN).Value = earn ? 1 : 0;
@@ -503,15 +503,15 @@ namespace Safir.Server.Reports
             string codeCol = $"{Col(BD_ICODE)}:{Col(BD_ICODE)}";
             string sumBs(string salCode) => $"SUMIFS({bsCol},{empCol},{aEmp},{codeCol},\"{salCode}\")";
 
-            // ── ریلِ پرداخت: TOTAL_NOMINAL_BASE / DAYSB / OT_HOUR_BASE ──
-            // (اسمی → fallback رسمی)
-            string nomBase = hasBothSal ? sumBs("BASE_SAL") : $"({sumBs("BASE_SAL")}+{sumBs("BASE_SAL_B")})";
-            ws.Cell(r, BD_HOURLY).FormulaA1 = $"IF({V}=0,0,ROUND({nomBase}/{V}/CFG_OT_HOUR_BASE,2))";
-
-            // ── ریلِ بیمه: TOTAL_OFFICIAL_BASE / DAYS / OT_HOUR_BASE ──
+            // ── ریلِ پرداخت اضافه‌کار: حقوقِ رسمی (BASE_SAL_B) / DAYSB / OT_HOUR_BASE ──
             // (رسمی → fallback اسمی)
-            string offBase = hasBothSal ? sumBs("BASE_SAL_B") : $"({sumBs("BASE_SAL")}+{sumBs("BASE_SAL_B")})";
-            ws.Cell(r, BD_HOURLY_OFF).FormulaA1 = $"IF({Vd}=0,0,ROUND({offBase}/{Vd}/CFG_OT_HOUR_BASE,2))";
+            string payBase = hasBothSal ? sumBs("BASE_SAL_B") : $"({sumBs("BASE_SAL")}+{sumBs("BASE_SAL_B")})";
+            ws.Cell(r, BD_HOURLY).FormulaA1 = $"IF({V}=0,0,ROUND({payBase}/{V}/CFG_OT_HOUR_BASE,2))";
+
+            // ── ریلِ بیمه/مالیات اضافه‌کار: حقوقِ اسمی (BASE_SAL) / DAYS / OT_HOUR_BASE ──
+            // (اسمی → fallback رسمی)
+            string insBase = hasBothSal ? sumBs("BASE_SAL") : $"({sumBs("BASE_SAL")}+{sumBs("BASE_SAL_B")})";
+            ws.Cell(r, BD_HOURLY_OFF).FormulaA1 = $"IF({Vd}=0,0,ROUND({insBase}/{Vd}/CFG_OT_HOUR_BASE,2))";
 
             ws.Cell(r, BD_EARN).Value = 1;
             ws.Cell(r, BD_INSF).Value = def.INS_SUBJECT ? 1 : 0;

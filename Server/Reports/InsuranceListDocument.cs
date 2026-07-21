@@ -76,20 +76,24 @@ namespace Safir.Server.Reports
                     // تعریف عرض ستون‌ها
                     table.ColumnsDefinition(c =>
                     {
-                        c.ConstantColumn(25); // ردیف
-                        c.RelativeColumn(3);  // نام
-                        c.RelativeColumn(2);  // کد ملی
-                        c.RelativeColumn(2);  // ش بیمه
-                        c.RelativeColumn(2);  // شغل
-                        c.ConstantColumn(30); // روز
-                        c.RelativeColumn(2);  // روزانه
-                        c.RelativeColumn(2.5f); // ماهانه
-                        c.RelativeColumn(2);  // مزایای مشمول
-                        c.RelativeColumn(2);  // حق تاهل (1405)
-                        c.RelativeColumn(2);  // سنوات (1405)
-                        c.RelativeColumn(2.5f); // جمع مشمول
-                        c.RelativeColumn(2.5f); // ناخالص
-                        c.RelativeColumn(2);  // سهم کارگر
+                        c.ConstantColumn(20); // ردیف
+                        c.RelativeColumn(2.6f);  // نام
+                        c.RelativeColumn(1.8f);  // کد ملی
+                        c.RelativeColumn(1.6f);  // ش بیمه
+                        c.RelativeColumn(1.6f);  // شغل
+                        c.RelativeColumn(1.4f);  // تاریخ شروع به کار
+                        c.RelativeColumn(1.4f);  // تاریخ ترک کار
+                        c.ConstantColumn(24);    // روز
+                        c.RelativeColumn(1.7f);  // پایه مزد روزانه
+                        c.RelativeColumn(1.7f);  // پایه سنوات روزانه
+                        c.RelativeColumn(1.7f);  // دستمزد روزانه کل
+                        c.RelativeColumn(2.0f);  // دستمزد ماهانه
+                        c.RelativeColumn(1.9f);  // سایر مزایای مشمول
+                        c.RelativeColumn(2.1f);  // جمع دستمزد و مزایای مشمول
+                        c.RelativeColumn(2.0f);  // جمع ناخالص
+                        c.RelativeColumn(1.8f);  // حق بیمه سهم کارگر
+                        c.RelativeColumn(1.8f);  // مالیات حقوق
+                        c.RelativeColumn(2.0f);  // مانده قابل پرداخت
                     });
 
                     // هدر جدول
@@ -103,15 +107,19 @@ namespace Safir.Server.Reports
                         h.Cell().Element(HeaderStyle).Text("کد ملی").SemiBold();
                         h.Cell().Element(HeaderStyle).Text("شماره بیمه").SemiBold();
                         h.Cell().Element(HeaderStyle).Text("شغل").SemiBold();
+                        h.Cell().Element(HeaderStyle).Text("تاریخ شروع به کار").SemiBold();
+                        h.Cell().Element(HeaderStyle).Text("تاریخ ترک کار").SemiBold();
                         h.Cell().Element(HeaderStyle).Text("روز").SemiBold();
-                        h.Cell().Element(HeaderStyle).Text("دستمزد روزانه").SemiBold();
+                        h.Cell().Element(HeaderStyle).Text("پایه مزد روزانه").SemiBold();
+                        h.Cell().Element(HeaderStyle).Text("پایه سنوات روزانه").SemiBold();
+                        h.Cell().Element(HeaderStyle).Text("دستمزد روزانه کل").SemiBold();
                         h.Cell().Element(HeaderStyle).Text("دستمزد ماهانه").SemiBold();
                         h.Cell().Element(HeaderStyle).Text("سایر مزایای مشمول").SemiBold();
-                        h.Cell().Element(HeaderStyle).Text("حق تاهل").SemiBold();
-                        h.Cell().Element(HeaderStyle).Text("پایه سنوات").SemiBold();
-                        h.Cell().Element(HeaderStyle).Text("جمع مشمول").SemiBold();
+                        h.Cell().Element(HeaderStyle).Text("جمع دستمزد و مزایای مشمول").SemiBold();
                         h.Cell().Element(HeaderStyle).Text("جمع ناخالص").SemiBold();
-                        h.Cell().Element(HeaderStyle).Text("سهم بیمه شده").SemiBold();
+                        h.Cell().Element(HeaderStyle).Text("حق بیمه سهم کارگر").SemiBold();
+                        h.Cell().Element(HeaderStyle).Text("مالیات حقوق").SemiBold();
+                        h.Cell().Element(HeaderStyle).Text("مانده قابل پرداخت").SemiBold();
                     });
 
                     // ردیف‌های پرسنل
@@ -128,15 +136,19 @@ namespace Safir.Server.Reports
                         table.Cell().Element(Center).Text(emp.NationalCode).FontSize(7);
                         table.Cell().Element(Center).Text(emp.InsuranceCode).FontSize(7);
                         table.Cell().Element(Right).Text(emp.JobTitle).FontSize(7);
+                        table.Cell().Element(Center).Text(emp.HireDate).FontSize(7);
+                        table.Cell().Element(Center).Text(emp.FireDate).FontSize(7);
                         table.Cell().Element(Center).Text(emp.WorkDays.ToString("0.##", FaCulture));
-                        table.Cell().Element(Center).Text(Money(emp.DailyWage));
+                        table.Cell().Element(Center).Text(Money(emp.DailyBaseWage));
+                        table.Cell().Element(Center).Text(Money(emp.DailySeniority));
+                        table.Cell().Element(Center).Text(Money(emp.TotalDailyWage));
                         table.Cell().Element(Center).Text(Money(emp.MonthlyWage));
                         table.Cell().Element(Center).Text(Money(emp.OtherSubjectBenefits));
-                        table.Cell().Element(Center).Text(Money(emp.MaritalAllowance));
-                        table.Cell().Element(Center).Text(Money(emp.SeniorityBase));
                         table.Cell().Element(Center).Text(Money(emp.TotalSubjectToInsurance)).SemiBold();
                         table.Cell().Element(Center).Text(Money(emp.TotalGrossPay));
                         table.Cell().Element(Center).Text(Money(emp.WorkerPremium)).SemiBold();
+                        table.Cell().Element(Center).Text(Money(emp.TaxAmount));
+                        table.Cell().Element(Center).Text(Money(emp.PayableBalance)).SemiBold();
                     }
 
                     // ردیف جمع در پایین جدول (تجمعی کل صفحات)
@@ -145,16 +157,18 @@ namespace Safir.Server.Reports
                         static IContainer FooterStyle(IContainer c) =>
                             c.Border(1).BorderColor(Colors.Black).Background(Colors.Grey.Lighten4).Padding(2).AlignCenter().AlignMiddle();
 
-                        f.Cell().ColumnSpan(5).Element(FooterStyle).AlignRight().PaddingRight(5).Text("جمع کل (ریال):").SemiBold();
+                        f.Cell().ColumnSpan(7).Element(FooterStyle).AlignRight().PaddingRight(5).Text("جمع کل (ریال):").SemiBold();
                         f.Cell().Element(FooterStyle).Text(_data.TotalWorkDays.ToString("0.##", FaCulture)).SemiBold();
-                        f.Cell().Element(FooterStyle).Text("-"); // روزانه جمع ندارد
+                        f.Cell().Element(FooterStyle).Text("-"); // پایه مزد روزانه جمع ندارد
+                        f.Cell().Element(FooterStyle).Text("-"); // پایه سنوات روزانه جمع ندارد
+                        f.Cell().Element(FooterStyle).Text("-"); // دستمزد روزانه کل جمع ندارد
                         f.Cell().Element(FooterStyle).Text(Money(_data.TotalMonthlyWage)).SemiBold();
                         f.Cell().Element(FooterStyle).Text(Money(_data.TotalOtherBenefits)).SemiBold();
-                        f.Cell().Element(FooterStyle).Text(Money(_data.TotalMaritalAllowance)).SemiBold();
-                        f.Cell().Element(FooterStyle).Text(Money(_data.TotalSeniorityBase)).SemiBold();
                         f.Cell().Element(FooterStyle).Text(Money(_data.TotalSubjectToInsurance)).Bold();
                         f.Cell().Element(FooterStyle).Text(Money(_data.TotalGrossPay)).SemiBold();
                         f.Cell().Element(FooterStyle).Text(Money(_data.TotalWorkerPremium)).Bold();
+                        f.Cell().Element(FooterStyle).Text(Money(_data.TotalTaxAmount)).SemiBold();
+                        f.Cell().Element(FooterStyle).Text(Money(_data.TotalPayableBalance)).Bold();
                     });
                 });
 

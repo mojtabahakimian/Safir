@@ -12,19 +12,27 @@ namespace Safir.Shared.Models.Salary.Reports
         public string FatherName { get; set; } = string.Empty;
         public string JobTitle { get; set; } = string.Empty;
 
+        // تاریخ‌ها
+        public string HireDate { get; set; } = string.Empty;  // تاریخ شروع به کار
+        public string FireDate { get; set; } = string.Empty;  // تاریخ ترک کار
+
         // کارکرد
         public decimal WorkDays { get; set; }
 
-        // مبالغ
-        public long DailyWage { get; set; }
-        public long MonthlyWage { get; set; }
-        public long OtherSubjectBenefits { get; set; } // مزایای مشمول غیر از تاهل و سنوات
-        public long MaritalAllowance { get; set; }     // حق تاهل (قانون 1405)
-        public long SeniorityBase { get; set; }        // پایه سنوات (قانون 1405)
+        // مبالغ (اسمی)
+        public long DailyBaseWage { get; set; }   // پایه مزد روزانه (بدون سنوات)
+        public long DailySeniority { get; set; }  // پایه سنوات روزانه
+        public long TotalDailyWage { get; set; }  // دستمزد روزانه کل = پایه مزد + پایه سنوات
+        public long MonthlyWage { get; set; }     // دستمزد ماهانه = دستمزد روزانه کل × روز کارکرد
+        public long OtherSubjectBenefits { get; set; } // سایر مزایای مشمول = HOME + GROCERY + FAMILY_ALLOW + ...
+        public long MaritalAllowance { get; set; }     // حق تاهل (فقط داخل سایر مزایای مشمول)
+        public long SeniorityBase { get; set; }        // پایه سنوات ماهانه (داخل دستمزد ماهانه)
 
-        public long TotalSubjectToInsurance { get; set; } // جمع مشمول
-        public long TotalGrossPay { get; set; }           // جمع ناخالص
+        public long TotalSubjectToInsurance { get; set; } // جمع دستمزد و مزایای مشمول
+        public long TotalGrossPay { get; set; }           // جمع ناخالص (اسمی)
         public long WorkerPremium { get; set; }           // حق بیمه سهم کارگر (7%)
+        public long TaxAmount { get; set; }               // مالیات حقوق
+        public long PayableBalance { get; set; }          // مانده قابل پرداخت
     }
 
     public class InsuranceReportDto
@@ -47,6 +55,8 @@ namespace Safir.Shared.Models.Salary.Reports
         public long TotalSubjectToInsurance => Rows.Sum(x => x.TotalSubjectToInsurance);
         public long TotalGrossPay => Rows.Sum(x => x.TotalGrossPay);
         public long TotalWorkerPremium => Rows.Sum(x => x.WorkerPremium);
+        public long TotalTaxAmount => Rows.Sum(x => x.TaxAmount);
+        public long TotalPayableBalance => Rows.Sum(x => x.PayableBalance);
 
         public long TotalEmployerPremium => (long)(TotalSubjectToInsurance * 0.20m);
         public long TotalUnemploymentPremium => (long)(TotalSubjectToInsurance * 0.03m);
@@ -83,6 +93,8 @@ namespace Safir.Shared.Models.Salary.Reports
         public string PER_NATCOD { get; set; } = "";
         public string DSW_OCP { get; set; } = "";
         public int DSW_DD { get; set; }
+        public string DSW_SDATE { get; set; } = "";
+        public string DSW_EDATE { get; set; } = "";
         public long DSW_ROOZ { get; set; }
         public long DSW_MAH { get; set; }
         public long DSW_MAZ { get; set; }
