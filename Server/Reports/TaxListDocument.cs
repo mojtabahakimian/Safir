@@ -1,143 +1,51 @@
-﻿using Microsoft.AspNetCore.Hosting;
-using QuestPDF.Fluent;
+﻿using QuestPDF.Fluent;
 using QuestPDF.Helpers;
 using QuestPDF.Infrastructure;
 using Safir.Shared.Models.Salary.Reports;
 using System.Globalization;
 
-namespace Safir.Server.Reports
+namespace Safir.Server.Reports;
+
+public sealed class TaxListDocument : IDocument
 {
-    public class TaxListDocument : IDocument
+    private readonly TaxReportDto _data;
+    private static readonly CultureInfo FaCulture = new("fa-IR");
+    private const string Font = "IRANYekanFN";
+    public TaxListDocument(TaxReportDto data) => _data = data;
+    public DocumentMetadata GetMetadata() => DocumentMetadata.Default;
+
+    public void Compose(IDocumentContainer container) => container.Page(page =>
     {
-        private readonly TaxReportDto _data;
-        private const string PersianFontName = "IRANYekanFN";
-        private static readonly CultureInfo FaCulture = new CultureInfo("fa-IR");
-
-        public TaxListDocument(TaxReportDto data)
+        page.Size(PageSizes.A3.Landscape());
+        page.Margin(8, Unit.Millimetre);
+        page.DefaultTextStyle(x => x.FontFamily(Font).FontSize(7));
+        page.ContentFromRightToLeft();
+        page.Header().Column(c =>
         {
-            _data = data;
-        }
-
-        public DocumentMetadata GetMetadata() => DocumentMetadata.Default;
-
-        public void Compose(IDocumentContainer container)
+            c.Item().AlignCenter().Text("لیست مالیات بر درآمد حقوق کارکنان").FontSize(14).Bold();
+            c.Item().Text($"کارگاه: {_data.WorkshopName} | کارفرما: {_data.EmployerName} | شناسه مالیاتی: {_data.TaxCode} | سال: {_data.PeriodYear} | ماه: {_data.PeriodMonthName}");
+        });
+        page.Content().PaddingTop(6).Table(table =>
         {
-            container.Page(page =>
+            table.ColumnsDefinition(c => { c.ConstantColumn(22); c.RelativeColumn(2.3f); for (var i = 0; i < 13; i++) c.RelativeColumn(1.25f); });
+            table.Header(h =>
             {
-                page.Size(PageSizes.A4.Portrait());
-                page.Margin(1, Unit.Centimetre);
-                page.PageColor(Colors.White);
-                page.DefaultTextStyle(x => x.FontSize(9).FontFamily(PersianFontName));
-                page.ContentFromRightToLeft();
-
-                page.Header().Element(ComposeHeader);
-                page.Content().Element(ComposeContent);
-                page.Footer().Element(ComposeFooter);
+                foreach (var title in new[] { "ردیف", "نام و نام خانوادگی", "شروع کار", "ترک کار", "پایه مزد روزانه", "پایه سنوات روزانه", "دستمزد روزانه کل", "دستمزد ماهانه", "سایر مزایای مشمول", "جمع دستمزد و مزایای مشمول", "جمع ناخالص", "بیمه سهم کارگر", "مالیات حقوق", "مانده قابل پرداخت", "روز" })
+                    h.Cell().Element(Header).Text(title).SemiBold();
             });
-        }
-
-        private void ComposeHeader(IContainer container)
-        {
-            container.PaddingBottom(10).Column(col =>
+            foreach (var e in _data.Rows)
             {
-                col.Item().Row(row =>
-                {
-                    row.RelativeItem().AlignRight().Text($"سال: {_data.PeriodYear}").FontSize(10).SemiBold();
-                    row.RelativeItem(2).AlignCenter().Text("لیست مالیات بر درآمد حقوق کارکنان").FontSize(14).Bold();
-                    row.RelativeItem().AlignLeft().Text($"ماه: {_data.PeriodMonthName}").FontSize(10).SemiBold();
-                });
+                Cell(e.RowIndex.ToString()); Cell(e.FullName); Cell(e.HireDate); Cell(e.FireDate);
+                Cell(Money(e.BaseDailyWage)); Cell(Money(e.SeniorityDailyBase)); Cell(Money(e.TotalDailyWage)); Cell(Money(e.MonthlyWage));
+                Cell(Money(e.OtherSubjectBenefits)); Cell(Money(e.TotalSubject)); Cell(Money(e.GrossPay)); Cell(Money(e.WorkerPremium));
+                Cell(Money(e.TaxAmount)); Cell(Money(e.NetPayable)); Cell(e.WorkDays.ToString("0.##", FaCulture));
+            }
+            void Cell(string value) => table.Cell().Element(Body).Text(value);
+        });
+        page.Footer().AlignCenter().Text(t => { t.Span("صفحه "); t.CurrentPageNumber(); t.Span(" از "); t.TotalPages(); });
+    });
 
-                col.Item().PaddingVertical(5).LineHorizontal(1).LineColor(Colors.Grey.Medium);
-
-                col.Item().Row(row =>
-                {
-                    row.RelativeItem(2).Text($"نام کارگاه: {_data.WorkshopName}").SemiBold();
-                    row.RelativeItem(2).Text($"نام کارفرما: {_data.EmployerName}");
-                    row.RelativeItem().Text($"کد اقتصادی/شناسه: {_data.TaxCode}").SemiBold();
-                });
-            });
-        }
-
-        private void ComposeContent(IContainer container)
-        {
-            container.Column(mainCol =>
-            {
-                mainCol.Item().Table(table =>
-                {
-                    table.ColumnsDefinition(c =>
-                    {
-                        c.ConstantColumn(25); // ردیف
-                        c.RelativeColumn(3);  // نام
-                        c.RelativeColumn(2);  // کد ملی
-                        c.RelativeColumn(2);  // شغل
-                        c.ConstantColumn(35); // روز
-                        c.RelativeColumn(2.5f); // ناخالص
-                        c.RelativeColumn(2.5f); // مشمول مالیات
-                        c.RelativeColumn(2.5f); // مالیات
-                    });
-
-                    table.Header(h =>
-                    {
-                        static IContainer HeaderStyle(IContainer c) =>
-                            c.Border(1).BorderColor(Colors.Black).Background(Colors.Grey.Lighten3).Padding(3).AlignCenter().AlignMiddle();
-
-                        h.Cell().Element(HeaderStyle).Text("ردیف").SemiBold();
-                        h.Cell().Element(HeaderStyle).Text("نام و نام‌خانوادگی").SemiBold();
-                        h.Cell().Element(HeaderStyle).Text("کد ملی").SemiBold();
-                        h.Cell().Element(HeaderStyle).Text("شغل").SemiBold();
-                        h.Cell().Element(HeaderStyle).Text("کارکرد").SemiBold();
-                        h.Cell().Element(HeaderStyle).Text("درآمد ناخالص").SemiBold();
-                        h.Cell().Element(HeaderStyle).Text("مشمول مالیات").SemiBold();
-                        h.Cell().Element(HeaderStyle).Text("مالیات کسر شده").SemiBold();
-                    });
-
-                    foreach (var emp in _data.Rows)
-                    {
-                        static IContainer CellStyle(IContainer c) => c.Border(1).BorderColor(Colors.Grey.Medium).Padding(3).AlignMiddle();
-                        static IContainer Center(IContainer c) => CellStyle(c).AlignCenter();
-                        static IContainer Right(IContainer c) => CellStyle(c).AlignRight();
-
-                        table.Cell().Element(Center).Text(emp.RowIndex.ToString());
-                        table.Cell().Element(Right).Text(emp.FullName).FontSize(8);
-                        table.Cell().Element(Center).Text(emp.NationalCode).FontSize(8);
-                        table.Cell().Element(Right).Text(emp.JobTitle).FontSize(8);
-                        table.Cell().Element(Center).Text(emp.WorkDays.ToString("0.##", FaCulture));
-                        table.Cell().Element(Center).Text(Money(emp.GrossPay));
-                        table.Cell().Element(Center).Text(Money(emp.TaxBase));
-                        table.Cell().Element(Center).Text(Money(emp.TaxAmount)).SemiBold();
-                    }
-
-                    table.Footer(f =>
-                    {
-                        static IContainer FooterStyle(IContainer c) =>
-                            c.Border(1).BorderColor(Colors.Black).Background(Colors.Grey.Lighten4).Padding(3).AlignCenter().AlignMiddle();
-
-                        f.Cell().ColumnSpan(4).Element(FooterStyle).AlignRight().PaddingRight(5).Text("جمع کل (ریال):").SemiBold();
-                        f.Cell().Element(FooterStyle).Text(_data.TotalWorkDays.ToString("0.##", FaCulture)).SemiBold();
-                        f.Cell().Element(FooterStyle).Text(Money(_data.TotalGrossPay)).SemiBold();
-                        f.Cell().Element(FooterStyle).Text(Money(_data.TotalTaxBase)).SemiBold();
-                        f.Cell().Element(FooterStyle).Text(Money(_data.TotalTaxAmount)).Bold();
-                    });
-                });
-
-                mainCol.Item().PaddingTop(25).Row(row =>
-                {
-                    row.RelativeItem().AlignCenter().Text("مهر و امضای کارفرما / مدیر مالی").SemiBold();
-                });
-            });
-        }
-
-        private void ComposeFooter(IContainer container)
-        {
-            container.AlignCenter().Text(text =>
-            {
-                text.Span("صفحه ").FontSize(8);
-                text.CurrentPageNumber().FontSize(8);
-                text.Span(" از ").FontSize(8);
-                text.TotalPages().FontSize(8);
-            });
-        }
-
-        private static string Money(long value) => value == 0 ? "0" : value.ToString("N0", FaCulture);
-    }
+    private static IContainer Header(IContainer c) => c.Border(1).Background(Colors.Grey.Lighten3).Padding(2).AlignCenter().AlignMiddle();
+    private static IContainer Body(IContainer c) => c.Border(1).BorderColor(Colors.Grey.Medium).Padding(2).AlignCenter().AlignMiddle();
+    private static string Money(long value) => value.ToString("N0", FaCulture);
 }

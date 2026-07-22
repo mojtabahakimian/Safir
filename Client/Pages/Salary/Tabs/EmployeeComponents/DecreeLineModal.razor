@@ -113,6 +113,21 @@
                                                   Disabled="@IsDecreeConfirmed" />
                             }
                         </div>
+                        @if (SelectedDef?.ITEM_CODE == "SANOVAT_PAYE")
+                        {
+                            <div class="form-field">
+                                <label>پایه سنوات روزانه اسمی (ریال)</label>
+                                <Pay2NumericInput @bind-Value="NominalSeniorityStr" MaxLength="16" Direction="ltr"
+                                                  InputMode="Pay2NumericInput.NumericInputMode.None" MaxDecimalPlaces="0"
+                                                  IsDigitGroupActive="true" ThreeTwoZero="true" Disabled="@IsDecreeConfirmed" />
+                            </div>
+                            <div class="form-field">
+                                <label>پایه سنوات روزانه رسمی (ریال)</label>
+                                <Pay2NumericInput @bind-Value="OfficialSeniorityStr" MaxLength="16" Direction="ltr"
+                                                  InputMode="Pay2NumericInput.NumericInputMode.None" MaxDecimalPlaces="0"
+                                                  IsDigitGroupActive="true" ThreeTwoZero="true" Disabled="@IsDecreeConfirmed" />
+                            </div>
+                        }
                         @if (!IsShiftPctItem && IsMonthlyBasisSelected)
                         {
                             <div class="form-field">
@@ -264,6 +279,8 @@
     Pay2DecreeLineDto CurrentLine = new();
 
     string? CurrentAmountStr;
+    string? NominalSeniorityStr;
+    string? OfficialSeniorityStr;
     string? CurrentPercentStr;
     string? PercentHint;
     string? ShiftHint;
@@ -345,6 +362,8 @@
     {
         CurrentLine = new Pay2DecreeLineDto();
         CurrentAmountStr = null;
+        NominalSeniorityStr = null;
+        OfficialSeniorityStr = null;
         CurrentPercentStr = null;
         PercentHint = null;
         ShiftHint = null;
@@ -440,6 +459,8 @@
             ITEM_ID = item.ITEM_ID,
             ITEM_NAME = item.ITEM_NAME,
             AMOUNT = item.AMOUNT,
+            NOMINAL_AMOUNT_OV = item.NOMINAL_AMOUNT_OV,
+            OFFICIAL_AMOUNT_OV = item.OFFICIAL_AMOUNT_OV,
 
             // این سه مقدار اصل کاری هستند که باید منتقل شوند
             INS_OV = item.INS_OV,
@@ -451,6 +472,8 @@
         CurrentAmountStr = IsShiftPctItem
             ? CurrentLine.AMOUNT.ToString(System.Globalization.CultureInfo.InvariantCulture)
             : CurrentLine.AMOUNT.ToString("0", System.Globalization.CultureInfo.InvariantCulture);
+        NominalSeniorityStr = item.NOMINAL_AMOUNT_OV?.ToString("0", System.Globalization.CultureInfo.InvariantCulture);
+        OfficialSeniorityStr = item.OFFICIAL_AMOUNT_OV?.ToString("0", System.Globalization.CultureInfo.InvariantCulture);
         CurrentPercentStr = null;
         PercentHint = null;
         ShiftHint = null;
@@ -467,16 +490,36 @@
             Snackbar.Add("انتخاب آیتم حقوقی الزامی است.", MudBlazor.Severity.Warning); return;
         }
 
-        if (!decimal.TryParse(CurrentAmountStr?.Replace(",", ""),
-                System.Globalization.NumberStyles.Number,
-                System.Globalization.CultureInfo.InvariantCulture,
-                out decimal amt) || amt <= 0)
-        {
-            Snackbar.Add("مبلغ وارد شده معتبر نیست.", MudBlazor.Severity.Warning); return;
-        }
-
         CurrentLine.DEC_ID = DecreeId;
-        CurrentLine.AMOUNT = amt;
+        if (SelectedDef?.ITEM_CODE == "SANOVAT_PAYE")
+        {
+            if (!decimal.TryParse(NominalSeniorityStr?.Replace(",", ""),
+                    System.Globalization.NumberStyles.Number,
+                    System.Globalization.CultureInfo.InvariantCulture,
+                    out var nominalSeniority) || nominalSeniority < 0 ||
+                !decimal.TryParse(OfficialSeniorityStr?.Replace(",", ""),
+                    System.Globalization.NumberStyles.Number,
+                    System.Globalization.CultureInfo.InvariantCulture,
+                    out var officialSeniority) || officialSeniority < 0)
+            {
+                Snackbar.Add("مقادیر اسمی و رسمی پایه سنوات معتبر نیستند.", MudBlazor.Severity.Warning); return;
+            }
+            CurrentLine.NOMINAL_AMOUNT_OV = nominalSeniority;
+            CurrentLine.OFFICIAL_AMOUNT_OV = officialSeniority;
+            CurrentLine.AMOUNT = officialSeniority;
+        }
+        else
+        {
+            if (!decimal.TryParse(CurrentAmountStr?.Replace(",", ""),
+                    System.Globalization.NumberStyles.Number,
+                    System.Globalization.CultureInfo.InvariantCulture,
+                    out var amount) || amount <= 0)
+            {
+                Snackbar.Add("مبلغ وارد شده معتبر نیست.", MudBlazor.Severity.Warning); return;
+            }
+
+            CurrentLine.AMOUNT = amount;
+        }
 
         IsSaving = true;
         try

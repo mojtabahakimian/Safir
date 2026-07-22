@@ -7,7 +7,6 @@ using Safir.Shared.Interfaces;
 using Stimulsoft.Base;
 using Stimulsoft.Report;
 using System.Text;
-using System.Text.RegularExpressions;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -94,76 +93,7 @@ catch (Exception ex)
 }
 #endregion
 
-// =================================================================
-#region Database Migration (Run Startup Scripts)
-
-// ما یک "scope" جدید می‌سازیم تا بتوانیم به سرویس‌های Scoped مانند IDatabaseService دسترسی پیدا کنیم
-using (var scope = app.Services.CreateScope())
-{
-    var services = scope.ServiceProvider;
-    try
-    {
-        var logger = services.GetRequiredService<ILogger<Program>>();
-        var dbService = services.GetRequiredService<IDatabaseService>();
-        var env = services.GetRequiredService<IWebHostEnvironment>();
-
-        // 1. آدرس فایل های اسکریپت را پیدا کنید
-        string[] scriptsToRun = new string[]
-        {
-            "001_CreateEvaporationReportsTable.sql",
-            "002_CreateBugReportsTable.sql",
-            "003_AlterBugReportsAddMissingColumns.sql",
-            "004_AlterBugReportsAddUserNote.sql",
-            //"005_CreateBugReportCommentsTable.sql",
-            //"006_Pay2_HourlyCalcBasis.sql",
-            //"007_Pay2_HourlyLeaveType.sql",
-            //"008_DecreeLineAmountDecimal.sql",
-            //"009_Pay2_ShiftModePerScope.sql",
-        };
-
-        foreach (var scriptName in scriptsToRun)
-        {
-            string scriptPath = Path.Combine(env.ContentRootPath, "Scripts", scriptName);
-
-            if (File.Exists(scriptPath))
-            {
-                logger.LogInformation("Migration Script found: {ScriptPath}", scriptPath);
-
-                // 2. محتوای اسکریپت را بخوانید
-                string sqlScript = await File.ReadAllTextAsync(scriptPath);
-
-                // 3. مهم: اسکریپت را بر اساس دستور "GO" جدا کنید
-                var scriptBatches = Regex.Split(sqlScript, @"^\s*GO\s*$",
-                                            RegexOptions.Multiline | RegexOptions.IgnoreCase | RegexOptions.IgnorePatternWhitespace);
-
-                // 4. هر بخش (batch) را جداگانه اجرا کنید
-                foreach (var batch in scriptBatches)
-                {
-                    if (string.IsNullOrWhiteSpace(batch)) continue;
-
-                    await dbService.DoExecuteSQLAsync(batch);
-                    logger.LogInformation("Successfully executed migration batch.");
-                }
-
-                logger.LogInformation("Database migration script '{ScriptName}' executed successfully.", scriptName);
-            }
-            else
-            {
-                logger.LogWarning("Database migration script not found at: {ScriptPath}", scriptPath);
-            }
-        }
-    }
-    catch (Exception ex)
-    {
-        //var logger = services.GetRequiredService<ILogger<Program>>();
-        //logger.LogCritical(ex, "Failed to execute database migration script at startup. The application will stop.");
-        //// اگر اسکریپت دیتابیس اجرا نشود، برنامه نباید بالا بیاید
-        //throw;
-    }
-}
-#endregion
-// =================================================================
-
+// Database upgrades are handled exclusively by the separate updater.
 
 // Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())
