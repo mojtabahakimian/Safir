@@ -1545,6 +1545,8 @@ BEGIN
    THROW 51102,N'Opt-in این دیتابیس فعال نیست؛ ابتدا Preview و سپس مقدار APPROVED:<DatabaseName> را با تأیید صریح ثبت کنید.',1;
   IF NOT EXISTS(SELECT 1 FROM dbo.PAY2_CONFIG WITH(UPDLOCK,HOLDLOCK) WHERE CFG_KEY=N'INS_NON_SUBJECT_EFFECTIVE_FROM')
    THROW 51106,N'تنظیم تاریخ اثر نصب نشده است؛ ابتدا Updater را کامل اجرا کنید.',1;
+  IF (SELECT COUNT(*) FROM dbo.PAY2_ITEM_DEF WITH(UPDLOCK,HOLDLOCK) WHERE ITEM_CODE IN('SHIFT','OT_NORMAL','OT_HOLIDAY','OT_ADMIN'))<>4
+   THROW 51107,N'هر چهار آیتم SHIFT، OT_NORMAL، OT_HOLIDAY و OT_ADMIN باید پیش از Apply موجود باشند.',1;
 
   IF EXISTS
   (
@@ -2036,7 +2038,8 @@ BEGIN
         WHERE AV.PER_ID = @PER_ID AND AV.EMP_ID = @EMP_ID AND AV.VALUE <> 0
           AND NOT EXISTS (SELECT 1 FROM @ItemCalc X WHERE X.ITEM_ID = AV.ITEM_ID);
 
-        -- قاعده مشتری تاریخ‌دار است: بازمحاسبه ماه‌های قبل، مشمولیت قبلی Snapshot را حفظ می‌کند.
+        -- برای دوره‌های قبل از تاریخ اثر، قاعده اختصاصی مشتری اعمال نمی‌شود.
+        -- Runهای نهایی نیز طبق کنترل موتور قابل بازمحاسبه نیستند.
         IF @INS_NON_SUBJECT_EFFECTIVE_FROM>0 AND @PERIOD_DATE/100>=@INS_NON_SUBJECT_EFFECTIVE_FROM/100
             UPDATE @ItemCalc SET INS_SUBJECT=0
             WHERE ITEM_CODE IN('SHIFT','OT_NORMAL','OT_HOLIDAY','OT_ADMIN');
