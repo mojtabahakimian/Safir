@@ -51,18 +51,20 @@ public sealed class InsuranceListDocument : IDocument
         {
             table.ColumnsDefinition(c =>
             {
-                c.ConstantColumn(22); c.RelativeColumn(2.5f); c.RelativeColumn(1.25f); c.RelativeColumn(1.25f); c.RelativeColumn(1.5f);
+                c.ConstantColumn(22); c.RelativeColumn(2.5f); c.RelativeColumn(1.25f); c.RelativeColumn(1.1f); c.RelativeColumn(1.1f); c.RelativeColumn(1.25f); c.RelativeColumn(1.5f);
+                c.ConstantColumn(16); c.ConstantColumn(16);
                 c.RelativeColumn(1.05f); c.RelativeColumn(1.05f); c.ConstantColumn(28);
                 for (var i = 0; i < 10; i++) c.RelativeColumn(1.25f);
             });
             table.Header(h =>
             {
-                foreach (var title in new[] { "ردیف", "نام و نام خانوادگی", "کد ملی", "شماره بیمه", "شغل", "شروع کار", "ترک کار", "روز", "پایه مزد روزانه", "پایه سنوات روزانه", "دستمزد روزانه کل", "دستمزد ماهانه", "سایر مزایای مشمول", "جمع دستمزد و مزایای مشمول", "جمع ناخالص", "بیمه سهم کارگر", "مالیات حقوق", "مانده قابل پرداخت" })
+                foreach (var title in new[] { "ردیف", "نام و نام خانوادگی", "کد ملی", "شماره شناسنامه", "نام پدر", "شماره بیمه", "شغل", "مرد", "زن", "شروع کار", "ترک کار", "روز", "پایه مزد روزانه", "پایه سنوات روزانه", "دستمزد روزانه کل", "دستمزد ماهانه", "سایر مزایای مشمول", "جمع دستمزد و مزایای مشمول", "جمع ناخالص", "بیمه سهم کارگر", "مالیات حقوق", "مانده قابل پرداخت" })
                     h.Cell().Element(Header).Text(title).SemiBold();
             });
             foreach (var e in _data.Rows)
             {
-                Cell(e.RowIndex.ToString()); Cell(e.FullName, false); Cell(e.NationalCode); Cell(e.InsuranceCode); Cell(e.JobTitle, false);
+                Cell(e.RowIndex.ToString()); Cell(e.FullName, false); Cell(e.NationalCode); Cell(e.IdNumber); Cell(e.FatherName, false); Cell(e.InsuranceCode); Cell(e.JobTitle, false);
+                GenderCell(e.Gender == 1); GenderCell(e.Gender != 1);
                 Cell(e.HireDate); Cell(e.FireDate); Cell(e.WorkDays.ToString("0.##", FaCulture));
                 Cell(Money(e.BaseDailyWage)); Cell(Money(e.SeniorityDailyBase)); Cell(Money(e.TotalDailyWage)); Cell(Money(e.MonthlyWage));
                 Cell(Money(e.OtherSubjectBenefits)); Cell(Money(e.TotalSubjectToInsurance)); Cell(Money(e.TotalGrossPay));
@@ -70,7 +72,7 @@ public sealed class InsuranceListDocument : IDocument
             }
             table.Footer(f =>
             {
-                f.Cell().ColumnSpan(7).Element(Footer).AlignRight().PaddingRight(5).Text("جمع کل (ریال):").SemiBold();
+                f.Cell().ColumnSpan(11).Element(Footer).AlignRight().PaddingRight(5).Text("جمع کل (ریال):").SemiBold();
                 f.Cell().Element(Footer).Text(_data.TotalWorkDays.ToString("0.##", FaCulture)).SemiBold();
                 f.Cell().Element(Footer).Text("-"); f.Cell().Element(Footer).Text("-"); f.Cell().Element(Footer).Text("-");
                 f.Cell().Element(Footer).Text(Money(_data.TotalMonthlyWage)); f.Cell().Element(Footer).Text(Money(_data.TotalOtherBenefits));
@@ -79,6 +81,12 @@ public sealed class InsuranceListDocument : IDocument
                 f.Cell().Element(Footer).Text(Money(_data.TotalNetPayable)).Bold();
             });
             void Cell(string value, bool center = true) => table.Cell().Element(center ? BodyCenter : BodyRight).Text(value);
+            void GenderCell(bool on)
+            {
+                var cell = table.Cell().Element(BodyCenter);
+                if (on) cell.Width(7).Height(7).Background(Colors.Black);
+                else cell.Text("");
+            }
         });
 
         main.Item().PaddingTop(10).Row(row =>

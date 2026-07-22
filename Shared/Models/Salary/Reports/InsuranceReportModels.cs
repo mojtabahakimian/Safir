@@ -8,8 +8,10 @@ namespace Safir.Shared.Models.Salary.Reports
         public int RowIndex { get; set; }
         public string FullName { get; set; } = string.Empty;
         public string NationalCode { get; set; } = string.Empty;
+        public string IdNumber { get; set; } = string.Empty;
         public string InsuranceCode { get; set; } = string.Empty;
         public string FatherName { get; set; } = string.Empty;
+        public byte Gender { get; set; }
         public string JobTitle { get; set; } = string.Empty;
 
         // کارکرد
