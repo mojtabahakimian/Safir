@@ -360,9 +360,9 @@ namespace Safir.Server.Reports
             ws.Cell(r, BD_HOURS).Value = hours;
 
             // ── پرچم‌های دو-ریلی (منطبق با SP_PAY2_CALC_RUN) ──
-            // ناخالص از AMOUNT: وقتی هر دو حقوق هست BASE_SAL_B کنار می‌رود؛ اگر فقط رسمی باشد، خودش لحاظ می‌شود.
+            // ناخالص پرداختی از AMOUNT (ریلِ رسمی، منطبق با SP): وقتی هر دو حقوق هست BASE_SAL (اسمی) کنار می‌رود و BASE_SAL_B (رسمی) لحاظ می‌شود.
             bool isEarnItem = l.ITEM_TYPE == 1 || l.ITEM_TYPE == 2;
-            bool earn = isEarnItem && !(hasBothSal && isOfficialSal);
+            bool earn = isEarnItem && !(hasBothSal && isNominalSal);
             // بیمه و مالیات از INS_AMOUNT: وقتی هر دو حقوق هست، دقیقاً یک ریلِ پایه لحاظ می‌شود:
             // رسمی (BASE_SAL_B) اگر مشمول و غیرصفر باشد، وگرنه fallback به اسمی (BASE_SAL).
             bool insDropNominal  = hasBothSal &&  insOfficialValid;
@@ -408,13 +408,13 @@ namespace Safir.Server.Reports
             if (code == "SHIFT")
             {
                 bool fixedMode = string.Equals(l.EFF_SHIFT_MODE, "FIXED", StringComparison.OrdinalIgnoreCase);
-                // پرداخت روی ریلِ اسمی (روزِ پرداخت + پایه روزانه اسمی)، بیمه روی ریلِ رسمی (روزِ بیمه + پایه روزانه رسمی)
+                // پرداخت روی ریلِ رسمی (روزِ پرداخت + پایه روزانه رسمی)، بیمه روی ریلِ اسمی (روزِ بیمه + پایه روزانه اسمی) — منطبق با SP
                 string amt = fixedMode
                     ? $"TRUNC({I}*(({J}*{N})/{M}))"
-                    : $"ROUND({Rn}*({J}*{N})*{I}/100,0)";
+                    : $"ROUND({R}*({J}*{N})*{I}/100,0)";
                 string ins = fixedMode
                     ? $"TRUNC({I}*(({K}*{N})/{M}))"
-                    : $"ROUND({R}*({K}*{N})*{I}/100,0)";
+                    : $"ROUND({Rn}*({K}*{N})*{I}/100,0)";
                 return (amt, ins);
             }
 
@@ -444,7 +444,7 @@ namespace Safir.Server.Reports
         private static string DecreeDescFormula(Pay2AuditDecreeLineRow l, int r)
         {
             string I = A(BD_RATE, r), J = A(BD_PDAYS, r), M = A(BD_MDAYS, r), N = A(BD_PRORATE, r),
-                   O = A(BD_HOURS, r), Rb = A(BD_DNOM, r), Z = A(BD_AMT, r);
+                   O = A(BD_HOURS, r), Rb = A(BD_DBASE, r), Z = A(BD_AMT, r);
             string Num(string cell) => $"TEXT({cell},\"#,##0\")";
             string Fac(string cell) => $"TEXT({cell},\"0.00\")";
             string code = l.ITEM_CODE.ToUpperInvariant();
@@ -503,15 +503,15 @@ namespace Safir.Server.Reports
             string codeCol = $"{Col(BD_ICODE)}:{Col(BD_ICODE)}";
             string sumBs(string salCode) => $"SUMIFS({bsCol},{empCol},{aEmp},{codeCol},\"{salCode}\")";
 
-            // ── ریلِ پرداخت: TOTAL_NOMINAL_BASE / DAYSB / OT_HOUR_BASE ──
-            // (اسمی → fallback رسمی)
-            string nomBase = hasBothSal ? sumBs("BASE_SAL") : $"({sumBs("BASE_SAL")}+{sumBs("BASE_SAL_B")})";
-            ws.Cell(r, BD_HOURLY).FormulaA1 = $"IF({V}=0,0,ROUND({nomBase}/{V}/CFG_OT_HOUR_BASE,2))";
-
-            // ── ریلِ بیمه: TOTAL_OFFICIAL_BASE / DAYS / OT_HOUR_BASE ──
+            // ── ریلِ پرداخت: TOTAL_OFFICIAL_BASE / DAYSB / OT_HOUR_BASE ── (منطبق با SP: @EFFECTIVE_HOURLY)
             // (رسمی → fallback اسمی)
-            string offBase = hasBothSal ? sumBs("BASE_SAL_B") : $"({sumBs("BASE_SAL")}+{sumBs("BASE_SAL_B")})";
-            ws.Cell(r, BD_HOURLY_OFF).FormulaA1 = $"IF({Vd}=0,0,ROUND({offBase}/{Vd}/CFG_OT_HOUR_BASE,2))";
+            string payBase = hasBothSal ? sumBs("BASE_SAL_B") : $"({sumBs("BASE_SAL")}+{sumBs("BASE_SAL_B")})";
+            ws.Cell(r, BD_HOURLY).FormulaA1 = $"IF({V}=0,0,ROUND({payBase}/{V}/CFG_OT_HOUR_BASE,2))";
+
+            // ── ریلِ بیمه: TOTAL_NOMINAL_BASE / DAYS / OT_HOUR_BASE ── (منطبق با SP: @OFFICIAL_HOURLY)
+            // (اسمی → fallback رسمی)
+            string insBase = hasBothSal ? sumBs("BASE_SAL") : $"({sumBs("BASE_SAL")}+{sumBs("BASE_SAL_B")})";
+            ws.Cell(r, BD_HOURLY_OFF).FormulaA1 = $"IF({Vd}=0,0,ROUND({insBase}/{Vd}/CFG_OT_HOUR_BASE,2))";
 
             ws.Cell(r, BD_EARN).Value = 1;
             ws.Cell(r, BD_INSF).Value = def.INS_SUBJECT ? 1 : 0;
@@ -541,7 +541,7 @@ namespace Safir.Server.Reports
             ws.Cell(r, BD_TYPE).Value = type;
             ws.Cell(r, BD_RATE).Value = value;
 
-            bool earn = (type == 1 || type == 2) && !code.Equals("BASE_SAL_B", StringComparison.OrdinalIgnoreCase);
+            bool earn = (type == 1 || type == 2) && !code.Equals("BASE_SAL", StringComparison.OrdinalIgnoreCase);
             ws.Cell(r, BD_EARN).Value = earn ? 1 : 0;
             ws.Cell(r, BD_INSF).Value = (ins && (type == 1 || type == 2)) ? 1 : 0;
             ws.Cell(r, BD_TAXF).Value = (tax && (type == 1 || type == 2)) ? 1 : 0;
