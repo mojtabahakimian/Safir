@@ -41,6 +41,7 @@ namespace Safir.Server.Services
             var lines = (await _db.DoGetDataSQLAsync<dynamic>(Pay2PayrollSnapshotQuery.Sql, new { runId }))
                 .Where(x => (byte)x.INS_TYPE != 3).ToList();
             ValidateLegalInsuranceSnapshots(lines);
+            ValidateInsuranceIdentities(lines);
 
             // ─── آماده‌سازی لیست‌های DBF ───
             var dskworList = new List<Dictionary<string, object>>();
@@ -91,7 +92,7 @@ namespace Safir.Server.Services
                     ["DSW_BDATE"] = line.BIRTH_DATE != null ? line.BIRTH_DATE.ToString() : "",
                     ["DSW_SEX"] = (byte)line.GENDER == 1 ? "مرد" : "زن",
                     ["DSW_NAT"] = (byte)line.NATIONALITY == 1 ? "ایران" : "اتباع",
-                    ["DSW_OCP"] = line.JOB_CODE?.ToString() ?? "000000",
+                    ["DSW_OCP"] = line.JOB_CODE.ToString(),
                     ["DSW_SDATE"] = DateInOccurrenceMonth(line.HIRE_DATE, periodDate),
                     ["DSW_EDATE"] = DateInOccurrenceMonth(line.FIRE_DATE, periodDate),
                     ["DSW_DD"] = (int)workDays,
@@ -109,6 +110,9 @@ namespace Safir.Server.Services
                 };
                 dskworList.Add(wor);
             }
+
+            if (dskworList.Count != lines.Count)
+                throw new InvalidOperationException("فایل بیمه قابل تولید نیست: تعداد رکوردهای DSKWOR با پرسنل واجد شرایط تراز نیست.");
 
             // اجزای حق بیمه دقیقاً از Snapshot همان Run خوانده می‌شوند.
             long totalKarf = lines.Sum(l => (long)l.INS_EMPLOYER_BASE);
@@ -182,7 +186,8 @@ namespace Safir.Server.Services
         // شماره بیمه در تامین اجتماعی باید دقیقاً ۱۰ کاراکتر باشد و معمولاً با صفرهای پیشرو پر می‌شود
         private static string PadInsuranceCode(string? code)
         {
-            if (string.IsNullOrWhiteSpace(code)) return "0000000000";
+            if (string.IsNullOrWhiteSpace(code))
+                throw new InvalidOperationException("شماره بیمه خالی است و جایگزینی با شماره ساختگی مجاز نیست.");
             return code.Trim().PadLeft(10, '0');
         }
 
@@ -210,6 +215,7 @@ namespace Safir.Server.Services
             var lines = (await _db.DoGetDataSQLAsync<dynamic>(Pay2PayrollSnapshotQuery.Sql, new { runId }))
                 .Where(x => (byte)x.INS_TYPE != 3).ToList();
             ValidateLegalInsuranceSnapshots(lines);
+            ValidateInsuranceIdentities(lines);
 
             long totalMash = 0, totalTotl = 0, totalWorkerIns = 0;
             long totalMarital = 0, totalSeniority = 0;
@@ -237,10 +243,10 @@ namespace Safir.Server.Services
 
                 result.WorList.Add(new DisketteWorDto
                 {
-                    DSW_ID1 = string.IsNullOrWhiteSpace(insCodeStr) ? "0000000000" : insCodeStr.Trim().PadLeft(10, '0'),
+                    DSW_ID1 = PadInsuranceCode(insCodeStr),
                     FULL_NAME = $"{line.LAST_NAME} {line.FIRST_NAME}",
                     PER_NATCOD = line.NATIONAL_CODE?.ToString() ?? "",
-                    DSW_OCP = line.JOB_CODE?.ToString() ?? "000000",
+                    DSW_OCP = line.JOB_CODE.ToString(),
                     DSW_DD = (int)workDays,
                     DSW_ROOZ = dailyWage,
                     DSW_MAH = monthlyWage,
@@ -274,6 +280,8 @@ namespace Safir.Server.Services
                 DSK_SPOUS = totalMarital.ToString()
             };
 
+            if (result.WorList.Count != lines.Count)
+                throw new InvalidOperationException("پیش‌نمایش بیمه ناقص است: تعداد رکوردهای DSKWOR با پرسنل واجد شرایط تراز نیست.");
             return result;
         }
 
@@ -300,25 +308,16 @@ namespace Safir.Server.Services
             int month = (int)((periodDate / 100) % 100);
             string wsCode = head.WS_CODE?.ToString() ?? "";
 
-            // 🚀 اصلاح شد: ADDRESS و POSTAL_CODE از کوئری حذف شدند
-            const string linesSql = @"
-                SELECT 
-                    RL.EMP_ID, ES.EMP_CODE, ES.NATIONAL_CODE, ES.FIRST_NAME, ES.LAST_NAME, ES.FATHER_NAME,
-                    ES.ID_NUMBER, ES.BIRTH_PLACE, ES.BIRTH_DATE, ES.NATIONALITY_SNAP NATIONALITY,
-                    ES.HIRE_DATE_SNAP HIRE_DATE, ES.FIRE_DATE_SNAP FIRE_DATE,
-                    ES.INS_CODE, ES.MOBILE, ES.MARITAL_SNAP MARITAL,
-                    ES.JOB_NAME_SNAP JOB_NAME,
-                    RL.NOMINAL_DAYS WORK_DAYS, RL.NOMINAL_GROSS GROSS_PAY, RL.INS_WORKER, RL.TAX_BASE, RL.TAX_AMOUNT
-                FROM PAY2_RUN_LINE RL
-                INNER JOIN PAY2_RUN_EMP_SNAPSHOT ES ON ES.RUN_ID=RL.RUN_ID AND ES.EMP_ID=RL.EMP_ID
-                WHERE RL.RUN_ID = @runId AND ES.TAX_EXEMPT_SNAP = 0
-                ORDER BY ES.LAST_NAME, ES.FIRST_NAME";
-
-            var lines = (await _db.DoGetDataSQLAsync<dynamic>(linesSql, new { runId })).ToList();
-            if (lines.Any(x => x.WORK_DAYS is null || x.GROSS_PAY is null))
+            var lines = (await _db.DoGetDataSQLAsync<dynamic>(Pay2PayrollSnapshotQuery.Sql, new { runId }))
+                .Where(x => !(bool)x.TAX_EXEMPT).ToList();
+            ValidateTaxIdentities(lines);
+            if (lines.Any(x => x.INSURANCE_DAYS is null || x.NOMINAL_GROSS is null))
                 throw new InvalidOperationException("خروجی مالیات ممکن نیست: Snapshot اسمی روزکرد/ناخالص در Run کامل نیست.");
             var missingNominalDetails = await _db.DoGetDataSQLAsyncSingle<int>(
-                "SELECT COUNT(*) FROM PAY2_RUN_DETAIL WHERE RUN_ID=@runId AND (NOMINAL_AMOUNT IS NULL OR ITEM_CODE_SNAP IS NULL OR ITEM_NAME_SNAP IS NULL OR CALC_BASIS_SNAP IS NULL OR INS_SUBJECT_AMOUNT IS NULL OR TAX_SUBJECT_AMOUNT IS NULL)", new { runId });
+                @"SELECT COUNT(*) FROM PAY2_RUN_DETAIL D INNER JOIN PAY2_RUN R ON R.RUN_ID=D.RUN_ID
+                  WHERE D.RUN_ID=@runId AND (D.NOMINAL_AMOUNT IS NULL OR D.ITEM_CODE_SNAP IS NULL
+                    OR (R.PAYROLL_ENGINE_VERSION>=3 AND D.ITEM_NAME_SNAP IS NULL) OR D.CALC_BASIS_SNAP IS NULL
+                    OR D.INS_SUBJECT_AMOUNT IS NULL OR D.TAX_SUBJECT_AMOUNT IS NULL)", new { runId });
             if (missingNominalDetails > 0)
                 throw new InvalidOperationException("خروجی مالیات ممکن نیست: Snapshot مبلغ اسمی اقلام Run کامل نیست.");
             var illegalOfficialSubjects = await _db.DoGetDataSQLAsyncSingle<int>(
@@ -343,8 +342,7 @@ namespace Safir.Server.Services
             foreach (var line in lines)
             {
                 int empId = (int)line.EMP_ID;
-                string natCode = line.NATIONAL_CODE?.ToString() ?? "";
-                if (string.IsNullOrWhiteSpace(natCode)) continue;
+                string natCode = line.NATIONAL_CODE.ToString();
 
                 // ─── تولید خط فایل WP (اطلاعات هویتی) ───
                 string wpLine = string.Join(",",
@@ -401,7 +399,7 @@ namespace Safir.Server.Services
                     year.ToString(),
                     month.ToString("D2"),
                     "",
-                    ((decimal)line.WORK_DAYS).ToString("0", System.Globalization.CultureInfo.InvariantCulture),
+                    ((decimal)line.INSURANCE_DAYS).ToString("0", System.Globalization.CultureInfo.InvariantCulture),
                     baseSalary.ToString(System.Globalization.CultureInfo.InvariantCulture),
                     mostamar.ToString(System.Globalization.CultureInfo.InvariantCulture),
                     gheyreMostamar.ToString(System.Globalization.CultureInfo.InvariantCulture),
@@ -417,6 +415,9 @@ namespace Safir.Server.Services
                 );
                 whLines.Add(whLine);
             }
+
+            if (wpLines.Count != lines.Count || whLines.Count != lines.Count)
+                throw new InvalidOperationException("فایل مالیات قابل تولید نیست: تعداد رکوردهای WP/WH با پرسنل واجد شرایط تراز نیست.");
 
             string tempDir = Path.Combine(Path.GetTempPath(), $"TaxDiskette_{Guid.NewGuid()}");
             Directory.CreateDirectory(tempDir);
@@ -467,25 +468,16 @@ namespace Safir.Server.Services
             int year = (int)(periodDate / 10000);
             int month = (int)((periodDate / 100) % 100);
 
-            // 🚀 اصلاح شد: ADDRESS و POSTAL_CODE از کوئری حذف شدند
-            const string linesSql = @"
-                SELECT 
-                    RL.EMP_ID, ES.EMP_CODE, ES.NATIONAL_CODE, ES.FIRST_NAME, ES.LAST_NAME, ES.FATHER_NAME,
-                    ES.ID_NUMBER, ES.BIRTH_PLACE, ES.BIRTH_DATE, ES.NATIONALITY_SNAP NATIONALITY,
-                    ES.HIRE_DATE_SNAP HIRE_DATE, ES.FIRE_DATE_SNAP FIRE_DATE,
-                    ES.INS_CODE, ES.MOBILE, ES.MARITAL_SNAP MARITAL,
-                    ES.JOB_NAME_SNAP JOB_NAME,
-                    RL.NOMINAL_DAYS WORK_DAYS, RL.NOMINAL_GROSS GROSS_PAY, RL.INS_WORKER, RL.TAX_BASE, RL.TAX_AMOUNT
-                FROM PAY2_RUN_LINE RL
-                INNER JOIN PAY2_RUN_EMP_SNAPSHOT ES ON ES.RUN_ID=RL.RUN_ID AND ES.EMP_ID=RL.EMP_ID
-                WHERE RL.RUN_ID = @runId AND ES.TAX_EXEMPT_SNAP = 0
-                ORDER BY ES.LAST_NAME, ES.FIRST_NAME";
-
-            var lines = (await _db.DoGetDataSQLAsync<dynamic>(linesSql, new { runId })).ToList();
-            if (lines.Any(x => x.WORK_DAYS is null || x.GROSS_PAY is null))
+            var lines = (await _db.DoGetDataSQLAsync<dynamic>(Pay2PayrollSnapshotQuery.Sql, new { runId }))
+                .Where(x => !(bool)x.TAX_EXEMPT).ToList();
+            ValidateTaxIdentities(lines);
+            if (lines.Any(x => x.INSURANCE_DAYS is null || x.NOMINAL_GROSS is null))
                 throw new InvalidOperationException("خروجی مالیات ممکن نیست: Snapshot اسمی روزکرد/ناخالص در Run کامل نیست.");
             var missingNominalDetails = await _db.DoGetDataSQLAsyncSingle<int>(
-                "SELECT COUNT(*) FROM PAY2_RUN_DETAIL WHERE RUN_ID=@runId AND (NOMINAL_AMOUNT IS NULL OR ITEM_CODE_SNAP IS NULL OR ITEM_NAME_SNAP IS NULL OR CALC_BASIS_SNAP IS NULL OR INS_SUBJECT_AMOUNT IS NULL OR TAX_SUBJECT_AMOUNT IS NULL)", new { runId });
+                @"SELECT COUNT(*) FROM PAY2_RUN_DETAIL D INNER JOIN PAY2_RUN R ON R.RUN_ID=D.RUN_ID
+                  WHERE D.RUN_ID=@runId AND (D.NOMINAL_AMOUNT IS NULL OR D.ITEM_CODE_SNAP IS NULL
+                    OR (R.PAYROLL_ENGINE_VERSION>=3 AND D.ITEM_NAME_SNAP IS NULL) OR D.CALC_BASIS_SNAP IS NULL
+                    OR D.INS_SUBJECT_AMOUNT IS NULL OR D.TAX_SUBJECT_AMOUNT IS NULL)", new { runId });
             if (missingNominalDetails > 0)
                 throw new InvalidOperationException("خروجی مالیات ممکن نیست: Snapshot مبلغ اسمی اقلام Run کامل نیست.");
             var illegalOfficialSubjects = await _db.DoGetDataSQLAsyncSingle<int>(
@@ -504,8 +496,7 @@ namespace Safir.Server.Services
             foreach (var line in lines)
             {
                 int empId = (int)line.EMP_ID;
-                string natCode = line.NATIONAL_CODE?.ToString() ?? "";
-                if (string.IsNullOrWhiteSpace(natCode)) continue;
+                string natCode = line.NATIONAL_CODE.ToString();
 
                 // ── پر کردن مدل WP ──
                 result.WpList.Add(new TaxDisketteWpDto
@@ -554,7 +545,7 @@ namespace Safir.Server.Services
                     NATIONAL_CODE = natCode,
                     YEAR = year.ToString(),
                     MONTH = month.ToString("D2"),
-                    WORK_DAYS = (decimal)line.WORK_DAYS,
+                    WORK_DAYS = (decimal)line.INSURANCE_DAYS,
                     BASE_SALARY = baseSalary,
                     MOSTAMAR = mostamar,
                     GHEYRE_MOSTAMAR = gheyreMostamar,
@@ -566,6 +557,8 @@ namespace Safir.Server.Services
                 });
             }
 
+            if (result.WpList.Count != lines.Count || result.WhList.Count != lines.Count)
+                throw new InvalidOperationException("پیش‌نمایش مالیات ناقص است: تعداد رکوردهای WP/WH با پرسنل واجد شرایط تراز نیست.");
             return result;
         }
         private static void ValidateLegalInsuranceSnapshots(IEnumerable<dynamic> lines)
@@ -582,9 +575,36 @@ namespace Safir.Server.Services
                 SELECT COUNT(*)
                 FROM PAY2_RUN_LINE RL
                 LEFT JOIN PAY2_RUN_EMP_SNAPSHOT ES ON ES.RUN_ID=RL.RUN_ID AND ES.EMP_ID=RL.EMP_ID
-                WHERE RL.RUN_ID=@runId AND ES.RUN_ID IS NULL";
+                INNER JOIN PAY2_RUN R ON R.RUN_ID=RL.RUN_ID
+                WHERE RL.RUN_ID=@runId AND R.PAYROLL_ENGINE_VERSION>=3 AND ES.RUN_ID IS NULL";
             if (await _db.DoGetDataSQLAsyncSingle<int>(sql, new { runId }) > 0)
                 throw new InvalidOperationException("خروجی قانونی ممکن نیست: Snapshot مشخصات پرسنل این Run کامل نیست.");
+        }
+
+        private static void ValidateTaxIdentities(IEnumerable<dynamic> lines)
+        {
+            foreach (var line in lines)
+            {
+                string employee = $"EMP_ID={(int)line.EMP_ID}، EMP_CODE={line.EMP_CODE?.ToString() ?? "-"}";
+                if (string.IsNullOrWhiteSpace(line.NATIONAL_CODE?.ToString()))
+                    throw new InvalidOperationException($"فایل مالیات قابل تولید نیست: کد ملی پرسنل {employee} خالی است.");
+                if (string.IsNullOrWhiteSpace(line.FIRST_NAME?.ToString()) || string.IsNullOrWhiteSpace(line.LAST_NAME?.ToString()))
+                    throw new InvalidOperationException($"فایل مالیات قابل تولید نیست: نام یا نام خانوادگی پرسنل {employee} خالی است.");
+            }
+        }
+
+        private static void ValidateInsuranceIdentities(IEnumerable<dynamic> lines)
+        {
+            foreach (var line in lines)
+            {
+                string employee = $"EMP_ID={(int)line.EMP_ID}، EMP_CODE={line.EMP_CODE?.ToString() ?? "-"}";
+                if (string.IsNullOrWhiteSpace(line.INS_CODE?.ToString()))
+                    throw new InvalidOperationException($"فایل بیمه قابل تولید نیست: شماره بیمه پرسنل {employee} خالی است.");
+                if (string.IsNullOrWhiteSpace(line.FIRST_NAME?.ToString()) || string.IsNullOrWhiteSpace(line.LAST_NAME?.ToString()))
+                    throw new InvalidOperationException($"فایل بیمه قابل تولید نیست: نام یا نام خانوادگی پرسنل {employee} خالی است.");
+                if (string.IsNullOrWhiteSpace(line.JOB_CODE?.ToString()))
+                    throw new InvalidOperationException($"فایل بیمه قابل تولید نیست: کد شغل پرسنل {employee} خالی است.");
+            }
         }
 
         internal static string DateInOccurrenceMonth(object? value, long periodDate)

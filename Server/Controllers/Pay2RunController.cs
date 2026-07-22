@@ -135,15 +135,19 @@ namespace Safir.Server.Controllers
                     RL.GROSS_PAY, RL.INS_BASE, RL.INS_WORKER, RL.TAX_AMOUNT,
                     RL.LOAN_DED, RL.ADVANCE_DED, RL.OTHER_DED, RL.TOTAL_DED, RL.NET_PAY, RL.ROUNDING_ADJ,
                     RL.LEAVE_BAL_DAYS, RL.LOAN_BALANCE,
-                    ES.EMP_CODE, (ES.LAST_NAME + N' ' + ES.FIRST_NAME) AS FULL_NAME, ES.NATIONAL_CODE,
-                    ES.JOB_NAME_SNAP AS JOB_NAME,
+                    CASE WHEN R.PAYROLL_ENGINE_VERSION>=3 THEN ES.EMP_CODE ELSE E.EMP_CODE END EMP_CODE,
+                    CASE WHEN R.PAYROLL_ENGINE_VERSION>=3 THEN ES.LAST_NAME+N' '+ES.FIRST_NAME ELSE E.LAST_NAME+N' '+E.FIRST_NAME END FULL_NAME,
+                    CASE WHEN R.PAYROLL_ENGINE_VERSION>=3 THEN ES.NATIONAL_CODE ELSE E.NATIONAL_CODE END NATIONAL_CODE,
+                    CASE WHEN R.PAYROLL_ENGINE_VERSION>=3 THEN ES.JOB_NAME_SNAP ELSE J.JOB_NAME END JOB_NAME,
                     P.PERIOD_DATE,
                     W.WS_NAME
                 FROM PAY2_RUN_LINE RL
                 INNER JOIN PAY2_RUN      R ON RL.RUN_ID = R.RUN_ID
                 INNER JOIN PAY2_PERIOD   P ON R.PER_ID  = P.PER_ID
                 INNER JOIN PAY2_WORKSHOP W ON P.WS_ID   = W.WS_ID
-                INNER JOIN PAY2_RUN_EMP_SNAPSHOT ES ON ES.RUN_ID=RL.RUN_ID AND ES.EMP_ID=RL.EMP_ID
+                LEFT JOIN PAY2_RUN_EMP_SNAPSHOT ES ON ES.RUN_ID=RL.RUN_ID AND ES.EMP_ID=RL.EMP_ID
+                LEFT JOIN PAY2_EMPLOYEE E ON E.EMP_ID=RL.EMP_ID AND R.PAYROLL_ENGINE_VERSION<3
+                LEFT JOIN PAY2_JOB J ON J.JOB_ID=E.JOB_ID AND R.PAYROLL_ENGINE_VERSION<3
                 WHERE RL.RUN_ID = @runId AND RL.EMP_ID = @empId AND R.STATUS >= 2";
 
             var head = await _db.DoGetDataSQLAsyncSingle<PayslipHeadRow>(headSql, new { runId, empId });
@@ -153,6 +157,7 @@ namespace Safir.Server.Controllers
             var incompleteItemSnapshots = await _db.DoGetDataSQLAsyncSingle<int>(@"
                 SELECT COUNT(*) FROM PAY2_RUN_DETAIL
                 WHERE RUN_ID=@runId AND EMP_ID=@empId
+                  AND (SELECT PAYROLL_ENGINE_VERSION FROM PAY2_RUN WHERE RUN_ID=@runId)>=3
                   AND (ITEM_CODE_SNAP IS NULL OR ITEM_NAME_SNAP IS NULL OR ITEM_TYPE_SNAP IS NULL)",
                 new { runId, empId });
             if (incompleteItemSnapshots > 0)
@@ -162,10 +167,12 @@ namespace Safir.Server.Controllers
             // فیش همیشه مسیر پرداخت واقعی (رسمی) را نشان می‌دهد. پارامتر قدیمی برای
             // سازگاری API نگه داشته شده، اما اجازه تغییر ریل محاسبه را ندارد.
             const string earnSql = @"
-                SELECT D.ITEM_NAME_SNAP AS Title, D.AMOUNT AS Amount
+                SELECT CASE WHEN R.PAYROLL_ENGINE_VERSION>=3 THEN D.ITEM_NAME_SNAP ELSE I.ITEM_NAME END AS Title, D.AMOUNT AS Amount
                 FROM PAY2_RUN_DETAIL D
+                INNER JOIN PAY2_RUN R ON R.RUN_ID=D.RUN_ID
+                LEFT JOIN PAY2_ITEM_DEF I ON I.ITEM_ID=D.ITEM_ID AND R.PAYROLL_ENGINE_VERSION<3
                 WHERE D.RUN_ID = @runId AND D.EMP_ID = @empId
-                  AND D.ITEM_NAME_SNAP IS NOT NULL AND D.ITEM_TYPE_SNAP IN (1,2)
+                  AND (R.PAYROLL_ENGINE_VERSION<3 OR D.ITEM_NAME_SNAP IS NOT NULL) AND D.ITEM_TYPE_SNAP IN (1,2)
                   AND D.AMOUNT <> 0
                   AND (D.ITEM_CODE_SNAP <> 'BASE_SAL'
                        OR NOT EXISTS (SELECT 1 FROM PAY2_RUN_DETAIL X
@@ -1025,19 +1032,27 @@ VALUES (@N_S, @RADIF, @HES_K, @HES_M, @HES_T, @HES_T2, @HES_T3, @HES_T4, @HES, @
                     INNER JOIN PAY2_PERIOD P ON P.PER_ID=R.PER_ID
                     WHERE P.WS_ID=@wsId AND R.IS_LATEST=1 AND R.STATUS>=2
                       AND P.PERIOD_DATE/10000=@targetYear
-                      AND (RL.NOMINAL_DAYS IS NULL OR RL.NOMINAL_GROSS IS NULL OR NOT EXISTS
-                           (SELECT 1 FROM PAY2_RUN_EMP_SNAPSHOT ES WHERE ES.RUN_ID=RL.RUN_ID AND ES.EMP_ID=RL.EMP_ID))", new { wsId, targetYear });
+                      AND (RL.NOMINAL_DAYS IS NULL OR RL.NOMINAL_GROSS IS NULL OR
+                           (R.PAYROLL_ENGINE_VERSION>=3 AND NOT EXISTS
+                            (SELECT 1 FROM PAY2_RUN_EMP_SNAPSHOT ES WHERE ES.RUN_ID=RL.RUN_ID AND ES.EMP_ID=RL.EMP_ID)))", new { wsId, targetYear });
                 if (missingAnnualSnapshots > 0)
                     return UnprocessableEntity("گزارش سالانه قانونی قابل تولید نیست: Snapshot روزکرد یا ناخالص اسمی در یک یا چند Run موجود نیست.");
 
                 // ۳. کوئری تجمیع اطلاعات پرسنل در سال هدف (فقط اجراهای تأیید شده یا قطعی)
                 const string sql = @"
-                    WITH LatestSnapshot AS
+                    WITH IdentityRows AS
                     (
-                        SELECT ES.*, ROW_NUMBER() OVER(PARTITION BY ES.EMP_ID ORDER BY P.PERIOD_DATE DESC,R.RUN_ID DESC) RN
-                        FROM PAY2_RUN_EMP_SNAPSHOT ES
-                        INNER JOIN PAY2_RUN R ON R.RUN_ID=ES.RUN_ID
+                        SELECT RL.EMP_ID,
+                               CASE WHEN R.PAYROLL_ENGINE_VERSION>=3 THEN ES.EMP_CODE ELSE E.EMP_CODE END EMP_CODE,
+                               CASE WHEN R.PAYROLL_ENGINE_VERSION>=3 THEN ES.NATIONAL_CODE ELSE E.NATIONAL_CODE END NATIONAL_CODE,
+                               CASE WHEN R.PAYROLL_ENGINE_VERSION>=3 THEN ES.FIRST_NAME ELSE E.FIRST_NAME END FIRST_NAME,
+                               CASE WHEN R.PAYROLL_ENGINE_VERSION>=3 THEN ES.LAST_NAME ELSE E.LAST_NAME END LAST_NAME,
+                               ROW_NUMBER() OVER(PARTITION BY RL.EMP_ID ORDER BY P.PERIOD_DATE DESC,R.RUN_ID DESC) RN
+                        FROM PAY2_RUN_LINE RL
+                        INNER JOIN PAY2_RUN R ON R.RUN_ID=RL.RUN_ID
                         INNER JOIN PAY2_PERIOD P ON P.PER_ID=R.PER_ID
+                        LEFT JOIN PAY2_RUN_EMP_SNAPSHOT ES ON ES.RUN_ID=RL.RUN_ID AND ES.EMP_ID=RL.EMP_ID
+                        LEFT JOIN PAY2_EMPLOYEE E ON E.EMP_ID=RL.EMP_ID AND R.PAYROLL_ENGINE_VERSION<3
                         WHERE P.WS_ID=@wsId AND R.IS_LATEST=1 AND R.STATUS>=2 AND P.PERIOD_DATE/10000=@targetYear
                     )
                     SELECT 
@@ -1051,7 +1066,7 @@ VALUES (@N_S, @RADIF, @HES_K, @HES_M, @HES_T, @HES_T2, @HES_T3, @HES_T4, @HES, @
                     FROM PAY2_RUN_LINE RL
                     INNER JOIN PAY2_RUN R ON RL.RUN_ID = R.RUN_ID
                     INNER JOIN PAY2_PERIOD P ON R.PER_ID = P.PER_ID
-                    INNER JOIN LatestSnapshot ES ON ES.EMP_ID=RL.EMP_ID AND ES.RN=1
+                    INNER JOIN IdentityRows ES ON ES.EMP_ID=RL.EMP_ID AND ES.RN=1
                     WHERE P.WS_ID = @wsId
                       AND R.IS_LATEST = 1
                       AND R.STATUS >= 2
