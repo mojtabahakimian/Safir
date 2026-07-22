@@ -29,7 +29,19 @@ namespace Safir.Server.Controllers
         private static readonly HashSet<string> _autoDeductionCodes = new(StringComparer.OrdinalIgnoreCase)
             { "INS_DED", "TAX_DED", "LOAN_DED", "ADVANCE_DED" };
 
-        private long DecrementShamsiDate(long shamsiDate)
+        private static bool IsPersianLeapYear(int year) => ((25 * year + 11) % 33) < 8;
+
+        private static bool IsValidShamsiDate(long value)
+        {
+            int year = (int)(value / 10000);
+            int month = (int)((value / 100) % 100);
+            int day = (int)(value % 100);
+            if (year < 1200 || year > 1600 || month is < 1 or > 12 || day < 1) return false;
+            int maxDay = month <= 6 ? 31 : month <= 11 ? 30 : IsPersianLeapYear(year) ? 30 : 29;
+            return day <= maxDay;
+        }
+
+        private static long DecrementShamsiDate(long shamsiDate)
         {
             int y = (int)(shamsiDate / 10000);
             int m = (int)((shamsiDate % 10000) / 100);
@@ -40,7 +52,7 @@ namespace Safir.Server.Controllers
             {
                 m--;
                 if (m < 1) { m = 12; y--; }
-                d = (m <= 6) ? 31 : (m <= 11) ? 30 : 29; // منطق ماه‌های شمسی
+                d = m <= 6 ? 31 : m <= 11 ? 30 : IsPersianLeapYear(y) ? 30 : 29;
             }
             return y * 10000L + m * 100 + d;
         }
@@ -160,6 +172,11 @@ namespace Safir.Server.Controllers
             var userIdString = User.FindFirstValue(ClaimTypes.NameIdentifier);
             if (!int.TryParse(userIdString, out int userCod)) return Unauthorized();
 
+            if (!IsValidShamsiDate(decree.EFF_FROM) ||
+                (decree.EFF_TO.HasValue && (!IsValidShamsiDate(decree.EFF_TO.Value) || decree.EFF_TO.Value < decree.EFF_FROM)) ||
+                !IsValidShamsiDate(decree.ISSUED_DATE))
+                return BadRequest("تاریخ صدور یا بازه اثر حکم شمسی معتبر نیست.");
+
             try
             {
                 var decId = await _db.ExecuteInTransactionAsync(async (conn, tran) =>
@@ -169,14 +186,38 @@ namespace Safir.Server.Controllers
 
                     if (currentDecId == 0) // درج جدید
                     {
-                        // بستن هوشمند تاریخ حکم قبلی
+                        if (decree.IS_CONFIRMED)
+                        {
+                            const string finalRunConflictSql = @"
+                                SELECT COUNT(1) FROM PAY2_RUN R
+                                INNER JOIN PAY2_PERIOD P ON P.PER_ID=R.PER_ID
+                                INNER JOIN PAY2_RUN_LINE RL ON RL.RUN_ID=R.RUN_ID AND RL.EMP_ID=@EMP_ID
+                                WHERE R.STATUS>=2 AND P.PERIOD_DATE/100>=@EFF_FROM/100
+                                  AND (@EFF_TO IS NULL OR P.PERIOD_DATE/100<=@EFF_TO/100)";
+                            if (await conn.QuerySingleAsync<int>(finalRunConflictSql, new { decree.EMP_ID, decree.EFF_FROM, decree.EFF_TO }, tran) > 0)
+                                throw new InvalidOperationException("بازه حکم با Run قطعی گذشته تداخل دارد؛ برای آن بازه امکان صدور حکم تأییدشده وجود ندارد.");
+                        }
+
+                        // فقط حکم تأییدشده جدید، حکم باز قبلی را در مرز صحیح شمسی می‌بندد.
                         string closePrevSql = @"
                     UPDATE PAY2_DECREE 
                     SET EFF_TO = @PrevTo 
                     WHERE DEC_ID = (SELECT TOP 1 DEC_ID FROM PAY2_DECREE WHERE EMP_ID = @EmpId AND IS_CONFIRMED = 1 AND EFF_TO IS NULL AND EFF_FROM < @NewFrom ORDER BY EFF_FROM DESC)";
 
                         long prevTo = DecrementShamsiDate(decree.EFF_FROM);
-                        await conn.ExecuteAsync(closePrevSql, new { PrevTo = prevTo, EmpId = decree.EMP_ID, NewFrom = decree.EFF_FROM }, tran);
+                        if (decree.IS_CONFIRMED)
+                            await conn.ExecuteAsync(closePrevSql, new { PrevTo = prevTo, EmpId = decree.EMP_ID, NewFrom = decree.EFF_FROM }, tran);
+
+                        if (decree.IS_CONFIRMED)
+                        {
+                            const string overlapSql = @"
+                                SELECT COUNT(1) FROM PAY2_DECREE WITH (UPDLOCK,HOLDLOCK)
+                                WHERE EMP_ID=@EMP_ID AND IS_CONFIRMED=1
+                                  AND EFF_FROM<=ISNULL(@EFF_TO,99991231)
+                                  AND ISNULL(EFF_TO,99991231)>=@EFF_FROM";
+                            if (await conn.QuerySingleAsync<int>(overlapSql, new { decree.EMP_ID, decree.EFF_FROM, decree.EFF_TO }, tran) > 0)
+                                throw new InvalidOperationException("بازه این حکم با یک حکم تأییدشده دیگر هم‌پوشانی دارد.");
+                        }
 
                         const string insertSql = @"
                     INSERT INTO PAY2_DECREE (EMP_ID, WS_ID, ISSUED_DATE, EFF_FROM, EFF_TO, EDU_LEVEL, MARITAL, IS_MANAGER, TMPL_ID, IS_CONFIRMED, CREATED_AT, CREATED_BY, NOTES, SHIFT_MODE)
@@ -258,6 +299,17 @@ namespace Safir.Server.Controllers
 
                                 if (reconfirmConflict > 0)
                                     throw new InvalidOperationException("بازه زمانی این حکم با ماه‌هایی که حقوق آنها قطعی شده تداخل دارد. لطفاً بازه تاریخی را اصلاح کنید یا با دوره‌های تأیید نشده کار کنید.");
+                            }
+
+                            if (decree.IS_CONFIRMED)
+                            {
+                                const string overlapSql = @"
+                                    SELECT COUNT(1) FROM PAY2_DECREE WITH (UPDLOCK,HOLDLOCK)
+                                    WHERE EMP_ID=@EMP_ID AND DEC_ID<>@DEC_ID AND IS_CONFIRMED=1
+                                      AND EFF_FROM<=ISNULL(@EFF_TO,99991231)
+                                      AND ISNULL(EFF_TO,99991231)>=@EFF_FROM";
+                                if (await conn.QuerySingleAsync<int>(overlapSql, new { decree.EMP_ID, decree.DEC_ID, decree.EFF_FROM, decree.EFF_TO }, tran) > 0)
+                                    throw new InvalidOperationException("بازه این حکم با یک حکم تأییدشده دیگر هم‌پوشانی دارد.");
                             }
 
                             const string updateSql = @"

@@ -27,7 +27,7 @@ namespace Safir.Server.Services
                 FROM PAY2_RUN R
                 INNER JOIN PAY2_PERIOD P ON R.PER_ID = P.PER_ID
                 INNER JOIN PAY2_WORKSHOP W ON P.WS_ID = W.WS_ID
-                WHERE R.RUN_ID = @runId";
+                WHERE R.RUN_ID = @runId AND R.STATUS >= 2";
 
             var head = await _db.DoGetDataSQLAsyncSingle<dynamic>(headSql, new { runId });
             if (head == null) return null;
@@ -289,10 +289,11 @@ namespace Safir.Server.Services
                 FROM PAY2_RUN R
                 INNER JOIN PAY2_PERIOD P ON R.PER_ID = P.PER_ID
                 INNER JOIN PAY2_WORKSHOP W ON P.WS_ID = W.WS_ID
-                WHERE R.RUN_ID = @runId";
+                WHERE R.RUN_ID = @runId AND R.STATUS >= 2";
 
             var head = await _db.DoGetDataSQLAsyncSingle<dynamic>(headSql, new { runId });
             if (head == null) return null;
+            await ValidateEmployeeSnapshotsAsync(runId);
 
             long periodDate = (long)head.PERIOD_DATE;
             int year = (int)(periodDate / 10000);
@@ -302,22 +303,22 @@ namespace Safir.Server.Services
             // 🚀 اصلاح شد: ADDRESS و POSTAL_CODE از کوئری حذف شدند
             const string linesSql = @"
                 SELECT 
-                    RL.EMP_ID, E.EMP_CODE, E.NATIONAL_CODE, E.FIRST_NAME, E.LAST_NAME, E.FATHER_NAME,
-                    E.ID_NUMBER, E.BIRTH_PLACE, E.BIRTH_DATE, E.NATIONALITY, COALESCE(RL.HIRE_DATE_SNAP,E.HIRE_DATE) HIRE_DATE, COALESCE(RL.FIRE_DATE_SNAP,E.FIRE_DATE) FIRE_DATE,
-                    E.INS_CODE, E.MOBILE, E.MARITAL,
-                    J.JOB_NAME,
+                    RL.EMP_ID, ES.EMP_CODE, ES.NATIONAL_CODE, ES.FIRST_NAME, ES.LAST_NAME, ES.FATHER_NAME,
+                    ES.ID_NUMBER, ES.BIRTH_PLACE, ES.BIRTH_DATE, ES.NATIONALITY_SNAP NATIONALITY,
+                    ES.HIRE_DATE_SNAP HIRE_DATE, ES.FIRE_DATE_SNAP FIRE_DATE,
+                    ES.INS_CODE, ES.MOBILE, ES.MARITAL_SNAP MARITAL,
+                    ES.JOB_NAME_SNAP JOB_NAME,
                     RL.NOMINAL_DAYS WORK_DAYS, RL.NOMINAL_GROSS GROSS_PAY, RL.INS_WORKER, RL.TAX_BASE, RL.TAX_AMOUNT
                 FROM PAY2_RUN_LINE RL
-                INNER JOIN PAY2_EMPLOYEE E ON RL.EMP_ID = E.EMP_ID
-                LEFT JOIN PAY2_JOB J ON E.JOB_ID = J.JOB_ID
-                WHERE RL.RUN_ID = @runId AND E.TAX_EXEMPT = 0
-                ORDER BY E.LAST_NAME, E.FIRST_NAME";
+                INNER JOIN PAY2_RUN_EMP_SNAPSHOT ES ON ES.RUN_ID=RL.RUN_ID AND ES.EMP_ID=RL.EMP_ID
+                WHERE RL.RUN_ID = @runId AND ES.TAX_EXEMPT_SNAP = 0
+                ORDER BY ES.LAST_NAME, ES.FIRST_NAME";
 
             var lines = (await _db.DoGetDataSQLAsync<dynamic>(linesSql, new { runId })).ToList();
             if (lines.Any(x => x.WORK_DAYS is null || x.GROSS_PAY is null))
                 throw new InvalidOperationException("خروجی مالیات ممکن نیست: Snapshot اسمی روزکرد/ناخالص در Run کامل نیست.");
             var missingNominalDetails = await _db.DoGetDataSQLAsyncSingle<int>(
-                "SELECT COUNT(*) FROM PAY2_RUN_DETAIL WHERE RUN_ID=@runId AND (NOMINAL_AMOUNT IS NULL OR ITEM_CODE_SNAP IS NULL OR CALC_BASIS_SNAP IS NULL OR INS_SUBJECT_AMOUNT IS NULL OR TAX_SUBJECT_AMOUNT IS NULL)", new { runId });
+                "SELECT COUNT(*) FROM PAY2_RUN_DETAIL WHERE RUN_ID=@runId AND (NOMINAL_AMOUNT IS NULL OR ITEM_CODE_SNAP IS NULL OR ITEM_NAME_SNAP IS NULL OR CALC_BASIS_SNAP IS NULL OR INS_SUBJECT_AMOUNT IS NULL OR TAX_SUBJECT_AMOUNT IS NULL)", new { runId });
             if (missingNominalDetails > 0)
                 throw new InvalidOperationException("خروجی مالیات ممکن نیست: Snapshot مبلغ اسمی اقلام Run کامل نیست.");
             var illegalOfficialSubjects = await _db.DoGetDataSQLAsyncSingle<int>(
@@ -460,6 +461,7 @@ namespace Safir.Server.Services
 
             var head = await _db.DoGetDataSQLAsyncSingle<dynamic>(headSql, new { runId });
             if (head == null) return null;
+            await ValidateEmployeeSnapshotsAsync(runId);
 
             long periodDate = (long)head.PERIOD_DATE;
             int year = (int)(periodDate / 10000);
@@ -468,22 +470,22 @@ namespace Safir.Server.Services
             // 🚀 اصلاح شد: ADDRESS و POSTAL_CODE از کوئری حذف شدند
             const string linesSql = @"
                 SELECT 
-                    RL.EMP_ID, E.EMP_CODE, E.NATIONAL_CODE, E.FIRST_NAME, E.LAST_NAME, E.FATHER_NAME,
-                    E.ID_NUMBER, E.BIRTH_PLACE, E.BIRTH_DATE, E.NATIONALITY, COALESCE(RL.HIRE_DATE_SNAP,E.HIRE_DATE) HIRE_DATE, COALESCE(RL.FIRE_DATE_SNAP,E.FIRE_DATE) FIRE_DATE,
-                    E.INS_CODE, E.MOBILE, E.MARITAL,
-                    J.JOB_NAME,
+                    RL.EMP_ID, ES.EMP_CODE, ES.NATIONAL_CODE, ES.FIRST_NAME, ES.LAST_NAME, ES.FATHER_NAME,
+                    ES.ID_NUMBER, ES.BIRTH_PLACE, ES.BIRTH_DATE, ES.NATIONALITY_SNAP NATIONALITY,
+                    ES.HIRE_DATE_SNAP HIRE_DATE, ES.FIRE_DATE_SNAP FIRE_DATE,
+                    ES.INS_CODE, ES.MOBILE, ES.MARITAL_SNAP MARITAL,
+                    ES.JOB_NAME_SNAP JOB_NAME,
                     RL.NOMINAL_DAYS WORK_DAYS, RL.NOMINAL_GROSS GROSS_PAY, RL.INS_WORKER, RL.TAX_BASE, RL.TAX_AMOUNT
                 FROM PAY2_RUN_LINE RL
-                INNER JOIN PAY2_EMPLOYEE E ON RL.EMP_ID = E.EMP_ID
-                LEFT JOIN PAY2_JOB J ON E.JOB_ID = J.JOB_ID
-                WHERE RL.RUN_ID = @runId AND E.TAX_EXEMPT = 0
-                ORDER BY E.LAST_NAME, E.FIRST_NAME";
+                INNER JOIN PAY2_RUN_EMP_SNAPSHOT ES ON ES.RUN_ID=RL.RUN_ID AND ES.EMP_ID=RL.EMP_ID
+                WHERE RL.RUN_ID = @runId AND ES.TAX_EXEMPT_SNAP = 0
+                ORDER BY ES.LAST_NAME, ES.FIRST_NAME";
 
             var lines = (await _db.DoGetDataSQLAsync<dynamic>(linesSql, new { runId })).ToList();
             if (lines.Any(x => x.WORK_DAYS is null || x.GROSS_PAY is null))
                 throw new InvalidOperationException("خروجی مالیات ممکن نیست: Snapshot اسمی روزکرد/ناخالص در Run کامل نیست.");
             var missingNominalDetails = await _db.DoGetDataSQLAsyncSingle<int>(
-                "SELECT COUNT(*) FROM PAY2_RUN_DETAIL WHERE RUN_ID=@runId AND (NOMINAL_AMOUNT IS NULL OR ITEM_CODE_SNAP IS NULL OR CALC_BASIS_SNAP IS NULL OR INS_SUBJECT_AMOUNT IS NULL OR TAX_SUBJECT_AMOUNT IS NULL)", new { runId });
+                "SELECT COUNT(*) FROM PAY2_RUN_DETAIL WHERE RUN_ID=@runId AND (NOMINAL_AMOUNT IS NULL OR ITEM_CODE_SNAP IS NULL OR ITEM_NAME_SNAP IS NULL OR CALC_BASIS_SNAP IS NULL OR INS_SUBJECT_AMOUNT IS NULL OR TAX_SUBJECT_AMOUNT IS NULL)", new { runId });
             if (missingNominalDetails > 0)
                 throw new InvalidOperationException("خروجی مالیات ممکن نیست: Snapshot مبلغ اسمی اقلام Run کامل نیست.");
             var illegalOfficialSubjects = await _db.DoGetDataSQLAsyncSingle<int>(
@@ -568,10 +570,21 @@ namespace Safir.Server.Services
         }
         private static void ValidateLegalInsuranceSnapshots(IEnumerable<dynamic> lines)
         {
-            if (lines.Any(x => !(bool)x.HAS_NOMINAL_RAIL || !(bool)x.HAS_COMPLETE_NOMINAL_SNAPSHOT))
+            if (lines.Any(x => !(bool)x.HAS_NOMINAL_RAIL || !(bool)x.HAS_COMPLETE_NOMINAL_SNAPSHOT || !(bool)x.HAS_COMPLETE_EMP_SNAPSHOT))
                 throw new InvalidOperationException("خروجی قانونی بیمه ممکن نیست: Snapshot کامل ریل اسمی برای حداقل یک پرسنل وجود ندارد.");
             if (lines.Any(x => !(bool)x.PREMIUM_SNAPSHOT_AVAILABLE))
                 throw new InvalidOperationException("DBF قابل تولید نیست: تفکیک Snapshot سهم کارفرما و بیمه بیکاری برای این Run ذخیره نشده است؛ تخمین مجاز نیست.");
+        }
+
+        private async Task ValidateEmployeeSnapshotsAsync(int runId)
+        {
+            const string sql = @"
+                SELECT COUNT(*)
+                FROM PAY2_RUN_LINE RL
+                LEFT JOIN PAY2_RUN_EMP_SNAPSHOT ES ON ES.RUN_ID=RL.RUN_ID AND ES.EMP_ID=RL.EMP_ID
+                WHERE RL.RUN_ID=@runId AND ES.RUN_ID IS NULL";
+            if (await _db.DoGetDataSQLAsyncSingle<int>(sql, new { runId }) > 0)
+                throw new InvalidOperationException("خروجی قانونی ممکن نیست: Snapshot مشخصات پرسنل این Run کامل نیست.");
         }
 
         internal static string DateInOccurrenceMonth(object? value, long periodDate)
