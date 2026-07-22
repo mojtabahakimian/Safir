@@ -10,9 +10,19 @@ namespace Safir.Shared.Models.Salary.Reports
         public string NationalCode { get; set; } = string.Empty;
         public string JobTitle { get; set; } = string.Empty;
         public decimal WorkDays { get; set; }
+        public string HireDate { get; set; } = string.Empty;
+        public string FireDate { get; set; } = string.Empty;
+        public long BaseDailyWage { get; set; }
+        public long SeniorityDailyBase { get; set; }
+        public long TotalDailyWage => BaseDailyWage + SeniorityDailyBase;
+        public long MonthlyWage { get; set; }
+        public long OtherSubjectBenefits { get; set; }
+        public long TotalSubject { get; set; }
         public long GrossPay { get; set; }
         public long TaxBase { get; set; }
         public long TaxAmount { get; set; }
+        public long WorkerPremium { get; set; }
+        public long NetPayable { get; set; }
     }
 
     public class TaxReportDto
@@ -21,6 +31,7 @@ namespace Safir.Shared.Models.Salary.Reports
         public string WorkshopName { get; set; } = string.Empty;
         public string EmployerName { get; set; } = string.Empty;
         public string TaxCode { get; set; } = string.Empty; // شناسه/کد اقتصادی
+        public string Address { get; set; } = string.Empty;
         public string PeriodYear { get; set; } = string.Empty;
         public string PeriodMonthName { get; set; } = string.Empty;
 

@@ -1,6 +1,8 @@
 ﻿@using Safir.Shared.Models.Salary
 @using Safir.Shared.Models
 @inject Safir.Client.Services.Pay2EmployeeApiService EmployeeApi
+@inject Safir.Client.Services.Pay2ItemDefApiService ItemDefApi
+@inject Safir.Client.Services.Pay2SettingsApiService SettingsApi
 @inject ISnackbar Snackbar
 @inject MudBlazor.IDialogService DialogService
 
@@ -51,8 +53,16 @@
                     <div class="form-grid-3">
                         <div class="form-field">
                             <label>وضعیت بیمه (Override)</label>
-                            <Pay2Select TItem="LookupDto<int>" TValue="int" Items="OverrideOptions"
-                                        @bind-Value="CurrentOverride.InsCombo" TextSelector="x => x.Name" ValueSelector="x => x.Id" Clearable="false" />
+                            @if (IsInsuranceRuleLocked)
+                            {
+                                <div class="pay2-input" style="background:#f1f5f9;">معاف ـ قاعده اجباری مشتری</div>
+                                <div class="hint-text mt-1">در بازه انتخاب‌شده، این آیتم الزاماً غیرمشمول بیمه است.</div>
+                            }
+                            else
+                            {
+                                <Pay2Select TItem="LookupDto<int>" TValue="int" Items="OverrideOptions"
+                                            @bind-Value="CurrentOverride.InsCombo" TextSelector="x => x.Name" ValueSelector="x => x.Id" Clearable="false" />
+                            }
                         </div>
                         <div class="form-field">
                             <label>وضعیت مالیات (Override)</label>
@@ -150,6 +160,7 @@
 
     List<Pay2OverrideDto> Overrides = new();
     List<LookupDto<int>> ItemDefs = new();
+    List<Pay2ItemDefDto> FullItemDefs = new();
     Pay2OverrideDto CurrentOverride = new();
 
     string? ValidFromStr;
@@ -160,6 +171,17 @@
     private int _lastProcessedEmpId = -1;
     private bool _lastOpenState = false;
     private bool _isDataLoaded = false;
+    long _insuranceRuleEffectiveFrom;
+    Pay2ItemDefDto? SelectedDef => FullItemDefs.FirstOrDefault(x => x.ITEM_ID == CurrentOverride.ITEM_ID);
+    bool IsInsuranceRuleLocked
+    {
+        get
+        {
+            if (_insuranceRuleEffectiveFrom <= 0 || SelectedDef?.ITEM_CODE is not ("SHIFT" or "OT_NORMAL" or "OT_HOLIDAY" or "OT_ADMIN")) return false;
+            long.TryParse(ValidToStr?.Replace("/", ""), out var validTo);
+            return validTo == 0 || validTo / 100 >= _insuranceRuleEffectiveFrom / 100;
+        }
+    }
 
     // شناسه 3 برای "بدون تغییر" است (چون نوعِ کامپوننت int است)
     List<LookupDto<int>> OverrideOptions = new() {
@@ -195,11 +217,15 @@
             // خواندن همزمان لیست آیتم‌ها و سوابق استثناها
             var itemTask = EmployeeApi.GetItemDefsLookupAsync();
             var ovrTask = EmployeeApi.GetOverridesAsync(EmployeeId);
+            var fullDefsTask = ItemDefApi.GetItemDefsAsync();
+            var configsTask = SettingsApi.GetConfigsAsync();
 
-            await Task.WhenAll(itemTask, ovrTask);
+            await Task.WhenAll(itemTask, ovrTask, fullDefsTask, configsTask);
 
             ItemDefs = itemTask.Result;
             Overrides = ovrTask.Result;
+            FullItemDefs = fullDefsTask.Result;
+            long.TryParse(configsTask.Result.FirstOrDefault(x => x.CFG_KEY == "INS_NON_SUBJECT_EFFECTIVE_FROM")?.CFG_VALUE, out _insuranceRuleEffectiveFrom);
         }
         catch (Exception ex) { Console.WriteLine(ex.Message); }
         finally
