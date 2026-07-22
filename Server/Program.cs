@@ -93,7 +93,7 @@ catch (Exception ex)
 }
 #endregion
 
-// Database upgrades are handled exclusively by the separate updater.
+// Database upgrades are handled exclusively by the separate updater. : ScriptSqly.cs
 
 // Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())

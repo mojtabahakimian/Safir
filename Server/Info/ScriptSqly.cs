@@ -1322,8 +1322,7 @@ GO
                 db.Execute(schemaUpdates);
 
                 // نصب زیرساخت Preview/Apply سنوات؛ بدون هیچ اعمال خودکار روی احکام.
-                ExecuteBatches(db, @"SET XACT_ABORT ON;
-BEGIN TRANSACTION;
+                ExecuteBatchesTransactional(db, @"SET XACT_ABORT ON;
 
 IF COL_LENGTH('dbo.PAY2_DECREE_LINE','NOMINAL_AMOUNT_OV') IS NULL ALTER TABLE dbo.PAY2_DECREE_LINE ADD NOMINAL_AMOUNT_OV DECIMAL(18,2) NULL;
 IF COL_LENGTH('dbo.PAY2_DECREE_LINE','OFFICIAL_AMOUNT_OV') IS NULL ALTER TABLE dbo.PAY2_DECREE_LINE ADD OFFICIAL_AMOUNT_OV DECIMAL(18,2) NULL;
@@ -1637,9 +1636,6 @@ BEGIN
   THROW;
  END CATCH
 END;
-GO
-
-COMMIT;
 GO
 ");
 
@@ -3555,7 +3551,22 @@ END;");
                 LoadJobData(db);   // <-- این خط اضافه شود
             }
         }
-        private static void ExecuteBatches(SqlConnection db, string script)
+        private static void ExecuteBatchesTransactional(SqlConnection db, string script)
+        {
+            using var transaction = db.BeginTransaction();
+            try
+            {
+                ExecuteBatches(db, script, transaction);
+                transaction.Commit();
+            }
+            catch
+            {
+                try { transaction.Rollback(); }
+                catch (InvalidOperationException) { /* SQL Server may already have rolled back after XACT_ABORT. */ }
+                throw;
+            }
+        }
+        private static void ExecuteBatches(SqlConnection db, string script, SqlTransaction? transaction = null)
         {
             // Safely split the script ONLY when "GO" is on its own line
             var commands = Regex.Split(script, @"^\s*GO\s*$", RegexOptions.Multiline | RegexOptions.IgnoreCase);
@@ -3566,7 +3577,7 @@ END;");
                 {
                     try
                     {
-                        db.Execute(cmdText);
+                        db.Execute(cmdText, transaction: transaction);
                     }
                     catch (SqlException ex)
                     {
