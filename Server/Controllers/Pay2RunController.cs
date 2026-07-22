@@ -43,8 +43,8 @@ namespace Safir.Server.Controllers
             // 1. استخراج ستون‌های پویا (فقط آیتم‌هایی که در این ماه برای حداقل یک نفر محاسبه شده‌اند)
             string colSql = @"
                 SELECT DISTINCT D.ITEM_ID, I.ITEM_CODE, I.ITEM_NAME, I.SORT_ORDER
-                FROM PAY2_RUN_DETAIL D WITH (NOLOCK)
-                INNER JOIN PAY2_ITEM_DEF I WITH (NOLOCK) ON D.ITEM_ID = I.ITEM_ID
+                FROM PAY2_RUN_DETAIL D
+                INNER JOIN PAY2_ITEM_DEF I ON D.ITEM_ID = I.ITEM_ID
                 WHERE D.RUN_ID = @runId
                 ORDER BY I.SORT_ORDER";
 
@@ -53,8 +53,8 @@ namespace Safir.Server.Controllers
             // 2. استخراج ردیف‌های اصلی فیش حقوقی
             string lineSql = @"
                 SELECT L.*, E.EMP_CODE, E.LAST_NAME + ' ' + E.FIRST_NAME AS FULL_NAME
-                FROM PAY2_RUN_LINE L WITH (NOLOCK)
-                INNER JOIN PAY2_EMPLOYEE E WITH (NOLOCK) ON L.EMP_ID = E.EMP_ID
+                FROM PAY2_RUN_LINE L
+                INNER JOIN PAY2_EMPLOYEE E ON L.EMP_ID = E.EMP_ID
                 WHERE L.RUN_ID = @runId
                 ORDER BY E.LAST_NAME, E.FIRST_NAME";
 
@@ -63,8 +63,8 @@ namespace Safir.Server.Controllers
             // 3. استخراج مبالغ ریز (Details) و اتصال آن‌ها به ردیف‌ها
             string detSql = @"
                 SELECT D.EMP_ID, I.ITEM_CODE, D.AMOUNT
-                FROM PAY2_RUN_DETAIL D WITH (NOLOCK)
-                INNER JOIN PAY2_ITEM_DEF I WITH (NOLOCK) ON D.ITEM_ID = I.ITEM_ID
+                FROM PAY2_RUN_DETAIL D
+                INNER JOIN PAY2_ITEM_DEF I ON D.ITEM_ID = I.ITEM_ID
                 WHERE D.RUN_ID = @runId";
 
             // استفاده از یک کلاس داخلی موقت برای خواندن سریع داده‌ها از Dapper
@@ -134,12 +134,12 @@ namespace Safir.Server.Controllers
                     J.JOB_NAME,
                     P.PERIOD_DATE,
                     W.WS_NAME
-                FROM PAY2_RUN_LINE RL WITH (NOLOCK)
-                INNER JOIN PAY2_RUN      R WITH (NOLOCK) ON RL.RUN_ID = R.RUN_ID
-                INNER JOIN PAY2_PERIOD   P WITH (NOLOCK) ON R.PER_ID  = P.PER_ID
-                INNER JOIN PAY2_WORKSHOP W WITH (NOLOCK) ON P.WS_ID   = W.WS_ID
-                INNER JOIN PAY2_EMPLOYEE E WITH (NOLOCK) ON RL.EMP_ID = E.EMP_ID
-                LEFT  JOIN PAY2_JOB      J WITH (NOLOCK) ON E.JOB_ID  = J.JOB_ID
+                FROM PAY2_RUN_LINE RL
+                INNER JOIN PAY2_RUN      R ON RL.RUN_ID = R.RUN_ID
+                INNER JOIN PAY2_PERIOD   P ON R.PER_ID  = P.PER_ID
+                INNER JOIN PAY2_WORKSHOP W ON P.WS_ID   = W.WS_ID
+                INNER JOIN PAY2_EMPLOYEE E ON RL.EMP_ID = E.EMP_ID
+                LEFT  JOIN PAY2_JOB      J ON E.JOB_ID  = J.JOB_ID
                 WHERE RL.RUN_ID = @runId AND RL.EMP_ID = @empId";
 
             var head = await _db.DoGetDataSQLAsyncSingle<PayslipHeadRow>(headSql, new { runId, empId });
@@ -147,33 +147,21 @@ namespace Safir.Server.Controllers
                 return NotFound("فیش حقوقی برای این پرسنل در این اجرا یافت نشد.");
 
             // ۲. مزایا = فقط آیتم‌های نوع پرداختی (ITEM_TYPE 1,2)؛ مجموع آن‌ها = GROSS_PAY
-            string earnSql;
-            if (isOfficial)
-            {
-                // در فیش رسمی: حقوق رسمی نمایش داده می‌شود و حقوق اسمی (BASE_SAL) فیلتر می‌شود
-                earnSql = @"
-                    SELECT I.ITEM_NAME AS Title, D.AMOUNT AS Amount
-                    FROM PAY2_RUN_DETAIL D WITH (NOLOCK)
-                    INNER JOIN PAY2_ITEM_DEF I WITH (NOLOCK) ON D.ITEM_ID = I.ITEM_ID
-                    WHERE D.RUN_ID = @runId AND D.EMP_ID = @empId
-                      AND I.ITEM_TYPE IN (1, 2)
-                      AND D.AMOUNT <> 0
-                      AND I.ITEM_CODE <> 'BASE_SAL'
-                    ORDER BY I.SORT_ORDER";
-            }
-            else
-            {
-                // در فیش اسمی (واقعی): حقوق اسمی و مزایا نمایش داده می‌شود و حقوق رسمی (BASE_SAL_B) فیلتر می‌شود
-                earnSql = @"
-                    SELECT I.ITEM_NAME AS Title, D.AMOUNT AS Amount
-                    FROM PAY2_RUN_DETAIL D WITH (NOLOCK)
-                    INNER JOIN PAY2_ITEM_DEF I WITH (NOLOCK) ON D.ITEM_ID = I.ITEM_ID
-                    WHERE D.RUN_ID = @runId AND D.EMP_ID = @empId
-                      AND I.ITEM_TYPE IN (1, 2)
-                      AND D.AMOUNT <> 0
-                      AND I.ITEM_CODE <> 'BASE_SAL_B'
-                    ORDER BY I.SORT_ORDER";
-            }
+            // فیش همیشه مسیر پرداخت واقعی (رسمی) را نشان می‌دهد. پارامتر قدیمی برای
+            // سازگاری API نگه داشته شده، اما اجازه تغییر ریل محاسبه را ندارد.
+            const string earnSql = @"
+                SELECT I.ITEM_NAME AS Title, D.AMOUNT AS Amount
+                FROM PAY2_RUN_DETAIL D
+                INNER JOIN PAY2_ITEM_DEF I ON D.ITEM_ID = I.ITEM_ID
+                WHERE D.RUN_ID = @runId AND D.EMP_ID = @empId
+                  AND COALESCE(D.ITEM_TYPE_SNAP,I.ITEM_TYPE) IN (1,2)
+                  AND D.AMOUNT <> 0
+                  AND (COALESCE(D.ITEM_CODE_SNAP,I.ITEM_CODE) <> 'BASE_SAL'
+                       OR NOT EXISTS (SELECT 1 FROM PAY2_RUN_DETAIL X
+                                      INNER JOIN PAY2_ITEM_DEF XI ON XI.ITEM_ID=X.ITEM_ID
+                                      WHERE X.RUN_ID=D.RUN_ID AND X.EMP_ID=D.EMP_ID
+                                        AND COALESCE(X.ITEM_CODE_SNAP,XI.ITEM_CODE)='BASE_SAL_B' AND X.AMOUNT<>0))
+                ORDER BY I.SORT_ORDER";
 
             var earnings = (await _db.DoGetDataSQLAsync<PayslipLineDto>(earnSql, new { runId, empId })).ToList();
 
@@ -208,26 +196,11 @@ namespace Safir.Server.Controllers
             AddDed("مساعده", head.ADVANCE_DED);
             AddDed("سایر کسورات", head.OTHER_DED);
 
-            // در فیش رسمی نیازی به تعدیل گرد کردن به شیوه اسمی نیست زیرا پایه حقوق تغییر کرده است
-            // اما برای حفظ ظاهر، تعدیل روی فیش اسمی اعمال می‌شود
-            if (!isOfficial)
-            {
-                // تعدیلِ گرد کردنِ خالص (اعمال ROUND_MODE در موتور محاسبه) تا اتحاد
-                // «جمع مزایا − جمع کسورات = خالص پرداختیِ رسمی» همیشه دقیق بماند.
-                long rounding = head.NET_PAY - (head.GROSS_PAY - head.TOTAL_DED);
-                if (rounding > 0)
-                    dto.Earnings.Add(new PayslipLineDto { Title = "تعدیل (گرد کردن)", Amount = rounding });
-                else if (rounding < 0)
-                    dto.Deductions.Add(new PayslipLineDto { Title = "تعدیل (گرد کردن)", Amount = -rounding });
-            }
-            else
-            {
-                // در فیش رسمی مبلغ خالص جدید را بر اساس اقلام موجود (رسمی) دوباره حساب میکنیم
-                // تا تراز فیش رسمی درست بماند
-                long officialTotalEarn = dto.Earnings.Sum(x => x.Amount);
-                long officialTotalDed = dto.Deductions.Sum(x => x.Amount);
-                dto.NetPay = officialTotalEarn - officialTotalDed;
-            }
+            long rounding = head.NET_PAY - (head.GROSS_PAY - head.TOTAL_DED);
+            if (rounding > 0)
+                dto.Earnings.Add(new PayslipLineDto { Title = "تعدیل (گرد کردن)", Amount = rounding });
+            else if (rounding < 0)
+                dto.Deductions.Add(new PayslipLineDto { Title = "تعدیل (گرد کردن)", Amount = -rounding });
 
             dto.NetPayInWords = CL_HESABDARI.ALPHANUM(dto.NetPay) + " ریال";
 
@@ -667,8 +640,8 @@ VALUES (@N_S, @RADIF, @HES_K, @HES_M, @HES_T, @HES_T2, @HES_T3, @HES_T4, @HES, @
                     // گرفتن تمام Runهای تایید شده (Status >= 2) برای این کارگاه
                     var runsSql = @"
                         SELECT R.RUN_ID 
-                        FROM PAY2_RUN R WITH (NOLOCK)
-                        INNER JOIN PAY2_PERIOD P WITH (NOLOCK) ON R.PER_ID = P.PER_ID
+                        FROM PAY2_RUN R
+                        INNER JOIN PAY2_PERIOD P ON R.PER_ID = P.PER_ID
                         WHERE P.WS_ID = @wsId AND R.IS_LATEST = 1 AND R.STATUS >= 2
                         ORDER BY P.PERIOD_DATE ASC"; // به ترتیب ماه
 
@@ -688,9 +661,9 @@ VALUES (@N_S, @RADIF, @HES_K, @HES_M, @HES_T, @HES_T2, @HES_T3, @HES_T4, @HES, @
                     SELECT 
                         P.PERIOD_DATE, W.WS_CODE, W.WS_NAME, W.EMPLOYER_NAME, 
                         W.ADDRESS, W.SSO_BRANCH
-                    FROM PAY2_RUN R WITH (NOLOCK)
-                    INNER JOIN PAY2_PERIOD P WITH (NOLOCK) ON R.PER_ID = P.PER_ID
-                    INNER JOIN PAY2_WORKSHOP W WITH (NOLOCK) ON P.WS_ID = W.WS_ID
+                    FROM PAY2_RUN R
+                    INNER JOIN PAY2_PERIOD P ON R.PER_ID = P.PER_ID
+                    INNER JOIN PAY2_WORKSHOP W ON P.WS_ID = W.WS_ID
                     WHERE R.RUN_ID = @firstRunId";
 
                 var head = await _db.DoGetDataSQLAsyncSingle<dynamic>(headSql, new { firstRunId });
@@ -731,59 +704,22 @@ VALUES (@N_S, @RADIF, @HES_K, @HES_M, @HES_T, @HES_T2, @HES_T3, @HES_T4, @HES, @
                         monthLabel = $" [{(m >= 1 && m <= 12 ? monthNames[m - 1] : m.ToString())}]";
                     }
 
-                    const string linesSql = @"
-                        SELECT 
-                            RL.EMP_ID, E.LAST_NAME + N' ' + E.FIRST_NAME AS FULL_NAME,
-                            E.NATIONAL_CODE, E.INS_CODE, E.FATHER_NAME, J.JOB_NAME,
-                            RL.WORK_DAYS, RL.INS_BASE, RL.INS_WORKER, RL.GROSS_PAY
-                        FROM PAY2_RUN_LINE RL WITH (NOLOCK)
-                        INNER JOIN PAY2_EMPLOYEE E WITH (NOLOCK) ON RL.EMP_ID = E.EMP_ID
-                        LEFT JOIN PAY2_JOB J WITH (NOLOCK) ON E.JOB_ID = J.JOB_ID
-                        WHERE RL.RUN_ID = @currentRunId AND E.INS_TYPE <> 3
-                        ORDER BY E.LAST_NAME, E.FIRST_NAME";
-
-                    var lines = await _db.DoGetDataSQLAsync<dynamic>(linesSql, new { currentRunId });
-
-                    const string detailsSql = @"
-                        SELECT D.EMP_ID, I.ITEM_CODE, D.AMOUNT
-                        FROM PAY2_RUN_DETAIL D WITH (NOLOCK)
-                        INNER JOIN PAY2_ITEM_DEF I WITH (NOLOCK) ON D.ITEM_ID = I.ITEM_ID
-                        WHERE D.RUN_ID = @currentRunId AND I.INS_SUBJECT = 1";
-
-                    var details = await _db.DoGetDataSQLAsync<dynamic>(detailsSql, new { currentRunId });
-
-                    var groupedDetails = details.GroupBy(x => (int)x.EMP_ID)
-                                                .ToDictionary(g => g.Key, g => g.ToList());
+                    var lines = (await _db.DoGetDataSQLAsync<dynamic>(
+                        Safir.Server.Services.Pay2PayrollSnapshotQuery.Sql, new { runId = currentRunId })).ToList();
+                    if (lines.Any(x => !(bool)x.HAS_NOMINAL_RAIL || !(bool)x.HAS_COMPLETE_NOMINAL_SNAPSHOT))
+                        return UnprocessableEntity("خروجی قانونی ممکن نیست: Snapshot کامل ریل اسمی برای حداقل یک پرسنل وجود ندارد.");
 
                     foreach (var line in lines)
                     {
-                        int empId = (int)line.EMP_ID;
-                        decimal workDays = (decimal)line.WORK_DAYS;
-                        long monthlyWage = 0;
-                        long maritalAllowance = 0;
-                        long seniorityBase = 0;
-                        long totalInsDetails = 0;
+                        decimal workDays = (decimal)line.INSURANCE_DAYS;
+                        long baseMonthly = (long)line.BASE_WAGE_MONTHLY;
+                        long seniorityMonthly = (long)line.SENIORITY_MONTHLY;
+                        long baseDaily = workDays > 0 ? (long)Math.Round(baseMonthly / workDays, MidpointRounding.AwayFromZero) : 0;
+                        long seniorityDaily = workDays > 0 ? (long)Math.Round(seniorityMonthly / workDays, MidpointRounding.AwayFromZero) : 0;
+                        long monthlyWage = baseMonthly + seniorityMonthly;
+                        long otherBenefits = (long)line.DISPLAY_OTHER_BENEFITS;
 
-                        if (groupedDetails.TryGetValue(empId, out var empDetails))
-                        {
-                            foreach (var det in empDetails)
-                            {
-                                string code = det.ITEM_CODE.ToString().ToUpper();
-                                long amt = (long)det.AMOUNT;
-                                totalInsDetails += amt;
-
-                                if (code == "BASE_SAL_B" || code == "BASE_SAL") monthlyWage += amt;
-                                else if (code == "FAMILY_ALLOW") maritalAllowance += amt;
-                                else if (code == "SENIORITY" || code == "SANOVAT_PAYE") seniorityBase += amt;
-                            }
-                        }
-
-                        long dailyWage = workDays > 0 ? (long)(monthlyWage / workDays) : 0;
-                        long insBase = (long)line.INS_BASE;
-                        long otherBenefits = insBase - monthlyWage - maritalAllowance - seniorityBase;
-                        if (otherBenefits < 0) otherBenefits = 0;
-
-                        var rowDto = new InsuranceEmployeeRowDto
+                        reportDto.Rows.Add(new InsuranceEmployeeRowDto
                         {
                             RowIndex = rowIndex++,
                             FullName = (line.FULL_NAME?.ToString() ?? "") + monthLabel,
@@ -792,17 +728,18 @@ VALUES (@N_S, @RADIF, @HES_K, @HES_M, @HES_T, @HES_T2, @HES_T3, @HES_T4, @HES, @
                             FatherName = line.FATHER_NAME?.ToString() ?? "",
                             JobTitle = line.JOB_NAME?.ToString() ?? "",
                             WorkDays = workDays,
-                            DailyWage = dailyWage,
+                            HireDate = DateInOccurrenceMonth(line.HIRE_DATE, (long)line.PERIOD_DATE),
+                            FireDate = DateInOccurrenceMonth(line.FIRE_DATE, (long)line.PERIOD_DATE),
+                            BaseDailyWage = baseDaily,
+                            SeniorityDailyBase = seniorityDaily,
                             MonthlyWage = monthlyWage,
-                            MaritalAllowance = maritalAllowance,
-                            SeniorityBase = seniorityBase,
                             OtherSubjectBenefits = otherBenefits,
-                            TotalSubjectToInsurance = insBase,
-                            TotalGrossPay = (long)line.GROSS_PAY,
-                            WorkerPremium = (long)line.INS_WORKER
-                        };
-
-                        reportDto.Rows.Add(rowDto);
+                            TotalSubjectToInsurance = (long)line.INS_BASE,
+                            TotalGrossPay = (long)line.NOMINAL_GROSS,
+                            WorkerPremium = (long)line.INS_WORKER,
+                            TaxAmount = (long)line.TAX_AMOUNT,
+                            NetPayable = (long)line.NOMINAL_NET_PAYABLE
+                        });
                     }
                 }
 
@@ -872,8 +809,8 @@ VALUES (@N_S, @RADIF, @HES_K, @HES_M, @HES_T, @HES_T2, @HES_T3, @HES_T4, @HES, @
                 {
                     var runsSql = @"
                         SELECT R.RUN_ID 
-                        FROM PAY2_RUN R WITH (NOLOCK)
-                        INNER JOIN PAY2_PERIOD P WITH (NOLOCK) ON R.PER_ID = P.PER_ID
+                        FROM PAY2_RUN R
+                        INNER JOIN PAY2_PERIOD P ON R.PER_ID = P.PER_ID
                         WHERE P.WS_ID = @wsId AND R.IS_LATEST = 1 AND R.STATUS >= 2
                         ORDER BY P.PERIOD_DATE ASC";
 
@@ -891,9 +828,9 @@ VALUES (@N_S, @RADIF, @HES_K, @HES_M, @HES_T, @HES_T2, @HES_T3, @HES_T4, @HES, @
                 const string headSql = @"
                     SELECT 
                         P.PERIOD_DATE, W.WS_CODE, W.WS_NAME, W.EMPLOYER_NAME, W.TAX_CODE
-                    FROM PAY2_RUN R WITH (NOLOCK)
-                    INNER JOIN PAY2_PERIOD P WITH (NOLOCK) ON R.PER_ID = P.PER_ID
-                    INNER JOIN PAY2_WORKSHOP W WITH (NOLOCK) ON P.WS_ID = W.WS_ID
+                    FROM PAY2_RUN R
+                    INNER JOIN PAY2_PERIOD P ON R.PER_ID = P.PER_ID
+                    INNER JOIN PAY2_WORKSHOP W ON P.WS_ID = W.WS_ID
                     WHERE R.RUN_ID = @firstRunId";
 
                 var head = await _db.DoGetDataSQLAsyncSingle<dynamic>(headSql, new { firstRunId });
@@ -927,31 +864,37 @@ VALUES (@N_S, @RADIF, @HES_K, @HES_M, @HES_T, @HES_T2, @HES_T3, @HES_T4, @HES, @
                         monthLabel = $" [{(m >= 1 && m <= 12 ? monthNames[m - 1] : m.ToString())}]";
                     }
 
-                    const string linesSql = @"
-                        SELECT 
-                            RL.EMP_ID, E.LAST_NAME + N' ' + E.FIRST_NAME AS FULL_NAME,
-                            E.NATIONAL_CODE, J.JOB_NAME,
-                            RL.WORK_DAYS, RL.GROSS_PAY, RL.TAX_BASE, RL.TAX_AMOUNT
-                        FROM PAY2_RUN_LINE RL WITH (NOLOCK)
-                        INNER JOIN PAY2_EMPLOYEE E WITH (NOLOCK) ON RL.EMP_ID = E.EMP_ID
-                        LEFT JOIN PAY2_JOB J WITH (NOLOCK) ON E.JOB_ID = J.JOB_ID
-                        WHERE RL.RUN_ID = @currentRunId AND RL.GROSS_PAY > 0
-                        ORDER BY E.LAST_NAME, E.FIRST_NAME";
-
-                    var lines = await _db.DoGetDataSQLAsync<dynamic>(linesSql, new { currentRunId });
+                    var lines = (await _db.DoGetDataSQLAsync<dynamic>(
+                        Safir.Server.Services.Pay2PayrollSnapshotQuery.Sql, new { runId = currentRunId })).ToList();
+                    if (lines.Any(x => !(bool)x.HAS_NOMINAL_RAIL || !(bool)x.HAS_COMPLETE_NOMINAL_SNAPSHOT))
+                        return UnprocessableEntity("خروجی قانونی ممکن نیست: Snapshot کامل ریل اسمی برای حداقل یک پرسنل وجود ندارد.");
 
                     foreach (var line in lines)
                     {
-                        reportDto.Rows.Add(new Safir.Shared.Models.Salary.Reports.TaxEmployeeRowDto
+                        decimal workDays = (decimal)line.INSURANCE_DAYS;
+                        long baseMonthly = (long)line.BASE_WAGE_MONTHLY;
+                        long seniorityMonthly = (long)line.SENIORITY_MONTHLY;
+                        long monthlyWage = baseMonthly + seniorityMonthly;
+                        long otherBenefits = (long)line.OTHER_TAXABLE_ITEMS;
+                        reportDto.Rows.Add(new TaxEmployeeRowDto
                         {
                             RowIndex = rowIndex++,
                             FullName = (line.FULL_NAME?.ToString() ?? "") + monthLabel,
                             NationalCode = line.NATIONAL_CODE?.ToString() ?? "",
                             JobTitle = line.JOB_NAME?.ToString() ?? "",
-                            WorkDays = (decimal)line.WORK_DAYS,
-                            GrossPay = (long)line.GROSS_PAY,
+                            WorkDays = workDays,
+                            HireDate = DateInOccurrenceMonth(line.HIRE_DATE, (long)line.PERIOD_DATE),
+                            FireDate = DateInOccurrenceMonth(line.FIRE_DATE, (long)line.PERIOD_DATE),
+                            BaseDailyWage = workDays > 0 ? (long)Math.Round(baseMonthly / workDays, MidpointRounding.AwayFromZero) : 0,
+                            SeniorityDailyBase = workDays > 0 ? (long)Math.Round(seniorityMonthly / workDays, MidpointRounding.AwayFromZero) : 0,
+                            MonthlyWage = monthlyWage,
+                            OtherSubjectBenefits = otherBenefits,
+                            TotalSubject = (long)line.TAXABLE_WAGE_MONTHLY + otherBenefits,
+                            GrossPay = (long)line.NOMINAL_GROSS,
                             TaxBase = (long)line.TAX_BASE,
-                            TaxAmount = (long)line.TAX_AMOUNT
+                            TaxAmount = (long)line.TAX_AMOUNT,
+                            WorkerPremium = (long)line.INS_WORKER,
+                            NetPayable = (long)line.NOMINAL_NET_PAYABLE
                         });
                     }
                 }
@@ -1038,7 +981,7 @@ VALUES (@N_S, @RADIF, @HES_K, @HES_M, @HES_T, @HES_T2, @HES_T3, @HES_T4, @HES, @
                 {
                     // اگر کاربر "تجمیعی کل سال" را انتخاب کرده بود، سال آخرین دوره کارگاه را می‌گیریم
                     var maxDate = await _db.DoGetDataSQLAsyncSingle<long?>(
-                        "SELECT MAX(PERIOD_DATE) FROM PAY2_PERIOD WITH (NOLOCK) WHERE WS_ID = @wsId AND STATUS >= 3", new { wsId });
+                        "SELECT MAX(PERIOD_DATE) FROM PAY2_PERIOD WHERE WS_ID = @wsId AND STATUS >= 3", new { wsId });
 
                     if (maxDate == null)
                         return NotFound("هیچ دوره‌ی محاسبه‌شده‌ای برای این کارگاه یافت نشد.");
@@ -1048,7 +991,17 @@ VALUES (@N_S, @RADIF, @HES_K, @HES_M, @HES_T, @HES_T2, @HES_T3, @HES_T4, @HES, @
 
                 // ۲. خواندن نام کارگاه
                 var wsName = await _db.DoGetDataSQLAsyncSingle<string>(
-                    "SELECT WS_NAME FROM PAY2_WORKSHOP WITH (NOLOCK) WHERE WS_ID = @wsId", new { wsId });
+                    "SELECT WS_NAME FROM PAY2_WORKSHOP WHERE WS_ID = @wsId", new { wsId });
+
+                var missingAnnualSnapshots = await _db.DoGetDataSQLAsyncSingle<int>(@"
+                    SELECT COUNT(*) FROM PAY2_RUN_LINE RL
+                    INNER JOIN PAY2_RUN R ON R.RUN_ID=RL.RUN_ID
+                    INNER JOIN PAY2_PERIOD P ON P.PER_ID=R.PER_ID
+                    WHERE P.WS_ID=@wsId AND R.IS_LATEST=1 AND R.STATUS>=2
+                      AND P.PERIOD_DATE/10000=@targetYear
+                      AND (RL.NOMINAL_DAYS IS NULL OR RL.NOMINAL_GROSS IS NULL)", new { wsId, targetYear });
+                if (missingAnnualSnapshots > 0)
+                    return UnprocessableEntity("گزارش سالانه قانونی قابل تولید نیست: Snapshot روزکرد یا ناخالص اسمی در یک یا چند Run موجود نیست.");
 
                 // ۳. کوئری تجمیع اطلاعات پرسنل در سال هدف (فقط اجراهای تأیید شده یا قطعی)
                 const string sql = @"
@@ -1056,21 +1009,21 @@ VALUES (@N_S, @RADIF, @HES_K, @HES_M, @HES_T, @HES_T2, @HES_T3, @HES_T4, @HES, @
                         E.EMP_CODE,
                         E.NATIONAL_CODE,
                         E.LAST_NAME + N' ' + E.FIRST_NAME AS FULL_NAME,
-                        SUM(RL.WORK_DAYS) AS TOTAL_WORK_DAYS,
-                        SUM(RL.GROSS_PAY) AS TOTAL_GROSS_PAY,
+                        SUM(RL.NOMINAL_DAYS) AS TOTAL_WORK_DAYS,
+                        SUM(RL.NOMINAL_GROSS) AS TOTAL_GROSS_PAY,
                         SUM(RL.TAX_BASE) AS TOTAL_TAX_BASE,
                         SUM(RL.TAX_AMOUNT) AS TOTAL_TAX_AMOUNT
-                    FROM PAY2_RUN_LINE RL WITH (NOLOCK)
-                    INNER JOIN PAY2_RUN R WITH (NOLOCK) ON RL.RUN_ID = R.RUN_ID
-                    INNER JOIN PAY2_PERIOD P WITH (NOLOCK) ON R.PER_ID = P.PER_ID
-                    INNER JOIN PAY2_EMPLOYEE E WITH (NOLOCK) ON RL.EMP_ID = E.EMP_ID
+                    FROM PAY2_RUN_LINE RL
+                    INNER JOIN PAY2_RUN R ON RL.RUN_ID = R.RUN_ID
+                    INNER JOIN PAY2_PERIOD P ON R.PER_ID = P.PER_ID
+                    INNER JOIN PAY2_EMPLOYEE E ON RL.EMP_ID = E.EMP_ID
                     WHERE P.WS_ID = @wsId
                       AND R.IS_LATEST = 1
                       AND R.STATUS >= 2
                       AND (P.PERIOD_DATE / 10000) = @targetYear
                     GROUP BY 
                         E.EMP_ID, E.EMP_CODE, E.NATIONAL_CODE, E.LAST_NAME, E.FIRST_NAME
-                    HAVING SUM(RL.GROSS_PAY) > 0
+                    HAVING SUM(RL.NOMINAL_GROSS) > 0
                     ORDER BY 
                         E.LAST_NAME, E.FIRST_NAME";
 
@@ -1191,5 +1144,12 @@ VALUES (@N_S, @RADIF, @HES_K, @HES_M, @HES_T, @HES_T2, @HES_T3, @HES_T4, @HES, @
                 return StatusCode(500, "خطا در بارگذاری پیش‌نمایش دیسکت مالیات: " + ex.Message);
             }
         }
+        private static string DateInOccurrenceMonth(object? value, long periodDate)
+        {
+            if (value is null || value is DBNull) return string.Empty;
+            if (!long.TryParse(value.ToString(), out var date) || date <= 0) return string.Empty;
+            return date / 100 == periodDate / 100 ? date.ToString() : string.Empty;
+        }
+
     }
 }
