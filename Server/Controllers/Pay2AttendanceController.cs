@@ -213,11 +213,11 @@ namespace Safir.Server.Controllers
                     // After revert, PAY2_RUN headers remain with STATUS = 1 but their details (PAY2_RUN_LINE) are deleted.
                     // We must block reopening ONLY if there's an ACTIVE run (which has PAY2_RUN_LINE items).
                     int runCount = await conn.QuerySingleAsync<int>(@"
-                        SELECT COUNT(1)
-                        FROM PAY2_RUN R
-                        WHERE R.PER_ID = @perId
-                          AND EXISTS (SELECT 1 FROM PAY2_RUN_LINE RL WHERE RL.RUN_ID = R.RUN_ID)",
-                        new { perId }, tran);
+    SELECT COUNT(1)
+    FROM PAY2_RUN R
+    WHERE R.PER_ID = @perId AND R.IS_LATEST = 1
+      AND EXISTS (SELECT 1 FROM PAY2_RUN_LINE RL WHERE RL.RUN_ID = R.RUN_ID)",
+                       new { perId }, tran);
 
                     if (runCount > 0)
                         throw new InvalidOperationException("برای این دوره فیش حقوقی (حتی پیش‌نویس) صادر شده است. برای ویرایش کارکرد، ابتدا باید در تب محاسبه حقوق، فیش را لغو (Revert) کنید.");
@@ -355,12 +355,12 @@ namespace Safir.Server.Controllers
                     // 2. بررسی وابستگی: آیا فیش حقوقی (حتی پیش‌نویس) برای این شخص در این ماه وجود دارد؟
                     // 🚀 اصلاح پرفورمنس: استفاده از EXISTS برای سرعت بسیار بالاتر
                     string checkRunSql = @"
-                        IF EXISTS (
-                            SELECT 1 
-                            FROM PAY2_RUN R WITH (NOLOCK)
-                            INNER JOIN PAY2_RUN_LINE RL WITH (NOLOCK) ON R.RUN_ID = RL.RUN_ID
-                            WHERE R.PER_ID = @perId AND RL.EMP_ID = @empId
-                        ) SELECT 1 ELSE SELECT 0";
+    IF EXISTS (
+        SELECT 1 
+        FROM PAY2_RUN R WITH (NOLOCK)
+        INNER JOIN PAY2_RUN_LINE RL WITH (NOLOCK) ON R.RUN_ID = RL.RUN_ID
+        WHERE R.PER_ID = @perId AND RL.EMP_ID = @empId AND R.IS_LATEST = 1
+    ) SELECT 1 ELSE SELECT 0";
 
                     var runExists = await conn.QuerySingleAsync<int>(checkRunSql, new { perId, empId }, tran);
 
