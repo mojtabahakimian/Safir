@@ -738,6 +738,8 @@ VALUES (@N_S, @RADIF, @HES_K, @HES_M, @HES_T, @HES_T2, @HES_T3, @HES_T4, @HES, @
                         Safir.Server.Services.Pay2PayrollSnapshotQuery.Sql, new { runId = currentRunId })).ToList();
                     if (lines.Any(x => !(bool)x.HAS_NOMINAL_RAIL || !(bool)x.HAS_COMPLETE_NOMINAL_SNAPSHOT || !(bool)x.HAS_COMPLETE_EMP_SNAPSHOT))
                         return UnprocessableEntity("خروجی قانونی ممکن نیست: Snapshot کامل ریل اسمی یا مشخصات پرسنل وجود ندارد.");
+                    if (lines.Any(x => !(bool)x.PREMIUM_SNAPSHOT_AVAILABLE))
+                        reportDto.HasPremiumBreakdownSnapshot = false;
 
                     foreach (var line in lines)
                     {
@@ -767,8 +769,8 @@ VALUES (@N_S, @RADIF, @HES_K, @HES_M, @HES_T, @HES_T2, @HES_T3, @HES_T4, @HES, @
                             TotalSubjectToInsurance = (long)line.INS_BASE,
                             TotalGrossPay = (long)line.NOMINAL_GROSS,
                             WorkerPremium = (long)line.INS_WORKER,
-                            EmployerPremium = (long)line.INS_EMPLOYER_BASE,
-                            UnemploymentPremium = (long)line.INS_UNEMPLOYMENT,
+                            EmployerPremium = (bool)line.PREMIUM_SNAPSHOT_AVAILABLE ? (long)line.INS_EMPLOYER_BASE : 0,
+                            UnemploymentPremium = (bool)line.PREMIUM_SNAPSHOT_AVAILABLE ? (long)line.INS_UNEMPLOYMENT : 0,
                             TaxAmount = (long)line.TAX_AMOUNT,
                             NetPayable = (long)line.NOMINAL_NET_PAYABLE
                         });

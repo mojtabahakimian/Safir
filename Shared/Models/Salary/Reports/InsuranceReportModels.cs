@@ -44,6 +44,7 @@ namespace Safir.Shared.Models.Salary.Reports
         public string PeriodMonthName { get; set; } = string.Empty;
 
         public List<InsuranceEmployeeRowDto> Rows { get; set; } = new();
+        public bool HasPremiumBreakdownSnapshot { get; set; } = true;
 
         public decimal TotalWorkDays => Rows.Sum(x => x.WorkDays);
         public long TotalMonthlyWage => Rows.Sum(x => x.MonthlyWage);

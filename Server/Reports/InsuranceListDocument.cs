@@ -86,11 +86,19 @@ public sealed class InsuranceListDocument : IDocument
             row.RelativeItem(2).Border(1).Padding(6).Column(c =>
             {
                 c.Item().Text("محاسبات حق بیمه Snapshot شده (ریال)").Bold();
-                Premium(c, "جمع حق بیمه سهم کارگر:", _data.TotalWorkerPremium);
-                Premium(c, "جمع سهم پایه کارفرما:", _data.TotalEmployerPremium);
-                Premium(c, "جمع بیمه بیکاری:", _data.TotalUnemploymentPremium);
-                c.Item().PaddingTop(3).LineHorizontal(1);
-                Premium(c, "جمع کل قابل پرداخت:", _data.TotalPayablePremium, true);
+                if (_data.HasPremiumBreakdownSnapshot)
+                {
+                    Premium(c, "جمع حق بیمه سهم کارگر:", _data.TotalWorkerPremium);
+                    Premium(c, "جمع سهم پایه کارفرما:", _data.TotalEmployerPremium);
+                    Premium(c, "جمع بیمه بیکاری:", _data.TotalUnemploymentPremium);
+                    c.Item().PaddingTop(3).LineHorizontal(1);
+                    Premium(c, "جمع کل قابل پرداخت:", _data.TotalPayablePremium, true);
+                }
+                else
+                {
+                    c.Item().PaddingTop(8).Text("تفکیک سهم کارفرما و بیمه بیکاری در نسخه تاریخی این Run Snapshot نشده است.")
+                        .FontColor(Colors.Grey.Darken2);
+                }
             });
             row.ConstantItem(20);
             row.RelativeItem().Border(1).MinHeight(75).AlignCenter().AlignMiddle().Text("مهر و امضای کارفرما").SemiBold();

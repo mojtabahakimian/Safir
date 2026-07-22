@@ -277,6 +277,7 @@
     [Parameter] public int EmployeeId { get; set; }
     [Parameter] public int WorkshopId { get; set; }
     [Parameter] public long DecreeDate { get; set; }
+    [Parameter] public long? DecreeEffectiveTo { get; set; }
     [Parameter] public EventCallback OnClose { get; set; }
 
     [Parameter] public bool IsDecreeConfirmed { get; set; }
@@ -303,7 +304,8 @@
     bool IsShiftPctItem => IsShiftPctLine(CurrentLine);
 
     bool IsShiftFixedItem => SelectedDef?.ITEM_CODE == "SHIFT" && EffectiveShiftMode(CurrentLine.SHIFT_MODE_OV) == "FIXED";
-    bool IsInsuranceRuleLocked => _insuranceRuleEffectiveFrom > 0 && DecreeDate / 100 >= _insuranceRuleEffectiveFrom / 100 &&
+    bool IsInsuranceRuleLocked => _insuranceRuleEffectiveFrom > 0 &&
+        (!DecreeEffectiveTo.HasValue || DecreeEffectiveTo.Value / 100 >= _insuranceRuleEffectiveFrom / 100) &&
         (SelectedDef?.ITEM_CODE is "SHIFT" or "OT_NORMAL" or "OT_HOLIDAY" or "OT_ADMIN");
 
     // کمک‌محاسبه درصد فقط برای آیتم‌هایی که مبنای مؤثرشان ماهیانه است (مبلغ = ریالِ کامل ماه)
