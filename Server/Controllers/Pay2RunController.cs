@@ -758,8 +758,8 @@ VALUES (@N_S, @RADIF, @HES_K, @HES_M, @HES_T, @HES_T2, @HES_T3, @HES_T4, @HES, @
                             FatherName = line.FATHER_NAME?.ToString() ?? "",
                             JobTitle = line.JOB_NAME?.ToString() ?? "",
                             WorkDays = workDays,
-                            HireDate = DateInOccurrenceMonth(line.HIRE_DATE, (long)line.PERIOD_DATE),
-                            FireDate = DateInOccurrenceMonth(line.FIRE_DATE, (long)line.PERIOD_DATE),
+                            HireDate = FormatSnapshotDate(line.HIRE_DATE),
+                            FireDate = FormatSnapshotDate(line.FIRE_DATE),
                             BaseDailyWage = baseDaily,
                             SeniorityDailyBase = seniorityDaily,
                             MonthlyWage = monthlyWage,
@@ -767,6 +767,8 @@ VALUES (@N_S, @RADIF, @HES_K, @HES_M, @HES_T, @HES_T2, @HES_T3, @HES_T4, @HES, @
                             TotalSubjectToInsurance = (long)line.INS_BASE,
                             TotalGrossPay = (long)line.NOMINAL_GROSS,
                             WorkerPremium = (long)line.INS_WORKER,
+                            EmployerPremium = (long)line.INS_EMPLOYER_BASE,
+                            UnemploymentPremium = (long)line.INS_UNEMPLOYMENT,
                             TaxAmount = (long)line.TAX_AMOUNT,
                             NetPayable = (long)line.NOMINAL_NET_PAYABLE
                         });
@@ -860,7 +862,7 @@ VALUES (@N_S, @RADIF, @HES_K, @HES_M, @HES_T, @HES_T2, @HES_T3, @HES_T4, @HES, @
                 int firstRunId = targetRunIds.First();
                 const string headSql = @"
                     SELECT 
-                        P.PERIOD_DATE, W.WS_CODE, W.WS_NAME, W.EMPLOYER_NAME, W.TAX_CODE
+                        P.PERIOD_DATE, W.WS_CODE, W.WS_NAME, W.EMPLOYER_NAME, W.TAX_CODE, W.ADDRESS
                     FROM PAY2_RUN R
                     INNER JOIN PAY2_PERIOD P ON R.PER_ID = P.PER_ID
                     INNER JOIN PAY2_WORKSHOP W ON P.WS_ID = W.WS_ID
@@ -882,6 +884,7 @@ VALUES (@N_S, @RADIF, @HES_K, @HES_M, @HES_T, @HES_T2, @HES_T3, @HES_T4, @HES, @
                 reportDto.WorkshopName = head.WS_NAME?.ToString() ?? "";
                 reportDto.EmployerName = head.EMPLOYER_NAME?.ToString() ?? "";
                 reportDto.TaxCode = head.TAX_CODE?.ToString() ?? "";
+                reportDto.Address = head.ADDRESS?.ToString() ?? "";
                 reportDto.PeriodYear = year;
                 reportDto.PeriodMonthName = monthName;
 
@@ -916,8 +919,8 @@ VALUES (@N_S, @RADIF, @HES_K, @HES_M, @HES_T, @HES_T2, @HES_T3, @HES_T4, @HES, @
                             NationalCode = line.NATIONAL_CODE?.ToString() ?? "",
                             JobTitle = line.JOB_NAME?.ToString() ?? "",
                             WorkDays = workDays,
-                            HireDate = DateInOccurrenceMonth(line.HIRE_DATE, (long)line.PERIOD_DATE),
-                            FireDate = DateInOccurrenceMonth(line.FIRE_DATE, (long)line.PERIOD_DATE),
+                            HireDate = FormatSnapshotDate(line.HIRE_DATE),
+                            FireDate = FormatSnapshotDate(line.FIRE_DATE),
                             BaseDailyWage = workDays > 0 ? (long)Math.Round(baseMonthly / workDays, MidpointRounding.AwayFromZero) : 0,
                             SeniorityDailyBase = workDays > 0 ? (long)Math.Round(seniorityMonthly / workDays, MidpointRounding.AwayFromZero) : 0,
                             MonthlyWage = monthlyWage,
@@ -1194,12 +1197,8 @@ VALUES (@N_S, @RADIF, @HES_K, @HES_M, @HES_T, @HES_T2, @HES_T3, @HES_T4, @HES, @
                 return StatusCode(500, "خطا در بارگذاری پیش‌نمایش دیسکت مالیات: " + ex.Message);
             }
         }
-        private static string DateInOccurrenceMonth(object? value, long periodDate)
-        {
-            if (value is null || value is DBNull) return string.Empty;
-            if (!long.TryParse(value.ToString(), out var date) || date <= 0) return string.Empty;
-            return date / 100 == periodDate / 100 ? date.ToString() : string.Empty;
-        }
+        private static string FormatSnapshotDate(object? value)
+            => value is null || value is DBNull ? string.Empty : value.ToString() ?? string.Empty;
 
     }
 }

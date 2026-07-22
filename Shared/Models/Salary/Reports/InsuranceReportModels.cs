@@ -27,6 +27,8 @@ namespace Safir.Shared.Models.Salary.Reports
         public long TotalSubjectToInsurance { get; set; } // جمع مشمول
         public long TotalGrossPay { get; set; }           // جمع ناخالص
         public long WorkerPremium { get; set; }           // حق بیمه سهم کارگر (7%)
+        public long EmployerPremium { get; set; }         // سهم کارفرما Snapshot شده
+        public long UnemploymentPremium { get; set; }     // بیمه بیکاری Snapshot شده
         public long TaxAmount { get; set; }
         public long NetPayable { get; set; }
     }
@@ -53,8 +55,8 @@ namespace Safir.Shared.Models.Salary.Reports
         public long TotalTaxAmount => Rows.Sum(x => x.TaxAmount);
         public long TotalNetPayable => Rows.Sum(x => x.NetPayable);
 
-        public long TotalEmployerPremium => (long)(TotalSubjectToInsurance * 0.20m);
-        public long TotalUnemploymentPremium => (long)(TotalSubjectToInsurance * 0.03m);
+        public long TotalEmployerPremium => Rows.Sum(x => x.EmployerPremium);
+        public long TotalUnemploymentPremium => Rows.Sum(x => x.UnemploymentPremium);
         public long TotalPayablePremium => TotalWorkerPremium + TotalEmployerPremium + TotalUnemploymentPremium;
     }
 

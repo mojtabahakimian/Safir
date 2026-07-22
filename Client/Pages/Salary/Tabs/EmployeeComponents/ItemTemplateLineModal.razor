@@ -56,8 +56,16 @@
                     <div class="form-grid-3">
                         <div class="form-field">
                             <label>وضعیت بیمه (Override)</label>
-                            <Safir.Client.Pages.Salary.Tabs.Pay2Select TItem="LookupDto<int>" TValue="int" Items="OverrideOptions"
-                                                                       @bind-Value="CurrentLine.InsCombo" TextSelector="x => x.Name" ValueSelector="x => x.Id" Clearable="false" />
+                            @if (IsInsuranceRuleLocked)
+                            {
+                                <div class="pay2-input" style="background:#f1f5f9;">معاف ـ قاعده اجباری مشتری</div>
+                                <div class="hint-text mt-1">این آیتم در قالب‌های آینده الزاماً غیرمشمول بیمه است.</div>
+                            }
+                            else
+                            {
+                                <Safir.Client.Pages.Salary.Tabs.Pay2Select TItem="LookupDto<int>" TValue="int" Items="OverrideOptions"
+                                                                           @bind-Value="CurrentLine.InsCombo" TextSelector="x => x.Name" ValueSelector="x => x.Id" Clearable="false" />
+                            }
                         </div>
                         <div class="form-field">
                             <label>وضعیت مالیات (Override)</label>
@@ -162,6 +170,10 @@
     int _lastProcessedId = -1;
     bool _isDataLoaded = false;
     bool _lastOpenState = false;
+    long _insuranceRuleEffectiveFrom;
+    Pay2ItemDefDto? SelectedDef => FullItemDefs.FirstOrDefault(x => x.ITEM_ID == CurrentLine.ITEM_ID);
+    bool IsInsuranceRuleLocked => _insuranceRuleEffectiveFrom > 0 &&
+        (SelectedDef?.ITEM_CODE is "SHIFT" or "OT_NORMAL" or "OT_HOLIDAY" or "OT_ADMIN");
 
     bool IsShiftPctItem => IsShiftPctLine(CurrentLine);
 
@@ -196,12 +208,14 @@
             var linesTask = EmployeeApi.GetTemplateLinesAsync(MasterTemplateId);
             var fullDefsTask = ItemDefApi.GetItemDefsAsync();
             var shiftModeTask = SettingsApi.GetEffectiveShiftModeAsync(decId: null, tmplId: MasterTemplateId, wsId: WorkshopId);
+            var configsTask = SettingsApi.GetConfigsAsync();
 
-            await Task.WhenAll(linesTask, fullDefsTask, shiftModeTask);
+            await Task.WhenAll(linesTask, fullDefsTask, shiftModeTask, configsTask);
 
             Lines = linesTask.Result;
             FullItemDefs = fullDefsTask.Result;
             _shiftMode = shiftModeTask.Result;
+            long.TryParse(configsTask.Result.FirstOrDefault(x => x.CFG_KEY == "INS_NON_SUBJECT_EFFECTIVE_FROM")?.CFG_VALUE, out _insuranceRuleEffectiveFrom);
             ItemDefs = Pay2SettingsApiService.FilterEditableItemDefs(FullItemDefs);
         }
         catch (Exception ex) { Console.WriteLine(ex.Message); }

@@ -405,7 +405,7 @@ namespace Safir.Server.Controllers
                 {
                     line.SHIFT_MODE_OV = string.IsNullOrWhiteSpace(line.SHIFT_MODE_OV) ? null : line.SHIFT_MODE_OV;
                     var decHeader = await conn.QuerySingleOrDefaultAsync(
-                        "SELECT IS_CONFIRMED FROM PAY2_DECREE WHERE DEC_ID = @DEC_ID", new { line.DEC_ID }, tran)
+                        "SELECT IS_CONFIRMED, EFF_FROM, EFF_TO FROM PAY2_DECREE WHERE DEC_ID = @DEC_ID", new { line.DEC_ID }, tran)
                         ?? throw new KeyNotFoundException();
                     if ((bool)decHeader.IS_CONFIRMED)
                         throw new InvalidOperationException("این حکم قفل (تأیید نهایی) شده است! برای افزودن یا تغییر مبالغ، باید ابتدا در صفحه قبل، تیک تایید این حکم را بردارید.");
@@ -421,6 +421,14 @@ namespace Safir.Server.Controllers
                     if (itemType != 1 && itemType != 2)
                         throw new InvalidOperationException("فقط آیتم‌های پرداختی (نوع ۱ و ۲) در احکام مجاز هستند.");
                     string? itemCode = (string?)itemInfo.ITEM_CODE;
+                    if (line.INS_OV == true && (itemCode is "SHIFT" or "OT_NORMAL" or "OT_HOLIDAY" or "OT_ADMIN"))
+                    {
+                        long effectiveFrom = await conn.QuerySingleOrDefaultAsync<long?>(
+                            "SELECT TRY_CAST(CFG_VALUE AS BIGINT) FROM PAY2_CONFIG WHERE CFG_KEY='INS_NON_SUBJECT_EFFECTIVE_FROM'", transaction: tran) ?? 0;
+                        long? decreeTo = (long?)decHeader.EFF_TO;
+                        if (effectiveFrom > 0 && (!decreeTo.HasValue || decreeTo.Value / 100 >= effectiveFrom / 100))
+                            throw new InvalidOperationException("این آیتم از تاریخ اثر قاعده اختصاصی مشتری الزاماً غیرمشمول بیمه است و Override مشمول برای آن مجاز نیست.");
+                    }
                     if (itemCode == "SANOVAT_PAYE")
                     {
                         line.NOMINAL_AMOUNT_OV ??= line.AMOUNT;
@@ -830,6 +838,20 @@ namespace Safir.Server.Controllers
             {
                 await _db.ExecuteInTransactionAsync(async (conn, tran) =>
                 {
+                    if (ovr.INS_OV == true)
+                    {
+                        var rule = await conn.QuerySingleOrDefaultAsync<dynamic>(@"
+                            SELECT I.ITEM_CODE,
+                                   ISNULL((SELECT TRY_CAST(CFG_VALUE AS BIGINT) FROM PAY2_CONFIG WHERE CFG_KEY='INS_NON_SUBJECT_EFFECTIVE_FROM'),0) EFFECTIVE_FROM
+                            FROM PAY2_ITEM_DEF I WHERE I.ITEM_ID=@ITEM_ID", new { ovr.ITEM_ID }, tran)
+                            ?? throw new InvalidOperationException("آیتم حقوقی مورد نظر یافت نشد.");
+                        string itemCode = (string)rule.ITEM_CODE;
+                        long effectiveFrom = (long)rule.EFFECTIVE_FROM;
+                        if (effectiveFrom > 0 && (itemCode is "SHIFT" or "OT_NORMAL" or "OT_HOLIDAY" or "OT_ADMIN") &&
+                            (!ovr.VALID_TO.HasValue || ovr.VALID_TO.Value / 100 >= effectiveFrom / 100))
+                            throw new InvalidOperationException("این آیتم از تاریخ اثر قاعده اختصاصی مشتری الزاماً غیرمشمول بیمه است و ثبت Override مشمول مجاز نیست.");
+                    }
+
                     if (!isEditing)
                     {
                         // درج جدید (بررسی تکراری بودن کلید اصلی مرکب)
@@ -1184,6 +1206,18 @@ namespace Safir.Server.Controllers
             {
                 await _db.ExecuteInTransactionAsync(async (conn, tran) =>
                 {
+                    if (line.INS_OV == true)
+                    {
+                        var rule = await conn.QuerySingleOrDefaultAsync<dynamic>(@"
+                            SELECT I.ITEM_CODE,
+                                   ISNULL((SELECT TRY_CAST(CFG_VALUE AS BIGINT) FROM PAY2_CONFIG WHERE CFG_KEY='INS_NON_SUBJECT_EFFECTIVE_FROM'),0) EFFECTIVE_FROM
+                            FROM PAY2_ITEM_DEF I WHERE I.ITEM_ID=@ITEM_ID", new { line.ITEM_ID }, tran)
+                            ?? throw new InvalidOperationException("آیتم حقوقی مورد نظر یافت نشد.");
+                        string itemCode = (string)rule.ITEM_CODE;
+                        if ((long)rule.EFFECTIVE_FROM > 0 && (itemCode is "SHIFT" or "OT_NORMAL" or "OT_HOLIDAY" or "OT_ADMIN"))
+                            throw new InvalidOperationException("این آیتم طبق قاعده اختصاصی مشتری الزاماً غیرمشمول بیمه است و Override مشمول در قالب مجاز نیست.");
+                    }
+
                     // اعتبارسنجی: مقدار اعشاری فقط برای آیتم حق شیفت درصدی مجاز است
                     line.SHIFT_MODE_OV = string.IsNullOrWhiteSpace(line.SHIFT_MODE_OV) ? null : line.SHIFT_MODE_OV;
                     if (line.DEF_AMOUNT != Math.Truncate(line.DEF_AMOUNT))

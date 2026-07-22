@@ -31,6 +31,7 @@ namespace Safir.Shared.Models.Salary.Reports
         public string WorkshopName { get; set; } = string.Empty;
         public string EmployerName { get; set; } = string.Empty;
         public string TaxCode { get; set; } = string.Empty; // شناسه/کد اقتصادی
+        public string Address { get; set; } = string.Empty;
         public string PeriodYear { get; set; } = string.Empty;
         public string PeriodMonthName { get; set; } = string.Empty;
 

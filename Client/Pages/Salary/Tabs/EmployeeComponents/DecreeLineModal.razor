@@ -102,7 +102,7 @@
                                     مبلغ ثابت ماهانه وارد کنید. (نسبت به کارکرد پرداخت خواهد شد)
                                 </div>
                             }
-                            else
+                            else if (SelectedDef?.ITEM_CODE != "SANOVAT_PAYE")
                             {
                                 <label>مبلغ در این حکم (ریال) <span style="color:var(--pay2-danger);">*</span></label>
                                 <Pay2NumericInput @bind-Value="CurrentAmountStr" @bind-Value:after="OnAmountManuallyChanged"
@@ -162,8 +162,16 @@
                         }
                             <div class="form-field">
                                 <label>مشمولیت بیمه (Override)</label>
-                                <Pay2Select TItem="LookupDto<int>" TValue="int" Items="OverrideOptions"
-                                            @bind-Value="CurrentLine.InsCombo" TextSelector="x => x.Name" ValueSelector="x => x.Id" Clearable="false" Disabled="@IsDecreeConfirmed" />
+                                @if (IsInsuranceRuleLocked)
+                                {
+                                    <div class="pay2-input" style="background:#f1f5f9;">معاف ـ قاعده اجباری مشتری</div>
+                                    <div class="hint-text mt-1">از تاریخ اثر قاعده مشتری، این آیتم الزاماً غیرمشمول بیمه است.</div>
+                                }
+                                else
+                                {
+                                    <Pay2Select TItem="LookupDto<int>" TValue="int" Items="OverrideOptions"
+                                                @bind-Value="CurrentLine.InsCombo" TextSelector="x => x.Name" ValueSelector="x => x.Id" Clearable="false" Disabled="@IsDecreeConfirmed" />
+                                }
                             </div>
                             <div class="form-field">
                                 <label>مشمولیت مالیات (Override)</label>
@@ -287,6 +295,7 @@
     string _shiftMode = "PCT";
     bool IsSaving = false;
     bool IsEditing = false;
+    long _insuranceRuleEffectiveFrom;
 
     Pay2ItemDefDto? SelectedDef => FullItemDefs.FirstOrDefault(d => d.ITEM_ID == CurrentLine.ITEM_ID);
 
@@ -294,6 +303,8 @@
     bool IsShiftPctItem => IsShiftPctLine(CurrentLine);
 
     bool IsShiftFixedItem => SelectedDef?.ITEM_CODE == "SHIFT" && EffectiveShiftMode(CurrentLine.SHIFT_MODE_OV) == "FIXED";
+    bool IsInsuranceRuleLocked => _insuranceRuleEffectiveFrom > 0 && DecreeDate / 100 >= _insuranceRuleEffectiveFrom / 100 &&
+        (SelectedDef?.ITEM_CODE is "SHIFT" or "OT_NORMAL" or "OT_HOLIDAY" or "OT_ADMIN");
 
     // کمک‌محاسبه درصد فقط برای آیتم‌هایی که مبنای مؤثرشان ماهیانه است (مبلغ = ریالِ کامل ماه)
     bool IsMonthlyBasisSelected => SelectedDef != null && (CurrentLine.BASIS_OV ?? SelectedDef.CALC_BASIS) == 2;
@@ -338,12 +349,14 @@
             var linesTask = EmployeeApi.GetDecreeLinesAsync(DecreeId);
             var fullDefsTask = ItemDefApi.GetItemDefsAsync();
             var shiftModeTask = SettingsApi.GetEffectiveShiftModeAsync(decId: DecreeId, tmplId: null, wsId: WorkshopId);
+            var configsTask = SettingsApi.GetConfigsAsync();
 
-            await Task.WhenAll(linesTask, fullDefsTask, shiftModeTask);
+            await Task.WhenAll(linesTask, fullDefsTask, shiftModeTask, configsTask);
 
             Lines = linesTask.Result;
             FullItemDefs = fullDefsTask.Result;
             _shiftMode = shiftModeTask.Result;
+            long.TryParse(configsTask.Result.FirstOrDefault(x => x.CFG_KEY == "INS_NON_SUBJECT_EFFECTIVE_FROM")?.CFG_VALUE, out _insuranceRuleEffectiveFrom);
             ItemDefs = Pay2SettingsApiService.FilterEditableItemDefs(FullItemDefs);
         }
         catch (Exception ex)
