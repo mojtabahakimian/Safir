@@ -734,8 +734,10 @@ VALUES (@N_S, @RADIF, @HES_K, @HES_M, @HES_T, @HES_T2, @HES_T3, @HES_T4, @HES, @
                         monthLabel = $" [{(m >= 1 && m <= 12 ? monthNames[m - 1] : m.ToString())}]";
                     }
 
+                    // پرسنل معاف از بیمه (INS_TYPE=3) در لیست بیمه نمی‌آیند؛ مطابق دیسکت تأمین اجتماعی.
                     var lines = (await _db.DoGetDataSQLAsync<dynamic>(
-                        Safir.Server.Services.Pay2PayrollSnapshotQuery.Sql, new { runId = currentRunId })).ToList();
+                        Safir.Server.Services.Pay2PayrollSnapshotQuery.Sql, new { runId = currentRunId }))
+                        .Where(x => (byte)x.INS_TYPE != 3).ToList();
                     if (lines.Any(x => !(bool)x.HAS_NOMINAL_RAIL || !(bool)x.HAS_COMPLETE_NOMINAL_SNAPSHOT || !(bool)x.HAS_COMPLETE_EMP_SNAPSHOT))
                         return UnprocessableEntity("خروجی قانونی ممکن نیست: Snapshot کامل ریل اسمی یا مشخصات پرسنل وجود ندارد.");
                     if (lines.Any(x => !(bool)x.PREMIUM_SNAPSHOT_AVAILABLE))
