@@ -1,199 +1,122 @@
-﻿using Microsoft.AspNetCore.Hosting;
-using QuestPDF.Fluent;
+﻿using QuestPDF.Fluent;
 using QuestPDF.Helpers;
 using QuestPDF.Infrastructure;
 using Safir.Shared.Models.Salary.Reports;
 using System.Globalization;
 
-namespace Safir.Server.Reports
+namespace Safir.Server.Reports;
+
+public sealed class InsuranceListDocument : IDocument
 {
-    public class InsuranceListDocument : IDocument
+    private readonly InsuranceReportDto _data;
+    private const string Font = "IRANYekanFN";
+    private static readonly CultureInfo FaCulture = new("fa-IR");
+    public InsuranceListDocument(InsuranceReportDto data) => _data = data;
+    public DocumentMetadata GetMetadata() => DocumentMetadata.Default;
+
+    public void Compose(IDocumentContainer container) => container.Page(page =>
     {
-        private readonly InsuranceReportDto _data;
-        private const string PersianFontName = "IRANYekanFN";
-        private static readonly CultureInfo FaCulture = new CultureInfo("fa-IR");
+        page.Size(PageSizes.A3.Landscape());
+        page.Margin(8, Unit.Millimetre);
+        page.PageColor(Colors.White);
+        page.DefaultTextStyle(x => x.FontFamily(Font).FontSize(6.5f));
+        page.ContentFromRightToLeft();
+        page.Header().Element(ComposeHeader);
+        page.Content().Element(ComposeContent);
+        page.Footer().Element(ComposeFooter);
+    });
 
-        public InsuranceListDocument(InsuranceReportDto data)
+    private void ComposeHeader(IContainer container) => container.PaddingBottom(8).Column(col =>
+    {
+        col.Item().Row(row =>
         {
-            _data = data;
-        }
-
-        public DocumentMetadata GetMetadata() => DocumentMetadata.Default;
-
-        public void Compose(IDocumentContainer container)
+            row.RelativeItem().AlignRight().Text($"سال: {_data.PeriodYear}").FontSize(10).SemiBold();
+            row.RelativeItem(2).AlignCenter().Text("صورت دستمزد، حقوق و مزایای ماهانه").FontSize(14).Bold();
+            row.RelativeItem().AlignLeft().Text($"ماه: {_data.PeriodMonthName}").FontSize(10).SemiBold();
+        });
+        col.Item().PaddingVertical(4).LineHorizontal(1).LineColor(Colors.Grey.Medium);
+        col.Item().Row(row =>
         {
-            container.Page(page =>
+            row.RelativeItem(2).Text($"نام کارگاه: {_data.WorkshopName}").SemiBold();
+            row.RelativeItem(2).Text($"نام کارفرما: {_data.EmployerName}");
+            row.RelativeItem(2).Text($"شماره کارگاه: {_data.WorkshopCode}").SemiBold();
+            row.RelativeItem(2).Text($"شعبه تأمین اجتماعی: {_data.BranchName}");
+        });
+        col.Item().PaddingTop(2).Text($"نشانی کارگاه: {_data.Address}").FontColor(Colors.Grey.Darken2);
+    });
+
+    private void ComposeContent(IContainer container) => container.Column(main =>
+    {
+        main.Item().Table(table =>
+        {
+            table.ColumnsDefinition(c =>
             {
-                // برگه A4 افقی برای جا شدن تمام ستون‌ها
-                page.Size(PageSizes.A4.Landscape());
-                page.Margin(1, Unit.Centimetre);
-                page.PageColor(Colors.White);
-                page.DefaultTextStyle(x => x.FontSize(8).FontFamily(PersianFontName));
-                page.ContentFromRightToLeft();
-
-                page.Header().Element(ComposeHeader);
-                page.Content().Element(ComposeContent);
-                page.Footer().Element(ComposeFooter);
+                c.ConstantColumn(22); c.RelativeColumn(2.5f); c.RelativeColumn(1.25f); c.RelativeColumn(1.25f); c.RelativeColumn(1.5f);
+                c.RelativeColumn(1.05f); c.RelativeColumn(1.05f); c.ConstantColumn(28);
+                for (var i = 0; i < 10; i++) c.RelativeColumn(1.25f);
             });
-        }
-
-        private void ComposeHeader(IContainer container)
-        {
-            container.PaddingBottom(10).Column(col =>
+            table.Header(h =>
             {
-                // سطر اول: عنوان، ماه، سال
-                col.Item().Row(row =>
-                {
-                    row.RelativeItem().AlignRight().Text($"سال: {_data.PeriodYear}").FontSize(10).SemiBold();
-                    row.RelativeItem().AlignCenter().Text("صورت دستمزد، حقوق و مزایای ماهانه").FontSize(14).Bold();
-                    row.RelativeItem().AlignLeft().Text($"ماه: {_data.PeriodMonthName}").FontSize(10).SemiBold();
-                });
-
-                col.Item().PaddingVertical(5).LineHorizontal(1).LineColor(Colors.Grey.Medium);
-
-                // سطر دوم: مشخصات کارگاه
-                col.Item().Row(row =>
-                {
-                    row.RelativeItem(2).Text($"نام کارگاه: {_data.WorkshopName}").SemiBold();
-                    row.RelativeItem(2).Text($"نام کارفرما: {_data.EmployerName}");
-                    row.RelativeItem(2).Text($"شماره کارگاه: {_data.WorkshopCode}").SemiBold();
-                    row.RelativeItem(2).Text($"شعبه تامین اجتماعی: {_data.BranchName}");
-                });
-
-                // سطر سوم: آدرس
-                col.Item().PaddingTop(2).Text($"نشانی کارگاه: {_data.Address}").FontSize(8).FontColor(Colors.Grey.Darken2);
+                foreach (var title in new[] { "ردیف", "نام و نام خانوادگی", "کد ملی", "شماره بیمه", "شغل", "شروع کار", "ترک کار", "روز", "پایه مزد روزانه", "پایه سنوات روزانه", "دستمزد روزانه کل", "دستمزد ماهانه", "سایر مزایای مشمول", "جمع دستمزد و مزایای مشمول", "جمع ناخالص", "بیمه سهم کارگر", "مالیات حقوق", "مانده قابل پرداخت" })
+                    h.Cell().Element(Header).Text(title).SemiBold();
             });
-        }
-
-        private void ComposeContent(IContainer container)
-        {
-            // 🚀 فیکس باگ QuestPDF: چون Content فقط یک فرزند می‌پذیرد، کل محتوا (جدول + امضا) را داخل یک Column قرار می‌دهیم.
-            container.Column(mainCol =>
+            foreach (var e in _data.Rows)
             {
-                // ۱. جدول لیست پرسنل
-                mainCol.Item().Table(table =>
-                {
-                    // تعریف عرض ستون‌ها
-                    table.ColumnsDefinition(c =>
-                    {
-                        c.ConstantColumn(25); // ردیف
-                        c.RelativeColumn(3);  // نام
-                        c.RelativeColumn(2);  // کد ملی
-                        c.RelativeColumn(2);  // ش بیمه
-                        c.RelativeColumn(2);  // شغل
-                        c.ConstantColumn(30); // روز
-                        c.RelativeColumn(2);  // روزانه
-                        c.RelativeColumn(2.5f); // ماهانه
-                        c.RelativeColumn(2);  // مزایای مشمول
-                        c.RelativeColumn(2);  // حق تاهل (1405)
-                        c.RelativeColumn(2);  // سنوات (1405)
-                        c.RelativeColumn(2.5f); // جمع مشمول
-                        c.RelativeColumn(2.5f); // ناخالص
-                        c.RelativeColumn(2);  // سهم کارگر
-                    });
-
-                    // هدر جدول
-                    table.Header(h =>
-                    {
-                        static IContainer HeaderStyle(IContainer c) =>
-                            c.Border(1).BorderColor(Colors.Black).Background(Colors.Grey.Lighten3).Padding(2).AlignCenter().AlignMiddle();
-
-                        h.Cell().Element(HeaderStyle).Text("ردیف").SemiBold();
-                        h.Cell().Element(HeaderStyle).Text("نام و نام‌خانوادگی").SemiBold();
-                        h.Cell().Element(HeaderStyle).Text("کد ملی").SemiBold();
-                        h.Cell().Element(HeaderStyle).Text("شماره بیمه").SemiBold();
-                        h.Cell().Element(HeaderStyle).Text("شغل").SemiBold();
-                        h.Cell().Element(HeaderStyle).Text("روز").SemiBold();
-                        h.Cell().Element(HeaderStyle).Text("دستمزد روزانه").SemiBold();
-                        h.Cell().Element(HeaderStyle).Text("دستمزد ماهانه").SemiBold();
-                        h.Cell().Element(HeaderStyle).Text("سایر مزایای مشمول").SemiBold();
-                        h.Cell().Element(HeaderStyle).Text("حق تاهل").SemiBold();
-                        h.Cell().Element(HeaderStyle).Text("پایه سنوات").SemiBold();
-                        h.Cell().Element(HeaderStyle).Text("جمع مشمول").SemiBold();
-                        h.Cell().Element(HeaderStyle).Text("جمع ناخالص").SemiBold();
-                        h.Cell().Element(HeaderStyle).Text("سهم بیمه شده").SemiBold();
-                    });
-
-                    // ردیف‌های پرسنل
-                    foreach (var emp in _data.Rows)
-                    {
-                        static IContainer CellStyle(IContainer c) =>
-                            c.Border(1).BorderColor(Colors.Grey.Medium).Padding(2).AlignMiddle();
-
-                        static IContainer Center(IContainer c) => CellStyle(c).AlignCenter();
-                        static IContainer Right(IContainer c) => CellStyle(c).AlignRight();
-
-                        table.Cell().Element(Center).Text(emp.RowIndex.ToString());
-                        table.Cell().Element(Right).Text(emp.FullName).FontSize(7);
-                        table.Cell().Element(Center).Text(emp.NationalCode).FontSize(7);
-                        table.Cell().Element(Center).Text(emp.InsuranceCode).FontSize(7);
-                        table.Cell().Element(Right).Text(emp.JobTitle).FontSize(7);
-                        table.Cell().Element(Center).Text(emp.WorkDays.ToString("0.##", FaCulture));
-                        table.Cell().Element(Center).Text(Money(emp.DailyWage));
-                        table.Cell().Element(Center).Text(Money(emp.MonthlyWage));
-                        table.Cell().Element(Center).Text(Money(emp.OtherSubjectBenefits));
-                        table.Cell().Element(Center).Text(Money(emp.MaritalAllowance));
-                        table.Cell().Element(Center).Text(Money(emp.SeniorityBase));
-                        table.Cell().Element(Center).Text(Money(emp.TotalSubjectToInsurance)).SemiBold();
-                        table.Cell().Element(Center).Text(Money(emp.TotalGrossPay));
-                        table.Cell().Element(Center).Text(Money(emp.WorkerPremium)).SemiBold();
-                    }
-
-                    // ردیف جمع در پایین جدول (تجمعی کل صفحات)
-                    table.Footer(f =>
-                    {
-                        static IContainer FooterStyle(IContainer c) =>
-                            c.Border(1).BorderColor(Colors.Black).Background(Colors.Grey.Lighten4).Padding(2).AlignCenter().AlignMiddle();
-
-                        f.Cell().ColumnSpan(5).Element(FooterStyle).AlignRight().PaddingRight(5).Text("جمع کل (ریال):").SemiBold();
-                        f.Cell().Element(FooterStyle).Text(_data.TotalWorkDays.ToString("0.##", FaCulture)).SemiBold();
-                        f.Cell().Element(FooterStyle).Text("-"); // روزانه جمع ندارد
-                        f.Cell().Element(FooterStyle).Text(Money(_data.TotalMonthlyWage)).SemiBold();
-                        f.Cell().Element(FooterStyle).Text(Money(_data.TotalOtherBenefits)).SemiBold();
-                        f.Cell().Element(FooterStyle).Text(Money(_data.TotalMaritalAllowance)).SemiBold();
-                        f.Cell().Element(FooterStyle).Text(Money(_data.TotalSeniorityBase)).SemiBold();
-                        f.Cell().Element(FooterStyle).Text(Money(_data.TotalSubjectToInsurance)).Bold();
-                        f.Cell().Element(FooterStyle).Text(Money(_data.TotalGrossPay)).SemiBold();
-                        f.Cell().Element(FooterStyle).Text(Money(_data.TotalWorkerPremium)).Bold();
-                    });
-                });
-
-                // ۲. باکس محاسبات سهم کارفرما و امضا (زیر جدول)
-                mainCol.Item().PaddingTop(10).Row(row =>
-                {
-                    // باکس مالیات/بیمه سمت راست
-                    row.RelativeItem(2).Border(1).BorderColor(Colors.Black).Padding(5).Column(c =>
-                    {
-                        c.Item().PaddingBottom(4).Text("محاسبات سهم کارفرما (ریال)").Bold();
-
-                        c.Item().Row(r => { r.RelativeItem().Text("جمع حق بیمه سهم کارگر (۷٪):"); r.RelativeItem().AlignLeft().Text(Money(_data.TotalWorkerPremium)); });
-                        c.Item().Row(r => { r.RelativeItem().Text("جمع حق بیمه سهم کارفرما (۲۰٪):"); r.RelativeItem().AlignLeft().Text(Money(_data.TotalEmployerPremium)); });
-                        c.Item().Row(r => { r.RelativeItem().Text("جمع بیمه بیکاری (۳٪):"); r.RelativeItem().AlignLeft().Text(Money(_data.TotalUnemploymentPremium)); });
-
-                        c.Item().PaddingTop(3).LineHorizontal(1).LineColor(Colors.Grey.Lighten1);
-
-                        c.Item().PaddingTop(3).Row(r => { r.RelativeItem().Text("جمع کل قابل پرداخت (۳۰٪):").SemiBold(); r.RelativeItem().AlignLeft().Text(Money(_data.TotalPayablePremium)).Bold(); });
-                    });
-
-                    row.ConstantItem(20); // فاصله
-
-                    // باکس مهر و امضا
-                    row.RelativeItem(1).Border(1).BorderColor(Colors.Black).Padding(5).AlignCenter().AlignMiddle().Text("مهر و امضای کارفرما").SemiBold();
-                });
-            });
-        }
-
-        private void ComposeFooter(IContainer container)
-        {
-            container.AlignCenter().Text(text =>
+                Cell(e.RowIndex.ToString()); Cell(e.FullName, false); Cell(e.NationalCode); Cell(e.InsuranceCode); Cell(e.JobTitle, false);
+                Cell(e.HireDate); Cell(e.FireDate); Cell(e.WorkDays.ToString("0.##", FaCulture));
+                Cell(Money(e.BaseDailyWage)); Cell(Money(e.SeniorityDailyBase)); Cell(Money(e.TotalDailyWage)); Cell(Money(e.MonthlyWage));
+                Cell(Money(e.OtherSubjectBenefits)); Cell(Money(e.TotalSubjectToInsurance)); Cell(Money(e.TotalGrossPay));
+                Cell(Money(e.WorkerPremium)); Cell(Money(e.TaxAmount)); Cell(Money(e.NetPayable));
+            }
+            table.Footer(f =>
             {
-                text.Span("صفحه ").FontSize(8);
-                text.CurrentPageNumber().FontSize(8);
-                text.Span(" از ").FontSize(8);
-                text.TotalPages().FontSize(8);
+                f.Cell().ColumnSpan(7).Element(Footer).AlignRight().PaddingRight(5).Text("جمع کل (ریال):").SemiBold();
+                f.Cell().Element(Footer).Text(_data.TotalWorkDays.ToString("0.##", FaCulture)).SemiBold();
+                f.Cell().Element(Footer).Text("-"); f.Cell().Element(Footer).Text("-"); f.Cell().Element(Footer).Text("-");
+                f.Cell().Element(Footer).Text(Money(_data.TotalMonthlyWage)); f.Cell().Element(Footer).Text(Money(_data.TotalOtherBenefits));
+                f.Cell().Element(Footer).Text(Money(_data.TotalSubjectToInsurance)).Bold(); f.Cell().Element(Footer).Text(Money(_data.TotalGrossPay));
+                f.Cell().Element(Footer).Text(Money(_data.TotalWorkerPremium)).Bold(); f.Cell().Element(Footer).Text(Money(_data.TotalTaxAmount));
+                f.Cell().Element(Footer).Text(Money(_data.TotalNetPayable)).Bold();
             });
-        }
+            void Cell(string value, bool center = true) => table.Cell().Element(center ? BodyCenter : BodyRight).Text(value);
+        });
 
-        private static string Money(long value) => value == 0 ? "0" : value.ToString("N0", FaCulture);
-    }
+        main.Item().PaddingTop(10).Row(row =>
+        {
+            row.RelativeItem(2).Border(1).Padding(6).Column(c =>
+            {
+                c.Item().Text("محاسبات حق بیمه Snapshot شده (ریال)").Bold();
+                if (_data.HasPremiumBreakdownSnapshot)
+                {
+                    Premium(c, "جمع حق بیمه سهم کارگر:", _data.TotalWorkerPremium);
+                    Premium(c, "جمع سهم پایه کارفرما:", _data.TotalEmployerPremium);
+                    Premium(c, "جمع بیمه بیکاری:", _data.TotalUnemploymentPremium);
+                    c.Item().PaddingTop(3).LineHorizontal(1);
+                    Premium(c, "جمع کل قابل پرداخت:", _data.TotalPayablePremium, true);
+                }
+                else
+                {
+                    c.Item().PaddingTop(8).Text("تفکیک سهم کارفرما و بیمه بیکاری در نسخه تاریخی این Run Snapshot نشده است.")
+                        .FontColor(Colors.Grey.Darken2);
+                }
+            });
+            row.ConstantItem(20);
+            row.RelativeItem().Border(1).MinHeight(75).AlignCenter().AlignMiddle().Text("مهر و امضای کارفرما").SemiBold();
+            row.ConstantItem(12);
+            row.RelativeItem().Border(1).MinHeight(75).AlignCenter().AlignMiddle().Text("تأیید واحد مالی / منابع انسانی").SemiBold();
+        });
+    });
+
+    private static void Premium(ColumnDescriptor c, string title, long value, bool bold = false) => c.Item().Row(r =>
+    {
+        r.RelativeItem().Text(title);
+        if (bold) r.RelativeItem().AlignLeft().Text(Money(value)).Bold();
+        else r.RelativeItem().AlignLeft().Text(Money(value));
+    });
+    private static void ComposeFooter(IContainer c) => c.AlignCenter().Text(t => { t.Span("صفحه "); t.CurrentPageNumber(); t.Span(" از "); t.TotalPages(); });
+    private static IContainer Header(IContainer c) => c.Border(1).Background(Colors.Grey.Lighten3).Padding(2).AlignCenter().AlignMiddle();
+    private static IContainer BodyCenter(IContainer c) => c.Border(1).BorderColor(Colors.Grey.Medium).Padding(2).AlignCenter().AlignMiddle();
+    private static IContainer BodyRight(IContainer c) => c.Border(1).BorderColor(Colors.Grey.Medium).Padding(2).AlignRight().AlignMiddle();
+    private static IContainer Footer(IContainer c) => c.Border(1).Background(Colors.Grey.Lighten4).Padding(2).AlignCenter().AlignMiddle();
+    private static string Money(long value) => value.ToString("N0", FaCulture);
 }

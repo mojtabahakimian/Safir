@@ -24,10 +24,10 @@ namespace Safir.Server.Services
                 SELECT 
                     P.PERIOD_DATE, P.TENDAR_APPLY, W.WS_CODE, W.WS_NAME, W.EMPLOYER_NAME, 
                     W.ADDRESS, W.SSO_BRANCH
-                FROM PAY2_RUN R WITH (NOLOCK)
-                INNER JOIN PAY2_PERIOD P WITH (NOLOCK) ON R.PER_ID = P.PER_ID
-                INNER JOIN PAY2_WORKSHOP W WITH (NOLOCK) ON P.WS_ID = W.WS_ID
-                WHERE R.RUN_ID = @runId";
+                FROM PAY2_RUN R
+                INNER JOIN PAY2_PERIOD P ON R.PER_ID = P.PER_ID
+                INNER JOIN PAY2_WORKSHOP W ON P.WS_ID = W.WS_ID
+                WHERE R.RUN_ID = @runId AND R.STATUS >= 2";
 
             var head = await _db.DoGetDataSQLAsyncSingle<dynamic>(headSql, new { runId });
             if (head == null) return null;
@@ -37,33 +37,11 @@ namespace Safir.Server.Services
             int month = (int)((periodDate / 100) % 100);
             string wsCode = head.WS_CODE?.ToString() ?? "";
 
-            // ۲. خواندن اطلاعات پرسنل
-            const string linesSql = @"
-                SELECT 
-                    RL.EMP_ID, E.FIRST_NAME, E.LAST_NAME, E.FATHER_NAME,
-                    E.NATIONAL_CODE, E.INS_CODE, E.BIRTH_DATE, E.GENDER, E.NATIONALITY,
-                    E.BIRTH_PLACE, E.ID_NUMBER,
-                    J.JOB_NAME, J.JOB_CODE,
-                    RL.WORK_DAYS, RL.INS_BASE, RL.INS_WORKER, RL.INS_EMPLOYER, RL.GROSS_PAY,
-                    A.DAYSB
-                FROM PAY2_RUN_LINE RL WITH (NOLOCK)
-                INNER JOIN PAY2_EMPLOYEE E WITH (NOLOCK) ON RL.EMP_ID = E.EMP_ID
-                LEFT JOIN PAY2_ATTENDANCE A WITH (NOLOCK) ON RL.EMP_ID = A.EMP_ID AND A.PER_ID = (SELECT PER_ID FROM PAY2_RUN WHERE RUN_ID = @runId)
-                LEFT JOIN PAY2_JOB J WITH (NOLOCK) ON E.JOB_ID = J.JOB_ID
-                WHERE RL.RUN_ID = @runId AND E.INS_TYPE <> 3 -- حذف معافین کامل
-                ORDER BY E.LAST_NAME, E.FIRST_NAME";
-
-            var lines = (await _db.DoGetDataSQLAsync<dynamic>(linesSql, new { runId })).ToList();
-
-            // ۳. خواندن ریزمبالغ برای تفکیک (حق تاهل، سنوات، حقوق پایه)
-            const string detailsSql = @"
-                SELECT D.EMP_ID, I.ITEM_CODE, D.AMOUNT
-                FROM PAY2_RUN_DETAIL D WITH (NOLOCK)
-                INNER JOIN PAY2_ITEM_DEF I WITH (NOLOCK) ON D.ITEM_ID = I.ITEM_ID
-                WHERE D.RUN_ID = @runId AND I.INS_SUBJECT = 1";
-
-            var details = await _db.DoGetDataSQLAsync<dynamic>(detailsSql, new { runId });
-            var groupedDetails = details.GroupBy(x => (int)x.EMP_ID).ToDictionary(g => g.Key, g => g.ToList());
+            // تمام مبالغ از Snapshot مؤثر همان Run خوانده می‌شوند.
+            var lines = (await _db.DoGetDataSQLAsync<dynamic>(Pay2PayrollSnapshotQuery.Sql, new { runId }))
+                .Where(x => (byte)x.INS_TYPE != 3).ToList();
+            ValidateLegalInsuranceSnapshots(lines);
+            ValidateInsuranceIdentities(lines);
 
             // ─── آماده‌سازی لیست‌های DBF ───
             var dskworList = new List<Dictionary<string, object>>();
@@ -75,31 +53,16 @@ namespace Safir.Server.Services
             foreach (var line in lines)
             {
                 int empId = (int)line.EMP_ID;
-                decimal workDays = (decimal)line.WORK_DAYS;
-
-                long monthlyWage = 0;
-                long maritalAllowance = 0;
-                long seniorityBase = 0;
-
-                if (groupedDetails.TryGetValue(empId, out var empDetails))
-                {
-                    foreach (var det in empDetails)
-                    {
-                        string code = det.ITEM_CODE.ToString().ToUpper();
-                        long amt = (long)det.AMOUNT;
-
-                        if (code == "BASE_SAL_B" || code == "BASE_SAL") monthlyWage += amt;
-                        else if (code == "FAMILY_ALLOW") maritalAllowance += amt;
-                        else if (code == "SENIORITY" || code == "SANOVAT_PAYE") seniorityBase += amt;
-                    }
-                }
-
-                long dailyWage = workDays > 0 ? (long)(monthlyWage / workDays) : 0;
+                decimal workDays = (decimal)line.INSURANCE_DAYS;
+                long baseMonthly = (long)line.BASE_WAGE_MONTHLY;
+                long seniorityMonthly = (long)line.SENIORITY_MONTHLY;
+                long dailyWage = workDays > 0 ? (long)Math.Round(baseMonthly / workDays, MidpointRounding.AwayFromZero) : 0;
+                long seniorityBase = workDays > 0 ? (long)Math.Round(seniorityMonthly / workDays, MidpointRounding.AwayFromZero) : 0;
+                long monthlyWage = (long)Math.Round((dailyWage + seniorityBase) * workDays, MidpointRounding.AwayFromZero);
+                long maritalAllowance = (long)line.MARITAL_ALLOWANCE;
+                long otherBenefits = (long)line.DBF_GENERAL_BENEFITS;
                 long insBase = (long)line.INS_BASE;
-                long otherBenefits = insBase - monthlyWage - maritalAllowance - seniorityBase;
-                if (otherBenefits < 0) otherBenefits = 0;
-
-                long grossPay = (long)line.GROSS_PAY;
+                long grossPay = (long)line.NOMINAL_GROSS;
                 long workerIns = (long)line.INS_WORKER;
 
                 // جمع‌زن‌ها برای هدر کارگاه
@@ -129,9 +92,9 @@ namespace Safir.Server.Services
                     ["DSW_BDATE"] = line.BIRTH_DATE != null ? line.BIRTH_DATE.ToString() : "",
                     ["DSW_SEX"] = (byte)line.GENDER == 1 ? "مرد" : "زن",
                     ["DSW_NAT"] = (byte)line.NATIONALITY == 1 ? "ایران" : "اتباع",
-                    ["DSW_OCP"] = line.JOB_CODE?.ToString() ?? "000000",
-                    ["DSW_SDATE"] = "", // فیلد استخدام در ماه جاری (پیچیدگی اضافی، خالی می‌ماند)
-                    ["DSW_EDATE"] = "", // فیلد ترک کار
+                    ["DSW_OCP"] = line.JOB_CODE.ToString(),
+                    ["DSW_SDATE"] = DateInOccurrenceMonth(line.HIRE_DATE, periodDate),
+                    ["DSW_EDATE"] = DateInOccurrenceMonth(line.FIRE_DATE, periodDate),
                     ["DSW_DD"] = (int)workDays,
                     ["DSW_ROOZ"] = dailyWage,
                     ["DSW_MAH"] = monthlyWage,
@@ -148,22 +111,12 @@ namespace Safir.Server.Services
                 dskworList.Add(wor);
             }
 
-            // محاسبه سهم کارفرما (با رعایت دقیق آنچه در دیتابیس ذخیره شده)
-            long totalEmployerInsRaw = lines.Sum(l => (long)l.INS_EMPLOYER);
+            if (dskworList.Count != lines.Count)
+                throw new InvalidOperationException("فایل بیمه قابل تولید نیست: تعداد رکوردهای DSKWOR با پرسنل واجد شرایط تراز نیست.");
 
-            // حق بیمه بیکاری (۳٪) همیشه ۳/۲۳ سهم کارفرماست (مگر اینکه معافیت یا ماده ۷ باشد)
-            // به عنوان تقریب امن، مستقیماً از پایه مشمول حساب می‌کنیم.
-            long totalBikari = (long)(totalMash * 0.03m);
-            long totalKarf = (long)(totalMash * 0.20m);
-
-            // 🚀 جادوی ماده ۷ (معافیت کارگاه تا ۵ نفر): در SP ما ذخیره شده، اینجا فقط استخراج می‌کنیم
-            if (totalEmployerInsRaw < (totalKarf + totalBikari))
-            {
-                // اگر در دیتابیس کسر کمتری خورده، یعنی کارگاه معافیت داشته.
-                // تامین اجتماعی خودش می‌داند، ما فقط عدد کارفرما را می‌فرستیم.
-                totalKarf = totalEmployerInsRaw - totalBikari;
-                if (totalKarf < 0) totalKarf = 0;
-            }
+            // اجزای حق بیمه دقیقاً از Snapshot همان Run خوانده می‌شوند.
+            long totalKarf = lines.Sum(l => (long)l.INS_EMPLOYER_BASE);
+            long totalBikari = lines.Sum(l => (long)l.INS_UNEMPLOYMENT);
 
             var dskkarList = new List<Dictionary<string, object>>();
             var kar = new Dictionary<string, object>
@@ -178,7 +131,7 @@ namespace Safir.Server.Services
                 ["DSK_LISTNO"] = "01",
                 ["DSK_DISC"] = "تولید شده توسط سیستم سفیر",
                 ["DSK_NUM"] = lines.Count,
-                ["DSK_TDD"] = (int)lines.Sum(x => (decimal)x.WORK_DAYS),
+                ["DSK_TDD"] = (int)lines.Sum(x => (decimal)x.INSURANCE_DAYS),
                 ["DSK_TROOZ"] = totalDailyWage,
                 ["DSK_TMAH"] = totalMonthlyWage,
                 ["DSK_TMAZ"] = totalOtherBenefits,
@@ -233,7 +186,8 @@ namespace Safir.Server.Services
         // شماره بیمه در تامین اجتماعی باید دقیقاً ۱۰ کاراکتر باشد و معمولاً با صفرهای پیشرو پر می‌شود
         private static string PadInsuranceCode(string? code)
         {
-            if (string.IsNullOrWhiteSpace(code)) return "0000000000";
+            if (string.IsNullOrWhiteSpace(code))
+                throw new InvalidOperationException("شماره بیمه خالی است و جایگزینی با شماره ساختگی مجاز نیست.");
             return code.Trim().PadLeft(10, '0');
         }
 
@@ -245,9 +199,9 @@ namespace Safir.Server.Services
             const string headSql = @"
                 SELECT 
                     P.PERIOD_DATE, W.WS_CODE, W.WS_NAME, W.EMPLOYER_NAME
-                FROM PAY2_RUN R WITH (NOLOCK)
-                INNER JOIN PAY2_PERIOD P WITH (NOLOCK) ON R.PER_ID = P.PER_ID
-                INNER JOIN PAY2_WORKSHOP W WITH (NOLOCK) ON P.WS_ID = W.WS_ID
+                FROM PAY2_RUN R
+                INNER JOIN PAY2_PERIOD P ON R.PER_ID = P.PER_ID
+                INNER JOIN PAY2_WORKSHOP W ON P.WS_ID = W.WS_ID
                 WHERE R.RUN_ID = @runId";
 
             var head = await _db.DoGetDataSQLAsyncSingle<dynamic>(headSql, new { runId });
@@ -258,26 +212,10 @@ namespace Safir.Server.Services
             int month = (int)((periodDate / 100) % 100);
             string wsCode = head.WS_CODE?.ToString() ?? "";
 
-            const string linesSql = @"
-                SELECT 
-                    RL.EMP_ID, E.FIRST_NAME, E.LAST_NAME, E.NATIONAL_CODE, E.INS_CODE, J.JOB_CODE,
-                    RL.WORK_DAYS, RL.INS_BASE, RL.INS_WORKER, RL.INS_EMPLOYER, RL.GROSS_PAY
-                FROM PAY2_RUN_LINE RL WITH (NOLOCK)
-                INNER JOIN PAY2_EMPLOYEE E WITH (NOLOCK) ON RL.EMP_ID = E.EMP_ID
-                LEFT JOIN PAY2_JOB J WITH (NOLOCK) ON E.JOB_ID = J.JOB_ID
-                WHERE RL.RUN_ID = @runId AND E.INS_TYPE <> 3
-                ORDER BY E.LAST_NAME, E.FIRST_NAME";
-
-            var lines = (await _db.DoGetDataSQLAsync<dynamic>(linesSql, new { runId })).ToList();
-
-            const string detailsSql = @"
-                SELECT D.EMP_ID, I.ITEM_CODE, D.AMOUNT
-                FROM PAY2_RUN_DETAIL D WITH (NOLOCK)
-                INNER JOIN PAY2_ITEM_DEF I WITH (NOLOCK) ON D.ITEM_ID = I.ITEM_ID
-                WHERE D.RUN_ID = @runId AND I.INS_SUBJECT = 1";
-
-            var details = await _db.DoGetDataSQLAsync<dynamic>(detailsSql, new { runId });
-            var groupedDetails = details.GroupBy(x => (int)x.EMP_ID).ToDictionary(g => g.Key, g => g.ToList());
+            var lines = (await _db.DoGetDataSQLAsync<dynamic>(Pay2PayrollSnapshotQuery.Sql, new { runId }))
+                .Where(x => (byte)x.INS_TYPE != 3).ToList();
+            ValidateLegalInsuranceSnapshots(lines);
+            ValidateInsuranceIdentities(lines);
 
             long totalMash = 0, totalTotl = 0, totalWorkerIns = 0;
             long totalMarital = 0, totalSeniority = 0;
@@ -285,28 +223,18 @@ namespace Safir.Server.Services
             foreach (var line in lines)
             {
                 int empId = (int)line.EMP_ID;
-                decimal workDays = (decimal)line.WORK_DAYS;
-                long monthlyWage = 0, maritalAllowance = 0, seniorityBase = 0;
-
-                if (groupedDetails.TryGetValue(empId, out var empDetails))
-                {
-                    foreach (var det in empDetails)
-                    {
-                        string code = det.ITEM_CODE.ToString().ToUpper();
-                        long amt = (long)det.AMOUNT;
-                        if (code == "BASE_SAL_B" || code == "BASE_SAL") monthlyWage += amt;
-                        else if (code == "FAMILY_ALLOW") maritalAllowance += amt;
-                        else if (code == "SENIORITY" || code == "SANOVAT_PAYE") seniorityBase += amt;
-                    }
-                }
-
-                long dailyWage = workDays > 0 ? (long)(monthlyWage / workDays) : 0;
+                decimal workDays = (decimal)line.INSURANCE_DAYS;
+                long baseMonthly = (long)line.BASE_WAGE_MONTHLY;
+                long seniorityMonthly = (long)line.SENIORITY_MONTHLY;
+                long dailyWage = workDays > 0 ? (long)Math.Round(baseMonthly / workDays, MidpointRounding.AwayFromZero) : 0;
+                long seniorityBase = workDays > 0 ? (long)Math.Round(seniorityMonthly / workDays, MidpointRounding.AwayFromZero) : 0;
+                long monthlyWage = (long)Math.Round((dailyWage + seniorityBase) * workDays, MidpointRounding.AwayFromZero);
+                long maritalAllowance = (long)line.MARITAL_ALLOWANCE;
+                long otherBenefits = (long)line.DBF_GENERAL_BENEFITS;
                 long insBase = (long)line.INS_BASE;
-                long otherBenefits = insBase - monthlyWage - maritalAllowance - seniorityBase;
-                if (otherBenefits < 0) otherBenefits = 0;
 
                 totalMash += insBase;
-                totalTotl += (long)line.GROSS_PAY;
+                totalTotl += (long)line.NOMINAL_GROSS;
                 totalWorkerIns += (long)line.INS_WORKER;
                 totalMarital += maritalAllowance;
                 totalSeniority += seniorityBase;
@@ -315,31 +243,26 @@ namespace Safir.Server.Services
 
                 result.WorList.Add(new DisketteWorDto
                 {
-                    DSW_ID1 = string.IsNullOrWhiteSpace(insCodeStr) ? "0000000000" : insCodeStr.Trim().PadLeft(10, '0'),
+                    DSW_ID1 = PadInsuranceCode(insCodeStr),
                     FULL_NAME = $"{line.LAST_NAME} {line.FIRST_NAME}",
                     PER_NATCOD = line.NATIONAL_CODE?.ToString() ?? "",
-                    DSW_OCP = line.JOB_CODE?.ToString() ?? "000000",
+                    DSW_OCP = line.JOB_CODE.ToString(),
                     DSW_DD = (int)workDays,
                     DSW_ROOZ = dailyWage,
                     DSW_MAH = monthlyWage,
                     DSW_MAZ = otherBenefits,
                     DSW_MASH = insBase,
-                    DSW_TOTL = (long)line.GROSS_PAY,
+                    DSW_TOTL = (long)line.NOMINAL_GROSS,
                     DSW_BIME = (long)line.INS_WORKER,
                     DSW_INC = seniorityBase,
-                    DSW_SPOUS = maritalAllowance.ToString()
+                    DSW_SPOUS = maritalAllowance.ToString(),
+                    DSW_SDATE = DateInOccurrenceMonth(line.HIRE_DATE, periodDate),
+                    DSW_EDATE = DateInOccurrenceMonth(line.FIRE_DATE, periodDate)
                 });
             }
 
-            long totalEmployerInsRaw = lines.Sum(l => (long)l.INS_EMPLOYER);
-            long totalBikari = (long)(totalMash * 0.03m);
-            long totalKarf = (long)(totalMash * 0.20m);
-
-            if (totalEmployerInsRaw < (totalKarf + totalBikari))
-            {
-                totalKarf = totalEmployerInsRaw - totalBikari;
-                if (totalKarf < 0) totalKarf = 0;
-            }
+            long totalKarf = lines.Sum(l => (long)l.INS_EMPLOYER_BASE);
+            long totalBikari = lines.Sum(l => (long)l.INS_UNEMPLOYMENT);
 
             result.Kar = new DisketteKarDto
             {
@@ -347,7 +270,7 @@ namespace Safir.Server.Services
                 DSK_NAME = head.WS_NAME?.ToString() ?? "",
                 DSK_FARM = head.EMPLOYER_NAME?.ToString() ?? "",
                 DSK_NUM = lines.Count,
-                DSK_TDD = (int)lines.Sum(x => (decimal)x.WORK_DAYS),
+                DSK_TDD = (int)lines.Sum(x => (decimal)x.INSURANCE_DAYS),
                 DSK_TMASH = totalMash,
                 DSK_TTOTL = totalTotl,
                 DSK_TBIME = totalWorkerIns,
@@ -357,6 +280,8 @@ namespace Safir.Server.Services
                 DSK_SPOUS = totalMarital.ToString()
             };
 
+            if (result.WorList.Count != lines.Count)
+                throw new InvalidOperationException("پیش‌نمایش بیمه ناقص است: تعداد رکوردهای DSKWOR با پرسنل واجد شرایط تراز نیست.");
             return result;
         }
 
@@ -369,40 +294,41 @@ namespace Safir.Server.Services
         {
             const string headSql = @"
                 SELECT P.PERIOD_DATE, W.WS_CODE
-                FROM PAY2_RUN R WITH (NOLOCK)
-                INNER JOIN PAY2_PERIOD P WITH (NOLOCK) ON R.PER_ID = P.PER_ID
-                INNER JOIN PAY2_WORKSHOP W WITH (NOLOCK) ON P.WS_ID = W.WS_ID
-                WHERE R.RUN_ID = @runId";
+                FROM PAY2_RUN R
+                INNER JOIN PAY2_PERIOD P ON R.PER_ID = P.PER_ID
+                INNER JOIN PAY2_WORKSHOP W ON P.WS_ID = W.WS_ID
+                WHERE R.RUN_ID = @runId AND R.STATUS >= 2";
 
             var head = await _db.DoGetDataSQLAsyncSingle<dynamic>(headSql, new { runId });
             if (head == null) return null;
+            await ValidateEmployeeSnapshotsAsync(runId);
 
             long periodDate = (long)head.PERIOD_DATE;
             int year = (int)(periodDate / 10000);
             int month = (int)((periodDate / 100) % 100);
             string wsCode = head.WS_CODE?.ToString() ?? "";
 
-            // 🚀 اصلاح شد: ADDRESS و POSTAL_CODE از کوئری حذف شدند
-            const string linesSql = @"
-                SELECT 
-                    RL.EMP_ID, E.EMP_CODE, E.NATIONAL_CODE, E.FIRST_NAME, E.LAST_NAME, E.FATHER_NAME,
-                    E.ID_NUMBER, E.BIRTH_PLACE, E.BIRTH_DATE, E.NATIONALITY, E.HIRE_DATE, E.FIRE_DATE,
-                    E.INS_CODE, E.MOBILE, E.MARITAL,
-                    J.JOB_NAME,
-                    RL.WORK_DAYS, RL.GROSS_PAY, RL.INS_WORKER, RL.TAX_BASE, RL.TAX_AMOUNT
-                FROM PAY2_RUN_LINE RL WITH (NOLOCK)
-                INNER JOIN PAY2_EMPLOYEE E WITH (NOLOCK) ON RL.EMP_ID = E.EMP_ID
-                LEFT JOIN PAY2_JOB J WITH (NOLOCK) ON E.JOB_ID = J.JOB_ID
-                WHERE RL.RUN_ID = @runId AND E.TAX_EXEMPT = 0
-                ORDER BY E.LAST_NAME, E.FIRST_NAME";
-
-            var lines = (await _db.DoGetDataSQLAsync<dynamic>(linesSql, new { runId })).ToList();
+            var lines = (await _db.DoGetDataSQLAsync<dynamic>(Pay2PayrollSnapshotQuery.Sql, new { runId }))
+                .Where(x => !(bool)x.TAX_EXEMPT).ToList();
+            ValidateTaxIdentities(lines);
+            if (lines.Any(x => x.INSURANCE_DAYS is null || x.NOMINAL_GROSS is null))
+                throw new InvalidOperationException("خروجی مالیات ممکن نیست: Snapshot اسمی روزکرد/ناخالص در Run کامل نیست.");
+            var missingNominalDetails = await _db.DoGetDataSQLAsyncSingle<int>(
+                @"SELECT COUNT(*) FROM PAY2_RUN_DETAIL D INNER JOIN PAY2_RUN R ON R.RUN_ID=D.RUN_ID
+                  WHERE D.RUN_ID=@runId AND (D.NOMINAL_AMOUNT IS NULL OR D.ITEM_CODE_SNAP IS NULL
+                    OR (R.PAYROLL_ENGINE_VERSION>=3 AND D.ITEM_NAME_SNAP IS NULL) OR D.CALC_BASIS_SNAP IS NULL
+                    OR D.INS_SUBJECT_AMOUNT IS NULL OR D.TAX_SUBJECT_AMOUNT IS NULL)", new { runId });
+            if (missingNominalDetails > 0)
+                throw new InvalidOperationException("خروجی مالیات ممکن نیست: Snapshot مبلغ اسمی اقلام Run کامل نیست.");
+            var illegalOfficialSubjects = await _db.DoGetDataSQLAsyncSingle<int>(
+                "SELECT COUNT(*) FROM PAY2_RUN_DETAIL WHERE RUN_ID=@runId AND ITEM_CODE_SNAP='BASE_SAL_B' AND (ISNULL(INS_SUBJECT_AMOUNT,0)<>0 OR ISNULL(TAX_SUBJECT_AMOUNT,0)<>0)", new { runId });
+            if (illegalOfficialSubjects > 0)
+                throw new InvalidOperationException("خروجی قانونی ممکن نیست: BASE_SAL_B رسمی دارای مبلغ مشمول بیمه یا مالیات است.");
 
             const string detailsSql = @"
-                SELECT D.EMP_ID, I.ITEM_CODE, D.AMOUNT, I.CALC_BASIS
-                FROM PAY2_RUN_DETAIL D WITH (NOLOCK)
-                INNER JOIN PAY2_ITEM_DEF I WITH (NOLOCK) ON D.ITEM_ID = I.ITEM_ID
-                WHERE D.RUN_ID = @runId AND I.TAX_SUBJECT = 1";
+                SELECT D.EMP_ID, D.ITEM_CODE_SNAP ITEM_CODE, D.TAX_SUBJECT_AMOUNT AMOUNT, D.CALC_BASIS_SNAP CALC_BASIS
+                FROM PAY2_RUN_DETAIL D
+                WHERE D.RUN_ID = @runId AND D.ITEM_CODE_SNAP <> 'BASE_SAL_B' AND D.TAX_SUBJECT_AMOUNT > 0 AND D.NOMINAL_AMOUNT IS NOT NULL";
 
             var details = await _db.DoGetDataSQLAsync<dynamic>(detailsSql, new { runId });
             var groupedDetails = details.GroupBy(x => (int)x.EMP_ID).ToDictionary(g => g.Key, g => g.ToList());
@@ -416,8 +342,7 @@ namespace Safir.Server.Services
             foreach (var line in lines)
             {
                 int empId = (int)line.EMP_ID;
-                string natCode = line.NATIONAL_CODE?.ToString() ?? "";
-                if (string.IsNullOrWhiteSpace(natCode)) continue;
+                string natCode = line.NATIONAL_CODE.ToString();
 
                 // ─── تولید خط فایل WP (اطلاعات هویتی) ───
                 string wpLine = string.Join(",",
@@ -437,8 +362,8 @@ namespace Safir.Server.Services
                     "",
                     line.JOB_NAME?.ToString() ?? "",
                     "1",
-                    line.HIRE_DATE?.ToString() ?? "",
-                    line.FIRE_DATE?.ToString() ?? "",
+                    DateInOccurrenceMonth(line.HIRE_DATE, periodDate),
+                    DateInOccurrenceMonth(line.FIRE_DATE, periodDate),
                     "", // 🚀 کد پستی خالی ارسال می‌شود
                     "", // 🚀 آدرس خالی ارسال می‌شود
                     "",
@@ -458,7 +383,10 @@ namespace Safir.Server.Services
                         long amt = (long)det.AMOUNT;
                         byte basis = (byte)det.CALC_BASIS;
 
-                        if (code == "BASE_SAL" || code == "BASE_SAL_B") baseSalary += amt;
+                        if (code == "BASE_SAL_B")
+                            throw new InvalidOperationException("BASE_SAL_B رسمی نباید در BASE_SALARY، MOSTAMAR یا GHEYRE_MOSTAMAR مالیات وارد شود.");
+                        if (code == "BASE_SAL") baseSalary += amt;
+                        else if (code == "SANOVAT_PAYE") baseSalary += amt;
                         else if (code == "EIDI") eydi += amt;
                         else if (code == "SANAVAT" || code == "SENIORITY") sanavat += amt;
                         else if (basis == 2) mostamar += amt;
@@ -471,7 +399,7 @@ namespace Safir.Server.Services
                     year.ToString(),
                     month.ToString("D2"),
                     "",
-                    ((decimal)line.WORK_DAYS).ToString("0", System.Globalization.CultureInfo.InvariantCulture),
+                    ((decimal)line.INSURANCE_DAYS).ToString("0", System.Globalization.CultureInfo.InvariantCulture),
                     baseSalary.ToString(System.Globalization.CultureInfo.InvariantCulture),
                     mostamar.ToString(System.Globalization.CultureInfo.InvariantCulture),
                     gheyreMostamar.ToString(System.Globalization.CultureInfo.InvariantCulture),
@@ -487,6 +415,9 @@ namespace Safir.Server.Services
                 );
                 whLines.Add(whLine);
             }
+
+            if (wpLines.Count != lines.Count || whLines.Count != lines.Count)
+                throw new InvalidOperationException("فایل مالیات قابل تولید نیست: تعداد رکوردهای WP/WH با پرسنل واجد شرایط تراز نیست.");
 
             string tempDir = Path.Combine(Path.GetTempPath(), $"TaxDiskette_{Guid.NewGuid()}");
             Directory.CreateDirectory(tempDir);
@@ -524,39 +455,40 @@ namespace Safir.Server.Services
 
             const string headSql = @"
                 SELECT P.PERIOD_DATE, W.WS_CODE
-                FROM PAY2_RUN R WITH (NOLOCK)
-                INNER JOIN PAY2_PERIOD P WITH (NOLOCK) ON R.PER_ID = P.PER_ID
-                INNER JOIN PAY2_WORKSHOP W WITH (NOLOCK) ON P.WS_ID = W.WS_ID
+                FROM PAY2_RUN R
+                INNER JOIN PAY2_PERIOD P ON R.PER_ID = P.PER_ID
+                INNER JOIN PAY2_WORKSHOP W ON P.WS_ID = W.WS_ID
                 WHERE R.RUN_ID = @runId";
 
             var head = await _db.DoGetDataSQLAsyncSingle<dynamic>(headSql, new { runId });
             if (head == null) return null;
+            await ValidateEmployeeSnapshotsAsync(runId);
 
             long periodDate = (long)head.PERIOD_DATE;
             int year = (int)(periodDate / 10000);
             int month = (int)((periodDate / 100) % 100);
 
-            // 🚀 اصلاح شد: ADDRESS و POSTAL_CODE از کوئری حذف شدند
-            const string linesSql = @"
-                SELECT 
-                    RL.EMP_ID, E.EMP_CODE, E.NATIONAL_CODE, E.FIRST_NAME, E.LAST_NAME, E.FATHER_NAME,
-                    E.ID_NUMBER, E.BIRTH_PLACE, E.BIRTH_DATE, E.NATIONALITY, E.HIRE_DATE, E.FIRE_DATE,
-                    E.INS_CODE, E.MOBILE, E.MARITAL,
-                    J.JOB_NAME,
-                    RL.WORK_DAYS, RL.GROSS_PAY, RL.INS_WORKER, RL.TAX_BASE, RL.TAX_AMOUNT
-                FROM PAY2_RUN_LINE RL WITH (NOLOCK)
-                INNER JOIN PAY2_EMPLOYEE E WITH (NOLOCK) ON RL.EMP_ID = E.EMP_ID
-                LEFT JOIN PAY2_JOB J WITH (NOLOCK) ON E.JOB_ID = J.JOB_ID
-                WHERE RL.RUN_ID = @runId AND E.TAX_EXEMPT = 0
-                ORDER BY E.LAST_NAME, E.FIRST_NAME";
-
-            var lines = (await _db.DoGetDataSQLAsync<dynamic>(linesSql, new { runId })).ToList();
+            var lines = (await _db.DoGetDataSQLAsync<dynamic>(Pay2PayrollSnapshotQuery.Sql, new { runId }))
+                .Where(x => !(bool)x.TAX_EXEMPT).ToList();
+            ValidateTaxIdentities(lines);
+            if (lines.Any(x => x.INSURANCE_DAYS is null || x.NOMINAL_GROSS is null))
+                throw new InvalidOperationException("خروجی مالیات ممکن نیست: Snapshot اسمی روزکرد/ناخالص در Run کامل نیست.");
+            var missingNominalDetails = await _db.DoGetDataSQLAsyncSingle<int>(
+                @"SELECT COUNT(*) FROM PAY2_RUN_DETAIL D INNER JOIN PAY2_RUN R ON R.RUN_ID=D.RUN_ID
+                  WHERE D.RUN_ID=@runId AND (D.NOMINAL_AMOUNT IS NULL OR D.ITEM_CODE_SNAP IS NULL
+                    OR (R.PAYROLL_ENGINE_VERSION>=3 AND D.ITEM_NAME_SNAP IS NULL) OR D.CALC_BASIS_SNAP IS NULL
+                    OR D.INS_SUBJECT_AMOUNT IS NULL OR D.TAX_SUBJECT_AMOUNT IS NULL)", new { runId });
+            if (missingNominalDetails > 0)
+                throw new InvalidOperationException("خروجی مالیات ممکن نیست: Snapshot مبلغ اسمی اقلام Run کامل نیست.");
+            var illegalOfficialSubjects = await _db.DoGetDataSQLAsyncSingle<int>(
+                "SELECT COUNT(*) FROM PAY2_RUN_DETAIL WHERE RUN_ID=@runId AND ITEM_CODE_SNAP='BASE_SAL_B' AND (ISNULL(INS_SUBJECT_AMOUNT,0)<>0 OR ISNULL(TAX_SUBJECT_AMOUNT,0)<>0)", new { runId });
+            if (illegalOfficialSubjects > 0)
+                throw new InvalidOperationException("خروجی قانونی ممکن نیست: BASE_SAL_B رسمی دارای مبلغ مشمول بیمه یا مالیات است.");
 
             const string detailsSql = @"
-                SELECT D.EMP_ID, I.ITEM_CODE, D.AMOUNT, I.CALC_BASIS
-                FROM PAY2_RUN_DETAIL D WITH (NOLOCK)
-                INNER JOIN PAY2_ITEM_DEF I WITH (NOLOCK) ON D.ITEM_ID = I.ITEM_ID
-                WHERE D.RUN_ID = @runId AND I.TAX_SUBJECT = 1";
+                SELECT D.EMP_ID, D.ITEM_CODE_SNAP ITEM_CODE, D.TAX_SUBJECT_AMOUNT AMOUNT, D.CALC_BASIS_SNAP CALC_BASIS
+                FROM PAY2_RUN_DETAIL D
+                WHERE D.RUN_ID = @runId AND D.ITEM_CODE_SNAP <> 'BASE_SAL_B' AND D.TAX_SUBJECT_AMOUNT > 0 AND D.NOMINAL_AMOUNT IS NOT NULL";
 
             var details = await _db.DoGetDataSQLAsync<dynamic>(detailsSql, new { runId });
             var groupedDetails = details.GroupBy(x => (int)x.EMP_ID).ToDictionary(g => g.Key, g => g.ToList());
@@ -564,8 +496,7 @@ namespace Safir.Server.Services
             foreach (var line in lines)
             {
                 int empId = (int)line.EMP_ID;
-                string natCode = line.NATIONAL_CODE?.ToString() ?? "";
-                if (string.IsNullOrWhiteSpace(natCode)) continue;
+                string natCode = line.NATIONAL_CODE.ToString();
 
                 // ── پر کردن مدل WP ──
                 result.WpList.Add(new TaxDisketteWpDto
@@ -581,8 +512,8 @@ namespace Safir.Server.Services
                     MARITAL = (byte)line.MARITAL == 1 ? "1 (متاهل)" : "2 (مجرد)",
                     INS_CODE = line.INS_CODE?.ToString() ?? "",
                     JOB_NAME = line.JOB_NAME?.ToString() ?? "",
-                    HIRE_DATE = line.HIRE_DATE?.ToString() ?? "",
-                    FIRE_DATE = line.FIRE_DATE?.ToString() ?? "",
+                    HIRE_DATE = DateInOccurrenceMonth(line.HIRE_DATE, periodDate),
+                    FIRE_DATE = DateInOccurrenceMonth(line.FIRE_DATE, periodDate),
                     POSTAL_CODE = "", // 🚀 به جای دیتابیس رشته خالی ارسال می‌شود
                     MOBILE = line.MOBILE?.ToString() ?? ""
                 });
@@ -598,7 +529,10 @@ namespace Safir.Server.Services
                         long amt = (long)det.AMOUNT;
                         byte basis = (byte)det.CALC_BASIS;
 
-                        if (code == "BASE_SAL" || code == "BASE_SAL_B") baseSalary += amt;
+                        if (code == "BASE_SAL_B")
+                            throw new InvalidOperationException("BASE_SAL_B رسمی نباید در BASE_SALARY، MOSTAMAR یا GHEYRE_MOSTAMAR مالیات وارد شود.");
+                        if (code == "BASE_SAL") baseSalary += amt;
+                        else if (code == "SANOVAT_PAYE") baseSalary += amt;
                         else if (code == "EIDI") eydi += amt;
                         else if (code == "SANAVAT" || code == "SENIORITY") sanavat += amt;
                         else if (basis == 2) mostamar += amt;
@@ -611,7 +545,7 @@ namespace Safir.Server.Services
                     NATIONAL_CODE = natCode,
                     YEAR = year.ToString(),
                     MONTH = month.ToString("D2"),
-                    WORK_DAYS = (decimal)line.WORK_DAYS,
+                    WORK_DAYS = (decimal)line.INSURANCE_DAYS,
                     BASE_SALARY = baseSalary,
                     MOSTAMAR = mostamar,
                     GHEYRE_MOSTAMAR = gheyreMostamar,
@@ -623,7 +557,63 @@ namespace Safir.Server.Services
                 });
             }
 
+            if (result.WpList.Count != lines.Count || result.WhList.Count != lines.Count)
+                throw new InvalidOperationException("پیش‌نمایش مالیات ناقص است: تعداد رکوردهای WP/WH با پرسنل واجد شرایط تراز نیست.");
             return result;
         }
+        private static void ValidateLegalInsuranceSnapshots(IEnumerable<dynamic> lines)
+        {
+            if (lines.Any(x => !(bool)x.HAS_NOMINAL_RAIL || !(bool)x.HAS_COMPLETE_NOMINAL_SNAPSHOT || !(bool)x.HAS_COMPLETE_EMP_SNAPSHOT))
+                throw new InvalidOperationException("خروجی قانونی بیمه ممکن نیست: Snapshot کامل ریل اسمی برای حداقل یک پرسنل وجود ندارد.");
+            if (lines.Any(x => !(bool)x.PREMIUM_SNAPSHOT_AVAILABLE))
+                throw new InvalidOperationException("DBF قابل تولید نیست: تفکیک Snapshot سهم کارفرما و بیمه بیکاری برای این Run ذخیره نشده است؛ تخمین مجاز نیست.");
+        }
+
+        private async Task ValidateEmployeeSnapshotsAsync(int runId)
+        {
+            const string sql = @"
+                SELECT COUNT(*)
+                FROM PAY2_RUN_LINE RL
+                LEFT JOIN PAY2_RUN_EMP_SNAPSHOT ES ON ES.RUN_ID=RL.RUN_ID AND ES.EMP_ID=RL.EMP_ID
+                INNER JOIN PAY2_RUN R ON R.RUN_ID=RL.RUN_ID
+                WHERE RL.RUN_ID=@runId AND R.PAYROLL_ENGINE_VERSION>=3 AND ES.RUN_ID IS NULL";
+            if (await _db.DoGetDataSQLAsyncSingle<int>(sql, new { runId }) > 0)
+                throw new InvalidOperationException("خروجی قانونی ممکن نیست: Snapshot مشخصات پرسنل این Run کامل نیست.");
+        }
+
+        private static void ValidateTaxIdentities(IEnumerable<dynamic> lines)
+        {
+            foreach (var line in lines)
+            {
+                string employee = $"EMP_ID={(int)line.EMP_ID}، EMP_CODE={line.EMP_CODE?.ToString() ?? "-"}";
+                if (string.IsNullOrWhiteSpace(line.NATIONAL_CODE?.ToString()))
+                    throw new InvalidOperationException($"فایل مالیات قابل تولید نیست: کد ملی پرسنل {employee} خالی است.");
+                if (string.IsNullOrWhiteSpace(line.FIRST_NAME?.ToString()) || string.IsNullOrWhiteSpace(line.LAST_NAME?.ToString()))
+                    throw new InvalidOperationException($"فایل مالیات قابل تولید نیست: نام یا نام خانوادگی پرسنل {employee} خالی است.");
+            }
+        }
+
+        private static void ValidateInsuranceIdentities(IEnumerable<dynamic> lines)
+        {
+            foreach (var line in lines)
+            {
+                string employee = $"EMP_ID={(int)line.EMP_ID}، EMP_CODE={line.EMP_CODE?.ToString() ?? "-"}";
+                if (string.IsNullOrWhiteSpace(line.INS_CODE?.ToString()))
+                    throw new InvalidOperationException($"فایل بیمه قابل تولید نیست: شماره بیمه پرسنل {employee} خالی است.");
+                if (string.IsNullOrWhiteSpace(line.FIRST_NAME?.ToString()) || string.IsNullOrWhiteSpace(line.LAST_NAME?.ToString()))
+                    throw new InvalidOperationException($"فایل بیمه قابل تولید نیست: نام یا نام خانوادگی پرسنل {employee} خالی است.");
+                if (string.IsNullOrWhiteSpace(line.JOB_CODE?.ToString()))
+                    throw new InvalidOperationException($"فایل بیمه قابل تولید نیست: کد شغل پرسنل {employee} خالی است.");
+            }
+        }
+
+        internal static string DateInOccurrenceMonth(object? value, long periodDate)
+        {
+            if (value is null || value is DBNull) return string.Empty;
+            return long.TryParse(value.ToString(), out var date) && date > 0 && date / 100 == periodDate / 100
+                ? date.ToString()
+                : string.Empty;
+        }
+
     }
 }
