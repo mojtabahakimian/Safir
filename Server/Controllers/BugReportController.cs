@@ -171,13 +171,13 @@ namespace Safir.Server.Controllers
                 // Check authorization for Bug Reporters
                 if (User.FindFirst(BaseknowClaimTypes.GRSAL)?.Value == "999")
                 {
-                    string getSql = "SELECT CreatedBy FROM [dbo].[BugReports] WHERE Id = @Id";
-                    var reportCreator = await _dbService.DoGetDataSQLAsyncSingle<string>(getSql, new { Id = id });
+                    string getSql = "SELECT Id, CreatedBy FROM [dbo].[BugReports] WHERE Id = @Id";
+                    var report = await _dbService.DoGetDataSQLAsyncSingle<BugReportDto>(getSql, new { Id = id });
 
-                    if (reportCreator == null) return NotFound("گزارش یافت نشد.");
+                    if (report == null) return NotFound("گزارش یافت نشد.");
 
                     string currentUser = User.FindFirst(BaseknowClaimTypes.UUSER)?.Value ?? User.FindFirst(ClaimTypes.Name)?.Value ?? string.Empty;
-                    if (!string.Equals(reportCreator, currentUser, StringComparison.OrdinalIgnoreCase))
+                    if (!string.Equals(report.CreatedBy, currentUser, StringComparison.OrdinalIgnoreCase))
                     {
                         return StatusCode(StatusCodes.Status403Forbidden, "شما مجاز به مشاهده پی‌نوشت‌های این گزارش نیستید.");
                     }
@@ -203,16 +203,18 @@ namespace Safir.Server.Controllers
 
             try
             {
-                string getSql = "SELECT CreatedBy FROM [dbo].[BugReports] WHERE Id = @Id";
-                var reportCreator = await _dbService.DoGetDataSQLAsyncSingle<string>(getSql, new { Id = id });
+                // CreatedBy is nullable for reports submitted anonymously. Fetch the row as
+                // an object so a null creator is not mistaken for a missing report.
+                string getSql = "SELECT Id, CreatedBy FROM [dbo].[BugReports] WHERE Id = @Id";
+                var report = await _dbService.DoGetDataSQLAsyncSingle<BugReportDto>(getSql, new { Id = id });
 
-                if (reportCreator == null)
+                if (report == null)
                     return NotFound("گزارش یافت نشد.");
 
                 bool isBugReporter = User.FindFirst(BaseknowClaimTypes.GRSAL)?.Value == "999";
                 string currentUser = User.FindFirst(BaseknowClaimTypes.UUSER)?.Value ?? User.FindFirst(ClaimTypes.Name)?.Value ?? string.Empty;
 
-                if (isBugReporter && !string.Equals(reportCreator, currentUser, StringComparison.OrdinalIgnoreCase))
+                if (isBugReporter && !string.Equals(report.CreatedBy, currentUser, StringComparison.OrdinalIgnoreCase))
                 {
                     return StatusCode(StatusCodes.Status403Forbidden, "شما فقط مجاز به ثبت پی‌نوشت روی گزارش‌های خودتان هستید.");
                 }
