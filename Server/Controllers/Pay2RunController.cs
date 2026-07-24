@@ -1204,7 +1204,14 @@ VALUES (@N_S, @RADIF, @HES_K, @HES_M, @HES_T, @HES_T2, @HES_T3, @HES_T4, @HES, @
             }
         }
         private static string FormatSnapshotDate(object? value)
-            => value is null || value is DBNull ? string.Empty : value.ToString() ?? string.Empty;
+        {
+            if (value is null || value is DBNull)
+                return string.Empty;
+
+            return long.TryParse(value.ToString(), out var date)
+                ? CL_Tarikh.FormatShamsiDateFromLong(date)
+                : value.ToString() ?? string.Empty;
+        }
 
     }
 }
