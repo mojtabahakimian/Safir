@@ -2216,3 +2216,91 @@
         transform: translateY(0);
     }
 }
+
+/* ════════════════════════════════════════════════════════════
+   ۲۴. سفارشی‌سازی فوق‌مدرن هشدارهای سیستم (MudBlazor Snackbar)
+   ════════════════════════════════════════════════════════════ */
+
+/* ساختار اصلی و انیمیشن */
+.mud-snackbar {
+    border-radius: var(--p2-radius-md) !important;
+    box-shadow: var(--p2-shadow-lg) !important;
+    font-family: var(--p2-font) !important;
+    padding: 6px 12px !important;
+    min-width: 320px;
+    border: 1px solid transparent;
+    backdrop-filter: blur(8px);
+    /* انیمیشن ورود فنری و مدرن */
+    animation: p2SnackbarEnter 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards !important;
+}
+
+@keyframes p2SnackbarEnter {
+    0% {
+        opacity: 0;
+        transform: translateY(30px) scale(0.95);
+    }
+
+    100% {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
+}
+
+/* تنظیمات متن و آیکون */
+.mud-snackbar-content-message {
+    font-size: 13.5px !important;
+    font-weight: 700 !important;
+    line-height: 1.6 !important;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+    /* هماهنگ کردن رنگ آیکون با متن */
+    .mud-snackbar-content-message svg {
+        width: 22px;
+        height: 22px;
+        fill: currentColor !important;
+    }
+
+/* دکمه بستن (X) */
+.mud-snackbar-action .mud-icon-button {
+    color: currentColor !important;
+    opacity: 0.6;
+    transition: all 0.2s ease;
+}
+
+    .mud-snackbar-action .mud-icon-button:hover {
+        opacity: 1;
+        background-color: rgba(0, 0, 0, 0.06) !important;
+    }
+
+/* ─── استایل‌های رنگی (Soft UI منطبق با متغیرهای PAY2) ─── */
+
+/* موفقیت (Success) */
+.mud-alert-filled-success {
+    background-color: var(--p2-success-bg) !important;
+    color: var(--p2-success-text) !important;
+    border-color: var(--p2-success-border) !important;
+}
+
+/* خطا (Error) */
+.mud-alert-filled-error {
+    background-color: var(--p2-danger-bg) !important;
+    color: var(--p2-danger-text) !important;
+    border-color: var(--p2-danger-border) !important;
+}
+
+/* هشدار (Warning) */
+.mud-alert-filled-warning {
+    background-color: var(--p2-warning-bg) !important;
+    color: var(--p2-warning-text) !important;
+    border-color: var(--p2-warning-border) !important;
+}
+
+/* اطلاعات (Info) */
+.mud-alert-filled-info {
+    background-color: var(--p2-info-bg) !important;
+    color: var(--p2-info-text) !important;
+    border-color: var(--p2-info-border) !important;
+}
