@@ -374,8 +374,7 @@
 .pay2-toast {
     position: fixed;
     top: 24px;
-    left: 50%;
-    transform: translateX(-50%);
+    right: 24px;
     max-width: min(440px, calc(100vw - 32px));
     background: var(--p2-info-bg);
     color: var(--p2-text-main);
@@ -414,12 +413,21 @@
 @keyframes p2ToastEnter {
     from {
         opacity: 0;
-        transform: translateX(-50%) translateY(-10px) scale(0.98);
+        transform: translateX(16px);
     }
 
     to {
         opacity: 1;
-        transform: translateX(-50%) translateY(0) scale(1);
+        transform: translateX(0);
+    }
+}
+
+@media (max-width: 600px) {
+    .pay2-toast {
+        top: 12px;
+        right: 12px;
+        left: 12px;
+        max-width: none;
     }
 }
 
