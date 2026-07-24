@@ -3,7 +3,91 @@
 @using Safir.Client.Pages.Salary.Tabs
 @using Safir.Shared.Models.Salary
 @using Safir.Client.Services
+@using Safir.Shared.Interfaces
+@using Safir.Shared.Utility
 @inject ConnectionManagerService ConnectionManager
+@inject IAuthService AuthService
+@inject NavigationManager NavigationManager
+
+<style>
+    .pay2-search-wrapper > .pay2-quick-search-results {
+        position: absolute;
+        top: calc(100% + 6px);
+        right: 0;
+        width: min(360px, 80vw);
+        max-height: 360px;
+        overflow-y: auto;
+        padding: 6px;
+        border: 1px solid var(--p2-border);
+        border-radius: var(--p2-radius-md);
+        background: var(--p2-bg-white);
+        box-shadow: var(--p2-shadow-lg);
+        direction: rtl;
+        text-align: right;
+    }
+
+    .pay2-search-wrapper .pay2-quick-search-result {
+        display: flex;
+        width: 100%;
+        align-items: center;
+        justify-content: flex-start;
+        gap: 10px;
+        padding: 9px 10px;
+        border: 0;
+        border-radius: var(--p2-radius-sm);
+        background: transparent;
+        color: var(--p2-text-main);
+        text-align: right;
+        direction: rtl;
+        font-family: var(--p2-font);
+    }
+
+    .pay2-search-wrapper .pay2-quick-search-result:hover,
+    .pay2-search-wrapper .pay2-quick-search-result:focus-visible {
+        background: var(--p2-bg-hover);
+        outline: none;
+    }
+
+    .pay2-search-wrapper .pay2-quick-search-result > i {
+        position: static;
+        width: 20px;
+        flex: 0 0 20px;
+        color: var(--p2-primary);
+        text-align: center;
+        pointer-events: auto;
+    }
+
+    .pay2-search-wrapper .pay2-quick-search-result > span {
+        display: flex;
+        min-width: 0;
+        flex: 1;
+        flex-direction: column;
+        align-items: flex-start;
+        text-align: right;
+    }
+
+    .pay2-search-wrapper .pay2-quick-search-result strong {
+        width: 100%;
+        font-size: 13px;
+        font-weight: 700;
+        text-align: right;
+    }
+
+    .pay2-search-wrapper .pay2-quick-search-result small {
+        width: 100%;
+        margin-top: 2px;
+        color: var(--p2-text-muted);
+        font-size: 11px;
+        text-align: right;
+    }
+
+    .pay2-search-wrapper > .pay2-quick-search-empty {
+        padding: 12px;
+        color: var(--p2-text-muted);
+        text-align: center;
+        font-size: 12px;
+    }
+</style>
 
 @* ══════════════════════════════════════════════════════════
    Toast — نمایش پیام‌های عملیاتی
@@ -142,9 +226,36 @@
                     <i class="bi bi-search"></i>
                     <input type="text"
                            class="pay2-search-input"
-                           placeholder="جستجوی سریع..." />
+                           placeholder="جستجوی سریع..."
+                           value="@QuickSearchTerm"
+                           @oninput="OnQuickSearch"
+                           @onkeydown="OnQuickSearchKeyDown" />
+                    @if (QuickSearchResults.Count > 0)
+                    {
+                        <div class="pay2-quick-search-results">
+                            @foreach (var result in QuickSearchResults)
+                            {
+                                <button type="button" class="pay2-quick-search-result" @onclick="() => OpenQuickSearchResult(result)">
+                                    <i class="bi @result.Icon"></i>
+                                    <span>
+                                        <strong>@result.Title</strong>
+                                        @if (!string.Equals(result.Title, result.MenuTitle, StringComparison.Ordinal))
+                                        {
+                                            <small>@result.MenuTitle</small>
+                                        }
+                                    </span>
+                                </button>
+                            }
+                        </div>
+                    }
+                    else if (!string.IsNullOrWhiteSpace(QuickSearchTerm))
+                    {
+                        <div class="pay2-quick-search-results pay2-quick-search-empty">نتیجه‌ای یافت نشد.</div>
+                    }
                 </div>
                 <button class="btn-ghost-pay2"
+                        type="button"
+                        @onclick="LogoutAsync"
                         style="width:40px; height:40px; border-radius:var(--p2-radius-md);"
                         title="خروج">
                     <i class="bi bi-box-arrow-right"></i>
@@ -253,6 +364,60 @@
     private string ToastMessage = string.Empty;
     private int _toastVersion = 0;
     private string AppVersion = "1.0.20"; // اضافه شدن فیلد نگهداری ورژن
+    private string QuickSearchTerm = string.Empty;
+
+    private static readonly IReadOnlyList<QuickSearchEntry> QuickSearchEntries = new[]
+    {
+        new QuickSearchEntry("داشبورد", "داشبورد", "dashboard", "bi-grid-1x2"),
+        new QuickSearchEntry("مدیریت کارگاه‌ها", "مدیریت کارگاه‌ها", "workshops", "bi-building"),
+        new QuickSearchEntry("لیست کارگاه‌ها", "مدیریت کارگاه‌ها", "workshops", "bi-building"),
+        new QuickSearchEntry("تنظیم حساب‌های کارگاه", "مدیریت کارگاه‌ها", "workshops", "bi-bank"),
+        new QuickSearchEntry("پرسنل و احکام", "پرسنل و احکام", "employees", "bi-people"),
+        new QuickSearchEntry("مدیریت پرسنل", "پرسنل و احکام", "employees", "bi-person-vcard"),
+        new QuickSearchEntry("احکام پرسنلی", "پرسنل و احکام", "employees", "bi-file-earmark-text"),
+        new QuickSearchEntry("قراردادهای پرسنل", "پرسنل و احکام", "employees", "bi-file-text"),
+        new QuickSearchEntry("ثبت مرخصی", "پرسنل و احکام", "employees", "bi-calendar-plus"),
+        new QuickSearchEntry("مانده مرخصی", "پرسنل و احکام", "employees", "bi-calendar-check"),
+        new QuickSearchEntry("وام پرسنلی", "پرسنل و احکام", "employees", "bi-cash-coin"),
+        new QuickSearchEntry("تسویه حساب", "پرسنل و احکام", "employees", "bi-door-open"),
+        new QuickSearchEntry("کارکرد پرسنل", "کارکرد پرسنل", "attendance", "bi-calendar-check"),
+        new QuickSearchEntry("دوره‌های کارکرد", "کارکرد پرسنل", "attendance", "bi-calendar3"),
+        new QuickSearchEntry("ثبت کارکرد ماهانه", "کارکرد پرسنل", "attendance", "bi-pencil-square"),
+        new QuickSearchEntry("مساعده هوشمند", "مساعده هوشمند", "advances", "bi-cash-coin"),
+        new QuickSearchEntry("گزارش مساعده", "مساعده هوشمند", "advances", "bi-table"),
+        new QuickSearchEntry("استثناهای مساعده", "مساعده هوشمند", "advances", "bi-slash-circle"),
+        new QuickSearchEntry("محاسبه حقوق", "مدیریت اجرای حقوق", "payroll", "bi-calculator"),
+        new QuickSearchEntry("اجرای موتور محاسبه", "مدیریت اجرای حقوق", "payroll", "bi-gear"),
+        new QuickSearchEntry("فیش‌های حقوق", "مدیریت اجرای حقوق", "payroll", "bi-receipt"),
+        new QuickSearchEntry("تنظیمات سیستم", "تنظیمات سیستم", "settings", "bi-gear"),
+        new QuickSearchEntry("پیکربندی حقوق", "تنظیمات سیستم", "settings", "bi-sliders"),
+        new QuickSearchEntry("پله‌های مالیاتی", "تنظیمات سیستم", "settings", "bi-bar-chart-steps"),
+        new QuickSearchEntry("آیتم‌های حقوقی", "آیتم‌های حقوقی", "itemdefs", "bi-list-check"),
+        new QuickSearchEntry("تعریف آیتم حقوقی", "آیتم‌های حقوقی", "itemdefs", "bi-plus-square"),
+        new QuickSearchEntry("قالب‌های حکم", "قالب‌های حکم", "templates", "bi-file-earmark-text"),
+        new QuickSearchEntry("مدیریت مشاغل", "مدیریت مشاغل", "jobs", "bi-briefcase"),
+        new QuickSearchEntry("مرکز گزارشات", "مرکز گزارشات", "reports", "bi-file-earmark-pdf"),
+        new QuickSearchEntry("لیست بیمه تامین اجتماعی", "مرکز گزارشات", "reports", "bi-shield-check"),
+        new QuickSearchEntry("دیسکت بیمه", "مرکز گزارشات", "reports", "bi-floppy"),
+        new QuickSearchEntry("گزارش مانده مرخصی", "مرکز گزارشات", "reports", "bi-calendar-check"),
+        new QuickSearchEntry("مالیات حقوق", "مرکز گزارشات", "reports", "bi-receipt"),
+        new QuickSearchEntry("گزارش مقایسه و تغییرات", "مرکز گزارشات", "reports", "bi-bar-chart-steps")
+    };
+
+    private IReadOnlyList<QuickSearchEntry> QuickSearchResults
+    {
+        get
+        {
+            var term = QuickSearchTerm.ToStandardSearchText();
+            if (string.IsNullOrWhiteSpace(term))
+                return Array.Empty<QuickSearchEntry>();
+
+            return QuickSearchEntries
+                .Where(x => x.SearchText.Contains(term, StringComparison.Ordinal))
+                .Take(10)
+                .ToList();
+        }
+    }
 
     // ──────────────────────────────────────────
     // داده‌های placeholder داشبورد
@@ -311,6 +476,43 @@
         ActiveTab = tabName;
     }
 
+    private void OnQuickSearch(ChangeEventArgs args)
+    {
+        QuickSearchTerm = args.Value?.ToString() ?? string.Empty;
+    }
+
+    private void OnQuickSearchKeyDown(KeyboardEventArgs args)
+    {
+        if (args.Key == "Escape")
+            QuickSearchTerm = string.Empty;
+        else if (args.Key == "Enter" && QuickSearchResults.FirstOrDefault() is { } firstResult)
+            OpenQuickSearchResult(firstResult);
+    }
+
+    private void OpenQuickSearchResult(QuickSearchEntry result)
+    {
+        QuickSearchTerm = string.Empty;
+
+        if (result.Target == "templates")
+            OpenTemplateModal();
+        else if (result.Target == "jobs")
+            OpenJobModal();
+        else
+            SetActiveTab(result.Target);
+    }
+
+    private async Task LogoutAsync()
+    {
+        try
+        {
+            await AuthService.Logout();
+        }
+        finally
+        {
+            NavigationManager.NavigateTo("/login", forceLoad: true);
+        }
+    }
+
     private static string GetTabTitle(string tabName) => tabName switch
     {
         "dashboard" => "داشبورد",
@@ -365,5 +567,23 @@
     void OpenJobModal()
     {
         ShowJobModal = true;
+    }
+
+    private sealed class QuickSearchEntry
+    {
+        public QuickSearchEntry(string title, string menuTitle, string target, string icon)
+        {
+            Title = title;
+            MenuTitle = menuTitle;
+            Target = target;
+            Icon = icon;
+            SearchText = $"{title} {menuTitle}".ToStandardSearchText();
+        }
+
+        public string Title { get; }
+        public string MenuTitle { get; }
+        public string Target { get; }
+        public string Icon { get; }
+        public string SearchText { get; }
     }
 }

@@ -40,3 +40,139 @@
     .mobile-friendly-tabs .mud-tab.mud-tab-active {
         /* background-color: var(--mud-palette-primary-lighter); */
     }
+/* اعلان‌های عملیاتی برنامه */
+#mud-snackbar-container {
+    direction: rtl;
+}
+
+#mud-snackbar-container .mud-snackbar {
+    min-width: 320px;
+    max-width: min(440px, calc(100vw - 32px));
+    margin-top: 10px;
+    padding: 10px 14px;
+    border: 1px solid var(--p2-border, #e2e8f0);
+    border-right-width: 4px;
+    border-radius: 12px;
+    background: var(--p2-bg-white, #fff) !important;
+    color: var(--p2-text-main, #1e293b) !important;
+    box-shadow: 0 10px 30px rgba(15, 23, 42, 0.13), 0 2px 8px rgba(15, 23, 42, 0.06);
+    font-family: var(--p2-font, 'Vazirmatn', Tahoma, sans-serif);
+    font-size: 13px;
+    font-weight: 600;
+    line-height: 1.8;
+}
+
+#mud-snackbar-container .mud-snackbar.mud-alert-filled-success {
+    background: var(--p2-success-bg, #ecfdf5) !important;
+    border-color: var(--p2-success-border, #a7f3d0);
+    border-right-color: var(--p2-success-text, #059669);
+}
+
+#mud-snackbar-container .mud-snackbar.mud-alert-filled-info {
+    background: var(--p2-info-bg, #f0f9ff) !important;
+    border-color: var(--p2-info-border, #bae6fd);
+    border-right-color: var(--p2-info-text, #0284c7);
+}
+
+#mud-snackbar-container .mud-snackbar.mud-alert-filled-warning {
+    background: var(--p2-warning-bg, #fffbeb) !important;
+    border-color: var(--p2-warning-border, #fde68a);
+    border-right-color: var(--p2-warning-text, #d97706);
+}
+
+#mud-snackbar-container .mud-snackbar.mud-alert-filled-error {
+    background: var(--p2-danger-bg, #fef2f2) !important;
+    border-color: var(--p2-danger-border, #fecaca);
+    border-right-color: var(--p2-danger-text, #dc2626);
+}
+
+#mud-snackbar-container .mud-snackbar.mud-alert-filled-success .mud-snackbar-icon {
+    color: var(--p2-success-text, #059669);
+}
+
+#mud-snackbar-container .mud-snackbar.mud-alert-filled-info .mud-snackbar-icon {
+    color: var(--p2-info-text, #0284c7);
+}
+
+#mud-snackbar-container .mud-snackbar.mud-alert-filled-warning .mud-snackbar-icon {
+    color: var(--p2-warning-text, #d97706);
+}
+
+#mud-snackbar-container .mud-snackbar.mud-alert-filled-error .mud-snackbar-icon {
+    color: var(--p2-danger-text, #dc2626);
+}
+
+#mud-snackbar-container .mud-snackbar .mud-snackbar-icon {
+    margin-inline: 0 10px;
+    padding: 4px 0;
+    opacity: 1;
+    animation: p2SnackbarIconEnter 360ms 80ms cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+
+#mud-snackbar-container .mud-snackbar .mud-snackbar-content-message {
+    flex: 1;
+    padding: 5px 0;
+    text-align: right;
+    animation: p2SnackbarMessageEnter 300ms 60ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+#mud-snackbar-container .mud-snackbar .mud-snackbar-content-action {
+    margin-inline: 10px -6px;
+    padding-inline: 0;
+}
+
+#mud-snackbar-container .mud-snackbar .mud-snackbar-content-action > button {
+    color: var(--p2-text-muted, #64748b);
+    border-radius: 8px;
+    transition: background-color 150ms ease, color 150ms ease;
+}
+
+#mud-snackbar-container .mud-snackbar .mud-snackbar-content-action > button:hover {
+    background: rgba(100, 116, 139, 0.10);
+    color: var(--p2-text-main, #1e293b);
+}
+
+@keyframes p2SnackbarIconEnter {
+    from {
+        opacity: 0;
+        transform: scale(0.55) rotate(-12deg);
+    }
+
+    to {
+        opacity: 1;
+        transform: scale(1) rotate(0);
+    }
+}
+
+@keyframes p2SnackbarMessageEnter {
+    from {
+        opacity: 0;
+        transform: translateX(8px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateX(0);
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    #mud-snackbar-container .mud-snackbar .mud-snackbar-icon,
+    #mud-snackbar-container .mud-snackbar .mud-snackbar-content-message {
+        animation: none;
+    }
+}
+
+@media (max-width: 600px) {
+    #mud-snackbar-container.mud-snackbar-location-top-right {
+        top: 12px;
+        right: 12px;
+        left: 12px;
+    }
+
+    #mud-snackbar-container .mud-snackbar {
+        width: 100%;
+        min-width: 0;
+        max-width: none;
+    }
+}

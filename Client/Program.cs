@@ -41,7 +41,17 @@ builder.Services.AddScoped<AuthenticationStateProvider, ApiAuthenticationStatePr
 builder.Services.AddScoped<IAuthService, AuthService>();
 // --- End Authentication Services ---
 
-builder.Services.AddMudServices();
+builder.Services.AddMudServices(config =>
+{
+    config.SnackbarConfiguration.PositionClass = MudBlazor.Defaults.Classes.Position.TopRight;
+    config.SnackbarConfiguration.PreventDuplicates = true;
+    config.SnackbarConfiguration.NewestOnTop = true;
+    config.SnackbarConfiguration.ShowCloseIcon = true;
+    config.SnackbarConfiguration.VisibleStateDuration = 4500;
+    config.SnackbarConfiguration.ShowTransitionDuration = 240;
+    config.SnackbarConfiguration.HideTransitionDuration = 180;
+    config.SnackbarConfiguration.SnackbarVariant = MudBlazor.Variant.Filled;
+});
 
 builder.Services.AddScoped<ThemeService>();
 
