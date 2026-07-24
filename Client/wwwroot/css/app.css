@@ -40,3 +40,91 @@
     .mobile-friendly-tabs .mud-tab.mud-tab-active {
         /* background-color: var(--mud-palette-primary-lighter); */
     }
+/* اعلان‌های عملیاتی برنامه */
+#mud-snackbar-container {
+    direction: rtl;
+}
+
+#mud-snackbar-container .mud-snackbar {
+    min-width: 320px;
+    max-width: min(440px, calc(100vw - 32px));
+    margin-top: 10px;
+    padding: 10px 14px;
+    border: 1px solid var(--p2-border, #e2e8f0);
+    border-right-width: 4px;
+    border-radius: 14px;
+    background: var(--p2-bg-white, #fff) !important;
+    color: var(--p2-text-main, #1e293b) !important;
+    box-shadow: 0 12px 32px rgba(15, 23, 42, 0.14);
+    font-family: var(--p2-font, 'Vazirmatn', Tahoma, sans-serif);
+    font-size: 13px;
+    font-weight: 600;
+    line-height: 1.8;
+}
+
+#mud-snackbar-container .mud-snackbar.mud-alert-filled-success {
+    border-right-color: var(--p2-success-text, #059669);
+}
+
+#mud-snackbar-container .mud-snackbar.mud-alert-filled-info {
+    border-right-color: var(--p2-info-text, #0284c7);
+}
+
+#mud-snackbar-container .mud-snackbar.mud-alert-filled-warning {
+    border-right-color: var(--p2-warning-text, #d97706);
+}
+
+#mud-snackbar-container .mud-snackbar.mud-alert-filled-error {
+    border-right-color: var(--p2-danger-text, #dc2626);
+}
+
+#mud-snackbar-container .mud-snackbar.mud-alert-filled-success .mud-snackbar-icon {
+    color: var(--p2-success-text, #059669);
+}
+
+#mud-snackbar-container .mud-snackbar.mud-alert-filled-info .mud-snackbar-icon {
+    color: var(--p2-info-text, #0284c7);
+}
+
+#mud-snackbar-container .mud-snackbar.mud-alert-filled-warning .mud-snackbar-icon {
+    color: var(--p2-warning-text, #d97706);
+}
+
+#mud-snackbar-container .mud-snackbar.mud-alert-filled-error .mud-snackbar-icon {
+    color: var(--p2-danger-text, #dc2626);
+}
+
+#mud-snackbar-container .mud-snackbar .mud-snackbar-icon {
+    margin-inline: 0 10px;
+    padding: 4px 0;
+    opacity: 1;
+}
+
+#mud-snackbar-container .mud-snackbar .mud-snackbar-content-message {
+    flex: 1;
+    padding: 5px 0;
+    text-align: right;
+}
+
+#mud-snackbar-container .mud-snackbar .mud-snackbar-content-action {
+    margin-inline: 10px -6px;
+    padding-inline: 0;
+}
+
+#mud-snackbar-container .mud-snackbar .mud-snackbar-content-action > button {
+    color: var(--p2-text-muted, #64748b);
+}
+
+@media (max-width: 600px) {
+    #mud-snackbar-container.mud-snackbar-location-bottom-left {
+        right: 12px;
+        bottom: 12px;
+        left: 12px;
+    }
+
+    #mud-snackbar-container .mud-snackbar {
+        width: 100%;
+        min-width: 0;
+        max-width: none;
+    }
+}
