@@ -313,7 +313,7 @@
     z-index: 20;
 }
 
-    .pay2-search-wrapper i {
+    .pay2-search-wrapper > i {
         position: absolute;
         right: 12px;
         color: var(--p2-text-muted);
@@ -343,71 +343,6 @@
     .pay2-search-input::placeholder {
         color: var(--p2-text-light);
     }
-
-.pay2-quick-search-results {
-    position: absolute;
-    top: calc(100% + 6px);
-    right: 0;
-    width: min(360px, 80vw);
-    max-height: 360px;
-    overflow-y: auto;
-    padding: 6px;
-    border: 1px solid var(--p2-border);
-    border-radius: var(--p2-radius-md);
-    background: var(--p2-bg-white);
-    box-shadow: var(--p2-shadow-lg);
-}
-
-.pay2-quick-search-result {
-    display: flex;
-    width: 100%;
-    align-items: center;
-    gap: 10px;
-    padding: 9px 10px;
-    border: 0;
-    border-radius: var(--p2-radius-sm);
-    background: transparent;
-    color: var(--p2-text-main);
-    text-align: right;
-    font-family: var(--p2-font);
-}
-
-    .pay2-quick-search-result:hover,
-    .pay2-quick-search-result:focus-visible {
-        background: var(--p2-bg-hover);
-        outline: none;
-    }
-
-    .pay2-quick-search-result > i {
-        width: 20px;
-        color: var(--p2-primary);
-        text-align: center;
-    }
-
-    .pay2-quick-search-result span {
-        display: flex;
-        min-width: 0;
-        flex-direction: column;
-    }
-
-    .pay2-quick-search-result strong {
-        font-size: 13px;
-        font-weight: 700;
-    }
-
-    .pay2-quick-search-result small {
-        margin-top: 2px;
-        color: var(--p2-text-muted);
-        font-size: 11px;
-    }
-
-.pay2-quick-search-empty {
-    padding: 12px;
-    color: var(--p2-text-muted);
-    text-align: center;
-    font-size: 12px;
-}
-
 
 /* ════════════════════════════════════════════════════════════
    ۵. انیمیشن ورودی تب
