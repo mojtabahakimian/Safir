@@ -22,12 +22,15 @@
         border-radius: var(--p2-radius-md);
         background: var(--p2-bg-white);
         box-shadow: var(--p2-shadow-lg);
+        direction: rtl;
+        text-align: right;
     }
 
     .pay2-search-wrapper .pay2-quick-search-result {
         display: flex;
         width: 100%;
         align-items: center;
+        justify-content: flex-start;
         gap: 10px;
         padding: 9px 10px;
         border: 0;
@@ -35,6 +38,7 @@
         background: transparent;
         color: var(--p2-text-main);
         text-align: right;
+        direction: rtl;
         font-family: var(--p2-font);
     }
 
@@ -56,18 +60,25 @@
     .pay2-search-wrapper .pay2-quick-search-result > span {
         display: flex;
         min-width: 0;
+        flex: 1;
         flex-direction: column;
+        align-items: flex-start;
+        text-align: right;
     }
 
     .pay2-search-wrapper .pay2-quick-search-result strong {
+        width: 100%;
         font-size: 13px;
         font-weight: 700;
+        text-align: right;
     }
 
     .pay2-search-wrapper .pay2-quick-search-result small {
+        width: 100%;
         margin-top: 2px;
         color: var(--p2-text-muted);
         font-size: 11px;
+        text-align: right;
     }
 
     .pay2-search-wrapper > .pay2-quick-search-empty {
