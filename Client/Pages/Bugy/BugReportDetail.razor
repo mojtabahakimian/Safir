@@ -12,8 +12,30 @@
 @inject ISnackbar Snackbar
 @inject AuthenticationStateProvider AuthStateProvider
 @inject ConnectionManagerService ConnectionManager
+@inject IJSRuntime JSRuntime
 
 <PageTitle>جزئیات گزارش خطا</PageTitle>
+
+<style>
+    /* Fixed 600px trapped mobile users in a tiny scroll box and let a single
+           comment full of blank lines blow up the panel. Use a responsive height
+           instead, and cap each bubble so no single message can dominate. */
+    .bug-report-chat-panel {
+        height: 600px;
+        max-height: 75vh;
+    }
+
+    @@media (max-width: 600px) {
+        .bug-report-chat-panel {
+            height: 65vh;
+        }
+    }
+
+    .bug-report-chat-bubble {
+        max-height: 260px;
+        overflow-y: auto;
+    }
+</style>
 
 <MudContainer MaxWidth="MaxWidth.Large" Class="mt-6 mb-16">
     <MudButton Variant="Variant.Text" StartIcon="@Icons.Material.Filled.ArrowBack"
@@ -227,7 +249,7 @@
                 }
 
                 <!-- Comments Chat Panel -->
-                <MudPaper Elevation="2" Class="pa-5 mt-4 d-flex flex-column" Style="height: 600px;">
+                <MudPaper Elevation="2" Class="pa-5 mt-4 d-flex flex-column bug-report-chat-panel">
                     <MudText Typo="Typo.h6" Color="Color.Primary" Class="mb-3">
                         <MudIcon Icon="@Icons.Material.Filled.Forum" Class="me-1" />
                         گفتگو با پشتیبانی
@@ -235,7 +257,7 @@
                     <MudDivider Class="mb-4" />
 
                     <!-- Chat History Area -->
-                    <div class="flex-grow-1 overflow-y-auto mb-4 px-2" Style="max-height: 500px;">
+                    <div class="flex-grow-1 overflow-y-auto mb-4 px-2">
                         @if (_comments != null && _comments.Any())
                         {
                             <div class="d-flex flex-column gap-4">
@@ -244,25 +266,30 @@
                                     bool isMyComment = (_isBugReporter && !comment.IsAdmin) || (!_isBugReporter && comment.IsAdmin);
 
                                     <div class="d-flex w-100 @(isMyComment ? "justify-start" : "justify-end")">
-                                        <div class="d-flex flex-column" Style="max-width: 80%;">
-                                            <div class="d-flex align-center mb-1 @(isMyComment ? "" : "flex-row-reverse")">
-                                                <MudText Typo="Typo.caption" Color="Color.Default" Class="text-muted mx-2">
-                                                    @(string.IsNullOrEmpty(comment.UserName) ? (comment.IsAdmin ? "پشتیبان" : "شما") : comment.UserName)
-                                                </MudText>
-                                                <MudText Typo="Typo.caption" Style="font-size: 0.65rem; color: #aaa;">
-                                                    @comment.CreatedAt.ToString("yyyy/MM/dd HH:mm")
-                                                </MudText>
-                                            </div>
+                                        <div class="d-flex gap-2 @(isMyComment ? "" : "flex-row-reverse")" Style="max-width: 85%;">
+                                            <MudAvatar Size="Size.Small" Color="@(comment.IsAdmin? Color.Secondary: Color.Primary)">
+                                                <MudIcon Icon="@(comment.IsAdmin? Icons.Material.Filled.SupportAgent : Icons.Material.Filled.Person)" Size="Size.Small" />
+                                            </MudAvatar>
+                                            <div class="d-flex flex-column">
+                                                <div class="d-flex align-center mb-1 @(isMyComment ? "" : "flex-row-reverse")">
+                                                    <MudText Typo="Typo.caption" Color="Color.Default" Class="text-muted mx-2">
+                                                        @(string.IsNullOrEmpty(comment.UserName) ? (comment.IsAdmin ? "پشتیبان" : "شما") : comment.UserName)
+                                                    </MudText>
+                                                    <MudText Typo="Typo.caption" Style="font-size: 0.65rem; color: #aaa;">
+                                                        @comment.CreatedAt.ToString("yyyy/MM/dd HH:mm")
+                                                    </MudText>
+                                                </div>
 
-                                            <MudPaper Elevation="1"
-                                                      Class="@($"pa-3 {(isMyComment ? "rounded-tr-xl rounded-b-xl" : "rounded-tl-xl rounded-b-xl")}")"
-                                                      Style="@($"background-color: {(isMyComment ? "var(--mud-palette-primary)" : "var(--mud-palette-background-grey)")}; color: {(isMyComment ? "white" : "inherit")};")">
-                                                <MudText Typo="Typo.body2" Style="white-space:pre-wrap;">@comment.CommentText</MudText>
-                                            </MudPaper>
+                                                <MudPaper Elevation="1" Class="@($"pa-3 bug-report-chat-bubble {(isMyComment ? "rounded-tr-xl rounded-b-xl" : "rounded-tl-xl rounded-b-xl")}")"
+                                                          Style="@($"background-color: {(isMyComment ? "var(--mud-palette-primary)" : "var(--mud-palette-background-grey)")}; color: {(isMyComment ? "white" : "inherit")};")">
+                                                    <MudText Typo="Typo.body2" Style="white-space:pre-wrap; word-break:break-word;">@FormatCommentText(comment.CommentText)</MudText>
+                                                </MudPaper>
+                                            </div>
                                         </div>
                                     </div>
                                 }
                             </div>
+                            <div id="bug-report-chat-end"></div>
                         }
                         else
                         {
@@ -308,6 +335,7 @@
     private string? _adminNote;
     private string? _newComment;
     private bool _isBugReporter = false;
+    private bool _scrollChatToBottom = false;
 
     protected override async Task OnInitializedAsync()
     {
@@ -316,6 +344,20 @@
         _isBugReporter = authState.User.FindFirst(BaseknowClaimTypes.GRSAL)?.Value == "999";
 
         await LoadReport();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_scrollChatToBottom)
+        {
+            _scrollChatToBottom = false;
+            try
+            {
+                await JSRuntime.InvokeVoidAsync("eval",
+                    "document.getElementById('bug-report-chat-end')?.scrollIntoView({ block: 'end' });");
+            }
+            catch { /* best-effort only — never block the page on this */ }
+        }
     }
 
     private async Task LoadReport()
@@ -329,6 +371,7 @@
                 _newStatus = _report.Status;
                 _adminNote = _report.AdminNote;
                 _comments = await BugReportApi.GetBugReportCommentsAsync(Id) ?? new List<BugReportCommentDto>();
+                _scrollChatToBottom = true;
             }
         }
         catch
@@ -375,12 +418,13 @@
         _isSavingComment = true;
         try
         {
-            var response = await BugReportApi.AddBugReportCommentAsync(Id, _newComment);
+            var response = await BugReportApi.AddBugReportCommentAsync(Id, _newComment.Trim());
             if (response.IsSuccessStatusCode)
             {
                 _newComment = string.Empty;
                 // Reload comments
                 _comments = await BugReportApi.GetBugReportCommentsAsync(Id) ?? new List<BugReportCommentDto>();
+                _scrollChatToBottom = true;
                 Snackbar.Add("پی‌نوشت با موفقیت ثبت شد.", Severity.Success);
             }
             else
@@ -415,6 +459,17 @@
         "Low" => "کم",
         _ => severity
     };
+
+    private static string FormatCommentText(string? text)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return "(بدون متن)";
+        var trimmed = text.Trim();
+        // A comment pasted with many blank lines rendered as a huge empty-looking
+        // bubble with `pre-wrap`. Collapse 3+ consecutive newlines down to one
+        // blank line so that can't happen again, regardless of the source data.
+        trimmed = System.Text.RegularExpressions.Regex.Replace(trimmed, @"(\r?\n){3,}", "\n\n");
+        return trimmed;
+    }
 
     private RenderFragment InfoRow(string label, string? value) => __builder =>
     {
