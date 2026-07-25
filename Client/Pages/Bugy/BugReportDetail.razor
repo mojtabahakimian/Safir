@@ -5,6 +5,7 @@
 @using MudBlazor
 @using Microsoft.AspNetCore.Components.Authorization
 @using Safir.Shared.Constants
+@using Safir.Client.Services
 @attribute [Authorize]
 @inject BugReportApiService BugReportApi
 @inject NavigationManager NavigationManager
@@ -48,8 +49,11 @@
                             <MudChip T="string" Color="@GetSeverityColor(_report.Severity)" Size="Size.Medium" Label="true">
                                 @GetSeverityLabel(_report.Severity)
                             </MudChip>
-                            <MudChip T="string" Color="@GetStatusColor(_report.Status)" Variant="Variant.Outlined" Size="Size.Medium" Label="true">
-                                @GetStatusLabel(_report.Status)
+                            <MudChip T="string" Color="@BugReportStatusUi.GetColor(_report.Status)"
+                                     Variant="@BugReportStatusUi.GetVariant(_report.Status)"
+                                     Icon="@BugReportStatusUi.GetIcon(_report.Status)"
+                                     Size="Size.Medium" Label="true">
+                                @BugReportStatusUi.GetLabel(_report.Status)
                             </MudChip>
                             @if (_report.IsBlocking)
                             {
@@ -198,11 +202,15 @@
                         </MudText>
                         <MudDivider Class="mb-3" />
                         <MudSelect @bind-Value="_newStatus" Label="تغییر وضعیت" Variant="Variant.Outlined" Dense="true" Class="mb-3">
-                            <MudSelectItem Value="@("New")">جدید</MudSelectItem>
-                            <MudSelectItem Value="@("InReview")">در حال بررسی</MudSelectItem>
-                            <MudSelectItem Value="@("NeedMoreInfo")">نیاز به اطلاعات بیشتر</MudSelectItem>
-                            <MudSelectItem Value="@("Fixed")">رفع شده</MudSelectItem>
-                            <MudSelectItem Value="@("Rejected")">رد شده</MudSelectItem>
+                            @foreach (var status in BugReportStatuses.All)
+                            {
+                                <MudSelectItem Value="@status.Key">
+                                    <div class="d-flex align-center gap-2">
+                                        <MudIcon Icon="@BugReportStatusUi.GetIcon(status.Key)" Color="@BugReportStatusUi.GetColor(status.Key)" Size="Size.Small" />
+                                        @status.Label
+                                    </div>
+                                </MudSelectItem>
+                            }
                         </MudSelect>
                         <MudTextField @bind-Value="_adminNote" Label="یادداشت مدیر" Variant="Variant.Outlined"
                                       Lines="3" Class="mb-3" HelperText="یادداشت داخلی یا پیام به کاربر" />
@@ -406,26 +414,6 @@
         "Medium" => "متوسط",
         "Low" => "کم",
         _ => severity
-    };
-
-    private Color GetStatusColor(string status) => status switch
-    {
-        "New" => Color.Primary,
-        "InReview" => Color.Warning,
-        "Fixed" => Color.Success,
-        "Rejected" => Color.Error,
-        "NeedMoreInfo" => Color.Info,
-        _ => Color.Default
-    };
-
-    private string GetStatusLabel(string status) => status switch
-    {
-        "New" => "جدید",
-        "InReview" => "در بررسی",
-        "Fixed" => "رفع شده",
-        "Rejected" => "رد شده",
-        "NeedMoreInfo" => "نیاز به اطلاعات",
-        _ => status
     };
 
     private RenderFragment InfoRow(string label, string? value) => __builder =>
