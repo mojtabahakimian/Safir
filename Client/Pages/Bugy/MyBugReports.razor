@@ -13,7 +13,32 @@
 <MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="mt-8 mb-16">
     <MudText Typo="Typo.h4" Class="mb-6">گزارش‌های خطای من</MudText>
 
-    <MudTable Items="@_reports" Dense="true" Hover="true" Loading="@_isLoading" LoadingProgressColor="Color.Primary" Striped="true" OnRowClick="OnRowClick" T="BugReportDto" RowClass="cursor-pointer">
+    <MudPaper Elevation="2" Class="pa-4 mb-4">
+        <MudGrid AlignItems="AlignItems.Center">
+            <MudItem xs="12" sm="5">
+                <MudSelect T="string" MultiSelection="true" @bind-SelectedValues="_filterStatuses"
+                           Label="فیلتر بر اساس وضعیت" Variant="Variant.Outlined" Dense="true" Clearable="true"
+                           MultiSelectionTextFunc="@(list => $"{list.Count} وضعیت انتخاب شده")">
+                    @foreach (var status in BugReportStatuses.All)
+                    {
+                        <MudSelectItem T="string" Value="@status.Key">@status.Label</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" sm="5">
+                <MudTextField @bind-Value="_searchText" Label="جستجو" Variant="Variant.Outlined" Dense="true"
+                              Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search"
+                              Clearable="true" Immediate="true" />
+            </MudItem>
+            <MudItem xs="12" sm="2" Class="d-flex justify-end">
+                <MudTooltip Text="پاک کردن فیلترها">
+                    <MudIconButton Icon="@Icons.Material.Filled.FilterAltOff" OnClick="ClearFilters" />
+                </MudTooltip>
+            </MudItem>
+        </MudGrid>
+    </MudPaper>
+
+    <MudTable Items="@FilteredReports" Dense="true" Hover="true" Loading="@_isLoading" LoadingProgressColor="Color.Primary" Striped="true" OnRowClick="OnRowClick" T="BugReportDto" RowClass="cursor-pointer">
         <HeaderContent>
             <MudTh>شناسه</MudTh>
             <MudTh>تاریخ ثبت</MudTh>
@@ -32,27 +57,12 @@
                 </MudText>
             </MudTd>
             <MudTd DataLabel="وضعیت">
-                @switch (context.Status)
-                {
-                    case "New":
-                        <MudChip Size="Size.Small" Color="Color.Info">جدید</MudChip>
-                        break;
-                    case "InReview":
-                        <MudChip Size="Size.Small" Color="Color.Warning">در حال بررسی</MudChip>
-                        break;
-                    case "Fixed":
-                        <MudChip Size="Size.Small" Color="Color.Success">رفع شده</MudChip>
-                        break;
-                    case "Rejected":
-                        <MudChip Size="Size.Small" Color="Color.Error">رد شده</MudChip>
-                        break;
-                    case "NeedMoreInfo":
-                        <MudChip Size="Size.Small" Color="Color.Secondary">نیاز به اطلاعات بیشتر</MudChip>
-                        break;
-                    default:
-                        <MudChip Size="Size.Small">@context.Status</MudChip>
-                        break;
-                }
+                <MudChip T="string" Size="Size.Small"
+                         Color="@BugReportStatusUi.GetColor(context.Status)"
+                         Variant="@BugReportStatusUi.GetVariant(context.Status)"
+                         Icon="@BugReportStatusUi.GetIcon(context.Status)">
+                    @BugReportStatusUi.GetLabel(context.Status)
+                </MudChip>
             </MudTd>
             <MudTd DataLabel="پیام تیم فنی">
                 <MudText Typo="Typo.body2" Style="max-width: 300px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="@context.AdminNote">
@@ -73,8 +83,19 @@
 </MudContainer>
 
 @code {
-    private List<BugReportDto>? _reports;
+    private List<BugReportDto> _reports = new();
     private bool _isLoading = true;
+
+    private IEnumerable<string> _filterStatuses = new HashSet<string>();
+    private string _searchText = "";
+
+    private IEnumerable<BugReportDto> FilteredReports =>
+        _reports.Where(r =>
+            (!_filterStatuses.Any() || _filterStatuses.Contains(r.Status)) &&
+            (string.IsNullOrWhiteSpace(_searchText) ||
+                r.Id.ToString().Contains(_searchText) ||
+                (r.UserDescription?.Contains(_searchText, StringComparison.OrdinalIgnoreCase) ?? false) ||
+                (r.Category?.Contains(_searchText, StringComparison.OrdinalIgnoreCase) ?? false)));
 
     protected override async Task OnInitializedAsync()
     {
@@ -87,9 +108,9 @@
         _isLoading = true;
         try
         {
-            _reports = await BugReportApi.GetMyBugReportsAsync();
+            _reports = await BugReportApi.GetMyBugReportsAsync() ?? new List<BugReportDto>();
         }
-        catch (Exception ex)
+        catch (Exception)
         {
             Snackbar.Add("خطا در دریافت لیست گزارش‌ها.", Severity.Error);
         }
@@ -97,6 +118,12 @@
         {
             _isLoading = false;
         }
+    }
+
+    private void ClearFilters()
+    {
+        _filterStatuses = new HashSet<string>();
+        _searchText = "";
     }
 
     private void OnRowClick(TableRowClickEventArgs<BugReportDto> args)
