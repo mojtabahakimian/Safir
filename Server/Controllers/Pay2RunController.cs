@@ -564,7 +564,7 @@ VALUES (@N_S, @RADIF, @HES_K, @HES_M, @HES_T, @HES_T2, @HES_T3, @HES_T4, @HES, @
                     await conn.ExecuteAsync(insertSql, finalDetailsToInsert, tran);
 
                     await conn.ExecuteAsync(@"
-                        UPDATE PAY2_RUN SET STATUS = 3, DEED_ID_SAL = @deedId, DEED_MODE = @mode, DEED_GENERATOR_VERSION = 1 WHERE RUN_ID = @runId;
+                        UPDATE PAY2_RUN SET STATUS = 3, DEED_ID_SAL = @deedId, DEED_MODE = @mode, DEED_GENERATOR_VERSION = 2 WHERE RUN_ID = @runId;
                         UPDATE PAY2_PERIOD SET STATUS = 4, DEED_N_S_PAY = @targetNs WHERE PER_ID = @perId;",
                         new { runId, deedId = (int)targetNs, targetNs, perId, mode = effectiveMode }, tran);
                 });
