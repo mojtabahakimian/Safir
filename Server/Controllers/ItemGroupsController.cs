@@ -75,21 +75,31 @@ namespace Safir.Server.Controllers
                 // <<< بررسی وجود فایل تصویر برای هر گروه >>>
                 if (!string.IsNullOrEmpty(_groupImageFolderPath))
                 {
-                    foreach (var group in itemGroupsList)
+                    if (System.IO.Directory.Exists(_groupImageFolderPath))
                     {
-                        // نام فایل مورد انتظار (بدون پسوند) - تبدیل double به string
-                        // نکته: اگر کد گروه اعشاری باشد (مثلا 1.5)، نام فایل هم 1.5 خواهد بود.
-                        string groupCodeStr = group.CODE.ToString(System.Globalization.CultureInfo.InvariantCulture);
-
-                        // بررسی وجود فایل با پسوندهای مختلف
-                        group.ImageExists = SupportedImageExtensions.Any(ext =>
-                            System.IO.File.Exists(Path.Combine(_groupImageFolderPath, groupCodeStr + ext))
+                        var existingFiles = new HashSet<string>(
+                            System.IO.Directory.EnumerateFiles(_groupImageFolderPath).Select(System.IO.Path.GetFileName),
+                            StringComparer.OrdinalIgnoreCase
                         );
 
-                        if (group.ImageExists)
+                        foreach (var group in itemGroupsList)
                         {
-                            // _logger.LogTrace("Image found for group CODE: {GroupCode}", group.CODE);
+                            // نام فایل مورد انتظار (بدون پسوند) - تبدیل double به string
+                            // نکته: اگر کد گروه اعشاری باشد (مثلا 1.5)، نام فایل هم 1.5 خواهد بود.
+                            string groupCodeStr = group.CODE.ToString(System.Globalization.CultureInfo.InvariantCulture);
+
+                            // بررسی وجود فایل با پسوندهای مختلف
+                            group.ImageExists = SupportedImageExtensions.Any(ext => existingFiles.Contains(groupCodeStr + ext));
+
+                            if (group.ImageExists)
+                            {
+                                // _logger.LogTrace("Image found for group CODE: {GroupCode}", group.CODE);
+                            }
                         }
+                    }
+                    else
+                    {
+                        _logger.LogWarning("Group image directory {Directory} does not exist.", _groupImageFolderPath);
                     }
                 }
                 else

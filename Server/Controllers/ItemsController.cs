@@ -119,14 +119,26 @@ namespace Safir.Server.Controllers
                 var items = (await _dbService.DoGetDataSQLAsync<ItemDisplayDto>(itemsSql, parameters)).ToList();
                 int totalItemCount = await _dbService.DoGetDataSQLAsyncSingle<int>(countSql, parameters);
 
-                items.ForEach(i =>
+                if (!string.IsNullOrEmpty(_imageBasePath) && System.IO.Directory.Exists(_imageBasePath))
                 {
-                    i.MinimumInventory ??= 0;
-                    if (!string.IsNullOrEmpty(_imageBasePath))
+                    var existingFiles = new HashSet<string>(
+                        System.IO.Directory.EnumerateFiles(_imageBasePath).Select(System.IO.Path.GetFileName),
+                        StringComparer.OrdinalIgnoreCase
+                    );
+
+                    items.ForEach(i =>
                     {
-                        i.ImageExists = SupportedImageExtensions.Any(ext => System.IO.File.Exists(Path.Combine(_imageBasePath, i.CODE + ext)));
-                    }
-                });
+                        i.MinimumInventory ??= 0;
+                        i.ImageExists = SupportedImageExtensions.Any(ext => existingFiles.Contains(i.CODE + ext));
+                    });
+                }
+                else
+                {
+                    items.ForEach(i =>
+                    {
+                        i.MinimumInventory ??= 0;
+                    });
+                }
 
                 var pagedResult = new PagedResult<ItemDisplayDto>
                 {
@@ -479,7 +491,7 @@ namespace Safir.Server.Controllers
                     Status = 500
                 });
             }
-        }  
+        }
 
         //    [HttpGet("historical-order-items")]
         //    public async Task<ActionResult<PagedResult<ItemDisplayDto>>> GetHistoricalOrderItems(
