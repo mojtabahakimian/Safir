@@ -73,8 +73,22 @@ namespace Safir.Server.Controllers
                 _logger.LogInformation("Successfully fetched {Count} item groups.", itemGroupsList.Count);
 
                 // <<< بررسی وجود فایل تصویر برای هر گروه >>>
-                if (!string.IsNullOrEmpty(_groupImageFolderPath))
+                if (!string.IsNullOrEmpty(_groupImageFolderPath) && System.IO.Directory.Exists(_groupImageFolderPath))
                 {
+                    HashSet<string> allFiles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                    try
+                    {
+                        var files = System.IO.Directory.GetFiles(_groupImageFolderPath);
+                        foreach (var file in files)
+                        {
+                            allFiles.Add(System.IO.Path.GetFileName(file));
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "Error reading group image directory.");
+                    }
+
                     foreach (var group in itemGroupsList)
                     {
                         // نام فایل مورد انتظار (بدون پسوند) - تبدیل double به string
@@ -83,7 +97,7 @@ namespace Safir.Server.Controllers
 
                         // بررسی وجود فایل با پسوندهای مختلف
                         group.ImageExists = SupportedImageExtensions.Any(ext =>
-                            System.IO.File.Exists(Path.Combine(_groupImageFolderPath, groupCodeStr + ext))
+                            allFiles.Contains(groupCodeStr + ext)
                         );
 
                         if (group.ImageExists)
