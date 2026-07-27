@@ -73,37 +73,33 @@ namespace Safir.Server.Controllers
                 _logger.LogInformation("Successfully fetched {Count} item groups.", itemGroupsList.Count);
 
                 // <<< بررسی وجود فایل تصویر برای هر گروه >>>
-                if (!string.IsNullOrEmpty(_groupImageFolderPath) && System.IO.Directory.Exists(_groupImageFolderPath))
+                if (!string.IsNullOrEmpty(_groupImageFolderPath))
                 {
-                    HashSet<string> allFiles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-                    try
+                    if (System.IO.Directory.Exists(_groupImageFolderPath))
                     {
-                        var files = System.IO.Directory.GetFiles(_groupImageFolderPath);
-                        foreach (var file in files)
-                        {
-                            allFiles.Add(System.IO.Path.GetFileName(file));
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        _logger.LogWarning(ex, "Error reading group image directory.");
-                    }
-
-                    foreach (var group in itemGroupsList)
-                    {
-                        // نام فایل مورد انتظار (بدون پسوند) - تبدیل double به string
-                        // نکته: اگر کد گروه اعشاری باشد (مثلا 1.5)، نام فایل هم 1.5 خواهد بود.
-                        string groupCodeStr = group.CODE.ToString(System.Globalization.CultureInfo.InvariantCulture);
-
-                        // بررسی وجود فایل با پسوندهای مختلف
-                        group.ImageExists = SupportedImageExtensions.Any(ext =>
-                            allFiles.Contains(groupCodeStr + ext)
+                        var existingFiles = new HashSet<string>(
+                            System.IO.Directory.EnumerateFiles(_groupImageFolderPath).Select(System.IO.Path.GetFileName),
+                            StringComparer.OrdinalIgnoreCase
                         );
 
-                        if (group.ImageExists)
+                        foreach (var group in itemGroupsList)
                         {
-                            // _logger.LogTrace("Image found for group CODE: {GroupCode}", group.CODE);
+                            // نام فایل مورد انتظار (بدون پسوند) - تبدیل double به string
+                            // نکته: اگر کد گروه اعشاری باشد (مثلا 1.5)، نام فایل هم 1.5 خواهد بود.
+                            string groupCodeStr = group.CODE.ToString(System.Globalization.CultureInfo.InvariantCulture);
+
+                            // بررسی وجود فایل با پسوندهای مختلف
+                            group.ImageExists = SupportedImageExtensions.Any(ext => existingFiles.Contains(groupCodeStr + ext));
+
+                            if (group.ImageExists)
+                            {
+                                // _logger.LogTrace("Image found for group CODE: {GroupCode}", group.CODE);
+                            }
                         }
+                    }
+                    else
+                    {
+                        _logger.LogWarning("Group image directory {Directory} does not exist.", _groupImageFolderPath);
                     }
                 }
                 else

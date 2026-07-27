@@ -722,22 +722,26 @@ VALUES (@N_S, @RADIF, @HES_K, @HES_M, @HES_T, @HES_T2, @HES_T3, @HES_T4, @HES, @
                 int rowIndex = 1;
 
                 // پردازش تمام Runها (یک یا چندتا)
+                var allLines = (await _db.DoGetDataSQLAsync<dynamic>(
+                    Safir.Server.Services.Pay2PayrollSnapshotQuery.SqlMultiple, new { runIds = targetRunIds }))
+                    .Where(x => (byte)x.INS_TYPE != 3).ToList();
+                var groupedLines = allLines.GroupBy(x => (int)x.RUN_ID).ToDictionary(g => g.Key, g => g.ToList());
+
                 foreach (var currentRunId in targetRunIds)
                 {
+                    if (!groupedLines.TryGetValue(currentRunId, out var lines))
+                        continue;
+
                     // اگر تجمیعی است، عنوان ماه را به نام پرسنل اضافه می‌کنیم تا مشخص شود
                     string monthLabel = "";
-                    if (runId == 0)
+                    if (runId == 0 && lines.Any())
                     {
-                        var pDateSql = "SELECT P.PERIOD_DATE FROM PAY2_RUN R INNER JOIN PAY2_PERIOD P ON R.PER_ID = P.PER_ID WHERE R.RUN_ID = @currentRunId";
-                        var pDate = await _db.DoGetDataSQLAsyncSingle<long>(pDateSql, new { currentRunId });
+                        var firstLine = lines.First();
+                        long pDate = (long)firstLine.PERIOD_DATE;
                         int m = (int)((pDate / 100) % 100);
                         monthLabel = $" [{(m >= 1 && m <= 12 ? monthNames[m - 1] : m.ToString())}]";
                     }
 
-                    // پرسنل معاف از بیمه (INS_TYPE=3) در لیست بیمه نمی‌آیند؛ مطابق دیسکت تأمین اجتماعی.
-                    var lines = (await _db.DoGetDataSQLAsync<dynamic>(
-                        Safir.Server.Services.Pay2PayrollSnapshotQuery.Sql, new { runId = currentRunId }))
-                        .Where(x => (byte)x.INS_TYPE != 3).ToList();
                     if (lines.Any(x => !(bool)x.HAS_NOMINAL_RAIL || !(bool)x.HAS_COMPLETE_NOMINAL_SNAPSHOT || !(bool)x.HAS_COMPLETE_EMP_SNAPSHOT))
                         return UnprocessableEntity("خروجی قانونی ممکن نیست: Snapshot کامل ریل اسمی یا مشخصات پرسنل وجود ندارد.");
                     if (lines.Any(x => !(bool)x.PREMIUM_SNAPSHOT_AVAILABLE))
@@ -896,18 +900,23 @@ VALUES (@N_S, @RADIF, @HES_K, @HES_M, @HES_T, @HES_T2, @HES_T3, @HES_T4, @HES, @
 
                 int rowIndex = 1;
 
+                var allLines = (await _db.DoGetDataSQLAsync<dynamic>(
+                    Safir.Server.Services.Pay2PayrollSnapshotQuery.SqlMultiple, new { runIds = targetRunIds })).ToList();
+                var groupedLines = allLines.GroupBy(x => (int)x.RUN_ID).ToDictionary(g => g.Key, g => g.ToList());
+
                 foreach (var currentRunId in targetRunIds)
                 {
+                    if (!groupedLines.TryGetValue(currentRunId, out var lines))
+                        continue;
+
                     string monthLabel = "";
-                    if (runId == 0)
+                    if (runId == 0 && lines.Any())
                     {
-                        var pDate = await _db.DoGetDataSQLAsyncSingle<long>("SELECT P.PERIOD_DATE FROM PAY2_RUN R INNER JOIN PAY2_PERIOD P ON R.PER_ID = P.PER_ID WHERE R.RUN_ID = @currentRunId", new { currentRunId });
+                        long pDate = (long)lines.First().PERIOD_DATE;
                         int m = (int)((pDate / 100) % 100);
                         monthLabel = $" [{(m >= 1 && m <= 12 ? monthNames[m - 1] : m.ToString())}]";
                     }
 
-                    var lines = (await _db.DoGetDataSQLAsync<dynamic>(
-                        Safir.Server.Services.Pay2PayrollSnapshotQuery.Sql, new { runId = currentRunId })).ToList();
                     if (lines.Any(x => !(bool)x.HAS_NOMINAL_RAIL || !(bool)x.HAS_COMPLETE_NOMINAL_SNAPSHOT || !(bool)x.HAS_COMPLETE_EMP_SNAPSHOT))
                         return UnprocessableEntity("خروجی قانونی ممکن نیست: Snapshot کامل ریل اسمی یا مشخصات پرسنل وجود ندارد.");
 
