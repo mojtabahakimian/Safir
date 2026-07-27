@@ -73,6 +73,53 @@ function normalizeText(text, options, currentValue, selectionStart, selectionEnd
     return result;
 }
 
+// جداسازی سه‌رقمی (هزارگان) روی ارقام صحیح
+function groupDigits(value) {
+    const digits = (value || "").replace(/\D/g, "");
+    if (!digits) return "";
+    return digits.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+}
+
+function countDigits(value) {
+    let n = 0;
+    for (const ch of value) {
+        if (ch >= "0" && ch <= "9") n++;
+    }
+    return n;
+}
+
+// اعمال جداکننده هزارگان در حین تایپ، با حفظ موقعیت مکان‌نما
+function applyGrouping(el) {
+    const current = el.value || "";
+    const formatted = groupDigits(current);
+
+    if (formatted === current) return;
+
+    const caret = el.selectionStart ?? current.length;
+    const digitsBeforeCaret = countDigits(current.substring(0, caret));
+
+    el.value = formatted;
+
+    let newPos = formatted.length;
+    let seen = 0;
+    for (let i = 0; i < formatted.length; i++) {
+        if (formatted[i] >= "0" && formatted[i] <= "9") {
+            seen++;
+            if (seen === digitsBeforeCaret) {
+                newPos = i + 1;
+                break;
+            }
+        }
+    }
+    if (digitsBeforeCaret === 0) newPos = 0;
+
+    try {
+        el.setSelectionRange(newPos, newPos);
+    } catch {
+        // ignored
+    }
+}
+
 function limitByMaxLength(current, start, end, insertText, maxLength) {
     if (maxLength <= 0) return insertText;
 
@@ -155,7 +202,8 @@ export function attachInputGuard(el, options) {
         allowTime: options?.allowTime === true,
         maxDecimalPlaces: Math.max(0, options?.maxDecimalPlaces ?? 0),
         threeTwoZero: options?.threeTwoZero === true,
-        persianDate: options?.persianDate === true
+        persianDate: options?.persianDate === true,
+        groupDigits: options?.groupDigits === true
     };
 
     const beforeInputHandler = (e) => {
@@ -221,6 +269,12 @@ export function attachInputGuard(el, options) {
         }
     };
 
+    // پیش از رسیدن رویداد به Blazor اجرا می‌شود تا مقدار گروه‌بندی‌شده به کامپوننت برسد
+    const inputHandler = () => {
+        if (!safeOptions.groupDigits) return;
+        applyGrouping(el);
+    };
+
     const pasteHandler = (e) => {
         e.preventDefault();
 
@@ -252,12 +306,14 @@ export function attachInputGuard(el, options) {
     };
 
     el.addEventListener("beforeinput", beforeInputHandler, { passive: false });
+    el.addEventListener("input", inputHandler);
     el.addEventListener("keydown", keydownHandler);
     el.addEventListener("paste", pasteHandler);
     el.addEventListener("drop", dropHandler);
 
     guardMap.set(el, {
         beforeInputHandler,
+        inputHandler,
         keydownHandler,
         pasteHandler,
         dropHandler
@@ -271,6 +327,7 @@ export function detachInputGuard(el) {
     if (!old) return;
 
     el.removeEventListener("beforeinput", old.beforeInputHandler);
+    el.removeEventListener("input", old.inputHandler);
     el.removeEventListener("keydown", old.keydownHandler);
     el.removeEventListener("paste", old.pasteHandler);
     el.removeEventListener("drop", old.dropHandler);

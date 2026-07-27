@@ -119,6 +119,10 @@ namespace Safir.Server.Controllers
             {
                 var empId = await _db.ExecuteInTransactionAsync(async (conn, tran) =>
                 {
+                    var duplicate = await FindDuplicateEmployeeMessageAsync(conn, tran, emp);
+                    if (duplicate is not null)
+                        throw new InvalidOperationException(duplicate);
+
                     int currentId = emp.EMP_ID;
                     if (emp.EMP_ID == 0)
                     {
@@ -144,15 +148,68 @@ namespace Safir.Server.Controllers
                 });
                 return Ok(empId);
             }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(ex.Message);
+            }
+            catch (Microsoft.Data.SqlClient.SqlException ex) when (ex.Number == 2627 || ex.Number == 2601)
+            {
+                return BadRequest(DescribeEmployeeDuplicate(ex.Message));
+            }
             catch (System.Data.SqlClient.SqlException ex) when (ex.Number == 2627 || ex.Number == 2601)
             {
-                return BadRequest("کد پرسنلی یا کد ملی وارد شده در سیستم تکراری است.");
+                return BadRequest(DescribeEmployeeDuplicate(ex.Message));
             }
             catch (Exception ex)
             {
                 return BadRequest(ex.Message);
             }
         }
+
+        // پیش‌بررسی تکراری بودن کد پرسنلی و کد ملی (هم در ثبت جدید و هم در ویرایش)
+        // تا خطای خام SqlException مربوط به UX_EMP_NATCODE / UQ_EMP_CODE به کاربر نمایش داده نشود
+        private static async Task<string?> FindDuplicateEmployeeMessageAsync(IDbConnection conn, IDbTransaction tran, Pay2EmployeeDto emp)
+        {
+            const string sql = @"
+                SELECT TOP 1 LAST_NAME + N' ' + FIRST_NAME AS FULL_NAME, EMP_CODE, NATIONAL_CODE
+                FROM PAY2_EMPLOYEE
+                WHERE EMP_ID <> @EMP_ID
+                  AND (
+                        (@NATIONAL_CODE IS NOT NULL AND NATIONAL_CODE = @NATIONAL_CODE)
+                     OR (@EMP_CODE IS NOT NULL AND EMP_CODE = @EMP_CODE)
+                  )";
+
+            var nationalCode = string.IsNullOrWhiteSpace(emp.NATIONAL_CODE) ? null : emp.NATIONAL_CODE.Trim();
+            var empCode = string.IsNullOrWhiteSpace(emp.EMP_CODE) ? null : emp.EMP_CODE.Trim();
+
+            if (nationalCode is null && empCode is null)
+                return null;
+
+            var hit = await conn.QueryFirstOrDefaultAsync<DuplicateEmployeeRow>(
+                sql, new { EMP_ID = emp.EMP_ID, NATIONAL_CODE = nationalCode, EMP_CODE = empCode }, tran);
+
+            if (hit is null)
+                return null;
+
+            var owner = string.IsNullOrWhiteSpace(hit.FULL_NAME) ? "پرسنل دیگری" : hit.FULL_NAME!.Trim();
+
+            if (nationalCode is not null && string.Equals(hit.NATIONAL_CODE?.Trim(), nationalCode, StringComparison.Ordinal))
+                return $"کد ملی وارد شده متعلق به پرسنل دیگری است ({owner}). لطفاً کد ملی صحیح را وارد کنید.";
+
+            return $"کد پرسنلی وارد شده قبلاً برای {owner} ثبت شده است. لطفاً کد پرسنلی دیگری انتخاب کنید.";
+        }
+
+        private sealed class DuplicateEmployeeRow
+        {
+            public string? FULL_NAME { get; set; }
+            public string? EMP_CODE { get; set; }
+            public string? NATIONAL_CODE { get; set; }
+        }
+
+        private static string DescribeEmployeeDuplicate(string sqlMessage)
+            => sqlMessage.Contains("NATCODE", StringComparison.OrdinalIgnoreCase)
+                ? "کد ملی وارد شده متعلق به پرسنل دیگری است. لطفاً کد ملی صحیح را وارد کنید."
+                : "کد پرسنلی یا کد ملی وارد شده در سیستم تکراری است.";
 
         // --- بخش احکام پرسنل ---
         [HttpGet("{empId:int}/decrees")]
