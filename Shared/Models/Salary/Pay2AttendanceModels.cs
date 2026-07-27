@@ -34,6 +34,7 @@ namespace Safir.Shared.Models.Salary
         public decimal OT_NORMAL_H { get; set; }
         public decimal OT_HOLIDAY_H { get; set; }
         public decimal OT_ADMIN_H { get; set; }
+        public decimal SHORTAGE_H { get; set; }   // ساعات کسر کار (با ضریب ۱ از حقوق کسر می‌شود)
         public decimal LEAVE_DAYS { get; set; }
         public decimal ABSENT_DAYS { get; set; }
         public decimal MISSION_DAYS { get; set; }
@@ -58,6 +59,7 @@ namespace Safir.Shared.Models.Salary
         public string OT_NORMAL_H_STR { get => FormatHours(OT_NORMAL_H); set { decimal v = ParseHours(value); if (OT_NORMAL_H != v) { OT_NORMAL_H = v; IsDirty = true; } } }
         public string OT_HOLIDAY_H_STR { get => FormatHours(OT_HOLIDAY_H); set { decimal v = ParseHours(value); if (OT_HOLIDAY_H != v) { OT_HOLIDAY_H = v; IsDirty = true; } } }
         public string OT_ADMIN_H_STR { get => FormatHours(OT_ADMIN_H); set { decimal v = ParseHours(value); if (OT_ADMIN_H != v) { OT_ADMIN_H = v; IsDirty = true; } } }
+        public string SHORTAGE_H_STR { get => FormatHours(SHORTAGE_H); set { decimal v = ParseHours(value); if (SHORTAGE_H != v) { SHORTAGE_H = v; IsDirty = true; } } }
 
         // تبدیل «32:35» به 32.58 ساعت (دقیقه ÷ 60) و پذیرش ورودی اعشاری «32.5» یا «32/5»
         // تبدیل هوشمند انواع ورودی (ساعت:دقیقه، اعشاری، و عدد خام Numpad) به عدد اعشاری برای دیتابیس
@@ -144,9 +146,23 @@ namespace Safir.Shared.Models.Salary
         public string FRID_COUNT_STR { get => FRID_COUNT.ToString(); set { _ = byte.TryParse(value, out byte v); if (FRID_COUNT != v) { FRID_COUNT = v; IsDirty = true; } } }
 
         // مقادیر ریالی
-        public string PERF_AMOUNT_STR { get => PERF_AMOUNT.ToString(); set { _ = long.TryParse(value?.Replace(",", ""), out long v); if (PERF_AMOUNT != v) { PERF_AMOUNT = v; IsDirty = true; } } }
-        public string TRANSP_AMOUNT_STR { get => TRANSP_AMOUNT.ToString(); set { _ = long.TryParse(value?.Replace(",", ""), out long v); if (TRANSP_AMOUNT != v) { TRANSP_AMOUNT = v; IsDirty = true; } } }
-        public string KASR_OTHER_STR { get => KASR_OTHER.ToString(); set { _ = long.TryParse(value?.Replace(",", ""), out long v); if (KASR_OTHER != v) { KASR_OTHER = v; IsDirty = true; } } }
+        public string PERF_AMOUNT_STR { get => FormatAmount(PERF_AMOUNT); set { long v = ParseAmount(value); if (PERF_AMOUNT != v) { PERF_AMOUNT = v; IsDirty = true; } } }
+        public string TRANSP_AMOUNT_STR { get => FormatAmount(TRANSP_AMOUNT); set { long v = ParseAmount(value); if (TRANSP_AMOUNT != v) { TRANSP_AMOUNT = v; IsDirty = true; } } }
+        public string KASR_OTHER_STR { get => FormatAmount(KASR_OTHER); set { long v = ParseAmount(value); if (KASR_OTHER != v) { KASR_OTHER = v; IsDirty = true; } } }
+
+        // مبالغ ریالی با جداکننده هزارگان نمایش داده می‌شوند
+        public static string FormatAmount(long value)
+            => value == 0 ? "" : value.ToString("#,##0", System.Globalization.CultureInfo.InvariantCulture);
+
+        public static long ParseAmount(string? value)
+        {
+            if (string.IsNullOrWhiteSpace(value)) return 0L;
+            _ = long.TryParse(value.Replace(",", "").Replace("٬", "").Trim(),
+                              System.Globalization.NumberStyles.Number,
+                              System.Globalization.CultureInfo.InvariantCulture,
+                              out long v);
+            return v;
+        }
     }
 
     public class Pay2AttendanceSaveRequest
@@ -160,6 +176,6 @@ namespace Safir.Shared.Models.Salary
         public int ITEM_ID { get; set; }
         public string? ITEM_NAME { get; set; }
         public long VALUE { get; set; }
-        public string VALUE_STR { get => VALUE.ToString(); set { _ = long.TryParse(value?.Replace(",", ""), out long v); VALUE = v; } }
+        public string VALUE_STR { get => Pay2AttendanceLineDto.FormatAmount(VALUE); set => VALUE = Pay2AttendanceLineDto.ParseAmount(value); }
     }
 }
