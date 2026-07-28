@@ -7,6 +7,7 @@
 @inject Safir.Client.Services.LookupApiService LookupService
 @inject ISnackbar Snackbar
 @inject ConnectionManagerService ConnectionManager
+@inject Safir.Client.Services.AppState AppState
 
 <div class="pay2-tab-container">
 
@@ -407,7 +408,7 @@
             Workshops = await WorkshopApi.GetWorkshopsAsync() ?? new();
 
             if (Workshops.Any())
-                SelectedWsId = Workshops.First().WS_ID;
+                SelectedWsId = AppState.ResolveWorkshopId(Workshops.Select(w => w.WS_ID));
 
             await LoadWorkshopDependentDataAsync();
         }
@@ -425,6 +426,7 @@
 
     async Task OnWorkshopChangedAsync()
     {
+        AppState.LastSelectedWorkshopId = SelectedWsId;
         Rows.Clear();
         FilteredRows.Clear();
         _searchTerm = "";

@@ -9,6 +9,7 @@
 @inject Safir.Client.Services.ConnectionManagerService ConnectionManager
 @inject Microsoft.JSInterop.IJSRuntime JS
 @inject Safir.Client.Services.Pay2EmployeeApiService EmployeeApi
+@inject Safir.Client.Services.AppState AppState
 
 <div class="pay2-tab-container">
     <div class="card-custom p2-fade-content">
@@ -308,7 +309,7 @@
             Workshops = await WorkshopApi.GetWorkshopsAsync() ?? new();
             if (Workshops.Any())
             {
-                SelectedWsId = Workshops.First().WS_ID;
+                SelectedWsId = AppState.ResolveWorkshopId(Workshops.Select(w => w.WS_ID));
                 await LoadPeriodsAsync();
                 await LoadEmployeesLookupAsync();
             }
@@ -321,6 +322,7 @@
 
     async Task OnWorkshopChangedAsync()
     {
+        AppState.LastSelectedWorkshopId = SelectedWsId;
         SelectedPeriodDate = 0;
         await LoadPeriodsAsync();
     }
