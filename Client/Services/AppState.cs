@@ -12,13 +12,15 @@ namespace Safir.Client.Services
         public int LastSelectedWorkshopId { get; set; }
 
         // اگر کارگاه ذخیره‌شده در لیست موجود باشد همان را برمی‌گرداند، در غیر این صورت اولین کارگاه لیست
+        // و مقدار نهایی را هم ذخیره می‌کند تا آی‌دی نامعتبر در حافظه باقی نماند
         public int ResolveWorkshopId(IEnumerable<int> availableWorkshopIds)
         {
             var ids = availableWorkshopIds as ICollection<int> ?? availableWorkshopIds.ToList();
             if (LastSelectedWorkshopId > 0 && ids.Contains(LastSelectedWorkshopId))
                 return LastSelectedWorkshopId;
 
-            return ids.FirstOrDefault();
+            LastSelectedWorkshopId = ids.FirstOrDefault();
+            return LastSelectedWorkshopId;
         }
 
         public void SetUUSER(string username) { UUSER = username; }

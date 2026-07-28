@@ -132,6 +132,7 @@ namespace Safir.Client.Services
             _appState.SetUSERCOD(0);
             _appState.SetUGRP(0);
             _appState.SetSettings(null); // اگر تنظیمات خاص کاربر دارید
+            _appState.LastSelectedWorkshopId = 0;
             // ********************************************************************
             // ********* پایان تغییرات *********
             // ********************************************************************
