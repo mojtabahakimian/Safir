@@ -3,6 +3,7 @@
 @inject Safir.Client.Services.Pay2WorkshopApiService WorkshopApi
 @inject ISnackbar Snackbar
 @inject ConnectionManagerService ConnectionManager
+@inject Safir.Client.Services.AppState AppState
 @inject MudBlazor.IDialogService DialogService
 
 <style>
@@ -735,7 +736,7 @@
         try
         {
             Workshops = await WorkshopApi.GetWorkshopsAsync() ?? new();
-            if (Workshops.Any()) SelectedWsId = Workshops.First().WS_ID;
+            if (Workshops.Any()) SelectedWsId = AppState.ResolveWorkshopId(Workshops.Select(w => w.WS_ID));
 
             await LoadPeriodOptionsAsync();
         }
@@ -763,6 +764,7 @@
 
     async Task OnWorkshopChangedAsync()
     {
+        AppState.LastSelectedWorkshopId = SelectedWsId;
         CurrentView = ViewMode.PeriodList;
         PeriodData = null;
         FilteredLines.Clear();

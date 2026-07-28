@@ -11,6 +11,7 @@
 @inject MudBlazor.IDialogService DialogService
 @inject ConnectionManagerService ConnectionManager
 @inject Microsoft.JSInterop.IJSRuntime JS
+@inject Safir.Client.Services.AppState AppState
 
 <style>
     /* ========== استایل لیست دوره‌ها (Master View) ========== */
@@ -811,7 +812,7 @@
         try
         {
             Workshops = await WorkshopApi.GetWorkshopsAsync() ?? new();
-            if (Workshops.Any()) SelectedWsId = Workshops.First().WS_ID;
+            if (Workshops.Any()) SelectedWsId = AppState.ResolveWorkshopId(Workshops.Select(w => w.WS_ID));
 
             await LoadPeriodOptionsAsync();
         }
@@ -837,6 +838,7 @@
     async Task OnWorkshopChangedAsync(int newWsId)
     {
         SelectedWsId = newWsId;
+        AppState.LastSelectedWorkshopId = newWsId;
         CurrentView = ViewMode.PeriodList;
         CurrentPeriod = null;
         CurrentRun = null;
