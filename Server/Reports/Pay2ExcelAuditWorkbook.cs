@@ -62,6 +62,33 @@ namespace Safir.Server.Reports
         private const int BD_HOURLY_OFF = 30;//AD نرخ ساعتی رسمی (بیمهٔ اضافه‌کارِ خودکار)
         private const int BD_DESC = 31; // AE  شرح فرمول (متن پویا)
 
+        // ── ستون‌های شیت «کارکرد خام» که در فرمول‌ها ارجاع می‌شوند ──
+        private const int RW_DAYS = 5;      // E  کارکرد اسمی DAYS
+        private const int RW_DAYSB = 6;     // F  کارکرد رسمی DAYSB
+        private const int RW_KASR = 15;     // O  سایر کسورات
+        private const int RW_INS_TYPE = 16; // P  نوع بیمه
+        private const int RW_TAX_EX = 17;   // Q  معاف مالیات
+        private const int RW_REGION = 20;   // T  درصد منطقه محروم
+        private const int RW_LOAN = 21;     // U  قسط وام
+        private const int RW_ADV = 22;      // V  مساعده
+        private const int RW_SHORT_H = 23;  // W  ساعت کسر کار
+
+        // ── آفستِ ستون‌های شیت «فیش حقوقی» نسبت به baseCol (= 4 + تعداد آیتم‌ها) ──
+        private const int SL_GROSS = 1;
+        private const int SL_INSBASE_RAW = 2;
+        private const int SL_EFF_CEIL = 3;
+        private const int SL_INSBASE = 4;
+        private const int SL_INS_WORKER = 5;
+        private const int SL_TAXBASE_RAW = 6;
+        private const int SL_TAXBASE = 7;
+        private const int SL_TAX = 8;
+        private const int SL_LOAN = 9;
+        private const int SL_ADV = 10;
+        private const int SL_KASR = 11;
+        private const int SL_SHORTAGE = 12;
+        private const int SL_TOTDED = 13;
+        private const int SL_NET = 14;
+
         public static byte[] Build(Pay2ExcelAuditData d)
         {
             using var wb = new XLWorkbook();
@@ -153,7 +180,7 @@ namespace Safir.Server.Reports
         // A EMP_ID | B کد | C نام | D WORK_DAYS | E DAYS | F DAYSB | G FRID | H TDAYS
         // I OT_N_H | J OT_H_H | K OT_A_H | L LEAVE | M PERF | N TRANSP | O KASR_OTHER
         // P INS_TYPE | Q TAX_EXEMPT | R IS_MANAGER | S IS_JANBAZ | T REGION_DEP
-        // U LOAN_DED | V ADVANCE_DED
+        // U LOAN_DED | V ADVANCE_DED | W SHORTAGE_H
         private static void BuildRawSheet(XLWorkbook wb, Pay2ExcelAuditData d)
         {
             var ws = wb.Worksheets.Add(SH_RAW);
@@ -164,7 +191,7 @@ namespace Safir.Server.Reports
                 "EMP_ID","کد پرسنلی","نام","کل کارکرد","کارکرد اسمی (DAYS)","کارکرد رسمی (DAYSB)",
                 "جمعه‌ها","تعطیل جبرانی","ساعت اضافه‌کار عادی","ساعت اضافه‌کار تعطیل","ساعت اضافه‌کار اداری",
                 "روز مرخصی","پاداش (خام)","ناقل (خام)","سایر کسورات","نوع بیمه","معاف مالیات",
-                "مدیر","جانباز","درصد منطقه محروم","قسط وام (ورودی)","مساعده (ورودی)"
+                "مدیر","جانباز","درصد منطقه محروم","قسط وام (ورودی)","مساعده (ورودی)","ساعت کسر کار"
             };
             for (int c = 0; c < headers.Length; c++) ws.Cell(1, c + 1).Value = headers[c];
             ws.Range(1, 1, 1, headers.Length).Style.Font.Bold = true;
@@ -197,6 +224,7 @@ namespace Safir.Server.Reports
                 ws.Cell(r, 20).Value = e.REGION_DEPRIVATION;
                 ws.Cell(r, 21).Value = res?.LOAN_DED ?? 0;
                 ws.Cell(r, 22).Value = res?.ADVANCE_DED ?? 0;
+                ws.Cell(r, RW_SHORT_H).Value = e.SHORTAGE_H;
                 r++;
             }
 
@@ -504,13 +532,17 @@ namespace Safir.Server.Reports
             string sumBs(string salCode) => $"SUMIFS({bsCol},{empCol},{aEmp},{codeCol},\"{salCode}\")";
 
             // ── ریلِ پرداخت: TOTAL_OFFICIAL_BASE / DAYSB / OT_HOUR_BASE ── (منطبق با SP: @EFFECTIVE_HOURLY)
-            // (رسمی → fallback اسمی)
-            string payBase = hasBothSal ? sumBs("BASE_SAL_B") : $"({sumBs("BASE_SAL")}+{sumBs("BASE_SAL_B")})";
+            // (رسمی → fallback اسمی) به‌افزایِ سنواتِ پایه — مانندِ @TOTAL_OFFICIAL_BASE در SP
+            string payBase = hasBothSal
+                ? $"({sumBs("BASE_SAL_B")}+{sumBs("SANOVAT_PAYE")})"
+                : $"({sumBs("BASE_SAL")}+{sumBs("BASE_SAL_B")}+{sumBs("SANOVAT_PAYE")})";
             ws.Cell(r, BD_HOURLY).FormulaA1 = $"IF({V}=0,0,ROUND({payBase}/{V}/CFG_OT_HOUR_BASE,2))";
 
             // ── ریلِ بیمه: TOTAL_NOMINAL_BASE / DAYS / OT_HOUR_BASE ── (منطبق با SP: @OFFICIAL_HOURLY)
-            // (اسمی → fallback رسمی)
-            string insBase = hasBothSal ? sumBs("BASE_SAL") : $"({sumBs("BASE_SAL")}+{sumBs("BASE_SAL_B")})";
+            // (اسمی → fallback رسمی) به‌افزایِ سنواتِ پایه
+            string insBase = hasBothSal
+                ? $"({sumBs("BASE_SAL")}+{sumBs("SANOVAT_PAYE")})"
+                : $"({sumBs("BASE_SAL")}+{sumBs("BASE_SAL_B")}+{sumBs("SANOVAT_PAYE")})";
             ws.Cell(r, BD_HOURLY_OFF).FormulaA1 = $"IF({Vd}=0,0,ROUND({insBase}/{Vd}/CFG_OT_HOUR_BASE,2))";
 
             ws.Cell(r, BD_EARN).Value = 1;
@@ -568,19 +600,20 @@ namespace Safir.Server.Reports
 
             int nItems = d.Columns.Count;
             int baseCol = 4 + nItems;
-            int cGross = baseCol + 1;
-            int cInsBaseRaw = baseCol + 2;
-            int cEffCeil = baseCol + 3;
-            int cInsBase = baseCol + 4;
-            int cInsWorker = baseCol + 5;
-            int cTaxBaseRaw = baseCol + 6;
-            int cTaxBase = baseCol + 7;
-            int cTax = baseCol + 8;
-            int cLoan = baseCol + 9;
-            int cAdv = baseCol + 10;
-            int cKasr = baseCol + 11;
-            int cTotDed = baseCol + 12;
-            int cNet = baseCol + 13;
+            int cGross = baseCol + SL_GROSS;
+            int cInsBaseRaw = baseCol + SL_INSBASE_RAW;
+            int cEffCeil = baseCol + SL_EFF_CEIL;
+            int cInsBase = baseCol + SL_INSBASE;
+            int cInsWorker = baseCol + SL_INS_WORKER;
+            int cTaxBaseRaw = baseCol + SL_TAXBASE_RAW;
+            int cTaxBase = baseCol + SL_TAXBASE;
+            int cTax = baseCol + SL_TAX;
+            int cLoan = baseCol + SL_LOAN;
+            int cAdv = baseCol + SL_ADV;
+            int cKasr = baseCol + SL_KASR;
+            int cShortage = baseCol + SL_SHORTAGE;
+            int cTotDed = baseCol + SL_TOTDED;
+            int cNet = baseCol + SL_NET;
 
             // سرستون‌ها
             ws.Cell(1, 1).Value = "EMP_ID";
@@ -599,6 +632,7 @@ namespace Safir.Server.Reports
             ws.Cell(1, cLoan).Value = "قسط وام";
             ws.Cell(1, cAdv).Value = "مساعده";
             ws.Cell(1, cKasr).Value = "سایر کسورات";
+            ws.Cell(1, cShortage).Value = "کسر کار";
             ws.Cell(1, cTotDed).Value = "جمع کسورات";
             ws.Cell(1, cNet).Value = "خالص پرداختی";
             var slipHead = ws.Range(1, 1, 1, cNet);
@@ -619,14 +653,15 @@ namespace Safir.Server.Reports
             {
                 int rr = r; // ردیف متناظر در شیت کارکرد خام (هم‌ترتیب)
                 string emp = A(1, r);
-                string rawDaysNominal = $"'{SH_RAW}'!{Col(5)}{rr}";
-                string rawDaysb = $"'{SH_RAW}'!{Col(6)}{rr}";
-                string insType = $"'{SH_RAW}'!{Col(16)}{rr}";
-                string taxExempt = $"'{SH_RAW}'!{Col(17)}{rr}";
-                string regionDep = $"'{SH_RAW}'!{Col(20)}{rr}";
-                string loanRaw = $"'{SH_RAW}'!{Col(21)}{rr}";
-                string advRaw = $"'{SH_RAW}'!{Col(22)}{rr}";
-                string kasrRaw = $"'{SH_RAW}'!{Col(15)}{rr}";
+                string rawDaysNominal = $"'{SH_RAW}'!{Col(RW_DAYS)}{rr}";
+                string rawDaysb = $"'{SH_RAW}'!{Col(RW_DAYSB)}{rr}";
+                string insType = $"'{SH_RAW}'!{Col(RW_INS_TYPE)}{rr}";
+                string taxExempt = $"'{SH_RAW}'!{Col(RW_TAX_EX)}{rr}";
+                string regionDep = $"'{SH_RAW}'!{Col(RW_REGION)}{rr}";
+                string loanRaw = $"'{SH_RAW}'!{Col(RW_LOAN)}{rr}";
+                string advRaw = $"'{SH_RAW}'!{Col(RW_ADV)}{rr}";
+                string kasrRaw = $"'{SH_RAW}'!{Col(RW_KASR)}{rr}";
+                string shortHours = $"'{SH_RAW}'!{Col(RW_SHORT_H)}{rr}";
 
                 ws.Cell(r, 1).Value = e.EMP_ID;
                 ws.Cell(r, 2).Value = e.EMP_CODE;
@@ -671,8 +706,17 @@ namespace Safir.Server.Reports
                 ws.Cell(r, cLoan).FormulaA1 = loanRaw;
                 ws.Cell(r, cAdv).FormulaA1 = advRaw;
                 ws.Cell(r, cKasr).FormulaA1 = kasrRaw;
+
+                // کسر کار (منطبق با SP: @SHORTAGE_DED = CAST(@EFFECTIVE_HOURLY * @SHORTAGE_H AS BIGINT))
+                // نرخ ساعتی مؤثر = (پایهٔ رسمی + سنوات) ÷ DAYSB ÷ مبنای ساعت روزانه
+                string offBase = $"(SUMIFS({bdAmt},{bdEmp},{emp},{bdCode},\"BASE_SAL_B\")" +
+                                 $"+SUMIFS({bdAmt},{bdEmp},{emp},{bdCode},\"SANOVAT_PAYE\"))";
+                string effHourly = $"IF({rawDaysb}=0,0,ROUND({offBase}/{rawDaysb}/CFG_OT_HOUR_BASE,2))";
+                ws.Cell(r, cShortage).FormulaA1 =
+                    $"IF(OR({shortHours}<=0,{effHourly}<=0),0,TRUNC({effHourly}*{shortHours}))";
+
                 ws.Cell(r, cTotDed).FormulaA1 =
-                    $"{A(cInsWorker, r)}+{A(cTax, r)}+{A(cLoan, r)}+{A(cAdv, r)}+{A(cKasr, r)}";
+                    $"{A(cInsWorker, r)}+{A(cTax, r)}+{A(cLoan, r)}+{A(cAdv, r)}+{A(cKasr, r)}+{A(cShortage, r)}";
 
                 // ── خالص و ناخالصِ تعدیل‌شده (منطبق با SP: GROSS_PAY += ROUNDING_DIFF) ──
                 // خالص = گرد( (ناخالصِ خام − جمعِ کسورات) ÷ واحد گرد) × واحد گرد
@@ -696,6 +740,7 @@ namespace Safir.Server.Reports
             AddComment(ws, 1, cTaxBase, "مبنای مالیات = (مشمولِ مالیات − بیمهٔ کارگر − معافیت) با اعمالِ منطقهٔ محروم.");
             AddComment(ws, 1, cTax, "مالیاتِ تصاعدی طبق شیت «پله‌های مالیات» (سالانه ÷ ۱۲).");
             AddComment(ws, 1, cNet, "خالص = گرد((ناخالصِ خام − جمعِ کسورات) ÷ واحد) × واحد.");
+            AddComment(ws, 1, cShortage, "کسر کار = نرخِ ساعتیِ مؤثر × ساعتِ کسر کار (بدون ضریب اضافه‌کار).");
 
             slipHead.SetAutoFilter();
             ws.SheetView.FreezeRows(1);
@@ -736,11 +781,11 @@ namespace Safir.Server.Reports
 
             int nItems = d.Columns.Count;
             int baseCol = 4 + nItems;
-            int slipGross = baseCol + 1;
-            int slipInsWorker = baseCol + 5;
-            int slipTax = baseCol + 8;
-            int slipTotDed = baseCol + 12;
-            int slipNet = baseCol + 13;
+            int slipGross = baseCol + SL_GROSS;
+            int slipInsWorker = baseCol + SL_INS_WORKER;
+            int slipTax = baseCol + SL_TAX;
+            int slipTotDed = baseCol + SL_TOTDED;
+            int slipNet = baseCol + SL_NET;
 
             string[] metricTitles = { "ناخالص", "بیمه کارگر", "مالیات", "جمع کسورات", "خالص" };
             int[] slipCols = { slipGross, slipInsWorker, slipTax, slipTotDed, slipNet };
@@ -886,14 +931,15 @@ namespace Safir.Server.Reports
 
             int nItems = d.Columns.Count;
             int baseCol = 4 + nItems;
-            int cGross = baseCol + 1;
-            int cInsWorker = baseCol + 5;
-            int cTax = baseCol + 8;
-            int cLoan = baseCol + 9;
-            int cAdv = baseCol + 10;
-            int cKasr = baseCol + 11;
-            int cTotDed = baseCol + 12;
-            int cNet = baseCol + 13;
+            int cGross = baseCol + SL_GROSS;
+            int cInsWorker = baseCol + SL_INS_WORKER;
+            int cTax = baseCol + SL_TAX;
+            int cLoan = baseCol + SL_LOAN;
+            int cAdv = baseCol + SL_ADV;
+            int cKasr = baseCol + SL_KASR;
+            int cShortage = baseCol + SL_SHORTAGE;
+            int cTotDed = baseCol + SL_TOTDED;
+            int cNet = baseCol + SL_NET;
 
             int r = 1;
             int idx = 0;
@@ -961,6 +1007,7 @@ namespace Safir.Server.Reports
                 Sub("قسط وام", cLoan, false);
                 Sub("مساعده", cAdv, false);
                 Sub("سایر کسورات", cKasr, false);
+                Sub("کسر کار", cShortage, false);
                 Sub("جمعِ کسورات", cTotDed, true);
                 Sub("خالصِ پرداختی", cNet, true);
 
