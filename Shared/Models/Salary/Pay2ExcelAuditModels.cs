@@ -39,6 +39,7 @@
         public decimal OT_NORMAL_H { get; set; }
         public decimal OT_HOLIDAY_H { get; set; }
         public decimal OT_ADMIN_H { get; set; }
+        public decimal SHORTAGE_H { get; set; }
         public decimal LEAVE_DAYS { get; set; }
         public long PERF_AMOUNT { get; set; }
         public long TRANSP_AMOUNT { get; set; }

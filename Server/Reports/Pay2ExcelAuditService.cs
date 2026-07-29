@@ -73,7 +73,7 @@ namespace Safir.Server.Reports
                 @"SELECT
                     E.EMP_ID, E.EMP_CODE, (E.LAST_NAME + N' ' + E.FIRST_NAME) AS FULL_NAME,
                     A.WORK_DAYS, A.DAYS, A.DAYSB, A.FRID_COUNT, A.TDAYS,
-                    A.OT_NORMAL_H, A.OT_HOLIDAY_H, A.OT_ADMIN_H, A.LEAVE_DAYS,
+                    A.OT_NORMAL_H, A.OT_HOLIDAY_H, A.OT_ADMIN_H, A.SHORTAGE_H, A.LEAVE_DAYS,
                     A.PERF_AMOUNT, A.TRANSP_AMOUNT, A.KASR_OTHER,
                     E.INS_TYPE, E.TAX_EXEMPT, E.IS_MANAGER, E.IS_JANBAZ, E.REGION_DEPRIVATION
                   FROM PAY2_RUN_LINE RL WITH (NOLOCK)
