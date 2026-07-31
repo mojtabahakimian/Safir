@@ -8,6 +8,7 @@ using Safir.Server.Security;
 using Safir.Shared.Constants;
 using Safir.Shared.Interfaces;
 using Safir.Shared.Models.Permissions;
+using Safir.Shared.Utility;
 using Dapper;
 
 namespace Safir.Server.Controllers
@@ -17,6 +18,13 @@ namespace Safir.Server.Controllers
     [Authorize]
     public class Pay2AccessController : ControllerBase
     {
+        /// <summary>سطر خام SALA_DTL — نام کاربری هنوز کدشده است.</summary>
+        private sealed class Pay2AclUserRow
+        {
+            public int UserId { get; set; }
+            public string? UserName { get; set; }
+        }
+
         private readonly IPay2AccessService _accessService;
         private readonly IDatabaseService _db;
 
@@ -51,9 +59,24 @@ namespace Safir.Server.Controllers
         [Pay2Authorize(Pay2Forms.AdminAcl, Pay2Perm.Run)]
         public async Task<IActionResult> GetUsers()
         {
-            string sql = "SELECT IDD as UserId, SAL_NAME as UserName FROM dbo.SALA_DTL WHERE ENABL = 1 ORDER BY SAL_NAME;";
-            var res = await _db.DoGetDataSQLAsync<dynamic>(sql);
-            return Ok(res);
+            // SAL_NAME در دیتابیس کدشده ذخیره می‌شود (نرم‌افزار حسابداری WPF با
+            // CODESAL هر بایت cp1256 را ۲۰ واحد کم می‌کند). بدون رمزگشایی، این
+            // صفحه رشته‌های نامفهوم مثل «MeeQ^Q³TM_QYU:» نشان می‌دهد.
+            // CL_METHODS.DECODEUN دقیقاً معکوس همان عملیات است (+۲۰ روی هر بایت).
+            const string sql = "SELECT IDD as UserId, SAL_NAME as UserName FROM dbo.SALA_DTL WHERE ENABL = 1 ORDER BY SAL_NAME;";
+            var rows = await _db.DoGetDataSQLAsync<Pay2AclUserRow>(sql);
+
+            var users = rows.Select(u => new
+            {
+                u.UserId,
+                UserName = string.IsNullOrWhiteSpace(u.UserName)
+                    ? string.Empty
+                    // FixPersianChars مثل LookupController: حروف عربی ي/ك را به معادل
+                    // فارسی ی/ک تبدیل می‌کند تا نمایش با بقیه‌ی برنامه یکدست باشد.
+                    : CL_METHODS.DECODEUN(u.UserName).FixPersianChars()
+            });
+
+            return Ok(users);
         }
 
         [HttpGet("user/{userCo}")]
