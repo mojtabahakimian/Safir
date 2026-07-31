@@ -366,3 +366,13 @@ FodyWeavers.xsd
 # خروجی داده واقعی حقوق و دستمزد — هرگز کامیت نشود
 pay2_export.json
 *_pay2_export.json
+
+# خروجی تست‌های Playwright
+Tests/e2e/node_modules/
+Tests/e2e/test-results/
+Tests/e2e/playwright-report/
+
+# لاگ خطای دیتابیس — مسیر ویندوزیِ هاردکد شده که روی لینوکس فایل می‌سازد
+# (Server/Services/DatabaseService.cs)
+Server/C:\\CORRECT\\*
+/test-results/
