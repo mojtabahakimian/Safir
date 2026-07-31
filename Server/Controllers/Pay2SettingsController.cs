@@ -66,6 +66,25 @@ ORDER BY
             var userIdString = User.FindFirstValue(ClaimTypes.NameIdentifier);
             if (!int.TryParse(userIdString, out int userCod))
                 return Unauthorized("شناسه کاربر معتبر نیست.");
+            var accessService = HttpContext.RequestServices.GetRequiredService<IPay2AccessService>();
+            var submittedKeys = request.Items.Select(i => i.CFG_KEY).ToList();
+
+            if (submittedKeys.Any(k => k != null && k.StartsWith("ACL_", StringComparison.OrdinalIgnoreCase)))
+            {
+                if (!await accessService.HasAsync(userCod, Pay2Forms.AdminAcl, (int)Pay2Perm.Run))
+                    return StatusCode(403, "تغییر تنظیمات کنترل دسترسی فقط توسط مدیر دسترسی‌های حقوق و دستمزد مجاز است.");
+            }
+
+            var criticalKeys = (await _db.DoGetDataSQLAsync<string>(
+                "SELECT CFG_KEY FROM PAY2_CONFIG WHERE ACCESS_LEVEL = 1 AND CFG_KEY IN @keys",
+                new { keys = submittedKeys })).ToList();
+
+            if (criticalKeys.Any())
+            {
+                if (!await accessService.HasAsync(userCod, Pay2Forms.ActConfigCritical, (int)Pay2Perm.Run))
+                    return StatusCode(403, "برای تغییر تنظیمات حساس (نرخ بیمه/مالیات/سقف) دسترسی لازم را ندارید.");
+            }
+
 
             try
             {

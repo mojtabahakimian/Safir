@@ -1,4 +1,6 @@
-﻿@page "/salary/manage"
+@page "/salary/manage"
+@using Safir.Shared.Constants
+
 @layout EmptyLayout
 @using Safir.Client.Pages.Salary.Tabs
 @using Safir.Shared.Models.Salary
@@ -101,6 +103,22 @@
 @* ══════════════════════════════════════════════════════════
    پوسته اصلی اپلیکیشن
    ══════════════════════════════════════════════════════════ *@
+
+@if (_hasNoAccess)
+{
+    <div style="display:flex; justify-content:center; align-items:center; height:100vh;">
+        <MudText Typo="Typo.h5" Color="Color.Error">شما به بخش حقوق و دستمزد دسترسی ندارید.</MudText>
+    </div>
+}
+else
+{
+    @if (!Pay2Access.Access.AclEnforced)
+    {
+        <MudAlert Severity="Severity.Warning" Variant="Variant.Filled" ShowCloseIcon="true" Class="my-2 mx-4">
+            کنترل دسترسی حقوق و دستمزد غیرفعال است — همه کاربران به تمام بخش‌ها دسترسی دارند.
+        </MudAlert>
+    }
+
 <div class="pay2-app">
 
     @* ─────────────────────────────────────────
@@ -369,6 +387,7 @@
     </main>
 </div>
 
+}
 @code {
 
     private bool HasAnyAccess()
@@ -528,6 +547,8 @@
 
     private void SetActiveTab(string tabName)
     {
+        if (!string.IsNullOrEmpty(tabName) && !CanOpenTab(tabName)) return;
+
         if (ActiveTab == tabName) return;
         ActiveTab = tabName;
     }
@@ -641,5 +662,23 @@
         public string Target { get; }
         public string Icon { get; }
         public string SearchText { get; }
+    }
+
+    private bool CanOpenTab(string tab)
+    {
+        return tab switch
+        {
+            "dashboard" => Pay2Access.Access.CanRun(Pay2Forms.Dashboard),
+            "workshops" => Pay2Access.Access.CanRun(Pay2Forms.Workshop),
+            "employees" => Pay2Access.Access.CanRun(Pay2Forms.Employee),
+            "attendance" => Pay2Access.Access.CanRun(Pay2Forms.Attendance),
+            "advances" => Pay2Access.Access.CanRun(Pay2Forms.Advance),
+            "payroll" => Pay2Access.Access.CanRun(Pay2Forms.Run),
+            "itemdefs" => Pay2Access.Access.CanRun(Pay2Forms.ItemDef),
+            "settings" => Pay2Access.Access.CanRun(Pay2Forms.Settings),
+            "reports" => Pay2Access.Access.CanRun(Pay2Forms.Reports),
+            "access" => Pay2Access.Access.CanRun(Pay2Forms.AdminAcl),
+            _ => false
+        };
     }
 }

@@ -63,7 +63,6 @@ namespace Safir.Server.Controllers
         // این متد را داخل کلاس Pay2EmployeesController اضافه کنید:
         [HttpGet("jobs-lookup")]
         [Pay2Authorize(Pay2Forms.Employee, Pay2Perm.See)]
-        [Pay2Authorize(Pay2Forms.Employee, Pay2Perm.See)]
         public async Task<ActionResult<IEnumerable<LookupDto<int>>>> GetJobsLookup([FromQuery] string? searchTerm)
         {
             try
@@ -101,7 +100,6 @@ namespace Safir.Server.Controllers
         }
 
         [HttpGet]
-        [Pay2Authorize(Pay2Forms.Employee, Pay2Perm.See)]
         [Pay2Authorize(Pay2Forms.Employee, Pay2Perm.See)]
         public async Task<ActionResult<IEnumerable<Pay2EmployeeDto>>> GetAll()
         {
@@ -233,7 +231,6 @@ namespace Safir.Server.Controllers
         }
 
         [HttpPost("decree/save")]
-        [Pay2Authorize(Pay2Forms.Decree, Pay2Perm.Inp)]
         [Pay2Authorize(Pay2Forms.Decree, Pay2Perm.Inp)]
         public async Task<ActionResult<int>> SaveDecree([FromBody] Pay2DecreeDto decree)
         {
@@ -406,7 +403,6 @@ namespace Safir.Server.Controllers
 
         [HttpGet("templates-lookup")]
         [Pay2Authorize(Pay2Forms.ItemDef, Pay2Perm.See)]
-        [Pay2Authorize(Pay2Forms.ItemDef, Pay2Perm.See)]
         public async Task<ActionResult<IEnumerable<LookupDto<int>>>> GetTemplatesLookup()
         {
             // خواندن قالب‌های فعال برای پر کردن Dropdown
@@ -441,7 +437,6 @@ namespace Safir.Server.Controllers
 
         [HttpGet("itemdefs-lookup")]
         [Pay2Authorize(Pay2Forms.ItemDef, Pay2Perm.See)]
-        [Pay2Authorize(Pay2Forms.ItemDef, Pay2Perm.See)]
         public async Task<ActionResult<IEnumerable<LookupDto<int>>>> GetItemDefsLookup()
         {
             // فقط آیتم‌های پرداختی (نوع 1 و 2) را می‌آوریم و کسورات اتوماتیک را فیلتر می‌کنیم
@@ -470,7 +465,6 @@ namespace Safir.Server.Controllers
         }
 
         [HttpPost("decree/line/save")]
-        [Pay2Authorize(Pay2Forms.Decree, Pay2Perm.Upd)]
         [Pay2Authorize(Pay2Forms.Decree, Pay2Perm.Upd)]
         public async Task<IActionResult> SaveDecreeLine([FromBody] Pay2DecreeLineDto line)
         {
@@ -580,7 +574,6 @@ namespace Safir.Server.Controllers
 
         [HttpGet("lookup")]
         [Pay2Authorize(Pay2Forms.Employee, Pay2Perm.See)]
-        [Pay2Authorize(Pay2Forms.Employee, Pay2Perm.See)]
         public async Task<ActionResult<IEnumerable<LookupDto<int>>>> GetEmployeesLookup()
         {
             const string sql = "SELECT EMP_ID AS Id, EMP_CODE + ' - ' + LAST_NAME + ' ' + FIRST_NAME AS Name FROM PAY2_EMPLOYEE WHERE IS_ACTIVE = 1";
@@ -603,7 +596,6 @@ namespace Safir.Server.Controllers
         }
 
         [HttpPost("leave/save")]
-        [Pay2Authorize(Pay2Forms.Employee, Pay2Perm.Inp)]
         [Pay2Authorize(Pay2Forms.Employee, Pay2Perm.Inp)]
         public async Task<IActionResult> SaveLeave([FromBody] Pay2LeaveDto leave)
         {
@@ -693,7 +685,6 @@ namespace Safir.Server.Controllers
 
         [HttpPost("contract/save")]
         [Pay2Authorize(Pay2Forms.Employee, Pay2Perm.Inp)]
-        [Pay2Authorize(Pay2Forms.Employee, Pay2Perm.Inp)]
         public async Task<IActionResult> SaveContract([FromBody] Pay2ContractDto contract)
         {
             try
@@ -746,7 +737,6 @@ namespace Safir.Server.Controllers
         }
 
         [HttpPost("leave-balance/save")]
-        [Pay2Authorize(Pay2Forms.Employee, Pay2Perm.Upd)]
         [Pay2Authorize(Pay2Forms.Employee, Pay2Perm.Upd)]
         public async Task<IActionResult> SaveLeaveBalance([FromBody] Pay2LeaveBalDto bal)
         {
@@ -807,7 +797,6 @@ namespace Safir.Server.Controllers
         }
 
         [HttpPost("loan/save")]
-        [Pay2Authorize(Pay2Forms.Loan, Pay2Perm.Inp)]
         [Pay2Authorize(Pay2Forms.Loan, Pay2Perm.Inp)]
         public async Task<IActionResult> SaveLoan([FromBody] Pay2LoanDto loan)
         {
@@ -920,7 +909,6 @@ namespace Safir.Server.Controllers
 
         [HttpPost("override/save")]
         [Pay2Authorize(Pay2Forms.ActOverride, Pay2Perm.Run)]
-        [Pay2Authorize(Pay2Forms.ActOverride, Pay2Perm.Run)]
         public async Task<IActionResult> SaveOverride([FromBody] Pay2OverrideDto ovr, [FromQuery] bool isEditing)
         {
             var userIdString = User.FindFirstValue(ClaimTypes.NameIdentifier);
@@ -1004,7 +992,6 @@ namespace Safir.Server.Controllers
         }
 
         [HttpPost("advance-excl/save")]
-        [Pay2Authorize(Pay2Forms.ActAdvExcl, Pay2Perm.Run)]
         [Pay2Authorize(Pay2Forms.ActAdvExcl, Pay2Perm.Run)]
         public async Task<IActionResult> SaveAdvanceExcl([FromBody] Pay2AdvanceExclDto excl)
         {
@@ -1225,7 +1212,6 @@ namespace Safir.Server.Controllers
 
         [HttpGet("templates")]
         [Pay2Authorize(Pay2Forms.ItemDef, Pay2Perm.See)]
-        [Pay2Authorize(Pay2Forms.ItemDef, Pay2Perm.See)]
         public async Task<ActionResult<IEnumerable<Pay2ItemTemplateDto>>> GetTemplates()
         {
             const string sql = @"
@@ -1238,7 +1224,6 @@ namespace Safir.Server.Controllers
         }
 
         [HttpPost("template/save")]
-        [Pay2Authorize(Pay2Forms.ItemDef, Pay2Perm.Inp)]
         [Pay2Authorize(Pay2Forms.ItemDef, Pay2Perm.Inp)]
         public async Task<IActionResult> SaveTemplate([FromBody] Pay2ItemTemplateDto tmpl)
         {
@@ -1305,7 +1290,6 @@ namespace Safir.Server.Controllers
 
         [HttpPost("template/line/save")]
         [Pay2Authorize(Pay2Forms.ItemDef, Pay2Perm.Upd)]
-        [Pay2Authorize(Pay2Forms.ItemDef, Pay2Perm.Upd)]
         public async Task<IActionResult> SaveTemplateLine([FromBody] Pay2ItemTmplLineDto line)
         {
             try
@@ -1366,7 +1350,6 @@ namespace Safir.Server.Controllers
         }
 
         [HttpGet("jobs/paged")]
-        [Pay2Authorize(Pay2Forms.Employee, Pay2Perm.See)]
         [Pay2Authorize(Pay2Forms.Employee, Pay2Perm.See)]
         public async Task<ActionResult<PagedResult<Pay2JobDto>>> GetPagedJobs([FromQuery] int page = 1, [FromQuery] int pageSize = 50, [FromQuery] string? search = null, [FromQuery] bool isFuzzy = false)
         {
@@ -1466,7 +1449,6 @@ namespace Safir.Server.Controllers
 
         [HttpPost("jobs/save")]
         [Pay2Authorize(Pay2Forms.Employee, Pay2Perm.Inp)]
-        [Pay2Authorize(Pay2Forms.Employee, Pay2Perm.Inp)]
         public async Task<IActionResult> SaveJob([FromBody] Pay2JobDto job)
         {
             try
@@ -1525,7 +1507,6 @@ namespace Safir.Server.Controllers
 
 
         [HttpGet("effective-shift-mode")]
-        [Pay2Authorize(Pay2Forms.Employee, Pay2Perm.See)]
         [Pay2Authorize(Pay2Forms.Employee, Pay2Perm.See)]
         public async Task<ActionResult<string>> GetEffectiveShiftModeAsync([FromQuery] int? decId, [FromQuery] int? tmplId, [FromQuery] int? wsId)
         {

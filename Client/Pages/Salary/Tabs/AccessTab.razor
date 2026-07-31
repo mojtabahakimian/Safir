@@ -47,7 +47,8 @@
                         <thead class="table-light">
                             <tr>
                                 <th class="text-end">نام فرم / بخش</th>
-                                <th>اجرا / مشاهده</th>
+                                <th>اجرا (ورود به فرم)</th>
+                                <th>مشاهده</th>
                                 <th>ویرایش</th>
                                 <th>ایجاد</th>
                                 <th>حذف</th>
@@ -62,14 +63,17 @@
                                     <td>
                                         <MudCheckBox @bind-Value="perm.Run" Color="Color.Primary" Dense="true" />
                                     </td>
-                                    <td>
-                                        <MudCheckBox @bind-Value="perm.Upd" Color="Color.Warning" Dense="true" />
+                                    <td class="text-center">
+                                        <MudCheckBox T="bool" Value="perm.See" ValueChanged="@(val => SetPerm(perm, "See", val))" Color="Color.Info" Dense="true" />
                                     </td>
                                     <td>
-                                        <MudCheckBox @bind-Value="perm.Inp" Color="Color.Success" Dense="true" />
+                                        <MudCheckBox T="bool" Value="perm.Upd" ValueChanged="@(val => SetPerm(perm, "Upd", val))" Color="Color.Warning" Dense="true" />
                                     </td>
                                     <td>
-                                        <MudCheckBox @bind-Value="perm.Del" Color="Color.Error" Dense="true" />
+                                        <MudCheckBox T="bool" Value="perm.Inp" ValueChanged="@(val => SetPerm(perm, "Inp", val))" Color="Color.Success" Dense="true" />
+                                    </td>
+                                    <td>
+                                        <MudCheckBox T="bool" Value="perm.Del" ValueChanged="@(val => SetPerm(perm, "Del", val))" Color="Color.Error" Dense="true" />
                                     </td>
                                 </tr>
                             }
@@ -328,5 +332,15 @@
         public string? Ip { get; set; }
         public string? Details { get; set; }
         public DateTime CRT { get; set; }
+    }
+
+    private void SetPerm(Pay2FormPermDto perm, string prop, bool val)
+    {
+        if (prop == "See") perm.See = val;
+        else if (prop == "Upd") perm.Upd = val;
+        else if (prop == "Inp") perm.Inp = val;
+        else if (prop == "Del") perm.Del = val;
+
+        if (val && !perm.Run) perm.Run = true;
     }
 }

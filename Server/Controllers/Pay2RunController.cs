@@ -41,6 +41,8 @@ namespace Safir.Server.Controllers
         }
 
         [HttpGet("{runId:int}/lines")]
+        [Pay2Authorize(Pay2Forms.Run, Pay2Perm.See)]
+        [Pay2Authorize(Pay2Forms.ActViewAmounts, Pay2Perm.Run)]
         public async Task<ActionResult<Pay2RunResultDto>> GetRunLines(int runId)
         {
             var result = new Pay2RunResultDto();
@@ -107,6 +109,9 @@ namespace Safir.Server.Controllers
         // محاسبهٔ موتور (SP_PAY2_CALC_RUN) را بازسازی می‌کند. عملیات Read-Only است.
         // ===================================================================
         [HttpGet("{runId:int}/excel-audit")]
+        [Pay2Authorize(Pay2Forms.Reports, Pay2Perm.See)]
+        [Pay2Authorize(Pay2Forms.ActViewAmounts, Pay2Perm.Run)]
+        [Pay2Authorize(Pay2Forms.ActExport, Pay2Perm.Run)]
         public async Task<IActionResult> GetExcelAudit(int runId)
         {
 
@@ -349,6 +354,7 @@ namespace Safir.Server.Controllers
         }
 
         [HttpPut("{runId:int}/revert")]
+        [Pay2Authorize(Pay2Forms.ActRevert, Pay2Perm.Run)]
         public async Task<IActionResult> RevertRun(int runId)
         {
 
@@ -369,6 +375,7 @@ namespace Safir.Server.Controllers
         }
 
         [HttpPut("{runId:int}/finalize")]
+        [Pay2Authorize(Pay2Forms.ActFinalize, Pay2Perm.Run)]
         public async Task<IActionResult> FinalizeRun(int runId)
         {
 
@@ -398,6 +405,7 @@ namespace Safir.Server.Controllers
         }
 
         [HttpGet("{runId:int}/preview-deed")]
+        [Pay2Authorize(Pay2Forms.ActDeed, Pay2Perm.Run)]
         public async Task<ActionResult<Pay2DeedPreviewDto>> PreviewDeed(int runId, [FromQuery] byte? overrideMode = null)
         {
             var result = new Pay2DeedPreviewDto();
@@ -458,6 +466,7 @@ namespace Safir.Server.Controllers
         }
 
         [HttpPost("{runId:int}/generate-deed")]
+        [Pay2Authorize(Pay2Forms.ActDeed, Pay2Perm.Run)]
         public async Task<IActionResult> GenerateDeed(int runId)
         {
             var userIdString = User.FindFirstValue(ClaimTypes.NameIdentifier);
@@ -597,6 +606,7 @@ VALUES (@N_S, @RADIF, @HES_K, @HES_M, @HES_T, @HES_T2, @HES_T3, @HES_T4, @HES, @
         }
 
         [HttpPut("{runId:int}/unfinalize-deed")]
+        [Pay2Authorize(Pay2Forms.ActDeedUndo, Pay2Perm.Run)]
         public async Task<IActionResult> UnfinalizeDeed(int runId)
         {
 
@@ -670,8 +680,12 @@ VALUES (@N_S, @RADIF, @HES_K, @HES_M, @HES_T, @HES_T2, @HES_T3, @HES_T4, @HES, @
         // اگر runId = 0 باشد و wsId ارسال شود، گزارش تجمیعی کل سال/ماه‌ها صادر می‌شود
         // ===================================================================
         [HttpGet("{runId:int}/insurance-report")]
+        [Pay2Authorize(Pay2Forms.Reports, Pay2Perm.See)]
+        [Pay2Authorize(Pay2Forms.ActExport, Pay2Perm.Run)]
         public async Task<IActionResult> GetInsuranceReportPdf(int runId, [FromQuery] int wsId = 0)
         {
+            int __usr_scope_1 = int.Parse(User.FindFirst(BaseknowClaimTypes.IDD)?.Value ?? "0");
+            await HttpContext.RequestServices.GetRequiredService<Pay2ScopeResolver>().EnsureWorkshopAsync(__usr_scope_1, wsId);
             int __userCo = int.Parse(User.FindFirst(BaseknowClaimTypes.IDD)?.Value ?? "0");
             var __accessService = HttpContext.RequestServices.GetRequiredService<IPay2AccessService>();
             var allowedWsIds = await __accessService.GetAllowedWorkshopIdsAsync(__userCo);
@@ -822,6 +836,8 @@ VALUES (@N_S, @RADIF, @HES_K, @HES_M, @HES_T, @HES_T2, @HES_T3, @HES_T4, @HES, @
         // تولید دیسکت بیمه تامین اجتماعی (فرمت DBF)
         // ===================================================================
         [HttpGet("{runId:int}/insurance-diskette")]
+        [Pay2Authorize(Pay2Forms.Reports, Pay2Perm.See)]
+        [Pay2Authorize(Pay2Forms.ActExport, Pay2Perm.Run)]
         public async Task<IActionResult> GetInsuranceDiskette([FromServices] Safir.Server.Services.Pay2DisketteService disketteService, int runId)
         {
             try
@@ -840,6 +856,8 @@ VALUES (@N_S, @RADIF, @HES_K, @HES_M, @HES_T, @HES_T2, @HES_T3, @HES_T4, @HES, @
         }
 
         [HttpGet("{runId:int}/insurance-diskette-preview")]
+        [Pay2Authorize(Pay2Forms.Reports, Pay2Perm.See)]
+        [Pay2Authorize(Pay2Forms.ActExport, Pay2Perm.Run)]
         public async Task<ActionResult<DiskettePreviewDto>> GetInsuranceDiskettePreview([FromServices] Safir.Server.Services.Pay2DisketteService disketteService, int runId)
         {
             try
@@ -860,8 +878,12 @@ VALUES (@N_S, @RADIF, @HES_K, @HES_M, @HES_T, @HES_T2, @HES_T3, @HES_T4, @HES, @
         // چاپ لیست مالیات حقوق (برای یک ماه یا تجمیعی)
         // ===================================================================
         [HttpGet("{runId:int}/tax-report")]
+        [Pay2Authorize(Pay2Forms.Reports, Pay2Perm.See)]
+        [Pay2Authorize(Pay2Forms.ActExport, Pay2Perm.Run)]
         public async Task<IActionResult> GetTaxReportPdf(int runId, [FromQuery] int wsId = 0)
         {
+            int __usr_scope_2 = int.Parse(User.FindFirst(BaseknowClaimTypes.IDD)?.Value ?? "0");
+            await HttpContext.RequestServices.GetRequiredService<Pay2ScopeResolver>().EnsureWorkshopAsync(__usr_scope_2, wsId);
             try
             {
                 var reportDto = new Safir.Shared.Models.Salary.Reports.TaxReportDto();
@@ -987,8 +1009,12 @@ VALUES (@N_S, @RADIF, @HES_K, @HES_M, @HES_T, @HES_T2, @HES_T3, @HES_T4, @HES, @
         // گزارش مقایسه ماه به ماه (روند تغییرات حقوق)
         // ===================================================================
         [HttpGet("compare-months")]
+        [Pay2Authorize(Pay2Forms.Reports, Pay2Perm.See)]
+        [Pay2Authorize(Pay2Forms.ActViewAmounts, Pay2Perm.Run)]
         public async Task<ActionResult<Pay2MonthCompareResultDto>> CompareMonths([FromQuery] int wsId, [FromQuery] long period1, [FromQuery] long period2)
         {
+            int __usr_scope_cm = int.Parse(User.FindFirst(BaseknowClaimTypes.IDD)?.Value ?? "0");
+            if (wsId > 0) await HttpContext.RequestServices.GetRequiredService<Pay2ScopeResolver>().EnsureWorkshopAsync(__usr_scope_cm, wsId);
             try
             {
                 var result = new Pay2MonthCompareResultDto();
@@ -1039,8 +1065,14 @@ VALUES (@N_S, @RADIF, @HES_K, @HES_M, @HES_T, @HES_T2, @HES_T3, @HES_T4, @HES, @
         // تولید فایل اکسل اظهارنامه سالانه مالیات (خلاصه وضعیت پرسنل در سال)
         // ===================================================================
         [HttpGet("tax-report-excel")]
+        [Pay2Authorize(Pay2Forms.Reports, Pay2Perm.See)]
+        [Pay2Authorize(Pay2Forms.ActExport, Pay2Perm.Run)]
+        [Pay2Authorize(Pay2Forms.Reports, Pay2Perm.See)]
+        [Pay2Authorize(Pay2Forms.ActExport, Pay2Perm.Run)]
         public async Task<IActionResult> GetAnnualTaxReportExcel([FromQuery] int wsId, [FromQuery] long periodDate)
         {
+            int __usr_scope_tax_excel = int.Parse(User.FindFirst(BaseknowClaimTypes.IDD)?.Value ?? "0");
+            await HttpContext.RequestServices.GetRequiredService<Pay2ScopeResolver>().EnsureWorkshopAsync(__usr_scope_tax_excel, wsId);
             if (wsId <= 0)
                 return BadRequest("کارگاه نامعتبر است.");
 
@@ -1203,6 +1235,8 @@ VALUES (@N_S, @RADIF, @HES_K, @HES_M, @HES_T, @HES_T2, @HES_T3, @HES_T4, @HES, @
         }
 
         [HttpGet("{runId:int}/tax-diskette")]
+        [Pay2Authorize(Pay2Forms.Reports, Pay2Perm.See)]
+        [Pay2Authorize(Pay2Forms.ActExport, Pay2Perm.Run)]
         public async Task<IActionResult> GetTaxDiskette([FromServices] Safir.Server.Services.Pay2DisketteService disketteService, int runId)
         {
             try
@@ -1221,6 +1255,8 @@ VALUES (@N_S, @RADIF, @HES_K, @HES_M, @HES_T, @HES_T2, @HES_T3, @HES_T4, @HES, @
         }
 
         [HttpGet("{runId:int}/tax-diskette-preview")]
+        [Pay2Authorize(Pay2Forms.Reports, Pay2Perm.See)]
+        [Pay2Authorize(Pay2Forms.ActExport, Pay2Perm.Run)]
         public async Task<ActionResult<TaxDiskettePreviewDto>> GetTaxDiskettePreview([FromServices] Safir.Server.Services.Pay2DisketteService disketteService, int runId)
         {
             try

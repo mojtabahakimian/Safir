@@ -26,7 +26,6 @@ public class Pay2WorkshopsController : ControllerBase
 
     [HttpGet]
         [Pay2Authorize(Pay2Forms.Workshop, Pay2Perm.See)]
-        [Pay2Authorize(Pay2Forms.Workshop, Pay2Perm.See)]
     public async Task<ActionResult<IEnumerable<Pay2WorkshopDto>>> GetAll()
     {
         const string sql = @"
