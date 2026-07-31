@@ -178,6 +178,7 @@ namespace Safir.Server.Controllers
         }
 
         [HttpPost("close-period/{perId:int}")]
+        [Pay2Authorize(Pay2Forms.ActPeriodClose, Pay2Perm.Run)]
         public async Task<IActionResult> ClosePeriod(int perId, [FromServices] Pay2ScopeResolver scopeResolver)
         {
             await scopeResolver.EnsureWorkshopAsync(int.Parse(User.FindFirst(BaseknowClaimTypes.IDD)?.Value ?? "0"), Pay2ScopeKind.Period, perId);
@@ -200,6 +201,7 @@ namespace Safir.Server.Controllers
         }
 
         [HttpPut("reopen-period/{perId:int}")]
+        [Pay2Authorize(Pay2Forms.ActPeriodReopen, Pay2Perm.Run)]
         public async Task<IActionResult> ReopenPeriod(int perId, [FromServices] Pay2ScopeResolver scopeResolver)
         {
             await scopeResolver.EnsureWorkshopAsync(int.Parse(User.FindFirst(BaseknowClaimTypes.IDD)?.Value ?? "0"), Pay2ScopeKind.Period, perId);
@@ -292,6 +294,8 @@ namespace Safir.Server.Controllers
         }
 
         [HttpDelete("period/{perId:int}")]
+        [Pay2Authorize(Pay2Forms.Attendance, Pay2Perm.Del)]
+        [Pay2Authorize(Pay2Forms.ActPeriodReopen, Pay2Perm.Run)]
         public async Task<IActionResult> DeletePeriod(int perId, [FromServices] Pay2ScopeResolver scopeResolver)
         {
             await scopeResolver.EnsureWorkshopAsync(int.Parse(User.FindFirst(BaseknowClaimTypes.IDD)?.Value ?? "0"), Pay2ScopeKind.Period, perId);
@@ -346,8 +350,11 @@ namespace Safir.Server.Controllers
         }
 
         [HttpDelete("period/{perId:int}/employee/{empId:int}")]
-        public async Task<IActionResult> DeleteAttendanceLine(int perId, int empId)
+        [Pay2Authorize(Pay2Forms.Attendance, Pay2Perm.Del)]
+        public async Task<IActionResult> DeleteAttendanceLine(int perId, int empId, [FromServices] Pay2ScopeResolver scopeResolver)
         {
+            await scopeResolver.EnsureWorkshopAsync(int.Parse(User.FindFirst(BaseknowClaimTypes.IDD)?.Value ?? "0"), Pay2ScopeKind.Period, perId);
+
             try
             {
                 await _db.ExecuteInTransactionAsync(async (conn, tran) =>

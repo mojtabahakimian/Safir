@@ -1085,8 +1085,6 @@ VALUES (@N_S, @RADIF, @HES_K, @HES_M, @HES_T, @HES_T2, @HES_T3, @HES_T4, @HES, @
         [HttpGet("tax-report-excel")]
         [Pay2Authorize(Pay2Forms.Reports, Pay2Perm.See)]
         [Pay2Authorize(Pay2Forms.ActExport, Pay2Perm.Run)]
-        [Pay2Authorize(Pay2Forms.Reports, Pay2Perm.See)]
-        [Pay2Authorize(Pay2Forms.ActExport, Pay2Perm.Run)]
         public async Task<IActionResult> GetAnnualTaxReportExcel([FromQuery] int wsId, [FromQuery] long periodDate)
         {
             int __usr_scope_tax_excel = int.Parse(User.FindFirst(BaseknowClaimTypes.IDD)?.Value ?? "0");

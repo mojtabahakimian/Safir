@@ -28,6 +28,9 @@ namespace Safir.Server.Controllers
 
         private int GetCurrentUserCo() => int.Parse(User.FindFirst(BaseknowClaimTypes.IDD)?.Value ?? "0");
 
+        // عمداً بدون [Pay2Authorize]: هر کاربر لاگین‌کرده باید بتواند دسترسی‌های خودش را
+        // بخواند تا رابط کاربری بداند چه چیزی را نمایش دهد. فقط اطلاعات خودِ کاربر
+        // برگردانده می‌شود و [Authorize] سطح کنترلر همچنان اعمال است.
         [HttpGet("me")]
         public async Task<IActionResult> GetMyAccess()
         {

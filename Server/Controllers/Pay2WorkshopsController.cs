@@ -9,7 +9,6 @@ using System.Text.RegularExpressions;
 
 using Safir.Server.Security;
 using Safir.Shared.Constants;
-using Safir.Shared.Interfaces;
 namespace Safir.Server.Controllers;
 
 [ApiController]
@@ -41,8 +40,13 @@ public class Pay2WorkshopsController : ControllerBase
     }
 
     [HttpGet("{wsId:int}/accounts")]
+    [Pay2Authorize(Pay2Forms.Workshop, Pay2Perm.See)]
     public async Task<ActionResult<Pay2WorkshopAccDto>> GetAccounts(int wsId)
     {
+        int userCoScope = int.Parse(User.FindFirst(BaseknowClaimTypes.IDD)?.Value ?? "0");
+        await HttpContext.RequestServices.GetRequiredService<Pay2ScopeResolver>()
+            .EnsureWorkshopAsync(userCoScope, wsId);
+
         const string sql = @"
             SELECT ACC_KEY, ACC_CODE
             FROM   PAY2_WORKSHOP_ACC
@@ -75,7 +79,7 @@ public class Pay2WorkshopsController : ControllerBase
     }
 
     [HttpPost("save")]
-            public async Task<ActionResult<int>> Save(Pay2WorkshopSaveRequest request)
+    public async Task<ActionResult<int>> Save(Pay2WorkshopSaveRequest request)
     {
         if (request?.Workshop == null)
             return BadRequest("اطلاعات کارگاه ارسال نشده است.");
@@ -93,6 +97,21 @@ public class Pay2WorkshopsController : ControllerBase
         var userIdString = User.FindFirstValue(ClaimTypes.NameIdentifier);
         if (!int.TryParse(userIdString, out int userCod))
             return Unauthorized();
+
+        // ثبت کارگاه جدید نیاز به مجوز درج و ویرایش کارگاه موجود نیاز به مجوز ویرایش دارد
+        var accessService = HttpContext.RequestServices.GetRequiredService<IPay2AccessService>();
+        var neededPerm = w.WS_ID == 0 ? Pay2Perm.Inp : Pay2Perm.Upd;
+        if (!await accessService.HasAsync(userCod, Pay2Forms.Workshop, (int)neededPerm))
+            return StatusCode(403, w.WS_ID == 0
+                ? "برای تعریف کارگاه جدید دسترسی لازم را ندارید."
+                : "برای ویرایش کارگاه دسترسی لازم را ندارید.");
+
+        // ویرایش کارگاه موجود فقط برای کارگاه‌های مجاز کاربر
+        if (w.WS_ID != 0)
+            await HttpContext.RequestServices.GetRequiredService<Pay2ScopeResolver>()
+                .EnsureWorkshopAsync(userCod, w.WS_ID);
+
+        bool isNewWorkshop = w.WS_ID == 0;
 
         try
         {
@@ -225,6 +244,19 @@ public class Pay2WorkshopsController : ControllerBase
                 return newOrUpdatedWsId;
             });
 
+            // پس از ایجاد کارگاه جدید، دسترسی آن به کاربر ایجادکننده داده می‌شود
+            // تا سازنده بلافاصله از کارگاهی که خودش ساخته قفل نشود
+            if (isNewWorkshop && wsId > 0)
+            {
+                await _db.DoExecuteSQLAsync(@"
+IF NOT EXISTS (SELECT 1 FROM dbo.PAY2_USER_WS WHERE USERCO = @userCod AND WS_ID = @wsId)
+    INSERT INTO dbo.PAY2_USER_WS (USERCO, WS_ID, CRT, [UID])
+    VALUES (@userCod, @wsId, GETDATE(), @userCod);",
+                    new { userCod, wsId });
+
+                await accessService.InvalidateAsync(userCod);
+            }
+
             return Ok(wsId);
         }
         catch (InvalidOperationException ex)
@@ -234,8 +266,13 @@ public class Pay2WorkshopsController : ControllerBase
     }
 
     [HttpDelete("{wsId:int}")]
+    [Pay2Authorize(Pay2Forms.Workshop, Pay2Perm.Del)]
     public async Task<IActionResult> Delete(int wsId)
     {
+        int userCoScope = int.Parse(User.FindFirst(BaseknowClaimTypes.IDD)?.Value ?? "0");
+        await HttpContext.RequestServices.GetRequiredService<Pay2ScopeResolver>()
+            .EnsureWorkshopAsync(userCoScope, wsId);
+
         try
         {
             await _db.ExecuteInTransactionAsync(async (conn, tran) =>

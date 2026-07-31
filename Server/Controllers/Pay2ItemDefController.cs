@@ -107,6 +107,7 @@ namespace Safir.Server.Controllers
         }
 
         [HttpDelete("{id:int}")]
+        [Pay2Authorize(Pay2Forms.ItemDef, Pay2Perm.Del)]
         public async Task<IActionResult> Delete(int id)
         {
             try
