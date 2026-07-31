@@ -142,8 +142,9 @@ CREATE DATABASE [$DB_NAME];"
 # ═══════════════════════════════════════════════════════════════════════════
 step "۶) وابستگی‌های قدیمی (بدون تداخل با schema.sql)"
 # ═══════════════════════════════════════════════════════════════════════════
-for f in legacy_dependencies.sql schema.sql pay2_runtime_procedures.sql \
-         pay2_acl_migration.sql pay2_seed.sql test_auth_and_acl_users.sql; do
+for f in legacy_dependencies.sql schema.sql test_auth_tables.sql \
+         pay2_runtime_procedures.sql pay2_acl_migration.sql pay2_seed.sql \
+         test_auth_and_acl_users.sql; do
   [[ -f "$DB_DIR/$f" ]] || { echo "❌ فایل پیدا نشد: $DB_DIR/$f" >&2; exit 1; }
 done
 
@@ -210,6 +211,9 @@ sqlcmd_local -d master -i /tmp/schema_utf8.sql
 # ═══════════════════════════════════════════════════════════════════════════
 step "۸) رویه‌های اجرایی PAY2 و مهاجرت کنترل دسترسی"
 # ═══════════════════════════════════════════════════════════════════════════
+# جدول‌های ورود باید قبل از مهاجرت باشند: بخش Bootstrap مهاجرت به
+# dbo.SALA_DTL و dbo.SAL_CHEK ارجاع می‌دهد و هیچ‌کدام در schema.sql نیستند.
+sqlcmd_local -d "$DB_NAME" -i "$DB_DIR/test_auth_tables.sql"
 sqlcmd_local -d "$DB_NAME" -i "$DB_DIR/pay2_runtime_procedures.sql"
 sqlcmd_local -d "$DB_NAME" -i "$DB_DIR/pay2_acl_migration.sql"
 

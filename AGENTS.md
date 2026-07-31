@@ -63,8 +63,24 @@ python3 .github/scripts/check_pay2_acl.py   # نگهبان کنترل دسترس
 `SALA_DTL` (کاربران)، `SAL_CHEK` (دسترسی فرم‌ها) و `CHARTSAZMANI` در
 `schema.sql` و `legacy_dependencies.sql` **نیستند**. دیتابیسی که فقط از
 آن‌ها ساخته شود هیچ کاربری ندارد و نمی‌شود واردش شد.
-`Server/Database/test_auth_and_acl_users.sql` این سه جدول را می‌سازد و سه
-کاربر آزمایشی درج می‌کند.
+`Server/Database/test_auth_tables.sql` این سه جدول را می‌سازد (باید **قبل
+از** `pay2_acl_migration.sql` اجرا شود، چون بخش Bootstrap مهاجرت به
+`SALA_DTL` و `SAL_CHEK` ارجاع می‌دهد) و `test_auth_and_acl_users.sql` بعد از
+مهاجرت سه کاربر آزمایشی درج می‌کند.
+
+### یکدستی ظاهری بخش حقوق و دستمزد
+
+همه‌ی تب‌ها از یک زبان طراحی مشترک استفاده می‌کنند و تب جدید هم باید همان
+را دنبال کند:
+
+* `Client/wwwroot/css/pay2-salary.css` — ۱۳۴ کلاس آماده
+  (`pay2-two-panel`، `card-custom`، `p2-table`، `btn-primary-pay2`،
+  `p2-empty-state`، `p2-badge-*`، `pay2-search-input` و …)
+* آیکون‌ها **Bootstrap Icons** (`<i class="bi bi-...">`)، نه Material
+* ورودی‌ها: `Pay2NumericInput` برای مبلغ و عدد و تاریخ شمسی،
+  `Pay2Select` برای انتخاب با جستجو، `class="pay2-input"` برای متن ساده
+* از `MudTabs` / `MudList` / `MudTextField` و گرید بوت‌استرپ
+  (`row` / `col-md-*`) در این بخش استفاده نکنید
 
 ### برچسب‌های فرم به ورودی‌هایشان وصل نیستند
 
@@ -106,6 +122,22 @@ CP1256) و `DECODEPS` (رمز، +۱۰ و بعد حذف ۳ کاراکتر از ه
 * `ACL_ENFORCE` — پیش‌فرض `'0'` (خاموش) تا نصب روی مشتری چیزی را قطع نکند.
 * `ACL_WS_SCOPE_ENFORCE` — پیش‌فرض `'1'`.
 
+### قرارداد `SALA_DTL.ENABL`
+
+**صفر یعنی فعال.** کوئری ورود در `UserService` و هر دو کوئری
+`LookupController` همین‌طورند. یک بار `Pay2AccessController` و بخش Bootstrap
+مهاجرت با `ENABL = 1` نوشته شده بودند و در نتیجه دقیقاً کاربران **غیرفعال**
+را برمی‌گرداندند. نگهبان CI حالا این را می‌پاید.
+
+### دو ریل مجوز: اتریبیوت و بررسی داخل بدنه
+
+بیشتر اکشن‌ها `[Pay2Authorize]` دارند. چند اکشن مجوزشان به داده‌ی ورودی
+بستگی دارد (ساخت کارگاه `Inp` می‌خواهد، ویرایش `Upd`) و ناچار داخل بدنه
+بررسی می‌کنند. برای آن‌ها **حتماً** از `HasAndAuditAsync` استفاده کنید نه
+`HasAsync` خالی: دومی تصمیم می‌گیرد ولی چیزی در `PAY2_SEC_AUDIT` نمی‌نویسد،
+یعنی تلاش ناموفق روی حساس‌ترین عملیات‌ها بی‌رد می‌ماند. نگهبان CI هر
+`.HasAsync(` بی‌جفت را قرمز می‌کند.
+
 ### قانون: هر اکشن جدید باید مجوز داشته باشد
 
 ```csharp
@@ -115,9 +147,9 @@ public async Task<IActionResult> Save(...) { ... }
 ```
 
 `.github/scripts/check_pay2_acl.py` در CI اجرا می‌شود و اگر اکشنی در
-`Server/Controllers/Pay2*.cs` بدون `[Pay2Authorize]` (یا `HasAsync` در بدنه)
-بماند، یا `[AllowAnonymous]` بگیرد، build را قرمز می‌کند. استثناها باید در
-`ALLOWLIST` همان فایل با دلیل ثبت شوند.
+`Server/Controllers/Pay2*.cs` بدون `[Pay2Authorize]` (یا `HasAndAuditAsync`
+در بدنه) بماند، یا `[AllowAnonymous]` بگیرد، یا `ENABL = 1` بنویسد، build را
+قرمز می‌کند. استثناها باید در `ALLOWLIST` همان فایل با دلیل ثبت شوند.
 
 ---
 
@@ -147,7 +179,9 @@ export Jwt__Key='...'
 برنامه بدون دیتابیس بالا می‌آید — Dapper فقط موقع اجرای کوئری وصل می‌شود.
 پس این‌ها همیشه قابل اجرا هستند و در CI هم اجرا می‌شوند:
 
-* `dotnet test` — ۳۳ تست واحد روی فیلتر `[Pay2Authorize]` و ریاضی بیتی مجوزها
+* `dotnet test` — ۴۶ تست: فیلتر واقعی `[Pay2Authorize]`، ریاضی بیتی مجوزها،
+  و ۱۳ تست سرتاسری روی HTTP که کل خط لوله‌ی ASP.NET را اجرا می‌کنند و فقط
+  موتور SQL را با یک دیتابیس درون‌حافظه‌ای جایگزین می‌کنند
 * `Tests/e2e/tests/01-smoke.spec.js` — ۱۲ تست در مرورگر واقعی
 
 تست‌هایی که به دیتابیس نیاز دارند (`02-acl.spec.js`) خودشان skip می‌شوند،

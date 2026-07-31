@@ -120,7 +120,11 @@ test.describe('اعمال شدن دسترسی روی API — نه فقط پنه�
     // نام فیلد بسته به تنظیم JSON ممکن است WS_ID یا wS_ID باشد؛ به هر دو مقاوم باش.
     const idOf = w => w.WS_ID ?? w.wS_ID ?? w.ws_ID ?? w.wsId;
     expect(scoped.map(idOf), 'کاربر محدود کارگاه دیگری دید').toEqual([1]);
-    expect(scoped.length).toBeLessThanOrEqual(all.length);
+    // اگر مدیر هم فقط یک کارگاه ببیند، این آزمون هیچ‌وقت شکست نمی‌خورد و
+    // چیزی را ثابت نمی‌کند — پس خودِ این پیش‌شرط را هم بررسی می‌کنیم.
+    expect(all.length, 'داده‌ی تست باید بیش از یک کارگاه داشته باشد وگرنه محدودسازی قابل مشاهده نیست')
+        .toBeGreaterThan(1);
+    expect(scoped.length).toBeLessThan(all.length);
   });
 });
 
@@ -190,9 +194,17 @@ test.describe('رابط کاربری با نقش‌های مختلف', () => {
     await page.waitForTimeout(2500);
     await openTab(page, 'مدیریت کارگاه‌ها');
 
-    const rows = page.locator('table tbody tr');
-    const count = await rows.count();
-    expect(count, 'کاربر محدود باید حداقل کارگاه خودش را ببیند').toBeGreaterThan(0);
-    expect(count, 'کاربر محدود بیش از یک کارگاه دید').toBeLessThanOrEqual(1);
+    const scopedRows = await page.locator('table tbody tr').count();
+    expect(scopedRows, 'کاربر محدود باید کارگاه خودش را ببیند').toBe(1);
+
+    // مقایسه با مدیر — بدون این، «یک ردیف دیدن» می‌تواند صرفاً به‌خاطر
+    // کم بودن داده باشد نه به‌خاطر اعمال شدن محدودسازی.
+    await uiLogin(page, 'admin');
+    await page.goto(PAYROLL_URL, { waitUntil: 'networkidle' });
+    await page.waitForTimeout(2500);
+    await openTab(page, 'مدیریت کارگاه‌ها');
+    const adminRows = await page.locator('table tbody tr').count();
+
+    expect(adminRows, 'مدیر باید کارگاه‌های بیشتری ببیند').toBeGreaterThan(scopedRows);
   });
 });

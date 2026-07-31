@@ -9,6 +9,8 @@
   ۱. هر اکشن باید یا [Pay2Authorize] داشته باشد یا داخل بدنه بررسی مجوز کند
      (HasAndAuditAsync — یا HasAsync که سابقه‌ی امنیتی نمی‌نویسد).
   ۲. هیچ اکشنی نباید [AllowAnonymous] داشته باشد.
+  ۲.۵ قرارداد SALA_DTL.ENABL: صفر یعنی «فعال». هر کوئری‌ای که ENABL = 1
+      بنویسد دقیقاً کاربران غیرفعال را برمی‌گرداند.
   ۳. اتریبیوت تکراری روی یک اکشن نباشد (باعث ثبت دوباره‌ی لاگ می‌شود).
 
 استثناهای مجاز در ALLOWLIST پایین با دلیل ثبت شده‌اند.
@@ -55,12 +57,39 @@ def scan(path: Path):
     return actions
 
 
+ENABL_RE = re.compile(r'ENABL\s*=\s*1')
+
+
+def check_enabl_convention():
+    """
+    در SALA_DTL مقدار ENABL = 0 یعنی کاربر فعال است — کوئری ورود در
+    UserService و هر دو کوئری LookupController همین‌طورند. یک بار
+    Pay2AccessController با ENABL = 1 نوشته شده بود و در نتیجه فهرست
+    کاربرانِ صفحه‌ی تنظیم دسترسی، دقیقاً برعکس کار می‌کرد.
+    """
+    problems = []
+    targets = list(Path("Server").rglob("Pay2*.cs")) + \
+              [Path("Server/Database/pay2_acl_migration.sql")]
+    for path in targets:
+        if not path.is_file():
+            continue
+        for i, line in enumerate(path.read_text(encoding="utf-8-sig").split("\n"), 1):
+            if "SALA_DTL" not in line and "ENABL" not in line:
+                continue
+            if ENABL_RE.search(COMMENT_RE.sub("", line)):
+                problems.append(
+                    f"{path}:{i}  «ENABL = 1» یعنی کاربران غیرفعال — "
+                    f"برای کاربران فعال باید ENABL = 0 باشد"
+                )
+    return problems
+
+
 def main() -> int:
     if not CONTROLLER_DIR.is_dir():
         print(f"✗ پوشه پیدا نشد: {CONTROLLER_DIR}", file=sys.stderr)
         return 1
 
-    problems = []
+    problems = check_enabl_convention()
     checked = 0
 
     for path in sorted(CONTROLLER_DIR.glob("Pay2*.cs")):

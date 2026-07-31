@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
@@ -17,6 +17,13 @@ namespace Safir.Server.Controllers
     [Authorize]
     public class Pay2AccessController : ControllerBase
     {
+        /// <summary>سطر خام SALA_DTL — نام کاربری هنوز کدشده است.</summary>
+        private sealed class Pay2AclUserRow
+        {
+            public int UserId { get; set; }
+            public string? UserName { get; set; }
+        }
+
         private readonly IPay2AccessService _accessService;
         private readonly IDatabaseService _db;
 
@@ -51,9 +58,29 @@ namespace Safir.Server.Controllers
         [Pay2Authorize(Pay2Forms.AdminAcl, Pay2Perm.Run)]
         public async Task<IActionResult> GetUsers()
         {
-            string sql = "SELECT IDD as UserId, SAL_NAME as UserName FROM dbo.SALA_DTL WHERE ENABL = 1 ORDER BY SAL_NAME;";
-            var res = await _db.DoGetDataSQLAsync<dynamic>(sql);
-            return Ok(res);
+            // ENABL = 0 یعنی کاربر فعال است. کوئری ورود در UserService و هر دو
+            // کوئری LookupController همین قرارداد را دارند؛ اینجا قبلاً
+            // ENABL = 1 بود و در نتیجه دقیقاً کاربران غیرفعال را برمی‌گرداند
+            // و فعال‌ها را پنهان می‌کرد.
+            const string sql = @"
+SELECT IDD as UserId, SAL_NAME as UserName
+FROM dbo.SALA_DTL
+WHERE ENABL = 0
+ORDER BY SAL_NAME;";
+
+            var rows = await _db.DoGetDataSQLAsync<Pay2AclUserRow>(sql);
+
+            // SAL_NAME در دیتابیس کدشده ذخیره می‌شود؛ بدون رمزگشایی، صفحه‌ی
+            // تنظیم دسترسی نام‌های نامفهوم نشان می‌داد.
+            var users = rows.Select(u => new
+            {
+                u.UserId,
+                UserName = string.IsNullOrWhiteSpace(u.UserName)
+                    ? string.Empty
+                    : Safir.Shared.Utility.CL_METHODS.DECODEUN(u.UserName)
+            });
+
+            return Ok(users);
         }
 
         [HttpGet("user/{userCo}")]
