@@ -63,7 +63,13 @@ namespace Safir.Server.Controllers
             // CODESAL هر بایت cp1256 را ۲۰ واحد کم می‌کند). بدون رمزگشایی، این
             // صفحه رشته‌های نامفهوم مثل «MeeQ^Q³TM_QYU:» نشان می‌دهد.
             // CL_METHODS.DECODEUN دقیقاً معکوس همان عملیات است (+۲۰ روی هر بایت).
-            const string sql = "SELECT IDD as UserId, SAL_NAME as UserName FROM dbo.SALA_DTL WHERE ENABL = 1 ORDER BY SAL_NAME;";
+            //
+            // عمداً بدون فیلتر ENABL: این صفحه برای تنظیم دسترسیِ همه‌ی کاربران
+            // است، نه فقط کاربرانی که در این لحظه می‌توانند وارد شوند. ENABL=0
+            // در بقیه‌ی برنامه (ورود، LookupController) یعنی «فعال»، ولی این
+            // قرارداد اینجا اهمیتی ندارد — مدیر باید بتواند برای هر کاربری، چه
+            // فعال چه غیرفعال، از پیش دسترسی تنظیم کند.
+            const string sql = "SELECT IDD as UserId, SAL_NAME as UserName FROM dbo.SALA_DTL ORDER BY SAL_NAME;";
             var rows = await _db.DoGetDataSQLAsync<Pay2AclUserRow>(sql);
 
             var users = rows.Select(u => new
