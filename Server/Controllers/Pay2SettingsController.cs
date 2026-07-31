@@ -90,7 +90,7 @@ ORDER BY
             {
                 // 🚀 حل مشکل N+1 Query: واکشی تمامی تنظیمات پایه به صورت یکجا
                 var existingConfigs = (await _db.DoGetDataSQLAsync<Pay2ConfigDto>(
-                    "SELECT CFG_KEY, CFG_OPTIONS, DATA_TYPE FROM PAY2_CONFIG"))
+                    "SELECT CFG_KEY, CFG_OPTIONS, DATA_TYPE, LABEL_FA FROM PAY2_CONFIG"))
                     .ToDictionary(x => x.CFG_KEY, x => x);
 
                 await _db.ExecuteInTransactionAsync(async (conn, tran) =>
@@ -104,7 +104,18 @@ ORDER BY
                         if (!existingConfigs.TryGetValue(item.CFG_KEY, out var dbCfg))
                             throw new InvalidOperationException($"کلید تنظیمات نامعتبر است: {item.CFG_KEY}");
 
-                        var normalizedValue = NormalizeConfigValue(item.CFG_VALUE, dbCfg.DATA_TYPE);
+                        // دکمه‌ی «ذخیره تمامی تنظیمات» همه‌ی کلیدها را یک‌جا می‌فرستد،
+                        // پس پیام خطای بدون نام فیلد عملاً غیرقابل استفاده است.
+                        string normalizedValue;
+                        try
+                        {
+                            normalizedValue = NormalizeConfigValue(item.CFG_VALUE, dbCfg.DATA_TYPE);
+                        }
+                        catch (InvalidOperationException ex)
+                        {
+                            throw new InvalidOperationException(
+                                $"«{dbCfg.LABEL_FA ?? item.CFG_KEY}»: {ex.Message}", ex);
+                        }
 
                         if (!string.IsNullOrWhiteSpace(dbCfg.CFG_OPTIONS))
                         {
@@ -382,6 +393,14 @@ ORDER BY SORT_ORDER;",
 
             if (string.IsNullOrWhiteSpace(text))
                 return "";
+
+            // «۰» یعنی تاریخ تعیین نشده و مقدار پیش‌فرض همین است — مثلاً
+            // INS_NON_SUBJECT_EFFECTIVE_FROM با CFG_DEFAULT = '0' ساخته می‌شود.
+            // اگر اینجا ردش کنیم، دکمه‌ی «ذخیره تمامی تنظیمات» که همه‌ی کلیدها
+            // را یک‌جا می‌فرستد کامل شکست می‌خورد و هیچ تنظیم دیگری هم — از
+            // جمله ACL_ENFORCE — ذخیره نمی‌شود.
+            if (long.TryParse(text, out var numeric) && numeric == 0)
+                return "0";
 
             if (text.Length != 8 || !long.TryParse(text, out _))
                 throw new InvalidOperationException("مقدار تاریخ نامعتبر است.");
