@@ -362,3 +362,7 @@ MigrationBackup/
 # Fody - auto-generated XML schema
 FodyWeavers.xsd
 /Safir.rar
+
+# خروجی داده واقعی حقوق و دستمزد — هرگز کامیت نشود
+pay2_export.json
+*_pay2_export.json
