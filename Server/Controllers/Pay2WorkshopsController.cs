@@ -75,9 +75,7 @@ public class Pay2WorkshopsController : ControllerBase
     }
 
     [HttpPost("save")]
-        [Pay2Authorize(Pay2Forms.Workshop, Pay2Perm.Inp)]
-        [Pay2Authorize(Pay2Forms.Workshop, Pay2Perm.Inp)] // Re-checked inside
-    public async Task<ActionResult<int>> Save(Pay2WorkshopSaveRequest request)
+            public async Task<ActionResult<int>> Save(Pay2WorkshopSaveRequest request)
     {
         if (request?.Workshop == null)
             return BadRequest("اطلاعات کارگاه ارسال نشده است.");

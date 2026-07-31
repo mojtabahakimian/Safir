@@ -116,11 +116,20 @@ namespace Safir.Server.Controllers
 
         [HttpPost("save")]
 
-        [Pay2Authorize(Pay2Forms.Employee, Pay2Perm.Inp)] // Re-checked inside
-        public async Task<ActionResult<int>> SaveEmployee([FromBody] Pay2EmployeeDto emp)
+                public async Task<ActionResult<int>> SaveEmployee([FromBody] Pay2EmployeeDto emp)
         {
             var userIdString = User.FindFirstValue(ClaimTypes.NameIdentifier);
             if (!int.TryParse(userIdString, out int userCod)) return Unauthorized();
+
+            var __accessEmp = HttpContext.RequestServices.GetRequiredService<IPay2AccessService>();
+            var __needEmp = emp.EMP_ID == 0 ? Pay2Perm.Inp : Pay2Perm.Upd;
+            if (!await __accessEmp.HasAsync(userCod, Pay2Forms.Employee, (int)__needEmp))
+                return StatusCode(403, emp.EMP_ID == 0
+                    ? "برای ثبت پرسنل جدید دسترسی لازم را ندارید."
+                    : "برای ویرایش اطلاعات پرسنل دسترسی لازم را ندارید.");
+
+            await HttpContext.RequestServices.GetRequiredService<Pay2ScopeResolver>()
+                .EnsureWorkshopAsync(userCod, emp.WS_ID);
 
             try
             {
@@ -606,8 +615,7 @@ namespace Safir.Server.Controllers
         }
 
         [HttpPost("leave/save")]
-        [Pay2Authorize(Pay2Forms.Employee, Pay2Perm.Inp)]
-        public async Task<IActionResult> SaveLeave([FromBody] Pay2LeaveDto leave)
+                public async Task<IActionResult> SaveLeave([FromBody] Pay2LeaveDto leave)
         {
             var userIdString = User.FindFirstValue(ClaimTypes.NameIdentifier);
             if (!int.TryParse(userIdString, out int userCod)) return Unauthorized();
@@ -1702,9 +1710,6 @@ namespace Safir.Server.Controllers
         [HttpGet("leave-report/excel")]
         [Pay2Authorize(Pay2Forms.Reports, Pay2Perm.See)]
         [Pay2Authorize(Pay2Forms.ActExport, Pay2Perm.Run)]
-        [Pay2Authorize(Pay2Forms.Reports, Pay2Perm.See)]
-        [Pay2Authorize(Pay2Forms.ActExport, Pay2Perm.Run)]
-        [AllowAnonymous]
         public async Task<IActionResult> GetLeaveReportExcel([FromQuery] int wsId, [FromQuery] int year, [FromQuery] int empId, [FromQuery] long currentDate)
         {
             try
@@ -1754,8 +1759,6 @@ namespace Safir.Server.Controllers
         }
 
         [HttpGet("leave-report/pdf")]
-        [Pay2Authorize(Pay2Forms.Reports, Pay2Perm.See)]
-        [Pay2Authorize(Pay2Forms.ActExport, Pay2Perm.Run)]
         [Pay2Authorize(Pay2Forms.Reports, Pay2Perm.See)]
         [Pay2Authorize(Pay2Forms.ActExport, Pay2Perm.Run)]
         public async Task<IActionResult> GetLeaveReportPdf([FromQuery] int wsId, [FromQuery] int year, [FromQuery] int empId, [FromQuery] long currentDate)

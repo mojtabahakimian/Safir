@@ -26,6 +26,8 @@ namespace Safir.Server.Controllers
         [Pay2Authorize(Pay2Forms.Run, Pay2Perm.See)]
         public async Task<ActionResult<Pay2PeriodDto>> GetPeriodInfo([FromQuery] int wsId, [FromQuery] long periodDate)
         {
+            int __usr_scope_per = int.Parse(User.FindFirst(BaseknowClaimTypes.IDD)?.Value ?? "0");
+            await HttpContext.RequestServices.GetRequiredService<Pay2ScopeResolver>().EnsureWorkshopAsync(__usr_scope_per, wsId);
             var sql = "SELECT * FROM PAY2_PERIOD WHERE WS_ID = @wsId AND PERIOD_DATE = @periodDate";
             var period = await _db.DoGetDataSQLAsyncSingle<Pay2PeriodDto>(sql, new { wsId, periodDate });
             return Ok(period);
@@ -35,6 +37,8 @@ namespace Safir.Server.Controllers
         [Pay2Authorize(Pay2Forms.Run, Pay2Perm.See)]
         public async Task<ActionResult<Pay2RunDto>> GetLatestRun([FromQuery] int perId)
         {
+            int __usr_scope_latest = int.Parse(User.FindFirst(BaseknowClaimTypes.IDD)?.Value ?? "0");
+            await HttpContext.RequestServices.GetRequiredService<Pay2ScopeResolver>().EnsureWorkshopAsync(__usr_scope_latest, Pay2ScopeKind.Period, perId);
             var sql = "SELECT TOP 1 * FROM PAY2_RUN WHERE PER_ID = @perId AND IS_LATEST = 1 ORDER BY RUN_NO DESC";
             var run = await _db.DoGetDataSQLAsyncSingle<Pay2RunDto>(sql, new { perId });
             return Ok(run);
@@ -140,6 +144,8 @@ namespace Safir.Server.Controllers
         [Pay2Authorize(Pay2Forms.ActViewAmounts, Pay2Perm.Run)]
         public async Task<IActionResult> GetPayslip(int runId, int empId, [FromQuery] bool isOfficial = false)
         {
+            int __usr_scope_501 = int.Parse(User.FindFirst(BaseknowClaimTypes.IDD)?.Value ?? "0");
+            await HttpContext.RequestServices.GetRequiredService<Pay2ScopeResolver>().EnsureWorkshopAsync(__usr_scope_501, Pay2ScopeKind.Run, runId);
             var runStatus = await _db.DoGetDataSQLAsyncSingle<byte?>(
                 "SELECT STATUS FROM PAY2_RUN WHERE RUN_ID=@runId", new { runId });
             if (runStatus == null) return NotFound("Run یافت نشد.");
@@ -305,6 +311,8 @@ namespace Safir.Server.Controllers
         [Pay2Authorize(Pay2Forms.ActCalc, Pay2Perm.Run)]
         public async Task<ActionResult<int>> CalculateRun([FromBody] Pay2RunCalcRequest request)
         {
+            int __usr_scope_calc = int.Parse(User.FindFirst(BaseknowClaimTypes.IDD)?.Value ?? "0");
+            await HttpContext.RequestServices.GetRequiredService<Pay2ScopeResolver>().EnsureWorkshopAsync(__usr_scope_calc, request.WS_ID);
             var userIdString = User.FindFirstValue(ClaimTypes.NameIdentifier);
             if (!int.TryParse(userIdString, out int userCod)) return Unauthorized();
 
@@ -410,6 +418,8 @@ namespace Safir.Server.Controllers
         [Pay2Authorize(Pay2Forms.ActDeed, Pay2Perm.Run)]
         public async Task<ActionResult<Pay2DeedPreviewDto>> PreviewDeed(int runId, [FromQuery] byte? overrideMode = null)
         {
+            int __usr_scope_502 = int.Parse(User.FindFirst(BaseknowClaimTypes.IDD)?.Value ?? "0");
+            await HttpContext.RequestServices.GetRequiredService<Pay2ScopeResolver>().EnsureWorkshopAsync(__usr_scope_502, Pay2ScopeKind.Run, runId);
             var result = new Pay2DeedPreviewDto();
             try
             {
@@ -844,6 +854,8 @@ VALUES (@N_S, @RADIF, @HES_K, @HES_M, @HES_T, @HES_T2, @HES_T3, @HES_T4, @HES, @
         [Pay2Authorize(Pay2Forms.ActExport, Pay2Perm.Run)]
         public async Task<IActionResult> GetInsuranceDiskette([FromServices] Safir.Server.Services.Pay2DisketteService disketteService, int runId)
         {
+            int __usr_scope_503 = int.Parse(User.FindFirst(BaseknowClaimTypes.IDD)?.Value ?? "0");
+            await HttpContext.RequestServices.GetRequiredService<Pay2ScopeResolver>().EnsureWorkshopAsync(__usr_scope_503, Pay2ScopeKind.Run, runId);
             try
             {
                 var result = await disketteService.GenerateInsuranceDisketteAsync(runId);
@@ -864,6 +876,8 @@ VALUES (@N_S, @RADIF, @HES_K, @HES_M, @HES_T, @HES_T2, @HES_T3, @HES_T4, @HES, @
         [Pay2Authorize(Pay2Forms.ActExport, Pay2Perm.Run)]
         public async Task<ActionResult<DiskettePreviewDto>> GetInsuranceDiskettePreview([FromServices] Safir.Server.Services.Pay2DisketteService disketteService, int runId)
         {
+            int __usr_scope_504 = int.Parse(User.FindFirst(BaseknowClaimTypes.IDD)?.Value ?? "0");
+            await HttpContext.RequestServices.GetRequiredService<Pay2ScopeResolver>().EnsureWorkshopAsync(__usr_scope_504, Pay2ScopeKind.Run, runId);
             try
             {
                 var result = await disketteService.GetInsuranceDiskettePreviewAsync(runId);
@@ -1243,6 +1257,8 @@ VALUES (@N_S, @RADIF, @HES_K, @HES_M, @HES_T, @HES_T2, @HES_T3, @HES_T4, @HES, @
         [Pay2Authorize(Pay2Forms.ActExport, Pay2Perm.Run)]
         public async Task<IActionResult> GetTaxDiskette([FromServices] Safir.Server.Services.Pay2DisketteService disketteService, int runId)
         {
+            int __usr_scope_505 = int.Parse(User.FindFirst(BaseknowClaimTypes.IDD)?.Value ?? "0");
+            await HttpContext.RequestServices.GetRequiredService<Pay2ScopeResolver>().EnsureWorkshopAsync(__usr_scope_505, Pay2ScopeKind.Run, runId);
             try
             {
                 var result = await disketteService.GenerateTaxDisketteAsync(runId);
@@ -1263,6 +1279,8 @@ VALUES (@N_S, @RADIF, @HES_K, @HES_M, @HES_T, @HES_T2, @HES_T3, @HES_T4, @HES, @
         [Pay2Authorize(Pay2Forms.ActExport, Pay2Perm.Run)]
         public async Task<ActionResult<TaxDiskettePreviewDto>> GetTaxDiskettePreview([FromServices] Safir.Server.Services.Pay2DisketteService disketteService, int runId)
         {
+            int __usr_scope_506 = int.Parse(User.FindFirst(BaseknowClaimTypes.IDD)?.Value ?? "0");
+            await HttpContext.RequestServices.GetRequiredService<Pay2ScopeResolver>().EnsureWorkshopAsync(__usr_scope_506, Pay2ScopeKind.Run, runId);
             try
             {
                 var result = await disketteService.GetTaxDiskettePreviewAsync(runId);
