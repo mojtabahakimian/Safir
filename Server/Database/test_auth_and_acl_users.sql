@@ -36,11 +36,16 @@ GO
 
 /* ── ۱. سه کاربر آزمایشی ─────────────────────────────────────────────── */
 -- مقادیر کدشده با اجرای واقعی CL_METHODS.DECODEUN/DECODEPS بررسی شده‌اند.
+--
+-- ⚠️ رمز payadmin (`111111`) کدشده می‌شود شش آپاستروف: WWW''''''WWW
+--    نوشتنش به‌صورت رشته‌ی T-SQL تله دارد، چون هر آپاستروف باید دوبل شود
+--    و یک بار همین‌جا نصفه نوشته شد و رمز خراب ذخیره گردید. برای اینکه
+--    دوباره تکرار نشود با REPLICATE ساخته می‌شود، نه با رشته‌ی خام.
 MERGE dbo.SALA_DTL AS T
 USING (VALUES
-    (9001, N'\MeMPYUZ',  N'WWW''''''WWW', 1, 0),   -- payadmin  / 111111
-    (9002, N'\MebUQcQ^', N'WWW((((((WWW', 1, 0),   -- payviewer / 222222
-    (9003, N'\Me_O[\QP', N'WWW))))))WWW', 1, 0)    -- payscoped / 333333
+    (9001, N'\MeMPYUZ',  N'WWW' + REPLICATE(NCHAR(39), 6) + N'WWW', 1, 0),  -- payadmin  / 111111
+    (9002, N'\MebUQcQ^', N'WWW((((((WWW',                           1, 0),  -- payviewer / 222222
+    (9003, N'\Me_O[\QP', N'WWW))))))WWW',                           1, 0)   -- payscoped / 333333
 ) AS S ([IDD], [SAL_NAME], [PSAL_NAME], [GRSAL], [ENABL])
     ON T.[IDD] = S.[IDD]
 WHEN MATCHED THEN UPDATE SET
@@ -106,13 +111,34 @@ GO
 /* ── ۴. کنترل دسترسی را روشن کن ──────────────────────────────────────── */
 -- در دیتابیس واقعی پیش‌فرض ۰ (خاموش) است تا چیزی ناگهان قطع نشود؛
 -- ولی در دیتابیس تست باید روشن باشد وگرنه اصلاً چیزی آزمایش نمی‌شود.
+--
+-- ⚠️ اول وجود کلیدها را چک می‌کنیم. اگر pay2_acl_migration.sql اجرا نشده
+--    باشد — یا اگر pay2_seed.sql بعد از آن اجرا شده و با DELETE کل
+--    PAY2_CONFIG را خالی کرده باشد — این UPDATE ها روی صفر ردیف اثر
+--    می‌کنند و بی‌صدا رد می‌شوند. نتیجه‌اش این است که کنترل دسترسی خاموش
+--    می‌ماند و همه‌ی تست‌ها سبز به‌نظر می‌رسند در حالی که هیچ چیزی
+--    آزمایش نشده. پس همین‌جا با خطا متوقف شو.
+IF NOT EXISTS (SELECT 1 FROM dbo.PAY2_CONFIG WHERE CFG_KEY = N'ACL_ENFORCE')
+    THROW 54005, N'کلید ACL_ENFORCE در PAY2_CONFIG نیست — مهاجرت ACL باید بعد از pay2_seed.sql اجرا شود.', 1;
+GO
+
 UPDATE dbo.PAY2_CONFIG SET CFG_VALUE = N'1' WHERE CFG_KEY = N'ACL_ENFORCE';
 UPDATE dbo.PAY2_CONFIG SET CFG_VALUE = N'1' WHERE CFG_KEY = N'ACL_WS_SCOPE_ENFORCE';
+
+IF (SELECT CFG_VALUE FROM dbo.PAY2_CONFIG WHERE CFG_KEY = N'ACL_ENFORCE') <> N'1'
+    THROW 54006, N'ACL_ENFORCE روشن نشد.', 1;
 GO
 
 /* ── ۵. گزارش نهایی ──────────────────────────────────────────────────── */
 IF (SELECT COUNT(*) FROM dbo.SALA_DTL WHERE IDD IN (9001,9002,9003)) <> 3
     THROW 54001, N'کاربران آزمایشی ساخته نشدند.', 1;
+
+-- هر سه رمز کدشده باید دقیقاً ۱۲ کاراکتر باشند (۳ + ۶ + ۳).
+-- اگر آپاستروف‌های رمز در رشته‌ی T-SQL نصفه نوشته شوند، اینجا لو می‌رود
+-- به‌جای اینکه بعداً «رمز اشتباه» بگیرید و دنبال جای دیگری بگردید.
+IF EXISTS (SELECT 1 FROM dbo.SALA_DTL
+            WHERE IDD IN (9001,9002,9003) AND LEN(PSAL_NAME) <> 12)
+    THROW 54004, N'رمز کدشده طول درستی ندارد — احتمالاً آپاستروف‌ها در رشته escape نشده‌اند.', 1;
 IF NOT EXISTS (SELECT 1 FROM dbo.SAL_CHEK WHERE USERCO = 9002 AND [INP] = 0)
     THROW 54002, N'دسترسی محدود payviewer درست ثبت نشد.', 1;
 -- اگر این دو برابر باشند، آزمون محدودسازی کارگاه بی‌معنا می‌شود.

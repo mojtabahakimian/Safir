@@ -81,11 +81,20 @@ test.describe('اعمال شدن دسترسی روی API — نه فقط پنه�
   test('کاربر فقط‌خواندنی برای نوشتن ۴۰۳ می‌گیرد', async ({ request }) => {
     // مهم‌ترین تست کل مجموعه: کسی که دکمه را نمی‌بیند اگر مستقیم
     // API را صدا بزند هم باید رد شود.
+    //
+    // بدنه باید از اعتبارسنجی رد شود تا واقعاً به لایه‌ی کنترل دسترسی
+    // برسد؛ WS_CODE باید عددی باشد و در قالب { Workshop, Accounts } باشد،
+    // وگرنه سرور قبل از بررسی مجوز با ۴۰۰ رد می‌کند و تست چیزی را
+    // ثابت نمی‌کند (نمونه‌ی این رفتار در Validation_runs_before_the_
+    // permission_check_on_workshops_save در AclEndToEndTests.cs).
     const token = await apiLogin(request, 'viewer');
 
     const res = await request.post('/api/pay2/workshops/save', {
       headers: { Authorization: `Bearer ${token}` },
-      data: { WS_ID: 0, WS_CODE: 'HACK', WS_NAME: 'کارگاه غیرمجاز' },
+      data: {
+        Workshop: { WS_ID: 0, WS_CODE: '994', WS_NAME: 'کارگاه غیرمجاز' },
+        Accounts: {},
+      },
     });
 
     expect(res.status(), 'کاربر فقط‌خواندنی نباید بتواند کارگاه بسازد').toBe(403);
@@ -167,15 +176,28 @@ test.describe('رابط کاربری با نقش‌های مختلف', () => {
     await expect(tab).toHaveCount(itemDef?.run ? 1 : 0);
   });
 
-  test('کاربر فقط‌خواندنی در بخش کارگاه‌ها دکمه تغییر نمی‌بیند', async ({ page }) => {
+  test('کاربر فقط‌خواندنی در بخش کارگاه‌ها نمی‌تواند ذخیره یا حذف کند', async ({ page }) => {
+    // الگوی این کدبیس disabled کردن دکمه است، نه حذفش از DOM (مثل
+    // AdvanceTab و AttendanceTab). پس بررسی درست toHaveCount(0) نیست؛
+    // باید غیرفعال بودن را چک کنیم — و مهم‌تر، اینکه سرور هم رد می‌کند
+    // (تست جدا در بخش «اعمال شدن دسترسی روی API»).
     await uiLogin(page, 'viewer');
     await page.goto(PAYROLL_URL, { waitUntil: 'networkidle' });
     await page.waitForTimeout(2500);
     await openTab(page, 'مدیریت کارگاه‌ها');
 
-    for (const label of ['کارگاه جدید', 'حذف', 'ذخیره']) {
-      await expect(page.getByRole('button', { name: new RegExp(label) }),
-        `دکمه «${label}» نباید برای کاربر فقط‌خواندنی دیده شود`).toHaveCount(0);
+    const save = page.getByRole('button', { name: /ذخیره/ });
+    await expect(save, 'دکمه ذخیره باید غیرفعال باشد').toBeDisabled();
+
+    // دکمه‌ی حذف فقط وقتی یک کارگاه انتخاب شده باشد رندر می‌شود.
+    const rows = page.locator('table tbody tr');
+    if (await rows.count() > 0) {
+      await rows.first().click();
+      await page.waitForTimeout(500);
+      const del = page.getByRole('button', { name: /حذف کارگاه/ });
+      if (await del.count() > 0) {
+        await expect(del, 'دکمه حذف باید غیرفعال باشد').toBeDisabled();
+      }
     }
   });
 

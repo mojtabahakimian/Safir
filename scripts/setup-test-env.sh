@@ -215,7 +215,6 @@ step "۸) رویه‌های اجرایی PAY2 و مهاجرت کنترل دست�
 # dbo.SALA_DTL و dbo.SAL_CHEK ارجاع می‌دهد و هیچ‌کدام در schema.sql نیستند.
 sqlcmd_local -d "$DB_NAME" -i "$DB_DIR/test_auth_tables.sql"
 sqlcmd_local -d "$DB_NAME" -i "$DB_DIR/pay2_runtime_procedures.sql"
-sqlcmd_local -d "$DB_NAME" -i "$DB_DIR/pay2_acl_migration.sql"
 
 # ═══════════════════════════════════════════════════════════════════════════
 step "۹) بررسی ساختار PAY2"
@@ -240,6 +239,15 @@ SELECT (SELECT COUNT(*) FROM sys.tables      WHERE name LIKE N'PAY2[_]%')       
 step "۱۰) داده نمونه و کاربران آزمایشی"
 # ═══════════════════════════════════════════════════════════════════════════
 sqlcmd_local -d "$DB_NAME" -i "$DB_DIR/pay2_seed.sql"
+
+# مهاجرت ACL باید *بعد از* seed اجرا شود.
+# علتش: pay2_seed.sql با DELETE کل PAY2_CONFIG را خالی می‌کند و ۳۸ ردیفِ
+# خودش را می‌ریزد که هیچ کلید ACL ای ندارد. اگر مهاجرت جلوتر اجرا شود،
+# seed کلیدهای ACL_ENFORCE و ACL_WS_SCOPE_ENFORCE را پاک می‌کند و کنترل
+# دسترسی خاموش می‌ماند — بدون هیچ خطایی.
+# این ترتیب با دنیای واقعی هم می‌خواند: مشتری دیتابیس دارد، مهاجرت رویش
+# اعمال می‌شود.
+sqlcmd_local -d "$DB_NAME" -i "$DB_DIR/pay2_acl_migration.sql"
 sqlcmd_local -d "$DB_NAME" -i "$DB_DIR/test_auth_and_acl_users.sql"
 
 # شمارش‌ها را سخت‌گیرانه چک نکن — با تولید دوباره seed عوض می‌شوند.
