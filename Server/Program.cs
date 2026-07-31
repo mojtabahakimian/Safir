@@ -182,3 +182,9 @@ app.MapControllers(); // Make sure API controllers are mapped
 app.MapFallbackToFile("index.html"); // Fallback for Blazor routing
 
 app.Run();
+
+// برای تست‌های یکپارچه (WebApplicationFactory) لازم است کلاس Program
+// از بیرون قابل دسترسی باشد. با top-level statements این کلاس به‌صورت
+// internal ساخته می‌شود، پس اینجا صریحاً public اعلامش می‌کنیم.
+// هیچ اثری روی اجرای برنامه ندارد.
+public partial class Program { }

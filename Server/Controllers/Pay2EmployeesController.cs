@@ -136,7 +136,7 @@ namespace Safir.Server.Controllers
 
             var __accessEmp = HttpContext.RequestServices.GetRequiredService<IPay2AccessService>();
             var __needEmp = emp.EMP_ID == 0 ? Pay2Perm.Inp : Pay2Perm.Upd;
-            if (!await __accessEmp.HasAsync(userCod, Pay2Forms.Employee, (int)__needEmp))
+            if (!await __accessEmp.HasAndAuditAsync(HttpContext, userCod, Pay2Forms.Employee, __needEmp))
                 return StatusCode(403, emp.EMP_ID == 0
                     ? "برای ثبت پرسنل جدید دسترسی لازم را ندارید."
                     : "برای ویرایش اطلاعات پرسنل دسترسی لازم را ندارید.");
@@ -262,7 +262,7 @@ namespace Safir.Server.Controllers
             {
                 int __uCodDecree = int.Parse(User.FindFirst(BaseknowClaimTypes.IDD)?.Value ?? "0");
                 var __accessServiceDecree = HttpContext.RequestServices.GetRequiredService<IPay2AccessService>();
-                if (!await __accessServiceDecree.HasAsync(__uCodDecree, Pay2Forms.ActDecreeConfirm, (int)Pay2Perm.Run))
+                if (!await __accessServiceDecree.HasAndAuditAsync(HttpContext, __uCodDecree, Pay2Forms.ActDecreeConfirm, Pay2Perm.Run))
                 {
                     return StatusCode(403, "برای تأیید نهایی حکم کارگزینی دسترسی لازم را ندارید.");
                 }
@@ -656,7 +656,7 @@ namespace Safir.Server.Controllers
             // ثبت برگه جدید نیاز به مجوز درج و ویرایش برگه موجود نیاز به مجوز ویرایش دارد
             var accessLeave = HttpContext.RequestServices.GetRequiredService<IPay2AccessService>();
             var neededLeavePerm = leave.LEV_ID == 0 ? Pay2Perm.Inp : Pay2Perm.Upd;
-            if (!await accessLeave.HasAsync(userCod, Pay2Forms.Employee, (int)neededLeavePerm))
+            if (!await accessLeave.HasAndAuditAsync(HttpContext, userCod, Pay2Forms.Employee, neededLeavePerm))
                 return StatusCode(403, leave.LEV_ID == 0
                     ? "برای ثبت مرخصی جدید دسترسی لازم را ندارید."
                     : "برای ویرایش مرخصی دسترسی لازم را ندارید.");

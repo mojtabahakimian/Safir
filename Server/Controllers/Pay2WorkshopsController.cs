@@ -109,7 +109,7 @@ public class Pay2WorkshopsController : ControllerBase
         // ثبت کارگاه جدید نیاز به مجوز درج و ویرایش کارگاه موجود نیاز به مجوز ویرایش دارد
         var accessService = HttpContext.RequestServices.GetRequiredService<IPay2AccessService>();
         var neededPerm = w.WS_ID == 0 ? Pay2Perm.Inp : Pay2Perm.Upd;
-        if (!await accessService.HasAsync(userCod, Pay2Forms.Workshop, (int)neededPerm))
+        if (!await accessService.HasAndAuditAsync(HttpContext, userCod, Pay2Forms.Workshop, neededPerm))
             return StatusCode(403, w.WS_ID == 0
                 ? "برای تعریف کارگاه جدید دسترسی لازم را ندارید."
                 : "برای ویرایش کارگاه دسترسی لازم را ندارید.");

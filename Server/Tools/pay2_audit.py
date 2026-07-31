@@ -216,12 +216,15 @@ for L in lines:
             flag("TAX", f"{who}: مالیات {tax_amt} گرفته شده ولی مبنا صفر است")
 
     # ۹) هشدارهای معنایی
-    if gross > 0 and wdays == 0:
-        flag("SEMANTIC", f"{who}: WORK_DAYS=0 ولی GROSS_PAY={gross} و NET_PAY={net}")
-    if net < 0:
-        flag("SEMANTIC", f"{who}: خالص پرداختی منفی: {net}")
-    if 0 < gross < 1_000_000:
-        flag("SEMANTIC", f"{who}: ناخالص بسیار کوچک ({gross} ریال) — احتمالاً فقط اثر گردکردن")
+    # پرسنل فقط‌بیمه عمداً کارکرد اسمی صفر و خالص منفی دارند؛ هشدار ندهیم.
+    ins_only = wdays == 0 and loan == 0 and adv == 0 and other == 0 and ins_worker > 0
+    if not ins_only:
+        if gross > 0 and wdays == 0:
+            flag("SEMANTIC", f"{who}: WORK_DAYS=0 ولی GROSS_PAY={gross} و NET_PAY={net}")
+        if net < 0:
+            flag("SEMANTIC", f"{who}: خالص پرداختی منفی: {net}")
+        if 0 < gross < 1_000_000:
+            flag("SEMANTIC", f"{who}: ناخالص بسیار کوچک ({gross} ریال) — احتمالاً فقط اثر گردکردن")
 
 # ── بررسی‌های سطح‌بالاتر ───────────────────────────────────────────────────
 # آیتم‌هایی که در تعریف مشمول‌اند ولی در فیش مبلغ مشمول صفر خورده‌اند
@@ -237,35 +240,48 @@ for code, runs in sorted(zero_subj.items()):
     flag("SUBJECT", f"آیتم «{code}» در تعریف مشمول مالیات است ولی در "
                     f"{len(runs)} اجرا مبلغ مشمولش صفر ثبت شده (override حکم)")
 
-# ناهماهنگی روزهای کارکرد — ریشه‌ی فیش‌های صفر یا بدون بیمه
+# ── الگوی «فقط‌بیمه» ─────────────────────────────────────────────────────
+# قانون کسب‌وکار: بعضی پرسنل حقوق نمی‌گیرند ولی بیمه‌شان رد می‌شود.
+# تنظیم درستشان این است: DAYS (روز رسمی) پر، DAYSB (روز اسمی) صفر.
+# نتیجه‌اش فیش با خالص منفی است — یعنی فرد بابت سهم بیمه‌ی خودش بدهکار
+# می‌شود — و این کاملاً عمدی است. SP_PAY2_GEN_DEED هم صریحاً اجازه‌اش
+# را می‌دهد. پس این حالت «خطا» نیست و فقط برای اطلاع فهرست می‌شود.
 att = {(a["PER_ID"], a["EMP_ID"]): a for a in D["PAY2_ATTENDANCE"]}
 runper = {r["RUN_ID"]: r["PER_ID"] for r in D["PAY2_RUN"]}
-latest = {r["RUN_ID"] for r in D["PAY2_RUN"] if r.get("IS_LATEST")}
+
+def is_insurance_only(a):
+    return g(a, "DAYS") > 0 and g(a, "DAYSB") == 0
 
 for a in D["PAY2_ATTENDANCE"]:
     days, daysb, wd = g(a, "DAYS"), g(a, "DAYSB"), g(a, "WORK_DAYS")
     name = emp.get(a["EMP_ID"], {}).get("LAST_NAME", "?")
     tag = f"دوره {per.get(a['PER_ID'],{}).get('PERIOD_DATE', a['PER_ID'])} / EMP {a['EMP_ID']} ({name})"
-    if days > 0 and daysb == 0:
-        flag("DAYS", f"{tag}: روز رسمی {days} ولی روز اسمی صفر — "
-                     f"پرداختی صفر می‌شود در حالی که بیمه کامل کسر می‌شود")
+
+    if is_insurance_only(a):
+        flag("INSONLY", f"{tag}: پرسنل فقط‌بیمه — {days} روز بیمه، بدون حقوق")
     elif daysb > 0 and days == 0:
-        flag("DAYS", f"{tag}: روز اسمی {daysb} ولی روز رسمی صفر — "
-                     f"حقوق پرداخت می‌شود ولی بیمه و مالیات صفر می‌ماند")
+        # عکس حالت بالا: حقوق می‌گیرد ولی هیچ بیمه‌ای رد نمی‌شود.
+        # اگر INS_TYPE = 3 (معاف) باشد عمدی است، وگرنه باید بررسی شود.
+        exempt = emp.get(a["EMP_ID"], {}).get("INS_TYPE") == 3
+        if not exempt:
+            flag("DAYS", f"{tag}: روز اسمی {daysb} ولی روز رسمی صفر — "
+                         f"حقوق پرداخت می‌شود و هیچ بیمه‌ای رد نمی‌شود "
+                         f"(اگر عمدی نیست، INS_TYPE پرسنل را بررسی کنید)")
     elif wd > 0 and days == 0 and daysb == 0:
         flag("DAYS", f"{tag}: WORK_DAYS={wd} ولی هر دو ستون DAYS و DAYSB صفرند")
 
-# فیش‌های نهایی‌شده‌ای که خالص منفی دارند و به سند حسابداری رفته‌اند
+# فیش نهایی‌شده با خالص منفی.
+# برای پرسنل فقط‌بیمه طبیعی است؛ برای بقیه باید بررسی شود.
 for L in D["PAY2_RUN_LINE"]:
     r = run.get(L["RUN_ID"], {})
     if g(L, "NET_PAY") < 0 and r.get("STATUS") == 3:
         a = att.get((runper.get(L["RUN_ID"]), L["EMP_ID"]), {})
-        extra = ""
-        if a and g(a, "DAYS") > 0 and g(a, "DAYSB") == 0:
-            extra = " — علتش صفر بودن ستون روز اسمی در کارکرد است، نه ترک کار"
+        if a and is_insurance_only(a):
+            continue          # الگوی پشتیبانی‌شده، نه ایراد
         flag("POSTED", f"RUN {L['RUN_ID']} / EMP {L['EMP_ID']} "
                        f"({emp.get(L['EMP_ID'],{}).get('LAST_NAME','?')}): "
-                       f"فیش نهایی‌شده با خالص منفی {g(L,'NET_PAY')} به سند رفته است{extra}")
+                       f"خالص منفی {g(L,'NET_PAY')} به سند رفته و "
+                       f"پرسنل فقط‌بیمه هم نیست — بررسی کنید")
 
 # داده‌های مشکوک در پرسنل
 for e in D["PAY2_EMPLOYEE"]:
@@ -302,12 +318,13 @@ TITLES = {
     "SUBJECT": "مشمولیت آیتم‌ها",
     "SEMANTIC": "هشدار معنایی",
     "DATA": "کیفیت داده",
+    "INSONLY": "پرسنل فقط‌بیمه (عمدی)",
     "DAYS": "هماهنگی روزهای کارکرد",
-    "POSTED": "فیش منفیِ نهایی‌شده",
+    "POSTED": "خالص منفیِ بی‌توضیح",
     "WORKFLOW": "گردش کار",
 }
 ORDER = ["NET", "DED", "INSW", "INSE", "ROUND", "CEIL", "GROSS", "INSBASE", "TAX",
-         "DAYS", "POSTED", "LEGACY", "RAIL", "SUBJECT", "SEMANTIC", "DATA", "WORKFLOW"]
+         "INSONLY", "DAYS", "POSTED", "LEGACY", "RAIL", "SUBJECT", "SEMANTIC", "DATA", "WORKFLOW"]
 
 HARD = ORDER[:9]
 hard = [k for k in HARD if findings[k]]

@@ -71,7 +71,7 @@ ORDER BY
 
             if (submittedKeys.Any(k => k != null && k.StartsWith("ACL_", StringComparison.OrdinalIgnoreCase)))
             {
-                if (!await accessService.HasAsync(userCod, Pay2Forms.AdminAcl, (int)Pay2Perm.Run))
+                if (!await accessService.HasAndAuditAsync(HttpContext, userCod, Pay2Forms.AdminAcl, Pay2Perm.Run))
                     return StatusCode(403, "تغییر تنظیمات کنترل دسترسی فقط توسط مدیر دسترسی‌های حقوق و دستمزد مجاز است.");
             }
 
@@ -81,7 +81,7 @@ ORDER BY
 
             if (criticalKeys.Any())
             {
-                if (!await accessService.HasAsync(userCod, Pay2Forms.ActConfigCritical, (int)Pay2Perm.Run))
+                if (!await accessService.HasAndAuditAsync(HttpContext, userCod, Pay2Forms.ActConfigCritical, Pay2Perm.Run))
                     return StatusCode(403, "برای تغییر تنظیمات حساس (نرخ بیمه/مالیات/سقف) دسترسی لازم را ندارید.");
             }
 
