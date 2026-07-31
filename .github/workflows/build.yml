@@ -1,0 +1,45 @@
+name: Build
+
+# روی هر push به شاخه اصلی و هر Pull Request اجرا می‌شود.
+# workflow_dispatch اجازه می‌دهد دستی هم از تب Actions اجرایش کنید.
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: کامپایل پروژه
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: دریافت کد
+        uses: actions/checkout@v4
+
+      - name: نصب .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      # کش‌کردن بسته‌های NuGet — اجراهای بعدی چند برابر سریع‌تر می‌شوند
+      - name: کش NuGet
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj') }}
+          restore-keys: ${{ runner.os }}-nuget-
+
+      - name: بازیابی بسته‌ها
+        run: dotnet restore Safir.sln
+
+      - name: کامپایل
+        run: dotnet build Safir.sln --configuration Release --no-restore
+
+      # نگهبان کنترل دسترسی حقوق و دستمزد:
+      # اگر endpoint جدیدی بدون مجوز اضافه شود، اینجا قرمز می‌شود.
+      - name: بررسی کنترل دسترسی PAY2
+        run: python3 .github/scripts/check_pay2_acl.py
