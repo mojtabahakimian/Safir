@@ -122,13 +122,6 @@ CP1256) و `DECODEPS` (رمز، +۱۰ و بعد حذف ۳ کاراکتر از ه
 * `ACL_ENFORCE` — پیش‌فرض `'0'` (خاموش) تا نصب روی مشتری چیزی را قطع نکند.
 * `ACL_WS_SCOPE_ENFORCE` — پیش‌فرض `'1'`.
 
-### قرارداد `SALA_DTL.ENABL`
-
-**صفر یعنی فعال.** کوئری ورود در `UserService` و هر دو کوئری
-`LookupController` همین‌طورند. یک بار `Pay2AccessController` و بخش Bootstrap
-مهاجرت با `ENABL = 1` نوشته شده بودند و در نتیجه دقیقاً کاربران **غیرفعال**
-را برمی‌گرداندند. نگهبان CI حالا این را می‌پاید.
-
 ### دو ریل مجوز: اتریبیوت و بررسی داخل بدنه
 
 بیشتر اکشن‌ها `[Pay2Authorize]` دارند. چند اکشن مجوزشان به داده‌ی ورودی
@@ -148,8 +141,7 @@ public async Task<IActionResult> Save(...) { ... }
 
 `.github/scripts/check_pay2_acl.py` در CI اجرا می‌شود و اگر اکشنی در
 `Server/Controllers/Pay2*.cs` بدون `[Pay2Authorize]` (یا `HasAndAuditAsync`
-در بدنه) بماند، یا `[AllowAnonymous]` بگیرد، یا `ENABL = 1` بنویسد، build را
-قرمز می‌کند. استثناها باید در `ALLOWLIST` همان فایل با دلیل ثبت شوند.
+در بدنه) بماند یا `[AllowAnonymous]` بگیرد، build را قرمز می‌کند. استثناها باید در `ALLOWLIST` همان فایل با دلیل ثبت شوند.
 
 ---
 
