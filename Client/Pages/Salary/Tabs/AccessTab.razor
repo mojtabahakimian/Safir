@@ -1,0 +1,332 @@
+@page "/salary/access-tab"
+@using Safir.Shared.Models.Permissions
+@inject Safir.Client.Services.Pay2AccessApiService Pay2Access
+@inject HttpClient Http
+@inject ISnackbar Snackbar
+
+<div class="row w-100 m-0 p-0 h-100">
+    <div class="col-md-3 p-3 border-end" style="overflow-y:auto; max-height:calc(100vh - 120px);">
+        <MudText Typo="Typo.h6" Class="mb-3">کاربران سیستم</MudText>
+        <MudTextField @bind-Value="_searchUser" Placeholder="جستجوی کاربر..." Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search" Class="mb-3" />
+
+        <MudList T="System.Text.Json.JsonElement" Clickable="true" SelectedValueChanged="OnUserSelected">
+            @foreach (var u in _users.Where(x => string.IsNullOrEmpty(_searchUser) || x.UserName.Contains(_searchUser)))
+            {
+                <MudListItem Value="u">
+                    <div class="d-flex align-items-center">
+                        <MudIcon Icon="@Icons.Material.Filled.Person" Class="me-2" Size="Size.Small"/>
+                        <MudText>@u.UserName</MudText>
+                    </div>
+                </MudListItem>
+            }
+        </MudList>
+    </div>
+
+    <div class="col-md-9 p-3" style="overflow-y:auto; max-height:calc(100vh - 120px);">
+        @if (_selectedUser != null)
+        {
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <MudText Typo="Typo.h5">دسترسی‌های کاربر: <strong>@_selectedUser.UserName</strong></MudText>
+                <div>
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SaveAccess" Disabled="_isSaving">ذخیره دسترسی‌ها</MudButton>
+                </div>
+            </div>
+
+            <MudTabs Elevation="2" Rounded="true" ApplyEffectsToContainer="true" PanelClass="pa-4">
+                <MudTabPanel Text="دسترسی فرم‌ها">
+                    <div class="mb-3 d-flex gap-2">
+                        <MudButton Variant="Variant.Outlined" Size="Size.Small" OnClick='() => ApplyPreset("PAYROLL_MANAGER")'>مدیر حقوق</MudButton>
+                        <MudButton Variant="Variant.Outlined" Size="Size.Small" OnClick='() => ApplyPreset("PAYROLL_OFFICER")'>کارشناس حقوق</MudButton>
+                        <MudButton Variant="Variant.Outlined" Size="Size.Small" OnClick='() => ApplyPreset("HR_OFFICER")'>کارگزینی</MudButton>
+                        <MudButton Variant="Variant.Outlined" Size="Size.Small" OnClick='() => ApplyPreset("ACCOUNTANT")'>حسابدار</MudButton>
+                        <MudButton Variant="Variant.Outlined" Size="Size.Small" OnClick='() => ApplyPreset("VIEWER")'>ناظر (فقط مشاهده)</MudButton>
+                        <MudButton Variant="Variant.Outlined" Size="Size.Small" Color="Color.Error" OnClick='() => ApplyPreset("NONE")'>حذف کامل دسترسی</MudButton>
+                    </div>
+
+                    <table class="table table-bordered table-striped text-center">
+                        <thead class="table-light">
+                            <tr>
+                                <th class="text-end">نام فرم / بخش</th>
+                                <th>اجرا / مشاهده</th>
+                                <th>ویرایش</th>
+                                <th>ایجاد</th>
+                                <th>حذف</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var f in _forms.Where(x => x.IsAction == 0))
+                            {
+                                var perm = GetOrCreatePerm(f.FormName, f.Caption);
+                                <tr>
+                                    <td class="text-end">@f.Caption</td>
+                                    <td>
+                                        <MudCheckBox @bind-Value="perm.Run" Color="Color.Primary" Dense="true" />
+                                    </td>
+                                    <td>
+                                        <MudCheckBox @bind-Value="perm.Upd" Color="Color.Warning" Dense="true" />
+                                    </td>
+                                    <td>
+                                        <MudCheckBox @bind-Value="perm.Inp" Color="Color.Success" Dense="true" />
+                                    </td>
+                                    <td>
+                                        <MudCheckBox @bind-Value="perm.Del" Color="Color.Error" Dense="true" />
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </MudTabPanel>
+
+                <MudTabPanel Text="عملیات حساس">
+                    <table class="table table-bordered table-striped">
+                        <thead class="table-light">
+                            <tr>
+                                <th>عملیات</th>
+                                <th class="text-center">مجاز است</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var f in _forms.Where(x => x.IsAction == 1))
+                            {
+                                var perm = GetOrCreatePerm(f.FormName, f.Caption);
+                                <tr>
+                                    <td>@f.Caption</td>
+                                    <td class="text-center">
+                                        <MudCheckBox @bind-Value="perm.Run" Color="Color.Primary" Dense="true" />
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </MudTabPanel>
+
+                <MudTabPanel Text="کارگاه‌های مجاز">
+                    <div class="mb-3">
+                        <MudCheckBox T="bool" ValueChanged="ToggleAllWorkshops" Label="انتخاب همه کارگاه‌ها" Color="Color.Primary" />
+                    </div>
+                    <div class="row">
+                        @foreach (var ws in _workshops)
+                        {
+                            <div class="col-md-4 mb-2">
+                                <MudCheckBox T="bool" Value="@IsWorkshopSelected(ws.WS_ID)" ValueChanged="@((val) => SetWorkshop(ws.WS_ID, val))" Label="@ws.WS_NAME" Color="Color.Primary" />
+                            </div>
+                        }
+                    </div>
+                </MudTabPanel>
+
+                <MudTabPanel Text="لاگ دسترسی">
+                    <MudButton Variant="Variant.Outlined" Size="Size.Small" OnClick="LoadAudit" Class="mb-3">به‌روزرسانی لاگ</MudButton>
+                    <table class="table table-bordered table-sm text-center" style="font-size:12px;">
+                        <thead class="table-light">
+                            <tr>
+                                <th>تاریخ</th>
+                                <th>فرم</th>
+                                <th>سطح</th>
+                                <th>وضعیت</th>
+                                <th>IP</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var l in _logs)
+                            {
+                                <tr>
+                                    <td>@l.CRT.ToString("yyyy/MM/dd HH:mm")</td>
+                                    <td>@l.FormName</td>
+                                    <td>@l.PermFlag</td>
+                                    <td>
+                                        @if(l.Allowed) { <span class="badge bg-success">مجاز</span> } else { <span class="badge bg-danger">مسدود</span> }
+                                    </td>
+                                    <td>@l.Ip</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </MudTabPanel>
+            </MudTabs>
+        }
+        else
+        {
+            <div class="d-flex justify-content-center align-items-center h-100 text-muted">
+                <MudText>یک کاربر را از لیست سمت راست انتخاب کنید.</MudText>
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+
+    public class Pay2UserDto { public int UserId {get;set;} public string UserName {get;set;} }
+    public class Pay2FormSimpleDto { public string FormName {get;set;} public string Caption {get;set;} public int IsAction {get;set;} }
+    public class Pay2WsDto { public int WS_ID {get;set;} public string WS_NAME {get;set;} }
+
+    private List<Pay2UserDto> _users = new();
+    private List<Pay2FormSimpleDto> _forms = new();
+    private List<Pay2WsDto> _workshops = new();
+
+    private Pay2UserDto? _selectedUser;
+    private string _searchUser = "";
+    private bool _isSaving = false;
+
+    private List<Pay2FormPermDto> _userForms = new();
+    private List<int> _userWsIds = new();
+    private List<Pay2AuditEntry> _logs = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadData();
+    }
+
+    private async Task LoadData()
+    {
+        try
+        {
+            _users = await Http.GetFromJsonAsync<List<Pay2UserDto>>("api/pay2/access/users") ?? new();
+            _forms = await Http.GetFromJsonAsync<List<Pay2FormSimpleDto>>("api/pay2/access/forms") ?? new();
+            _workshops = await Http.GetFromJsonAsync<List<Pay2WsDto>>("api/pay2/workshops?noScope=1") ?? new();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add("خطا در بارگذاری اطلاعات اولیه.", Severity.Error);
+        }
+    }
+
+    private async Task OnUserSelected(object userObj)
+    {
+        _selectedUser = userObj as Pay2UserDto;
+        if (_selectedUser == null) return;
+
+        try
+        {
+            int uId = _selectedUser.UserId;
+            var res = await Http.GetFromJsonAsync<Safir.Shared.Models.Permissions.Pay2AccessDto>($"api/pay2/access/user/{uId}");
+            if (res != null)
+            {
+
+                _userForms = res.Forms;
+
+
+                _userWsIds = res.AllowedWorkshopIds;
+            }
+        }
+        catch
+        {
+            Snackbar.Add("خطا در دریافت دسترسی کاربر.", Severity.Error);
+        }
+    }
+
+    private Pay2FormPermDto GetOrCreatePerm(string formName, string caption)
+    {
+        var f = _userForms.FirstOrDefault(x => x.FormName == formName);
+        if (f == null)
+        {
+            f = new Pay2FormPermDto { FormName = formName, Caption = caption };
+            _userForms.Add(f);
+        }
+        return f;
+    }
+
+    private bool IsWorkshopSelected(int wsId) => _userWsIds.Contains(wsId);
+
+    private void SetWorkshop(int wsId, bool value)
+    {
+        if (value && !_userWsIds.Contains(wsId)) _userWsIds.Add(wsId);
+        else if (!value && _userWsIds.Contains(wsId)) _userWsIds.Remove(wsId);
+    }
+
+    private void ToggleAllWorkshops(bool val)
+    {
+        _userWsIds.Clear();
+        if (val)
+        {
+            foreach (var w in _workshops)
+            {
+                _userWsIds.Add((int)w.WS_ID);
+            }
+        }
+    }
+
+    private async Task ApplyPreset(string presetKey)
+    {
+        try
+        {
+            var res = await Http.PostAsync($"api/pay2/access/user/{_selectedUser.UserId}/preset/{presetKey}", null);
+            if (res.IsSuccessStatusCode)
+            {
+                Snackbar.Add("قالب با موفقیت اعمال شد. برای مشاهده تغییرات کاربر را مجدداً انتخاب کنید.", Severity.Success);
+            }
+            else
+            {
+                var msg = await res.Content.ReadAsStringAsync();
+                Snackbar.Add(msg, Severity.Error);
+            }
+        }
+        catch
+        {
+            Snackbar.Add("خطا در اعمال قالب.", Severity.Error);
+        }
+    }
+
+    private async Task SaveAccess()
+    {
+        if (_selectedUser == null) return;
+        _isSaving = true;
+        try
+        {
+            var req = new { Forms = _userForms, AllowedWorkshopIds = _userWsIds };
+            var res = await Http.PostAsJsonAsync($"api/pay2/access/user/{_selectedUser.UserId}/save", req);
+
+            if (res.IsSuccessStatusCode)
+            {
+                Snackbar.Add("دسترسی‌ها با موفقیت ذخیره شد.", Severity.Success);
+                // Also refresh current user if they edited themselves
+                if (Pay2Access.Access.UserCo == _selectedUser.UserId)
+                {
+                    await Pay2Access.EnsureLoadedAsync(true);
+                }
+            }
+            else
+            {
+                var msg = await res.Content.ReadAsStringAsync();
+                Snackbar.Add(msg, Severity.Error);
+            }
+        }
+        catch
+        {
+            Snackbar.Add("خطا در ذخیره دسترسی‌ها.", Severity.Error);
+        }
+        finally
+        {
+            _isSaving = false;
+        }
+    }
+
+    private async Task LoadAudit()
+    {
+        if (_selectedUser == null) return;
+        try
+        {
+            int uId = _selectedUser.UserId;
+            _logs = await Http.GetFromJsonAsync<List<Pay2AuditEntry>>($"api/pay2/access/audit?userCo={uId}") ?? new();
+        }
+        catch
+        {
+            Snackbar.Add("خطا در دریافت لاگ.", Severity.Error);
+        }
+    }
+
+    public class Pay2AuditEntry
+    {
+        public int UserCo { get; set; }
+        public string? UserName { get; set; }
+        public string? FormName { get; set; }
+        public string? PermFlag { get; set; }
+        public int? WsId { get; set; }
+        public string? EntityKey { get; set; }
+        public bool Allowed { get; set; }
+        public string? HttpMethod { get; set; }
+        public string? Path { get; set; }
+        public string? Ip { get; set; }
+        public string? Details { get; set; }
+        public DateTime CRT { get; set; }
+    }
+}

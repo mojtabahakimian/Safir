@@ -9,6 +9,9 @@ using Safir.Shared.Models.Salary.Reports;
 using Safir.Shared.Utility;
 using System.Security.Claims;
 
+using Safir.Server.Security;
+using Safir.Shared.Constants;
+using Safir.Shared.Interfaces;
 namespace Safir.Server.Controllers
 {
     [ApiController]
@@ -20,6 +23,7 @@ namespace Safir.Server.Controllers
         public Pay2RunController(IDatabaseService db) => _db = db;
 
         [HttpGet("period-info")]
+        [Pay2Authorize(Pay2Forms.Run, Pay2Perm.See)]
         public async Task<ActionResult<Pay2PeriodDto>> GetPeriodInfo([FromQuery] int wsId, [FromQuery] long periodDate)
         {
             var sql = "SELECT * FROM PAY2_PERIOD WHERE WS_ID = @wsId AND PERIOD_DATE = @periodDate";
@@ -28,6 +32,7 @@ namespace Safir.Server.Controllers
         }
 
         [HttpGet("latest")]
+        [Pay2Authorize(Pay2Forms.Run, Pay2Perm.See)]
         public async Task<ActionResult<Pay2RunDto>> GetLatestRun([FromQuery] int perId)
         {
             var sql = "SELECT TOP 1 * FROM PAY2_RUN WHERE PER_ID = @perId AND IS_LATEST = 1 ORDER BY RUN_NO DESC";
@@ -104,6 +109,9 @@ namespace Safir.Server.Controllers
         [HttpGet("{runId:int}/excel-audit")]
         public async Task<IActionResult> GetExcelAudit(int runId)
         {
+
+            int __userCo = int.Parse(User.FindFirst(BaseknowClaimTypes.IDD)?.Value ?? "0");
+            await HttpContext.RequestServices.GetRequiredService<Pay2ScopeResolver>().EnsureWorkshopAsync(__userCo, Pay2ScopeKind.Run, runId);
             var service = new Pay2ExcelAuditService(_db);
             var result = await service.BuildAsync(runId);
             if (result == null)
@@ -121,6 +129,8 @@ namespace Safir.Server.Controllers
         // صریح (= TOTAL_DED) تا هیچ آیتمی دوبار شمرده نشود و جمع مزایا − جمع کسورات = خالص.
         // ===================================================================
         [HttpGet("{runId:int}/employee/{empId:int}/payslip")]
+        [Pay2Authorize(Pay2Forms.Run, Pay2Perm.See)]
+        [Pay2Authorize(Pay2Forms.ActViewAmounts, Pay2Perm.Run)]
         public async Task<IActionResult> GetPayslip(int runId, int empId, [FromQuery] bool isOfficial = false)
         {
             var runStatus = await _db.DoGetDataSQLAsyncSingle<byte?>(
@@ -285,6 +295,7 @@ namespace Safir.Server.Controllers
         }
 
         [HttpPost("calculate")]
+        [Pay2Authorize(Pay2Forms.ActCalc, Pay2Perm.Run)]
         public async Task<ActionResult<int>> CalculateRun([FromBody] Pay2RunCalcRequest request)
         {
             var userIdString = User.FindFirstValue(ClaimTypes.NameIdentifier);
@@ -340,6 +351,9 @@ namespace Safir.Server.Controllers
         [HttpPut("{runId:int}/revert")]
         public async Task<IActionResult> RevertRun(int runId)
         {
+
+            int __userCo = int.Parse(User.FindFirst(BaseknowClaimTypes.IDD)?.Value ?? "0");
+            await HttpContext.RequestServices.GetRequiredService<Pay2ScopeResolver>().EnsureWorkshopAsync(__userCo, Pay2ScopeKind.Run, runId);
             var userIdString = User.FindFirstValue(ClaimTypes.NameIdentifier);
             if (!int.TryParse(userIdString, out int userCod)) return Unauthorized();
 
@@ -357,6 +371,9 @@ namespace Safir.Server.Controllers
         [HttpPut("{runId:int}/finalize")]
         public async Task<IActionResult> FinalizeRun(int runId)
         {
+
+            int __userCo = int.Parse(User.FindFirst(BaseknowClaimTypes.IDD)?.Value ?? "0");
+            await HttpContext.RequestServices.GetRequiredService<Pay2ScopeResolver>().EnsureWorkshopAsync(__userCo, Pay2ScopeKind.Run, runId);
             var userIdString = User.FindFirstValue(ClaimTypes.NameIdentifier);
             if (!int.TryParse(userIdString, out int userCod)) return Unauthorized();
 
@@ -582,6 +599,9 @@ VALUES (@N_S, @RADIF, @HES_K, @HES_M, @HES_T, @HES_T2, @HES_T3, @HES_T4, @HES, @
         [HttpPut("{runId:int}/unfinalize-deed")]
         public async Task<IActionResult> UnfinalizeDeed(int runId)
         {
+
+            int __userCo = int.Parse(User.FindFirst(BaseknowClaimTypes.IDD)?.Value ?? "0");
+            await HttpContext.RequestServices.GetRequiredService<Pay2ScopeResolver>().EnsureWorkshopAsync(__userCo, Pay2ScopeKind.Run, runId);
             var userIdString = User.FindFirstValue(ClaimTypes.NameIdentifier);
             if (!int.TryParse(userIdString, out int userCod)) return Unauthorized();
 
@@ -672,7 +692,7 @@ VALUES (@N_S, @RADIF, @HES_K, @HES_M, @HES_T, @HES_T2, @HES_T3, @HES_T4, @HES, @
                         SELECT R.RUN_ID 
                         FROM PAY2_RUN R
                         INNER JOIN PAY2_PERIOD P ON R.PER_ID = P.PER_ID
-                        WHERE P.WS_ID = @wsId AND R.IS_LATEST = 1 AND R.STATUS >= 2
+                        WHERE P.WS_ID = @wsId AND (@noScope = 1 OR P.WS_ID IN @allowedWsIds) AND R.IS_LATEST = 1 AND R.STATUS >= 2
                         ORDER BY P.PERIOD_DATE ASC"; // به ترتیب ماه
 
                     targetRunIds = (await _db.DoGetDataSQLAsync<int>(runsSql, new { wsId })).ToList();

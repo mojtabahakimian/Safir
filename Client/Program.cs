@@ -37,6 +37,7 @@ builder.Services.AddSingleton<AppState>();
 builder.Services.AddAuthorizationCore(); // Core authorization services
 // Register our custom AuthenticationStateProvider
 builder.Services.AddScoped<AuthenticationStateProvider, ApiAuthenticationStateProvider>();
+builder.Services.AddScoped<Safir.Client.Services.Pay2AccessApiService>();
 // Register our AuthService for handling login/logout logic
 builder.Services.AddScoped<IAuthService, AuthService>();
 // --- End Authentication Services ---

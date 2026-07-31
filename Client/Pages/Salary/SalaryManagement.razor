@@ -5,6 +5,7 @@
 @using Safir.Client.Services
 @using Safir.Shared.Interfaces
 @using Safir.Shared.Utility
+@inject Safir.Client.Services.Pay2AccessApiService Pay2Access
 @inject ConnectionManagerService ConnectionManager
 @inject IAuthService AuthService
 @inject NavigationManager NavigationManager
@@ -170,10 +171,13 @@
                 تنظیمات سیستم
             </li>
 
-            <li class="pay2-nav-item @(ActiveTab == "itemdefs" ? "active" : "")" @onclick='() => SetActiveTab("itemdefs")'>
+            @if(Pay2Access.Access.CanRun(Safir.Shared.Constants.Pay2Forms.ItemDef))
+{
+    <li class="pay2-nav-item @(ActiveTab == "itemdefs" ? "active" : "")" @onclick='() => SetActiveTab("itemdefs")'>
                 <i class="bi bi-list-check"></i>
                 آیتم‌های حقوقی
             </li>
+}
 
             <!-- خط جداکننده -->
             <div style="padding: 0 16px;">
@@ -199,7 +203,15 @@
                 مرکز گزارشات
             </li>
 
-        </ul>
+
+@if(Pay2Access.Access.CanRun(Safir.Shared.Constants.Pay2Forms.AdminAcl))
+{
+    <li class="pay2-nav-item @(ActiveTab == "access" ? "active" : "")" @onclick='() => SetActiveTab("access")'>
+        <MudIcon Icon="@Icons.Material.Filled.Security" Class="pay2-nav-icon" />
+        <span class="pay2-nav-label">مدیریت دسترسی‌ها</span>
+    </li>
+}
+            </ul>
 
         @* فوتر سایدبار *@
         <div class="pay2-sidebar-footer">
@@ -324,7 +336,12 @@
             {
                 <Safir.Client.Pages.Salary.Tabs.PayrollTab />
             }
-            @if (ActiveTab == "reports")
+
+                @if (ActiveTab == "access")
+                {
+                    <AccessTab />
+                }
+@if (ActiveTab == "reports")
             {
                 <Safir.Client.Pages.Salary.Tabs.ReportsTab />
             }
@@ -354,12 +371,43 @@
 
 @code {
 
+    private bool HasAnyAccess()
+    {
+        return Pay2Access.Access.CanRun(Safir.Shared.Constants.Pay2Forms.Dashboard) ||
+               Pay2Access.Access.CanRun(Safir.Shared.Constants.Pay2Forms.Workshop) ||
+               Pay2Access.Access.CanRun(Safir.Shared.Constants.Pay2Forms.Employee) ||
+               Pay2Access.Access.CanRun(Safir.Shared.Constants.Pay2Forms.Attendance) ||
+               Pay2Access.Access.CanRun(Safir.Shared.Constants.Pay2Forms.Advance) ||
+               Pay2Access.Access.CanRun(Safir.Shared.Constants.Pay2Forms.Run) ||
+               Pay2Access.Access.CanRun(Safir.Shared.Constants.Pay2Forms.ItemDef) ||
+               Pay2Access.Access.CanRun(Safir.Shared.Constants.Pay2Forms.Settings) ||
+               Pay2Access.Access.CanRun(Safir.Shared.Constants.Pay2Forms.Reports) ||
+               Pay2Access.Access.CanRun(Safir.Shared.Constants.Pay2Forms.AdminAcl);
+    }
+
+    private string GetFirstAvailableTab()
+    {
+        if (Pay2Access.Access.CanRun(Safir.Shared.Constants.Pay2Forms.Dashboard)) return "dashboard";
+        if (Pay2Access.Access.CanRun(Safir.Shared.Constants.Pay2Forms.Workshop)) return "workshops";
+        if (Pay2Access.Access.CanRun(Safir.Shared.Constants.Pay2Forms.Employee)) return "employees";
+        if (Pay2Access.Access.CanRun(Safir.Shared.Constants.Pay2Forms.Attendance)) return "attendance";
+        if (Pay2Access.Access.CanRun(Safir.Shared.Constants.Pay2Forms.Advance)) return "advances";
+        if (Pay2Access.Access.CanRun(Safir.Shared.Constants.Pay2Forms.Run)) return "payroll";
+        if (Pay2Access.Access.CanRun(Safir.Shared.Constants.Pay2Forms.ItemDef)) return "itemdefs";
+        if (Pay2Access.Access.CanRun(Safir.Shared.Constants.Pay2Forms.Settings)) return "settings";
+        if (Pay2Access.Access.CanRun(Safir.Shared.Constants.Pay2Forms.Reports)) return "reports";
+        if (Pay2Access.Access.CanRun(Safir.Shared.Constants.Pay2Forms.AdminAcl)) return "access";
+        return "";
+    }
+
+
     // ══════════════════════════════════════════
     // State
     // ══════════════════════════════════════════
 
     private Safir.Shared.Models.DbConnectionSettings? _activeDbSettings;
-    private string ActiveTab = "dashboard";
+    private string ActiveTab = "";
+    private bool _hasNoAccess = false;
     private bool IsToastVisible = false;
     private string ToastMessage = string.Empty;
     private int _toastVersion = 0;
@@ -451,6 +499,14 @@
 
     protected override async Task OnInitializedAsync()
     {
+        await Pay2Access.EnsureLoadedAsync();
+        if (!HasAnyAccess())
+        {
+            _hasNoAccess = true;
+            return;
+        }
+        ActiveTab = GetFirstAvailableTab();
+
         // 🚀 خواندن اتوماتیک ورژن نرم‌افزار از Assembly
         try
         {
@@ -586,4 +642,21 @@
         public string Icon { get; }
         public string SearchText { get; }
     }
+}
+@if (_hasNoAccess)
+{
+    <div style="display:flex; justify-content:center; align-items:center; height:100vh;">
+        <MudText Typo="Typo.h5" Color="Color.Error">شما به بخش حقوق و دستمزد دسترسی ندارید.</MudText>
+    </div>
+}
+else
+{
+    @if (!Pay2Access.Access.AclEnforced)
+    {
+        <MudAlert Severity="Severity.Warning" Variant="Variant.Filled" ShowCloseIcon="true" Class="my-2 mx-4">
+            کنترل دسترسی حقوق و دستمزد غیرفعال است — همه کاربران به تمام بخش‌ها دسترسی دارند.
+        </MudAlert>
+    }
+
+
 }

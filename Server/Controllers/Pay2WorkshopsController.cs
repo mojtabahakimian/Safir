@@ -7,6 +7,9 @@ using System.Data;
 using System.Security.Claims;
 using System.Text.RegularExpressions;
 
+using Safir.Server.Security;
+using Safir.Shared.Constants;
+using Safir.Shared.Interfaces;
 namespace Safir.Server.Controllers;
 
 [ApiController]
@@ -22,6 +25,8 @@ public class Pay2WorkshopsController : ControllerBase
     }
 
     [HttpGet]
+        [Pay2Authorize(Pay2Forms.Workshop, Pay2Perm.See)]
+        [Pay2Authorize(Pay2Forms.Workshop, Pay2Perm.See)]
     public async Task<ActionResult<IEnumerable<Pay2WorkshopDto>>> GetAll()
     {
         const string sql = @"
@@ -71,6 +76,8 @@ public class Pay2WorkshopsController : ControllerBase
     }
 
     [HttpPost("save")]
+        [Pay2Authorize(Pay2Forms.Workshop, Pay2Perm.Inp)]
+        [Pay2Authorize(Pay2Forms.Workshop, Pay2Perm.Inp)] // Re-checked inside
     public async Task<ActionResult<int>> Save(Pay2WorkshopSaveRequest request)
     {
         if (request?.Workshop == null)

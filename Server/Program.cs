@@ -11,7 +11,10 @@ using System.Text;
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddHttpContextAccessor();
-builder.Services.AddControllersWithViews();
+builder.Services.AddControllersWithViews(options =>
+{
+    options.Filters.Add<Safir.Server.Security.Pay2ForbiddenFilter>();
+});
 builder.Services.AddRazorPages();
 
 #region MineServer
@@ -57,6 +60,8 @@ builder.Services.AddAuthentication(options =>
 Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
 
 builder.Services.AddScoped<IPermissionService, PermissionService>();
+builder.Services.AddScoped<IPay2AccessService, Pay2AccessService>();
+builder.Services.AddScoped<Safir.Server.Security.Pay2ScopeResolver>();
 builder.Services.AddScoped<Safir.Server.Services.Pay2DisketteService>();
 #endregion
 

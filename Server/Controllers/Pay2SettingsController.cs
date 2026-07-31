@@ -5,6 +5,9 @@ using Safir.Shared.Interfaces;
 using Safir.Shared.Models.Salary;
 using System.Security.Claims;
 
+using Safir.Server.Security;
+using Safir.Shared.Constants;
+using Safir.Shared.Interfaces;
 namespace Safir.Server.Controllers
 {
     [ApiController]
@@ -20,6 +23,7 @@ namespace Safir.Server.Controllers
         }
 
         [HttpGet("configs")]
+        [Pay2Authorize(Pay2Forms.Settings, Pay2Perm.See)]
         public async Task<ActionResult<IEnumerable<Pay2ConfigDto>>> GetConfigs()
         {
             const string sql = @"
@@ -53,6 +57,7 @@ ORDER BY
         }
 
         [HttpPost("configs/save")]
+        [Pay2Authorize(Pay2Forms.Settings, Pay2Perm.Upd)]
         public async Task<IActionResult> SaveConfigs([FromBody] Pay2ConfigSaveRequest request)
         {
             if (request == null || request.Items == null || request.Items.Count == 0)
@@ -120,6 +125,7 @@ WHERE CFG_KEY = @Key;",
         }
 
         [HttpGet("tax/years")]
+        [Pay2Authorize(Pay2Forms.Settings, Pay2Perm.See)]
         public async Task<ActionResult<IEnumerable<short>>> GetTaxYears()
         {
             const string sql = @"
@@ -132,6 +138,7 @@ ORDER BY TAX_YEAR DESC;";
         }
 
         [HttpGet("tax/brackets")]
+        [Pay2Authorize(Pay2Forms.Settings, Pay2Perm.See)]
         public async Task<ActionResult<IEnumerable<Pay2TaxBracketDto>>> GetTaxBrackets([FromQuery] short? year)
         {
             const string sql = @"
@@ -160,6 +167,8 @@ ORDER BY TAX_YEAR DESC, SORT_ORDER;";
         }
 
         [HttpPost("tax/brackets/save")]
+        [Pay2Authorize(Pay2Forms.Settings, Pay2Perm.Upd)]
+        [Pay2Authorize(Pay2Forms.ActConfigCritical, Pay2Perm.Run)]
         public async Task<IActionResult> SaveTaxBrackets([FromBody] Pay2TaxBracketSaveRequest request)
         {
             if (request == null)
@@ -229,6 +238,8 @@ VALUES
         }
 
         [HttpPost("tax/brackets/copy-year")]
+        [Pay2Authorize(Pay2Forms.Settings, Pay2Perm.Upd)]
+        [Pay2Authorize(Pay2Forms.ActConfigCritical, Pay2Perm.Run)]
         public async Task<IActionResult> CopyTaxYear([FromBody] Pay2TaxBracketCopyRequest request)
         {
             if (request == null)

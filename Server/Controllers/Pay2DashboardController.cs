@@ -3,6 +3,8 @@ using Microsoft.AspNetCore.Mvc;
 using Safir.Shared.Interfaces;
 using Safir.Shared.Models.Salary;
 
+using Safir.Server.Security;
+using Safir.Shared.Constants;
 namespace Safir.Server.Controllers
 {
     [ApiController]
