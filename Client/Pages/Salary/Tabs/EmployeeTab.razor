@@ -1,4 +1,4 @@
-@inject Safir.Client.Services.Pay2AccessApiService Pay2Access
+﻿@inject Safir.Client.Services.Pay2AccessApiService Pay2Access
 @inject Safir.Client.Services.Pay2EmployeeApiService EmployeeApi
 @inject Safir.Client.Services.Pay2WorkshopApiService WorkshopApi
 @inject ISnackbar Snackbar
@@ -23,7 +23,7 @@
                        @bind="SearchTerm" @bind:event="oninput" />
             </div>
 
-            <button class="btn-primary-pay2" @onclick="OpenNewEmpModal">
+            <button class="btn-primary-pay2" @onclick="OpenNewEmpModal" disabled="@(!Pay2Access.CanInp(Safir.Shared.Constants.Pay2Forms.Employee))">
                 <i class="bi bi-plus-lg"></i> پرسنل جدید
             </button>
         </div>
@@ -67,7 +67,7 @@
                                     <div style="display:flex; justify-content:center; align-items:center; gap:8px;">
 
                                         <!-- دکمه‌های اصلی و پرکاربرد با کلاس‌های اختصاصی هاور -->
-                                        <button class="btn-ghost-pay2 p2-action-edit" @onclick="() => OpenEditEmpModal(emp)">
+                                        <button class="btn-ghost-pay2 p2-action-edit" @onclick="() => OpenEditEmpModal(emp)" disabled="@(!Pay2Access.CanUpd(Safir.Shared.Constants.Pay2Forms.Employee))">
                                             <i class="bi bi-pencil"></i> ویرایش
                                         </button>
 
@@ -135,7 +135,7 @@
                                             <!-- حذف کامل پرسنل -->
                                             <MudDivider />
                                             <!-- حذف فیزیکی (هوشمند) -->
-                                            <MudMenuItem OnClick='() => DeleteEmployeeConfirm(emp)'>
+                                            <MudMenuItem OnClick='() => DeleteEmployeeConfirm(emp)' Disabled="@(!Pay2Access.CanDel(Safir.Shared.Constants.Pay2Forms.Employee))">
                                                 <div style="color: #ef4444; font-family: var(--p2-font); font-size: 13px; font-weight: 600;">
                                                     <i class="bi bi-trash3" style="margin-left: 8px;"></i> حذف فیزیکی پرسنل (در صورت امکان)
                                                 </div>

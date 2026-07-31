@@ -1,4 +1,4 @@
-@inject Safir.Client.Services.Pay2AccessApiService Pay2Access
+﻿@inject Safir.Client.Services.Pay2AccessApiService Pay2Access
 ﻿@using Safir.Shared.Models.Salary
 @using Safir.Shared.Models
 @inject Safir.Client.Services.Pay2EmployeeApiService EmployeeApi
@@ -70,7 +70,7 @@
                         <input type="checkbox" @bind="CurrentDecree.IS_MANAGER" style="vertical-align: middle; margin-left: 4px;" /> ۳٪ بیکاری محاسبه نشود
                     </label>
                     <label style="margin:0; font-weight:700; color:var(--p2-success-text); cursor:pointer; font-size: 13px;">
-                        <input type="checkbox" @bind="CurrentDecree.IS_CONFIRMED" style="vertical-align: middle; margin-left: 4px;" /> تأیید نهایی این حکم
+                        <input type="checkbox" @bind="CurrentDecree.IS_CONFIRMED" disabled="@(!Pay2Access.Access.CanRun(Safir.Shared.Constants.Pay2Forms.ActDecreeConfirm))" style="vertical-align: middle; margin-left: 4px;" /> تأیید نهایی این حکم
                     </label>
                 </div>
 
@@ -136,7 +136,7 @@
                                     <button class="btn-ghost-pay2" style="color:#8b5cf6;" @onclick="() => OpenDecreeLines(dec)">آیتم‌های ریالی</button>
                                     @if (dec.IS_CONFIRMED)
                                     {
-                                        <button class="btn-ghost-pay2" style="color: var(--p2-warning-text);" @onclick="() => UnlockDecree(dec)" title="لغو تأیید نهایی — فقط اگر حقوق قطعی نشده باشد">
+                                        <button class="btn-ghost-pay2" style="color: var(--p2-warning-text);" @onclick="() => UnlockDecree(dec)" disabled="@(!Pay2Access.Access.CanRun(Safir.Shared.Constants.Pay2Forms.ActDecreeConfirm))" title="لغو تأیید نهایی — فقط اگر حقوق قطعی نشده باشد">
                                             <i class="bi bi-unlock"></i> لغو تأیید
                                         </button>
                                     }

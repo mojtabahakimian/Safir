@@ -24,18 +24,26 @@ public class Pay2WorkshopsController : ControllerBase
     }
 
     [HttpGet]
-        [Pay2Authorize(Pay2Forms.Workshop, Pay2Perm.See)]
+    [Pay2Authorize(Pay2Forms.Workshop, Pay2Perm.See)]
     public async Task<ActionResult<IEnumerable<Pay2WorkshopDto>>> GetAll()
     {
+        // فقط کارگاه‌های مجاز کاربر بازگردانده می‌شوند
+        int userCoScope = int.Parse(User.FindFirst(BaseknowClaimTypes.IDD)?.Value ?? "0");
+        var access = await HttpContext.RequestServices
+            .GetRequiredService<IPay2AccessService>().GetAccessAsync(userCoScope);
+        bool noScope = !access.AclEnforced || !access.WsScopeEnforced;
+
         const string sql = @"
             SELECT WS_ID, WS_CODE, WS_NAME, NATIONAL_ID, SOCIAL_INS_CODE, TAX_CODE,
                    ADDRESS, PHONE, POSTAL_CODE, EMPLOYER_NAME, IS_ACTIVE, ISNULL(INS_MODE, 1) AS INS_MODE, SHIFT_MODE,
                    PROVINCE, CITY, REGISTRATION_NUMBER, SSO_BRANCH, FINANCIAL_MANAGER, ADMIN_MANAGER,
                    ISNULL(DEFAULT_DEED_MODE, 1) AS DEFAULT_DEED_MODE
             FROM   PAY2_WORKSHOP
+            WHERE  (@noScope = 1 OR WS_ID IN @allowedWsIds)
             ORDER  BY WS_ID";
 
-        var data = await _db.DoGetDataSQLAsync<Pay2WorkshopDto>(sql);
+        var data = await _db.DoGetDataSQLAsync<Pay2WorkshopDto>(
+            sql, new { noScope, allowedWsIds = access.AllowedWorkshopIds.DefaultIfEmpty(-1).ToList() });
         return Ok(data);
     }
 

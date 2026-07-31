@@ -1,4 +1,4 @@
-@inject Safir.Client.Services.Pay2AccessApiService Pay2Access
+﻿@inject Safir.Client.Services.Pay2AccessApiService Pay2Access
 ﻿@using Safir.Shared.Models
 @using Safir.Shared.Models.Salary
 @using Safir.Shared.Utility
@@ -99,7 +99,7 @@
 
     <!-- دکمه ذخیره در پایین‌ترین قسمت صفحه فیکس شده است -->
     <div class="card-custom" style="padding: 16px 24px; margin-top: 16px; display: flex; justify-content: flex-end; align-items: center; background: var(--p2-bg-white); border-radius: var(--p2-radius-lg); flex-shrink: 0;">
-        <button class="btn-primary-pay2" @onclick="SaveAllSettingsAsync" disabled="@IsSaving" style="min-width: 250px;">
+        <button class="btn-primary-pay2" @onclick="SaveAllSettingsAsync" disabled="@(IsSaving || !Pay2Access.CanUpd(Safir.Shared.Constants.Pay2Forms.Settings))" style="min-width: 250px;">
             @if (IsSaving)
             {
                 <span class="p2-spinner"></span>
@@ -239,7 +239,7 @@
         <div class="pay2-modal-footer" style="justify-content:flex-end;">
             <button class="btn-outline-pay2" @onclick="CloseTaxModal" style="margin-left:10px;">انصراف</button>
 
-            <button class="btn-primary-pay2" @onclick="SaveTaxBracketsAsync" disabled="@IsSavingTax">
+            <button class="btn-primary-pay2" @onclick="SaveTaxBracketsAsync" disabled="@(IsSavingTax || !Pay2Access.Access.CanRun(Safir.Shared.Constants.Pay2Forms.ActConfigCritical))">
                 @if (IsSavingTax)
                 {
                     <span class="p2-spinner"></span>

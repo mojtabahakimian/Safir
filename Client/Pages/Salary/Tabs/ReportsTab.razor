@@ -1,4 +1,4 @@
-@inject Safir.Client.Services.Pay2AccessApiService Pay2Access
+﻿@inject Safir.Client.Services.Pay2AccessApiService Pay2Access
 ﻿@using Safir.Shared.Models
 @using Safir.Shared.Models.Salary
 @using Safir.Client.Components.Reports
@@ -98,7 +98,7 @@
                         }
                     </button>
                     
-                    <button class="btn-outline-pay2" style="color: #0284c7; border-color: #0284c7; padding: 0 16px;" @onclick="OpenDiskettePreview" disabled="@IsProcessing" title="پیش‌نمایش محتوای فایل DBF">
+                    <button class="btn-outline-pay2" style="color: #0284c7; border-color: #0284c7; padding: 0 16px;" @onclick="OpenDiskettePreview" disabled="@(IsProcessing || !Pay2Access.Access.CanRun(Safir.Shared.Constants.Pay2Forms.ActExport))" title="پیش‌نمایش محتوای فایل DBF">
                         @if (_processingAction == "InsDiskPreview")
                         {
                             <span class="p2-spinner" style="width:16px; height:16px; border-width:2px; margin-left: 5px;"></span>
@@ -147,7 +147,7 @@
                         }
                     </button>
                     
-                    <button class="btn-outline-pay2" style="color: #10b981; border-color: #10b981; padding: 0 16px;" @onclick="PrintLeaveReportPdf" disabled="@IsProcessing" title="چاپ PDF">
+                    <button class="btn-outline-pay2" style="color: #10b981; border-color: #10b981; padding: 0 16px;" @onclick="PrintLeaveReportPdf" disabled="@(IsProcessing || !Pay2Access.Access.CanRun(Safir.Shared.Constants.Pay2Forms.ActExport))" title="چاپ PDF">
                         <i class="bi bi-printer"></i> چاپ PDF
                     </button>
                 </div>
@@ -222,7 +222,7 @@
                 
                 <div style="display: flex; align-items: center; gap: 10px; width: 100%;">
                     <!-- دکمه اصلی: اکسل سالانه (بزرگتر) -->
-                    <button class="btn-primary-pay2" style="background-color: #db2777; border-color: #db2777; flex: 1.5; padding: 10px;" @onclick="GenerateTaxReportExcel" disabled="@IsProcessing">
+                    <button class="btn-primary-pay2" style="background-color: #db2777; border-color: #db2777; flex: 1.5; padding: 10px;" @onclick="GenerateTaxReportExcel" disabled="@(IsProcessing || !Pay2Access.Access.CanRun(Safir.Shared.Constants.Pay2Forms.ActExport))">
                         @if (_processingAction == "TaxExcel")
                         {
                             <span class="p2-spinner" style="border-width: 2px;"></span>
@@ -246,7 +246,7 @@
                             }
                         </button>
 
-                        <button class="btn-outline-pay2 sm" style="color: #db2777; border-color: #fbcfe8; background-color: white; width: 42px; height: 42px; padding: 0; display: flex; justify-content: center; align-items: center; flex-shrink: 0;" @onclick="OpenTaxDiskettePreview" disabled="@IsProcessing" title="پیش‌نمایش محتوای دیسکت مالیات">
+                        <button class="btn-outline-pay2 sm" style="color: #db2777; border-color: #fbcfe8; background-color: white; width: 42px; height: 42px; padding: 0; display: flex; justify-content: center; align-items: center; flex-shrink: 0;" @onclick="OpenTaxDiskettePreview" disabled="@(IsProcessing || !Pay2Access.Access.CanRun(Safir.Shared.Constants.Pay2Forms.ActExport))" title="پیش‌نمایش محتوای دیسکت مالیات">
                             @if (_processingAction == "TaxDiskPreview")
                             {
                                 <span class="p2-spinner" style="width:16px; height:16px; border-width:2px; margin: 0;"></span>

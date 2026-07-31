@@ -31,5 +31,18 @@ namespace Safir.Client.Services
                 }
             }
         }
+
+        // ── میان‌برهای بررسی مجوز برای استفاده در Razor ──────────────────
+        // مقادیر عددی معادل Pay2Perm سمت سرور است:
+        // Run=1 | See=2 | Inp=4 | Upd=8 | Del=16
+        public bool CanRun(string form) => Access.Has(form, 1);
+        public bool CanSee(string form) => Access.Has(form, 2);
+        public bool CanInp(string form) => Access.Has(form, 4);
+        public bool CanUpd(string form) => Access.Has(form, 8);
+        public bool CanDel(string form) => Access.Has(form, 16);
+
+        /// <summary>آیا کاربر به این کارگاه دسترسی دارد؟</summary>
+        public bool CanAccessWorkshop(int wsId)
+            => !Access.AclEnforced || !Access.WsScopeEnforced || Access.AllowedWorkshopIds.Contains(wsId);
     }
 }

@@ -1,4 +1,4 @@
-@inject Safir.Client.Services.Pay2AccessApiService Pay2Access
+﻿@inject Safir.Client.Services.Pay2AccessApiService Pay2Access
 @inject Pay2WorkshopApiService WorkshopApi
 @using Safir.Shared.Models
 @using Safir.Shared.Models.Salary
@@ -581,7 +581,7 @@
                 <div style="display:flex; gap:10px;">
                     <button class="btn-primary-pay2"
                             @onclick="SaveWorkshopAsync"
-                            disabled="@IsSavingWorkshop">
+                            disabled="@(IsSavingWorkshop || (CurrentWorkshop.WS_ID == 0 ? !Pay2Access.CanInp(Safir.Shared.Constants.Pay2Forms.Workshop) : !Pay2Access.CanUpd(Safir.Shared.Constants.Pay2Forms.Workshop)))">
                         @if (IsSavingWorkshop)
                         {
                             <span class="p2-spinner" style="width:14px;height:14px;border-width:2px;"></span>
@@ -605,7 +605,7 @@
                 {
                     <button class="btn-danger-pay2"
                             @onclick="DeleteWorkshopAsync"
-                            disabled="@IsSavingWorkshop">
+                            disabled="@(IsSavingWorkshop || !Pay2Access.CanDel(Safir.Shared.Constants.Pay2Forms.Workshop))">
                         <i class="bi bi-trash"></i> حذف کارگاه
                     </button>
                 }

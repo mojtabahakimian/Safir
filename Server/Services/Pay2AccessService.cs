@@ -13,58 +13,85 @@ namespace Safir.Server.Services
         private readonly IDatabaseService _db;
         private readonly IMemoryCache _cache;
 
+        private const string ConfigCacheKey = "pay2acl:cfg";
+        private static readonly TimeSpan ConfigCacheTtl = TimeSpan.FromSeconds(30);
+
         public Pay2AccessService(IDatabaseService db, IMemoryCache cache)
         {
             _db = db;
             _cache = cache;
         }
 
-        public async Task<Pay2AccessDto> GetAccessAsync(int userCo)
+        /// <summary>تنظیمات کنترل دسترسی — جدا از دسترسی هر کاربر کش می‌شود</summary>
+        private sealed class AclConfig
         {
-            string cacheKey = $"pay2acl:{userCo}";
-            if (_cache.TryGetValue(cacheKey, out Pay2AccessDto? cached) && cached != null)
-            {
-                return cached;
-            }
+            public bool Enforce { get; init; }
+            public bool WsScope { get; init; }
+            public int CacheSeconds { get; init; } = 120;
+            public bool AuditDenied { get; init; } = true;
+            public bool AuditSensitive { get; init; } = true;
+        }
 
-            var dto = new Pay2AccessDto { UserCo = userCo };
+        // تنظیمات با TTL کوتاه و مستقل کش می‌شوند تا:
+        //  ۱) AuditAsync در هر بار فراخوانی به دیتابیس نزند،
+        //  ۲) تغییر ACL_ENFORCE حداکثر ظرف ۳۰ ثانیه اعمال شود، نه ACL_CACHE_SECONDS.
+        private async Task<AclConfig> GetConfigAsync()
+        {
+            if (_cache.TryGetValue(ConfigCacheKey, out AclConfig? cachedCfg) && cachedCfg != null)
+                return cachedCfg;
 
-            // Query config keys
-            string sqlConfig = @"
+            const string sql = @"
 SELECT CFG_KEY, CFG_VALUE
 FROM dbo.PAY2_CONFIG
-WHERE CFG_KEY IN ('ACL_ENFORCE', 'ACL_WS_SCOPE_ENFORCE', 'ACL_CACHE_SECONDS');";
+WHERE CFG_KEY IN ('ACL_ENFORCE','ACL_WS_SCOPE_ENFORCE','ACL_CACHE_SECONDS','ACL_AUDIT_DENIED','ACL_AUDIT_SENSITIVE');";
 
-            var configs = await _db.DoGetDataSQLAsync<dynamic>(sqlConfig);
+            var rows = await _db.DoGetDataSQLAsync<Pay2ConfigKeyValue>(sql);
+            var map = rows.ToDictionary(r => r.CFG_KEY, r => r.CFG_VALUE, StringComparer.OrdinalIgnoreCase);
+
+            string? Get(string k) => map.TryGetValue(k, out var v) ? v : null;
+
             int cacheSeconds = 120;
+            int.TryParse(Get("ACL_CACHE_SECONDS"), out cacheSeconds);
+            if (cacheSeconds <= 0) cacheSeconds = 120;
 
-            foreach (var cfg in configs)
+            var cfg = new AclConfig
             {
-                string key = cfg.CFG_KEY;
-                string val = cfg.CFG_VALUE;
-                if (key == "ACL_ENFORCE") dto.AclEnforced = (val == "1");
-                else if (key == "ACL_WS_SCOPE_ENFORCE") dto.WsScopeEnforced = (val == "1");
-                else if (key == "ACL_CACHE_SECONDS") int.TryParse(val, out cacheSeconds);
-            }
+                Enforce        = Get("ACL_ENFORCE") == "1",
+                WsScope        = Get("ACL_WS_SCOPE_ENFORCE") != "0",
+                CacheSeconds   = cacheSeconds,
+                AuditDenied    = Get("ACL_AUDIT_DENIED") != "0",
+                AuditSensitive = Get("ACL_AUDIT_SENSITIVE") != "0"
+            };
 
-            // Workshop scope
-            string sqlWs = "SELECT WS_ID FROM dbo.PAY2_USER_WS WHERE USERCO = @userCo";
-            var wsIds = await _db.DoGetDataSQLAsync<int>(sqlWs, new { userCo });
+            _cache.Set(ConfigCacheKey, cfg, ConfigCacheTtl);
+            return cfg;
+        }
 
-            if (dto.AclEnforced)
+        public async Task<Pay2AccessDto> GetAccessAsync(int userCo)
+        {
+            var cfg = await GetConfigAsync();
+
+            // کلید کش شامل وضعیت enforce است تا با تغییر کلید اصلی،
+            // نتیجه‌های کش‌شده‌ی حالت قبل دیگر برگردانده نشوند.
+            string cacheKey = $"pay2acl:{userCo}:{(cfg.Enforce ? 1 : 0)}{(cfg.WsScope ? 1 : 0)}";
+            if (_cache.TryGetValue(cacheKey, out Pay2AccessDto? cached) && cached != null)
+                return cached;
+
+            var dto = new Pay2AccessDto
             {
-                dto.AllowedWorkshopIds = wsIds.ToList();
-            }
-            else
-            {
-                // Kill-switch off: grant all active workshops
-                string allWsSql = "SELECT WS_ID FROM dbo.PAY2_WORKSHOP WHERE IS_ACTIVE = 1";
-                var allWs = await _db.DoGetDataSQLAsync<int>(allWsSql);
-                dto.AllowedWorkshopIds = allWs.ToList();
-            }
+                UserCo = userCo,
+                AclEnforced = cfg.Enforce,
+                WsScopeEnforced = cfg.WsScope
+            };
 
-            // Forms access
-            string sqlForms = @"
+            const string sqlWs = "SELECT WS_ID FROM dbo.PAY2_USER_WS WHERE USERCO = @userCo";
+            const string sqlAllWs = "SELECT WS_ID FROM dbo.PAY2_WORKSHOP WHERE IS_ACTIVE = 1";
+
+            dto.AllowedWorkshopIds = cfg.Enforce
+                ? (await _db.DoGetDataSQLAsync<int>(sqlWs, new { userCo })).ToList()
+                : (await _db.DoGetDataSQLAsync<int>(sqlAllWs)).ToList();
+
+            const string sqlForms = @"
 SELECT F.FORMNAME as FormName, F.CAPTION as Caption,
        CAST(ISNULL(SC.[RUN],0) AS BIT) AS [Run],
        CAST(ISNULL(SC.[SEE],0) AS BIT) AS [See],
@@ -77,22 +104,16 @@ WHERE F.FORMNAME LIKE N'PAY2!_%' ESCAPE N'!';";
 
             var forms = await _db.DoGetDataSQLAsync<Pay2FormPermDto>(sqlForms, new { userCo });
 
-            if (dto.AclEnforced)
-            {
-                dto.Forms = forms.ToList();
-            }
-            else
-            {
-                // Kill-switch off: grant all forms
-                dto.Forms = forms.Select(f => new Pay2FormPermDto
-                {
-                    FormName = f.FormName,
-                    Caption = f.Caption,
-                    Run = true, See = true, Inp = true, Upd = true, Del = true
-                }).ToList();
-            }
+            dto.Forms = cfg.Enforce
+                ? forms.ToList()
+                : forms.Select(f => new Pay2FormPermDto
+                  {
+                      FormName = f.FormName,
+                      Caption = f.Caption,
+                      Run = true, See = true, Inp = true, Upd = true, Del = true
+                  }).ToList();
 
-            _cache.Set(cacheKey, dto, TimeSpan.FromSeconds(cacheSeconds > 0 ? cacheSeconds : 120));
+            _cache.Set(cacheKey, dto, TimeSpan.FromSeconds(cfg.CacheSeconds));
             return dto;
         }
 
@@ -117,41 +138,37 @@ WHERE F.FORMNAME LIKE N'PAY2!_%' ESCAPE N'!';";
 
         public Task InvalidateAsync(int userCo)
         {
-            _cache.Remove($"pay2acl:{userCo}");
+            // هر دو حالت ممکنِ کلید کش پاک می‌شوند
+            foreach (var e in new[] { "00", "01", "10", "11" })
+                _cache.Remove($"pay2acl:{userCo}:{e}");
             return Task.CompletedTask;
         }
 
         public async Task AuditAsync(Pay2AuditEntry entry)
         {
-            string sqlConfig = @"
-SELECT CFG_KEY, CFG_VALUE
-FROM dbo.PAY2_CONFIG
-WHERE CFG_KEY IN ('ACL_AUDIT_DENIED', 'ACL_AUDIT_SENSITIVE');";
+            var cfg = await GetConfigAsync();
 
-            var configs = await _db.DoGetDataSQLAsync<dynamic>(sqlConfig);
-            bool auditDenied = true;
-            bool auditSensitive = true;
-
-            foreach (var cfg in configs)
-            {
-                if (cfg.CFG_KEY == "ACL_AUDIT_DENIED") auditDenied = (cfg.CFG_VALUE == "1");
-                else if (cfg.CFG_KEY == "ACL_AUDIT_SENSITIVE") auditSensitive = (cfg.CFG_VALUE == "1");
-            }
-
-            if (!entry.Allowed && !auditDenied) return;
+            if (!entry.Allowed && !cfg.AuditDenied) return;
             if (entry.Allowed && string.IsNullOrEmpty(entry.Details))
             {
-                // Simple allowed check: only log if it's an ACT form and sensitive logging is on
-                if (!auditSensitive || entry.FormName == null || !entry.FormName.StartsWith("PAY2_ACT_")) return;
+                // عملیات مجازِ عادی لاگ نمی‌شود؛ فقط عملیات حساس (PAY2_ACT_*)
+                if (!cfg.AuditSensitive || entry.FormName == null || !entry.FormName.StartsWith("PAY2_ACT_"))
+                    return;
             }
 
-            string sql = @"
+            const string sql = @"
 INSERT INTO dbo.PAY2_SEC_AUDIT
 (USERCO, USER_NAME, FORM_NAME, PERM_FLAG, WS_ID, ENTITY_KEY, ALLOWED, HTTP_METHOD, PATH, IP, DETAILS, CRT)
 VALUES
 (@UserCo, @UserName, @FormName, @PermFlag, @WsId, @EntityKey, @Allowed, @HttpMethod, @Path, @Ip, @Details, GETDATE());";
 
-            await _db.ExecuteInTransactionAsync(async (conn, tran) => { await Dapper.SqlMapper.ExecuteAsync(conn, sql, entry, tran); });
+            await _db.DoExecuteSQLAsync(sql, entry);
+        }
+
+        private sealed class Pay2ConfigKeyValue
+        {
+            public string CFG_KEY { get; set; } = "";
+            public string CFG_VALUE { get; set; } = "";
         }
     }
 }

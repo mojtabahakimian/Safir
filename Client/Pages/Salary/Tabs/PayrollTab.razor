@@ -1,4 +1,4 @@
-@inject Safir.Client.Services.Pay2AccessApiService Pay2Access
+﻿@inject Safir.Client.Services.Pay2AccessApiService Pay2Access
 ﻿@using Safir.Shared.Models.Salary
 @using Safir.Shared.Models
 @using Safir.Shared.Utility
@@ -296,7 +296,7 @@
                             <Safir.Client.Pages.Salary.Tabs.Pay2NumericInput @bind-Value="PayrollNsStr" Direction="ltr" MaxLength="15" Placeholder="شماره سند (اختیاری)" />
                         </div>
 
-                        <button class="btn-primary-pay2" @onclick="ExecuteCalculation" disabled="@IsProcessing" style="background-color: #6366f1; border-color: #6366f1; height: 42px;">
+                        <button class="btn-primary-pay2" @onclick="ExecuteCalculation" disabled="@(IsProcessing || !Pay2Access.Access.CanRun(Safir.Shared.Constants.Pay2Forms.ActCalc))" style="background-color: #6366f1; border-color: #6366f1; height: 42px;">
                             @if (IsProcessing)
                             {
                                 <span class="p2-spinner"></span> <span style="margin-right: 5px;">در حال پردازش...</span>
@@ -312,14 +312,14 @@
                     {
                         @if (CurrentRun.STATUS == 1)
                         {
-                            <button class="btn-success-pay2" @onclick="FinalizeRun" disabled="@IsProcessing" style="height: 42px;"><i class="bi bi-check-circle"></i> تأیید نهایی</button>
-                            <button class="btn-danger-pay2" @onclick="RevertRun" disabled="@IsProcessing" style="height: 42px;"><i class="bi bi-arrow-counterclockwise"></i> برگشت محاسبه</button>
+                            <button class="btn-success-pay2" @onclick="FinalizeRun" disabled="@(IsProcessing || !Pay2Access.Access.CanRun(Safir.Shared.Constants.Pay2Forms.ActFinalize))" style="height: 42px;"><i class="bi bi-check-circle"></i> تأیید نهایی</button>
+                            <button class="btn-danger-pay2" @onclick="RevertRun" disabled="@(IsProcessing || !Pay2Access.Access.CanRun(Safir.Shared.Constants.Pay2Forms.ActRevert))" style="height: 42px;"><i class="bi bi-arrow-counterclockwise"></i> برگشت محاسبه</button>
                         }
                         else if (CurrentRun.STATUS == 2)
                         {
                             <button class="btn-outline-pay2" @onclick="OpenPreviewModal" disabled="@IsProcessing" style="height: 42px; background: #fff;"><i class="bi bi-eye"></i> پیش‌نمایش سند</button>
-                            <button class="btn-primary-pay2" @onclick="GenerateDeed" disabled="@IsProcessing" style="height: 42px;"><i class="bi bi-journal-check"></i> صدور قطعی سند</button>
-                            <button class="btn-outline-danger-pay2" @onclick="RevertRun" disabled="@IsProcessing" style="height: 42px;"><i class="bi bi-unlock"></i> لغو تأیید</button>
+                            <button class="btn-primary-pay2" @onclick="GenerateDeed" disabled="@(IsProcessing || !Pay2Access.Access.CanRun(Safir.Shared.Constants.Pay2Forms.ActDeed))" style="height: 42px;"><i class="bi bi-journal-check"></i> صدور قطعی سند</button>
+                            <button class="btn-outline-danger-pay2" @onclick="RevertRun" disabled="@(IsProcessing || !Pay2Access.Access.CanRun(Safir.Shared.Constants.Pay2Forms.ActRevert))" style="height: 42px;"><i class="bi bi-unlock"></i> لغو تأیید</button>
                         }
                         else if (CurrentRun.STATUS == 3)
                         {
@@ -330,7 +330,7 @@
                                 <span style="font-weight: 800; font-family: monospace; font-size: 14px; color: var(--p2-primary);">@(CurrentRun.DEED_ID_SAL?.ToString() ?? "-")</span>
                                 <span style="font-size: 11px; color: #16a34a; font-weight: 600; margin-right: 8px;">سند قفل شده</span>
                             </div>
-                            <button class="btn-outline-danger-pay2" @onclick="UnfinalizeDeed" disabled="@IsProcessing" style="height: 42px;" title="لغو صدور سند — بازگشت به وضعیت تأیید نهایی برای صدور مجدد">
+                            <button class="btn-outline-danger-pay2" @onclick="UnfinalizeDeed" disabled="@(IsProcessing || !Pay2Access.Access.CanRun(Safir.Shared.Constants.Pay2Forms.ActDeedUndo))" style="height: 42px;" title="لغو صدور سند — بازگشت به وضعیت تأیید نهایی برای صدور مجدد">
                                 <i class="bi bi-unlock"></i> لغو صدور سند
                             </button>
                         }

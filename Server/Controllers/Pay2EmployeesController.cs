@@ -103,15 +103,29 @@ namespace Safir.Server.Controllers
         [Pay2Authorize(Pay2Forms.Employee, Pay2Perm.See)]
         public async Task<ActionResult<IEnumerable<Pay2EmployeeDto>>> GetAll()
         {
+            var (noScope, allowedWsIds) = await GetWorkshopScopeAsync();
+
             const string sql = @"
                 SELECT e.*, w.WS_NAME AS WorkshopName, j.JOB_NAME AS JobName
                 FROM PAY2_EMPLOYEE e
                 LEFT JOIN PAY2_WORKSHOP w ON e.WS_ID = w.WS_ID
                 LEFT JOIN PAY2_JOB j ON e.JOB_ID = j.JOB_ID
+                WHERE (@noScope = 1 OR e.WS_ID IN @allowedWsIds)
                 ORDER BY e.IS_ACTIVE DESC, e.EMP_ID DESC";
 
-            var data = await _db.DoGetDataSQLAsync<Pay2EmployeeDto>(sql);
+            var data = await _db.DoGetDataSQLAsync<Pay2EmployeeDto>(sql, new { noScope, allowedWsIds });
             return Ok(data);
+        }
+
+        /// <summary>محدوده کارگاه‌های مجاز کاربر جاری برای فیلترکردن لیست‌ها</summary>
+        private async Task<(bool noScope, List<int> allowedWsIds)> GetWorkshopScopeAsync()
+        {
+            int userCoScope = int.Parse(User.FindFirst(BaseknowClaimTypes.IDD)?.Value ?? "0");
+            var access = await HttpContext.RequestServices
+                .GetRequiredService<IPay2AccessService>().GetAccessAsync(userCoScope);
+            bool noScope = !access.AclEnforced || !access.WsScopeEnforced;
+            // لیست خالی در Dapper به IN () تبدیل می‌شود؛ مقدار ناموجود -1 از خطا جلوگیری می‌کند
+            return (noScope, access.AllowedWorkshopIds.DefaultIfEmpty(-1).ToList());
         }
 
         [HttpPost("save")]
@@ -425,9 +439,15 @@ namespace Safir.Server.Controllers
         [Pay2Authorize(Pay2Forms.ItemDef, Pay2Perm.See)]
         public async Task<ActionResult<IEnumerable<LookupDto<int>>>> GetTemplatesLookup()
         {
-            // خواندن قالب‌های فعال برای پر کردن Dropdown
-            const string sql = "SELECT TMPL_ID AS Id, TMPL_NAME AS Name FROM PAY2_ITEM_TEMPLATE WHERE IS_ACTIVE = 1 ORDER BY TMPL_NAME";
-            return Ok(await _db.DoGetDataSQLAsync<LookupDto<int>>(sql));
+            // خواندن قالب‌های فعال برای پر کردن Dropdown — WS_ID خالی یعنی قالب عمومی
+            var (noScope, allowedWsIds) = await GetWorkshopScopeAsync();
+            const string sql = @"
+                SELECT TMPL_ID AS Id, TMPL_NAME AS Name
+                FROM PAY2_ITEM_TEMPLATE
+                WHERE IS_ACTIVE = 1
+                  AND (@noScope = 1 OR WS_ID IS NULL OR WS_ID IN @allowedWsIds)
+                ORDER BY TMPL_NAME";
+            return Ok(await _db.DoGetDataSQLAsync<LookupDto<int>>(sql, new { noScope, allowedWsIds }));
         }
 
         [HttpDelete("decree/{decId:int}")]
@@ -600,8 +620,12 @@ namespace Safir.Server.Controllers
         [Pay2Authorize(Pay2Forms.Employee, Pay2Perm.See)]
         public async Task<ActionResult<IEnumerable<LookupDto<int>>>> GetEmployeesLookup()
         {
-            const string sql = "SELECT EMP_ID AS Id, EMP_CODE + ' - ' + LAST_NAME + ' ' + FIRST_NAME AS Name FROM PAY2_EMPLOYEE WHERE IS_ACTIVE = 1";
-            return Ok(await _db.DoGetDataSQLAsync<LookupDto<int>>(sql));
+            var (noScope, allowedWsIds) = await GetWorkshopScopeAsync();
+            const string sql = @"
+                SELECT EMP_ID AS Id, EMP_CODE + ' - ' + LAST_NAME + ' ' + FIRST_NAME AS Name
+                FROM PAY2_EMPLOYEE
+                WHERE IS_ACTIVE = 1 AND (@noScope = 1 OR WS_ID IN @allowedWsIds)";
+            return Ok(await _db.DoGetDataSQLAsync<LookupDto<int>>(sql, new { noScope, allowedWsIds }));
         }
 
         [HttpGet("{empId:int}/leave-balance")]
@@ -1274,13 +1298,15 @@ namespace Safir.Server.Controllers
         [Pay2Authorize(Pay2Forms.ItemDef, Pay2Perm.See)]
         public async Task<ActionResult<IEnumerable<Pay2ItemTemplateDto>>> GetTemplates()
         {
+            var (noScope, allowedWsIds) = await GetWorkshopScopeAsync();
             const string sql = @"
-        SELECT T.TMPL_ID, T.TMPL_CODE, T.TMPL_NAME, T.WS_ID, 
+        SELECT T.TMPL_ID, T.TMPL_CODE, T.TMPL_NAME, T.WS_ID,
                T.IS_ACTIVE, T.NOTES, W.WS_NAME AS WorkshopName
         FROM PAY2_ITEM_TEMPLATE T
         LEFT JOIN PAY2_WORKSHOP W ON T.WS_ID = W.WS_ID
+        WHERE (@noScope = 1 OR T.WS_ID IS NULL OR T.WS_ID IN @allowedWsIds)
         ORDER BY T.TMPL_ID DESC";
-            return Ok(await _db.DoGetDataSQLAsync<Pay2ItemTemplateDto>(sql));
+            return Ok(await _db.DoGetDataSQLAsync<Pay2ItemTemplateDto>(sql, new { noScope, allowedWsIds }));
         }
 
         [HttpPost("template/save")]

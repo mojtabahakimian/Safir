@@ -1,4 +1,4 @@
-@inject Safir.Client.Services.Pay2AccessApiService Pay2Access
+﻿@inject Safir.Client.Services.Pay2AccessApiService Pay2Access
 ﻿@using Safir.Shared.Models.Salary
 @using Safir.Shared.Models
 @inject Safir.Client.Services.Pay2EmployeeApiService EmployeeApi
@@ -55,7 +55,7 @@
                 </div>
 
                 <div style="display:flex; justify-content:flex-start; margin-bottom: 24px;">
-                    <button class="btn-primary-pay2" style="background: var(--p2-danger-text); border-color: var(--p2-danger-text);" @onclick="CalculateSettlement" disabled="@IsSaving">
+                    <button class="btn-primary-pay2" style="background: var(--p2-danger-text); border-color: var(--p2-danger-text);" @onclick="CalculateSettlement" disabled="@(IsSaving || !Pay2Access.CanInp(Safir.Shared.Constants.Pay2Forms.Settlement))">
                         @if (IsSaving)
                         {
                             <span class="p2-spinner"></span>
@@ -106,13 +106,13 @@
                                     <td style="text-align:center; min-width: 220px;">
                                         @if (set.STATUS == 1)
                                         {
-                                            <button class="btn-ghost-pay2 p2-text-primary" @onclick="() => FinalizeSettlement(set)" title="تأیید نهایی"><i class="bi bi-check2-all"></i> تأیید</button>
-                                            <button class="btn-ghost-pay2 p2-text-danger" @onclick="() => DeleteSettlement(set)" title="حذف پیش‌نویس"><i class="bi bi-trash"></i> حذف</button>
+                                            <button class="btn-ghost-pay2 p2-text-primary" @onclick="() => FinalizeSettlement(set)" disabled="@(!Pay2Access.Access.CanRun(Safir.Shared.Constants.Pay2Forms.ActSettleFinalize))" title="تأیید نهایی"><i class="bi bi-check2-all"></i> تأیید</button>
+                                            <button class="btn-ghost-pay2 p2-text-danger" @onclick="() => DeleteSettlement(set)" disabled="@(!Pay2Access.CanDel(Safir.Shared.Constants.Pay2Forms.Settlement))" title="حذف پیش‌نویس"><i class="bi bi-trash"></i> حذف</button>
                                         }
                                         else if (set.STATUS == 2)
                                         {
-                                            <button class="btn-ghost-pay2 p2-text-success" @onclick="() => GenerateDeed(set)" title="صدور قطعی سند"><i class="bi bi-journal-check"></i> صدور سند</button>
-                                            <button class="btn-ghost-pay2 p2-text-warning" @onclick="() => RevertSettlement(set)" title="برگشت به حالت پیش‌نویس"><i class="bi bi-unlock"></i> لغو تأیید</button>
+                                            <button class="btn-ghost-pay2 p2-text-success" @onclick="() => GenerateDeed(set)" disabled="@(!Pay2Access.Access.CanRun(Safir.Shared.Constants.Pay2Forms.ActDeed))" title="صدور قطعی سند"><i class="bi bi-journal-check"></i> صدور سند</button>
+                                            <button class="btn-ghost-pay2 p2-text-warning" @onclick="() => RevertSettlement(set)" disabled="@(!Pay2Access.Access.CanRun(Safir.Shared.Constants.Pay2Forms.ActSettleFinalize))" title="برگشت به حالت پیش‌نویس"><i class="bi bi-unlock"></i> لغو تأیید</button>
                                         }
                                         else if (set.STATUS == 3)
                                         {

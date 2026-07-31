@@ -4,6 +4,7 @@
 @inject ISnackbar Snackbar
 @inject MudBlazor.IDialogService DialogService
 @inject ConnectionManagerService ConnectionManager
+@inject Safir.Client.Services.Pay2AccessApiService Pay2Access
 
 <div class="pay2-tab-container">
     <div class="pay2-two-panel">
@@ -107,7 +108,7 @@
             </div>
 
             <div style="display:flex; justify-content:space-between; margin-top:20px;">
-                <button class="btn-primary-pay2" @onclick="SaveItemAsync" disabled="@IsSaving">
+                <button class="btn-primary-pay2" @onclick="SaveItemAsync" disabled="@(IsSaving || !Pay2Access.CanInp(Safir.Shared.Constants.Pay2Forms.ItemDef))">
                     @if (IsSaving)
                     {
                         <span class="p2-spinner"></span>
