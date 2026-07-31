@@ -13,5 +13,6 @@ namespace Safir.Shared.Models.Permissions
         public string? Path { get; set; }
         public string? Ip { get; set; }
         public string? Details { get; set; }
+        public DateTime Crt { get; set; }
     }
 }

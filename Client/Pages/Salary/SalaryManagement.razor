@@ -643,20 +643,3 @@
         public string SearchText { get; }
     }
 }
-@if (_hasNoAccess)
-{
-    <div style="display:flex; justify-content:center; align-items:center; height:100vh;">
-        <MudText Typo="Typo.h5" Color="Color.Error">شما به بخش حقوق و دستمزد دسترسی ندارید.</MudText>
-    </div>
-}
-else
-{
-    @if (!Pay2Access.Access.AclEnforced)
-    {
-        <MudAlert Severity="Severity.Warning" Variant="Variant.Filled" ShowCloseIcon="true" Class="my-2 mx-4">
-            کنترل دسترسی حقوق و دستمزد غیرفعال است — همه کاربران به تمام بخش‌ها دسترسی دارند.
-        </MudAlert>
-    }
-
-
-}

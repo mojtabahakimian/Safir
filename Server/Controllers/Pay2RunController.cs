@@ -672,6 +672,10 @@ VALUES (@N_S, @RADIF, @HES_K, @HES_M, @HES_T, @HES_T2, @HES_T3, @HES_T4, @HES, @
         [HttpGet("{runId:int}/insurance-report")]
         public async Task<IActionResult> GetInsuranceReportPdf(int runId, [FromQuery] int wsId = 0)
         {
+            int __userCo = int.Parse(User.FindFirst(BaseknowClaimTypes.IDD)?.Value ?? "0");
+            var __accessService = HttpContext.RequestServices.GetRequiredService<IPay2AccessService>();
+            var allowedWsIds = await __accessService.GetAllowedWorkshopIdsAsync(__userCo);
+            bool noScope = !(await __accessService.GetAccessAsync(__userCo)).WsScopeEnforced;
             try
             {
                 var reportDto = new InsuranceReportDto();
@@ -695,7 +699,7 @@ VALUES (@N_S, @RADIF, @HES_K, @HES_M, @HES_T, @HES_T2, @HES_T3, @HES_T4, @HES, @
                         WHERE P.WS_ID = @wsId AND (@noScope = 1 OR P.WS_ID IN @allowedWsIds) AND R.IS_LATEST = 1 AND R.STATUS >= 2
                         ORDER BY P.PERIOD_DATE ASC"; // به ترتیب ماه
 
-                    targetRunIds = (await _db.DoGetDataSQLAsync<int>(runsSql, new { wsId })).ToList();
+                    targetRunIds = (await _db.DoGetDataSQLAsync<int>(runsSql, new { wsId, noScope, allowedWsIds })).ToList();
 
                     if (!targetRunIds.Any())
                         return NotFound("هیچ ماهِ محاسبه و تایید شده‌ای برای این کارگاه یافت نشد.");

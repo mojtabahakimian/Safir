@@ -117,7 +117,7 @@ namespace Safir.Server.Controllers
         }
 
         [HttpPost("save")]
-        [Pay2Authorize(Pay2Forms.Employee, Pay2Perm.Inp)]
+
         [Pay2Authorize(Pay2Forms.Employee, Pay2Perm.Inp)] // Re-checked inside
         public async Task<ActionResult<int>> SaveEmployee([FromBody] Pay2EmployeeDto emp)
         {
