@@ -3829,7 +3829,7 @@ GO
 
 
             }
-        }
+
         private static void ExecuteBatchesTransactional(SqlConnection db, string script)
         {
             using var transaction = db.BeginTransaction();
@@ -3966,3 +3966,6 @@ GO
             }
         }
     }
+
+
+}

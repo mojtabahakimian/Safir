@@ -234,6 +234,16 @@ namespace Safir.Server.Controllers
         [Pay2Authorize(Pay2Forms.Decree, Pay2Perm.Inp)]
         public async Task<ActionResult<int>> SaveDecree([FromBody] Pay2DecreeDto decree)
         {
+            if (decree.IS_CONFIRMED == true)
+            {
+                int __uCodDecree = int.Parse(User.FindFirst(BaseknowClaimTypes.IDD)?.Value ?? "0");
+                var __accessServiceDecree = HttpContext.RequestServices.GetRequiredService<IPay2AccessService>();
+                if (!await __accessServiceDecree.HasAsync(__uCodDecree, Pay2Forms.ActDecreeConfirm, (int)Pay2Perm.Run))
+                {
+                    return StatusCode(403, "برای تأیید نهایی حکم کارگزینی دسترسی لازم را ندارید.");
+                }
+            }
+
             var userIdString = User.FindFirstValue(ClaimTypes.NameIdentifier);
             if (!int.TryParse(userIdString, out int userCod)) return Unauthorized();
 

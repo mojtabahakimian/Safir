@@ -45,6 +45,8 @@ namespace Safir.Server.Controllers
         [Pay2Authorize(Pay2Forms.ActViewAmounts, Pay2Perm.Run)]
         public async Task<ActionResult<Pay2RunResultDto>> GetRunLines(int runId)
         {
+            int __usr_scope_101 = int.Parse(User.FindFirst(BaseknowClaimTypes.IDD)?.Value ?? "0");
+            await HttpContext.RequestServices.GetRequiredService<Pay2ScopeResolver>().EnsureWorkshopAsync(__usr_scope_101, Pay2ScopeKind.Run, runId);
             var result = new Pay2RunResultDto();
 
             // 1. استخراج ستون‌های پویا (فقط آیتم‌هایی که در این ماه برای حداقل یک نفر محاسبه شده‌اند)
@@ -469,6 +471,8 @@ namespace Safir.Server.Controllers
         [Pay2Authorize(Pay2Forms.ActDeed, Pay2Perm.Run)]
         public async Task<IActionResult> GenerateDeed(int runId)
         {
+            int __usr_scope_102 = int.Parse(User.FindFirst(BaseknowClaimTypes.IDD)?.Value ?? "0");
+            await HttpContext.RequestServices.GetRequiredService<Pay2ScopeResolver>().EnsureWorkshopAsync(__usr_scope_102, Pay2ScopeKind.Run, runId);
             var userIdString = User.FindFirstValue(ClaimTypes.NameIdentifier);
             if (!int.TryParse(userIdString, out int userCod)) return Unauthorized();
             var userName = User.Identity?.Name ?? "System";
