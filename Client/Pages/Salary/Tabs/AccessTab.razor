@@ -106,12 +106,25 @@
                     @* ── بخش ۱: دسترسی فرم‌ها ─────────────────────────── *@
                     @if (_section == "forms")
                     {
+                        @if (IsEditingSelf)
+                        {
+                            <div class="p2-mt-16" style="display:flex; align-items:center; gap:8px; padding:10px 14px; font-size:12.5px; border-radius:var(--p2-radius-md); background:var(--p2-info-bg); color:var(--p2-info-text); border:1px solid var(--p2-info-border);">
+                                <i class="bi bi-shield-lock"></i>
+                                <span>نمی‌توانید دسترسی «مدیریت دسترسی‌ها» را از حساب خودتان بردارید — این محافظ جلوی قفل‌شدن کل سیستم را می‌گیرد. برای تغییر مدیر، اول به نفر جدید این دسترسی را بدهید، بعد با حساب او دسترسی نفر قبلی را بردارید.</span>
+                            </div>
+                        }
                         <div class="p2-sub-card">
                             <div class="p2-sub-card-title">اعمال سریع قالب آماده</div>
                             <div style="display: flex; gap: 8px; flex-wrap: wrap;">
                                 @foreach (var p in Presets)
                                 {
+                                    // «حذف کامل دسترسی» روی حساب خودتان عمداً غیرفعال است — همان محافظی
+                                    // که سرور هم اعمال می‌کند (SaveUserAccess/ApplyPreset)، ولی اینجا
+                                    // پیش از فرستادن درخواست، همان‌جا با یک توضیح روشن جلویش گرفته می‌شود.
+                                    var blockedForSelf = p.Key == "NONE" && IsEditingSelf;
                                     <button class="@(p.Key == "NONE" ? "btn-outline-danger-pay2" : "btn-outline-pay2") p2-btn-sm"
+                                            disabled="@blockedForSelf"
+                                            title="@(blockedForSelf ? "برای جلوگیری از قفل‌شدن خودتان بیرون از سیستم، نمی‌توانید تمام دسترسی‌های حساب خودتان را حذف کنید." : "")"
                                             @onclick="() => ApplyPreset(p.Key)">
                                         <i class="bi @p.Icon"></i>
                                         <span>@p.Title</span>
@@ -136,10 +149,17 @@
                                     @foreach (var f in _forms.Where(x => x.IsAction == 0))
                                     {
                                         var perm = GetOrCreatePerm(f.FormName, f.Caption);
+                                        // ردیف «مدیریت دسترسی‌ها»ی خودِ کاربرِ لاگین‌کرده: چک‌باکس «اجرا» را
+                                        // قفل و همیشه تیک‌خورده نگه می‌داریم تا کسی نتواند از همین‌جا خودش
+                                        // را از این صفحه بیرون بیندازد. سرور هم همین قانون را اعمال می‌کند
+                                        // (این فقط جلوگیریِ زودتر و با توضیح روشن‌تر است، نه جایگزین آن).
+                                        var lockRun = f.FormName == Safir.Shared.Constants.Pay2Forms.AdminAcl && IsEditingSelf;
+                                        if (lockRun) perm.Run = true;
                                         <tr>
                                             <td>@f.Caption</td>
                                             <td class="p2-text-center">
-                                                <input type="checkbox" checked="@perm.Run"
+                                                <input type="checkbox" checked="@perm.Run" disabled="@lockRun"
+                                                       title="@(lockRun ? "برای جلوگیری از قفل‌شدن خودتان بیرون از سیستم، این مجوز روی حساب خودتان قابل حذف نیست." : "")"
                                                        @onchange='e => SetPerm(perm, "Run", (bool)e.Value!)' />
                                             </td>
                                             <td class="p2-text-center">
@@ -333,6 +353,9 @@
 
     private IEnumerable<Pay2UserDto> FilteredUsers =>
         _users.Where(x => string.IsNullOrEmpty(_searchUser) || x.UserName.Contains(_searchUser));
+
+    /// <summary>آیا کاربرِ در حال ویرایش، همان کاربرِ لاگین‌کرده است؟</summary>
+    private bool IsEditingSelf => _selectedUser != null && Pay2Access.Access.UserCo == _selectedUser.UserId;
 
     private bool AllWorkshopsSelected =>
         _workshops.Any() && _workshops.All(w => _userWsIds.Contains(w.WS_ID));
