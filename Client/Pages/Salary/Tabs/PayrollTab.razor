@@ -1027,6 +1027,49 @@
     {
         bool isReIssue = CurrentRun?.STATUS == 3;
 
+        // پیش از نشان دادن دیالوگ تأیید، همان اعتبارسنجی‌ای که خودِ صدور سند
+        // انجام می‌دهد را بی‌صدا اجرا می‌کنیم. اندپوینت پیش‌نمایش دقیقاً همان
+        // رویه (SP_PAY2_GEN_DEED) را صدا می‌زند و خطاهایش را برمی‌گرداند.
+        //
+        // چرا لازم است: کاربر می‌توانست دیالوگِ «برای همیشه قفل می‌شود» را
+        // ببیند، تصمیم بگیرد، تأیید کند — و تازه آن‌وقت با خطایی مثل «حساب
+        // سایر کسورات در تنظیمات کارگاه خالی است» روبه‌رو شود. آن خطا از قبل
+        // در «پیش‌نمایش سند» دیده می‌شد، ولی کسی مجبور نبود پیش‌نمایش را باز کند.
+        if (CurrentRun != null)
+        {
+            // همان روشی که صدور واقعی استفاده می‌کند، تا پیش‌بررسی دقیقاً همان
+            // چیزی را بسنجد که قرار است اجرا شود (و اگر پنجره‌ی پیش‌نمایش باز
+            // شد، انتخابگر روشِ داخلش هم مقدار درست را نشان بدهد).
+            var wsForDeed = Workshops.FirstOrDefault(w => w.WS_ID == SelectedWsId);
+            _previewModeOverride = CurrentRun.DEED_MODE ?? wsForDeed?.DEFAULT_DEED_MODE ?? (byte)1;
+
+            IsProcessing = true;
+            Pay2DeedPreviewDto? check = null;
+            try
+            {
+                check = await RunApi.PreviewDeedAsync(CurrentRun.RUN_ID);
+            }
+            catch
+            {
+                // اگر خودِ پیش‌بررسی به هر دلیلی شکست خورد، جلوی کاربر را
+                // نمی‌گیریم؛ صدور سند خودش اعتبارسنجی نهایی را دارد.
+            }
+            finally
+            {
+                IsProcessing = false;
+            }
+
+            if (check != null && check.HasErrors)
+            {
+                // به‌جای یک دیالوگ تازه، همان پنجره‌ی پیش‌نمایش را باز می‌کنیم:
+                // خطاها را از قبل درست نشان می‌دهد و آرتیکل‌ها هم کنارش هست.
+                PreviewData = check;
+                ShowPreviewModal = true;
+                Snackbar.Add("صدور سند انجام نشد — ابتدا خطاهای زیر را برطرف کنید.", MudBlazor.Severity.Error);
+                return;
+            }
+        }
+
         var parameters = new MudBlazor.DialogParameters
         {
             ["Title"] = isReIssue ? "بازصدور سند حسابداری" : "صدور سند حسابداری",

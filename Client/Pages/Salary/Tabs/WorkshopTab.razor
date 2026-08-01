@@ -562,7 +562,14 @@
                 </div>
 
                 <div class="form-field">
-                    <label>سایر کسورات <span class="p2-text-muted" style="font-size:11px;">(اختیاری)</span></label>
+                    @* «اختیاری» فقط تا وقتی درست است که هیچ‌کس سایر کسورات نداشته باشد؛
+                       به‌محض اینکه در کارکرد مبلغی ثبت شود، صدور سند بدون این حساب متوقف
+                       می‌شود. برچسب قبلی همین را پنهان می‌کرد و کاربر تازه سرِ صدور سند
+                       متوجه می‌شد. *@
+                    <label>
+                        سایر کسورات
+                        <span class="p2-text-muted" style="font-size:11px;">(اگر در کارکرد «سایر کسورات» یا کسر کار ثبت شود، الزامی است)</span>
+                    </label>
                     <Pay2Select TItem="LookupDto<string>" TValue="string" SearchItems="SearchAccountsAsync" Items="Init_OTHER_DED_HES"
                                 Value="CurrentWorkshopAcc.OTHER_DED_HES"
                                 ValueChanged="@(v => { CurrentWorkshopAcc.OTHER_DED_HES = v; ValidateAccount(v, nameof(CurrentWorkshopAcc.OTHER_DED_HES), "سایر کسورات"); })"
