@@ -1413,8 +1413,14 @@ IF NOT EXISTS(SELECT 1 FROM dbo.PAY2_ITEM_DEF WHERE ITEM_CODE='SANOVAT_PAYE')
 
 -- سنوات هزینه‌ی «حقوق» است (تفصیلی ۱). این آیتم پایین‌تر از بلوکِ نگاشت اولیه
 -- ساخته می‌شود، پس آنجا هنوز وجود ندارد و باید صریحاً اینجا مقدار بگیرد.
+--
+-- شرط هم NULL را می‌گیرد و هم ۹: روی دیتابیس تازه، سنوات همین‌جا و بدون مقدار
+-- درج می‌شود (ستون DEFAULT ندارد) و اگر فقط دنبال ۹ می‌گشتیم مقدارش NULL
+-- می‌مانْد و هزینه‌ی سنوات به‌جای «حقوق» روی «سایر» می‌افتاد. اگر کاربر عمداً
+-- تفصیلی دیگری گذاشته باشد، دست‌نخورده می‌مانَد.
 IF COL_LENGTH('dbo.PAY2_ITEM_DEF','EXP_TAFSILI') IS NOT NULL
-    EXEC(N'UPDATE dbo.PAY2_ITEM_DEF SET EXP_TAFSILI=1 WHERE ITEM_CODE=''SANOVAT_PAYE'' AND EXP_TAFSILI=9;');
+    EXEC(N'UPDATE dbo.PAY2_ITEM_DEF SET EXP_TAFSILI=1
+           WHERE ITEM_CODE=''SANOVAT_PAYE'' AND (EXP_TAFSILI=9 OR EXP_TAFSILI IS NULL);');
 
 IF OBJECT_ID(N'dbo.PAY2_SANOVAT_MIGRATION_INPUT',N'U') IS NULL
  CREATE TABLE dbo.PAY2_SANOVAT_MIGRATION_INPUT
