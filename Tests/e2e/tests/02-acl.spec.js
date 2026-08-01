@@ -14,6 +14,12 @@ test.beforeEach(async ({ request }) => {
     'دیتابیس تست در دسترس نیست — ابتدا scripts/setup-test-env.sh را اجرا کنید.');
 });
 
+/**
+ * فرمی که در test_auth_and_acl_users.sql برای payviewer کاملاً بسته شده است.
+ * «فقط‌خواندنی» یعنی See دارد ولی Inp/Upd/Del ندارد؛ اینجا هیچ‌کدام را ندارد.
+ */
+const CLOSED_FORM = 'PAY2_DECREE';
+
 test.describe('ورود', () => {
 
   test('هر سه کاربر آزمایشی می‌توانند وارد شوند', async ({ request }) => {
@@ -58,11 +64,24 @@ test.describe('دسترسی‌های اعلام‌شده به کلاینت', () 
       headers: { Authorization: `Bearer ${token}` },
     })).json();
 
-    for (const f of me.forms) {
+    for (const f of me.forms.filter(f => f.formName !== CLOSED_FORM)) {
       expect(f.see, `${f.formName} باید قابل مشاهده باشد`).toBe(true);
       expect(f.inp || f.upd || f.del,
         `${f.formName} نباید هیچ مجوز تغییری داشته باشد`).toBe(false);
     }
+  });
+
+  test('فرمِ کاملاً بسته برای کاربر فقط‌خواندنی هیچ مجوزی ندارد', async ({ request }) => {
+    // «فقط‌خواندنی» و «اصلاً دسترسی ندارد» دو حالت متفاوتند و رفتار رابط کاربری
+    // در حالت دوم بود که خراب بود؛ پس خودِ داده‌ی آزمون هم باید بررسی شود.
+    const token = await apiLogin(request, 'viewer');
+    const me = await (await request.get('/api/pay2/access/me', {
+      headers: { Authorization: `Bearer ${token}` },
+    })).json();
+
+    const closed = me.forms.find(f => f.formName === CLOSED_FORM);
+    expect(closed, `${CLOSED_FORM} باید در فهرست فرم‌ها باشد`).toBeTruthy();
+    expect(closed.run || closed.see || closed.inp || closed.upd || closed.del).toBe(false);
   });
 
   test('کاربر محدود فقط یک کارگاه را می‌بیند', async ({ request }) => {
@@ -208,6 +227,46 @@ test.describe('رابط کاربری با نقش‌های مختلف', () => {
     await openTab(page, 'مدیریت کارگاه‌ها');
 
     await expect(page.getByRole('button', { name: /کارگاه جدید|جدید/ }).first()).toBeVisible();
+  });
+
+  test('دکمه «احکام» برای کاربری که دسترسی احکام ندارد غیرفعال است', async ({ page }) => {
+    // باگی که کاربر گزارش کرد: با بسته بودن دسترسی احکام، دکمه فعال بود،
+    // مدال باز می‌شد، و بعد یک پیام انگلیسی خام ۴۰۳ روی صفحه می‌نشست.
+    await uiLogin(page, 'viewer');
+    await page.goto(PAYROLL_URL, { waitUntil: 'networkidle' });
+    await page.waitForTimeout(2500);
+    await openTab(page, 'پرسنل و احکام');
+
+    const decreeButtons = page.getByRole('button', { name: /احکام/ });
+    const count = await decreeButtons.count();
+    expect(count, 'برای این آزمون باید دست‌کم یک پرسنل در فهرست باشد').toBeGreaterThan(0);
+    await expect(decreeButtons.first(), 'دکمه احکام باید غیرفعال باشد').toBeDisabled();
+
+    // و مدال هرگز باز نشده باشد.
+    await expect(page.getByText('احکام کارگزینی:')).toHaveCount(0);
+  });
+
+  test('همان دکمه برای مدیر فعال است', async ({ page }) => {
+    // بدون این، آزمون بالا می‌توانست صرفاً به‌خاطر خرابی رندر سبز بماند.
+    await uiLogin(page, 'admin');
+    await page.goto(PAYROLL_URL, { waitUntil: 'networkidle' });
+    await page.waitForTimeout(2500);
+    await openTab(page, 'پرسنل و احکام');
+
+    await expect(page.getByRole('button', { name: /احکام/ }).first()).toBeEnabled();
+  });
+
+  test('پیام رد دسترسی فارسی است، نه متن خام HTTP', async ({ request }) => {
+    // سرور متن فارسی می‌فرستد؛ قبلاً GetFromJsonAsync آن را دور می‌ریخت و
+    // کاربر «Response status code does not indicate success: 403» می‌دید.
+    const token = await apiLogin(request, 'viewer');
+    const res = await request.get('/api/pay2/employees/1/decrees', {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+
+    expect(res.status()).toBe(403);
+    const body = await res.text();
+    expect(body).toContain('دسترسی لازم برای این عملیات را ندارید');
   });
 
   test('کاربر محدود در لیست کارگاه‌ها فقط کارگاه خودش را می‌بیند', async ({ page }) => {

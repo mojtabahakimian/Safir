@@ -11,6 +11,13 @@ namespace Safir.Shared.Interfaces
         Task<bool> CanAccessWorkshopAsync(int userCo, int wsId);
         Task<IReadOnlyList<int>> GetAllowedWorkshopIdsAsync(int userCo);
         Task InvalidateAsync(int userCo);
+
+        /// <summary>
+        /// کشِ تنظیماتِ کنترل دسترسی (ACL_ENFORCE و هم‌خانواده‌هایش) را دور می‌ریزد.
+        /// بعد از ذخیره‌ی صفحه‌ی «تنظیمات سیستم» صدا زده می‌شود تا روشن/خاموش کردن
+        /// کنترل دسترسی بلافاصله اثر کند، نه بعد از سر رسیدن TTL.
+        /// </summary>
+        Task InvalidateConfigAsync();
         Task AuditAsync(Pay2AuditEntry entry);
     }
 }

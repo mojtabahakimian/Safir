@@ -136,6 +136,15 @@ WHERE F.FORMNAME LIKE N'PAY2!_%' ESCAPE N'!';";
             return access.AllowedWorkshopIds;
         }
 
+        public Task InvalidateConfigAsync()
+        {
+            // فقط ورودیِ تنظیمات پاک می‌شود و همین کافی است: کلیدِ کشِ هر کاربر
+            // وضعیت enforce/ws-scope را در خودش دارد، پس با عوض شدن آن‌ها
+            // ورودی‌های قبلی دیگر پیدا نمی‌شوند و خودبه‌خود بی‌اثر می‌گردند.
+            _cache.Remove(ConfigCacheKey);
+            return Task.CompletedTask;
+        }
+
         public Task InvalidateAsync(int userCo)
         {
             // هر دو حالت ممکنِ کلید کش پاک می‌شوند

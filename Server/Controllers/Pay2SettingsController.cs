@@ -146,6 +146,10 @@ WHERE CFG_KEY = @Key;",
                     }
                 });
 
+                // تنظیماتِ ACL کش می‌شوند؛ بدون این خط، روشن کردن ACL_ENFORCE تا
+                // سر رسیدن TTL بی‌اثر می‌ماند و کاربر فکر می‌کند ذخیره نشده است.
+                await accessService.InvalidateConfigAsync();
+
                 return Ok();
             }
             catch (Exception ex)

@@ -79,7 +79,8 @@
                     {
                         <button class="btn-outline-pay2" @onclick="ResetForm">انصراف</button>
                     }
-                    <button class="btn-primary-pay2" @onclick="SubmitSave" disabled="@IsSaving">
+                    <button class="btn-primary-pay2" @onclick="SubmitSave" disabled="@(IsSaving || !CanWrite)"
+                            title="@(CanWrite ? "ثبت حکم" : NoAccessHint)">
                         @if (IsSaving)
                         {
                             <span class="p2-spinner"></span>
@@ -142,8 +143,10 @@
                                     }
                                     else
                                     {
-                                        <button class="btn-ghost-pay2 p2-text-primary" @onclick="() => EditDecree(dec)">ویرایش</button>
-                                        <button class="btn-ghost-pay2 p2-text-danger" @onclick="() => DeleteDecree(dec)">حذف</button>
+                                        <button class="btn-ghost-pay2 p2-text-primary" @onclick="() => EditDecree(dec)"
+                                                disabled="@(!CanWrite)" title="@(CanWrite ? "ویرایش این حکم" : NoAccessHint)">ویرایش</button>
+                                        <button class="btn-ghost-pay2 p2-text-danger" @onclick="() => DeleteDecree(dec)"
+                                                disabled="@(!CanDelete)" title="@(CanDelete ? "حذف این حکم" : NoAccessHint)">حذف</button>
                                     }
                                 </td>
                             </tr>
@@ -177,6 +180,12 @@
     [Parameter] public int WorkshopId { get; set; }
     [Parameter] public string EmployeeName { get; set; } = "";
     [Parameter] public EventCallback OnClose { get; set; }
+
+    // مجوزها دقیقاً همان‌هایی هستند که Pay2EmployeesController برای این عملیات‌ها
+    // چک می‌کند: ذخیره/ویرایش ← PAY2_DECREE/Inp ، حذف ← PAY2_DECREE/Del
+    const string NoAccessHint = "دسترسی لازم برای این عملیات را ندارید.";
+    bool CanWrite  => Pay2Access.CanInp(Safir.Shared.Constants.Pay2Forms.Decree);
+    bool CanDelete => Pay2Access.CanDel(Safir.Shared.Constants.Pay2Forms.Decree);
 
     List<Pay2DecreeDto> Decrees = new();
     List<LookupDto<int>> Templates = new();

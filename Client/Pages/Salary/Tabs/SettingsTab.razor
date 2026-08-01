@@ -254,6 +254,9 @@
 }
 
 @code {
+    /// <summary>بعد از ذخیره‌ی تنظیمات صدا زده می‌شود تا صفحه‌ی میزبان با دسترسی‌های تازه رندر شود.</summary>
+    [Parameter] public EventCallback OnAccessChanged { get; set; }
+
     List<Pay2ConfigDto> Configs = new();
     List<Pay2TaxBracketDto> TaxBrackets = new();
 
@@ -380,6 +383,12 @@
 
             Snackbar.Add("تمامی تنظیمات سیستم با موفقیت ذخیره شد.", MudBlazor.Severity.Success);
             await LoadSettingsAsync();
+
+            // کلیدهای ACL_* رفتار کل صفحه را عوض می‌کنند (نوار هشدار، منوها، دکمه‌ها).
+            // Pay2AccessApiService یک بار در شروع لود می‌شود و تا رفرش کامل مرورگر
+            // همان مقدار قدیمی را نگه می‌دارد؛ پس اینجا صریحاً تازه‌اش می‌کنیم.
+            await Pay2Access.EnsureLoadedAsync(forceReload: true);
+            await OnAccessChanged.InvokeAsync();
         }
         catch (Exception ex)
         {

@@ -74,6 +74,16 @@ INSERT INTO dbo.SAL_CHEK (USERCO, [OBJECT], [RUN], [SEE], [INP], [UPD], [DEL], [
 SELECT 9002, IDH, 1, 1, 0, 0, 0, GETDATE()
 FROM dbo.TFORMS WHERE FORMNAME LIKE N'PAY2[_]%';
 
+-- ...ولی دسترسی payviewer به «احکام کارگزینی» کامل بسته است.
+-- این حالت جداگانه لازم است: «فقط‌خواندنی» و «اصلاً دسترسی ندارد» دو چیز متفاوتند
+-- و باگی که کاربر گزارش کرد (دکمه‌ی احکام باز می‌شد و بعد ۴۰۳ می‌گرفت) فقط با
+-- حالت دوم دیده می‌شود.
+UPDATE C
+SET [RUN] = 0, [SEE] = 0, [INP] = 0, [UPD] = 0, [DEL] = 0
+FROM dbo.SAL_CHEK C
+JOIN dbo.TFORMS F ON F.IDH = C.[OBJECT]
+WHERE C.USERCO = 9002 AND F.FORMNAME = N'PAY2_DECREE';
+
 -- payscoped — دسترسی کامل به فرم‌ها، ولی در گام بعد فقط به یک کارگاه وصل می‌شود
 INSERT INTO dbo.SAL_CHEK (USERCO, [OBJECT], [RUN], [SEE], [INP], [UPD], [DEL], [CRT])
 SELECT 9003, IDH, 1, 1, 1, 1, 1, GETDATE()
@@ -141,6 +151,12 @@ IF EXISTS (SELECT 1 FROM dbo.SALA_DTL
     THROW 54004, N'رمز کدشده طول درستی ندارد — احتمالاً آپاستروف‌ها در رشته escape نشده‌اند.', 1;
 IF NOT EXISTS (SELECT 1 FROM dbo.SAL_CHEK WHERE USERCO = 9002 AND [INP] = 0)
     THROW 54002, N'دسترسی محدود payviewer درست ثبت نشد.', 1;
+-- بدون این، آزمونِ «فرمِ کاملاً بسته» بی‌صدا به آزمونِ «فقط‌خواندنی» تبدیل می‌شود.
+IF NOT EXISTS (SELECT 1 FROM dbo.SAL_CHEK C
+                JOIN dbo.TFORMS F ON F.IDH = C.[OBJECT]
+                WHERE C.USERCO = 9002 AND F.FORMNAME = N'PAY2_DECREE'
+                  AND C.[RUN] = 0 AND C.[SEE] = 0)
+    THROW 54007, N'دسترسی احکام برای payviewer بسته نشد — آزمون «فرم بسته» چیزی را ثابت نمی‌کند.', 1;
 -- اگر این دو برابر باشند، آزمون محدودسازی کارگاه بی‌معنا می‌شود.
 IF (SELECT COUNT(*) FROM dbo.PAY2_USER_WS WHERE USERCO = 9001)
    <= (SELECT COUNT(*) FROM dbo.PAY2_USER_WS WHERE USERCO = 9003)

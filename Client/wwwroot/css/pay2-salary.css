@@ -2158,6 +2158,23 @@
         transform: translateY(-1px);
     }
 
+/* ─── حالتِ «دسترسی ندارید» برای دکمه‌های گوست ───
+   btn-ghost-pay2 هیچ استایل :disabled نداشت؛ نتیجه این بود که دکمه‌ی بسته‌شده
+   دقیقاً مثل دکمه‌ی باز دیده می‌شد، روی هاور هم رنگ می‌گرفت، و کلیکِ بی‌اثرش
+   به‌جای «اجازه نداری» شبیه «برنامه خراب است» به‌نظر می‌رسید. */
+.btn-ghost-pay2:disabled {
+    opacity: 0.45;
+    filter: grayscale(1);
+    cursor: not-allowed;
+}
+
+    /* هاورهای رنگیِ p2-action-* با important تعریف شده‌اند، پس باید صریح خنثی شوند. */
+    .btn-ghost-pay2:disabled:hover {
+        background: transparent !important;
+        color: var(--p2-text-muted) !important;
+        transform: none !important;
+    }
+
 /* ترانزیشن نرم برای همه دکمه‌های گوست */
 .btn-ghost-pay2 {
     transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);

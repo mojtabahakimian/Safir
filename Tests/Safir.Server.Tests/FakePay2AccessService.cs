@@ -81,6 +81,15 @@ public sealed class FakePay2AccessService : IPay2AccessService
         return Task.CompletedTask;
     }
 
+    /// <summary>چند بار کشِ تنظیمات دور ریخته شد — ذخیره‌ی تنظیمات باید این را زیاد کند.</summary>
+    public int ConfigInvalidations { get; private set; }
+
+    public Task InvalidateConfigAsync()
+    {
+        ConfigInvalidations++;
+        return Task.CompletedTask;
+    }
+
     public Task AuditAsync(Pay2AuditEntry entry)
     {
         AuditLog.Add(entry);

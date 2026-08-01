@@ -344,7 +344,9 @@ else
 
             @if (ActiveTab == "settings")
             {
-                <Safir.Client.Pages.Salary.Tabs.SettingsTab />
+                @* روشن/خاموش کردن ACL_ENFORCE از همین تب انجام می‌شود، پس بعد از ذخیره
+                   باید نوار هشدار و منوها دوباره رندر شوند. *@
+                <Safir.Client.Pages.Salary.Tabs.SettingsTab OnAccessChanged="OnAccessRefreshed" />
             }
             @if (ActiveTab == "itemdefs")
             {
@@ -389,6 +391,15 @@ else
 
 }
 @code {
+
+    /// <summary>
+    /// بعد از ذخیره‌ی تنظیمات (که ممکن است ACL_ENFORCE را عوض کرده باشد) صدا زده می‌شود.
+    /// SettingsTab پیش از این، Pay2Access را تازه کرده؛ اینجا فقط صفحه دوباره رندر می‌شود
+    /// تا نوار هشدار و آیتم‌های منو با وضعیت جدید بخوانند.
+    /// عمداً کاربر را از تب فعلی بیرون نمی‌اندازیم؛ اگر مجوزی نداشته باشد سرور
+    /// خودش با پیام روشن رد می‌کند.
+    /// </summary>
+    private void OnAccessRefreshed() => StateHasChanged();
 
     private bool HasAnyAccess()
     {

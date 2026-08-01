@@ -26,7 +26,12 @@ builder.Services.AddScoped<LookupApiService>();
 
 // --- Register HttpClient ---
 // Configure HttpClient to talk to the Server project's base address
-builder.Services.AddScoped(sp => new HttpClient { BaseAddress = new Uri(builder.HostEnvironment.BaseAddress) });
+// Pay2ForbiddenHandler متنِ فارسیِ پاسخ ۴۰۳ را بالا می‌دهد؛ بدون آن کاربر فقط
+// «Response status code does not indicate success: 403 (Forbidden).» می‌دید.
+builder.Services.AddScoped(sp => new HttpClient(new Safir.Client.Services.Pay2ForbiddenHandler())
+{
+    BaseAddress = new Uri(builder.HostEnvironment.BaseAddress)
+});
 // --- End HttpClient ---
 
 #region Mine
