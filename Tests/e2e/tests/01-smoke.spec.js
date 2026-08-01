@@ -103,6 +103,41 @@ test.describe('کنترل دسترسی در سطح API', () => {
 
 test.describe('اعلان‌های Snackbar', () => {
 
+  /**
+   * ساختنِ یک اسنک‌بارِ قابل‌اتکا — مستقل از اینکه دیتابیس بالا هست یا نه.
+   *
+   * نسخه‌ی اول این تست‌ها به اسنک‌بارِ خطای اتصالِ صفحه‌ی ورود تکیه می‌کرد،
+   * ولی آن فقط وقتی ظاهر می‌شود که دیتابیس *در دسترس نباشد*. یعنی تست‌ها
+   * بدون دیتابیس سبز می‌شدند و با دیتابیسِ سالم می‌افتادند — تستی که فقط
+   * وقتی برنامه خراب است کار کند، ارزشی ندارد.
+   *
+   * «ذخیره تنظیمات دیتابیس» فقط در localStorage می‌نویسد و بعد اسنک‌بار
+   * موفقیت نشان می‌دهد؛ هیچ رفت‌وبرگشتی با سرور ندارد، پس در هر دو حالت
+   * یکسان عمل می‌کند.
+   */
+  async function triggerSnackbar(page) {
+    await page.goto('/login', { waitUntil: 'networkidle' });
+
+    await page.getByText('تنظیمات سرور و دیتابیس').click();
+
+    // فرم تا وقتی معتبر نباشد ذخیره نمی‌کند، پس همه‌ی فیلدهای الزامی را پر می‌کنیم.
+    await field(page, 'سرور (IP/Name)').fill('127.0.0.1,1433');
+    await field(page, 'نام دیتابیس').fill('SafirTestDb');
+    const dbUser = field(page, 'نام کاربری دیتابیس');
+    if (await dbUser.count() > 0) {
+      await dbUser.fill('sa');
+      await field(page, 'رمز عبور دیتابیس').fill('placeholder');
+    }
+
+    await page.getByRole('button', { name: 'ذخیره تنظیمات دیتابیس' }).click();
+
+    // دقیقاً همان اسنک‌بار را هدف می‌گیریم، نه هر اسنک‌باری که روی صفحه باشد.
+    const snackbar = page.locator('.mud-snackbar')
+      .filter({ hasText: 'تنظیمات دیتابیس با موفقیت ذخیره شد' }).first();
+    await expect(snackbar).toBeVisible({ timeout: 15_000 });
+    return snackbar;
+  }
+
   test('اعلان با کلیک روی × واقعاً محو می‌شود، نه اینکه دو ثانیه بی‌حرکت بماند', async ({ page }) => {
     // باگ واقعی: قانون CSS برای «.mud-snackbar» یک انیمیشنِ ورود را با
     // !important روی همان پراپرتیِ animation تحمیل می‌کرد که خودِ
@@ -111,33 +146,29 @@ test.describe('اعلان‌های Snackbar', () => {
     // نبود — اسنک‌بار با opacity کامل ثابت می‌ماند تا HideTransitionDuration
     // (پیش‌فرض ۲ ثانیه) تمام شود و بعد یک‌باره از DOM حذف می‌شد؛ برای
     // کاربر یعنی «دکمه‌ی بستن اثر نمی‌کند».
-    //
-    // این تست بدون دیتابیس هم قابل اجراست: صفحه‌ی ورود با دیتابیسِ خاموش
-    // (وضعیت این محیط CI) خودش یک اسنک‌بار خطای دائمی نشان می‌دهد.
-    await page.goto('/login', { waitUntil: 'networkidle' });
-    const snackbar = page.locator('.mud-snackbar').first();
-    await expect(snackbar).toBeVisible({ timeout: 15_000 });
+    const snackbar = await triggerSnackbar(page);
 
     await snackbar.locator('.mud-snackbar-content-action button').first().click();
 
-    // با HideTransitionDuration=200ms (Program.cs)، ۴۰۰ میلی‌ثانیه پس از
+    // با HideTransitionDuration=200ms (Program.cs)، ۶۰۰ میلی‌ثانیه پس از
     // کلیک باید کاملاً رفته باشد؛ نه اینکه ۲ ثانیه بی‌حرکت روی صفحه بماند.
-    await expect(snackbar).toHaveCount(0, { timeout: 400 });
+    await expect(snackbar).toHaveCount(0, { timeout: 600 });
   });
 
   test('اعلان‌ها سریع ظاهر می‌شوند، نه با یک ثانیه تأخیر محو-به-داخل', async ({ page }) => {
     // شکایت کاربر: محو شدنِ ورودیِ پیش‌فرض MudBlazor یک ثانیه طول می‌کشد
     // و «کند» و «اعصاب خردکن» است. Program.cs حالا ShowTransitionDuration
     // را به ۱۸۰ میلی‌ثانیه کاهش داده؛ اینجا تضمین می‌کنیم دیر نشده باشد.
-    await page.goto('/login', { waitUntil: 'networkidle' });
-    const snackbar = page.locator('.mud-snackbar').first();
-    await expect(snackbar).toBeVisible({ timeout: 15_000 });
+    const snackbar = await triggerSnackbar(page);
 
-    // خیلی زودتر از ۱ ثانیه‌ی پیش‌فرض قدیمی باید کاملاً به شفافیت نهایی
-    // رسیده باشد (نه صفر، نه در حال محو شدن).
-    await page.waitForTimeout(250);
-    const opacity = Number(await snackbar.evaluate(el => getComputedStyle(el).opacity));
-    expect(opacity, 'اسنک‌بار باید تا این لحظه کاملاً ظاهر شده باشد').toBeGreaterThan(0.8);
+    // نکته: toBeVisible در Playwright به opacity کاری ندارد، پس درست همان
+    // لحظه‌ای برمی‌گردد که اسنک‌بار با شفافیت ~۰ وارد شده. سنجه‌ی واقعی این
+    // است که «چقدر زود» به شفافیت کامل می‌رسد: با ۱۸۰ میلی‌ثانیه‌ی فعلی
+    // خیلی زیر ۵۰۰ است، با پیش‌فرض قدیمیِ ۱۰۰۰ میلی‌ثانیه نمی‌رسید.
+    await expect
+      .poll(async () => Number(await snackbar.evaluate(el => getComputedStyle(el).opacity)),
+            { timeout: 500, message: 'اسنک‌بار باید خیلی سریع کاملاً ظاهر شود' })
+      .toBeGreaterThan(0.8);
   });
 });
 
