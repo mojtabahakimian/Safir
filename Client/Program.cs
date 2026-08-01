@@ -26,7 +26,12 @@ builder.Services.AddScoped<LookupApiService>();
 
 // --- Register HttpClient ---
 // Configure HttpClient to talk to the Server project's base address
-builder.Services.AddScoped(sp => new HttpClient { BaseAddress = new Uri(builder.HostEnvironment.BaseAddress) });
+// Pay2ForbiddenHandler متنِ فارسیِ پاسخ ۴۰۳ را بالا می‌دهد؛ بدون آن کاربر فقط
+// «Response status code does not indicate success: 403 (Forbidden).» می‌دید.
+builder.Services.AddScoped(sp => new HttpClient(new Safir.Client.Services.Pay2ForbiddenHandler())
+{
+    BaseAddress = new Uri(builder.HostEnvironment.BaseAddress)
+});
 // --- End HttpClient ---
 
 #region Mine
@@ -37,11 +42,21 @@ builder.Services.AddSingleton<AppState>();
 builder.Services.AddAuthorizationCore(); // Core authorization services
 // Register our custom AuthenticationStateProvider
 builder.Services.AddScoped<AuthenticationStateProvider, ApiAuthenticationStateProvider>();
+builder.Services.AddScoped<Safir.Client.Services.Pay2AccessApiService>();
 // Register our AuthService for handling login/logout logic
 builder.Services.AddScoped<IAuthService, AuthService>();
 // --- End Authentication Services ---
 
-builder.Services.AddMudServices();
+// پیش‌فرض MudBlazor برای اسنک‌بار خیلی کند است (محو شدن ورود ۱ ثانیه، خروج
+// ۲ ثانیه) — دقیقاً همان چیزی که کاربر «کند» توصیفش کرد. اینجا سرعتش را از
+// طریق خودِ تنظیمات کتابخانه بالا می‌بریم، نه با override زدنِ CSS روی
+// پراپرتی animation — تجربه‌ی قبلی نشان داد آن مسیر با انیمیشنِ این‌لاینِ
+// خودِ MudBlazor تصادم می‌کند و دکمه‌ی بستن را از کار می‌اندازد.
+builder.Services.AddMudServices(config =>
+{
+    config.SnackbarConfiguration.ShowTransitionDuration = 180;
+    config.SnackbarConfiguration.HideTransitionDuration = 200;
+});
 
 builder.Services.AddScoped<ThemeService>();
 

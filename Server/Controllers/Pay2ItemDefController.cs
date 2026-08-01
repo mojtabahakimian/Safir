@@ -5,6 +5,8 @@ using Safir.Shared.Interfaces;
 using Safir.Shared.Models.Salary;
 using System.Security.Claims;
 
+using Safir.Server.Security;
+using Safir.Shared.Constants;
 namespace Safir.Server.Controllers
 {
     [ApiController]
@@ -20,6 +22,7 @@ namespace Safir.Server.Controllers
         }
 
         [HttpGet]
+        [Pay2Authorize(Pay2Forms.ItemDef, Pay2Perm.See)]
         public async Task<ActionResult<IEnumerable<Pay2ItemDefDto>>> GetAll()
         {
             const string sql = "SELECT * FROM PAY2_ITEM_DEF ORDER BY SORT_ORDER ASC, ITEM_NAME ASC";
@@ -28,6 +31,7 @@ namespace Safir.Server.Controllers
         }
 
         [HttpPost("save")]
+        [Pay2Authorize(Pay2Forms.ItemDef, Pay2Perm.Inp)]
         public async Task<ActionResult<int>> Save([FromBody] Pay2ItemDefDto item)
         {
             var userIdString = User.FindFirstValue(ClaimTypes.NameIdentifier);
@@ -103,6 +107,7 @@ namespace Safir.Server.Controllers
         }
 
         [HttpDelete("{id:int}")]
+        [Pay2Authorize(Pay2Forms.ItemDef, Pay2Perm.Del)]
         public async Task<IActionResult> Delete(int id)
         {
             try

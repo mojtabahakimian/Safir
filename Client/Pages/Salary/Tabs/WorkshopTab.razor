@@ -1,4 +1,5 @@
-﻿@inject Pay2WorkshopApiService WorkshopApi
+﻿@inject Safir.Client.Services.Pay2AccessApiService Pay2Access
+@inject Pay2WorkshopApiService WorkshopApi
 @using Safir.Shared.Models
 @using Safir.Shared.Models.Salary
 @inject LookupApiService LookupService
@@ -561,7 +562,14 @@
                 </div>
 
                 <div class="form-field">
-                    <label>سایر کسورات <span class="p2-text-muted" style="font-size:11px;">(اختیاری)</span></label>
+                    @* «اختیاری» فقط تا وقتی درست است که هیچ‌کس سایر کسورات نداشته باشد؛
+                       به‌محض اینکه در کارکرد مبلغی ثبت شود، صدور سند بدون این حساب متوقف
+                       می‌شود. برچسب قبلی همین را پنهان می‌کرد و کاربر تازه سرِ صدور سند
+                       متوجه می‌شد. *@
+                    <label>
+                        سایر کسورات
+                        <span class="p2-text-muted" style="font-size:11px;">(اگر در کارکرد «سایر کسورات» یا کسر کار ثبت شود، الزامی است)</span>
+                    </label>
                     <Pay2Select TItem="LookupDto<string>" TValue="string" SearchItems="SearchAccountsAsync" Items="Init_OTHER_DED_HES"
                                 Value="CurrentWorkshopAcc.OTHER_DED_HES"
                                 ValueChanged="@(v => { CurrentWorkshopAcc.OTHER_DED_HES = v; ValidateAccount(v, nameof(CurrentWorkshopAcc.OTHER_DED_HES), "سایر کسورات"); })"
@@ -580,7 +588,7 @@
                 <div style="display:flex; gap:10px;">
                     <button class="btn-primary-pay2"
                             @onclick="SaveWorkshopAsync"
-                            disabled="@IsSavingWorkshop">
+                            disabled="@(IsSavingWorkshop || (CurrentWorkshop.WS_ID == 0 ? !Pay2Access.CanInp(Safir.Shared.Constants.Pay2Forms.Workshop) : !Pay2Access.CanUpd(Safir.Shared.Constants.Pay2Forms.Workshop)))">
                         @if (IsSavingWorkshop)
                         {
                             <span class="p2-spinner" style="width:14px;height:14px;border-width:2px;"></span>
@@ -604,7 +612,7 @@
                 {
                     <button class="btn-danger-pay2"
                             @onclick="DeleteWorkshopAsync"
-                            disabled="@IsSavingWorkshop">
+                            disabled="@(IsSavingWorkshop || !Pay2Access.CanDel(Safir.Shared.Constants.Pay2Forms.Workshop))">
                         <i class="bi bi-trash"></i> حذف کارگاه
                     </button>
                 }

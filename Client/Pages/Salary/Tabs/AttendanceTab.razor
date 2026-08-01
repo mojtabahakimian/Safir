@@ -1,3 +1,4 @@
+﻿@inject Safir.Client.Services.Pay2AccessApiService Pay2Access
 ﻿@using Safir.Shared.Models.Salary
 @inject Safir.Client.Services.Pay2AttendanceApiService AttApi
 @inject Safir.Client.Services.Pay2WorkshopApiService WorkshopApi
@@ -279,7 +280,7 @@
             </div>
 
             <!-- سمت چپ: دکمه ایجاد -->
-            <button class="btn-primary-pay2" @onclick="OpenNewPeriodModal" disabled="@(SelectedWsId <= 0 || IsLoading)">
+            <button class="btn-primary-pay2" @onclick="OpenNewPeriodModal" disabled="@(SelectedWsId <= 0 || IsLoading || !Pay2Access.CanInp(Safir.Shared.Constants.Pay2Forms.Attendance))">
                 <i class="bi bi-calendar-plus"></i> ایجاد دوره جدید
             </button>
         </div>
@@ -426,7 +427,7 @@
                         <input type="text" class="pay2-search-input" style="width: 100%; height: 38px;" placeholder="جستجوی کد یا نام..." @bind="SearchTerm" @bind:event="oninput" />
                     </div>
 
-                    <button class="btn-success-pay2" style="background-color: var(--p2-success-text); height: 38px;" @onclick="SaveBulk" disabled="@(PeriodData.Period.IsReadOnly || IsSaving)">
+                    <button class="btn-success-pay2" style="background-color: var(--p2-success-text); height: 38px;" @onclick="SaveBulk" disabled="@(PeriodData.Period.IsReadOnly || IsSaving || !Pay2Access.CanInp(Safir.Shared.Constants.Pay2Forms.Attendance))">
                         @if (IsSaving)
                         {
                             <span class="p2-spinner"></span>
@@ -440,13 +441,13 @@
 
                     @if (PeriodData.Period.STATUS == 1)
                     {
-                        <button class="btn-primary-pay2" style="background:#2563eb; border-color:#2563eb; height: 38px;" @onclick="ClosePeriod" disabled="@IsSaving">
+                        <button class="btn-primary-pay2" style="background:#2563eb; border-color:#2563eb; height: 38px;" @onclick="ClosePeriod" disabled="@(IsSaving || !Pay2Access.Access.CanRun(Safir.Shared.Constants.Pay2Forms.ActPeriodClose))">
                             <i class="bi bi-lock"></i> بستن دوره
                         </button>
                     }
                     else if (PeriodData.Period.STATUS == 2)
                     {
-                        <button class="btn-outline-pay2" style="color:#d97706; border-color:#fde68a; height: 38px;" @onclick="ReopenPeriod" disabled="@IsSaving">
+                        <button class="btn-outline-pay2" style="color:#d97706; border-color:#fde68a; height: 38px;" @onclick="ReopenPeriod" disabled="@(IsSaving || !Pay2Access.Access.CanRun(Safir.Shared.Constants.Pay2Forms.ActPeriodReopen))">
                             <i class="bi bi-unlock"></i> باز کردن مجدد
                         </button>
                     }
@@ -620,7 +621,7 @@
         </div>
         <div class="pay2-modal-footer" style="justify-content: flex-end;">
             <button class="btn-outline-pay2" @onclick="CloseNewPeriodModal" style="margin-left: 10px;">انصراف</button>
-            <button class="btn-primary-pay2" @onclick="ConfirmNewPeriod" disabled="@IsLoading">ایجاد و ورود</button>
+            <button class="btn-primary-pay2" @onclick="ConfirmNewPeriod" disabled="@(IsLoading || !Pay2Access.CanInp(Safir.Shared.Constants.Pay2Forms.Attendance))">ایجاد و ورود</button>
         </div>
     </div>
 }
@@ -674,7 +675,7 @@
 
         <div class="pay2-modal-footer" style="justify-content: flex-end;">
             <button class="btn-outline-pay2" @onclick="() => ShowDynamicModal = false" style="margin-left: 10px;">انصراف</button>
-            <button class="btn-primary-pay2" @onclick="SaveDynamicValues" disabled="@(!DynamicValues.Any())">
+            <button class="btn-primary-pay2" @onclick="SaveDynamicValues" disabled="@(!DynamicValues.Any() || !Pay2Access.CanUpd(Safir.Shared.Constants.Pay2Forms.Attendance))">
                 <i class="bi bi-floppy" style="margin-left: 4px;"></i> ذخیره مقادیر
             </button>
         </div>

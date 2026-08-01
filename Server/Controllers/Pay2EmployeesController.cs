@@ -11,6 +11,9 @@ using System.Data;
 using System.Security.Claims;
 using static Safir.Shared.Models.Salary.Pay2LeaveDto;
 
+using Safir.Server.Security;
+using Safir.Shared.Constants;
+using Safir.Shared.Interfaces;
 namespace Safir.Server.Controllers
 {
     [ApiController]
@@ -59,6 +62,7 @@ namespace Safir.Server.Controllers
 
         // این متد را داخل کلاس Pay2EmployeesController اضافه کنید:
         [HttpGet("jobs-lookup")]
+        [Pay2Authorize(Pay2Forms.Employee, Pay2Perm.See)]
         public async Task<ActionResult<IEnumerable<LookupDto<int>>>> GetJobsLookup([FromQuery] string? searchTerm)
         {
             try
@@ -96,17 +100,32 @@ namespace Safir.Server.Controllers
         }
 
         [HttpGet]
+        [Pay2Authorize(Pay2Forms.Employee, Pay2Perm.See)]
         public async Task<ActionResult<IEnumerable<Pay2EmployeeDto>>> GetAll()
         {
+            var (noScope, allowedWsIds) = await GetWorkshopScopeAsync();
+
             const string sql = @"
                 SELECT e.*, w.WS_NAME AS WorkshopName, j.JOB_NAME AS JobName
                 FROM PAY2_EMPLOYEE e
                 LEFT JOIN PAY2_WORKSHOP w ON e.WS_ID = w.WS_ID
                 LEFT JOIN PAY2_JOB j ON e.JOB_ID = j.JOB_ID
+                WHERE (@noScope = 1 OR e.WS_ID IN @allowedWsIds)
                 ORDER BY e.IS_ACTIVE DESC, e.EMP_ID DESC";
 
-            var data = await _db.DoGetDataSQLAsync<Pay2EmployeeDto>(sql);
+            var data = await _db.DoGetDataSQLAsync<Pay2EmployeeDto>(sql, new { noScope, allowedWsIds });
             return Ok(data);
+        }
+
+        /// <summary>محدوده کارگاه‌های مجاز کاربر جاری برای فیلترکردن لیست‌ها</summary>
+        private async Task<(bool noScope, List<int> allowedWsIds)> GetWorkshopScopeAsync()
+        {
+            int userCoScope = int.Parse(User.FindFirst(BaseknowClaimTypes.IDD)?.Value ?? "0");
+            var access = await HttpContext.RequestServices
+                .GetRequiredService<IPay2AccessService>().GetAccessAsync(userCoScope);
+            bool noScope = !access.AclEnforced || !access.WsScopeEnforced;
+            // لیست خالی در Dapper به IN () تبدیل می‌شود؛ مقدار ناموجود -1 از خطا جلوگیری می‌کند
+            return (noScope, access.AllowedWorkshopIds.DefaultIfEmpty(-1).ToList());
         }
 
         [HttpPost("save")]
@@ -114,6 +133,16 @@ namespace Safir.Server.Controllers
         {
             var userIdString = User.FindFirstValue(ClaimTypes.NameIdentifier);
             if (!int.TryParse(userIdString, out int userCod)) return Unauthorized();
+
+            var __accessEmp = HttpContext.RequestServices.GetRequiredService<IPay2AccessService>();
+            var __needEmp = emp.EMP_ID == 0 ? Pay2Perm.Inp : Pay2Perm.Upd;
+            if (!await __accessEmp.HasAndAuditAsync(HttpContext, userCod, Pay2Forms.Employee, __needEmp))
+                return StatusCode(403, emp.EMP_ID == 0
+                    ? "برای ثبت پرسنل جدید دسترسی لازم را ندارید."
+                    : "برای ویرایش اطلاعات پرسنل دسترسی لازم را ندارید.");
+
+            await HttpContext.RequestServices.GetRequiredService<Pay2ScopeResolver>()
+                .EnsureWorkshopAsync(userCod, emp.WS_ID);
 
             try
             {
@@ -213,8 +242,10 @@ namespace Safir.Server.Controllers
 
         // --- بخش احکام پرسنل ---
         [HttpGet("{empId:int}/decrees")]
-        public async Task<ActionResult<IEnumerable<Pay2DecreeDto>>> GetDecrees(int empId)
+        [Pay2Authorize(Pay2Forms.Decree, Pay2Perm.See)]
+        public async Task<ActionResult<IEnumerable<Pay2DecreeDto>>> GetDecrees(int empId, [FromServices] Pay2ScopeResolver scopeResolver)
         {
+            await scopeResolver.EnsureWorkshopAsync(int.Parse(User.FindFirst(BaseknowClaimTypes.IDD)?.Value ?? "0"), Pay2ScopeKind.Employee, empId);
             const string sql = @"
                 SELECT D.*, T.TMPL_NAME AS TemplateName
                 FROM PAY2_DECREE D
@@ -224,8 +255,19 @@ namespace Safir.Server.Controllers
         }
 
         [HttpPost("decree/save")]
+        [Pay2Authorize(Pay2Forms.Decree, Pay2Perm.Inp)]
         public async Task<ActionResult<int>> SaveDecree([FromBody] Pay2DecreeDto decree)
         {
+            if (decree.IS_CONFIRMED == true)
+            {
+                int __uCodDecree = int.Parse(User.FindFirst(BaseknowClaimTypes.IDD)?.Value ?? "0");
+                var __accessServiceDecree = HttpContext.RequestServices.GetRequiredService<IPay2AccessService>();
+                if (!await __accessServiceDecree.HasAndAuditAsync(HttpContext, __uCodDecree, Pay2Forms.ActDecreeConfirm, Pay2Perm.Run))
+                {
+                    return StatusCode(403, "برای تأیید نهایی حکم کارگزینی دسترسی لازم را ندارید.");
+                }
+            }
+
             var userIdString = User.FindFirstValue(ClaimTypes.NameIdentifier);
             if (!int.TryParse(userIdString, out int userCod)) return Unauthorized();
 
@@ -394,16 +436,25 @@ namespace Safir.Server.Controllers
         // اضافه کردن به فایل Pay2EmployeesController.cs
 
         [HttpGet("templates-lookup")]
+        [Pay2Authorize(Pay2Forms.ItemDef, Pay2Perm.See)]
         public async Task<ActionResult<IEnumerable<LookupDto<int>>>> GetTemplatesLookup()
         {
-            // خواندن قالب‌های فعال برای پر کردن Dropdown
-            const string sql = "SELECT TMPL_ID AS Id, TMPL_NAME AS Name FROM PAY2_ITEM_TEMPLATE WHERE IS_ACTIVE = 1 ORDER BY TMPL_NAME";
-            return Ok(await _db.DoGetDataSQLAsync<LookupDto<int>>(sql));
+            // خواندن قالب‌های فعال برای پر کردن Dropdown — WS_ID خالی یعنی قالب عمومی
+            var (noScope, allowedWsIds) = await GetWorkshopScopeAsync();
+            const string sql = @"
+                SELECT TMPL_ID AS Id, TMPL_NAME AS Name
+                FROM PAY2_ITEM_TEMPLATE
+                WHERE IS_ACTIVE = 1
+                  AND (@noScope = 1 OR WS_ID IS NULL OR WS_ID IN @allowedWsIds)
+                ORDER BY TMPL_NAME";
+            return Ok(await _db.DoGetDataSQLAsync<LookupDto<int>>(sql, new { noScope, allowedWsIds }));
         }
 
         [HttpDelete("decree/{decId:int}")]
-        public async Task<IActionResult> DeleteDecree(int decId)
+        [Pay2Authorize(Pay2Forms.Decree, Pay2Perm.Del)]
+        public async Task<IActionResult> DeleteDecree(int decId, [FromServices] Pay2ScopeResolver scopeResolver)
         {
+            await scopeResolver.EnsureWorkshopAsync(int.Parse(User.FindFirst(BaseknowClaimTypes.IDD)?.Value ?? "0"), Pay2ScopeKind.Decree, decId);
             try
             {
                 await _db.ExecuteInTransactionAsync(async (conn, tran) =>
@@ -426,6 +477,7 @@ namespace Safir.Server.Controllers
 
 
         [HttpGet("itemdefs-lookup")]
+        [Pay2Authorize(Pay2Forms.ItemDef, Pay2Perm.See)]
         public async Task<ActionResult<IEnumerable<LookupDto<int>>>> GetItemDefsLookup()
         {
             // فقط آیتم‌های پرداختی (نوع 1 و 2) را می‌آوریم و کسورات اتوماتیک را فیلتر می‌کنیم
@@ -441,8 +493,10 @@ namespace Safir.Server.Controllers
         }
 
         [HttpGet("decree/{decId:int}/lines")]
-        public async Task<ActionResult<IEnumerable<Pay2DecreeLineDto>>> GetDecreeLines(int decId)
+        [Pay2Authorize(Pay2Forms.Decree, Pay2Perm.See)]
+        public async Task<ActionResult<IEnumerable<Pay2DecreeLineDto>>> GetDecreeLines(int decId, [FromServices] Pay2ScopeResolver scopeResolver)
         {
+            await scopeResolver.EnsureWorkshopAsync(int.Parse(User.FindFirst(BaseknowClaimTypes.IDD)?.Value ?? "0"), Pay2ScopeKind.Decree, decId);
             const string sql = @"
                 SELECT L.DEC_ID, L.ITEM_ID, I.ITEM_NAME, L.AMOUNT, L.NOMINAL_AMOUNT_OV, L.OFFICIAL_AMOUNT_OV, L.INS_OV, L.TAX_OV, L.BASIS_OV, L.SHIFT_MODE_OV
                 FROM PAY2_DECREE_LINE L
@@ -454,6 +508,7 @@ namespace Safir.Server.Controllers
         }
 
         [HttpPost("decree/line/save")]
+        [Pay2Authorize(Pay2Forms.Decree, Pay2Perm.Upd)]
         public async Task<IActionResult> SaveDecreeLine([FromBody] Pay2DecreeLineDto line)
         {
             try
@@ -537,8 +592,10 @@ namespace Safir.Server.Controllers
 
 
         [HttpDelete("decree/{decId:int}/line/{itemId:int}")]
-        public async Task<IActionResult> DeleteDecreeLine(int decId, int itemId)
+        [Pay2Authorize(Pay2Forms.Decree, Pay2Perm.Upd)]
+        public async Task<IActionResult> DeleteDecreeLine(int decId, int itemId, [FromServices] Pay2ScopeResolver scopeResolver)
         {
+            await scopeResolver.EnsureWorkshopAsync(int.Parse(User.FindFirst(BaseknowClaimTypes.IDD)?.Value ?? "0"), Pay2ScopeKind.Decree, decId);
             try
             {
                 await _db.ExecuteInTransactionAsync(async (conn, tran) =>
@@ -560,23 +617,32 @@ namespace Safir.Server.Controllers
         }
 
         [HttpGet("lookup")]
+        [Pay2Authorize(Pay2Forms.Employee, Pay2Perm.See)]
         public async Task<ActionResult<IEnumerable<LookupDto<int>>>> GetEmployeesLookup()
         {
-            const string sql = "SELECT EMP_ID AS Id, EMP_CODE + ' - ' + LAST_NAME + ' ' + FIRST_NAME AS Name FROM PAY2_EMPLOYEE WHERE IS_ACTIVE = 1";
-            return Ok(await _db.DoGetDataSQLAsync<LookupDto<int>>(sql));
+            var (noScope, allowedWsIds) = await GetWorkshopScopeAsync();
+            const string sql = @"
+                SELECT EMP_ID AS Id, EMP_CODE + ' - ' + LAST_NAME + ' ' + FIRST_NAME AS Name
+                FROM PAY2_EMPLOYEE
+                WHERE IS_ACTIVE = 1 AND (@noScope = 1 OR WS_ID IN @allowedWsIds)";
+            return Ok(await _db.DoGetDataSQLAsync<LookupDto<int>>(sql, new { noScope, allowedWsIds }));
         }
 
         [HttpGet("{empId:int}/leave-balance")]
-        public async Task<ActionResult<int>> GetLeaveBalance(int empId, [FromQuery] int year)
+        [Pay2Authorize(Pay2Forms.Employee, Pay2Perm.See)]
+        public async Task<ActionResult<int>> GetLeaveBalance(int empId, [FromQuery] int year, [FromServices] Pay2ScopeResolver scopeResolver)
         {
+            await scopeResolver.EnsureWorkshopAsync(int.Parse(User.FindFirst(BaseknowClaimTypes.IDD)?.Value ?? "0"), Pay2ScopeKind.Employee, empId);
             const string sql = "SELECT ISNULL(BALANCE_MIN, 0) FROM PAY2_LEAVE_BAL WHERE EMP_ID = @empId AND YEAR = @year";
             var bal = await _db.DoGetDataSQLAsyncSingle<int?>(sql, new { empId, year });
             return Ok(bal ?? 0);
         }
 
         [HttpGet("{empId:int}/leaves")]
-        public async Task<ActionResult<IEnumerable<Pay2LeaveDto>>> GetLeaves(int empId)
+        [Pay2Authorize(Pay2Forms.Employee, Pay2Perm.See)]
+        public async Task<ActionResult<IEnumerable<Pay2LeaveDto>>> GetLeaves(int empId, [FromServices] Pay2ScopeResolver scopeResolver)
         {
+            await scopeResolver.EnsureWorkshopAsync(int.Parse(User.FindFirst(BaseknowClaimTypes.IDD)?.Value ?? "0"), Pay2ScopeKind.Employee, empId);
             const string sql = "SELECT * FROM PAY2_LEAVE WHERE EMP_ID = @empId ORDER BY START_DATE DESC";
             return Ok(await _db.DoGetDataSQLAsync<Pay2LeaveDto>(sql, new { empId }));
         }
@@ -586,6 +652,17 @@ namespace Safir.Server.Controllers
         {
             var userIdString = User.FindFirstValue(ClaimTypes.NameIdentifier);
             if (!int.TryParse(userIdString, out int userCod)) return Unauthorized();
+
+            // ثبت برگه جدید نیاز به مجوز درج و ویرایش برگه موجود نیاز به مجوز ویرایش دارد
+            var accessLeave = HttpContext.RequestServices.GetRequiredService<IPay2AccessService>();
+            var neededLeavePerm = leave.LEV_ID == 0 ? Pay2Perm.Inp : Pay2Perm.Upd;
+            if (!await accessLeave.HasAndAuditAsync(HttpContext, userCod, Pay2Forms.Employee, neededLeavePerm))
+                return StatusCode(403, leave.LEV_ID == 0
+                    ? "برای ثبت مرخصی جدید دسترسی لازم را ندارید."
+                    : "برای ویرایش مرخصی دسترسی لازم را ندارید.");
+
+            await HttpContext.RequestServices.GetRequiredService<Pay2ScopeResolver>()
+                .EnsureWorkshopAsync(userCod, Pay2ScopeKind.Employee, leave.EMP_ID);
 
             // 🚀 فراخوانی سقف مرخصی ساعتی از تنظیمات داینامیک (پیش‌فرض 200 دقیقه)
             int maxHourlyMins = await _db.DoGetDataSQLAsyncSingle<int?>(
@@ -637,8 +714,10 @@ namespace Safir.Server.Controllers
         }
 
         [HttpDelete("leave/{levId:int}")]
-        public async Task<IActionResult> DeleteLeave(int levId)
+        [Pay2Authorize(Pay2Forms.Employee, Pay2Perm.Del)]
+        public async Task<IActionResult> DeleteLeave(int levId, [FromServices] Pay2ScopeResolver scopeResolver)
         {
+            await scopeResolver.EnsureWorkshopAsync(int.Parse(User.FindFirst(BaseknowClaimTypes.IDD)?.Value ?? "0"), Pay2ScopeKind.Leave, levId);
             try
             {
                 await _db.ExecuteInTransactionAsync(async (conn, tran) =>
@@ -661,13 +740,16 @@ namespace Safir.Server.Controllers
         }
 
         [HttpGet("{empId:int}/contracts")]
-        public async Task<ActionResult<IEnumerable<Pay2ContractDto>>> GetContracts(int empId)
+        [Pay2Authorize(Pay2Forms.Employee, Pay2Perm.See)]
+        public async Task<ActionResult<IEnumerable<Pay2ContractDto>>> GetContracts(int empId, [FromServices] Pay2ScopeResolver scopeResolver)
         {
+            await scopeResolver.EnsureWorkshopAsync(int.Parse(User.FindFirst(BaseknowClaimTypes.IDD)?.Value ?? "0"), Pay2ScopeKind.Employee, empId);
             const string sql = "SELECT * FROM PAY2_CONTRACT WHERE EMP_ID = @empId ORDER BY START_DATE DESC";
             return Ok(await _db.DoGetDataSQLAsync<Pay2ContractDto>(sql, new { empId }));
         }
 
         [HttpPost("contract/save")]
+        [Pay2Authorize(Pay2Forms.Employee, Pay2Perm.Inp)]
         public async Task<IActionResult> SaveContract([FromBody] Pay2ContractDto contract)
         {
             try
@@ -698,8 +780,10 @@ namespace Safir.Server.Controllers
         }
 
         [HttpDelete("contract/{conId:int}")]
-        public async Task<IActionResult> DeleteContract(int conId)
+        [Pay2Authorize(Pay2Forms.Employee, Pay2Perm.Del)]
+        public async Task<IActionResult> DeleteContract(int conId, [FromServices] Pay2ScopeResolver scopeResolver)
         {
+            await scopeResolver.EnsureWorkshopAsync(int.Parse(User.FindFirst(BaseknowClaimTypes.IDD)?.Value ?? "0"), Pay2ScopeKind.Contract, conId);
             try
             {
                 await _db.DoExecuteSQLAsync("DELETE FROM PAY2_CONTRACT WHERE CON_ID = @conId", new { conId });
@@ -712,13 +796,16 @@ namespace Safir.Server.Controllers
         }
 
         [HttpGet("{empId:int}/leave-balances")]
-        public async Task<ActionResult<IEnumerable<Pay2LeaveBalDto>>> GetLeaveBalances(int empId)
+        [Pay2Authorize(Pay2Forms.Employee, Pay2Perm.See)]
+        public async Task<ActionResult<IEnumerable<Pay2LeaveBalDto>>> GetLeaveBalances(int empId, [FromServices] Pay2ScopeResolver scopeResolver)
         {
+            await scopeResolver.EnsureWorkshopAsync(int.Parse(User.FindFirst(BaseknowClaimTypes.IDD)?.Value ?? "0"), Pay2ScopeKind.Employee, empId);
             const string sql = "SELECT * FROM PAY2_LEAVE_BAL WHERE EMP_ID = @empId ORDER BY YEAR DESC";
             return Ok(await _db.DoGetDataSQLAsync<Pay2LeaveBalDto>(sql, new { empId }));
         }
 
         [HttpPost("leave-balance/save")]
+        [Pay2Authorize(Pay2Forms.Employee, Pay2Perm.Upd)]
         public async Task<IActionResult> SaveLeaveBalance([FromBody] Pay2LeaveBalDto bal)
         {
             try
@@ -757,8 +844,10 @@ namespace Safir.Server.Controllers
         }
 
         [HttpDelete("leave-balance/{empId:int}/{year:int}")]
-        public async Task<IActionResult> DeleteLeaveBalance(int empId, int year)
+        [Pay2Authorize(Pay2Forms.Employee, Pay2Perm.Del)]
+        public async Task<IActionResult> DeleteLeaveBalance(int empId, int year, [FromServices] Pay2ScopeResolver scopeResolver)
         {
+            await scopeResolver.EnsureWorkshopAsync(int.Parse(User.FindFirst(BaseknowClaimTypes.IDD)?.Value ?? "0"), Pay2ScopeKind.Employee, empId);
             try
             {
                 await _db.DoExecuteSQLAsync("DELETE FROM PAY2_LEAVE_BAL WHERE EMP_ID = @empId AND YEAR = @year", new { empId, year });
@@ -770,13 +859,16 @@ namespace Safir.Server.Controllers
             }
         }
         [HttpGet("{empId:int}/loans")]
-        public async Task<ActionResult<IEnumerable<Pay2LoanDto>>> GetLoans(int empId)
+        [Pay2Authorize(Pay2Forms.Loan, Pay2Perm.See)]
+        public async Task<ActionResult<IEnumerable<Pay2LoanDto>>> GetLoans(int empId, [FromServices] Pay2ScopeResolver scopeResolver)
         {
+            await scopeResolver.EnsureWorkshopAsync(int.Parse(User.FindFirst(BaseknowClaimTypes.IDD)?.Value ?? "0"), Pay2ScopeKind.Employee, empId);
             const string sql = "SELECT * FROM PAY2_LOAN WHERE EMP_ID = @empId ORDER BY LOAN_DATE DESC";
             return Ok(await _db.DoGetDataSQLAsync<Pay2LoanDto>(sql, new { empId }));
         }
 
         [HttpPost("loan/save")]
+        [Pay2Authorize(Pay2Forms.Loan, Pay2Perm.Inp)]
         public async Task<IActionResult> SaveLoan([FromBody] Pay2LoanDto loan)
         {
             var userIdString = User.FindFirstValue(ClaimTypes.NameIdentifier);
@@ -842,8 +934,10 @@ namespace Safir.Server.Controllers
         }
 
         [HttpDelete("loan/{loanId:int}")]
-        public async Task<IActionResult> DeleteLoan(int loanId)
+        [Pay2Authorize(Pay2Forms.Loan, Pay2Perm.Del)]
+        public async Task<IActionResult> DeleteLoan(int loanId, [FromServices] Pay2ScopeResolver scopeResolver)
         {
+            await scopeResolver.EnsureWorkshopAsync(int.Parse(User.FindFirst(BaseknowClaimTypes.IDD)?.Value ?? "0"), Pay2ScopeKind.Loan, loanId);
             try
             {
                 await _db.ExecuteInTransactionAsync(async (conn, tran) =>
@@ -872,8 +966,10 @@ namespace Safir.Server.Controllers
         }
 
         [HttpGet("{empId:int}/overrides")]
-        public async Task<ActionResult<IEnumerable<Pay2OverrideDto>>> GetOverrides(int empId)
+        [Pay2Authorize(Pay2Forms.Decree, Pay2Perm.See)]
+        public async Task<ActionResult<IEnumerable<Pay2OverrideDto>>> GetOverrides(int empId, [FromServices] Pay2ScopeResolver scopeResolver)
         {
+            await scopeResolver.EnsureWorkshopAsync(int.Parse(User.FindFirst(BaseknowClaimTypes.IDD)?.Value ?? "0"), Pay2ScopeKind.Employee, empId);
             const string sql = @"
         SELECT O.EMP_ID, O.ITEM_ID, I.ITEM_NAME, O.INS_OV, O.TAX_OV, O.BASIS_OV, 
                O.VALID_FROM, O.VALID_TO, O.REASON
@@ -886,6 +982,7 @@ namespace Safir.Server.Controllers
         }
 
         [HttpPost("override/save")]
+        [Pay2Authorize(Pay2Forms.ActOverride, Pay2Perm.Run)]
         public async Task<IActionResult> SaveOverride([FromBody] Pay2OverrideDto ovr, [FromQuery] bool isEditing)
         {
             var userIdString = User.FindFirstValue(ClaimTypes.NameIdentifier);
@@ -947,8 +1044,10 @@ namespace Safir.Server.Controllers
         }
 
         [HttpDelete("override/{empId:int}/{itemId:int}/{validFrom:long}")]
-        public async Task<IActionResult> DeleteOverride(int empId, int itemId, long validFrom)
+        [Pay2Authorize(Pay2Forms.ActOverride, Pay2Perm.Run)]
+        public async Task<IActionResult> DeleteOverride(int empId, int itemId, long validFrom, [FromServices] Pay2ScopeResolver scopeResolver)
         {
+            await scopeResolver.EnsureWorkshopAsync(int.Parse(User.FindFirst(BaseknowClaimTypes.IDD)?.Value ?? "0"), Pay2ScopeKind.Employee, empId);
             try
             {
                 const string sql = "DELETE FROM PAY2_OVERRIDE WHERE EMP_ID=@empId AND ITEM_ID=@itemId AND VALID_FROM=@validFrom";
@@ -961,13 +1060,16 @@ namespace Safir.Server.Controllers
             }
         }
         [HttpGet("{empId:int}/advance-excls")]
-        public async Task<ActionResult<IEnumerable<Pay2AdvanceExclDto>>> GetAdvanceExcls(int empId)
+        [Pay2Authorize(Pay2Forms.Advance, Pay2Perm.See)]
+        public async Task<ActionResult<IEnumerable<Pay2AdvanceExclDto>>> GetAdvanceExcls(int empId, [FromServices] Pay2ScopeResolver scopeResolver)
         {
+            await scopeResolver.EnsureWorkshopAsync(int.Parse(User.FindFirst(BaseknowClaimTypes.IDD)?.Value ?? "0"), Pay2ScopeKind.Employee, empId);
             const string sql = "SELECT * FROM PAY2_ADVANCE_EXCL WHERE EMP_ID = @empId ORDER BY PERIOD_DATE DESC";
             return Ok(await _db.DoGetDataSQLAsync<Pay2AdvanceExclDto>(sql, new { empId }));
         }
 
         [HttpPost("advance-excl/save")]
+        [Pay2Authorize(Pay2Forms.ActAdvExcl, Pay2Perm.Run)]
         public async Task<IActionResult> SaveAdvanceExcl([FromBody] Pay2AdvanceExclDto excl)
         {
             var userIdString = User.FindFirstValue(ClaimTypes.NameIdentifier);
@@ -1006,8 +1108,10 @@ namespace Safir.Server.Controllers
         }
 
         [HttpDelete("advance-excl/{exclId:int}")]
-        public async Task<IActionResult> DeleteAdvanceExcl(int exclId)
+        [Pay2Authorize(Pay2Forms.ActAdvExcl, Pay2Perm.Run)]
+        public async Task<IActionResult> DeleteAdvanceExcl(int exclId, [FromServices] Pay2ScopeResolver scopeResolver)
         {
+            await scopeResolver.EnsureWorkshopAsync(int.Parse(User.FindFirst(BaseknowClaimTypes.IDD)?.Value ?? "0"), Pay2ScopeKind.AdvanceExcl, exclId);
             try
             {
                 await _db.DoExecuteSQLAsync("DELETE FROM PAY2_ADVANCE_EXCL WHERE EXCL_ID = @exclId", new { exclId });
@@ -1020,15 +1124,19 @@ namespace Safir.Server.Controllers
         }
 
         [HttpGet("{empId:int}/settlements")]
-        public async Task<ActionResult<IEnumerable<Pay2SettlementDto>>> GetSettlements(int empId)
+        [Pay2Authorize(Pay2Forms.Settlement, Pay2Perm.See)]
+        public async Task<ActionResult<IEnumerable<Pay2SettlementDto>>> GetSettlements(int empId, [FromServices] Pay2ScopeResolver scopeResolver)
         {
+            await scopeResolver.EnsureWorkshopAsync(int.Parse(User.FindFirst(BaseknowClaimTypes.IDD)?.Value ?? "0"), Pay2ScopeKind.Employee, empId);
             const string sql = "SELECT * FROM PAY2_SETTLEMENT WHERE EMP_ID = @empId ORDER BY SETTLE_DATE DESC";
             return Ok(await _db.DoGetDataSQLAsync<Pay2SettlementDto>(sql, new { empId }));
         }
 
         [HttpPost("{empId:int}/settlement/calculate")]
-        public async Task<IActionResult> CalculateSettlement(int empId, [FromQuery] int wsId, [FromBody] Pay2SettlementInputDto input)
+        [Pay2Authorize(Pay2Forms.Settlement, Pay2Perm.Inp)]
+        public async Task<IActionResult> CalculateSettlement(int empId, [FromQuery] int wsId, [FromBody] Pay2SettlementInputDto input, [FromServices] Pay2ScopeResolver scopeResolver)
         {
+            await scopeResolver.EnsureWorkshopAsync(int.Parse(User.FindFirst(BaseknowClaimTypes.IDD)?.Value ?? "0"), Pay2ScopeKind.Employee, empId);
             var userIdString = User.FindFirstValue(ClaimTypes.NameIdentifier);
             if (!int.TryParse(userIdString, out int userCod)) return Unauthorized();
 
@@ -1072,8 +1180,10 @@ namespace Safir.Server.Controllers
         }
 
         [HttpPut("settlement/{setId:int}/finalize")]
-        public async Task<IActionResult> FinalizeSettlement(int setId)
+        [Pay2Authorize(Pay2Forms.ActSettleFinalize, Pay2Perm.Run)]
+        public async Task<IActionResult> FinalizeSettlement(int setId, [FromServices] Pay2ScopeResolver scopeResolver)
         {
+            await scopeResolver.EnsureWorkshopAsync(int.Parse(User.FindFirst(BaseknowClaimTypes.IDD)?.Value ?? "0"), Pay2ScopeKind.Settlement, setId);
             var userIdString = User.FindFirstValue(ClaimTypes.NameIdentifier);
             if (!int.TryParse(userIdString, out int userCod)) return Unauthorized();
 
@@ -1086,8 +1196,10 @@ namespace Safir.Server.Controllers
         }
 
         [HttpDelete("settlement/{setId:int}")]
-        public async Task<IActionResult> DeleteSettlement(int setId)
+        [Pay2Authorize(Pay2Forms.Settlement, Pay2Perm.Del)]
+        public async Task<IActionResult> DeleteSettlement(int setId, [FromServices] Pay2ScopeResolver scopeResolver)
         {
+            await scopeResolver.EnsureWorkshopAsync(int.Parse(User.FindFirst(BaseknowClaimTypes.IDD)?.Value ?? "0"), Pay2ScopeKind.Settlement, setId);
             try
             {
                 await _db.ExecuteInTransactionAsync(async (conn, tran) =>
@@ -1120,8 +1232,10 @@ namespace Safir.Server.Controllers
         }
 
         [HttpDelete("{empId:int}")]
-        public async Task<IActionResult> DeleteEmployee(int empId)
+        [Pay2Authorize(Pay2Forms.Employee, Pay2Perm.Del)]
+        public async Task<IActionResult> DeleteEmployee(int empId, [FromServices] Pay2ScopeResolver scopeResolver)
         {
+            await scopeResolver.EnsureWorkshopAsync(int.Parse(User.FindFirst(BaseknowClaimTypes.IDD)?.Value ?? "0"), Pay2ScopeKind.Employee, empId);
             try
             {
                 await _db.ExecuteInTransactionAsync(async (conn, tran) =>
@@ -1181,18 +1295,22 @@ namespace Safir.Server.Controllers
         }
 
         [HttpGet("templates")]
+        [Pay2Authorize(Pay2Forms.ItemDef, Pay2Perm.See)]
         public async Task<ActionResult<IEnumerable<Pay2ItemTemplateDto>>> GetTemplates()
         {
+            var (noScope, allowedWsIds) = await GetWorkshopScopeAsync();
             const string sql = @"
-        SELECT T.TMPL_ID, T.TMPL_CODE, T.TMPL_NAME, T.WS_ID, 
+        SELECT T.TMPL_ID, T.TMPL_CODE, T.TMPL_NAME, T.WS_ID,
                T.IS_ACTIVE, T.NOTES, W.WS_NAME AS WorkshopName
         FROM PAY2_ITEM_TEMPLATE T
         LEFT JOIN PAY2_WORKSHOP W ON T.WS_ID = W.WS_ID
+        WHERE (@noScope = 1 OR T.WS_ID IS NULL OR T.WS_ID IN @allowedWsIds)
         ORDER BY T.TMPL_ID DESC";
-            return Ok(await _db.DoGetDataSQLAsync<Pay2ItemTemplateDto>(sql));
+            return Ok(await _db.DoGetDataSQLAsync<Pay2ItemTemplateDto>(sql, new { noScope, allowedWsIds }));
         }
 
         [HttpPost("template/save")]
+        [Pay2Authorize(Pay2Forms.ItemDef, Pay2Perm.Inp)]
         public async Task<IActionResult> SaveTemplate([FromBody] Pay2ItemTemplateDto tmpl)
         {
             try
@@ -1226,6 +1344,7 @@ namespace Safir.Server.Controllers
         }
 
         [HttpDelete("template/{tmplId:int}")]
+        [Pay2Authorize(Pay2Forms.ItemDef, Pay2Perm.Del)]
         public async Task<IActionResult> DeleteTemplate(int tmplId)
         {
             try
@@ -1246,6 +1365,7 @@ namespace Safir.Server.Controllers
         }
 
         [HttpGet("template/{tmplId:int}/lines")]
+        [Pay2Authorize(Pay2Forms.ItemDef, Pay2Perm.See)]
         public async Task<ActionResult<IEnumerable<Pay2ItemTmplLineDto>>> GetTemplateLines(int tmplId)
         {
             const string sql = @"SELECT L.TMPL_ID, L.ITEM_ID, I.ITEM_NAME, L.DEF_AMOUNT, L.INS_OV, L.TAX_OV, L.BASIS_OV, L.SHIFT_MODE_OV
@@ -1257,6 +1377,7 @@ namespace Safir.Server.Controllers
         }
 
         [HttpPost("template/line/save")]
+        [Pay2Authorize(Pay2Forms.ItemDef, Pay2Perm.Upd)]
         public async Task<IActionResult> SaveTemplateLine([FromBody] Pay2ItemTmplLineDto line)
         {
             try
@@ -1306,6 +1427,7 @@ namespace Safir.Server.Controllers
         }
 
         [HttpDelete("template/{tmplId:int}/line/{itemId:int}")]
+        [Pay2Authorize(Pay2Forms.ItemDef, Pay2Perm.Del)]
         public async Task<IActionResult> DeleteTemplateLine(int tmplId, int itemId)
         {
             try
@@ -1317,6 +1439,7 @@ namespace Safir.Server.Controllers
         }
 
         [HttpGet("jobs/paged")]
+        [Pay2Authorize(Pay2Forms.Employee, Pay2Perm.See)]
         public async Task<ActionResult<PagedResult<Pay2JobDto>>> GetPagedJobs([FromQuery] int page = 1, [FromQuery] int pageSize = 50, [FromQuery] string? search = null, [FromQuery] bool isFuzzy = false)
         {
             try
@@ -1414,6 +1537,7 @@ namespace Safir.Server.Controllers
         }
 
         [HttpPost("jobs/save")]
+        [Pay2Authorize(Pay2Forms.Employee, Pay2Perm.Inp)]
         public async Task<IActionResult> SaveJob([FromBody] Pay2JobDto job)
         {
             try
@@ -1445,6 +1569,7 @@ namespace Safir.Server.Controllers
         }
 
         [HttpDelete("jobs/{id:int}")]
+        [Pay2Authorize(Pay2Forms.Employee, Pay2Perm.Del)]
         public async Task<IActionResult> DeleteJob(int id)
         {
             try
@@ -1472,6 +1597,7 @@ namespace Safir.Server.Controllers
 
 
         [HttpGet("effective-shift-mode")]
+        [Pay2Authorize(Pay2Forms.Employee, Pay2Perm.See)]
         public async Task<ActionResult<string>> GetEffectiveShiftModeAsync([FromQuery] int? decId, [FromQuery] int? tmplId, [FromQuery] int? wsId)
         {
             try
@@ -1557,8 +1683,10 @@ namespace Safir.Server.Controllers
         }
 
         [HttpPut("settlement/{setId:int}/revert")]
-        public async Task<IActionResult> RevertSettlement(int setId)
+        [Pay2Authorize(Pay2Forms.ActSettleFinalize, Pay2Perm.Run)]
+        public async Task<IActionResult> RevertSettlement(int setId, [FromServices] Pay2ScopeResolver scopeResolver)
         {
+            await scopeResolver.EnsureWorkshopAsync(int.Parse(User.FindFirst(BaseknowClaimTypes.IDD)?.Value ?? "0"), Pay2ScopeKind.Settlement, setId);
             var userIdString = User.FindFirstValue(ClaimTypes.NameIdentifier);
             if (!int.TryParse(userIdString, out int userCod)) return Unauthorized();
 
@@ -1596,8 +1724,10 @@ namespace Safir.Server.Controllers
         }
 
         [HttpPost("settlement/{setId:int}/generate-deed")]
-        public async Task<IActionResult> GenerateSettlementDeed(int setId)
+        [Pay2Authorize(Pay2Forms.ActDeed, Pay2Perm.Run)]
+        public async Task<IActionResult> GenerateSettlementDeed(int setId, [FromServices] Pay2ScopeResolver scopeResolver)
         {
+            await scopeResolver.EnsureWorkshopAsync(int.Parse(User.FindFirst(BaseknowClaimTypes.IDD)?.Value ?? "0"), Pay2ScopeKind.Settlement, setId);
             var userIdString = User.FindFirstValue(ClaimTypes.NameIdentifier);
             if (!int.TryParse(userIdString, out int userCod)) return Unauthorized();
 
@@ -1653,7 +1783,8 @@ namespace Safir.Server.Controllers
         }
 
         [HttpGet("leave-report/excel")]
-        [AllowAnonymous]
+        [Pay2Authorize(Pay2Forms.Reports, Pay2Perm.See)]
+        [Pay2Authorize(Pay2Forms.ActExport, Pay2Perm.Run)]
         public async Task<IActionResult> GetLeaveReportExcel([FromQuery] int wsId, [FromQuery] int year, [FromQuery] int empId, [FromQuery] long currentDate)
         {
             try
@@ -1703,6 +1834,8 @@ namespace Safir.Server.Controllers
         }
 
         [HttpGet("leave-report/pdf")]
+        [Pay2Authorize(Pay2Forms.Reports, Pay2Perm.See)]
+        [Pay2Authorize(Pay2Forms.ActExport, Pay2Perm.Run)]
         public async Task<IActionResult> GetLeaveReportPdf([FromQuery] int wsId, [FromQuery] int year, [FromQuery] int empId, [FromQuery] long currentDate)
         {
             try

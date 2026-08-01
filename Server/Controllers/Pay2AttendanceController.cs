@@ -5,6 +5,9 @@ using Safir.Shared.Interfaces;
 using Safir.Shared.Models.Salary;
 using System.Data;
 
+using Safir.Server.Security;
+using Safir.Shared.Constants;
+using Safir.Shared.Interfaces;
 namespace Safir.Server.Controllers
 {
     [ApiController]
@@ -16,6 +19,7 @@ namespace Safir.Server.Controllers
         public Pay2AttendanceController(IDatabaseService db) => _db = db;
 
         [HttpGet("init")]
+        [Pay2Authorize(Pay2Forms.Attendance, Pay2Perm.See)]
         public async Task<IActionResult> InitPeriod([FromQuery] int wsId, [FromQuery] long periodDate)
         {
             if (wsId <= 0)
@@ -69,6 +73,7 @@ namespace Safir.Server.Controllers
         }
 
         [HttpPost("save")]
+        [Pay2Authorize(Pay2Forms.Attendance, Pay2Perm.Inp)]
         public async Task<IActionResult> SaveBulk([FromBody] Pay2AttendanceSaveRequest request)
         {
             if (request.Period.STATUS != 1) return BadRequest("دوره بسته شده و قابل ویرایش نیست.");
@@ -131,6 +136,7 @@ namespace Safir.Server.Controllers
 
         // بخش مقادیر پویا بدون تغییر ماند
         [HttpGet("dynamic-values")]
+        [Pay2Authorize(Pay2Forms.Attendance, Pay2Perm.See)]
         public async Task<ActionResult<IEnumerable<Pay2AttValueDto>>> GetDynamicValues([FromQuery] int perId, [FromQuery] int empId)
         {
             const string sql = @"
@@ -144,6 +150,7 @@ namespace Safir.Server.Controllers
         }
 
         [HttpPost("dynamic-values/save")]
+        [Pay2Authorize(Pay2Forms.Attendance, Pay2Perm.Upd)]
         public async Task<IActionResult> SaveDynamicValues([FromQuery] int perId, [FromQuery] int empId, [FromBody] List<Pay2AttValueDto> values)
         {
             try
@@ -171,8 +178,10 @@ namespace Safir.Server.Controllers
         }
 
         [HttpPost("close-period/{perId:int}")]
-        public async Task<IActionResult> ClosePeriod(int perId)
+        [Pay2Authorize(Pay2Forms.ActPeriodClose, Pay2Perm.Run)]
+        public async Task<IActionResult> ClosePeriod(int perId, [FromServices] Pay2ScopeResolver scopeResolver)
         {
+            await scopeResolver.EnsureWorkshopAsync(int.Parse(User.FindFirst(BaseknowClaimTypes.IDD)?.Value ?? "0"), Pay2ScopeKind.Period, perId);
             try
             {
                 await _db.ExecuteInTransactionAsync(async (conn, tran) =>
@@ -192,8 +201,10 @@ namespace Safir.Server.Controllers
         }
 
         [HttpPut("reopen-period/{perId:int}")]
-        public async Task<IActionResult> ReopenPeriod(int perId)
+        [Pay2Authorize(Pay2Forms.ActPeriodReopen, Pay2Perm.Run)]
+        public async Task<IActionResult> ReopenPeriod(int perId, [FromServices] Pay2ScopeResolver scopeResolver)
         {
+            await scopeResolver.EnsureWorkshopAsync(int.Parse(User.FindFirst(BaseknowClaimTypes.IDD)?.Value ?? "0"), Pay2ScopeKind.Period, perId);
             try
             {
                 await _db.ExecuteInTransactionAsync(async (conn, tran) =>
@@ -244,6 +255,7 @@ namespace Safir.Server.Controllers
         }
 
         [HttpGet("periods")]
+        [Pay2Authorize(Pay2Forms.Attendance, Pay2Perm.See)]
         public async Task<ActionResult<IEnumerable<Pay2PeriodLookupDto>>> GetPeriods([FromQuery] int wsId)
         {
             if (wsId <= 0)
@@ -282,8 +294,11 @@ namespace Safir.Server.Controllers
         }
 
         [HttpDelete("period/{perId:int}")]
-        public async Task<IActionResult> DeletePeriod(int perId)
+        [Pay2Authorize(Pay2Forms.Attendance, Pay2Perm.Del)]
+        [Pay2Authorize(Pay2Forms.ActPeriodReopen, Pay2Perm.Run)]
+        public async Task<IActionResult> DeletePeriod(int perId, [FromServices] Pay2ScopeResolver scopeResolver)
         {
+            await scopeResolver.EnsureWorkshopAsync(int.Parse(User.FindFirst(BaseknowClaimTypes.IDD)?.Value ?? "0"), Pay2ScopeKind.Period, perId);
             try
             {
                 await _db.ExecuteInTransactionAsync(async (conn, tran) =>
@@ -335,8 +350,11 @@ namespace Safir.Server.Controllers
         }
 
         [HttpDelete("period/{perId:int}/employee/{empId:int}")]
-        public async Task<IActionResult> DeleteAttendanceLine(int perId, int empId)
+        [Pay2Authorize(Pay2Forms.Attendance, Pay2Perm.Del)]
+        public async Task<IActionResult> DeleteAttendanceLine(int perId, int empId, [FromServices] Pay2ScopeResolver scopeResolver)
         {
+            await scopeResolver.EnsureWorkshopAsync(int.Parse(User.FindFirst(BaseknowClaimTypes.IDD)?.Value ?? "0"), Pay2ScopeKind.Period, perId);
+
             try
             {
                 await _db.ExecuteInTransactionAsync(async (conn, tran) =>

@@ -9,6 +9,9 @@ using Safir.Shared.Models.Salary.Reports;
 using Safir.Shared.Utility;
 using System.Security.Claims;
 
+using Safir.Server.Security;
+using Safir.Shared.Constants;
+using Safir.Shared.Interfaces;
 namespace Safir.Server.Controllers
 {
     [ApiController]
@@ -20,24 +23,34 @@ namespace Safir.Server.Controllers
         public Pay2RunController(IDatabaseService db) => _db = db;
 
         [HttpGet("period-info")]
+        [Pay2Authorize(Pay2Forms.Run, Pay2Perm.See)]
         public async Task<ActionResult<Pay2PeriodDto>> GetPeriodInfo([FromQuery] int wsId, [FromQuery] long periodDate)
         {
+            int __usr_scope_per = int.Parse(User.FindFirst(BaseknowClaimTypes.IDD)?.Value ?? "0");
+            await HttpContext.RequestServices.GetRequiredService<Pay2ScopeResolver>().EnsureWorkshopAsync(__usr_scope_per, wsId);
             var sql = "SELECT * FROM PAY2_PERIOD WHERE WS_ID = @wsId AND PERIOD_DATE = @periodDate";
             var period = await _db.DoGetDataSQLAsyncSingle<Pay2PeriodDto>(sql, new { wsId, periodDate });
             return Ok(period);
         }
 
         [HttpGet("latest")]
+        [Pay2Authorize(Pay2Forms.Run, Pay2Perm.See)]
         public async Task<ActionResult<Pay2RunDto>> GetLatestRun([FromQuery] int perId)
         {
+            int __usr_scope_latest = int.Parse(User.FindFirst(BaseknowClaimTypes.IDD)?.Value ?? "0");
+            await HttpContext.RequestServices.GetRequiredService<Pay2ScopeResolver>().EnsureWorkshopAsync(__usr_scope_latest, Pay2ScopeKind.Period, perId);
             var sql = "SELECT TOP 1 * FROM PAY2_RUN WHERE PER_ID = @perId AND IS_LATEST = 1 ORDER BY RUN_NO DESC";
             var run = await _db.DoGetDataSQLAsyncSingle<Pay2RunDto>(sql, new { perId });
             return Ok(run);
         }
 
         [HttpGet("{runId:int}/lines")]
+        [Pay2Authorize(Pay2Forms.Run, Pay2Perm.See)]
+        [Pay2Authorize(Pay2Forms.ActViewAmounts, Pay2Perm.Run)]
         public async Task<ActionResult<Pay2RunResultDto>> GetRunLines(int runId)
         {
+            int __usr_scope_101 = int.Parse(User.FindFirst(BaseknowClaimTypes.IDD)?.Value ?? "0");
+            await HttpContext.RequestServices.GetRequiredService<Pay2ScopeResolver>().EnsureWorkshopAsync(__usr_scope_101, Pay2ScopeKind.Run, runId);
             var result = new Pay2RunResultDto();
 
             // 1. استخراج ستون‌های پویا (فقط آیتم‌هایی که در این ماه برای حداقل یک نفر محاسبه شده‌اند)
@@ -102,8 +115,14 @@ namespace Safir.Server.Controllers
         // محاسبهٔ موتور (SP_PAY2_CALC_RUN) را بازسازی می‌کند. عملیات Read-Only است.
         // ===================================================================
         [HttpGet("{runId:int}/excel-audit")]
+        [Pay2Authorize(Pay2Forms.Reports, Pay2Perm.See)]
+        [Pay2Authorize(Pay2Forms.ActViewAmounts, Pay2Perm.Run)]
+        [Pay2Authorize(Pay2Forms.ActExport, Pay2Perm.Run)]
         public async Task<IActionResult> GetExcelAudit(int runId)
         {
+
+            int __userCo = int.Parse(User.FindFirst(BaseknowClaimTypes.IDD)?.Value ?? "0");
+            await HttpContext.RequestServices.GetRequiredService<Pay2ScopeResolver>().EnsureWorkshopAsync(__userCo, Pay2ScopeKind.Run, runId);
             var service = new Pay2ExcelAuditService(_db);
             var result = await service.BuildAsync(runId);
             if (result == null)
@@ -121,8 +140,12 @@ namespace Safir.Server.Controllers
         // صریح (= TOTAL_DED) تا هیچ آیتمی دوبار شمرده نشود و جمع مزایا − جمع کسورات = خالص.
         // ===================================================================
         [HttpGet("{runId:int}/employee/{empId:int}/payslip")]
+        [Pay2Authorize(Pay2Forms.Run, Pay2Perm.See)]
+        [Pay2Authorize(Pay2Forms.ActViewAmounts, Pay2Perm.Run)]
         public async Task<IActionResult> GetPayslip(int runId, int empId, [FromQuery] bool isOfficial = false)
         {
+            int __usr_scope_501 = int.Parse(User.FindFirst(BaseknowClaimTypes.IDD)?.Value ?? "0");
+            await HttpContext.RequestServices.GetRequiredService<Pay2ScopeResolver>().EnsureWorkshopAsync(__usr_scope_501, Pay2ScopeKind.Run, runId);
             var runStatus = await _db.DoGetDataSQLAsyncSingle<byte?>(
                 "SELECT STATUS FROM PAY2_RUN WHERE RUN_ID=@runId", new { runId });
             if (runStatus == null) return NotFound("Run یافت نشد.");
@@ -285,8 +308,11 @@ namespace Safir.Server.Controllers
         }
 
         [HttpPost("calculate")]
+        [Pay2Authorize(Pay2Forms.ActCalc, Pay2Perm.Run)]
         public async Task<ActionResult<int>> CalculateRun([FromBody] Pay2RunCalcRequest request)
         {
+            int __usr_scope_calc = int.Parse(User.FindFirst(BaseknowClaimTypes.IDD)?.Value ?? "0");
+            await HttpContext.RequestServices.GetRequiredService<Pay2ScopeResolver>().EnsureWorkshopAsync(__usr_scope_calc, request.WS_ID);
             var userIdString = User.FindFirstValue(ClaimTypes.NameIdentifier);
             if (!int.TryParse(userIdString, out int userCod)) return Unauthorized();
 
@@ -338,8 +364,12 @@ namespace Safir.Server.Controllers
         }
 
         [HttpPut("{runId:int}/revert")]
+        [Pay2Authorize(Pay2Forms.ActRevert, Pay2Perm.Run)]
         public async Task<IActionResult> RevertRun(int runId)
         {
+
+            int __userCo = int.Parse(User.FindFirst(BaseknowClaimTypes.IDD)?.Value ?? "0");
+            await HttpContext.RequestServices.GetRequiredService<Pay2ScopeResolver>().EnsureWorkshopAsync(__userCo, Pay2ScopeKind.Run, runId);
             var userIdString = User.FindFirstValue(ClaimTypes.NameIdentifier);
             if (!int.TryParse(userIdString, out int userCod)) return Unauthorized();
 
@@ -355,8 +385,12 @@ namespace Safir.Server.Controllers
         }
 
         [HttpPut("{runId:int}/finalize")]
+        [Pay2Authorize(Pay2Forms.ActFinalize, Pay2Perm.Run)]
         public async Task<IActionResult> FinalizeRun(int runId)
         {
+
+            int __userCo = int.Parse(User.FindFirst(BaseknowClaimTypes.IDD)?.Value ?? "0");
+            await HttpContext.RequestServices.GetRequiredService<Pay2ScopeResolver>().EnsureWorkshopAsync(__userCo, Pay2ScopeKind.Run, runId);
             var userIdString = User.FindFirstValue(ClaimTypes.NameIdentifier);
             if (!int.TryParse(userIdString, out int userCod)) return Unauthorized();
 
@@ -381,8 +415,11 @@ namespace Safir.Server.Controllers
         }
 
         [HttpGet("{runId:int}/preview-deed")]
+        [Pay2Authorize(Pay2Forms.ActDeed, Pay2Perm.Run)]
         public async Task<ActionResult<Pay2DeedPreviewDto>> PreviewDeed(int runId, [FromQuery] byte? overrideMode = null)
         {
+            int __usr_scope_502 = int.Parse(User.FindFirst(BaseknowClaimTypes.IDD)?.Value ?? "0");
+            await HttpContext.RequestServices.GetRequiredService<Pay2ScopeResolver>().EnsureWorkshopAsync(__usr_scope_502, Pay2ScopeKind.Run, runId);
             var result = new Pay2DeedPreviewDto();
             try
             {
@@ -396,7 +433,12 @@ namespace Safir.Server.Controllers
                 if (runInfo == null)
                     return NotFound("محاسبه یافت نشد.");
 
-                byte effectiveMode = overrideMode ?? runInfo.DEED_MODE ?? runInfo.DEFAULT_DEED_MODE;
+                // مبنا همان چیزی است که «صدور» استفاده می‌کند: تنظیم روزِ کارگاه.
+                // اگر اینجا PAY2_RUN.DEED_MODE مبنا می‌شد، پیش‌نمایش چیزی را نشان
+                // می‌داد که با سندِ صادرشده فرق دارد (همان تله‌ای که در بخش صدور
+                // توضیح داده شده). انتخابگر داخل پنجره‌ی پیش‌نمایش همچنان اجازه‌ی
+                // شبیه‌سازی روش دیگر را می‌دهد.
+                byte effectiveMode = overrideMode ?? runInfo.DEFAULT_DEED_MODE;
 
                 result.ModeUsed = (Pay2DeedMode)effectiveMode;
                 result.ModeTitle = effectiveMode == 1 ? "سند کلی ـ روش فعلی" : "سند نیمه‌تفصیلی اشخاص";
@@ -441,8 +483,11 @@ namespace Safir.Server.Controllers
         }
 
         [HttpPost("{runId:int}/generate-deed")]
+        [Pay2Authorize(Pay2Forms.ActDeed, Pay2Perm.Run)]
         public async Task<IActionResult> GenerateDeed(int runId)
         {
+            int __usr_scope_102 = int.Parse(User.FindFirst(BaseknowClaimTypes.IDD)?.Value ?? "0");
+            await HttpContext.RequestServices.GetRequiredService<Pay2ScopeResolver>().EnsureWorkshopAsync(__usr_scope_102, Pay2ScopeKind.Run, runId);
             var userIdString = User.FindFirstValue(ClaimTypes.NameIdentifier);
             if (!int.TryParse(userIdString, out int userCod)) return Unauthorized();
             var userName = User.Identity?.Name ?? "System";
@@ -464,7 +509,20 @@ namespace Safir.Server.Controllers
                     return BadRequest("اجرا باید در وضعیت 'تأیید نهایی' یا 'سند صادر شده' باشد.");
 
                 int perId = runInfo.PER_ID;
-                byte effectiveMode = runInfo.DEED_MODE ?? runInfo.DEFAULT_DEED_MODE;
+
+                // روش صدور همیشه از تنظیمِ «روش صدور سند حقوق» در کارگاه خوانده
+                // می‌شود، نه از PAY2_RUN.DEED_MODE.
+                //
+                // پیش‌تر مبنا `DEED_MODE ?? DEFAULT_DEED_MODE` بود؛ چون DEED_MODE
+                // در همان صدورِ اول روی اجرا نوشته می‌شود، از آن به بعد قفل می‌شد:
+                // کاربر تنظیم کارگاه را روی «نیمه‌تفصیلی» می‌گذاشت، بازصدور می‌زد،
+                // و باز هم سندِ تجمیعی می‌گرفت — بدون هیچ پیامی که بگوید چرا.
+                // (گزارش واقعی مشتری: سند حقوق تیر ۱۴۰۵ فقط هزینه داشت و هیچ
+                // آرتیکلی به تفکیک پرسنل — مثل 213-1-375 — در آن نبود.)
+                //
+                // DEED_MODE همچنان نوشته می‌شود، ولی نقشش فقط «سند صادرشده با چه
+                // روشی ساخته شد» است، نه تعیین‌کننده‌ی صدورهای بعدی.
+                byte effectiveMode = runInfo.DEFAULT_DEED_MODE;
 
                 var periodInfo = await _db.DoGetDataSQLAsyncSingle<dynamic>(
                     "SELECT PERIOD_DATE, DEED_N_S_PAY FROM PAY2_PERIOD WHERE PER_ID = @perId", new { perId });
@@ -580,8 +638,12 @@ VALUES (@N_S, @RADIF, @HES_K, @HES_M, @HES_T, @HES_T2, @HES_T3, @HES_T4, @HES, @
         }
 
         [HttpPut("{runId:int}/unfinalize-deed")]
+        [Pay2Authorize(Pay2Forms.ActDeedUndo, Pay2Perm.Run)]
         public async Task<IActionResult> UnfinalizeDeed(int runId)
         {
+
+            int __userCo = int.Parse(User.FindFirst(BaseknowClaimTypes.IDD)?.Value ?? "0");
+            await HttpContext.RequestServices.GetRequiredService<Pay2ScopeResolver>().EnsureWorkshopAsync(__userCo, Pay2ScopeKind.Run, runId);
             var userIdString = User.FindFirstValue(ClaimTypes.NameIdentifier);
             if (!int.TryParse(userIdString, out int userCod)) return Unauthorized();
 
@@ -623,9 +685,12 @@ VALUES (@N_S, @RADIF, @HES_K, @HES_M, @HES_T, @HES_T2, @HES_T3, @HES_T4, @HES, @
 
                     int perId = runInfo.PER_ID;
 
+                    // DEED_MODE هم مثل DEED_ID_SAL پاک می‌شود: سندی که آن را
+                    // توصیف می‌کرد همین الان حذف شد، پس نگه داشتنش فقط یک مقدار
+                    // بی‌مرجع باقی می‌گذارد.
                     await conn.ExecuteAsync(@"
                         UPDATE PAY2_RUN
-                        SET STATUS = 2, DEED_ID_SAL = NULL,
+                        SET STATUS = 2, DEED_ID_SAL = NULL, DEED_MODE = NULL,
                             NOTES = SUBSTRING(ISNULL(NOTES,'') + N' | DeedUnfinalized by ' + CAST(@userCod AS NVARCHAR), 1, 300)
                         WHERE RUN_ID = @runId;
 
@@ -650,8 +715,16 @@ VALUES (@N_S, @RADIF, @HES_K, @HES_M, @HES_T, @HES_T2, @HES_T3, @HES_T4, @HES, @
         // اگر runId = 0 باشد و wsId ارسال شود، گزارش تجمیعی کل سال/ماه‌ها صادر می‌شود
         // ===================================================================
         [HttpGet("{runId:int}/insurance-report")]
+        [Pay2Authorize(Pay2Forms.Reports, Pay2Perm.See)]
+        [Pay2Authorize(Pay2Forms.ActExport, Pay2Perm.Run)]
         public async Task<IActionResult> GetInsuranceReportPdf(int runId, [FromQuery] int wsId = 0)
         {
+            int __usr_scope_1 = int.Parse(User.FindFirst(BaseknowClaimTypes.IDD)?.Value ?? "0");
+            await HttpContext.RequestServices.GetRequiredService<Pay2ScopeResolver>().EnsureWorkshopAsync(__usr_scope_1, wsId);
+            int __userCo = int.Parse(User.FindFirst(BaseknowClaimTypes.IDD)?.Value ?? "0");
+            var __accessService = HttpContext.RequestServices.GetRequiredService<IPay2AccessService>();
+            var allowedWsIds = await __accessService.GetAllowedWorkshopIdsAsync(__userCo);
+            bool noScope = !(await __accessService.GetAccessAsync(__userCo)).WsScopeEnforced;
             try
             {
                 var reportDto = new InsuranceReportDto();
@@ -672,10 +745,10 @@ VALUES (@N_S, @RADIF, @HES_K, @HES_M, @HES_T, @HES_T2, @HES_T3, @HES_T4, @HES, @
                         SELECT R.RUN_ID 
                         FROM PAY2_RUN R
                         INNER JOIN PAY2_PERIOD P ON R.PER_ID = P.PER_ID
-                        WHERE P.WS_ID = @wsId AND R.IS_LATEST = 1 AND R.STATUS >= 2
+                        WHERE P.WS_ID = @wsId AND (@noScope = 1 OR P.WS_ID IN @allowedWsIds) AND R.IS_LATEST = 1 AND R.STATUS >= 2
                         ORDER BY P.PERIOD_DATE ASC"; // به ترتیب ماه
 
-                    targetRunIds = (await _db.DoGetDataSQLAsync<int>(runsSql, new { wsId })).ToList();
+                    targetRunIds = (await _db.DoGetDataSQLAsync<int>(runsSql, new { wsId, noScope, allowedWsIds })).ToList();
 
                     if (!targetRunIds.Any())
                         return NotFound("هیچ ماهِ محاسبه و تایید شده‌ای برای این کارگاه یافت نشد.");
@@ -798,8 +871,12 @@ VALUES (@N_S, @RADIF, @HES_K, @HES_M, @HES_T, @HES_T2, @HES_T3, @HES_T4, @HES, @
         // تولید دیسکت بیمه تامین اجتماعی (فرمت DBF)
         // ===================================================================
         [HttpGet("{runId:int}/insurance-diskette")]
+        [Pay2Authorize(Pay2Forms.Reports, Pay2Perm.See)]
+        [Pay2Authorize(Pay2Forms.ActExport, Pay2Perm.Run)]
         public async Task<IActionResult> GetInsuranceDiskette([FromServices] Safir.Server.Services.Pay2DisketteService disketteService, int runId)
         {
+            int __usr_scope_503 = int.Parse(User.FindFirst(BaseknowClaimTypes.IDD)?.Value ?? "0");
+            await HttpContext.RequestServices.GetRequiredService<Pay2ScopeResolver>().EnsureWorkshopAsync(__usr_scope_503, Pay2ScopeKind.Run, runId);
             try
             {
                 var result = await disketteService.GenerateInsuranceDisketteAsync(runId);
@@ -816,8 +893,12 @@ VALUES (@N_S, @RADIF, @HES_K, @HES_M, @HES_T, @HES_T2, @HES_T3, @HES_T4, @HES, @
         }
 
         [HttpGet("{runId:int}/insurance-diskette-preview")]
+        [Pay2Authorize(Pay2Forms.Reports, Pay2Perm.See)]
+        [Pay2Authorize(Pay2Forms.ActExport, Pay2Perm.Run)]
         public async Task<ActionResult<DiskettePreviewDto>> GetInsuranceDiskettePreview([FromServices] Safir.Server.Services.Pay2DisketteService disketteService, int runId)
         {
+            int __usr_scope_504 = int.Parse(User.FindFirst(BaseknowClaimTypes.IDD)?.Value ?? "0");
+            await HttpContext.RequestServices.GetRequiredService<Pay2ScopeResolver>().EnsureWorkshopAsync(__usr_scope_504, Pay2ScopeKind.Run, runId);
             try
             {
                 var result = await disketteService.GetInsuranceDiskettePreviewAsync(runId);
@@ -836,8 +917,12 @@ VALUES (@N_S, @RADIF, @HES_K, @HES_M, @HES_T, @HES_T2, @HES_T3, @HES_T4, @HES, @
         // چاپ لیست مالیات حقوق (برای یک ماه یا تجمیعی)
         // ===================================================================
         [HttpGet("{runId:int}/tax-report")]
+        [Pay2Authorize(Pay2Forms.Reports, Pay2Perm.See)]
+        [Pay2Authorize(Pay2Forms.ActExport, Pay2Perm.Run)]
         public async Task<IActionResult> GetTaxReportPdf(int runId, [FromQuery] int wsId = 0)
         {
+            int __usr_scope_2 = int.Parse(User.FindFirst(BaseknowClaimTypes.IDD)?.Value ?? "0");
+            await HttpContext.RequestServices.GetRequiredService<Pay2ScopeResolver>().EnsureWorkshopAsync(__usr_scope_2, wsId);
             try
             {
                 var reportDto = new Safir.Shared.Models.Salary.Reports.TaxReportDto();
@@ -963,8 +1048,12 @@ VALUES (@N_S, @RADIF, @HES_K, @HES_M, @HES_T, @HES_T2, @HES_T3, @HES_T4, @HES, @
         // گزارش مقایسه ماه به ماه (روند تغییرات حقوق)
         // ===================================================================
         [HttpGet("compare-months")]
+        [Pay2Authorize(Pay2Forms.Reports, Pay2Perm.See)]
+        [Pay2Authorize(Pay2Forms.ActViewAmounts, Pay2Perm.Run)]
         public async Task<ActionResult<Pay2MonthCompareResultDto>> CompareMonths([FromQuery] int wsId, [FromQuery] long period1, [FromQuery] long period2)
         {
+            int __usr_scope_cm = int.Parse(User.FindFirst(BaseknowClaimTypes.IDD)?.Value ?? "0");
+            if (wsId > 0) await HttpContext.RequestServices.GetRequiredService<Pay2ScopeResolver>().EnsureWorkshopAsync(__usr_scope_cm, wsId);
             try
             {
                 var result = new Pay2MonthCompareResultDto();
@@ -1015,8 +1104,12 @@ VALUES (@N_S, @RADIF, @HES_K, @HES_M, @HES_T, @HES_T2, @HES_T3, @HES_T4, @HES, @
         // تولید فایل اکسل اظهارنامه سالانه مالیات (خلاصه وضعیت پرسنل در سال)
         // ===================================================================
         [HttpGet("tax-report-excel")]
+        [Pay2Authorize(Pay2Forms.Reports, Pay2Perm.See)]
+        [Pay2Authorize(Pay2Forms.ActExport, Pay2Perm.Run)]
         public async Task<IActionResult> GetAnnualTaxReportExcel([FromQuery] int wsId, [FromQuery] long periodDate)
         {
+            int __usr_scope_tax_excel = int.Parse(User.FindFirst(BaseknowClaimTypes.IDD)?.Value ?? "0");
+            await HttpContext.RequestServices.GetRequiredService<Pay2ScopeResolver>().EnsureWorkshopAsync(__usr_scope_tax_excel, wsId);
             if (wsId <= 0)
                 return BadRequest("کارگاه نامعتبر است.");
 
@@ -1179,8 +1272,12 @@ VALUES (@N_S, @RADIF, @HES_K, @HES_M, @HES_T, @HES_T2, @HES_T3, @HES_T4, @HES, @
         }
 
         [HttpGet("{runId:int}/tax-diskette")]
+        [Pay2Authorize(Pay2Forms.Reports, Pay2Perm.See)]
+        [Pay2Authorize(Pay2Forms.ActExport, Pay2Perm.Run)]
         public async Task<IActionResult> GetTaxDiskette([FromServices] Safir.Server.Services.Pay2DisketteService disketteService, int runId)
         {
+            int __usr_scope_505 = int.Parse(User.FindFirst(BaseknowClaimTypes.IDD)?.Value ?? "0");
+            await HttpContext.RequestServices.GetRequiredService<Pay2ScopeResolver>().EnsureWorkshopAsync(__usr_scope_505, Pay2ScopeKind.Run, runId);
             try
             {
                 var result = await disketteService.GenerateTaxDisketteAsync(runId);
@@ -1197,8 +1294,12 @@ VALUES (@N_S, @RADIF, @HES_K, @HES_M, @HES_T, @HES_T2, @HES_T3, @HES_T4, @HES, @
         }
 
         [HttpGet("{runId:int}/tax-diskette-preview")]
+        [Pay2Authorize(Pay2Forms.Reports, Pay2Perm.See)]
+        [Pay2Authorize(Pay2Forms.ActExport, Pay2Perm.Run)]
         public async Task<ActionResult<TaxDiskettePreviewDto>> GetTaxDiskettePreview([FromServices] Safir.Server.Services.Pay2DisketteService disketteService, int runId)
         {
+            int __usr_scope_506 = int.Parse(User.FindFirst(BaseknowClaimTypes.IDD)?.Value ?? "0");
+            await HttpContext.RequestServices.GetRequiredService<Pay2ScopeResolver>().EnsureWorkshopAsync(__usr_scope_506, Pay2ScopeKind.Run, runId);
             try
             {
                 var result = await disketteService.GetTaxDiskettePreviewAsync(runId);

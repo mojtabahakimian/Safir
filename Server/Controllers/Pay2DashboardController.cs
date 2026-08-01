@@ -3,6 +3,8 @@ using Microsoft.AspNetCore.Mvc;
 using Safir.Shared.Interfaces;
 using Safir.Shared.Models.Salary;
 
+using Safir.Server.Security;
+using Safir.Shared.Constants;
 namespace Safir.Server.Controllers
 {
     [ApiController]
@@ -20,9 +22,14 @@ namespace Safir.Server.Controllers
         }
 
         [HttpGet("{wsId:int}")]
+        [Pay2Authorize(Pay2Forms.Dashboard, Pay2Perm.See)]
         public async Task<ActionResult<Pay2DashboardDataDto>> GetDashboardData(int wsId)
         {
             if (wsId <= 0) return BadRequest("شناسه کارگاه نامعتبر است.");
+
+            int userCoScope = int.Parse(User.FindFirst(BaseknowClaimTypes.IDD)?.Value ?? "0");
+            await HttpContext.RequestServices.GetRequiredService<Pay2ScopeResolver>()
+                .EnsureWorkshopAsync(userCoScope, wsId);
 
             try
             {

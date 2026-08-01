@@ -1,10 +1,13 @@
-﻿@page "/salary/manage"
+@page "/salary/manage"
+@using Safir.Shared.Constants
+
 @layout EmptyLayout
 @using Safir.Client.Pages.Salary.Tabs
 @using Safir.Shared.Models.Salary
 @using Safir.Client.Services
 @using Safir.Shared.Interfaces
 @using Safir.Shared.Utility
+@inject Safir.Client.Services.Pay2AccessApiService Pay2Access
 @inject ConnectionManagerService ConnectionManager
 @inject IAuthService AuthService
 @inject NavigationManager NavigationManager
@@ -100,6 +103,22 @@
 @* ══════════════════════════════════════════════════════════
    پوسته اصلی اپلیکیشن
    ══════════════════════════════════════════════════════════ *@
+
+@if (_hasNoAccess)
+{
+    <div style="display:flex; justify-content:center; align-items:center; height:100vh;">
+        <MudText Typo="Typo.h5" Color="Color.Error">شما به بخش حقوق و دستمزد دسترسی ندارید.</MudText>
+    </div>
+}
+else
+{
+    @if (!Pay2Access.Access.AclEnforced)
+    {
+        <MudAlert Severity="Severity.Warning" Variant="Variant.Filled" ShowCloseIcon="true" Class="my-2 mx-4">
+            کنترل دسترسی حقوق و دستمزد غیرفعال است — همه کاربران به تمام بخش‌ها دسترسی دارند.
+        </MudAlert>
+    }
+
 <div class="pay2-app">
 
     @* ─────────────────────────────────────────
@@ -170,10 +189,13 @@
                 تنظیمات سیستم
             </li>
 
-            <li class="pay2-nav-item @(ActiveTab == "itemdefs" ? "active" : "")" @onclick='() => SetActiveTab("itemdefs")'>
+            @if(Pay2Access.Access.CanRun(Safir.Shared.Constants.Pay2Forms.ItemDef))
+{
+    <li class="pay2-nav-item @(ActiveTab == "itemdefs" ? "active" : "")" @onclick='() => SetActiveTab("itemdefs")'>
                 <i class="bi bi-list-check"></i>
                 آیتم‌های حقوقی
             </li>
+}
 
             <!-- خط جداکننده -->
             <div style="padding: 0 16px;">
@@ -199,7 +221,15 @@
                 مرکز گزارشات
             </li>
 
-        </ul>
+
+@if(Pay2Access.Access.CanRun(Safir.Shared.Constants.Pay2Forms.AdminAcl))
+{
+    <li class="pay2-nav-item @(ActiveTab == "access" ? "active" : "")" @onclick='() => SetActiveTab("access")'>
+        <MudIcon Icon="@Icons.Material.Filled.Security" Class="pay2-nav-icon" />
+        <span class="pay2-nav-label">مدیریت دسترسی‌ها</span>
+    </li>
+}
+            </ul>
 
         @* فوتر سایدبار *@
         <div class="pay2-sidebar-footer">
@@ -314,7 +344,9 @@
 
             @if (ActiveTab == "settings")
             {
-                <Safir.Client.Pages.Salary.Tabs.SettingsTab />
+                @* روشن/خاموش کردن ACL_ENFORCE از همین تب انجام می‌شود، پس بعد از ذخیره
+                   باید نوار هشدار و منوها دوباره رندر شوند. *@
+                <Safir.Client.Pages.Salary.Tabs.SettingsTab OnAccessChanged="OnAccessRefreshed" />
             }
             @if (ActiveTab == "itemdefs")
             {
@@ -324,7 +356,12 @@
             {
                 <Safir.Client.Pages.Salary.Tabs.PayrollTab />
             }
-            @if (ActiveTab == "reports")
+
+                @if (ActiveTab == "access")
+                {
+                    <AccessTab />
+                }
+@if (ActiveTab == "reports")
             {
                 <Safir.Client.Pages.Salary.Tabs.ReportsTab />
             }
@@ -352,14 +389,55 @@
     </main>
 </div>
 
+}
 @code {
+
+    /// <summary>
+    /// بعد از ذخیره‌ی تنظیمات (که ممکن است ACL_ENFORCE را عوض کرده باشد) صدا زده می‌شود.
+    /// SettingsTab پیش از این، Pay2Access را تازه کرده؛ اینجا فقط صفحه دوباره رندر می‌شود
+    /// تا نوار هشدار و آیتم‌های منو با وضعیت جدید بخوانند.
+    /// عمداً کاربر را از تب فعلی بیرون نمی‌اندازیم؛ اگر مجوزی نداشته باشد سرور
+    /// خودش با پیام روشن رد می‌کند.
+    /// </summary>
+    private void OnAccessRefreshed() => StateHasChanged();
+
+    private bool HasAnyAccess()
+    {
+        return Pay2Access.Access.CanRun(Safir.Shared.Constants.Pay2Forms.Dashboard) ||
+               Pay2Access.Access.CanRun(Safir.Shared.Constants.Pay2Forms.Workshop) ||
+               Pay2Access.Access.CanRun(Safir.Shared.Constants.Pay2Forms.Employee) ||
+               Pay2Access.Access.CanRun(Safir.Shared.Constants.Pay2Forms.Attendance) ||
+               Pay2Access.Access.CanRun(Safir.Shared.Constants.Pay2Forms.Advance) ||
+               Pay2Access.Access.CanRun(Safir.Shared.Constants.Pay2Forms.Run) ||
+               Pay2Access.Access.CanRun(Safir.Shared.Constants.Pay2Forms.ItemDef) ||
+               Pay2Access.Access.CanRun(Safir.Shared.Constants.Pay2Forms.Settings) ||
+               Pay2Access.Access.CanRun(Safir.Shared.Constants.Pay2Forms.Reports) ||
+               Pay2Access.Access.CanRun(Safir.Shared.Constants.Pay2Forms.AdminAcl);
+    }
+
+    private string GetFirstAvailableTab()
+    {
+        if (Pay2Access.Access.CanRun(Safir.Shared.Constants.Pay2Forms.Dashboard)) return "dashboard";
+        if (Pay2Access.Access.CanRun(Safir.Shared.Constants.Pay2Forms.Workshop)) return "workshops";
+        if (Pay2Access.Access.CanRun(Safir.Shared.Constants.Pay2Forms.Employee)) return "employees";
+        if (Pay2Access.Access.CanRun(Safir.Shared.Constants.Pay2Forms.Attendance)) return "attendance";
+        if (Pay2Access.Access.CanRun(Safir.Shared.Constants.Pay2Forms.Advance)) return "advances";
+        if (Pay2Access.Access.CanRun(Safir.Shared.Constants.Pay2Forms.Run)) return "payroll";
+        if (Pay2Access.Access.CanRun(Safir.Shared.Constants.Pay2Forms.ItemDef)) return "itemdefs";
+        if (Pay2Access.Access.CanRun(Safir.Shared.Constants.Pay2Forms.Settings)) return "settings";
+        if (Pay2Access.Access.CanRun(Safir.Shared.Constants.Pay2Forms.Reports)) return "reports";
+        if (Pay2Access.Access.CanRun(Safir.Shared.Constants.Pay2Forms.AdminAcl)) return "access";
+        return "";
+    }
+
 
     // ══════════════════════════════════════════
     // State
     // ══════════════════════════════════════════
 
     private Safir.Shared.Models.DbConnectionSettings? _activeDbSettings;
-    private string ActiveTab = "dashboard";
+    private string ActiveTab = "";
+    private bool _hasNoAccess = false;
     private bool IsToastVisible = false;
     private string ToastMessage = string.Empty;
     private int _toastVersion = 0;
@@ -424,8 +502,11 @@
     // (بعداً از API واقعی جایگزین می‌شود)
     // ──────────────────────────────────────────
 
-    string GlobalPeriodTitle = "در حال بارگذاری...";
-    string GlobalPeriodStatus = "...";
+    // این کارت را فقط UpdateGlobalSidebar پر می‌کند و آن هم فقط از تب داشبورد
+    // صدا زده می‌شود. با متن «در حال بارگذاری...» به‌عنوان مقدار اولیه، کاربری که
+    // مستقیم سراغ تب دیگری می‌رفت تا ابد یک بارگذاریِ در جریانِ خیالی می‌دید.
+    string GlobalPeriodTitle = "—";
+    string GlobalPeriodStatus = "نامشخص";
     string GlobalPeriodColor = "var(--p2-bg-main)";
 
     void UpdateGlobalSidebar(Safir.Shared.Models.Salary.Pay2DashboardDataDto data)
@@ -451,6 +532,14 @@
 
     protected override async Task OnInitializedAsync()
     {
+        await Pay2Access.EnsureLoadedAsync();
+        if (!HasAnyAccess())
+        {
+            _hasNoAccess = true;
+            return;
+        }
+        ActiveTab = GetFirstAvailableTab();
+
         // 🚀 خواندن اتوماتیک ورژن نرم‌افزار از Assembly
         try
         {
@@ -472,6 +561,8 @@
 
     private void SetActiveTab(string tabName)
     {
+        if (!string.IsNullOrEmpty(tabName) && !CanOpenTab(tabName)) return;
+
         if (ActiveTab == tabName) return;
         ActiveTab = tabName;
     }
@@ -585,5 +676,23 @@
         public string Target { get; }
         public string Icon { get; }
         public string SearchText { get; }
+    }
+
+    private bool CanOpenTab(string tab)
+    {
+        return tab switch
+        {
+            "dashboard" => Pay2Access.Access.CanRun(Pay2Forms.Dashboard),
+            "workshops" => Pay2Access.Access.CanRun(Pay2Forms.Workshop),
+            "employees" => Pay2Access.Access.CanRun(Pay2Forms.Employee),
+            "attendance" => Pay2Access.Access.CanRun(Pay2Forms.Attendance),
+            "advances" => Pay2Access.Access.CanRun(Pay2Forms.Advance),
+            "payroll" => Pay2Access.Access.CanRun(Pay2Forms.Run),
+            "itemdefs" => Pay2Access.Access.CanRun(Pay2Forms.ItemDef),
+            "settings" => Pay2Access.Access.CanRun(Pay2Forms.Settings),
+            "reports" => Pay2Access.Access.CanRun(Pay2Forms.Reports),
+            "access" => Pay2Access.Access.CanRun(Pay2Forms.AdminAcl),
+            _ => false
+        };
     }
 }

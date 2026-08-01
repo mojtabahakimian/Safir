@@ -1,0 +1,109 @@
+name: Build
+
+# روی هر push به شاخه اصلی و هر Pull Request اجرا می‌شود.
+# workflow_dispatch اجازه می‌دهد دستی هم از تب Actions اجرایش کنید.
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: کامپایل و تست
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: دریافت کد
+        uses: actions/checkout@v4
+
+      - name: نصب .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      # کش‌کردن بسته‌های NuGet — اجراهای بعدی چند برابر سریع‌تر می‌شوند
+      - name: کش NuGet
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj') }}
+          restore-keys: ${{ runner.os }}-nuget-
+
+      - name: بازیابی بسته‌ها
+        run: dotnet restore Safir.sln
+
+      - name: کامپایل
+        run: dotnet build Safir.sln --configuration Release --no-restore
+
+      # نگهبان کنترل دسترسی حقوق و دستمزد:
+      # اگر endpoint جدیدی بدون مجوز اضافه شود، اینجا قرمز می‌شود.
+      - name: بررسی کنترل دسترسی PAY2
+        run: python3 .github/scripts/check_pay2_acl.py
+
+      # تست‌های واحد کنترل دسترسی — به دیتابیس نیاز ندارند.
+      - name: تست‌های واحد
+        run: dotnet test Safir.sln --configuration Release --no-build --verbosity normal
+
+  e2e:
+    name: تست سرتاسری در مرورگر
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: دریافت کد
+        uses: actions/checkout@v4
+
+      - name: نصب .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: کش NuGet
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj') }}
+          restore-keys: ${{ runner.os }}-nuget-
+
+      - name: کامپایل
+        run: dotnet build Safir.sln --configuration Debug
+
+      - name: نصب Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: نصب Playwright
+        working-directory: Tests/e2e
+        run: |
+          npm install
+          npx playwright install --with-deps chromium
+
+      # برنامه بدون دیتابیس هم بالا می‌آید؛ تست‌هایی که به دیتابیس نیاز
+      # دارند خودشان skip می‌شوند، پس این مرحله در CI هم معنادار است.
+      - name: بالا آوردن برنامه
+        run: |
+          cd Server
+          ASPNETCORE_ENVIRONMENT=Development \
+          ASPNETCORE_URLS=http://127.0.0.1:5080 \
+            dotnet bin/Debug/net8.0/Safir.Server.dll > /tmp/safir.log 2>&1 &
+          for i in $(seq 1 60); do
+            curl -sSf -o /dev/null http://127.0.0.1:5080/ && exit 0
+            sleep 2
+          done
+          echo "برنامه بالا نیامد" >&2; cat /tmp/safir.log >&2; exit 1
+
+      - name: اجرای تست‌ها
+        working-directory: Tests/e2e
+        run: npx playwright test
+
+      - name: بارگذاری گزارش
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: Tests/e2e/playwright-report/
+          retention-days: 7

@@ -5,6 +5,9 @@ using Safir.Shared.Interfaces;
 using Safir.Shared.Models.Salary;
 using System.Security.Claims;
 
+using Safir.Server.Security;
+using Safir.Shared.Constants;
+using Safir.Shared.Interfaces;
 namespace Safir.Server.Controllers
 {
     [ApiController]
@@ -20,6 +23,7 @@ namespace Safir.Server.Controllers
         }
 
         [HttpGet("settings")]
+        [Pay2Authorize(Pay2Forms.Advance, Pay2Perm.See)]
         public async Task<ActionResult<Pay2SmartAdvanceSettingsDto>> GetSettings([FromQuery] int wsId)
         {
             if (wsId <= 0)
@@ -58,6 +62,8 @@ namespace Safir.Server.Controllers
         }
 
         [HttpPost("settings/save")]
+        [Pay2Authorize(Pay2Forms.Advance, Pay2Perm.Upd)]
+        [Pay2Authorize(Pay2Forms.ActConfigCritical, Pay2Perm.Run)]
         public async Task<IActionResult> SaveSettings([FromBody] Pay2SmartAdvanceSettingsDto settings)
         {
             if (settings.WS_ID <= 0)
@@ -100,6 +106,7 @@ namespace Safir.Server.Controllers
         }
 
         [HttpPost("calculate")]
+        [Pay2Authorize(Pay2Forms.Advance, Pay2Perm.See)]
         public async Task<ActionResult<IEnumerable<Pay2SmartAdvanceRowDto>>> Calculate([FromBody] Pay2SmartAdvanceCalcRequest request)
         {
             if (request.WS_ID <= 0)

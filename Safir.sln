@@ -9,6 +9,10 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Safir.Client", "Client\Safi
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Safir.Shared", "Shared\Safir.Shared.csproj", "{09210B9D-2257-4E83-8DED-1FE858588FF9}"
 EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Tests", "Tests", "{948A28F7-8726-4B05-BE76-94D95A370683}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Safir.Server.Tests", "Tests\Safir.Server.Tests\Safir.Server.Tests.csproj", "{E81D1FFA-CA6E-4598-9A08-F09E196B3D0F}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -27,11 +31,18 @@ Global
 		{09210B9D-2257-4E83-8DED-1FE858588FF9}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{09210B9D-2257-4E83-8DED-1FE858588FF9}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{09210B9D-2257-4E83-8DED-1FE858588FF9}.Release|Any CPU.Build.0 = Release|Any CPU
+		{E81D1FFA-CA6E-4598-9A08-F09E196B3D0F}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{E81D1FFA-CA6E-4598-9A08-F09E196B3D0F}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{E81D1FFA-CA6E-4598-9A08-F09E196B3D0F}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{E81D1FFA-CA6E-4598-9A08-F09E196B3D0F}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {8CFC1ADA-C7B4-478A-AAAC-330AB927EC69}
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{E81D1FFA-CA6E-4598-9A08-F09E196B3D0F} = {948A28F7-8726-4B05-BE76-94D95A370683}
 	EndGlobalSection
 EndGlobal

@@ -8,6 +8,7 @@
 @inject ISnackbar Snackbar
 @inject ConnectionManagerService ConnectionManager
 @inject Safir.Client.Services.AppState AppState
+@inject Safir.Client.Services.Pay2AccessApiService Pay2Access
 
 <div class="pay2-tab-container">
 
@@ -179,7 +180,7 @@
         <div class="pay2-modal-footer" style="justify-content:flex-end;">
             <button class="btn-outline-pay2" @onclick="CloseSettings" style="margin-left:10px;">انصراف</button>
 
-            <button class="btn-primary-pay2" @onclick="SaveSettingsAsync" disabled="@IsSavingSettings">
+            <button class="btn-primary-pay2" @onclick="SaveSettingsAsync" disabled="@(IsSavingSettings || !Pay2Access.Access.CanRun(Safir.Shared.Constants.Pay2Forms.ActConfigCritical))">
                 @if (IsSavingSettings)
                 {
                     <span class="p2-spinner"></span>
@@ -254,7 +255,7 @@
                             </button>
                         }
 
-                        <button class="btn-primary-pay2" @onclick="SaveExclAsync" disabled="@IsSavingExcl">
+                        <button class="btn-primary-pay2" @onclick="SaveExclAsync" disabled="@(IsSavingExcl || !Pay2Access.Access.CanRun(Safir.Shared.Constants.Pay2Forms.ActAdvExcl))">
                             ذخیره
                         </button>
                     </div>

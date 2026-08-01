@@ -535,6 +535,51 @@
         font-weight: 600;
     }
 
+/* فیلدی که کاربر مقدارش را عوض کرده ولی هنوز ذخیره نکرده — تب تنظیمات سیستم. */
+.form-field.p2-field-changed {
+    position: relative;
+    padding-inline-start: 10px;
+    border-inline-start: 3px solid var(--p2-warning-border, #f59e0b);
+}
+
+/* فیلدهای قفل‌شده (مدیریت‌شده توسط رویه یا منسوخ) در تب تنظیمات سیستم —
+   ظاهرشان مثل ورودی معمولی است تا هم‌ردیف بقیه بماند، ولی قابل کلیک/تایپ نیست. */
+.p2-readonly-field {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: var(--p2-bg-main);
+    color: var(--p2-text-muted);
+    cursor: not-allowed;
+    user-select: none;
+}
+
+    .p2-readonly-field i {
+        font-size: 12px;
+    }
+
+/* دکمه‌ی کوچک «بازگشت به پیش‌فرض» کنار فیلدهایی که از مقدار پیش‌فرض فاصله گرفته‌اند. */
+.p2-field-reset-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: var(--p2-input-h, 42px);
+    flex-shrink: 0;
+    border: 1px solid var(--p2-border);
+    border-radius: var(--p2-radius-md);
+    background: transparent;
+    color: var(--p2-text-muted);
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+    .p2-field-reset-btn:hover {
+        background: var(--p2-bg-main);
+        color: var(--p2-primary);
+        border-color: var(--p2-primary);
+    }
+
 /* ─── Input / Select / Textarea ─── */
 .pay2-input,
 .pay2-select,
@@ -2158,6 +2203,23 @@
         transform: translateY(-1px);
     }
 
+/* ─── حالتِ «دسترسی ندارید» برای دکمه‌های گوست ───
+   btn-ghost-pay2 هیچ استایل :disabled نداشت؛ نتیجه این بود که دکمه‌ی بسته‌شده
+   دقیقاً مثل دکمه‌ی باز دیده می‌شد، روی هاور هم رنگ می‌گرفت، و کلیکِ بی‌اثرش
+   به‌جای «اجازه نداری» شبیه «برنامه خراب است» به‌نظر می‌رسید. */
+.btn-ghost-pay2:disabled {
+    opacity: 0.45;
+    filter: grayscale(1);
+    cursor: not-allowed;
+}
+
+    /* هاورهای رنگیِ p2-action-* با important تعریف شده‌اند، پس باید صریح خنثی شوند. */
+    .btn-ghost-pay2:disabled:hover {
+        background: transparent !important;
+        color: var(--p2-text-muted) !important;
+        transform: none !important;
+    }
+
 /* ترانزیشن نرم برای همه دکمه‌های گوست */
 .btn-ghost-pay2 {
     transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
@@ -2221,7 +2283,15 @@
    ۲۴. سفارشی‌سازی فوق‌مدرن هشدارهای سیستم (MudBlazor Snackbar)
    ════════════════════════════════════════════════════════════ */
 
-/* ساختار اصلی و انیمیشن */
+/* ساختار اصلی
+   نکته: خودِ MudSnackbarElement برای ورود و خروج، انیمیشن اختصاصیِ هر پیام را
+   با استایل این‌لاین («opacity: …; animation: …ms linear snackbar-<guid>;»)
+   روی همین المان تنظیم می‌کند. یک قانون animation با !important روی
+   .mud-snackbar آن انیمیشن این‌لاین را کاملاً بی‌اثر می‌کرد — یعنی هنگام
+   بستن (کلیک روی ×)، به‌جای محو شدن، ۲ ثانیه (HideTransitionDuration) کاملاً
+   بدون تغییر ظاهری می‌ماند و بعد به‌یک‌باره ناپدید می‌شد؛ برای کاربر یعنی
+   «دکمه‌ی بستن اثر نمی‌کند». پس اینجا هیچ‌وقت روی animation یا opacity
+   دست نمی‌زنیم و آن انیمیشنِ ورود/خروجِ خودِ کتابخانه دست‌نخورده می‌ماند. */
 .mud-snackbar {
     border-radius: var(--p2-radius-md) !important;
     box-shadow: var(--p2-shadow-lg) !important;
@@ -2230,20 +2300,6 @@
     min-width: 320px;
     border: 1px solid transparent;
     backdrop-filter: blur(8px);
-    /* انیمیشن ورود فنری و مدرن */
-    animation: p2SnackbarEnter 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards !important;
-}
-
-@keyframes p2SnackbarEnter {
-    0% {
-        opacity: 0;
-        transform: translateY(30px) scale(0.95);
-    }
-
-    100% {
-        opacity: 1;
-        transform: translateY(0) scale(1);
-    }
 }
 
 /* تنظیمات متن و آیکون */

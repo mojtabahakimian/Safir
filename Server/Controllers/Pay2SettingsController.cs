@@ -5,6 +5,9 @@ using Safir.Shared.Interfaces;
 using Safir.Shared.Models.Salary;
 using System.Security.Claims;
 
+using Safir.Server.Security;
+using Safir.Shared.Constants;
+using Safir.Shared.Interfaces;
 namespace Safir.Server.Controllers
 {
     [ApiController]
@@ -20,6 +23,7 @@ namespace Safir.Server.Controllers
         }
 
         [HttpGet("configs")]
+        [Pay2Authorize(Pay2Forms.Settings, Pay2Perm.See)]
         public async Task<ActionResult<IEnumerable<Pay2ConfigDto>>> GetConfigs()
         {
             const string sql = @"
@@ -39,11 +43,12 @@ ORDER BY
     CASE CFG_SECTION
         WHEN N'محاسبه' THEN 1
         WHEN N'بیمه' THEN 2
-        WHEN N'مالیات' THEN 3
-        WHEN N'مساعده' THEN 4
-        WHEN N'مرخصی' THEN 5
-        WHEN N'تسویه' THEN 6
-        WHEN N'امنیت' THEN 7
+        WHEN N'INSURANCE' THEN 3
+        WHEN N'مالیات' THEN 4
+        WHEN N'مساعده' THEN 5
+        WHEN N'مرخصی' THEN 6
+        WHEN N'تسویه' THEN 7
+        WHEN N'امنیت' THEN 8
         ELSE 99
     END,
     CFG_KEY;";
@@ -53,6 +58,7 @@ ORDER BY
         }
 
         [HttpPost("configs/save")]
+        [Pay2Authorize(Pay2Forms.Settings, Pay2Perm.Upd)]
         public async Task<IActionResult> SaveConfigs([FromBody] Pay2ConfigSaveRequest request)
         {
             if (request == null || request.Items == null || request.Items.Count == 0)
@@ -61,12 +67,31 @@ ORDER BY
             var userIdString = User.FindFirstValue(ClaimTypes.NameIdentifier);
             if (!int.TryParse(userIdString, out int userCod))
                 return Unauthorized("شناسه کاربر معتبر نیست.");
+            var accessService = HttpContext.RequestServices.GetRequiredService<IPay2AccessService>();
+            var submittedKeys = request.Items.Select(i => i.CFG_KEY).ToList();
+
+            if (submittedKeys.Any(k => k != null && k.StartsWith("ACL_", StringComparison.OrdinalIgnoreCase)))
+            {
+                if (!await accessService.HasAndAuditAsync(HttpContext, userCod, Pay2Forms.AdminAcl, Pay2Perm.Run))
+                    return StatusCode(403, "تغییر تنظیمات کنترل دسترسی فقط توسط مدیر دسترسی‌های حقوق و دستمزد مجاز است.");
+            }
+
+            var criticalKeys = (await _db.DoGetDataSQLAsync<string>(
+                "SELECT CFG_KEY FROM PAY2_CONFIG WHERE ACCESS_LEVEL = 1 AND CFG_KEY IN @keys",
+                new { keys = submittedKeys })).ToList();
+
+            if (criticalKeys.Any())
+            {
+                if (!await accessService.HasAndAuditAsync(HttpContext, userCod, Pay2Forms.ActConfigCritical, Pay2Perm.Run))
+                    return StatusCode(403, "برای تغییر تنظیمات حساس (نرخ بیمه/مالیات/سقف) دسترسی لازم را ندارید.");
+            }
+
 
             try
             {
                 // 🚀 حل مشکل N+1 Query: واکشی تمامی تنظیمات پایه به صورت یکجا
                 var existingConfigs = (await _db.DoGetDataSQLAsync<Pay2ConfigDto>(
-                    "SELECT CFG_KEY, CFG_OPTIONS, DATA_TYPE FROM PAY2_CONFIG"))
+                    "SELECT CFG_KEY, CFG_OPTIONS, DATA_TYPE, LABEL_FA FROM PAY2_CONFIG"))
                     .ToDictionary(x => x.CFG_KEY, x => x);
 
                 await _db.ExecuteInTransactionAsync(async (conn, tran) =>
@@ -80,7 +105,18 @@ ORDER BY
                         if (!existingConfigs.TryGetValue(item.CFG_KEY, out var dbCfg))
                             throw new InvalidOperationException($"کلید تنظیمات نامعتبر است: {item.CFG_KEY}");
 
-                        var normalizedValue = NormalizeConfigValue(item.CFG_VALUE, dbCfg.DATA_TYPE);
+                        // دکمه‌ی «ذخیره تمامی تنظیمات» همه‌ی کلیدها را یک‌جا می‌فرستد،
+                        // پس پیام خطای بدون نام فیلد عملاً غیرقابل استفاده است.
+                        string normalizedValue;
+                        try
+                        {
+                            normalizedValue = NormalizeConfigValue(item.CFG_VALUE, dbCfg.DATA_TYPE);
+                        }
+                        catch (InvalidOperationException ex)
+                        {
+                            throw new InvalidOperationException(
+                                $"«{dbCfg.LABEL_FA ?? item.CFG_KEY}»: {ex.Message}", ex);
+                        }
 
                         if (!string.IsNullOrWhiteSpace(dbCfg.CFG_OPTIONS))
                         {
@@ -111,6 +147,10 @@ WHERE CFG_KEY = @Key;",
                     }
                 });
 
+                // تنظیماتِ ACL کش می‌شوند؛ بدون این خط، روشن کردن ACL_ENFORCE تا
+                // سر رسیدن TTL بی‌اثر می‌ماند و کاربر فکر می‌کند ذخیره نشده است.
+                await accessService.InvalidateConfigAsync();
+
                 return Ok();
             }
             catch (Exception ex)
@@ -120,6 +160,7 @@ WHERE CFG_KEY = @Key;",
         }
 
         [HttpGet("tax/years")]
+        [Pay2Authorize(Pay2Forms.Settings, Pay2Perm.See)]
         public async Task<ActionResult<IEnumerable<short>>> GetTaxYears()
         {
             const string sql = @"
@@ -132,6 +173,7 @@ ORDER BY TAX_YEAR DESC;";
         }
 
         [HttpGet("tax/brackets")]
+        [Pay2Authorize(Pay2Forms.Settings, Pay2Perm.See)]
         public async Task<ActionResult<IEnumerable<Pay2TaxBracketDto>>> GetTaxBrackets([FromQuery] short? year)
         {
             const string sql = @"
@@ -160,6 +202,8 @@ ORDER BY TAX_YEAR DESC, SORT_ORDER;";
         }
 
         [HttpPost("tax/brackets/save")]
+        [Pay2Authorize(Pay2Forms.Settings, Pay2Perm.Upd)]
+        [Pay2Authorize(Pay2Forms.ActConfigCritical, Pay2Perm.Run)]
         public async Task<IActionResult> SaveTaxBrackets([FromBody] Pay2TaxBracketSaveRequest request)
         {
             if (request == null)
@@ -229,6 +273,8 @@ VALUES
         }
 
         [HttpPost("tax/brackets/copy-year")]
+        [Pay2Authorize(Pay2Forms.Settings, Pay2Perm.Upd)]
+        [Pay2Authorize(Pay2Forms.ActConfigCritical, Pay2Perm.Run)]
         public async Task<IActionResult> CopyTaxYear([FromBody] Pay2TaxBracketCopyRequest request)
         {
             if (request == null)
@@ -352,6 +398,14 @@ ORDER BY SORT_ORDER;",
 
             if (string.IsNullOrWhiteSpace(text))
                 return "";
+
+            // «۰» یعنی تاریخ تعیین نشده و مقدار پیش‌فرض همین است — مثلاً
+            // INS_NON_SUBJECT_EFFECTIVE_FROM با CFG_DEFAULT = '0' ساخته می‌شود.
+            // اگر اینجا ردش کنیم، دکمه‌ی «ذخیره تمامی تنظیمات» که همه‌ی کلیدها
+            // را یک‌جا می‌فرستد کامل شکست می‌خورد و هیچ تنظیم دیگری هم — از
+            // جمله ACL_ENFORCE — ذخیره نمی‌شود.
+            if (long.TryParse(text, out var numeric) && numeric == 0)
+                return "0";
 
             if (text.Length != 8 || !long.TryParse(text, out _))
                 throw new InvalidOperationException("مقدار تاریخ نامعتبر است.");

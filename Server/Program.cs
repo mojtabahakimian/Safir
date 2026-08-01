@@ -11,7 +11,10 @@ using System.Text;
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddHttpContextAccessor();
-builder.Services.AddControllersWithViews();
+builder.Services.AddControllersWithViews(options =>
+{
+    options.Filters.Add<Safir.Server.Security.Pay2ForbiddenFilter>();
+});
 builder.Services.AddRazorPages();
 
 #region MineServer
@@ -57,6 +60,8 @@ builder.Services.AddAuthentication(options =>
 Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
 
 builder.Services.AddScoped<IPermissionService, PermissionService>();
+builder.Services.AddScoped<IPay2AccessService, Pay2AccessService>();
+builder.Services.AddScoped<Safir.Server.Security.Pay2ScopeResolver>();
 builder.Services.AddScoped<Safir.Server.Services.Pay2DisketteService>();
 #endregion
 
@@ -177,3 +182,9 @@ app.MapControllers(); // Make sure API controllers are mapped
 app.MapFallbackToFile("index.html"); // Fallback for Blazor routing
 
 app.Run();
+
+// برای تست‌های یکپارچه (WebApplicationFactory) لازم است کلاس Program
+// از بیرون قابل دسترسی باشد. با top-level statements این کلاس به‌صورت
+// internal ساخته می‌شود، پس اینجا صریحاً public اعلامش می‌کنیم.
+// هیچ اثری روی اجرای برنامه ندارد.
+public partial class Program { }

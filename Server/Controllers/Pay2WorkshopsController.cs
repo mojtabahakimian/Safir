@@ -7,6 +7,8 @@ using System.Data;
 using System.Security.Claims;
 using System.Text.RegularExpressions;
 
+using Safir.Server.Security;
+using Safir.Shared.Constants;
 namespace Safir.Server.Controllers;
 
 [ApiController]
@@ -22,23 +24,37 @@ public class Pay2WorkshopsController : ControllerBase
     }
 
     [HttpGet]
+    [Pay2Authorize(Pay2Forms.Workshop, Pay2Perm.See)]
     public async Task<ActionResult<IEnumerable<Pay2WorkshopDto>>> GetAll()
     {
+        // فقط کارگاه‌های مجاز کاربر بازگردانده می‌شوند
+        int userCoScope = int.Parse(User.FindFirst(BaseknowClaimTypes.IDD)?.Value ?? "0");
+        var access = await HttpContext.RequestServices
+            .GetRequiredService<IPay2AccessService>().GetAccessAsync(userCoScope);
+        bool noScope = !access.AclEnforced || !access.WsScopeEnforced;
+
         const string sql = @"
             SELECT WS_ID, WS_CODE, WS_NAME, NATIONAL_ID, SOCIAL_INS_CODE, TAX_CODE,
                    ADDRESS, PHONE, POSTAL_CODE, EMPLOYER_NAME, IS_ACTIVE, ISNULL(INS_MODE, 1) AS INS_MODE, SHIFT_MODE,
                    PROVINCE, CITY, REGISTRATION_NUMBER, SSO_BRANCH, FINANCIAL_MANAGER, ADMIN_MANAGER,
                    ISNULL(DEFAULT_DEED_MODE, 1) AS DEFAULT_DEED_MODE
             FROM   PAY2_WORKSHOP
+            WHERE  (@noScope = 1 OR WS_ID IN @allowedWsIds)
             ORDER  BY WS_ID";
 
-        var data = await _db.DoGetDataSQLAsync<Pay2WorkshopDto>(sql);
+        var data = await _db.DoGetDataSQLAsync<Pay2WorkshopDto>(
+            sql, new { noScope, allowedWsIds = access.AllowedWorkshopIds.DefaultIfEmpty(-1).ToList() });
         return Ok(data);
     }
 
     [HttpGet("{wsId:int}/accounts")]
+    [Pay2Authorize(Pay2Forms.Workshop, Pay2Perm.See)]
     public async Task<ActionResult<Pay2WorkshopAccDto>> GetAccounts(int wsId)
     {
+        int userCoScope = int.Parse(User.FindFirst(BaseknowClaimTypes.IDD)?.Value ?? "0");
+        await HttpContext.RequestServices.GetRequiredService<Pay2ScopeResolver>()
+            .EnsureWorkshopAsync(userCoScope, wsId);
+
         const string sql = @"
             SELECT ACC_KEY, ACC_CODE
             FROM   PAY2_WORKSHOP_ACC
@@ -89,6 +105,21 @@ public class Pay2WorkshopsController : ControllerBase
         var userIdString = User.FindFirstValue(ClaimTypes.NameIdentifier);
         if (!int.TryParse(userIdString, out int userCod))
             return Unauthorized();
+
+        // ثبت کارگاه جدید نیاز به مجوز درج و ویرایش کارگاه موجود نیاز به مجوز ویرایش دارد
+        var accessService = HttpContext.RequestServices.GetRequiredService<IPay2AccessService>();
+        var neededPerm = w.WS_ID == 0 ? Pay2Perm.Inp : Pay2Perm.Upd;
+        if (!await accessService.HasAndAuditAsync(HttpContext, userCod, Pay2Forms.Workshop, neededPerm))
+            return StatusCode(403, w.WS_ID == 0
+                ? "برای تعریف کارگاه جدید دسترسی لازم را ندارید."
+                : "برای ویرایش کارگاه دسترسی لازم را ندارید.");
+
+        // ویرایش کارگاه موجود فقط برای کارگاه‌های مجاز کاربر
+        if (w.WS_ID != 0)
+            await HttpContext.RequestServices.GetRequiredService<Pay2ScopeResolver>()
+                .EnsureWorkshopAsync(userCod, w.WS_ID);
+
+        bool isNewWorkshop = w.WS_ID == 0;
 
         try
         {
@@ -221,6 +252,19 @@ public class Pay2WorkshopsController : ControllerBase
                 return newOrUpdatedWsId;
             });
 
+            // پس از ایجاد کارگاه جدید، دسترسی آن به کاربر ایجادکننده داده می‌شود
+            // تا سازنده بلافاصله از کارگاهی که خودش ساخته قفل نشود
+            if (isNewWorkshop && wsId > 0)
+            {
+                await _db.DoExecuteSQLAsync(@"
+IF NOT EXISTS (SELECT 1 FROM dbo.PAY2_USER_WS WHERE USERCO = @userCod AND WS_ID = @wsId)
+    INSERT INTO dbo.PAY2_USER_WS (USERCO, WS_ID, CRT, [UID])
+    VALUES (@userCod, @wsId, GETDATE(), @userCod);",
+                    new { userCod, wsId });
+
+                await accessService.InvalidateAsync(userCod);
+            }
+
             return Ok(wsId);
         }
         catch (InvalidOperationException ex)
@@ -230,8 +274,13 @@ public class Pay2WorkshopsController : ControllerBase
     }
 
     [HttpDelete("{wsId:int}")]
+    [Pay2Authorize(Pay2Forms.Workshop, Pay2Perm.Del)]
     public async Task<IActionResult> Delete(int wsId)
     {
+        int userCoScope = int.Parse(User.FindFirst(BaseknowClaimTypes.IDD)?.Value ?? "0");
+        await HttpContext.RequestServices.GetRequiredService<Pay2ScopeResolver>()
+            .EnsureWorkshopAsync(userCoScope, wsId);
+
         try
         {
             await _db.ExecuteInTransactionAsync(async (conn, tran) =>

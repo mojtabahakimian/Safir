@@ -1,3 +1,4 @@
+﻿@inject Safir.Client.Services.Pay2AccessApiService Pay2Access
 ﻿@using Safir.Shared.Models.Salary
 @using Safir.Shared.Models
 @inject Safir.Client.Services.Pay2EmployeeApiService EmployeeApi
@@ -69,7 +70,7 @@
                         <input type="checkbox" @bind="CurrentDecree.IS_MANAGER" style="vertical-align: middle; margin-left: 4px;" /> ۳٪ بیکاری محاسبه نشود
                     </label>
                     <label style="margin:0; font-weight:700; color:var(--p2-success-text); cursor:pointer; font-size: 13px;">
-                        <input type="checkbox" @bind="CurrentDecree.IS_CONFIRMED" style="vertical-align: middle; margin-left: 4px;" /> تأیید نهایی این حکم
+                        <input type="checkbox" @bind="CurrentDecree.IS_CONFIRMED" disabled="@(!Pay2Access.Access.CanRun(Safir.Shared.Constants.Pay2Forms.ActDecreeConfirm))" style="vertical-align: middle; margin-left: 4px;" /> تأیید نهایی این حکم
                     </label>
                 </div>
 
@@ -78,7 +79,8 @@
                     {
                         <button class="btn-outline-pay2" @onclick="ResetForm">انصراف</button>
                     }
-                    <button class="btn-primary-pay2" @onclick="SubmitSave" disabled="@IsSaving">
+                    <button class="btn-primary-pay2" @onclick="SubmitSave" disabled="@(IsSaving || !CanWrite)"
+                            title="@(CanWrite ? "ثبت حکم" : NoAccessHint)">
                         @if (IsSaving)
                         {
                             <span class="p2-spinner"></span>
@@ -135,14 +137,16 @@
                                     <button class="btn-ghost-pay2" style="color:#8b5cf6;" @onclick="() => OpenDecreeLines(dec)">آیتم‌های ریالی</button>
                                     @if (dec.IS_CONFIRMED)
                                     {
-                                        <button class="btn-ghost-pay2" style="color: var(--p2-warning-text);" @onclick="() => UnlockDecree(dec)" title="لغو تأیید نهایی — فقط اگر حقوق قطعی نشده باشد">
+                                        <button class="btn-ghost-pay2" style="color: var(--p2-warning-text);" @onclick="() => UnlockDecree(dec)" disabled="@(!Pay2Access.Access.CanRun(Safir.Shared.Constants.Pay2Forms.ActDecreeConfirm))" title="لغو تأیید نهایی — فقط اگر حقوق قطعی نشده باشد">
                                             <i class="bi bi-unlock"></i> لغو تأیید
                                         </button>
                                     }
                                     else
                                     {
-                                        <button class="btn-ghost-pay2 p2-text-primary" @onclick="() => EditDecree(dec)">ویرایش</button>
-                                        <button class="btn-ghost-pay2 p2-text-danger" @onclick="() => DeleteDecree(dec)">حذف</button>
+                                        <button class="btn-ghost-pay2 p2-text-primary" @onclick="() => EditDecree(dec)"
+                                                disabled="@(!CanWrite)" title="@(CanWrite ? "ویرایش این حکم" : NoAccessHint)">ویرایش</button>
+                                        <button class="btn-ghost-pay2 p2-text-danger" @onclick="() => DeleteDecree(dec)"
+                                                disabled="@(!CanDelete)" title="@(CanDelete ? "حذف این حکم" : NoAccessHint)">حذف</button>
                                     }
                                 </td>
                             </tr>
@@ -176,6 +180,12 @@
     [Parameter] public int WorkshopId { get; set; }
     [Parameter] public string EmployeeName { get; set; } = "";
     [Parameter] public EventCallback OnClose { get; set; }
+
+    // مجوزها دقیقاً همان‌هایی هستند که Pay2EmployeesController برای این عملیات‌ها
+    // چک می‌کند: ذخیره/ویرایش ← PAY2_DECREE/Inp ، حذف ← PAY2_DECREE/Del
+    const string NoAccessHint = "دسترسی لازم برای این عملیات را ندارید.";
+    bool CanWrite  => Pay2Access.CanInp(Safir.Shared.Constants.Pay2Forms.Decree);
+    bool CanDelete => Pay2Access.CanDel(Safir.Shared.Constants.Pay2Forms.Decree);
 
     List<Pay2DecreeDto> Decrees = new();
     List<LookupDto<int>> Templates = new();
