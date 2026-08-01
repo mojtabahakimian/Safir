@@ -66,9 +66,37 @@ public sealed class InMemoryDatabase : IDatabaseService
                 (UserWorkshops.TryGetValue(UserCo(), out var ws) ? ws : new List<int>())
                 .Select(x => (object)x));
 
-        // همه‌ی کارگاه‌های فعال (وقتی کنترل دسترسی خاموش است)
         if (sql.Contains("PAY2_WORKSHOP"))
-            return Rows<TEntity>(AllWorkshops.Select(x => (object)x));
+        {
+            IEnumerable<int> ids = AllWorkshops;
+
+            // کوئری‌هایی که محدوده را اعمال می‌کنند @noScope و @allowedWsIds
+            // می‌فرستند. بدون پیاده‌سازی این فیلتر، آزمونِ «فهرست محدود
+            // می‌ماند» همیشه سبز می‌شد و چیزی را ثابت نمی‌کرد.
+            var noScopeProp = parameters?.GetType().GetProperty("noScope");
+            if (noScopeProp is not null && !(bool)noScopeProp.GetValue(parameters)!)
+            {
+                var allowed = ((IEnumerable<int>)parameters!.GetType()
+                    .GetProperty("allowedWsIds")!.GetValue(parameters)!).ToHashSet();
+                ids = ids.Where(allowed.Contains);
+            }
+
+            // سه شکل مصرف: شناسه‌ی خام (محاسبه‌ی محدوده)، DTO کامل (فهرست
+            // کارگاه‌ها)، و dynamic (اندپوینت مدیریت دسترسی — Dapper آنجا
+            // DapperRow می‌دهد و دیکشنری نزدیک‌ترین معادلِ قابل ساخت است).
+            if (typeof(TEntity) == typeof(int))
+                return Rows<TEntity>(ids.Select(x => (object)x));
+
+            if (typeof(TEntity) == typeof(object))
+                return Rows<TEntity>(ids.Select(id => (object)new Dictionary<string, object>
+                {
+                    ["WS_ID"] = id,
+                    ["WS_NAME"] = $"کارگاه {id}",
+                }));
+
+            return Rows<TEntity>(ids.Select(id =>
+                Materialize<TEntity>(("WS_ID", id), ("WS_NAME", $"کارگاه {id}"))));
+        }
 
         // TFORMS + SAL_CHEK
         if (sql.Contains("TFORMS"))

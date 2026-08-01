@@ -24,7 +24,7 @@ namespace Safir.Server.Tests;
 /// </summary>
 public class AclEndToEndTests : IClassFixture<AclEndToEndTests.Factory>
 {
-    private const int AdminCo = 9001, ViewerCo = 9002, ScopedCo = 9003;
+    private const int AdminCo = 9001, ViewerCo = 9002, ScopedCo = 9003, AclAdminCo = 9004;
 
     private static readonly string[] AllForms =
     {
@@ -65,6 +65,16 @@ public class AclEndToEndTests : IClassFixture<AclEndToEndTests.Factory>
                 .Select(f => new InMemoryDatabase.FormPerm(f, f, true, true, true, true, true))
                 .ToList();
             Db.UserWorkshops[ScopedCo] = new List<int> { 1 };
+
+            // مدیرِ دسترسی‌ها که هنوز هیچ کارگاهی به خودش نداده — همان وضعیتی
+            // که بعد از اجرای مهاجرت روی یک دیتابیس واقعی پیش آمد و باعث شد
+            // صفحه‌ی «کارگاه‌های مجاز» خالی بماند و کار به بن‌بست بخورد.
+            Db.UserForms[AclAdminCo] = new List<InMemoryDatabase.FormPerm>
+            {
+                new(Pay2Forms.AdminAcl, "مدیریت دسترسی‌ها", true, true, true, true, true),
+                new(Pay2Forms.Workshop, "کارگاه‌ها",        true, true, true, true, true),
+            };
+            Db.UserWorkshops[AclAdminCo] = new List<int>();
         }
     }
 
@@ -211,6 +221,41 @@ public class AclEndToEndTests : IClassFixture<AclEndToEndTests.Factory>
 
         Assert.True(_factory.Db.AuditWrites.Count > before,
             "تلاش ناموفق باید در PAY2_SEC_AUDIT ثبت شود");
+    }
+
+    // ── صفحه‌ی مدیریت دسترسی نباید خودش را قفل کند ───────────────────────
+
+    [Fact]
+    public async Task An_acl_admin_with_no_workshops_of_their_own_still_sees_every_workshop()
+    {
+        // بن‌بستِ واقعی: مهاجرت فقط به چند کاربر خاص کارگاه می‌دهد. اگر مدیرِ
+        // دسترسی‌ها جزو آن‌ها نباشد و فهرست کارگاه‌ها هم به محدوده‌ی خودش
+        // محدود شود، فهرست خالی است و او هرگز نمی‌تواند به کسی — از جمله
+        // خودش — کارگاه بدهد. یعنی روشن کردن کنترل دسترسی سیستم را قفل می‌کند.
+        var res = await ClientFor(AclAdminCo)
+            .GetFromJsonAsync<JsonElement>("/api/pay2/access/workshops");
+
+        Assert.Equal(JsonValueKind.Array, res.ValueKind);
+        Assert.NotEmpty(res.EnumerateArray());
+    }
+
+    [Fact]
+    public async Task The_ordinary_workshop_list_stays_scoped_for_that_same_admin()
+    {
+        // اگر این هم همه‌ی کارگاه‌ها را برگرداند یعنی محدودسازی از بین رفته و
+        // آزمون بالا هیچ چیزِ تازه‌ای ثابت نمی‌کند.
+        var res = await ClientFor(AclAdminCo)
+            .GetFromJsonAsync<JsonElement>("/api/pay2/workshops");
+
+        Assert.Empty(res.EnumerateArray());
+    }
+
+    [Fact]
+    public async Task Listing_every_workshop_needs_the_acl_admin_permission()
+    {
+        var res = await ClientFor(ScopedCo).GetAsync("/api/pay2/access/workshops");
+
+        Assert.Equal(HttpStatusCode.Forbidden, res.StatusCode);
     }
 
     // ── کلید خاموش‌کننده ─────────────────────────────────────────────────

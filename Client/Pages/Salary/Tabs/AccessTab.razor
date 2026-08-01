@@ -348,7 +348,9 @@
         {
             _users = await Http.GetFromJsonAsync<List<Pay2UserDto>>("api/pay2/access/users") ?? new();
             _forms = await Http.GetFromJsonAsync<List<Pay2FormSimpleDto>>("api/pay2/access/forms") ?? new();
-            _workshops = await Http.GetFromJsonAsync<List<Pay2WsDto>>("api/pay2/workshops?noScope=1") ?? new();
+            // عمداً از api/pay2/workshops استفاده نمی‌کنیم: آن فهرست به محدوده‌ی
+            // کارگاهیِ خودِ مدیر محدود می‌شود و اینجا همان محدوده در حال تعیین است.
+            _workshops = await Http.GetFromJsonAsync<List<Pay2WsDto>>("api/pay2/access/workshops") ?? new();
         }
         catch
         {

@@ -502,8 +502,11 @@ else
     // (بعداً از API واقعی جایگزین می‌شود)
     // ──────────────────────────────────────────
 
-    string GlobalPeriodTitle = "در حال بارگذاری...";
-    string GlobalPeriodStatus = "...";
+    // این کارت را فقط UpdateGlobalSidebar پر می‌کند و آن هم فقط از تب داشبورد
+    // صدا زده می‌شود. با متن «در حال بارگذاری...» به‌عنوان مقدار اولیه، کاربری که
+    // مستقیم سراغ تب دیگری می‌رفت تا ابد یک بارگذاریِ در جریانِ خیالی می‌دید.
+    string GlobalPeriodTitle = "—";
+    string GlobalPeriodStatus = "نامشخص";
     string GlobalPeriodColor = "var(--p2-bg-main)";
 
     void UpdateGlobalSidebar(Safir.Shared.Models.Salary.Pay2DashboardDataDto data)

@@ -55,6 +55,32 @@ namespace Safir.Server.Controllers
             return Ok(res);
         }
 
+        /// <summary>
+        /// همه‌ی کارگاه‌های فعال — بدون اعمال محدوده‌ی کارگاهیِ خودِ درخواست‌دهنده.
+        ///
+        /// چرا جدا از api/pay2/workshops: آن اندپوینت (درست) فقط کارگاه‌های مجازِ
+        /// کاربر را برمی‌گرداند. ولی صفحه‌ی «مدیریت دسترسی‌ها» جایی است که همین
+        /// محدوده تعیین می‌شود؛ اگر آن هم محدود باشد، مدیری که هنوز هیچ کارگاهی
+        /// ندارد فهرست خالی می‌بیند و هرگز نمی‌تواند به کسی — از جمله خودش —
+        /// کارگاه بدهد. یعنی روشن کردن کنترل دسترسی سیستم را قفل می‌کند.
+        ///
+        /// این استثنا فقط پشت PAY2_ADMIN_ACL باز است و چیزی جز نام و شناسه‌ی
+        /// کارگاه‌ها برنمی‌گرداند.
+        /// </summary>
+        [HttpGet("workshops")]
+        [Pay2Authorize(Pay2Forms.AdminAcl, Pay2Perm.Run)]
+        public async Task<IActionResult> GetAssignableWorkshops()
+        {
+            const string sql = @"
+SELECT WS_ID, WS_NAME
+FROM dbo.PAY2_WORKSHOP
+WHERE IS_ACTIVE = 1
+ORDER BY WS_ID;";
+
+            var rows = await _db.DoGetDataSQLAsync<dynamic>(sql);
+            return Ok(rows);
+        }
+
         [HttpGet("users")]
         [Pay2Authorize(Pay2Forms.AdminAcl, Pay2Perm.Run)]
         public async Task<IActionResult> GetUsers()
