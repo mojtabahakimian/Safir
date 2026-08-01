@@ -537,7 +537,7 @@ CREATE TABLE [dbo].[PAY2_ITEM_DEF]
     -- شمارهٔ تفصیلیِ حسابِ هزینه در سند تفصیلی کامل (DEED_MODE=3). به ریشهٔ
     -- حسابِ مرکز هزینه چسبانده می‌شود: «711-1» + «2» → «711-1-2» (اضافه‌کار تولید).
     -- NULL یعنی این قلم هزینه‌ای تولید نمی‌کند (کسورات). پیش‌فرضِ اقلام جدید ۹=سایر است.
-    [EXP_TAFSILI]   SMALLINT      NULL CONSTRAINT DF_ID_EXPT DEFAULT(9),
+    [EXP_TAFSILI]   SMALLINT      NULL,
     [SORT_ORDER]    SMALLINT      NOT NULL CONSTRAINT DF_ID_SRT DEFAULT(100),
     [IS_ACTIVE]     BIT           NOT NULL CONSTRAINT DF_ID_ACT DEFAULT(1),
     [NOTES]         NVARCHAR(200) NULL,
@@ -558,30 +558,34 @@ GO
 IF NOT EXISTS (SELECT 1 FROM PAY2_ITEM_DEF WHERE ITEM_CODE = 'BASE_SAL')
 BEGIN
 INSERT INTO PAY2_ITEM_DEF
-    (ITEM_CODE, ITEM_NAME, ITEM_TYPE, CALC_BASIS, INS_SUBJECT, TAX_SUBJECT, INS_BASE_DAYS, PAY_BASE_DAYS, IS_SYSTEM, SORT_ORDER, EXP_TAFSILI)
+    (ITEM_CODE, ITEM_NAME, ITEM_TYPE, CALC_BASIS, INS_SUBJECT, TAX_SUBJECT, INS_BASE_DAYS, PAY_BASE_DAYS, IS_SYSTEM, SORT_ORDER)
 VALUES
--- ستون آخر = شمارهٔ تفصیلیِ حساب هزینه (سند تفصیلی کامل). کسورات هزینه ندارند ⇒ NULL.
-('BASE_SAL_B',  N'حقوق روزانه رسمی',        1, 1, 1, 1, 1, 2, 1, 1,  1),     -- SALARY_DAYLYB
-('BASE_SAL',    N'حقوق روزانه اسمی',         1, 1, 1, 1, 1, 2, 1, 2,  1),     -- SALARY_DAYLY
-('HOME',        N'خواربار و مسکن',           1, 1, 1, 1, 1, 2, 1, 3,  5),     -- قانون ۲۸ روز
-('CHILDREN',    N'حق اولاد',                 1, 1, 0, 1, 1, 2, 1, 4,  4),     -- معاف بیمه، مشمول مالیات
-('FAMILY_ALLOW',N'حق تأهل',                  1, 2, 1, 1, 1, 2, 1, 5,  13),    -- ماهیانه
-('ATTRACT',     N'حق جذب',                   1, 2, 1, 1, 1, 2, 1, 6,  9),     -- ماهیانه
-('GROCERY',     N'بن کارگری',                1, 1, 1, 0, 1, 2, 1, 7,  12),    -- مشمول بیمه، معاف مالیات
-('HARD_COND',   N'شرایط محیط کار',           1, 2, 1, 1, 1, 2, 1, 8,  9),
-('NAHAR',       N'حق نهار',                  1, 2, 0, 0, 2, 2, 1, 9,  9),     -- معاف بیمه/مالیات
-('SHIFT',       N'حق شیفت/نوبت/شب‌کاری',    1, 1, 0, 1, 1, 2, 1, 10, 11),    -- درصد از BASE_SAL_B
-('OTHER_FIX',   N'سایر ثابت',               1, 2, 1, 1, 1, 2, 1, 11, 9),
-('OT_NORMAL',   N'اضافه‌کار عادی',           2, 1, 1, 1, 1, 2, 1, 12, 2),
-('OT_HOLIDAY',  N'اضافه‌کار تعطیل',          2, 1, 1, 1, 1, 2, 1, 13, 2),
-('OT_ADMIN',    N'اضافه‌کار اداری',           2, 1, 1, 1, 1, 2, 1, 14, 2),
-('PERF_BONUS',  N'پاداش/راندمان',            2, 2, 1, 1, 1, 2, 1, 15, 3),
-('TRANSP',      N'حق ناقل/ایاب‌ذهاب',        2, 2, 0, 0, 1, 2, 1, 16, 9),     -- معاف بیمه/مالیات
-('INS_DED',     N'کسر بیمه کارگر',           4, 1, 0, 0, 1, 2, 1, 17, NULL),  -- خودکار
-('TAX_DED',     N'کسر مالیات',              4, 1, 0, 0, 1, 2, 1, 18, NULL),  -- خودکار
-('LOAN_DED',    N'قسط وام',                  3, 2, 0, 0, 1, 2, 1, 19, NULL),  -- از PAY2_LOAN_SCHED
-('ADVANCE_DED', N'مساعده',                   4, 2, 0, 0, 1, 2, 1, 20, NULL),  -- هوشمند از DEED_DTL
-('OTHER_DED',   N'سایر کسورات',             3, 2, 0, 0, 1, 2, 1, 21, NULL);
+-- عمداً EXP_TAFSILI اینجا نیست: این batch روی دیتابیسی هم اجرا می‌شود که جدول
+-- را از قبل دارد ولی ستون را نه (ستون پایین‌تر با ALTER اضافه می‌شود). چون
+-- SQL Server کل batch را پیش از اجرا کامپایل می‌کند، صرفِ نامِ آن ستون کافی
+-- بود تا کل اسکریپت با «Invalid column name» رد شود — حتی با وجود IF NOT
+-- EXISTS که جلوی اجرای INSERT را می‌گرفت. مقداردهی‌اش پایین‌تر و داخل EXEC است.
+('BASE_SAL_B',  N'حقوق روزانه رسمی',        1, 1, 1, 1, 1, 2, 1, 1),   -- SALARY_DAYLYB
+('BASE_SAL',    N'حقوق روزانه اسمی',         1, 1, 1, 1, 1, 2, 1, 2),   -- SALARY_DAYLY
+('HOME',        N'خواربار و مسکن',           1, 1, 1, 1, 1, 2, 1, 3),   -- قانون ۲۸ روز
+('CHILDREN',    N'حق اولاد',                 1, 1, 0, 1, 1, 2, 1, 4),   -- معاف بیمه، مشمول مالیات
+('FAMILY_ALLOW',N'حق تأهل',                  1, 2, 1, 1, 1, 2, 1, 5),   -- ماهیانه
+('ATTRACT',     N'حق جذب',                   1, 2, 1, 1, 1, 2, 1, 6),   -- ماهیانه
+('GROCERY',     N'بن کارگری',                1, 1, 1, 0, 1, 2, 1, 7),   -- مشمول بیمه، معاف مالیات
+('HARD_COND',   N'شرایط محیط کار',           1, 2, 1, 1, 1, 2, 1, 8),
+('NAHAR',       N'حق نهار',                  1, 2, 0, 0, 2, 2, 1, 9),   -- معاف بیمه/مالیات
+('SHIFT',       N'حق شیفت/نوبت/شب‌کاری',    1, 1, 0, 1, 1, 2, 1, 10),  -- درصد از BASE_SAL_B
+('OTHER_FIX',   N'سایر ثابت',               1, 2, 1, 1, 1, 2, 1, 11),
+('OT_NORMAL',   N'اضافه‌کار عادی',           2, 1, 1, 1, 1, 2, 1, 12),
+('OT_HOLIDAY',  N'اضافه‌کار تعطیل',          2, 1, 1, 1, 1, 2, 1, 13),
+('OT_ADMIN',    N'اضافه‌کار اداری',           2, 1, 1, 1, 1, 2, 1, 14),
+('PERF_BONUS',  N'پاداش/راندمان',            2, 2, 1, 1, 1, 2, 1, 15),
+('TRANSP',      N'حق ناقل/ایاب‌ذهاب',        2, 2, 0, 0, 1, 2, 1, 16),  -- معاف بیمه/مالیات
+('INS_DED',     N'کسر بیمه کارگر',           4, 1, 0, 0, 1, 2, 1, 17),  -- خودکار
+('TAX_DED',     N'کسر مالیات',              4, 1, 0, 0, 1, 2, 1, 18),  -- خودکار
+('LOAN_DED',    N'قسط وام',                  3, 2, 0, 0, 1, 2, 1, 19),  -- از PAY2_LOAN_SCHED
+('ADVANCE_DED', N'مساعده',                   4, 2, 0, 0, 1, 2, 1, 20),  -- هوشمند از DEED_DTL
+('OTHER_DED',   N'سایر کسورات',             3, 2, 0, 0, 1, 2, 1, 21);
 END;
 GO
 
@@ -1342,17 +1346,20 @@ IF COL_LENGTH('dbo.PAY2_RUN_DETAIL','TAX_SUBJECT_AMOUNT') IS NULL ALTER TABLE db
 IF COL_LENGTH('dbo.PAY2_ATTENDANCE','SHORTAGE_H') IS NULL ALTER TABLE dbo.PAY2_ATTENDANCE ADD SHORTAGE_H DECIMAL(6,2) NOT NULL CONSTRAINT DF_ATT_SHRT DEFAULT(0);
 
 -- نگاشت «قلم حکم ← شمارهٔ تفصیلیِ حساب هزینه» برای سند تفصیلی کامل (DEED_MODE=3).
--- اقلامی که کاربر خودش تعریف کرده روی ۹ (سایر) می‌نشینند تا بدون تنظیم اضافه کار کنند.
 IF COL_LENGTH('dbo.PAY2_ITEM_DEF','EXP_TAFSILI') IS NULL
-BEGIN
-    ALTER TABLE dbo.PAY2_ITEM_DEF ADD EXP_TAFSILI SMALLINT NULL CONSTRAINT DF_ID_EXPT DEFAULT(9);
+    ALTER TABLE dbo.PAY2_ITEM_DEF ADD EXP_TAFSILI SMALLINT NULL;
+GO
 
-    -- مقداردهی اولیه باید در batch جدا کامپایل شود: SQL Server کلِ batch را پیش از
-    -- اجرا کامپایل می‌کند، پس ارجاع به ستونی که همین‌جا ساخته شده کلِ بلوک را رد
-    -- می‌کند — و با آن، بقیه‌ی ALTERهای این اسکریپت هم اجرا نمی‌شوند.
-    -- فقط یک‌بار، در همان مهاجرتی که ستون ساخته می‌شود؛ بعد از آن ویرایش‌های کاربر
-    -- با اجرای مجدد اسکریپت بازنویسی نمی‌شود.
-    EXEC(N'
+-- مقداردهی جدا از ALTER است و داخل EXEC: در یک batch نمی‌شود ستونی را که همان‌جا
+-- ساخته شده ارجاع داد، چون SQL Server کلِ batch را پیش از اجرا کامپایل می‌کند و
+-- کلِ بلوک — با تمام ALTERهای دیگرش — رد می‌شود.
+--
+-- شرطِ «فقط وقتی ستون تازه ساخته شد» نیست، چون روی دیتابیس تازه ستون از همان
+-- CREATE TABLE وجود دارد و آن شرط هرگز برقرار نمی‌شد؛ نتیجه‌اش این بود که نگاشت
+-- خالی می‌مانْد و همه‌ی هزینه‌ها روی یک تفصیلی («سایر») جمع می‌شد.
+-- فیلترِ IS NULL تضمین می‌کند ویرایش‌های کاربر با اجرای دوباره بازنویسی نشود.
+IF COL_LENGTH('dbo.PAY2_ITEM_DEF','EXP_TAFSILI') IS NOT NULL
+EXEC(N'
     UPDATE I SET I.EXP_TAFSILI = V.T
     FROM dbo.PAY2_ITEM_DEF I
     INNER JOIN (VALUES
@@ -1361,10 +1368,16 @@ BEGIN
         (''PERF_BONUS'',3),(''CHILDREN'',4),(''HOME'',5),
         (''ATTRACT'',9),(''HARD_COND'',9),(''NAHAR'',9),(''OTHER_FIX'',9),(''TRANSP'',9),
         (''SHIFT'',11),(''GROCERY'',12),(''FAMILY_ALLOW'',13)
-    ) AS V(C,T) ON V.C = I.ITEM_CODE;
+    ) AS V(C,T) ON V.C = I.ITEM_CODE
+    WHERE I.EXP_TAFSILI IS NULL;
 
-    UPDATE dbo.PAY2_ITEM_DEF SET EXP_TAFSILI = NULL WHERE ITEM_TYPE IN (3,4,5);');
-END;
+    -- کسورات حساب هزینه ندارند.
+    UPDATE dbo.PAY2_ITEM_DEF SET EXP_TAFSILI = NULL
+    WHERE ITEM_TYPE IN (3,4,5) AND EXP_TAFSILI IS NOT NULL;
+
+    -- اقلامِ تعریف‌شده توسط کاربر روی «سایر» می‌نشینند تا بدون تنظیم اضافه کار کنند.
+    UPDATE dbo.PAY2_ITEM_DEF SET EXP_TAFSILI = 9
+    WHERE ITEM_TYPE IN (1,2) AND EXP_TAFSILI IS NULL;');
 IF COL_LENGTH('dbo.PAY2_RUN','PAYROLL_ENGINE_VERSION') IS NULL ALTER TABLE dbo.PAY2_RUN ADD PAYROLL_ENGINE_VERSION SMALLINT NULL;
 IF COL_LENGTH('dbo.PAY2_RUN','WS_ID_SNAP') IS NULL ALTER TABLE dbo.PAY2_RUN ADD WS_ID_SNAP INT NULL;
 IF COL_LENGTH('dbo.PAY2_RUN_LINE','NOMINAL_GROSS') IS NULL ALTER TABLE dbo.PAY2_RUN_LINE ADD NOMINAL_GROSS BIGINT NULL;
