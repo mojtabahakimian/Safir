@@ -349,5 +349,47 @@ test.describe('زنجیره‌ی کامل حقوق و دستمزد', () => {
       `/api/pay2/run/latest?wsId=${ctx.wsId}&perId=${ctx.perId}`, { headers: auth })).json();
     expect(Number(latest.status ?? latest.STATUS), 'وضعیت باید «سند صادر شده» شود').toBe(3);
     expect(latest.deeD_ID_SAL ?? latest.DEED_ID_SAL, 'شماره سند باید ثبت شود').toBeTruthy();
+
+    // سند با روش «کلی» صادر شد: حقوق پرداختنی یک‌جا روی حساب کارگاه می‌نشیند،
+    // نه روی حساب تفصیلیِ خودِ پرسنل. (گام ۱۱ حالت مقابلش را می‌سنجد.)
+    const codes = articles.map(a => String(a.heS_CODE ?? a.HES_CODE));
+    expect(codes, 'در روش کلی نباید حساب تفصیلی پرسنل در سند بیاید')
+      .not.toContain(`213-1-${ctx.empCode}`);
+  });
+
+  test('۱۱) تغییر روش صدور در کارگاه، در بازصدور هم اثر می‌گذارد', async ({ request }) => {
+    // گزارش واقعی مشتری: سند حقوق فقط هزینه داشت و هیچ آرتیکلی به تفکیک
+    // پرسنل نداشت. علتش این بود که PAY2_RUN.DEED_MODE در صدورِ اول نوشته
+    // می‌شد و از آن به بعد بر تنظیم کارگاه مقدم بود — یعنی کاربر تنظیم را
+    // عوض می‌کرد، بازصدور می‌زد، و باز همان سند تجمیعی را می‌گرفت.
+    const wsList = await (await request.get('/api/pay2/workshops', { headers: auth })).json();
+    const ws = wsList.find(w => (w.wS_ID ?? w.WS_ID) === ctx.wsId);
+    ws.DEFAULT_DEED_MODE = 2;
+
+    const accounts = await (await request.get(
+      `/api/pay2/workshops/${ctx.wsId}/accounts`, { headers: auth })).json();
+    accounts.WS_ID = ctx.wsId;
+
+    await ok(await request.post('/api/pay2/workshops/save', {
+      headers: auth, data: { Workshop: ws, Accounts: accounts },
+    }), 'تغییر روش صدور کارگاه به نیمه‌تفصیلی');
+
+    await ok(await request.post(`/api/pay2/run/${ctx.runId}/generate-deed`, { headers: auth }),
+      'بازصدور سند با روش جدید');
+
+    const preview = await (await request.get(
+      `/api/pay2/run/${ctx.runId}/preview-deed`, { headers: auth })).json();
+    const articles = preview.articles ?? preview.Articles ?? [];
+
+    expect(Number(preview.modeUsed ?? preview.ModeUsed),
+      'روش اعلام‌شده باید نیمه‌تفصیلی باشد').toBe(2);
+
+    // همان چیزی که مشتری دنبالش بود: حساب تفصیلیِ خودِ پرسنل در سند.
+    const codes = articles.map(a => String(a.heS_CODE ?? a.HES_CODE));
+    expect(codes, `کد تفصیلی پرسنل باید در سند باشد — ${codes.join(', ')}`)
+      .toContain(`213-1-${ctx.empCode}`);
+
+    const sum = (k1, k2) => articles.reduce((a, x) => a + Number(x[k1] ?? x[k2] ?? 0), 0);
+    expect(sum('bed', 'BED'), 'سند تفصیلی هم باید تراز باشد').toBe(sum('bes', 'BES'));
   });
 });

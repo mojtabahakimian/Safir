@@ -433,7 +433,12 @@ namespace Safir.Server.Controllers
                 if (runInfo == null)
                     return NotFound("محاسبه یافت نشد.");
 
-                byte effectiveMode = overrideMode ?? runInfo.DEED_MODE ?? runInfo.DEFAULT_DEED_MODE;
+                // مبنا همان چیزی است که «صدور» استفاده می‌کند: تنظیم روزِ کارگاه.
+                // اگر اینجا PAY2_RUN.DEED_MODE مبنا می‌شد، پیش‌نمایش چیزی را نشان
+                // می‌داد که با سندِ صادرشده فرق دارد (همان تله‌ای که در بخش صدور
+                // توضیح داده شده). انتخابگر داخل پنجره‌ی پیش‌نمایش همچنان اجازه‌ی
+                // شبیه‌سازی روش دیگر را می‌دهد.
+                byte effectiveMode = overrideMode ?? runInfo.DEFAULT_DEED_MODE;
 
                 result.ModeUsed = (Pay2DeedMode)effectiveMode;
                 result.ModeTitle = effectiveMode == 1 ? "سند کلی ـ روش فعلی" : "سند نیمه‌تفصیلی اشخاص";
@@ -504,7 +509,20 @@ namespace Safir.Server.Controllers
                     return BadRequest("اجرا باید در وضعیت 'تأیید نهایی' یا 'سند صادر شده' باشد.");
 
                 int perId = runInfo.PER_ID;
-                byte effectiveMode = runInfo.DEED_MODE ?? runInfo.DEFAULT_DEED_MODE;
+
+                // روش صدور همیشه از تنظیمِ «روش صدور سند حقوق» در کارگاه خوانده
+                // می‌شود، نه از PAY2_RUN.DEED_MODE.
+                //
+                // پیش‌تر مبنا `DEED_MODE ?? DEFAULT_DEED_MODE` بود؛ چون DEED_MODE
+                // در همان صدورِ اول روی اجرا نوشته می‌شود، از آن به بعد قفل می‌شد:
+                // کاربر تنظیم کارگاه را روی «نیمه‌تفصیلی» می‌گذاشت، بازصدور می‌زد،
+                // و باز هم سندِ تجمیعی می‌گرفت — بدون هیچ پیامی که بگوید چرا.
+                // (گزارش واقعی مشتری: سند حقوق تیر ۱۴۰۵ فقط هزینه داشت و هیچ
+                // آرتیکلی به تفکیک پرسنل — مثل 213-1-375 — در آن نبود.)
+                //
+                // DEED_MODE همچنان نوشته می‌شود، ولی نقشش فقط «سند صادرشده با چه
+                // روشی ساخته شد» است، نه تعیین‌کننده‌ی صدورهای بعدی.
+                byte effectiveMode = runInfo.DEFAULT_DEED_MODE;
 
                 var periodInfo = await _db.DoGetDataSQLAsyncSingle<dynamic>(
                     "SELECT PERIOD_DATE, DEED_N_S_PAY FROM PAY2_PERIOD WHERE PER_ID = @perId", new { perId });
@@ -667,9 +685,12 @@ VALUES (@N_S, @RADIF, @HES_K, @HES_M, @HES_T, @HES_T2, @HES_T3, @HES_T4, @HES, @
 
                     int perId = runInfo.PER_ID;
 
+                    // DEED_MODE هم مثل DEED_ID_SAL پاک می‌شود: سندی که آن را
+                    // توصیف می‌کرد همین الان حذف شد، پس نگه داشتنش فقط یک مقدار
+                    // بی‌مرجع باقی می‌گذارد.
                     await conn.ExecuteAsync(@"
                         UPDATE PAY2_RUN
-                        SET STATUS = 2, DEED_ID_SAL = NULL,
+                        SET STATUS = 2, DEED_ID_SAL = NULL, DEED_MODE = NULL,
                             NOTES = SUBSTRING(ISNULL(NOTES,'') + N' | DeedUnfinalized by ' + CAST(@userCod AS NVARCHAR), 1, 300)
                         WHERE RUN_ID = @runId;
 

@@ -654,9 +654,10 @@
     {
         if (CurrentRun == null) return;
         
+        // مبنا تنظیم کارگاه است، چون صدور سند هم دقیقاً همین را می‌خواند.
         var ws = Workshops.FirstOrDefault(w => w.WS_ID == SelectedWsId);
-        _previewModeOverride = CurrentRun.DEED_MODE ?? ws?.DEFAULT_DEED_MODE ?? (byte)1;
-        
+        _previewModeOverride = ws?.DEFAULT_DEED_MODE ?? (byte)1;
+
         await LoadPreviewData();
         ShowPreviewModal = true;
     }
@@ -1026,6 +1027,7 @@
     async Task GenerateDeed()
     {
         bool isReIssue = CurrentRun?.STATUS == 3;
+        string? deedModeTitle = null;
 
         // پیش از نشان دادن دیالوگ تأیید، همان اعتبارسنجی‌ای که خودِ صدور سند
         // انجام می‌دهد را بی‌صدا اجرا می‌کنیم. اندپوینت پیش‌نمایش دقیقاً همان
@@ -1041,7 +1043,7 @@
             // چیزی را بسنجد که قرار است اجرا شود (و اگر پنجره‌ی پیش‌نمایش باز
             // شد، انتخابگر روشِ داخلش هم مقدار درست را نشان بدهد).
             var wsForDeed = Workshops.FirstOrDefault(w => w.WS_ID == SelectedWsId);
-            _previewModeOverride = CurrentRun.DEED_MODE ?? wsForDeed?.DEFAULT_DEED_MODE ?? (byte)1;
+            _previewModeOverride = wsForDeed?.DEFAULT_DEED_MODE ?? (byte)1;
 
             IsProcessing = true;
             Pay2DeedPreviewDto? check = null;
@@ -1059,6 +1061,8 @@
                 IsProcessing = false;
             }
 
+            deedModeTitle = check?.ModeTitle;
+
             if (check != null && check.HasErrors)
             {
                 // به‌جای یک دیالوگ تازه، همان پنجره‌ی پیش‌نمایش را باز می‌کنیم:
@@ -1070,12 +1074,19 @@
             }
         }
 
+        // روشی که سند با آن ساخته می‌شود، قبل از تأیید گفته می‌شود. مشتری سندی
+        // گرفت که هیچ آرتیکلی به تفکیک پرسنل نداشت و تا باز کردن خودِ سند در
+        // حسابداری متوجه نشد؛ نامِ روش اینجا آن را از قبل روشن می‌کند.
+        string modeNote = string.IsNullOrWhiteSpace(deedModeTitle)
+            ? ""
+            : $"\n\nروش صدور: {deedModeTitle} — قابل تغییر در تب «مدیریت کارگاه‌ها».";
+
         var parameters = new MudBlazor.DialogParameters
         {
             ["Title"] = isReIssue ? "بازصدور سند حسابداری" : "صدور سند حسابداری",
-            ["ContentText"] = isReIssue
+            ["ContentText"] = (isReIssue
                 ? "آیا از صدور مجدد این سند حسابداری اطمینان دارید؟ مقادیر سند قبلی با مقادیر فعلی جایگزین خواهند شد."
-                : "آیا از صدور قطعی سند حسابداری اطمینان دارید؟ با این کار، دوره کارکرد این ماه برای همیشه قفل (بسته) خواهد شد و هیچ تغییری در آن ممکن نخواهد بود.",
+                : "آیا از صدور قطعی سند حسابداری اطمینان دارید؟ با این کار، دوره کارکرد این ماه برای همیشه قفل (بسته) خواهد شد و هیچ تغییری در آن ممکن نخواهد بود.") + modeNote,
             ["ConfirmButtonText"] = isReIssue ? "بله، بازصدور سند" : "بله، صدور سند قطعی",
             ["CancelButtonText"] = "انصراف"
         };
