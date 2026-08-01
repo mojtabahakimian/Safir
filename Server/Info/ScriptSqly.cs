@@ -3763,7 +3763,7 @@ BEGIN
         -- نداشت. یک ردیفِ صفرِ حامل ساخته می‌شود تا مسیرِ تعدیل برای همه یکسان
         -- بماند؛ اگر تعدیلی نگیرد، با فیلترِ AMOUNT > 0 آرتیکلی تولید نمی‌کند.
         INSERT INTO #EmpItem (EMP_ID, ITEM_ID, ITEM_NAME, TAFSILI, AMOUNT, SORT)
-        SELECT SS.EMP_ID, -1, N'تعدیل گِردکردن', 1, 0, 0
+        SELECT SS.EMP_ID, -1, N'تعدیل گِردکردن خالص', 1, 0, 0
         FROM #SalarySplit SS
         WHERE NOT EXISTS (SELECT 1 FROM #EmpItem EI WHERE EI.EMP_ID = SS.EMP_ID);
 
@@ -3886,8 +3886,12 @@ BEGIN
         -- ── ۴) آرتیکل‌ها ──────────────────────────────────────────────
         INSERT INTO #FinalArticles
         -- (الف) هزینه: مرکز هزینه × نوع قلم
+        -- شرح، نوع قلم را هم می‌گوید: بدون آن همه‌ی خطوط یک مرکز شرح یکسان
+        -- می‌گرفتند و در دفتر حسابداری «711-1-2» از «711-1-11» قابل تشخیص نبود.
         SELECT CAST(R.ROOT + N'-' + CAST(X.TAFSILI AS NVARCHAR(10)) AS NVARCHAR(100)),
-               CAST(N'هزینه ' + R.CNAME + N' ' + @ML AS NVARCHAR(500)),
+               CAST(N'هزینه ' + R.CNAME + N' — '
+                    + ISNULL(TL.LBL, N'قلم ' + CAST(X.TAFSILI AS NVARCHAR(10)))
+                    + N' ' + @ML AS NVARCHAR(500)),
                CAST(SUM(X.AMOUNT) AS BIGINT), CAST(0 AS BIGINT),
                CAST('EXP_' + R.CKEY AS NVARCHAR(50)), CAST(NULL AS INT), CAST(NULL AS NVARCHAR(150)), 1
         FROM #ExpAlloc X
@@ -3896,7 +3900,14 @@ BEGIN
                            (3, @ROOT_FOROSH,   N'فروش',   'FOROSH'),
                            (4, @ROOT_KHADAMAT, N'خدمات',  'KHADAMAT')) R(CENTER, ROOT, CNAME, CKEY)
              ON R.CENTER = X.CENTER
-        GROUP BY R.ROOT, R.CNAME, R.CKEY, X.TAFSILI
+        -- برچسب‌ها ثابت‌اند چون یک تفصیلی چند قلم را می‌پوشاند (مثلاً ۱ هم
+        -- حقوق پایه است هم سنوات) و نامِ یکی از آن‌ها گمراه‌کننده می‌شد.
+        LEFT JOIN (VALUES (1, N'حقوق'), (2, N'اضافه‌کار'), (3, N'راندمان'),
+                          (4, N'حق اولاد'), (5, N'خواربار و مسکن'), (9, N'سایر'),
+                          (10, N'بیمه سهم کارفرما'), (11, N'حق شیفت'),
+                          (12, N'بن کارگری'), (13, N'حق تأهل و سنوات')) TL(T, LBL)
+             ON TL.T = X.TAFSILI
+        GROUP BY R.ROOT, R.CNAME, R.CKEY, X.TAFSILI, TL.LBL
         HAVING SUM(X.AMOUNT) <> 0
 
         UNION ALL
