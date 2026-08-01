@@ -439,9 +439,15 @@ namespace Safir.Server.Controllers
                 // توضیح داده شده). انتخابگر داخل پنجره‌ی پیش‌نمایش همچنان اجازه‌ی
                 // شبیه‌سازی روش دیگر را می‌دهد.
                 byte effectiveMode = overrideMode ?? runInfo.DEFAULT_DEED_MODE;
+                if (effectiveMode is not (1 or 2 or 3)) effectiveMode = 1;
 
                 result.ModeUsed = (Pay2DeedMode)effectiveMode;
-                result.ModeTitle = effectiveMode == 1 ? "سند کلی ـ روش فعلی" : "سند نیمه‌تفصیلی اشخاص";
+                result.ModeTitle = effectiveMode switch
+                {
+                    2 => "سند نیمه‌تفصیلی اشخاص",
+                    3 => "سند تفصیلی کامل (به تفکیک پرسنل و اقلام)",
+                    _ => "سند کلی ـ روش فعلی"
+                };
 
                 var articles = await _db.DoGetDataSQLAsync<Pay2DeedArticleDto>(
                     "EXEC SP_PAY2_GEN_DEED @RUN_ID = @runId, @DEED_MODE = @mode",

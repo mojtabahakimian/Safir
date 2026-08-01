@@ -333,7 +333,8 @@ IF NOT EXISTS (SELECT 1 FROM dbo.PAY2_USER_WS WHERE USERCO = @userCod AND WS_ID 
         w.TAX_CODE = CleanText(w.TAX_CODE, 20);
         w.ADDRESS = CleanText(w.ADDRESS, 300);
         w.INS_MODE = w.INS_MODE == 2 ? 2 : 1;
-        w.DEFAULT_DEED_MODE = (byte)(w.DEFAULT_DEED_MODE == 2 ? 2 : 1);
+        // ۱=خلاصه، ۲=نیمه‌تفصیلی اشخاص، ۳=تفصیلی کامل. هر مقدار دیگری به ۱ برمی‌گردد.
+        w.DEFAULT_DEED_MODE = w.DEFAULT_DEED_MODE is 2 or 3 ? w.DEFAULT_DEED_MODE : (byte)1;
         w.POSTAL_CODE = NormalizeOptionalDigits(w.POSTAL_CODE, 20);
         w.EMPLOYER_NAME = CleanText(w.EMPLOYER_NAME, 100);
 

@@ -404,4 +404,67 @@ test.describe('زنجیره‌ی کامل حقوق و دستمزد', () => {
     const sum = (k1, k2) => articles.reduce((a, x) => a + Number(x[k1] ?? x[k2] ?? 0), 0);
     expect(sum('bed', 'BED'), 'سند تفصیلی هم باید تراز باشد').toBe(sum('bes', 'BES'));
   });
+
+  test('۱۲) سند تفصیلی کامل: هر قلم حکم یک آرتیکل، هزینه به تفکیک مرکز×قلم', async ({ request }) => {
+    // خواسته‌ی مشتری: در سند، زیر حساب تفصیلیِ خودِ شخص باید تک‌تک اقلام حکم
+    // (دستمزد، اضافه‌کار، بن، حق اولاد...) دیده شود — نه یک سطرِ «حقوق پرداختنی».
+    const wsList = await (await request.get('/api/pay2/workshops', { headers: auth })).json();
+    const ws = wsList.find(w => (w.wS_ID ?? w.WS_ID) === ctx.wsId);
+    ws.DEFAULT_DEED_MODE = 3;
+
+    const accounts = await (await request.get(
+      `/api/pay2/workshops/${ctx.wsId}/accounts`, { headers: auth })).json();
+    accounts.WS_ID = ctx.wsId;
+
+    // هر مرکز هزینه باید شاخه‌ی مستقل داشته باشد؛ با ساختار 71-1-x ریشه‌ی هر
+    // چهار مرکز یکی می‌شد و رویه عمداً با پیام روشن جلوی صدور را می‌گیرد.
+    accounts.SALARY_EXP_TOLID = '711-1-1';
+    accounts.SALARY_EXP_EDARI = '712-1-1';
+    accounts.SALARY_EXP_FOROSH = '713-1-1';
+    accounts.SALARY_EXP_KHADAMAT = '714-1-1';
+
+    await ok(await request.post('/api/pay2/workshops/save', {
+      headers: auth, data: { Workshop: ws, Accounts: accounts },
+    }), 'تغییر روش صدور کارگاه به تفصیلی کامل');
+
+    // مقدار ۳ نباید در مسیر ذخیره‌سازی به ۱ قیچی شود.
+    const after = await (await request.get('/api/pay2/workshops', { headers: auth })).json();
+    const savedMode = after.find(w => (w.wS_ID ?? w.WS_ID) === ctx.wsId);
+    expect(Number(savedMode.defaulT_DEED_MODE ?? savedMode.DEFAULT_DEED_MODE),
+      'روش صدور ۳ باید ذخیره شود').toBe(3);
+
+    const preview = await (await request.get(
+      `/api/pay2/run/${ctx.runId}/preview-deed`, { headers: auth })).json();
+    const errors = preview.validationErrors ?? preview.ValidationErrors ?? [];
+    expect(errors, `پیش‌نمایش نباید خطا بدهد، ولی: ${errors.join(' | ')}`).toHaveLength(0);
+
+    const articles = preview.articles ?? preview.Articles ?? [];
+    const num = (x, k1, k2) => Number(x[k1] ?? x[k2] ?? 0);
+    const code = x => String(x.heS_CODE ?? x.HES_CODE ?? '');
+    const sum = (k1, k2) => articles.reduce((a, x) => a + num(x, k1, k2), 0);
+
+    expect(sum('bed', 'BED'), 'سند تفصیلی کامل باید تراز باشد').toBe(sum('bes', 'BES'));
+    expect(articles.every(x => num(x, 'bed', 'BED') >= 0 && num(x, 'bes', 'BES') >= 0),
+      'هیچ آرتیکلی نباید مبلغ منفی داشته باشد').toBeTruthy();
+
+    // مانده‌ی حساب شخص = خالص پرداختی او. اگر قلمی جا بیفتد یا ریلِ حقوق اشتباه
+    // انتخاب شود، سند ممکن است در جمع کل تراز بماند ولی حساب شخص غلط باشد.
+    const empAcc = `213-1-${ctx.empCode}`;
+    const empRows = articles.filter(x => code(x) === empAcc);
+    expect(empRows.length, 'حساب شخص باید چند آرتیکل داشته باشد، نه یک سطر').toBeGreaterThan(1);
+
+    const credits = empRows.filter(x => num(x, 'bes', 'BES') > 0);
+    expect(credits.length, 'اقلام حکم باید هرکدام آرتیکل جدا باشند').toBeGreaterThan(1);
+
+    // هزینه روی «ریشه + شماره‌ی تفصیلیِ قلم» می‌نشیند: مثلاً 711-1-2 اضافه‌کار.
+    const expenseRows = articles.filter(x => /^7\d\d-\d+-\d+$/.test(code(x)));
+    expect(expenseRows.length, 'باید آرتیکل هزینه به تفکیک قلم ساخته شود').toBeGreaterThan(1);
+    const tafsiliSet = new Set(expenseRows.map(x => code(x).split('-')[2]));
+    expect(tafsiliSet.size, 'هزینه باید بین چند نوع قلم تفکیک شود').toBeGreaterThan(1);
+
+    expect(Number(preview.modeUsed ?? preview.ModeUsed), 'روش اعلام‌شده باید ۳ باشد').toBe(3);
+
+    await ok(await request.post(`/api/pay2/run/${ctx.runId}/generate-deed`, { headers: auth }),
+      'صدور سند با روش تفصیلی کامل');
+  });
 });

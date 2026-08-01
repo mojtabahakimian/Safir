@@ -534,6 +534,10 @@ CREATE TABLE [dbo].[PAY2_ITEM_DEF]
     [PAY_BASE_DAYS] TINYINT       NOT NULL CONSTRAINT DF_ID_PBD DEFAULT(2),  -- 1=DAYS | 2=DAYSB — پرداخت همیشه رسمی
     [IS_SYSTEM]     BIT           NOT NULL CONSTRAINT DF_ID_SYS DEFAULT(0),  -- سیستمی؟ (حذف ممنوع)
     [SHOW_IN_SLIP]  BIT           NOT NULL CONSTRAINT DF_ID_SLP DEFAULT(1),
+    -- شمارهٔ تفصیلیِ حسابِ هزینه در سند تفصیلی کامل (DEED_MODE=3). به ریشهٔ
+    -- حسابِ مرکز هزینه چسبانده می‌شود: «711-1» + «2» → «711-1-2» (اضافه‌کار تولید).
+    -- NULL یعنی این قلم هزینه‌ای تولید نمی‌کند (کسورات). پیش‌فرضِ اقلام جدید ۹=سایر است.
+    [EXP_TAFSILI]   SMALLINT      NULL CONSTRAINT DF_ID_EXPT DEFAULT(9),
     [SORT_ORDER]    SMALLINT      NOT NULL CONSTRAINT DF_ID_SRT DEFAULT(100),
     [IS_ACTIVE]     BIT           NOT NULL CONSTRAINT DF_ID_ACT DEFAULT(1),
     [NOTES]         NVARCHAR(200) NULL,
@@ -554,29 +558,30 @@ GO
 IF NOT EXISTS (SELECT 1 FROM PAY2_ITEM_DEF WHERE ITEM_CODE = 'BASE_SAL')
 BEGIN
 INSERT INTO PAY2_ITEM_DEF
-    (ITEM_CODE, ITEM_NAME, ITEM_TYPE, CALC_BASIS, INS_SUBJECT, TAX_SUBJECT, INS_BASE_DAYS, PAY_BASE_DAYS, IS_SYSTEM, SORT_ORDER)
+    (ITEM_CODE, ITEM_NAME, ITEM_TYPE, CALC_BASIS, INS_SUBJECT, TAX_SUBJECT, INS_BASE_DAYS, PAY_BASE_DAYS, IS_SYSTEM, SORT_ORDER, EXP_TAFSILI)
 VALUES
-('BASE_SAL_B',  N'حقوق روزانه رسمی',        1, 1, 1, 1, 1, 2, 1, 1),   -- SALARY_DAYLYB
-('BASE_SAL',    N'حقوق روزانه اسمی',         1, 1, 1, 1, 1, 2, 1, 2),   -- SALARY_DAYLY
-('HOME',        N'خواربار و مسکن',           1, 1, 1, 1, 1, 2, 1, 3),   -- قانون ۲۸ روز
-('CHILDREN',    N'حق اولاد',                 1, 1, 0, 1, 1, 2, 1, 4),   -- معاف بیمه، مشمول مالیات
-('FAMILY_ALLOW',N'حق تأهل',                  1, 2, 1, 1, 1, 2, 1, 5),   -- ماهیانه
-('ATTRACT',     N'حق جذب',                   1, 2, 1, 1, 1, 2, 1, 6),   -- ماهیانه
-('GROCERY',     N'بن کارگری',                1, 1, 1, 0, 1, 2, 1, 7),   -- مشمول بیمه، معاف مالیات
-('HARD_COND',   N'شرایط محیط کار',           1, 2, 1, 1, 1, 2, 1, 8),
-('NAHAR',       N'حق نهار',                  1, 2, 0, 0, 2, 2, 1, 9),   -- معاف بیمه/مالیات
-('SHIFT',       N'حق شیفت/نوبت/شب‌کاری',    1, 1, 0, 1, 1, 2, 1, 10),  -- درصد از BASE_SAL_B
-('OTHER_FIX',   N'سایر ثابت',               1, 2, 1, 1, 1, 2, 1, 11),
-('OT_NORMAL',   N'اضافه‌کار عادی',           2, 1, 1, 1, 1, 2, 1, 12),
-('OT_HOLIDAY',  N'اضافه‌کار تعطیل',          2, 1, 1, 1, 1, 2, 1, 13),
-('OT_ADMIN',    N'اضافه‌کار اداری',           2, 1, 1, 1, 1, 2, 1, 14),
-('PERF_BONUS',  N'پاداش/راندمان',            2, 2, 1, 1, 1, 2, 1, 15),
-('TRANSP',      N'حق ناقل/ایاب‌ذهاب',        2, 2, 0, 0, 1, 2, 1, 16),  -- معاف بیمه/مالیات
-('INS_DED',     N'کسر بیمه کارگر',           4, 1, 0, 0, 1, 2, 1, 17),  -- خودکار
-('TAX_DED',     N'کسر مالیات',              4, 1, 0, 0, 1, 2, 1, 18),  -- خودکار
-('LOAN_DED',    N'قسط وام',                  3, 2, 0, 0, 1, 2, 1, 19),  -- از PAY2_LOAN_SCHED
-('ADVANCE_DED', N'مساعده',                   4, 2, 0, 0, 1, 2, 1, 20),  -- هوشمند از DEED_DTL
-('OTHER_DED',   N'سایر کسورات',             3, 2, 0, 0, 1, 2, 1, 21);
+-- ستون آخر = شمارهٔ تفصیلیِ حساب هزینه (سند تفصیلی کامل). کسورات هزینه ندارند ⇒ NULL.
+('BASE_SAL_B',  N'حقوق روزانه رسمی',        1, 1, 1, 1, 1, 2, 1, 1,  1),     -- SALARY_DAYLYB
+('BASE_SAL',    N'حقوق روزانه اسمی',         1, 1, 1, 1, 1, 2, 1, 2,  1),     -- SALARY_DAYLY
+('HOME',        N'خواربار و مسکن',           1, 1, 1, 1, 1, 2, 1, 3,  5),     -- قانون ۲۸ روز
+('CHILDREN',    N'حق اولاد',                 1, 1, 0, 1, 1, 2, 1, 4,  4),     -- معاف بیمه، مشمول مالیات
+('FAMILY_ALLOW',N'حق تأهل',                  1, 2, 1, 1, 1, 2, 1, 5,  13),    -- ماهیانه
+('ATTRACT',     N'حق جذب',                   1, 2, 1, 1, 1, 2, 1, 6,  9),     -- ماهیانه
+('GROCERY',     N'بن کارگری',                1, 1, 1, 0, 1, 2, 1, 7,  12),    -- مشمول بیمه، معاف مالیات
+('HARD_COND',   N'شرایط محیط کار',           1, 2, 1, 1, 1, 2, 1, 8,  9),
+('NAHAR',       N'حق نهار',                  1, 2, 0, 0, 2, 2, 1, 9,  9),     -- معاف بیمه/مالیات
+('SHIFT',       N'حق شیفت/نوبت/شب‌کاری',    1, 1, 0, 1, 1, 2, 1, 10, 11),    -- درصد از BASE_SAL_B
+('OTHER_FIX',   N'سایر ثابت',               1, 2, 1, 1, 1, 2, 1, 11, 9),
+('OT_NORMAL',   N'اضافه‌کار عادی',           2, 1, 1, 1, 1, 2, 1, 12, 2),
+('OT_HOLIDAY',  N'اضافه‌کار تعطیل',          2, 1, 1, 1, 1, 2, 1, 13, 2),
+('OT_ADMIN',    N'اضافه‌کار اداری',           2, 1, 1, 1, 1, 2, 1, 14, 2),
+('PERF_BONUS',  N'پاداش/راندمان',            2, 2, 1, 1, 1, 2, 1, 15, 3),
+('TRANSP',      N'حق ناقل/ایاب‌ذهاب',        2, 2, 0, 0, 1, 2, 1, 16, 9),     -- معاف بیمه/مالیات
+('INS_DED',     N'کسر بیمه کارگر',           4, 1, 0, 0, 1, 2, 1, 17, NULL),  -- خودکار
+('TAX_DED',     N'کسر مالیات',              4, 1, 0, 0, 1, 2, 1, 18, NULL),  -- خودکار
+('LOAN_DED',    N'قسط وام',                  3, 2, 0, 0, 1, 2, 1, 19, NULL),  -- از PAY2_LOAN_SCHED
+('ADVANCE_DED', N'مساعده',                   4, 2, 0, 0, 1, 2, 1, 20, NULL),  -- هوشمند از DEED_DTL
+('OTHER_DED',   N'سایر کسورات',             3, 2, 0, 0, 1, 2, 1, 21, NULL);
 END;
 GO
 
@@ -1335,6 +1340,31 @@ IF COL_LENGTH('dbo.PAY2_RUN_DETAIL','ITEM_TYPE_SNAP') IS NULL ALTER TABLE dbo.PA
 IF COL_LENGTH('dbo.PAY2_RUN_DETAIL','INS_SUBJECT_AMOUNT') IS NULL ALTER TABLE dbo.PAY2_RUN_DETAIL ADD INS_SUBJECT_AMOUNT BIGINT NULL;
 IF COL_LENGTH('dbo.PAY2_RUN_DETAIL','TAX_SUBJECT_AMOUNT') IS NULL ALTER TABLE dbo.PAY2_RUN_DETAIL ADD TAX_SUBJECT_AMOUNT BIGINT NULL;
 IF COL_LENGTH('dbo.PAY2_ATTENDANCE','SHORTAGE_H') IS NULL ALTER TABLE dbo.PAY2_ATTENDANCE ADD SHORTAGE_H DECIMAL(6,2) NOT NULL CONSTRAINT DF_ATT_SHRT DEFAULT(0);
+
+-- نگاشت «قلم حکم ← شمارهٔ تفصیلیِ حساب هزینه» برای سند تفصیلی کامل (DEED_MODE=3).
+-- اقلامی که کاربر خودش تعریف کرده روی ۹ (سایر) می‌نشینند تا بدون تنظیم اضافه کار کنند.
+IF COL_LENGTH('dbo.PAY2_ITEM_DEF','EXP_TAFSILI') IS NULL
+BEGIN
+    ALTER TABLE dbo.PAY2_ITEM_DEF ADD EXP_TAFSILI SMALLINT NULL CONSTRAINT DF_ID_EXPT DEFAULT(9);
+
+    -- مقداردهی اولیه باید در batch جدا کامپایل شود: SQL Server کلِ batch را پیش از
+    -- اجرا کامپایل می‌کند، پس ارجاع به ستونی که همین‌جا ساخته شده کلِ بلوک را رد
+    -- می‌کند — و با آن، بقیه‌ی ALTERهای این اسکریپت هم اجرا نمی‌شوند.
+    -- فقط یک‌بار، در همان مهاجرتی که ستون ساخته می‌شود؛ بعد از آن ویرایش‌های کاربر
+    -- با اجرای مجدد اسکریپت بازنویسی نمی‌شود.
+    EXEC(N'
+    UPDATE I SET I.EXP_TAFSILI = V.T
+    FROM dbo.PAY2_ITEM_DEF I
+    INNER JOIN (VALUES
+        (''BASE_SAL_B'',1),(''BASE_SAL'',1),(''SANOVAT_PAYE'',1),
+        (''OT_NORMAL'',2),(''OT_HOLIDAY'',2),(''OT_ADMIN'',2),
+        (''PERF_BONUS'',3),(''CHILDREN'',4),(''HOME'',5),
+        (''ATTRACT'',9),(''HARD_COND'',9),(''NAHAR'',9),(''OTHER_FIX'',9),(''TRANSP'',9),
+        (''SHIFT'',11),(''GROCERY'',12),(''FAMILY_ALLOW'',13)
+    ) AS V(C,T) ON V.C = I.ITEM_CODE;
+
+    UPDATE dbo.PAY2_ITEM_DEF SET EXP_TAFSILI = NULL WHERE ITEM_TYPE IN (3,4,5);');
+END;
 IF COL_LENGTH('dbo.PAY2_RUN','PAYROLL_ENGINE_VERSION') IS NULL ALTER TABLE dbo.PAY2_RUN ADD PAYROLL_ENGINE_VERSION SMALLINT NULL;
 IF COL_LENGTH('dbo.PAY2_RUN','WS_ID_SNAP') IS NULL ALTER TABLE dbo.PAY2_RUN ADD WS_ID_SNAP INT NULL;
 IF COL_LENGTH('dbo.PAY2_RUN_LINE','NOMINAL_GROSS') IS NULL ALTER TABLE dbo.PAY2_RUN_LINE ADD NOMINAL_GROSS BIGINT NULL;
@@ -1367,6 +1397,11 @@ IF COL_LENGTH('dbo.PAY2_RUN_EMP_SNAPSHOT','ACC_T_SNAP') IS NULL ALTER TABLE dbo.
 IF NOT EXISTS(SELECT 1 FROM dbo.PAY2_ITEM_DEF WHERE ITEM_CODE='SANOVAT_PAYE')
  INSERT dbo.PAY2_ITEM_DEF(ITEM_CODE,ITEM_NAME,ITEM_TYPE,CALC_BASIS,INS_SUBJECT,TAX_SUBJECT,INS_BASE_DAYS,PAY_BASE_DAYS,IS_SYSTEM,SHOW_IN_SLIP,SORT_ORDER,IS_ACTIVE,NOTES)
  VALUES('SANOVAT_PAYE',N'پایه سنوات روزانه',1,1,1,1,1,2,1,1,3,1,N'مبلغ روزانه دو ریلی؛ مشمولیت از Snapshot مؤثر Run خوانده می‌شود');
+
+-- سنوات هزینه‌ی «حقوق» است (تفصیلی ۱). این آیتم پایین‌تر از بلوکِ نگاشت اولیه
+-- ساخته می‌شود، پس آنجا هنوز وجود ندارد و باید صریحاً اینجا مقدار بگیرد.
+IF COL_LENGTH('dbo.PAY2_ITEM_DEF','EXP_TAFSILI') IS NOT NULL
+    EXEC(N'UPDATE dbo.PAY2_ITEM_DEF SET EXP_TAFSILI=1 WHERE ITEM_CODE=''SANOVAT_PAYE'' AND EXP_TAFSILI=9;');
 
 IF OBJECT_ID(N'dbo.PAY2_SANOVAT_MIGRATION_INPUT',N'U') IS NULL
  CREATE TABLE dbo.PAY2_SANOVAT_MIGRATION_INPUT
@@ -3226,6 +3261,28 @@ GO
                 try
                 {
                     //-- ================================================================
+                    //-- ۱.۵ FN_PAY2_ACC_PARENT — برداشتن آخرین سطح یک کد حساب
+                    //-- ================================================================
+                    db.Execute(@"
+CREATE OR ALTER FUNCTION [dbo].[FN_PAY2_ACC_PARENT](@CODE NVARCHAR(50))
+RETURNS NVARCHAR(50)
+AS
+BEGIN
+    -- «711-1-1» ← «711-1». اگر کد کمتر از دو سطح داشته باشد NULL برمی‌گردد تا
+    -- فراخوان مجبور شود ریشه را صریح تنظیم کند و ما حسابِ ناقص نسازیم.
+    SET @CODE = NULLIF(LTRIM(RTRIM(@CODE)), '');
+    IF @CODE IS NULL OR CHARINDEX('-', @CODE) = 0 RETURN NULL;
+    RETURN NULLIF(LEFT(@CODE, LEN(@CODE) - CHARINDEX('-', REVERSE(@CODE))), '');
+END;");
+                }
+                catch (Exception ex)
+                {
+                    throw new Exception($"خطای بحرانی در دیتابیس (FN_PAY2_ACC_PARENT). آپدیت متوقف شد: {ex.Message}", ex);
+                }
+
+                try
+                {
+                    //-- ================================================================
                     //-- ۲. SP_PAY2_GEN_DEED — تولید سند حسابداری حقوق و بیمه
                     //-- ================================================================
                     db.Execute(@"
@@ -3263,6 +3320,12 @@ BEGIN
         @ACC_ADV_HES NVARCHAR(50), @ACC_LOAN_HES NVARCHAR(50),
         @ACC_OTHER_DED_HES NVARCHAR(50);
 
+    -- ریشه‌ی حساب هزینه‌ی هر مرکز (فقط کل-معین) برای سند تفصیلی کامل؛ شماره‌ی
+    -- تفصیلی از روی نوع قلم به آن اضافه می‌شود.
+    DECLARE
+        @ROOT_TOLID NVARCHAR(50), @ROOT_EDARI NVARCHAR(50),
+        @ROOT_FOROSH NVARCHAR(50), @ROOT_KHADAMAT NVARCHAR(50);
+
     SELECT
         @ACC_SALARY_TOLID   = MAX(CASE WHEN ACC_KEY='SALARY_EXP_TOLID'    THEN ACC_CODE END),
         @ACC_SALARY_EDARI   = MAX(CASE WHEN ACC_KEY='SALARY_EXP_EDARI'    THEN ACC_CODE END),
@@ -3274,8 +3337,20 @@ BEGIN
         @ACC_INS_EXP        = MAX(CASE WHEN ACC_KEY='INS_EXP'             THEN ACC_CODE END),
         @ACC_ADV_HES        = MAX(CASE WHEN ACC_KEY='ADV_HES'             THEN ACC_CODE END),
         @ACC_LOAN_HES       = MAX(CASE WHEN ACC_KEY='LOAN_HES'            THEN ACC_CODE END),
-        @ACC_OTHER_DED_HES  = MAX(CASE WHEN ACC_KEY='OTHER_DED_HES'       THEN ACC_CODE END)
+        @ACC_OTHER_DED_HES  = MAX(CASE WHEN ACC_KEY='OTHER_DED_HES'       THEN ACC_CODE END),
+        @ROOT_TOLID         = MAX(CASE WHEN ACC_KEY='EXP_ROOT_TOLID'      THEN ACC_CODE END),
+        @ROOT_EDARI         = MAX(CASE WHEN ACC_KEY='EXP_ROOT_EDARI'      THEN ACC_CODE END),
+        @ROOT_FOROSH        = MAX(CASE WHEN ACC_KEY='EXP_ROOT_FOROSH'     THEN ACC_CODE END),
+        @ROOT_KHADAMAT      = MAX(CASE WHEN ACC_KEY='EXP_ROOT_KHADAMAT'   THEN ACC_CODE END)
     FROM PAY2_WORKSHOP_ACC WHERE WS_ID = @WS_ID;
+
+    -- اگر ریشه صریحاً تنظیم نشده، از خودِ حساب هزینه‌ی همان مرکز ساخته می‌شود:
+    -- آخرین سطح («711-1-1» ← «711-1») برداشته می‌شود. این‌طور کارگاه‌های موجود
+    -- بدون هیچ تنظیم تازه‌ای سند تفصیلی می‌گیرند و هر کس خواست override می‌کند.
+    SET @ROOT_TOLID    = NULLIF(LTRIM(RTRIM(ISNULL(@ROOT_TOLID,    dbo.FN_PAY2_ACC_PARENT(@ACC_SALARY_TOLID)))),    '');
+    SET @ROOT_EDARI    = NULLIF(LTRIM(RTRIM(ISNULL(@ROOT_EDARI,    dbo.FN_PAY2_ACC_PARENT(@ACC_SALARY_EDARI)))),    '');
+    SET @ROOT_FOROSH   = NULLIF(LTRIM(RTRIM(ISNULL(@ROOT_FOROSH,   dbo.FN_PAY2_ACC_PARENT(@ACC_SALARY_FOROSH)))),   '');
+    SET @ROOT_KHADAMAT = NULLIF(LTRIM(RTRIM(ISNULL(@ROOT_KHADAMAT, dbo.FN_PAY2_ACC_PARENT(@ACC_SALARY_KHADAMAT)))), '');
 
     IF @DEED_MODE IS NULL
     BEGIN
@@ -3315,17 +3390,63 @@ BEGIN
     END
 
     DECLARE @MissingAcc NVARCHAR(MAX) = N'';
-    IF @ACC_INS_EXP IS NULL AND EXISTS (SELECT 1 FROM PAY2_RUN_LINE WHERE RUN_ID = @RUN_ID AND INS_EMPLOYER > 0) SET @MissingAcc += N'هزینه بیمه کارفرما، ';
+    -- در سند تفصیلی کامل، بیمه‌ی کارفرما به حساب هزینه‌ی مرکزِ خودِ پرسنل
+    -- (ریشه + تفصیلی ۱۰) می‌رود، نه به حساب تکیِ INS_EXP.
+    IF @DEED_MODE <> 3 AND @ACC_INS_EXP IS NULL AND EXISTS (SELECT 1 FROM PAY2_RUN_LINE WHERE RUN_ID = @RUN_ID AND INS_EMPLOYER > 0) SET @MissingAcc += N'هزینه بیمه کارفرما، ';
     IF @ACC_INS_PAYABLE IS NULL AND EXISTS (SELECT 1 FROM PAY2_RUN_LINE WHERE RUN_ID = @RUN_ID AND (INS_WORKER + INS_EMPLOYER) > 0) SET @MissingAcc += N'اداره بیمه، ';
     IF @ACC_TAX_PAYABLE IS NULL AND EXISTS (SELECT 1 FROM PAY2_RUN_LINE WHERE RUN_ID = @RUN_ID AND TAX_AMOUNT > 0) SET @MissingAcc += N'اداره مالیات، ';
     IF @ACC_LOAN_HES IS NULL AND EXISTS (SELECT 1 FROM PAY2_RUN_LINE WHERE RUN_ID = @RUN_ID AND LOAN_DED > 0) SET @MissingAcc += N'صندوق وام، ';
     IF @ACC_ADV_HES IS NULL AND EXISTS (SELECT 1 FROM PAY2_RUN_LINE WHERE RUN_ID = @RUN_ID AND ADVANCE_DED > 0) SET @MissingAcc += N'حساب مساعده، ';
     IF @ACC_OTHER_DED_HES IS NULL AND EXISTS (SELECT 1 FROM PAY2_RUN_LINE WHERE RUN_ID = @RUN_ID AND OTHER_DED > 0) SET @MissingAcc += N'سایر کسورات، ';
 
-    IF @ACC_SALARY_TOLID IS NULL AND EXISTS (SELECT 1 FROM PAY2_RUN_LINE RL INNER JOIN PAY2_ATTENDANCE A ON RL.EMP_ID = A.EMP_ID AND A.PER_ID = @PER_ID WHERE RL.RUN_ID = @RUN_ID AND RL.GROSS_PAY > 0 AND A.DAYS_TOLID > 0) SET @MissingAcc += N'هزینه تولید، ';
-    IF @ACC_SALARY_EDARI IS NULL AND EXISTS (SELECT 1 FROM PAY2_RUN_LINE RL INNER JOIN PAY2_ATTENDANCE A ON RL.EMP_ID = A.EMP_ID AND A.PER_ID = @PER_ID WHERE RL.RUN_ID = @RUN_ID AND RL.GROSS_PAY > 0 AND A.DAYS_EDARI > 0) SET @MissingAcc += N'هزینه اداری، ';
-    IF @ACC_SALARY_FOROSH IS NULL AND EXISTS (SELECT 1 FROM PAY2_RUN_LINE RL INNER JOIN PAY2_ATTENDANCE A ON RL.EMP_ID = A.EMP_ID AND A.PER_ID = @PER_ID WHERE RL.RUN_ID = @RUN_ID AND RL.GROSS_PAY > 0 AND A.DAYS_FOROSH > 0) SET @MissingAcc += N'هزینه فروش، ';
-    IF @ACC_SALARY_KHADAMAT IS NULL AND EXISTS (SELECT 1 FROM PAY2_RUN_LINE RL INNER JOIN PAY2_ATTENDANCE A ON RL.EMP_ID = A.EMP_ID AND A.PER_ID = @PER_ID WHERE RL.RUN_ID = @RUN_ID AND RL.GROSS_PAY > 0 AND A.DAYS_KHADAMAT > 0) SET @MissingAcc += N'هزینه خدمات، ';
+    -- حالت ۳ به‌جای این چهار حساب، «ریشه»ی هر مرکز را می‌خواهد (پایین‌تر بررسی می‌شود).
+    IF @DEED_MODE <> 3
+    BEGIN
+        IF @ACC_SALARY_TOLID IS NULL AND EXISTS (SELECT 1 FROM PAY2_RUN_LINE RL INNER JOIN PAY2_ATTENDANCE A ON RL.EMP_ID = A.EMP_ID AND A.PER_ID = @PER_ID WHERE RL.RUN_ID = @RUN_ID AND RL.GROSS_PAY > 0 AND A.DAYS_TOLID > 0) SET @MissingAcc += N'هزینه تولید، ';
+        IF @ACC_SALARY_EDARI IS NULL AND EXISTS (SELECT 1 FROM PAY2_RUN_LINE RL INNER JOIN PAY2_ATTENDANCE A ON RL.EMP_ID = A.EMP_ID AND A.PER_ID = @PER_ID WHERE RL.RUN_ID = @RUN_ID AND RL.GROSS_PAY > 0 AND A.DAYS_EDARI > 0) SET @MissingAcc += N'هزینه اداری، ';
+        IF @ACC_SALARY_FOROSH IS NULL AND EXISTS (SELECT 1 FROM PAY2_RUN_LINE RL INNER JOIN PAY2_ATTENDANCE A ON RL.EMP_ID = A.EMP_ID AND A.PER_ID = @PER_ID WHERE RL.RUN_ID = @RUN_ID AND RL.GROSS_PAY > 0 AND A.DAYS_FOROSH > 0) SET @MissingAcc += N'هزینه فروش، ';
+        IF @ACC_SALARY_KHADAMAT IS NULL AND EXISTS (SELECT 1 FROM PAY2_RUN_LINE RL INNER JOIN PAY2_ATTENDANCE A ON RL.EMP_ID = A.EMP_ID AND A.PER_ID = @PER_ID WHERE RL.RUN_ID = @RUN_ID AND RL.GROSS_PAY > 0 AND A.DAYS_KHADAMAT > 0) SET @MissingAcc += N'هزینه خدمات، ';
+    END
+
+    -- سند تفصیلی کامل حساب هزینه را از «ریشه + شماره‌ی تفصیلیِ قلم» می‌سازد، پس
+    -- برای هر مرکزی که کارکرد دارد باید ریشه در دسترس باشد.
+    IF @DEED_MODE = 3
+    BEGIN
+        IF @ROOT_TOLID IS NULL AND EXISTS (SELECT 1 FROM PAY2_RUN_LINE RL INNER JOIN PAY2_ATTENDANCE A ON RL.EMP_ID = A.EMP_ID AND A.PER_ID = @PER_ID WHERE RL.RUN_ID = @RUN_ID AND RL.GROSS_PAY > 0 AND A.DAYS_TOLID > 0) SET @MissingAcc += N'ریشه حساب هزینه تولید، ';
+        IF @ROOT_EDARI IS NULL AND EXISTS (SELECT 1 FROM PAY2_RUN_LINE RL INNER JOIN PAY2_ATTENDANCE A ON RL.EMP_ID = A.EMP_ID AND A.PER_ID = @PER_ID WHERE RL.RUN_ID = @RUN_ID AND RL.GROSS_PAY > 0 AND A.DAYS_EDARI > 0) SET @MissingAcc += N'ریشه حساب هزینه اداری، ';
+        IF @ROOT_FOROSH IS NULL AND EXISTS (SELECT 1 FROM PAY2_RUN_LINE RL INNER JOIN PAY2_ATTENDANCE A ON RL.EMP_ID = A.EMP_ID AND A.PER_ID = @PER_ID WHERE RL.RUN_ID = @RUN_ID AND RL.GROSS_PAY > 0 AND A.DAYS_FOROSH > 0) SET @MissingAcc += N'ریشه حساب هزینه فروش، ';
+        IF @ROOT_KHADAMAT IS NULL AND EXISTS (SELECT 1 FROM PAY2_RUN_LINE RL INNER JOIN PAY2_ATTENDANCE A ON RL.EMP_ID = A.EMP_ID AND A.PER_ID = @PER_ID WHERE RL.RUN_ID = @RUN_ID AND RL.GROSS_PAY > 0 AND A.DAYS_KHADAMAT > 0) SET @MissingAcc += N'ریشه حساب هزینه خدمات، ';
+    END
+
+    -- ریشه‌ی مشترک بین دو مرکزِ فعال یعنی تفکیک مرکز هزینه از بین می‌رود: سند
+    -- تراز می‌مانَد ولی هزینه‌ی تولید و اداری روی یک حساب می‌نشیند. این وقتی رخ
+    -- می‌دهد که در دفتر حساب، خودِ مرکز هزینه در سطح تفصیلی تعریف شده باشد
+    -- (مثل 71-1-1 تا 71-1-4) و ریشه‌ی خودکار برای همه «71-1» شود.
+    IF @DEED_MODE = 3
+    BEGIN
+        DECLARE @DupRoot NVARCHAR(50);
+        SELECT TOP 1 @DupRoot = ROOT
+        FROM (VALUES (@ROOT_TOLID, 1), (@ROOT_EDARI, 2), (@ROOT_FOROSH, 3), (@ROOT_KHADAMAT, 4)) R(ROOT, CENTER)
+        WHERE R.ROOT IS NOT NULL
+          AND EXISTS (
+              SELECT 1 FROM PAY2_RUN_LINE RL
+              INNER JOIN PAY2_ATTENDANCE A ON RL.EMP_ID = A.EMP_ID AND A.PER_ID = @PER_ID
+              WHERE RL.RUN_ID = @RUN_ID
+                AND ((R.CENTER = 1 AND A.DAYS_TOLID > 0) OR (R.CENTER = 2 AND A.DAYS_EDARI > 0)
+                  OR (R.CENTER = 3 AND A.DAYS_FOROSH > 0) OR (R.CENTER = 4 AND A.DAYS_KHADAMAT > 0)))
+        GROUP BY ROOT
+        HAVING COUNT(*) > 1;
+
+        IF @DupRoot IS NOT NULL
+        BEGIN
+            DECLARE @ErrDup NVARCHAR(500) = N'صدور سند متوقف شد: بیش از یک مرکز هزینه به ریشه‌ی حساب «'
+                + @DupRoot + N'» می‌رسد، در نتیجه هزینه‌ی مراکز روی هم می‌افتد. '
+                + N'در تنظیمات کارگاه، «ریشه حساب هزینه» هر مرکز را جداگانه مشخص کنید '
+                + N'(کلیدهای EXP_ROOT_TOLID / EXP_ROOT_EDARI / EXP_ROOT_FOROSH / EXP_ROOT_KHADAMAT).';
+            RAISERROR(@ErrDup, 16, 1);
+            RETURN;
+        END
+    END
 
     IF LEN(@MissingAcc) > 0
     BEGIN
@@ -3342,7 +3463,7 @@ BEGIN
     INNER JOIN PAY2_EMPLOYEE E ON RL.EMP_ID = E.EMP_ID
     WHERE RL.RUN_ID = @RUN_ID
       AND (
-           (@DEED_MODE = 2)
+           (@DEED_MODE IN (2, 3))
            OR
            (@DEED_MODE = 1 AND (RL.LOAN_DED > 0 OR RL.ADVANCE_DED > 0 OR RL.OTHER_DED > 0))
       )
@@ -3514,6 +3635,307 @@ BEGIN
         UNION ALL
         SELECT CAST(@ACC_OTHER_DED_HES AS NVARCHAR(100)), CAST(N'سایر کسورات: ' + @ML + N' | ' + FULL_NAME AS NVARCHAR(500)), CAST(0 AS BIGINT), CAST(OTHER_DED AS BIGINT), CAST('OTHER_DED' AS NVARCHAR(50)), CAST(EMP_ID AS INT), CAST(FULL_NAME AS NVARCHAR(150)), 12
         FROM #SalarySplit WHERE OTHER_DED > 0;
+    END
+    ELSE IF @DEED_MODE = 3
+    BEGIN
+        -- ═════════════════════════════════════════════════════════════
+        -- سند تفصیلی کامل
+        --   بدهکار : هزینه به تفکیک «مرکز هزینه × نوع قلم» + کسورات هر پرسنل
+        --   بستانکار: اقلام حکم هر پرسنل + حساب‌های مقصد کسورات
+        -- مانده‌ی حساب تفصیلی هر پرسنل دقیقاً «خالص پرداختی» او می‌شود.
+        -- ═════════════════════════════════════════════════════════════
+
+        -- ── ۱) اقلام پرداختیِ هر پرسنل ────────────────────────────────
+        -- مبنا همان چیزی است که موتور برای GROSS_PAY استفاده می‌کند:
+        -- ریلِ «رسمی». وقتی هر دو ریل در حکم هستند BASE_SAL (اسمی) کنار
+        -- گذاشته می‌شود، وگرنه حقوق پایه دوبار شمرده می‌شود.
+        CREATE TABLE #EmpItem (
+            EMP_ID    INT,
+            ITEM_ID   INT,
+            ITEM_NAME NVARCHAR(200),
+            TAFSILI   SMALLINT,
+            AMOUNT    BIGINT,
+            SORT      SMALLINT
+        );
+
+        -- کدام ریل «پرداختی» است از روی خودِ GROSS_PAY تشخیص داده می‌شود، نه با
+        -- قاعده‌ی ثابت. موتورِ امروز ریل رسمی را می‌پردازد (BASE_SAL کنار می‌رود)
+        -- ولی اجراهایی که با نسخه‌های قدیمی‌تر محاسبه شده‌اند ریل اسمی را
+        -- پرداخته‌اند. با قاعده‌ی ثابت، سندِ آن ماه‌ها به اندازه‌ی فاصله‌ی دو ریل
+        -- غلط می‌شد — اختلافی که هم‌جنسِ گِردکردن نیست و نباید جذب شود.
+        CREATE TABLE #Rail (EMP_ID INT PRIMARY KEY, DROP_CODE NVARCHAR(30) NULL);
+
+        ;WITH Sums AS (
+            SELECT D.EMP_ID,
+                   SUM(D.AMOUNT) AS S_ALL,
+                   SUM(CASE WHEN ISNULL(D.ITEM_CODE_SNAP, I.ITEM_CODE) = 'BASE_SAL'   THEN D.AMOUNT ELSE 0 END) AS S_NOM,
+                   SUM(CASE WHEN ISNULL(D.ITEM_CODE_SNAP, I.ITEM_CODE) = 'BASE_SAL_B' THEN D.AMOUNT ELSE 0 END) AS S_OFF,
+                   MAX(CASE WHEN ISNULL(D.ITEM_CODE_SNAP, I.ITEM_CODE) = 'BASE_SAL'   THEN 1 ELSE 0 END) AS HAS_NOM,
+                   MAX(CASE WHEN ISNULL(D.ITEM_CODE_SNAP, I.ITEM_CODE) = 'BASE_SAL_B' THEN 1 ELSE 0 END) AS HAS_OFF
+            FROM PAY2_RUN_DETAIL D
+            LEFT JOIN PAY2_ITEM_DEF I ON I.ITEM_ID = D.ITEM_ID
+            WHERE D.RUN_ID = @RUN_ID
+              AND ISNULL(D.ITEM_TYPE_SNAP, I.ITEM_TYPE) IN (1, 2)
+              AND D.AMOUNT <> 0
+            GROUP BY D.EMP_ID
+        )
+        INSERT INTO #Rail (EMP_ID, DROP_CODE)
+        SELECT S.EMP_ID,
+               CASE
+                    WHEN S.HAS_NOM = 0 OR S.HAS_OFF = 0 THEN NULL
+                    -- ریلی که با ناخالصِ ثبت‌شده می‌خواند برنده است.
+                    WHEN S.S_ALL - S.S_NOM = RL.GROSS_PAY THEN 'BASE_SAL'
+                    WHEN S.S_ALL - S.S_OFF = RL.GROSS_PAY THEN 'BASE_SAL_B'
+                    ELSE 'BASE_SAL'   -- هیچ‌کدام دقیق نخواند: قاعده‌ی موتور امروز
+               END
+        FROM Sums S
+        INNER JOIN PAY2_RUN_LINE RL ON RL.RUN_ID = @RUN_ID AND RL.EMP_ID = S.EMP_ID;
+
+        INSERT INTO #EmpItem (EMP_ID, ITEM_ID, ITEM_NAME, TAFSILI, AMOUNT, SORT)
+        SELECT D.EMP_ID, D.ITEM_ID,
+               ISNULL(ISNULL(D.ITEM_NAME_SNAP, I.ITEM_NAME), N'قلم حکم'),
+               ISNULL(I.EXP_TAFSILI, 9),
+               D.AMOUNT,
+               ISNULL(I.SORT_ORDER, 999)
+        FROM PAY2_RUN_DETAIL D
+        LEFT JOIN PAY2_ITEM_DEF I ON I.ITEM_ID = D.ITEM_ID
+        INNER JOIN #Rail R ON R.EMP_ID = D.EMP_ID
+        WHERE D.RUN_ID = @RUN_ID
+          AND ISNULL(D.ITEM_TYPE_SNAP, I.ITEM_TYPE) IN (1, 2)
+          AND D.AMOUNT <> 0
+          AND ISNULL(D.ITEM_CODE_SNAP, I.ITEM_CODE) <> ISNULL(R.DROP_CODE, N'');
+
+        -- تعدیلِ گِردکردنِ خالص جزو هیچ قلمی نیست. ستون ROUNDING_ADJ مبنا نیست
+        -- چون در اجراهای قدیمی‌تر NULL است؛ ضمناً بسته به نسخه‌ی موتور، گِردکردن
+        -- گاهی داخل GROSS_PAY تا شده و گاهی بین GROSS_PAY و NET_PAY نشسته است.
+        -- تنها چیزی که در همه‌ی نسخه‌ها معتبر است این تساوی است:
+        --     جمع بستانکارِ اقلام = NET_PAY + TOTAL_DED
+        -- پس هدف را از روی همان می‌سازیم تا مانده‌ی حساب پرسنل دقیقاً خالص شود.
+        --
+        -- فقط اختلافِ هم‌اندازه‌ی گِردکردن جذب می‌شود؛ اگر اختلاف بزرگ بود یعنی
+        -- ایرادِ ساختاری است (مثلاً ریل حقوق اشتباه انتخاب شده) و باید گاردِ
+        -- پایین آن را با پیام روشن بگیرد، نه اینکه بی‌صدا روی حقوق تَه‌نشین شود.
+        DECLARE @ROUND_TOLERANCE BIGINT = 10000;
+
+        -- پرسنلِ فقط‌بیمه هیچ قلم پرداختی ندارند، پس تعدیل جایی برای نشستن
+        -- نداشت. یک ردیفِ صفرِ حامل ساخته می‌شود تا مسیرِ تعدیل برای همه یکسان
+        -- بماند؛ اگر تعدیلی نگیرد، با فیلترِ AMOUNT > 0 آرتیکلی تولید نمی‌کند.
+        INSERT INTO #EmpItem (EMP_ID, ITEM_ID, ITEM_NAME, TAFSILI, AMOUNT, SORT)
+        SELECT SS.EMP_ID, -1, N'تعدیل گِردکردن', 1, 0, 0
+        FROM #SalarySplit SS
+        WHERE NOT EXISTS (SELECT 1 FROM #EmpItem EI WHERE EI.EMP_ID = SS.EMP_ID);
+
+        ;WITH Target AS (
+            SELECT EI.EMP_ID, EI.ITEM_ID,
+                   ROW_NUMBER() OVER (PARTITION BY EI.EMP_ID
+                                      ORDER BY CASE WHEN EI.TAFSILI = 1 THEN 0 ELSE 1 END,
+                                               EI.SORT, EI.ITEM_ID) AS RN
+            FROM #EmpItem EI
+        ),
+        Diff AS (
+            SELECT RL.EMP_ID, (RL.NET_PAY + RL.TOTAL_DED) - SUM(EI.AMOUNT) AS ADJ
+            FROM PAY2_RUN_LINE RL
+            INNER JOIN #EmpItem EI ON EI.EMP_ID = RL.EMP_ID
+            WHERE RL.RUN_ID = @RUN_ID
+            GROUP BY RL.EMP_ID, RL.NET_PAY, RL.TOTAL_DED
+            HAVING ABS((RL.NET_PAY + RL.TOTAL_DED) - SUM(EI.AMOUNT)) BETWEEN 1 AND @ROUND_TOLERANCE
+        )
+        UPDATE EI
+        SET EI.AMOUNT = EI.AMOUNT + D.ADJ
+        FROM #EmpItem EI
+        INNER JOIN Target T ON T.EMP_ID = EI.EMP_ID AND T.ITEM_ID = EI.ITEM_ID AND T.RN = 1
+        INNER JOIN Diff   D ON D.EMP_ID = EI.EMP_ID;
+
+        -- ── ۲) سهم هر مرکز هزینه از کارکرد هر پرسنل ───────────────────
+        -- IS_PRIMARY همان اولویتی است که بقیه‌ی رویه هم دارد (تولید ← اداری
+        -- ← فروش ← خدمات) و باقیمانده‌ی گِردکردن روی همان مرکز می‌نشیند.
+        CREATE TABLE #EmpCenter (
+            EMP_ID     INT,
+            CENTER     TINYINT,
+            DAYS       DECIMAL(9,2),
+            TOT_DAYS   DECIMAL(9,2),
+            IS_PRIMARY BIT
+        );
+
+        INSERT INTO #EmpCenter (EMP_ID, CENTER, DAYS, TOT_DAYS, IS_PRIMARY)
+        SELECT X.EMP_ID, X.CENTER, X.DAYS, X.TOT,
+               CASE WHEN X.CENTER = (SELECT MIN(Y.CENTER) FROM (
+                        SELECT A2.EMP_ID, V2.CENTER, V2.DAYS
+                        FROM PAY2_ATTENDANCE A2
+                        CROSS APPLY (VALUES (1, A2.DAYS_TOLID), (2, A2.DAYS_EDARI),
+                                            (3, A2.DAYS_FOROSH), (4, A2.DAYS_KHADAMAT)) V2(CENTER, DAYS)
+                        WHERE A2.PER_ID = @PER_ID AND V2.DAYS > 0
+                    ) Y WHERE Y.EMP_ID = X.EMP_ID) THEN 1 ELSE 0 END
+        FROM (
+            SELECT A.EMP_ID, V.CENTER, V.DAYS,
+                   (A.DAYS_TOLID + A.DAYS_EDARI + A.DAYS_FOROSH + A.DAYS_KHADAMAT) AS TOT
+            FROM PAY2_ATTENDANCE A
+            INNER JOIN PAY2_RUN_LINE RL ON RL.EMP_ID = A.EMP_ID AND RL.RUN_ID = @RUN_ID
+            CROSS APPLY (VALUES (1, A.DAYS_TOLID), (2, A.DAYS_EDARI),
+                                (3, A.DAYS_FOROSH), (4, A.DAYS_KHADAMAT)) V(CENTER, DAYS)
+            WHERE A.PER_ID = @PER_ID AND V.DAYS > 0
+        ) X;
+
+        -- پرسنلِ «فقط‌بیمه» کارکردی در هیچ مرکزی ندارند ولی بیمه‌ی سهم کارفرما
+        -- دارند. بدون این ردیف، آن بیمه به هیچ حساب هزینه‌ای نمی‌رفت و سند
+        -- ناتراز می‌شد. اولین مرکزِ دارای ریشه به عنوان مقصد پیش‌فرض برمی‌دارد.
+        INSERT INTO #EmpCenter (EMP_ID, CENTER, DAYS, TOT_DAYS, IS_PRIMARY)
+        SELECT SS.EMP_ID,
+               CASE WHEN @ROOT_TOLID IS NOT NULL THEN 1
+                    WHEN @ROOT_EDARI IS NOT NULL THEN 2
+                    WHEN @ROOT_FOROSH IS NOT NULL THEN 3
+                    ELSE 4 END,
+               1, 1, 1
+        FROM #SalarySplit SS
+        WHERE NOT EXISTS (SELECT 1 FROM #EmpCenter EC WHERE EC.EMP_ID = SS.EMP_ID)
+          AND COALESCE(@ROOT_TOLID, @ROOT_EDARI, @ROOT_FOROSH, @ROOT_KHADAMAT) IS NOT NULL;
+
+        -- ── ۳) پخش هر قلم روی مراکز هزینه ─────────────────────────────
+        CREATE TABLE #ExpAlloc (
+            CENTER  TINYINT,
+            TAFSILI SMALLINT,
+            AMOUNT  BIGINT
+        );
+
+        ;WITH Part AS (
+            SELECT EI.EMP_ID, EI.ITEM_ID, EI.TAFSILI, EC.CENTER, EC.IS_PRIMARY, EI.AMOUNT,
+                   CAST(ROUND(EI.AMOUNT * EC.DAYS / NULLIF(EC.TOT_DAYS, 0), 0) AS BIGINT) AS PART
+            FROM #EmpItem EI
+            INNER JOIN #EmpCenter EC ON EC.EMP_ID = EI.EMP_ID
+        ),
+        Fixed AS (
+            SELECT *, SUM(PART) OVER (PARTITION BY EMP_ID, ITEM_ID) AS SUM_PART FROM Part
+        )
+        INSERT INTO #ExpAlloc (CENTER, TAFSILI, AMOUNT)
+        SELECT CENTER, TAFSILI,
+               SUM(PART + CASE WHEN IS_PRIMARY = 1 THEN AMOUNT - SUM_PART ELSE 0 END)
+        FROM Fixed
+        GROUP BY CENTER, TAFSILI;
+
+        -- بیمه‌ی سهم کارفرما هزینه‌ی همان مرکز است (تفصیلی ۱۰).
+        ;WITH Part AS (
+            SELECT SS.EMP_ID, EC.CENTER, EC.IS_PRIMARY, SS.INS_EMPLOYER AS AMOUNT,
+                   CAST(ROUND(SS.INS_EMPLOYER * EC.DAYS / NULLIF(EC.TOT_DAYS, 0), 0) AS BIGINT) AS PART
+            FROM #SalarySplit SS
+            INNER JOIN #EmpCenter EC ON EC.EMP_ID = SS.EMP_ID
+            WHERE SS.INS_EMPLOYER > 0
+        ),
+        Fixed AS (
+            SELECT *, SUM(PART) OVER (PARTITION BY EMP_ID) AS SUM_PART FROM Part
+        )
+        INSERT INTO #ExpAlloc (CENTER, TAFSILI, AMOUNT)
+        SELECT CENTER, 10, SUM(PART + CASE WHEN IS_PRIMARY = 1 THEN AMOUNT - SUM_PART ELSE 0 END)
+        FROM Fixed
+        GROUP BY CENTER;
+
+        -- «کسر کار» حسابِ مقصد ندارد: بدهکارِ حساب پرسنل می‌شود و در مقابل،
+        -- هزینه‌ی حقوقِ همان مرکز را کم می‌کند (دقیقاً رفتار سند قدیمی).
+        INSERT INTO #ExpAlloc (CENTER, TAFSILI, AMOUNT)
+        SELECT EC.CENTER, 1, -SUM(SH.SHORTAGE_DED)
+        FROM (
+            SELECT SS.EMP_ID, SS.OTHER_DED - ISNULL(A.KASR_OTHER, 0) AS SHORTAGE_DED
+            FROM #SalarySplit SS
+            INNER JOIN PAY2_ATTENDANCE A ON A.EMP_ID = SS.EMP_ID AND A.PER_ID = @PER_ID
+        ) SH
+        INNER JOIN #EmpCenter EC ON EC.EMP_ID = SH.EMP_ID AND EC.IS_PRIMARY = 1
+        WHERE SH.SHORTAGE_DED > 0
+        GROUP BY EC.CENTER;
+
+        -- ── ۴) آرتیکل‌ها ──────────────────────────────────────────────
+        INSERT INTO #FinalArticles
+        -- (الف) هزینه: مرکز هزینه × نوع قلم
+        SELECT CAST(R.ROOT + N'-' + CAST(X.TAFSILI AS NVARCHAR(10)) AS NVARCHAR(100)),
+               CAST(N'هزینه ' + R.CNAME + N' ' + @ML AS NVARCHAR(500)),
+               CAST(SUM(X.AMOUNT) AS BIGINT), CAST(0 AS BIGINT),
+               CAST('EXP_' + R.CKEY AS NVARCHAR(50)), CAST(NULL AS INT), CAST(NULL AS NVARCHAR(150)), 1
+        FROM #ExpAlloc X
+        INNER JOIN (VALUES (1, @ROOT_TOLID,    N'تولید',  'TOLID'),
+                           (2, @ROOT_EDARI,    N'اداری',  'EDARI'),
+                           (3, @ROOT_FOROSH,   N'فروش',   'FOROSH'),
+                           (4, @ROOT_KHADAMAT, N'خدمات',  'KHADAMAT')) R(CENTER, ROOT, CNAME, CKEY)
+             ON R.CENTER = X.CENTER
+        GROUP BY R.ROOT, R.CNAME, R.CKEY, X.TAFSILI
+        HAVING SUM(X.AMOUNT) <> 0
+
+        UNION ALL
+        -- (ب) اقلام حکم هر پرسنل روی حساب تفصیلی خودش
+        SELECT CAST(SS.ACC_T AS NVARCHAR(100)),
+               CAST(EI.ITEM_NAME + N' ' + @ML + N' | ' + SS.FULL_NAME AS NVARCHAR(500)),
+               CAST(0 AS BIGINT), CAST(EI.AMOUNT AS BIGINT),
+               CAST('EMP_ITEM' AS NVARCHAR(50)), CAST(EI.EMP_ID AS INT), CAST(SS.FULL_NAME AS NVARCHAR(150)), 2
+        FROM #EmpItem EI
+        INNER JOIN #SalarySplit SS ON SS.EMP_ID = EI.EMP_ID
+        WHERE EI.AMOUNT > 0
+
+        UNION ALL
+        -- (ج) کسورات هر پرسنل: بدهکارِ حساب خودش
+        SELECT CAST(SS.ACC_T AS NVARCHAR(100)),
+               CAST(D.LABEL + N' ' + @ML + N' | ' + SS.FULL_NAME AS NVARCHAR(500)),
+               CAST(D.AMOUNT AS BIGINT), CAST(0 AS BIGINT),
+               CAST('EMP_DED' AS NVARCHAR(50)), CAST(SS.EMP_ID AS INT), CAST(SS.FULL_NAME AS NVARCHAR(150)), 3
+        FROM #SalarySplit SS
+        INNER JOIN PAY2_ATTENDANCE A ON A.EMP_ID = SS.EMP_ID AND A.PER_ID = @PER_ID
+        CROSS APPLY (VALUES
+            (N'کسر بیمه سهم کارگر', SS.INS_WORKER),
+            (N'کسر مالیات',         SS.TAX_AMOUNT),
+            (N'کسر قسط وام',        SS.LOAN_DED),
+            (N'تصفیه مساعده',       SS.ADVANCE_DED),
+            (N'سایر کسورات',        ISNULL(A.KASR_OTHER, 0)),
+            (N'کسر کار',            SS.OTHER_DED - ISNULL(A.KASR_OTHER, 0))
+        ) D(LABEL, AMOUNT)
+        WHERE D.AMOUNT > 0
+
+        UNION ALL
+        -- (د) حساب‌های مقصد کسورات («کسر کار» مقصد ندارد؛ هزینه را کم کرده است)
+        SELECT CAST(@ACC_INS_PAYABLE AS NVARCHAR(100)), CAST(N'بیمه تأمین اجتماعی ' + @ML AS NVARCHAR(500)), CAST(0 AS BIGINT), CAST(SUM(INS_WORKER + INS_EMPLOYER) AS BIGINT), CAST('INS_PAYABLE' AS NVARCHAR(50)), CAST(NULL AS INT), CAST(NULL AS NVARCHAR(150)), 4
+        FROM #SalarySplit HAVING SUM(INS_WORKER + INS_EMPLOYER) > 0
+        UNION ALL
+        SELECT CAST(@ACC_TAX_PAYABLE AS NVARCHAR(100)), CAST(N'مالیات حقوق ' + @ML AS NVARCHAR(500)), CAST(0 AS BIGINT), CAST(SUM(TAX_AMOUNT) AS BIGINT), CAST('TAX_PAYABLE' AS NVARCHAR(50)), CAST(NULL AS INT), CAST(NULL AS NVARCHAR(150)), 5
+        FROM #SalarySplit HAVING SUM(TAX_AMOUNT) > 0
+        UNION ALL
+        SELECT CAST(@ACC_LOAN_HES AS NVARCHAR(100)), CAST(N'کسر اقساط وام: ' + @ML + N' | ' + FULL_NAME AS NVARCHAR(500)), CAST(0 AS BIGINT), CAST(LOAN_DED AS BIGINT), CAST('LOAN_HES' AS NVARCHAR(50)), CAST(EMP_ID AS INT), CAST(FULL_NAME AS NVARCHAR(150)), 6
+        FROM #SalarySplit WHERE LOAN_DED > 0
+        UNION ALL
+        SELECT CAST(@ACC_ADV_HES AS NVARCHAR(100)), CAST(N'تصفیه مساعده: ' + @ML + N' | ' + FULL_NAME AS NVARCHAR(500)), CAST(0 AS BIGINT), CAST(ADVANCE_DED AS BIGINT), CAST('ADVANCE_SETTLE' AS NVARCHAR(50)), CAST(EMP_ID AS INT), CAST(FULL_NAME AS NVARCHAR(150)), 7
+        FROM #SalarySplit WHERE ADVANCE_DED > 0
+        UNION ALL
+        SELECT CAST(@ACC_OTHER_DED_HES AS NVARCHAR(100)), CAST(N'سایر کسورات: ' + @ML + N' | ' + SS.FULL_NAME AS NVARCHAR(500)), CAST(0 AS BIGINT), CAST(A.KASR_OTHER AS BIGINT), CAST('OTHER_DED' AS NVARCHAR(50)), CAST(SS.EMP_ID AS INT), CAST(SS.FULL_NAME AS NVARCHAR(150)), 8
+        FROM #SalarySplit SS
+        INNER JOIN PAY2_ATTENDANCE A ON A.EMP_ID = SS.EMP_ID AND A.PER_ID = @PER_ID
+        WHERE ISNULL(A.KASR_OTHER, 0) > 0;
+
+        DROP TABLE #EmpItem;
+        DROP TABLE #EmpCenter;
+        DROP TABLE #ExpAlloc;
+        DROP TABLE #Rail;
+
+        -- ── ۵) گاردِ آشتی ─────────────────────────────────────────────
+        -- مانده‌ی حساب هر پرسنل باید دقیقاً خالص پرداختی او باشد. اگر قلمی از
+        -- RUN_DETAIL جا افتاده باشد یا ریلِ حقوق اشتباه انتخاب شده باشد، سند
+        -- ممکن است در جمع کل تراز بمانَد ولی حساب اشخاص غلط باشد؛ این گارد
+        -- دقیقاً همان حالت را می‌گیرد.
+        DECLARE @MismatchName NVARCHAR(150), @MismatchExp BIGINT, @MismatchAct BIGINT;
+        SELECT TOP 1
+            @MismatchName = SS.FULL_NAME,
+            @MismatchExp  = SS.NET_PAY,
+            @MismatchAct  = ISNULL(F.BES, 0) - ISNULL(F.BED, 0)
+        FROM #SalarySplit SS
+        OUTER APPLY (
+            SELECT SUM(FA.BES) AS BES, SUM(FA.BED) AS BED
+            FROM #FinalArticles FA
+            WHERE FA.EMP_ID = SS.EMP_ID AND FA.ACC_KEY IN ('EMP_ITEM', 'EMP_DED')
+        ) F
+        WHERE ISNULL(F.BES, 0) - ISNULL(F.BED, 0) <> SS.NET_PAY;
+
+        IF @MismatchName IS NOT NULL
+        BEGIN
+            DECLARE @ErrRec NVARCHAR(500) = N'صدور سند متوقف شد: مانده‌ی حساب پرسنل با خالص پرداختی نمی‌خواند. نام: '
+                + @MismatchName + N' | خالص پرداختی: ' + CAST(@MismatchExp AS NVARCHAR(30))
+                + N' | مانده‌ی آرتیکل‌ها: ' + CAST(@MismatchAct AS NVARCHAR(30))
+                + N'. لطفاً محاسبه‌ی این ماه را دوباره اجرا کنید.';
+            RAISERROR(@ErrRec, 16, 1);
+            RETURN;
+        END
     END
 
     -- ─────────────────────────────────────────────────────────────────
