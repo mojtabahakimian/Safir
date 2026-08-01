@@ -2238,7 +2238,15 @@
    ۲۴. سفارشی‌سازی فوق‌مدرن هشدارهای سیستم (MudBlazor Snackbar)
    ════════════════════════════════════════════════════════════ */
 
-/* ساختار اصلی و انیمیشن */
+/* ساختار اصلی
+   نکته: خودِ MudSnackbarElement برای ورود و خروج، انیمیشن اختصاصیِ هر پیام را
+   با استایل این‌لاین («opacity: …; animation: …ms linear snackbar-<guid>;»)
+   روی همین المان تنظیم می‌کند. یک قانون animation با !important روی
+   .mud-snackbar آن انیمیشن این‌لاین را کاملاً بی‌اثر می‌کرد — یعنی هنگام
+   بستن (کلیک روی ×)، به‌جای محو شدن، ۲ ثانیه (HideTransitionDuration) کاملاً
+   بدون تغییر ظاهری می‌ماند و بعد به‌یک‌باره ناپدید می‌شد؛ برای کاربر یعنی
+   «دکمه‌ی بستن اثر نمی‌کند». پس اینجا هیچ‌وقت روی animation یا opacity
+   دست نمی‌زنیم و آن انیمیشنِ ورود/خروجِ خودِ کتابخانه دست‌نخورده می‌ماند. */
 .mud-snackbar {
     border-radius: var(--p2-radius-md) !important;
     box-shadow: var(--p2-shadow-lg) !important;
@@ -2247,20 +2255,6 @@
     min-width: 320px;
     border: 1px solid transparent;
     backdrop-filter: blur(8px);
-    /* انیمیشن ورود فنری و مدرن */
-    animation: p2SnackbarEnter 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards !important;
-}
-
-@keyframes p2SnackbarEnter {
-    0% {
-        opacity: 0;
-        transform: translateY(30px) scale(0.95);
-    }
-
-    100% {
-        opacity: 1;
-        transform: translateY(0) scale(1);
-    }
 }
 
 /* تنظیمات متن و آیکون */

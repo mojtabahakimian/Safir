@@ -101,6 +101,35 @@ test.describe('کنترل دسترسی در سطح API', () => {
   });
 });
 
+test.describe('اعلان‌های Snackbar', () => {
+
+  test('اعلان با کلیک روی × واقعاً محو می‌شود، نه اینکه دو ثانیه بی‌حرکت بماند', async ({ page }) => {
+    // باگ واقعی: قانون CSS برای «.mud-snackbar» یک انیمیشنِ ورود را با
+    // !important روی همان پراپرتیِ animation تحمیل می‌کرد که خودِ
+    // MudSnackbarElement برای محو شدن (state=Hiding) به‌صورت این‌لاین
+    // تنظیم می‌کند. نتیجه: کلیک روی × ثبت می‌شد ولی هیچ فیدبک بصری‌ای
+    // نبود — اسنک‌بار با opacity کامل ثابت می‌ماند تا HideTransitionDuration
+    // (پیش‌فرض ۲ ثانیه) تمام شود و بعد یک‌باره از DOM حذف می‌شد؛ برای
+    // کاربر یعنی «دکمه‌ی بستن اثر نمی‌کند».
+    //
+    // این تست بدون دیتابیس هم قابل اجراست: صفحه‌ی ورود با دیتابیسِ خاموش
+    // (وضعیت این محیط CI) خودش یک اسنک‌بار خطای دائمی نشان می‌دهد.
+    await page.goto('/login', { waitUntil: 'networkidle' });
+    const snackbar = page.locator('.mud-snackbar').first();
+    await expect(snackbar).toBeVisible({ timeout: 15_000 });
+
+    await snackbar.locator('.mud-snackbar-content-action button').first().click();
+
+    // اگر انیمیشنِ محو شدن کار کند، خیلی زودتر از HideTransitionDuration
+    // کامل (۲۰۰۰ میلی‌ثانیه) باید opacity به‌وضوح افت کرده باشد.
+    await page.waitForTimeout(600);
+    const opacity = await snackbar.evaluate(el => getComputedStyle(el).opacity).catch(() => '0');
+    expect(Number(opacity), 'اسنک‌بار باید تا این لحظه شروع به محو شدن کرده باشد').toBeLessThan(0.9);
+
+    await expect(snackbar).toHaveCount(0, { timeout: 3000 });
+  });
+});
+
 test.describe('سلامت کلاینت', () => {
 
   test('هیچ خطای جاوااسکریپتی غیرمنتظره‌ای در بارگذاری نیست', async ({ page }) => {
