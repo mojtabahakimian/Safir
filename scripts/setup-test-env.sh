@@ -143,8 +143,9 @@ CREATE DATABASE [$DB_NAME];"
 step "۶) وابستگی‌های قدیمی (بدون تداخل با schema.sql)"
 # ═══════════════════════════════════════════════════════════════════════════
 for f in legacy_dependencies.sql schema.sql test_auth_tables.sql \
-         pay2_runtime_procedures.sql pay2_acl_migration.sql pay2_seed.sql \
-         test_auth_and_acl_users.sql; do
+         pay2_schema_catchup.sql pay2_runtime_procedures.sql \
+         pay2_acl_migration.sql pay2_seed.sql \
+         test_auth_and_acl_users.sql test_chart_of_accounts.sql; do
   [[ -f "$DB_DIR/$f" ]] || { echo "❌ فایل پیدا نشد: $DB_DIR/$f" >&2; exit 1; }
 done
 
@@ -214,6 +215,12 @@ step "۸) رویه‌های اجرایی PAY2 و مهاجرت کنترل دست�
 # جدول‌های ورود باید قبل از مهاجرت باشند: بخش Bootstrap مهاجرت به
 # dbo.SALA_DTL و dbo.SAL_CHEK ارجاع می‌دهد و هیچ‌کدام در schema.sql نیستند.
 sqlcmd_local -d "$DB_NAME" -i "$DB_DIR/test_auth_tables.sql"
+
+# schema.sql یک عکسِ قدیمی‌تر از ساختار است و ستون‌هایی که نسخه‌های بعدیِ موتور
+# اضافه کرده‌اند را ندارد (منبع حقیقت ScriptSqly.cs است). بدون این گام، هر
+# آزمونی که حکم ثبت کند یا حقوق محاسبه کند با «Invalid column name» می‌افتد.
+sqlcmd_local -d "$DB_NAME" -i "$DB_DIR/pay2_schema_catchup.sql"
+
 sqlcmd_local -d "$DB_NAME" -i "$DB_DIR/pay2_runtime_procedures.sql"
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -249,6 +256,10 @@ sqlcmd_local -d "$DB_NAME" -i "$DB_DIR/pay2_seed.sql"
 # اعمال می‌شود.
 sqlcmd_local -d "$DB_NAME" -i "$DB_DIR/pay2_acl_migration.sql"
 sqlcmd_local -d "$DB_NAME" -i "$DB_DIR/test_auth_and_acl_users.sql"
+
+# دفتر حساب حداقلی — بعد از seed چون کد تفصیلی هر پرسنل را از PAY2_EMPLOYEE
+# می‌سازد. بدون آن، مرحله‌ی «صدور سند حسابداری» در آزمون سرتاسری قابل رسیدن نیست.
+sqlcmd_local -d "$DB_NAME" -i "$DB_DIR/test_chart_of_accounts.sql"
 
 # شمارش‌ها را سخت‌گیرانه چک نکن — با تولید دوباره seed عوض می‌شوند.
 sqlcmd_local -d "$DB_NAME" -Q "
