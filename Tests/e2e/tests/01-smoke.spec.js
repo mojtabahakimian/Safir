@@ -51,6 +51,13 @@ test.describe('بالا آمدن برنامه', () => {
     // یک کاربر واقعی وقتی سرور دیتابیس قطع است نباید صفحه‌ی سفید ببیند.
     await page.goto('/', { waitUntil: 'networkidle' });
 
+    // networkidle پایانِ بوتِ WebAssembly را تضمین نمی‌کند. روی ماشین کند
+    // (مثل runner در CI) صفحه هنوز همان splash است — که خودش هم کلمه‌ی «سفیر»
+    // را دارد، پس فقط بررسیِ طول لو می‌داد که چیز اشتباهی نمونه‌برداری شده.
+    // منتظر متنی می‌مانیم که فقط از دل کامپوننت‌های Blazor بیرون می‌آید.
+    await expect(page.getByText('به سیستم جامع سفیر خوش آمدید'))
+      .toBeVisible({ timeout: 60_000 });
+
     const body = await page.locator('body').innerText();
     expect(body.length, 'صفحه خالی است').toBeGreaterThan(100);
     // یا وارد شده و کار می‌کند، یا پیام روشن فارسی می‌دهد — نه صفحه‌ی سفید.
