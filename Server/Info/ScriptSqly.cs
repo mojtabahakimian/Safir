@@ -248,7 +248,7 @@ VALUES
 ('ADV_USE_HES_T_FILTER', '1',             '1|0',                    '1',             N'مساعده',
  N'آیا فیلتر HES_T (تفصیلی=کد پرسنل) اعمال شود؟',
  N'1=هر پرسنل فقط مانده حساب خودش (معمول) | 0=جمع کل معین بدون تفکیک تفصیلی',
- N'per پرسنل|کل معین',        'BOOL', 2),
+ N'به تفکیک پرسنل|کل معین',   'BOOL', 2),
 
 ('ADV_MIN_POSITIVE',     '1',             '1|0',                    '1',             N'مساعده',
  N'مساعده فقط اگر مانده بدهکار (مثبت) باشد کسر شود',
@@ -3771,6 +3771,16 @@ GO
 IF NOT EXISTS (SELECT 1 FROM dbo.PAY2_CONFIG WHERE CFG_KEY=N'ACL_AUDIT_SENSITIVE')
     INSERT INTO dbo.PAY2_CONFIG (CFG_KEY, CFG_VALUE, CFG_OPTIONS, CFG_DEFAULT, CFG_SECTION, LABEL_FA, DESC_FA, OPT_LABELS, DATA_TYPE, ACCESS_LEVEL)
     VALUES (N'ACL_AUDIT_SENSITIVE', N'1', N'1|0', N'1', N'امنیت', N'ثبت لاگ عملیات حساس', NULL, NULL, N'BOOL', 1);
+GO
+
+-- این چهار کلید موقع اضافه شدن، OPT_LABELS نداشتند؛ صفحه‌ی تنظیمات به‌جای
+-- برچسب فارسی، خودِ عدد خام «۰»/«۱» را نشان می‌داد. روی نصب‌های قبلی هم
+-- (که این کلیدها را از قبل INSERT کرده‌اند) این UPDATE لازم است، چون
+-- IF NOT EXISTS بالا برای آن‌ها دیگر اجرا نمی‌شود.
+UPDATE dbo.PAY2_CONFIG SET OPT_LABELS = N'روشن — دسترسی‌ها اعمال می‌شود|خاموش — همه به همه‌چیز دسترسی دارند' WHERE CFG_KEY = N'ACL_ENFORCE';
+UPDATE dbo.PAY2_CONFIG SET OPT_LABELS = N'محدود به کارگاه‌های مجاز|بدون محدودیت کارگاه' WHERE CFG_KEY = N'ACL_WS_SCOPE_ENFORCE';
+UPDATE dbo.PAY2_CONFIG SET OPT_LABELS = N'ثبت می‌شود|ثبت نمی‌شود' WHERE CFG_KEY = N'ACL_AUDIT_DENIED';
+UPDATE dbo.PAY2_CONFIG SET OPT_LABELS = N'ثبت می‌شود|ثبت نمی‌شود' WHERE CFG_KEY = N'ACL_AUDIT_SENSITIVE';
 GO
 
 UPDATE dbo.PAY2_CONFIG

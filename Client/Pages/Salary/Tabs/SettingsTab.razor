@@ -36,17 +36,36 @@
                     <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 24px 16px; align-items: start;">
                         @foreach (var cfg in _groupedConfigs[section])
                         {
-                            <div class="form-field" style="display: flex; flex-direction: column; grid-column: span @GetColumnSpan(cfg.CFG_KEY);">
+                            <div class="form-field @(IsChanged(cfg) ? "p2-field-changed" : "")" style="display: flex; flex-direction: column; grid-column: span @GetColumnSpan(cfg.CFG_KEY);">
 
                                 <!-- 🚀 فیکس کردن ارتفاع لیبل‌ها: این کار باعث می‌شود تمام Input ها در یک خط تراز شوند -->
-                                <label title="@cfg.DESC_FA" style="min-height: 38px; display: flex; align-items: flex-end; padding-bottom: 6px; line-height: 1.4; margin: 0;">
-                                    @cfg.LABEL_FA
+                                <label style="min-height: 38px; display: flex; align-items: flex-end; gap:6px; padding-bottom: 6px; line-height: 1.4; margin: 0;">
+                                    <span>@cfg.LABEL_FA</span>
+                                    @if (IsDeprecated(cfg))
+                                    {
+                                        <span class="p2-badge-neutral" style="padding:1px 8px; font-size:10px;" title="این تنظیم دیگر اثری ندارد؛ فقط برای سازگاری نگه داشته شده است.">منسوخ</span>
+                                    }
+                                    else if (IsAclOnly(cfg))
+                                    {
+                                        <span class="p2-badge-warning" style="padding:1px 8px; font-size:10px;" title="فقط با دسترسی «مدیریت دسترسی‌ها» قابل تغییر است.">دسترسی ادمین</span>
+                                    }
+                                    else if (IsCritical(cfg))
+                                    {
+                                        <span class="p2-badge-warning" style="padding:1px 8px; font-size:10px;" title="تنظیمی حساس — تغییرش نیاز به مجوز جداگانه دارد.">حساس</span>
+                                    }
                                 </label>
 
-                                <div style="position: relative; width: 100%;">
-                                    @if (cfg.CFG_KEY == "TAX_YEAR")
+                                <div style="position: relative; width: 100%; display:flex; align-items:center; gap:8px;">
+                                    @if (IsLocked(cfg))
                                     {
-                                        <div style="display:flex; gap:8px; align-items: stretch; height: var(--p2-input-h, 42px);">
+                                        <div class="pay2-input p2-readonly-field" title="@cfg.DESC_FA">
+                                            <i class="bi bi-lock-fill"></i>
+                                            <span class="p2-text-mono">@(string.IsNullOrWhiteSpace(cfg.CFG_VALUE) ? "—" : cfg.CFG_VALUE)</span>
+                                        </div>
+                                    }
+                                    else if (cfg.CFG_KEY == "TAX_YEAR")
+                                    {
+                                        <div style="display:flex; gap:8px; align-items: stretch; height: var(--p2-input-h, 42px); flex-grow:1;">
                                             <div style="flex-grow: 1;">
                                                 <Safir.Client.Pages.Salary.Tabs.Pay2NumericInput @bind-Value="cfg.CFG_VALUE"
                                                                                                  Direction="ltr"
@@ -59,34 +78,46 @@
                                             </button>
                                         </div>
                                     }
-                                    else if (!string.IsNullOrWhiteSpace(cfg.CFG_OPTIONS) || cfg.DATA_TYPE?.Equals("BOOL", StringComparison.OrdinalIgnoreCase) == true)
-                                    {
-                                        <Safir.Client.Pages.Salary.Tabs.Pay2Select TItem="LookupDto<string>"
-                                                                                   TValue="string"
-                                                                                   Items="@_optionsCache[cfg.CFG_KEY]"
-                                                                                   @bind-Value="cfg.CFG_VALUE"
-                                                                                   TextSelector="x => x.Name"
-                                                                                   ValueSelector="x => x.Id"
-                                                                                   Editable="false"
-                                                                                   Clearable="false" />
-                                    }
-                                    else if (cfg.DATA_TYPE?.Equals("INT", StringComparison.OrdinalIgnoreCase) == true ||
-                                    cfg.DATA_TYPE?.Equals("DECIMAL", StringComparison.OrdinalIgnoreCase) == true)
-                                    {
-                                        <Safir.Client.Pages.Salary.Tabs.Pay2NumericInput @bind-Value="cfg.CFG_VALUE"
-                                                                                         InputMode="@(cfg.DATA_TYPE == "DECIMAL" ? Safir.Client.Pages.Salary.Tabs.Pay2NumericInput.NumericInputMode.Percentage : Safir.Client.Pages.Salary.Tabs.Pay2NumericInput.NumericInputMode.Amount)"
-                                                                                         IsDigitGroupActive="false"
-                                                                                         ThreeTwoZero="false"
-                                                                                         Direction="ltr" />
-                                    }
                                     else
                                     {
-                                        <input class="pay2-input" type="text" style="direction:ltr; text-align:left;" @bind="cfg.CFG_VALUE" />
+                                        <div style="flex-grow:1;">
+                                            @if (!string.IsNullOrWhiteSpace(cfg.CFG_OPTIONS) || cfg.DATA_TYPE?.Equals("BOOL", StringComparison.OrdinalIgnoreCase) == true)
+                                            {
+                                                <Safir.Client.Pages.Salary.Tabs.Pay2Select TItem="LookupDto<string>"
+                                                                                           TValue="string"
+                                                                                           Items="@_optionsCache[cfg.CFG_KEY]"
+                                                                                           @bind-Value="cfg.CFG_VALUE"
+                                                                                           TextSelector="x => x.Name"
+                                                                                           ValueSelector="x => x.Id"
+                                                                                           Editable="false"
+                                                                                           Clearable="false" />
+                                            }
+                                            else if (cfg.DATA_TYPE?.Equals("INT", StringComparison.OrdinalIgnoreCase) == true ||
+                                            cfg.DATA_TYPE?.Equals("DECIMAL", StringComparison.OrdinalIgnoreCase) == true)
+                                            {
+                                                <Safir.Client.Pages.Salary.Tabs.Pay2NumericInput @bind-Value="cfg.CFG_VALUE"
+                                                                                                 InputMode="@(cfg.DATA_TYPE == "DECIMAL" ? Safir.Client.Pages.Salary.Tabs.Pay2NumericInput.NumericInputMode.Percentage : Safir.Client.Pages.Salary.Tabs.Pay2NumericInput.NumericInputMode.Amount)"
+                                                                                                 IsDigitGroupActive="false"
+                                                                                                 ThreeTwoZero="false"
+                                                                                                 Direction="ltr" />
+                                            }
+                                            else
+                                            {
+                                                <input class="pay2-input" type="text" style="direction:ltr; text-align:left;" @bind="cfg.CFG_VALUE" />
+                                            }
+                                        </div>
+
+                                        @if (!string.IsNullOrEmpty(cfg.CFG_DEFAULT) && cfg.CFG_VALUE != cfg.CFG_DEFAULT)
+                                        {
+                                            <button type="button" class="p2-field-reset-btn" title="بازگشت به مقدار پیش‌فرض (@cfg.CFG_DEFAULT)" @onclick="() => ResetToDefault(cfg)">
+                                                <i class="bi bi-arrow-counterclockwise"></i>
+                                            </button>
+                                        }
                                     }
                                 </div>
 
-                                <!-- 🚀 فیکس کردن ارتفاع توضیحات: در صورت خالی بودن هم فضای آن حفظ می‌شود تا ردیف بعدی خراب نشود -->
-                                <div class="p2-text-muted" style="font-size:11px; margin-top:6px; line-height:1.6; min-height: 34px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; text-overflow: ellipsis;" title="@cfg.DESC_FA">
+                                <!-- توضیحات کامل — دیگر با … بریده نمی‌شود -->
+                                <div class="p2-text-muted" style="font-size:11px; margin-top:6px; line-height:1.6;">
                                     @cfg.DESC_FA
                                 </div>
                             </div>
@@ -98,11 +129,22 @@
     </div>
 
     <!-- دکمه ذخیره در پایین‌ترین قسمت صفحه فیکس شده است -->
-    <div class="card-custom" style="padding: 16px 24px; margin-top: 16px; display: flex; justify-content: flex-end; align-items: center; background: var(--p2-bg-white); border-radius: var(--p2-radius-lg); flex-shrink: 0;">
-        <button class="btn-primary-pay2" @onclick="SaveAllSettingsAsync" disabled="@(IsSaving || !Pay2Access.CanUpd(Safir.Shared.Constants.Pay2Forms.Settings))" style="min-width: 250px;">
+    <div class="card-custom" style="padding: 16px 24px; margin-top: 16px; display: flex; justify-content: flex-end; align-items: center; gap:12px; background: var(--p2-bg-white); border-radius: var(--p2-radius-lg); flex-shrink: 0;">
+        @if (!IsLoading && ChangedCount == 0)
+        {
+            <span class="p2-text-muted" style="font-size:12px;">تغییری برای ذخیره نیست.</span>
+        }
+        <button class="btn-primary-pay2" @onclick="SaveAllSettingsAsync"
+                disabled="@(IsSaving || ChangedCount == 0 || !Pay2Access.CanUpd(Safir.Shared.Constants.Pay2Forms.Settings))"
+                title="@(!Pay2Access.CanUpd(Safir.Shared.Constants.Pay2Forms.Settings) ? "دسترسی لازم برای ویرایش تنظیمات را ندارید." : "")"
+                style="min-width: 250px;">
             @if (IsSaving)
             {
                 <span class="p2-spinner"></span>
+            }
+            else if (ChangedCount > 0)
+            {
+                <span><i class="bi bi-save"></i> ذخیره @ChangedCount مورد تغییریافته</span>
             }
             else
             {
@@ -265,6 +307,38 @@
     Dictionary<string, List<LookupDto<string>>> _optionsCache = new();
     List<string> _orderedSections = new();
 
+    // مقدار خام هر تنظیم درست بعد از لود — برای فهمیدن اینکه کاربر واقعاً
+    // چه چیزی را دست‌کاری کرده. بدون این، دکمه‌ی «ذخیره» همیشه هر ۴۵ ردیف
+    // را می‌فرستد، حتی آن‌هایی که دست نخورده‌اند؛ و سرور چون بین ارسالی‌ها
+    // یک کلید ACL_ یا حساس می‌بیند، مجوز مدیر ارشد می‌خواهد — حتی برای
+    // کسی که فقط می‌خواست یک ضریب اضافه‌کار را عوض کند.
+    Dictionary<string, string> _originalValues = new();
+
+    bool IsChanged(Pay2ConfigDto cfg) =>
+        _originalValues.TryGetValue(cfg.CFG_KEY, out var orig) ? orig != (cfg.CFG_VALUE ?? "") : true;
+
+    int ChangedCount => Configs.Count(IsChanged);
+
+    void ResetToDefault(Pay2ConfigDto cfg) => cfg.CFG_VALUE = cfg.CFG_DEFAULT;
+
+    // دو فیلدی که فقط رویه‌ی تأییدشده‌ی دیتابیس مقداردهی می‌کند، نه اپراتور
+    // (توضیح خودشان در DESC_FA همین را می‌گوید).
+    static bool IsSystemManaged(Pay2ConfigDto cfg) =>
+        cfg.CFG_KEY is "INS_NON_SUBJECT_OPT_IN" or "INS_NON_SUBJECT_EFFECTIVE_FROM";
+
+    // تنظیمات منسوخ با همان قراردادی که در دیتابیس ثبت شده (DESC_FA با
+    // «منسوخ» شروع می‌شود) شناسایی می‌شوند، نه با نام کلید — تا اگر فردا
+    // تنظیم دیگری هم منسوخ شد، فقط کافی است توضیحش را همین‌طور بنویسند.
+    static bool IsDeprecated(Pay2ConfigDto cfg) =>
+        cfg.DESC_FA?.StartsWith("منسوخ", StringComparison.Ordinal) == true;
+
+    static bool IsLocked(Pay2ConfigDto cfg) => IsSystemManaged(cfg) || IsDeprecated(cfg);
+
+    static bool IsCritical(Pay2ConfigDto cfg) => cfg.ACCESS_LEVEL == 1;
+
+    static bool IsAclOnly(Pay2ConfigDto cfg) =>
+        cfg.CFG_KEY.StartsWith("ACL_", StringComparison.OrdinalIgnoreCase);
+
     // کش سال‌های مالیاتی برای Pay2Select
     List<LookupDto<string>> _availableTaxYears = new();
 
@@ -310,11 +384,12 @@
                 .ToDictionary(g => g.Key, g => g.ToList());
 
             _optionsCache.Clear();
+            _originalValues = Configs.ToDictionary(c => c.CFG_KEY, c => c.CFG_VALUE ?? "");
             foreach (var cfg in Configs)
             {
                 if (!string.IsNullOrWhiteSpace(cfg.CFG_OPTIONS))
                 {
-                    _optionsCache[cfg.CFG_KEY] = GetOptionsAsLookup(cfg.CFG_OPTIONS, cfg.OPT_LABELS);
+                    _optionsCache[cfg.CFG_KEY] = GetOptionsAsLookup(cfg);
                 }
                 else if (cfg.DATA_TYPE?.Equals("BOOL", StringComparison.OrdinalIgnoreCase) == true)
                 {
@@ -343,19 +418,29 @@
         }
     }
 
-    private List<LookupDto<string>> GetOptionsAsLookup(string? optionsText, string? labelsText)
+    private List<LookupDto<string>> GetOptionsAsLookup(Pay2ConfigDto cfg)
     {
-        var opts = SplitOptions(optionsText);
-        var lbls = SplitOptions(labelsText);
-        var result = new List<LookupDto<string>>();
+        var opts = SplitOptions(cfg.CFG_OPTIONS);
+        var lbls = SplitOptions(cfg.OPT_LABELS);
 
+        // اگر ستون OPT_LABELS خالی باشد و نوع BOOL باشد، به‌جای نمایش خودِ
+        // مقدار خام («۰»/«۱») یک برچسب قابل‌فهم می‌گذاریم. این دقیقاً همان
+        // چیزی بود که چهار کلید ACL_ (اضافه‌شده در همین PR) را نشان می‌داد،
+        // چون OPT_LABELS‌شان خالی ماند — و برای هر کلید BOOL دیگری هم که در
+        // آینده بدون برچسب اضافه شود، همین اتفاق تکرار می‌شد.
+        bool useGenericBoolLabel = lbls.Count == 0 &&
+            cfg.DATA_TYPE?.Equals("BOOL", StringComparison.OrdinalIgnoreCase) == true;
+
+        var result = new List<LookupDto<string>>();
         for (int i = 0; i < opts.Count; i++)
         {
-            result.Add(new LookupDto<string>
-            {
-                Id = opts[i],
-                Name = i < lbls.Count ? lbls[i] : opts[i]
-            });
+            string name = i < lbls.Count
+                ? lbls[i]
+                : useGenericBoolLabel
+                    ? opts[i] switch { "1" => "فعال", "0" => "غیرفعال", _ => opts[i] }
+                    : opts[i];
+
+            result.Add(new LookupDto<string> { Id = opts[i], Name = name });
         }
         return result;
     }
@@ -371,17 +456,24 @@
 
     async Task SaveAllSettingsAsync()
     {
+        // فقط فیلدهایی که واقعاً دست‌کاری شده‌اند فرستاده می‌شوند — نه هر ۴۵
+        // ردیف. قبلاً همه‌چیز یک‌جا می‌رفت، پس اگر کاربر فقط یک ضریب معمولی
+        // را عوض می‌کرد ولی یک کلید ACL_ یا حساس هم (دست‌نخورده) در فهرست
+        // بود، سرور مجوز مدیر ارشد می‌خواست و کل ذخیره با ۴۰۳ رد می‌شد.
+        var changed = Configs.Where(IsChanged).ToList();
+        if (changed.Count == 0) return;
+
         IsSaving = true;
 
         try
         {
             await SettingsApi.SaveConfigsAsync(new Pay2ConfigSaveRequest
             {
-                Items = Configs,
+                Items = changed,
                 ChangeNote = "بروزرسانی از صفحه تنظیمات سیستم"
             });
 
-            Snackbar.Add("تمامی تنظیمات سیستم با موفقیت ذخیره شد.", MudBlazor.Severity.Success);
+            Snackbar.Add($"{changed.Count} مورد با موفقیت ذخیره شد.", MudBlazor.Severity.Success);
             await LoadSettingsAsync();
 
             // کلیدهای ACL_* رفتار کل صفحه را عوض می‌کنند (نوار هشدار، منوها، دکمه‌ها).
@@ -665,11 +757,12 @@
     {
         "محاسبه" => 1,
         "بیمه" => 2,
-        "مالیات" => 3,
-        "مساعده" => 4,
-        "مرخصی" => 5,
-        "تسویه" => 6,
-        "امنیت" => 7,
+        "INSURANCE" => 3,   // زیرمجموعه‌ی بیمه (استثنای شیفت/اضافه‌کار) — بلافاصله بعد از «بیمه»
+        "مالیات" => 4,
+        "مساعده" => 5,
+        "مرخصی" => 6,
+        "تسویه" => 7,
+        "امنیت" => 8,
         _ => 99
     };
 
@@ -677,6 +770,7 @@
     {
         "محاسبه" => "تنظیمات پایه و محاسباتی",
         "بیمه" => "تنظیمات بیمه",
+        "INSURANCE" => "استثنائات بیمه (شیفت و اضافه‌کار)",
         "مالیات" => "تنظیمات مالیات",
         "مساعده" => "مساعده هوشمند (Smart Advances)",
         "مرخصی" => "مرخصی",

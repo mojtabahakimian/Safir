@@ -535,6 +535,51 @@
         font-weight: 600;
     }
 
+/* فیلدی که کاربر مقدارش را عوض کرده ولی هنوز ذخیره نکرده — تب تنظیمات سیستم. */
+.form-field.p2-field-changed {
+    position: relative;
+    padding-inline-start: 10px;
+    border-inline-start: 3px solid var(--p2-warning-border, #f59e0b);
+}
+
+/* فیلدهای قفل‌شده (مدیریت‌شده توسط رویه یا منسوخ) در تب تنظیمات سیستم —
+   ظاهرشان مثل ورودی معمولی است تا هم‌ردیف بقیه بماند، ولی قابل کلیک/تایپ نیست. */
+.p2-readonly-field {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: var(--p2-bg-main);
+    color: var(--p2-text-muted);
+    cursor: not-allowed;
+    user-select: none;
+}
+
+    .p2-readonly-field i {
+        font-size: 12px;
+    }
+
+/* دکمه‌ی کوچک «بازگشت به پیش‌فرض» کنار فیلدهایی که از مقدار پیش‌فرض فاصله گرفته‌اند. */
+.p2-field-reset-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: var(--p2-input-h, 42px);
+    flex-shrink: 0;
+    border: 1px solid var(--p2-border);
+    border-radius: var(--p2-radius-md);
+    background: transparent;
+    color: var(--p2-text-muted);
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+    .p2-field-reset-btn:hover {
+        background: var(--p2-bg-main);
+        color: var(--p2-primary);
+        border-color: var(--p2-primary);
+    }
+
 /* ─── Input / Select / Textarea ─── */
 .pay2-input,
 .pay2-select,

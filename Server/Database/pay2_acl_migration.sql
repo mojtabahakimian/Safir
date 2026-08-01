@@ -199,6 +199,16 @@ IF NOT EXISTS (SELECT 1 FROM dbo.PAY2_CONFIG WHERE CFG_KEY=N'ACL_AUDIT_SENSITIVE
     VALUES (N'ACL_AUDIT_SENSITIVE', N'1', N'1|0', N'1', N'امنیت', N'ثبت لاگ عملیات حساس', NULL, NULL, N'BOOL', 1);
 GO
 
+-- این چهار کلید موقع اضافه شدن، OPT_LABELS نداشتند؛ صفحه‌ی تنظیمات به‌جای
+-- برچسب فارسی، خودِ عدد خام «۰»/«۱» را نشان می‌داد. روی نصب‌های قبلی هم
+-- (که این کلیدها را از قبل INSERT کرده‌اند) این UPDATE لازم است، چون
+-- IF NOT EXISTS بالا برای آن‌ها دیگر اجرا نمی‌شود.
+UPDATE dbo.PAY2_CONFIG SET OPT_LABELS = N'روشن — دسترسی‌ها اعمال می‌شود|خاموش — همه به همه‌چیز دسترسی دارند' WHERE CFG_KEY = N'ACL_ENFORCE';
+UPDATE dbo.PAY2_CONFIG SET OPT_LABELS = N'محدود به کارگاه‌های مجاز|بدون محدودیت کارگاه' WHERE CFG_KEY = N'ACL_WS_SCOPE_ENFORCE';
+UPDATE dbo.PAY2_CONFIG SET OPT_LABELS = N'ثبت می‌شود|ثبت نمی‌شود' WHERE CFG_KEY = N'ACL_AUDIT_DENIED';
+UPDATE dbo.PAY2_CONFIG SET OPT_LABELS = N'ثبت می‌شود|ثبت نمی‌شود' WHERE CFG_KEY = N'ACL_AUDIT_SENSITIVE';
+GO
+
 UPDATE dbo.PAY2_CONFIG
 SET DESC_FA = N'منسوخ — جایگزین: کنترل دسترسی مبتنی بر SAL_CHEK'
 WHERE CFG_KEY IN (N'CONFIG_MIN_ROLE', N'ITEM_DEF_MIN_ROLE');

@@ -43,11 +43,12 @@ ORDER BY
     CASE CFG_SECTION
         WHEN N'محاسبه' THEN 1
         WHEN N'بیمه' THEN 2
-        WHEN N'مالیات' THEN 3
-        WHEN N'مساعده' THEN 4
-        WHEN N'مرخصی' THEN 5
-        WHEN N'تسویه' THEN 6
-        WHEN N'امنیت' THEN 7
+        WHEN N'INSURANCE' THEN 3
+        WHEN N'مالیات' THEN 4
+        WHEN N'مساعده' THEN 5
+        WHEN N'مرخصی' THEN 6
+        WHEN N'تسویه' THEN 7
+        WHEN N'امنیت' THEN 8
         ELSE 99
     END,
     CFG_KEY;";
