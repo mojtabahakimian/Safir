@@ -53,6 +53,16 @@ test.beforeEach(async ({ request }) => {
     'دیتابیس تست در دسترس نیست — ابتدا scripts/setup-test-env.sh را اجرا کنید.');
 });
 
+/**
+ * حسابِ آرتیکلِ «حقوق پرداختنی» — تنها جایی که دو روش صدور واقعاً از هم جدا
+ * می‌شوند: در روش کلی حساب کارگاه است و در روش نیمه‌تفصیلی حساب خودِ پرسنل.
+ */
+function payableAccount(articles) {
+  const row = articles.find(a =>
+    String(a.acC_KEY ?? a.ACC_KEY) === 'SALARY_PAYABLE' && Number(a.bes ?? a.BES ?? 0) > 0);
+  return row ? String(row.heS_CODE ?? row.HES_CODE) : null;
+}
+
 /** بدنه‌ی خطا را هم نشان می‌دهد؛ وگرنه «expected 200, got 400» چیزی نمی‌گوید. */
 async function ok(res, what) {
   if (!res.ok()) {
@@ -350,11 +360,14 @@ test.describe('زنجیره‌ی کامل حقوق و دستمزد', () => {
     expect(Number(latest.status ?? latest.STATUS), 'وضعیت باید «سند صادر شده» شود').toBe(3);
     expect(latest.deeD_ID_SAL ?? latest.DEED_ID_SAL, 'شماره سند باید ثبت شود').toBeTruthy();
 
-    // سند با روش «کلی» صادر شد: حقوق پرداختنی یک‌جا روی حساب کارگاه می‌نشیند،
-    // نه روی حساب تفصیلیِ خودِ پرسنل. (گام ۱۱ حالت مقابلش را می‌سنجد.)
-    const codes = articles.map(a => String(a.heS_CODE ?? a.HES_CODE));
-    expect(codes, 'در روش کلی نباید حساب تفصیلی پرسنل در سند بیاید')
-      .not.toContain(`213-1-${ctx.empCode}`);
+    // سند با روش «کلی» صادر شد: «حقوق پرداختنی» یک‌جا روی حساب کارگاه می‌نشیند.
+    //
+    // سنجه عمداً روی آرتیکلِ SALARY_PAYABLE است، نه روی «هیچ حساب پرسنلی در
+    // سند نباشد» — در همین حالتِ کلی هم سطر «سایر کسورات» به‌ازای هر نفر ساخته
+    // می‌شود، پس آن سنجه‌ی کلی‌تر اشتباه بود. تفاوتِ واقعیِ دو روش (و همان چیزی
+    // که مشتری دنبالش بود) دقیقاً همین سطر حقوق پرداختنی است.
+    expect(payableAccount(articles), 'در روش کلی، حقوق پرداختنی باید روی حساب کارگاه باشد')
+      .toBe('213-2-1');
   });
 
   test('۱۱) تغییر روش صدور در کارگاه، در بازصدور هم اثر می‌گذارد', async ({ request }) => {
@@ -384,10 +397,9 @@ test.describe('زنجیره‌ی کامل حقوق و دستمزد', () => {
     expect(Number(preview.modeUsed ?? preview.ModeUsed),
       'روش اعلام‌شده باید نیمه‌تفصیلی باشد').toBe(2);
 
-    // همان چیزی که مشتری دنبالش بود: حساب تفصیلیِ خودِ پرسنل در سند.
-    const codes = articles.map(a => String(a.heS_CODE ?? a.HES_CODE));
-    expect(codes, `کد تفصیلی پرسنل باید در سند باشد — ${codes.join(', ')}`)
-      .toContain(`213-1-${ctx.empCode}`);
+    // همان چیزی که مشتری دنبالش بود: حقوق پرداختنیِ هر نفر روی حساب تفصیلی خودش.
+    expect(payableAccount(articles), 'حقوق پرداختنی باید روی حساب تفصیلی پرسنل بنشیند')
+      .toBe(`213-1-${ctx.empCode}`);
 
     const sum = (k1, k2) => articles.reduce((a, x) => a + Number(x[k1] ?? x[k2] ?? 0), 0);
     expect(sum('bed', 'BED'), 'سند تفصیلی هم باید تراز باشد').toBe(sum('bes', 'BES'));
