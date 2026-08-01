@@ -257,6 +257,12 @@ sqlcmd_local -d "$DB_NAME" -i "$DB_DIR/pay2_seed.sql"
 sqlcmd_local -d "$DB_NAME" -i "$DB_DIR/pay2_acl_migration.sql"
 sqlcmd_local -d "$DB_NAME" -i "$DB_DIR/test_auth_and_acl_users.sql"
 
+# سند تفصیلی کامل. بعد از seed اجرا می‌شود چون نگاشت «قلم ← تفصیلیِ حساب
+# هزینه» روی ردیف‌های PAY2_ITEM_DEF می‌نشیند و پیش از seed آن ردیف‌ها نیستند.
+# بدون این گام ستون خالی می‌مانْد و همه‌ی هزینه‌ها روی یک تفصیلی («سایر»)
+# جمع می‌شد — سند تراز، ولی بدون هیچ تفکیکی.
+sqlcmd_local -d "$DB_NAME" -i "$DB_DIR/pay2_detailed_deed_migration.sql"
+
 # دفتر حساب حداقلی — بعد از seed چون کد تفصیلی هر پرسنل را از PAY2_EMPLOYEE
 # می‌سازد. بدون آن، مرحله‌ی «صدور سند حسابداری» در آزمون سرتاسری قابل رسیدن نیست.
 sqlcmd_local -d "$DB_NAME" -i "$DB_DIR/test_chart_of_accounts.sql"

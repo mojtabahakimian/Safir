@@ -460,11 +460,60 @@ test.describe('زنجیره‌ی کامل حقوق و دستمزد', () => {
     const expenseRows = articles.filter(x => /^7\d\d-\d+-\d+$/.test(code(x)));
     expect(expenseRows.length, 'باید آرتیکل هزینه به تفکیک قلم ساخته شود').toBeGreaterThan(1);
     const tafsiliSet = new Set(expenseRows.map(x => code(x).split('-')[2]));
-    expect(tafsiliSet.size, 'هزینه باید بین چند نوع قلم تفکیک شود').toBeGreaterThan(1);
+
+    // تفصیلی ۱۰ (بیمه‌ی سهم کارفرما) در رویه ثابت است و از نگاشت نمی‌آید، پس
+    // اگر فقط آن را بسنجیم، تست حتی با ستون EXP_TAFSILI کاملاً خالی هم سبز
+    // می‌شود — یعنی خودِ نگاشت هرگز آزموده نمی‌شود. سنجه باید روی تفصیلی‌های
+    // آمده از PAY2_ITEM_DEF باشد.
+    const fromMapping = [...tafsiliSet].filter(t => t !== '10');
+    expect(fromMapping, 'هزینه باید بین چند نوع قلمِ نگاشت‌شده تفکیک شود')
+      .not.toEqual(['9']);
+    expect(fromMapping.length, 'نگاشت قلم به حساب هزینه باید چند تفصیلی بسازد')
+      .toBeGreaterThan(1);
+    expect(tafsiliSet.has('1'), 'هزینه‌ی حقوق باید روی تفصیلی ۱ بنشیند').toBeTruthy();
 
     expect(Number(preview.modeUsed ?? preview.ModeUsed), 'روش اعلام‌شده باید ۳ باشد').toBe(3);
 
     await ok(await request.post(`/api/pay2/run/${ctx.runId}/generate-deed`, { headers: auth }),
       'صدور سند با روش تفصیلی کامل');
+  });
+
+  test('۱۳) اجراهای موتور قدیمی هم سند تراز می‌دهند', async ({ request }) => {
+    // در بعضی نسخه‌های قدیمی‌تر موتور، «خالص» جداگانه رُند می‌شد و ناخالص
+    // همراهش تغییر نمی‌کرد؛ یعنی خالص ≠ ناخالص − کسورات. سند، ناخالص را
+    // بدهکار و خالص را بستانکار می‌کرد، پس آن چند صد ریال در هیچ طرفی نبود و
+    // کاربر موقع بازصدور سندِ آن ماه‌ها پیام «سند تراز نیست» می‌گرفت.
+    //
+    // داده‌ی seed چند اجرای این‌شکلی دارد؛ همان‌ها اینجا سنجیده می‌شوند.
+    const n = v => Number(v ?? 0);
+    let legacyRun = 0;
+
+    for (let runId = 1; runId <= 60 && !legacyRun; runId++) {
+      const res = await request.get(`/api/pay2/run/${runId}/lines`, { headers: auth });
+      if (!res.ok()) continue;
+      const lines = (await res.json()).lines ?? [];
+      const mismatched = lines.filter(l =>
+        n(l.neT_PAY ?? l.NET_PAY) !== n(l.grosS_PAY ?? l.GROSS_PAY) - n(l.totaL_DED ?? l.TOTAL_DED));
+      if (lines.length && mismatched.length) legacyRun = runId;
+    }
+
+    test.skip(!legacyRun, 'در این دیتابیس اجرایی با گِردکردنِ سبک قدیمی نیست.');
+
+    for (const mode of [1, 2, 3]) {
+      const preview = await (await request.get(
+        `/api/pay2/run/${legacyRun}/preview-deed?overrideMode=${mode}`, { headers: auth })).json();
+
+      const errors = preview.validationErrors ?? preview.ValidationErrors ?? [];
+      expect(errors, `اجرای ${legacyRun} روش ${mode}: ${errors.join(' | ')}`).toHaveLength(0);
+
+      const articles = preview.articles ?? preview.Articles ?? [];
+      // سند خالی هم «تراز» است؛ بدون این سنجه تست بی‌اثر می‌شد.
+      expect(articles.length, `اجرای ${legacyRun} روش ${mode} باید آرتیکل بسازد`)
+        .toBeGreaterThan(0);
+
+      const sum = (k1, k2) => articles.reduce((a, x) => a + n(x[k1] ?? x[k2]), 0);
+      expect(sum('bed', 'BED'), `اجرای ${legacyRun} در روش ${mode} باید تراز باشد`)
+        .toBe(sum('bes', 'BES'));
+    }
   });
 });

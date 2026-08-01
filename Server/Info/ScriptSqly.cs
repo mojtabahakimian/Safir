@@ -3320,8 +3320,9 @@ BEGIN
         @ACC_ADV_HES NVARCHAR(50), @ACC_LOAN_HES NVARCHAR(50),
         @ACC_OTHER_DED_HES NVARCHAR(50);
 
-    -- ریشه‌ی حساب هزینه‌ی هر مرکز (فقط کل-معین) برای سند تفصیلی کامل؛ شماره‌ی
-    -- تفصیلی از روی نوع قلم به آن اضافه می‌شود.
+    -- شاخه‌ی حساب هزینه‌ی هر مرکز (کل-معین) برای سند تفصیلی کامل؛ شماره‌ی
+    -- تفصیلی از روی نوع قلم به آن اضافه می‌شود. مستقیماً از همان حساب هزینه‌ی
+    -- تنظیم‌شده‌ی کارگاه ساخته می‌شود تا کارگاه‌ها تنظیم تازه‌ای لازم نداشته باشند.
     DECLARE
         @ROOT_TOLID NVARCHAR(50), @ROOT_EDARI NVARCHAR(50),
         @ROOT_FOROSH NVARCHAR(50), @ROOT_KHADAMAT NVARCHAR(50);
@@ -3337,20 +3338,16 @@ BEGIN
         @ACC_INS_EXP        = MAX(CASE WHEN ACC_KEY='INS_EXP'             THEN ACC_CODE END),
         @ACC_ADV_HES        = MAX(CASE WHEN ACC_KEY='ADV_HES'             THEN ACC_CODE END),
         @ACC_LOAN_HES       = MAX(CASE WHEN ACC_KEY='LOAN_HES'            THEN ACC_CODE END),
-        @ACC_OTHER_DED_HES  = MAX(CASE WHEN ACC_KEY='OTHER_DED_HES'       THEN ACC_CODE END),
-        @ROOT_TOLID         = MAX(CASE WHEN ACC_KEY='EXP_ROOT_TOLID'      THEN ACC_CODE END),
-        @ROOT_EDARI         = MAX(CASE WHEN ACC_KEY='EXP_ROOT_EDARI'      THEN ACC_CODE END),
-        @ROOT_FOROSH        = MAX(CASE WHEN ACC_KEY='EXP_ROOT_FOROSH'     THEN ACC_CODE END),
-        @ROOT_KHADAMAT      = MAX(CASE WHEN ACC_KEY='EXP_ROOT_KHADAMAT'   THEN ACC_CODE END)
+        @ACC_OTHER_DED_HES  = MAX(CASE WHEN ACC_KEY='OTHER_DED_HES'       THEN ACC_CODE END)
     FROM PAY2_WORKSHOP_ACC WHERE WS_ID = @WS_ID;
 
-    -- اگر ریشه صریحاً تنظیم نشده، از خودِ حساب هزینه‌ی همان مرکز ساخته می‌شود:
-    -- آخرین سطح («711-1-1» ← «711-1») برداشته می‌شود. این‌طور کارگاه‌های موجود
-    -- بدون هیچ تنظیم تازه‌ای سند تفصیلی می‌گیرند و هر کس خواست override می‌کند.
-    SET @ROOT_TOLID    = NULLIF(LTRIM(RTRIM(ISNULL(@ROOT_TOLID,    dbo.FN_PAY2_ACC_PARENT(@ACC_SALARY_TOLID)))),    '');
-    SET @ROOT_EDARI    = NULLIF(LTRIM(RTRIM(ISNULL(@ROOT_EDARI,    dbo.FN_PAY2_ACC_PARENT(@ACC_SALARY_EDARI)))),    '');
-    SET @ROOT_FOROSH   = NULLIF(LTRIM(RTRIM(ISNULL(@ROOT_FOROSH,   dbo.FN_PAY2_ACC_PARENT(@ACC_SALARY_FOROSH)))),   '');
-    SET @ROOT_KHADAMAT = NULLIF(LTRIM(RTRIM(ISNULL(@ROOT_KHADAMAT, dbo.FN_PAY2_ACC_PARENT(@ACC_SALARY_KHADAMAT)))), '');
+    -- شاخه از خودِ حساب هزینه‌ی همان مرکز ساخته می‌شود: آخرین سطح برداشته
+    -- می‌شود («711-1-1» ← «711-1»). پس کارگاه‌های موجود بدون هیچ تنظیم تازه‌ای
+    -- سند تفصیلی می‌گیرند.
+    SET @ROOT_TOLID    = NULLIF(LTRIM(RTRIM(dbo.FN_PAY2_ACC_PARENT(@ACC_SALARY_TOLID))),    '');
+    SET @ROOT_EDARI    = NULLIF(LTRIM(RTRIM(dbo.FN_PAY2_ACC_PARENT(@ACC_SALARY_EDARI))),    '');
+    SET @ROOT_FOROSH   = NULLIF(LTRIM(RTRIM(dbo.FN_PAY2_ACC_PARENT(@ACC_SALARY_FOROSH))),   '');
+    SET @ROOT_KHADAMAT = NULLIF(LTRIM(RTRIM(dbo.FN_PAY2_ACC_PARENT(@ACC_SALARY_KHADAMAT))), '');
 
     IF @DEED_MODE IS NULL
     BEGIN
@@ -3397,7 +3394,16 @@ BEGIN
     IF @ACC_TAX_PAYABLE IS NULL AND EXISTS (SELECT 1 FROM PAY2_RUN_LINE WHERE RUN_ID = @RUN_ID AND TAX_AMOUNT > 0) SET @MissingAcc += N'اداره مالیات، ';
     IF @ACC_LOAN_HES IS NULL AND EXISTS (SELECT 1 FROM PAY2_RUN_LINE WHERE RUN_ID = @RUN_ID AND LOAN_DED > 0) SET @MissingAcc += N'صندوق وام، ';
     IF @ACC_ADV_HES IS NULL AND EXISTS (SELECT 1 FROM PAY2_RUN_LINE WHERE RUN_ID = @RUN_ID AND ADVANCE_DED > 0) SET @MissingAcc += N'حساب مساعده، ';
-    IF @ACC_OTHER_DED_HES IS NULL AND EXISTS (SELECT 1 FROM PAY2_RUN_LINE WHERE RUN_ID = @RUN_ID AND OTHER_DED > 0) SET @MissingAcc += N'سایر کسورات، ';
+    -- OTHER_DED دو جزء دارد: «سایر کسورات» دستی (KASR_OTHER) و «کسر کار».
+    -- در سند تفصیلی کامل فقط جزء اول به حساب سایر کسورات می‌رود؛ کسر کار
+    -- حسابِ مقصد ندارد و هزینه‌ی حقوق را کم می‌کند. پس اگر ماهی فقط کسر کار
+    -- داشته باشد، نباید حسابی را مطالبه کنیم که هیچ آرتیکلی به آن نمی‌خورد.
+    IF @ACC_OTHER_DED_HES IS NULL AND EXISTS (
+        SELECT 1 FROM PAY2_RUN_LINE RL
+        LEFT JOIN PAY2_ATTENDANCE A ON A.EMP_ID = RL.EMP_ID AND A.PER_ID = @PER_ID
+        WHERE RL.RUN_ID = @RUN_ID
+          AND (CASE WHEN @DEED_MODE = 3 THEN ISNULL(A.KASR_OTHER, 0) ELSE RL.OTHER_DED END) > 0
+    ) SET @MissingAcc += N'سایر کسورات، ';
 
     -- حالت ۳ به‌جای این چهار حساب، «ریشه»ی هر مرکز را می‌خواهد (پایین‌تر بررسی می‌شود).
     IF @DEED_MODE <> 3
@@ -3408,14 +3414,15 @@ BEGIN
         IF @ACC_SALARY_KHADAMAT IS NULL AND EXISTS (SELECT 1 FROM PAY2_RUN_LINE RL INNER JOIN PAY2_ATTENDANCE A ON RL.EMP_ID = A.EMP_ID AND A.PER_ID = @PER_ID WHERE RL.RUN_ID = @RUN_ID AND RL.GROSS_PAY > 0 AND A.DAYS_KHADAMAT > 0) SET @MissingAcc += N'هزینه خدمات، ';
     END
 
-    -- سند تفصیلی کامل حساب هزینه را از «ریشه + شماره‌ی تفصیلیِ قلم» می‌سازد، پس
-    -- برای هر مرکزی که کارکرد دارد باید ریشه در دسترس باشد.
+    -- حساب هزینه در این حالت «شاخه‌ی حساب مرکز + شماره‌ی تفصیلیِ قلم» است، پس
+    -- برای هر مرکزی که کارکرد دارد باید حساب هزینه‌ی آن مرکز تنظیم شده باشد و
+    -- دست‌کم دو سطح داشته باشد (وگرنه شاخه‌ای برای ساختن نمی‌ماند).
     IF @DEED_MODE = 3
     BEGIN
-        IF @ROOT_TOLID IS NULL AND EXISTS (SELECT 1 FROM PAY2_RUN_LINE RL INNER JOIN PAY2_ATTENDANCE A ON RL.EMP_ID = A.EMP_ID AND A.PER_ID = @PER_ID WHERE RL.RUN_ID = @RUN_ID AND RL.GROSS_PAY > 0 AND A.DAYS_TOLID > 0) SET @MissingAcc += N'ریشه حساب هزینه تولید، ';
-        IF @ROOT_EDARI IS NULL AND EXISTS (SELECT 1 FROM PAY2_RUN_LINE RL INNER JOIN PAY2_ATTENDANCE A ON RL.EMP_ID = A.EMP_ID AND A.PER_ID = @PER_ID WHERE RL.RUN_ID = @RUN_ID AND RL.GROSS_PAY > 0 AND A.DAYS_EDARI > 0) SET @MissingAcc += N'ریشه حساب هزینه اداری، ';
-        IF @ROOT_FOROSH IS NULL AND EXISTS (SELECT 1 FROM PAY2_RUN_LINE RL INNER JOIN PAY2_ATTENDANCE A ON RL.EMP_ID = A.EMP_ID AND A.PER_ID = @PER_ID WHERE RL.RUN_ID = @RUN_ID AND RL.GROSS_PAY > 0 AND A.DAYS_FOROSH > 0) SET @MissingAcc += N'ریشه حساب هزینه فروش، ';
-        IF @ROOT_KHADAMAT IS NULL AND EXISTS (SELECT 1 FROM PAY2_RUN_LINE RL INNER JOIN PAY2_ATTENDANCE A ON RL.EMP_ID = A.EMP_ID AND A.PER_ID = @PER_ID WHERE RL.RUN_ID = @RUN_ID AND RL.GROSS_PAY > 0 AND A.DAYS_KHADAMAT > 0) SET @MissingAcc += N'ریشه حساب هزینه خدمات، ';
+        IF @ROOT_TOLID IS NULL AND EXISTS (SELECT 1 FROM PAY2_RUN_LINE RL INNER JOIN PAY2_ATTENDANCE A ON RL.EMP_ID = A.EMP_ID AND A.PER_ID = @PER_ID WHERE RL.RUN_ID = @RUN_ID AND RL.GROSS_PAY > 0 AND A.DAYS_TOLID > 0) SET @MissingAcc += N'هزینه تولید، ';
+        IF @ROOT_EDARI IS NULL AND EXISTS (SELECT 1 FROM PAY2_RUN_LINE RL INNER JOIN PAY2_ATTENDANCE A ON RL.EMP_ID = A.EMP_ID AND A.PER_ID = @PER_ID WHERE RL.RUN_ID = @RUN_ID AND RL.GROSS_PAY > 0 AND A.DAYS_EDARI > 0) SET @MissingAcc += N'هزینه اداری، ';
+        IF @ROOT_FOROSH IS NULL AND EXISTS (SELECT 1 FROM PAY2_RUN_LINE RL INNER JOIN PAY2_ATTENDANCE A ON RL.EMP_ID = A.EMP_ID AND A.PER_ID = @PER_ID WHERE RL.RUN_ID = @RUN_ID AND RL.GROSS_PAY > 0 AND A.DAYS_FOROSH > 0) SET @MissingAcc += N'هزینه فروش، ';
+        IF @ROOT_KHADAMAT IS NULL AND EXISTS (SELECT 1 FROM PAY2_RUN_LINE RL INNER JOIN PAY2_ATTENDANCE A ON RL.EMP_ID = A.EMP_ID AND A.PER_ID = @PER_ID WHERE RL.RUN_ID = @RUN_ID AND RL.GROSS_PAY > 0 AND A.DAYS_KHADAMAT > 0) SET @MissingAcc += N'هزینه خدمات، ';
     END
 
     -- ریشه‌ی مشترک بین دو مرکزِ فعال یعنی تفکیک مرکز هزینه از بین می‌رود: سند
@@ -3439,10 +3446,11 @@ BEGIN
 
         IF @DupRoot IS NOT NULL
         BEGIN
-            DECLARE @ErrDup NVARCHAR(500) = N'صدور سند متوقف شد: بیش از یک مرکز هزینه به ریشه‌ی حساب «'
-                + @DupRoot + N'» می‌رسد، در نتیجه هزینه‌ی مراکز روی هم می‌افتد. '
-                + N'در تنظیمات کارگاه، «ریشه حساب هزینه» هر مرکز را جداگانه مشخص کنید '
-                + N'(کلیدهای EXP_ROOT_TOLID / EXP_ROOT_EDARI / EXP_ROOT_FOROSH / EXP_ROOT_KHADAMAT).';
+            DECLARE @ErrDup NVARCHAR(500) = N'صدور سند متوقف شد: بیش از یک مرکز هزینه به شاخه‌ی حساب «'
+                + @DupRoot + N'» می‌رسد و هزینه‌ی مراکز روی هم می‌افتد. '
+                + N'در «سند تفصیلی کامل»، حساب هزینه‌ی هر مرکز باید شاخه‌ی مستقل خودش را داشته باشد '
+                + N'(مثلاً 711-1-1 برای تولید و 712-1-1 برای اداری، نه 71-1-1 و 71-1-2). '
+                + N'سرفصل‌های هزینه‌ی کارگاه را مطابق این ساختار تنظیم کنید یا از روش «نیمه‌تفصیلی» استفاده کنید.';
             RAISERROR(@ErrDup, 16, 1);
             RETURN;
         END
@@ -3514,13 +3522,24 @@ BEGIN
     SplitBase AS (
         SELECT
             RL.EMP_ID, RL.GROSS_PAY, A.DAYS_TOLID, A.DAYS_EDARI, A.DAYS_FOROSH, A.DAYS_KHADAMAT,
-            CAST(CASE WHEN A.WORK_DAYS > 0 THEN ROUND((RL.GROSS_PAY * A.DAYS_TOLID) / A.WORK_DAYS, 0) ELSE 0 END AS BIGINT) AS R_T,
-            CAST(CASE WHEN A.WORK_DAYS > 0 THEN ROUND((RL.GROSS_PAY * A.DAYS_EDARI) / A.WORK_DAYS, 0) ELSE 0 END AS BIGINT) AS R_E,
-            CAST(CASE WHEN A.WORK_DAYS > 0 THEN ROUND((RL.GROSS_PAY * A.DAYS_FOROSH) / A.WORK_DAYS, 0) ELSE 0 END AS BIGINT) AS R_F,
-            CAST(CASE WHEN A.WORK_DAYS > 0 THEN ROUND((RL.GROSS_PAY * A.DAYS_KHADAMAT) / A.WORK_DAYS, 0) ELSE 0 END AS BIGINT) AS R_K,
+            CAST(CASE WHEN A.WORK_DAYS > 0 THEN ROUND((EB.EXP_BASE * A.DAYS_TOLID)    / A.WORK_DAYS, 0) ELSE 0 END AS BIGINT) AS R_T,
+            CAST(CASE WHEN A.WORK_DAYS > 0 THEN ROUND((EB.EXP_BASE * A.DAYS_EDARI)    / A.WORK_DAYS, 0) ELSE 0 END AS BIGINT) AS R_E,
+            CAST(CASE WHEN A.WORK_DAYS > 0 THEN ROUND((EB.EXP_BASE * A.DAYS_FOROSH)   / A.WORK_DAYS, 0) ELSE 0 END AS BIGINT) AS R_F,
+            CAST(CASE WHEN A.WORK_DAYS > 0 THEN ROUND((EB.EXP_BASE * A.DAYS_KHADAMAT) / A.WORK_DAYS, 0) ELSE 0 END AS BIGINT) AS R_K,
+            EB.EXP_BASE,
             RL.NET_PAY, RL.INS_WORKER, RL.INS_EMPLOYER, RL.TAX_AMOUNT, RL.LOAN_DED, RL.ADVANCE_DED, RL.OTHER_DED
         FROM PAY2_RUN_LINE RL
         INNER JOIN PAY2_ATTENDANCE A ON RL.EMP_ID = A.EMP_ID AND A.PER_ID = @PER_ID
+        -- مبنای هزینه «خالص + کسورات» است، نه مستقیماً GROSS_PAY.
+        --
+        -- سند، خالص را بستانکار و کسورات را بستانکار می‌کند؛ پس طرف بدهکار
+        -- باید دقیقاً جمع همان‌ها باشد. در موتور امروز GROSS_PAY همین است و
+        -- این تغییر بی‌اثر می‌مانَد، ولی در اجراهایی که با نسخه‌های قدیمی‌تر
+        -- محاسبه شده‌اند خالص جداگانه رُند شده و GROSS_PAY همراهش تغییر نکرده.
+        -- آنجا تفاوتِ رُند در هیچ طرف سند نمی‌نشست و سند به همان اندازه ناتراز
+        -- می‌شد — یعنی کاربر پیام «سند تراز نیست» می‌گرفت و بازصدور سند آن
+        -- ماه‌ها اصلاً ممکن نبود.
+        CROSS APPLY (VALUES (RL.NET_PAY + RL.TOTAL_DED)) EB(EXP_BASE)
         WHERE RL.RUN_ID = @RUN_ID
     )
     INSERT INTO #SalarySplit (
@@ -3529,10 +3548,10 @@ BEGIN
     )
     SELECT
         B.EMP_ID, E.FULL_NAME, E.ACC_T,
-        CASE WHEN B.DAYS_TOLID > 0 THEN B.R_T + (B.GROSS_PAY - (B.R_T + B.R_E + B.R_F + B.R_K)) ELSE B.R_T END,
-        CASE WHEN B.DAYS_TOLID = 0 AND B.DAYS_EDARI > 0 THEN B.R_E + (B.GROSS_PAY - (B.R_T + B.R_E + B.R_F + B.R_K)) ELSE B.R_E END,
-        CASE WHEN B.DAYS_TOLID = 0 AND B.DAYS_EDARI = 0 AND B.DAYS_FOROSH > 0 THEN B.R_F + (B.GROSS_PAY - (B.R_T + B.R_E + B.R_F + B.R_K)) ELSE B.R_F END,
-        CASE WHEN B.DAYS_TOLID = 0 AND B.DAYS_EDARI = 0 AND B.DAYS_FOROSH = 0 THEN B.R_K + (B.GROSS_PAY - (B.R_T + B.R_E + B.R_F + B.R_K)) ELSE B.R_K END,
+        CASE WHEN B.DAYS_TOLID > 0 THEN B.R_T + (B.EXP_BASE - (B.R_T + B.R_E + B.R_F + B.R_K)) ELSE B.R_T END,
+        CASE WHEN B.DAYS_TOLID = 0 AND B.DAYS_EDARI > 0 THEN B.R_E + (B.EXP_BASE - (B.R_T + B.R_E + B.R_F + B.R_K)) ELSE B.R_E END,
+        CASE WHEN B.DAYS_TOLID = 0 AND B.DAYS_EDARI = 0 AND B.DAYS_FOROSH > 0 THEN B.R_F + (B.EXP_BASE - (B.R_T + B.R_E + B.R_F + B.R_K)) ELSE B.R_F END,
+        CASE WHEN B.DAYS_TOLID = 0 AND B.DAYS_EDARI = 0 AND B.DAYS_FOROSH = 0 THEN B.R_K + (B.EXP_BASE - (B.R_T + B.R_E + B.R_F + B.R_K)) ELSE B.R_K END,
         B.NET_PAY,
         CASE WHEN B.NET_PAY < 0 THEN -B.NET_PAY ELSE 0 END,
         B.INS_WORKER, B.INS_EMPLOYER, B.TAX_AMOUNT, B.LOAN_DED, B.ADVANCE_DED, B.OTHER_DED
@@ -3679,17 +3698,27 @@ BEGIN
               AND D.AMOUNT <> 0
             GROUP BY D.EMP_ID
         )
+        -- سه رفتار تاریخی دیده شده است: کنار گذاشتن ریل اسمی (موتور امروز)،
+        -- کنار گذاشتن ریل رسمی، و اصلاً کنار نگذاشتن هیچ‌کدام. به‌جای تطبیق
+        -- دقیق، گزینه‌ای انتخاب می‌شود که جمعش کمترین فاصله را با هدف دارد؛
+        -- این‌طور اختلافِ گِردکردن انتخاب را خراب نمی‌کند.
         INSERT INTO #Rail (EMP_ID, DROP_CODE)
-        SELECT S.EMP_ID,
-               CASE
-                    WHEN S.HAS_NOM = 0 OR S.HAS_OFF = 0 THEN NULL
-                    -- ریلی که با ناخالصِ ثبت‌شده می‌خواند برنده است.
-                    WHEN S.S_ALL - S.S_NOM = RL.GROSS_PAY THEN 'BASE_SAL'
-                    WHEN S.S_ALL - S.S_OFF = RL.GROSS_PAY THEN 'BASE_SAL_B'
-                    ELSE 'BASE_SAL'   -- هیچ‌کدام دقیق نخواند: قاعده‌ی موتور امروز
-               END
+        SELECT S.EMP_ID, X.DROP_CODE
         FROM Sums S
-        INNER JOIN PAY2_RUN_LINE RL ON RL.RUN_ID = @RUN_ID AND RL.EMP_ID = S.EMP_ID;
+        INNER JOIN PAY2_RUN_LINE RL ON RL.RUN_ID = @RUN_ID AND RL.EMP_ID = S.EMP_ID
+        -- OUTER (نه CROSS): پرسنلی که فقط یک ریل دارند باید بمانند و هیچ قلمی
+        -- از آن‌ها کنار گذاشته نشود، وگرنه کلاً از سند حذف می‌شدند.
+        OUTER APPLY (
+            SELECT TOP 1 C.DROP_CODE
+            FROM (VALUES
+                    (CAST('BASE_SAL'   AS NVARCHAR(30)), S.S_ALL - S.S_NOM, 1),
+                    (CAST('BASE_SAL_B' AS NVARCHAR(30)), S.S_ALL - S.S_OFF, 2),
+                    (CAST(NULL         AS NVARCHAR(30)), S.S_ALL,           3)
+                 ) C(DROP_CODE, TOTAL, PREF)
+            WHERE S.HAS_NOM = 1 AND S.HAS_OFF = 1
+            -- تساوی: اولویت با قاعده‌ی موتور امروز (کنار گذاشتن ریل اسمی)
+            ORDER BY ABS(C.TOTAL - (RL.NET_PAY + RL.TOTAL_DED)), C.PREF
+        ) X;
 
         INSERT INTO #EmpItem (EMP_ID, ITEM_ID, ITEM_NAME, TAFSILI, AMOUNT, SORT)
         SELECT D.EMP_ID, D.ITEM_ID,

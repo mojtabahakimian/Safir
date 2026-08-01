@@ -121,6 +121,31 @@ WHERE NOT EXISTS (SELECT 1 FROM dbo.TDETA_HES T
                   WHERE T.N_KOL = 213 AND T.NUMBER = 1 AND T.TNUMBER = N.CODE);
 GO
 
+/* ── سرفصل‌های کارگاه برای کارگاه‌هایی که در seed تنظیم نشده‌اند ────────────
+   داده‌ی seed چند اجرای قدیمی دارد که برای سنجش «سند تراز» به کار می‌آیند،
+   ولی کارگاهشان هیچ سرفصلی ندارد و صدور سند پیش از رسیدن به محاسبات متوقف
+   می‌شود. اینجا فقط کارگاه‌های بدون تنظیم پر می‌شوند تا تنظیمات موجود دست
+   نخورد. */
+INSERT INTO dbo.PAY2_WORKSHOP_ACC (WS_ID, ACC_KEY, ACC_CODE)
+SELECT W.WS_ID, A.ACC_KEY, A.ACC_CODE
+FROM dbo.PAY2_WORKSHOP W
+CROSS JOIN (VALUES
+    ('SALARY_EXP_TOLID',    '711-1-1'),
+    ('SALARY_EXP_EDARI',    '712-1-1'),
+    ('SALARY_EXP_FOROSH',   '713-1-1'),
+    ('SALARY_EXP_KHADAMAT', '714-1-1'),
+    ('SALARY_PAYABLE',      '213-2-1'),
+    ('INS_PAYABLE',         '218-1-1'),
+    ('TAX_PAYABLE',         '218-1-2'),
+    ('INS_EXP',             '71-1-5'),
+    ('ADV_HES',             '213-2-3'),
+    ('LOAN_HES',            '213-2-2'),
+    ('OTHER_DED_HES',       '213-2-4'),
+    ('BANK_PAY_HES',        '112-1-1')
+) AS A(ACC_KEY, ACC_CODE)
+WHERE NOT EXISTS (SELECT 1 FROM dbo.PAY2_WORKSHOP_ACC X WHERE X.WS_ID = W.WS_ID);
+GO
+
 /* ── بررسی: هر ACC_T پرسنلِ فعال باید در دفتر حساب پیدا شود ───────────────── */
 IF EXISTS (
     SELECT 1
