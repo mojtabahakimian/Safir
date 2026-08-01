@@ -120,13 +120,24 @@ test.describe('اعلان‌های Snackbar', () => {
 
     await snackbar.locator('.mud-snackbar-content-action button').first().click();
 
-    // اگر انیمیشنِ محو شدن کار کند، خیلی زودتر از HideTransitionDuration
-    // کامل (۲۰۰۰ میلی‌ثانیه) باید opacity به‌وضوح افت کرده باشد.
-    await page.waitForTimeout(600);
-    const opacity = await snackbar.evaluate(el => getComputedStyle(el).opacity).catch(() => '0');
-    expect(Number(opacity), 'اسنک‌بار باید تا این لحظه شروع به محو شدن کرده باشد').toBeLessThan(0.9);
+    // با HideTransitionDuration=200ms (Program.cs)، ۴۰۰ میلی‌ثانیه پس از
+    // کلیک باید کاملاً رفته باشد؛ نه اینکه ۲ ثانیه بی‌حرکت روی صفحه بماند.
+    await expect(snackbar).toHaveCount(0, { timeout: 400 });
+  });
 
-    await expect(snackbar).toHaveCount(0, { timeout: 3000 });
+  test('اعلان‌ها سریع ظاهر می‌شوند، نه با یک ثانیه تأخیر محو-به-داخل', async ({ page }) => {
+    // شکایت کاربر: محو شدنِ ورودیِ پیش‌فرض MudBlazor یک ثانیه طول می‌کشد
+    // و «کند» و «اعصاب خردکن» است. Program.cs حالا ShowTransitionDuration
+    // را به ۱۸۰ میلی‌ثانیه کاهش داده؛ اینجا تضمین می‌کنیم دیر نشده باشد.
+    await page.goto('/login', { waitUntil: 'networkidle' });
+    const snackbar = page.locator('.mud-snackbar').first();
+    await expect(snackbar).toBeVisible({ timeout: 15_000 });
+
+    // خیلی زودتر از ۱ ثانیه‌ی پیش‌فرض قدیمی باید کاملاً به شفافیت نهایی
+    // رسیده باشد (نه صفر، نه در حال محو شدن).
+    await page.waitForTimeout(250);
+    const opacity = Number(await snackbar.evaluate(el => getComputedStyle(el).opacity));
+    expect(opacity, 'اسنک‌بار باید تا این لحظه کاملاً ظاهر شده باشد').toBeGreaterThan(0.8);
   });
 });
 

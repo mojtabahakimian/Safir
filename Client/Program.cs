@@ -47,7 +47,16 @@ builder.Services.AddScoped<Safir.Client.Services.Pay2AccessApiService>();
 builder.Services.AddScoped<IAuthService, AuthService>();
 // --- End Authentication Services ---
 
-builder.Services.AddMudServices();
+// پیش‌فرض MudBlazor برای اسنک‌بار خیلی کند است (محو شدن ورود ۱ ثانیه، خروج
+// ۲ ثانیه) — دقیقاً همان چیزی که کاربر «کند» توصیفش کرد. اینجا سرعتش را از
+// طریق خودِ تنظیمات کتابخانه بالا می‌بریم، نه با override زدنِ CSS روی
+// پراپرتی animation — تجربه‌ی قبلی نشان داد آن مسیر با انیمیشنِ این‌لاینِ
+// خودِ MudBlazor تصادم می‌کند و دکمه‌ی بستن را از کار می‌اندازد.
+builder.Services.AddMudServices(config =>
+{
+    config.SnackbarConfiguration.ShowTransitionDuration = 180;
+    config.SnackbarConfiguration.HideTransitionDuration = 200;
+});
 
 builder.Services.AddScoped<ThemeService>();
 
