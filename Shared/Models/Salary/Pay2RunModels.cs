@@ -3,7 +3,12 @@
     public enum Pay2DeedMode : byte
     {
         CurrentSummary = 1,
-        PersonTraceable = 2
+        PersonTraceable = 2,
+        /// <summary>
+        /// سند تفصیلی کامل: هر قلم حکمِ هر پرسنل یک آرتیکل جدا روی حساب تفصیلی
+        /// خودش، و هزینه به تفکیک «مرکز هزینه × نوع قلم».
+        /// </summary>
+        FullyDetailed = 3
     }
     public class Pay2DeedArticleDto
     {

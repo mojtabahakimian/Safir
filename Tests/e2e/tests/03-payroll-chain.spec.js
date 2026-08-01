@@ -404,4 +404,116 @@ test.describe('زنجیره‌ی کامل حقوق و دستمزد', () => {
     const sum = (k1, k2) => articles.reduce((a, x) => a + Number(x[k1] ?? x[k2] ?? 0), 0);
     expect(sum('bed', 'BED'), 'سند تفصیلی هم باید تراز باشد').toBe(sum('bes', 'BES'));
   });
+
+  test('۱۲) سند تفصیلی کامل: هر قلم حکم یک آرتیکل، هزینه به تفکیک مرکز×قلم', async ({ request }) => {
+    // خواسته‌ی مشتری: در سند، زیر حساب تفصیلیِ خودِ شخص باید تک‌تک اقلام حکم
+    // (دستمزد، اضافه‌کار، بن، حق اولاد...) دیده شود — نه یک سطرِ «حقوق پرداختنی».
+    const wsList = await (await request.get('/api/pay2/workshops', { headers: auth })).json();
+    const ws = wsList.find(w => (w.wS_ID ?? w.WS_ID) === ctx.wsId);
+    ws.DEFAULT_DEED_MODE = 3;
+
+    const accounts = await (await request.get(
+      `/api/pay2/workshops/${ctx.wsId}/accounts`, { headers: auth })).json();
+    accounts.WS_ID = ctx.wsId;
+
+    // هر مرکز هزینه باید شاخه‌ی مستقل داشته باشد؛ با ساختار 71-1-x ریشه‌ی هر
+    // چهار مرکز یکی می‌شد و رویه عمداً با پیام روشن جلوی صدور را می‌گیرد.
+    accounts.SALARY_EXP_TOLID = '711-1-1';
+    accounts.SALARY_EXP_EDARI = '712-1-1';
+    accounts.SALARY_EXP_FOROSH = '713-1-1';
+    accounts.SALARY_EXP_KHADAMAT = '714-1-1';
+
+    await ok(await request.post('/api/pay2/workshops/save', {
+      headers: auth, data: { Workshop: ws, Accounts: accounts },
+    }), 'تغییر روش صدور کارگاه به تفصیلی کامل');
+
+    // مقدار ۳ نباید در مسیر ذخیره‌سازی به ۱ قیچی شود.
+    const after = await (await request.get('/api/pay2/workshops', { headers: auth })).json();
+    const savedMode = after.find(w => (w.wS_ID ?? w.WS_ID) === ctx.wsId);
+    expect(Number(savedMode.defaulT_DEED_MODE ?? savedMode.DEFAULT_DEED_MODE),
+      'روش صدور ۳ باید ذخیره شود').toBe(3);
+
+    const preview = await (await request.get(
+      `/api/pay2/run/${ctx.runId}/preview-deed`, { headers: auth })).json();
+    const errors = preview.validationErrors ?? preview.ValidationErrors ?? [];
+    expect(errors, `پیش‌نمایش نباید خطا بدهد، ولی: ${errors.join(' | ')}`).toHaveLength(0);
+
+    const articles = preview.articles ?? preview.Articles ?? [];
+    const num = (x, k1, k2) => Number(x[k1] ?? x[k2] ?? 0);
+    const code = x => String(x.heS_CODE ?? x.HES_CODE ?? '');
+    const sum = (k1, k2) => articles.reduce((a, x) => a + num(x, k1, k2), 0);
+
+    expect(sum('bed', 'BED'), 'سند تفصیلی کامل باید تراز باشد').toBe(sum('bes', 'BES'));
+    expect(articles.every(x => num(x, 'bed', 'BED') >= 0 && num(x, 'bes', 'BES') >= 0),
+      'هیچ آرتیکلی نباید مبلغ منفی داشته باشد').toBeTruthy();
+
+    // مانده‌ی حساب شخص = خالص پرداختی او. اگر قلمی جا بیفتد یا ریلِ حقوق اشتباه
+    // انتخاب شود، سند ممکن است در جمع کل تراز بماند ولی حساب شخص غلط باشد.
+    const empAcc = `213-1-${ctx.empCode}`;
+    const empRows = articles.filter(x => code(x) === empAcc);
+    expect(empRows.length, 'حساب شخص باید چند آرتیکل داشته باشد، نه یک سطر').toBeGreaterThan(1);
+
+    const credits = empRows.filter(x => num(x, 'bes', 'BES') > 0);
+    expect(credits.length, 'اقلام حکم باید هرکدام آرتیکل جدا باشند').toBeGreaterThan(1);
+
+    // هزینه روی «ریشه + شماره‌ی تفصیلیِ قلم» می‌نشیند: مثلاً 711-1-2 اضافه‌کار.
+    const expenseRows = articles.filter(x => /^7\d\d-\d+-\d+$/.test(code(x)));
+    expect(expenseRows.length, 'باید آرتیکل هزینه به تفکیک قلم ساخته شود').toBeGreaterThan(1);
+    const tafsiliSet = new Set(expenseRows.map(x => code(x).split('-')[2]));
+
+    // تفصیلی ۱۰ (بیمه‌ی سهم کارفرما) در رویه ثابت است و از نگاشت نمی‌آید، پس
+    // اگر فقط آن را بسنجیم، تست حتی با ستون EXP_TAFSILI کاملاً خالی هم سبز
+    // می‌شود — یعنی خودِ نگاشت هرگز آزموده نمی‌شود. سنجه باید روی تفصیلی‌های
+    // آمده از PAY2_ITEM_DEF باشد.
+    const fromMapping = [...tafsiliSet].filter(t => t !== '10');
+    expect(fromMapping, 'هزینه باید بین چند نوع قلمِ نگاشت‌شده تفکیک شود')
+      .not.toEqual(['9']);
+    expect(fromMapping.length, 'نگاشت قلم به حساب هزینه باید چند تفصیلی بسازد')
+      .toBeGreaterThan(1);
+    expect(tafsiliSet.has('1'), 'هزینه‌ی حقوق باید روی تفصیلی ۱ بنشیند').toBeTruthy();
+
+    expect(Number(preview.modeUsed ?? preview.ModeUsed), 'روش اعلام‌شده باید ۳ باشد').toBe(3);
+
+    await ok(await request.post(`/api/pay2/run/${ctx.runId}/generate-deed`, { headers: auth }),
+      'صدور سند با روش تفصیلی کامل');
+  });
+
+  test('۱۳) اجراهای موتور قدیمی هم سند تراز می‌دهند', async ({ request }) => {
+    // در بعضی نسخه‌های قدیمی‌تر موتور، «خالص» جداگانه رُند می‌شد و ناخالص
+    // همراهش تغییر نمی‌کرد؛ یعنی خالص ≠ ناخالص − کسورات. سند، ناخالص را
+    // بدهکار و خالص را بستانکار می‌کرد، پس آن چند صد ریال در هیچ طرفی نبود و
+    // کاربر موقع بازصدور سندِ آن ماه‌ها پیام «سند تراز نیست» می‌گرفت.
+    //
+    // داده‌ی seed چند اجرای این‌شکلی دارد؛ همان‌ها اینجا سنجیده می‌شوند.
+    const n = v => Number(v ?? 0);
+    let legacyRun = 0;
+
+    for (let runId = 1; runId <= 60 && !legacyRun; runId++) {
+      const res = await request.get(`/api/pay2/run/${runId}/lines`, { headers: auth });
+      if (!res.ok()) continue;
+      const lines = (await res.json()).lines ?? [];
+      const mismatched = lines.filter(l =>
+        n(l.neT_PAY ?? l.NET_PAY) !== n(l.grosS_PAY ?? l.GROSS_PAY) - n(l.totaL_DED ?? l.TOTAL_DED));
+      if (lines.length && mismatched.length) legacyRun = runId;
+    }
+
+    test.skip(!legacyRun, 'در این دیتابیس اجرایی با گِردکردنِ سبک قدیمی نیست.');
+
+    for (const mode of [1, 2, 3]) {
+      const preview = await (await request.get(
+        `/api/pay2/run/${legacyRun}/preview-deed?overrideMode=${mode}`, { headers: auth })).json();
+
+      const errors = preview.validationErrors ?? preview.ValidationErrors ?? [];
+      expect(errors, `اجرای ${legacyRun} روش ${mode}: ${errors.join(' | ')}`).toHaveLength(0);
+
+      const articles = preview.articles ?? preview.Articles ?? [];
+      // سند خالی هم «تراز» است؛ بدون این سنجه تست بی‌اثر می‌شد.
+      expect(articles.length, `اجرای ${legacyRun} روش ${mode} باید آرتیکل بسازد`)
+        .toBeGreaterThan(0);
+
+      const sum = (k1, k2) => articles.reduce((a, x) => a + n(x[k1] ?? x[k2]), 0);
+      expect(sum('bed', 'BED'), `اجرای ${legacyRun} در روش ${mode} باید تراز باشد`)
+        .toBe(sum('bes', 'BES'));
+    }
+  });
 });

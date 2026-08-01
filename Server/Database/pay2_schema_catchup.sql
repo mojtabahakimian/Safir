@@ -102,5 +102,12 @@ FROM PAY2_LOAN L
 WHERE L.IS_ACTIVE = 1 AND L.PAID_INST < L.TOTAL_INST;
 GO
 
+/* نگاشت «قلم حکم ← شمارهٔ تفصیلیِ حساب هزینه» برای سند تفصیلی کامل.
+   اینجا فقط ستون ساخته می‌شود؛ مقداردهی‌اش در pay2_detailed_deed_migration.sql
+   است چون باید بعد از seed اجرا شود، وقتی ردیف‌های آیتم وجود دارند. */
+IF OBJECT_ID(N'dbo.PAY2_ITEM_DEF', N'U') IS NOT NULL AND COL_LENGTH('dbo.PAY2_ITEM_DEF','EXP_TAFSILI') IS NULL
+    ALTER TABLE dbo.PAY2_ITEM_DEF ADD EXP_TAFSILI SMALLINT NULL;
+GO
+
 PRINT N'✅ ساختار دیتابیس تست با ScriptSqly.cs هم‌تراز شد.';
 GO

@@ -704,7 +704,8 @@
     List<LookupDto<byte>> DeedModeOptions = new()
     {
         new((byte)1, "سند کلی (تجمیعی) - روش فعلی"),
-        new((byte)2, "سند نیمه‌تفصیلی (به تفکیک اشخاص)")
+        new((byte)2, "سند نیمه‌تفصیلی (به تفکیک اشخاص)"),
+        new((byte)3, "سند تفصیلی کامل (به تفکیک پرسنل و اقلام)")
     };
     sealed class Pay2InsModeOption
     {
@@ -1064,7 +1065,8 @@
         CurrentWorkshop.POSTAL_CODE = OnlyDigits(CurrentWorkshop.POSTAL_CODE, 20);
         CurrentWorkshop.EMPLOYER_NAME = CleanText(CurrentWorkshop.EMPLOYER_NAME, 100);
         CurrentWorkshop.INS_MODE = NormalizeInsMode(CurrentWorkshop.INS_MODE);
-        CurrentWorkshop.DEFAULT_DEED_MODE = (byte)(CurrentWorkshop.DEFAULT_DEED_MODE == 2 ? 2 : 1);
+        CurrentWorkshop.DEFAULT_DEED_MODE = CurrentWorkshop.DEFAULT_DEED_MODE is 2 or 3
+            ? CurrentWorkshop.DEFAULT_DEED_MODE : (byte)1;
 
         CurrentWorkshop.PROVINCE = CleanText(CurrentWorkshop.PROVINCE, 50);
         CurrentWorkshop.CITY = CleanText(CurrentWorkshop.CITY, 50);
