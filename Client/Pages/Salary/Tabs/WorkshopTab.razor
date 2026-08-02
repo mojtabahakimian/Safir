@@ -743,7 +743,8 @@
             SSO_BRANCH = CleanText(selected.SSO_BRANCH, 50),
             FINANCIAL_MANAGER = CleanText(selected.FINANCIAL_MANAGER, 100),
             ADMIN_MANAGER = CleanText(selected.ADMIN_MANAGER, 100),
-            SHIFT_MODE = selected.SHIFT_MODE
+            SHIFT_MODE = selected.SHIFT_MODE,
+            DEFAULT_DEED_MODE = selected.DEFAULT_DEED_MODE != 0 ? selected.DEFAULT_DEED_MODE : (byte)1
         };
 
         _fieldErrors.Clear();
@@ -832,7 +833,8 @@
         {
             IS_ACTIVE = true,
             INS_MODE = 1,
-            SHIFT_MODE = null
+            SHIFT_MODE = null,
+            DEFAULT_DEED_MODE = 1
         };
 
         CurrentWorkshopAcc = new Pay2WorkshopAccDto();

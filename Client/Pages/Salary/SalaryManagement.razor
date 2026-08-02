@@ -112,7 +112,7 @@
 }
 else
 {
-    @if (!Pay2Access.Access.AclEnforced)
+    @if (Pay2Access.IsLoaded && !Pay2Access.Access.AclEnforced)
     {
         <MudAlert Severity="Severity.Warning" Variant="Variant.Filled" ShowCloseIcon="true" Class="my-2 mx-4">
             کنترل دسترسی حقوق و دستمزد غیرفعال است — همه کاربران به تمام بخش‌ها دسترسی دارند.
@@ -371,8 +371,9 @@ else
                         ActiveTab != "attendance" &&
                         ActiveTab != "advances" &&
                         ActiveTab != "itemdefs" &&
-                        ActiveTab != "reports" &&    // <--- این خط اضافه شود
+                        ActiveTab != "reports" &&
                         ActiveTab != "payroll" &&
+                        ActiveTab != "access" &&
                         ActiveTab != "settings")
             {
                 <div class="pay2-tab-container"
@@ -441,7 +442,7 @@ else
     private bool IsToastVisible = false;
     private string ToastMessage = string.Empty;
     private int _toastVersion = 0;
-    private string AppVersion = "1.0.25"; // اضافه شدن فیلد نگهداری ورژن
+    private string AppVersion = "1.0.26"; // اضافه شدن فیلد نگهداری ورژن
     private string QuickSearchTerm = string.Empty;
 
     private static readonly IReadOnlyList<QuickSearchEntry> QuickSearchEntries = new[]
