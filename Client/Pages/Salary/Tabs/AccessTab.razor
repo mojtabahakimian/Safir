@@ -3,6 +3,49 @@
 @inject Safir.Client.Services.Pay2AccessApiService Pay2Access
 @inject HttpClient Http
 @inject ISnackbar Snackbar
+@inject MudBlazor.IDialogService DialogService
+@implements IDisposable
+
+<style>
+    .p2-access-card {
+        position: relative;
+        min-height: 400px;
+    }
+
+    .p2-access-overlay {
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(255, 255, 255, 0.65);
+        z-index: 20;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        border-radius: var(--p2-radius-lg);
+        backdrop-filter: blur(3px);
+        opacity: 0;
+        visibility: hidden;
+        transition: opacity 0.25s ease, visibility 0.25s ease;
+    }
+
+    .p2-access-overlay.active {
+        opacity: 1;
+        visibility: visible;
+    }
+
+    .p2-access-body {
+        transition: opacity 0.25s ease, filter 0.25s ease;
+    }
+
+    .p2-access-body.loading {
+        opacity: 0.35;
+        filter: grayscale(20%);
+        pointer-events: none;
+    }
+</style>
 
 <div class="pay2-tab-container">
     <div class="pay2-two-panel">
@@ -38,10 +81,17 @@
                         <tbody>
                             @foreach (var u in FilteredUsers)
                             {
-                                <tr class="workshop-row @(_selectedUser?.UserId == u.UserId ? "active" : "")"
+                                <tr class="workshop-row @(_selectedUser?.UserId == u.UserId || _loadingUserId == u.UserId ? "active" : "")"
                                     @onclick="() => SelectUserAsync(u)">
                                     <td>
-                                        <i class="bi bi-person-circle p2-text-muted" style="margin-left: 8px;"></i>
+                                        @if (_loadingUserId == u.UserId)
+                                        {
+                                            <span class="p2-spinner" style="width: 14px; height: 14px; border-width: 2px; margin-left: 8px; display: inline-block; vertical-align: middle;"></span>
+                                        }
+                                        else
+                                        {
+                                            <i class="bi bi-person-circle p2-text-muted" style="margin-left: 8px;"></i>
+                                        }
                                         <span class="p2-text-bold">@u.UserName</span>
                                     </td>
                                 </tr>
@@ -69,25 +119,32 @@
             }
             else
             {
-                <div class="card-custom">
+                <div class="card-custom p2-access-card">
 
-                    <div class="pay2-card-header">
-                        <h5 style="color: var(--p2-primary);">
-                            <i class="bi bi-shield-check"></i> دسترسی‌های «@_selectedUser.UserName»
-                        </h5>
-                        <button class="btn-primary-pay2" @onclick="SaveAccess" disabled="@_isSaving">
-                            @if (_isSaving)
-                            {
-                                <span class="p2-spinner"></span>
-                                <span>در حال ذخیره...</span>
-                            }
-                            else
-                            {
-                                <i class="bi bi-save"></i>
-                                <span>ذخیره دسترسی‌ها</span>
-                            }
-                        </button>
+                    <div class="p2-access-overlay @(_isLoadingUserAccess ? "active" : "")">
+                        <div class="p2-spinner"></div>
+                        <span style="margin-top: 10px; font-size: 13px; font-weight: 600; color: var(--p2-primary);">در حال به‌روزرسانی دسترسی‌ها...</span>
                     </div>
+
+                    <div class="p2-access-body @(_isLoadingUserAccess ? "loading" : "")">
+
+                        <div class="pay2-card-header">
+                            <h5 style="color: var(--p2-primary);">
+                                <i class="bi bi-shield-check"></i> دسترسی‌های «@_selectedUser.UserName»
+                            </h5>
+                            <button class="btn-primary-pay2" @onclick="SaveAccess" disabled="@(_isSaving || _isLoadingUserAccess)">
+                                @if (_isSaving)
+                                {
+                                    <span class="p2-spinner"></span>
+                                    <span>در حال ذخیره...</span>
+                                }
+                                else
+                                {
+                                    <i class="bi bi-save"></i>
+                                    <span>ذخیره دسترسی‌ها</span>
+                                }
+                            </button>
+                        </div>
 
                     @* نوار بخش‌ها — با همان واژگان دکمه‌های سیستم، نه MudTabs *@
                     <div class="p2-table-toolbar p2-mt-16">
@@ -125,7 +182,7 @@
                                     <button class="@(p.Key == "NONE" ? "btn-outline-danger-pay2" : "btn-outline-pay2") p2-btn-sm"
                                             disabled="@blockedForSelf"
                                             title="@(blockedForSelf ? "برای جلوگیری از قفل‌شدن خودتان بیرون از سیستم، نمی‌توانید تمام دسترسی‌های حساب خودتان را حذف کنید." : "")"
-                                            @onclick="() => ApplyPreset(p.Key)">
+                                            @onclick="() => ConfirmAndApplyPreset(p)">
                                         <i class="bi @p.Icon"></i>
                                         <span>@p.Title</span>
                                     </button>
@@ -305,6 +362,8 @@
                             </div>
                         }
                     }
+
+                    </div>
                 </div>
             }
         </div>
@@ -346,13 +405,18 @@
     private string _searchUser = "";
     private string _section = "forms";
     private bool _isSaving = false;
+    private bool _isLoadingUserAccess = false;
+    private int? _loadingUserId;
+
+    private CancellationTokenSource? _selectUserCts;
+    private long _selectUserVersion = 0;
 
     private List<Pay2FormPermDto> _userForms = new();
     private List<int> _userWsIds = new();
     private List<Pay2AuditEntry> _logs = new();
 
     private IEnumerable<Pay2UserDto> FilteredUsers =>
-        _users.Where(x => string.IsNullOrEmpty(_searchUser) || x.UserName.Contains(_searchUser));
+        _users.Where(x => string.IsNullOrEmpty(_searchUser) || x.UserName.Contains(_searchUser, StringComparison.OrdinalIgnoreCase));
 
     /// <summary>آیا کاربرِ در حال ویرایش، همان کاربرِ لاگین‌کرده است؟</summary>
     private bool IsEditingSelf => _selectedUser != null && Pay2Access.Access.UserCo == _selectedUser.UserId;
@@ -383,28 +447,76 @@
 
     private async Task SelectUserAsync(Pay2UserDto user)
     {
-        _selectedUser = user;
-        _logs.Clear();
-        await ReloadSelectedUserAccessAsync();
+        if (_loadingUserId == user.UserId) return;
+
+        CancelSelectUser();
+
+        var myVersion = Interlocked.Increment(ref _selectUserVersion);
+        var cts = new CancellationTokenSource();
+        _selectUserCts = cts;
+        var token = cts.Token;
+
+        _loadingUserId = user.UserId;
+        _isLoadingUserAccess = true;
+        StateHasChanged();
+
+        try
+        {
+            var res = await Http.GetFromJsonAsync<Safir.Shared.Models.Permissions.Pay2AccessDto>(
+                $"api/pay2/access/user/{user.UserId}", token);
+
+            if (token.IsCancellationRequested || myVersion != _selectUserVersion)
+                return;
+
+            if (res != null)
+            {
+                _selectedUser = user;
+                _userForms = res.Forms ?? new();
+                _userWsIds = res.AllowedWorkshopIds ?? new();
+            }
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch
+        {
+            if (token.IsCancellationRequested || myVersion != _selectUserVersion)
+                return;
+
+            Snackbar.Add("خطا در دریافت دسترسی کاربر.", Severity.Error);
+        }
+        finally
+        {
+            if (myVersion == _selectUserVersion)
+            {
+                _loadingUserId = null;
+                _isLoadingUserAccess = false;
+                StateHasChanged();
+            }
+        }
     }
 
     private async Task ReloadSelectedUserAccessAsync()
     {
         if (_selectedUser == null) return;
-        try
-        {
-            var res = await Http.GetFromJsonAsync<Safir.Shared.Models.Permissions.Pay2AccessDto>(
-                $"api/pay2/access/user/{_selectedUser.UserId}");
-            if (res != null)
-            {
-                _userForms = res.Forms;
-                _userWsIds = res.AllowedWorkshopIds;
-            }
-        }
-        catch
-        {
-            Snackbar.Add("خطا در دریافت دسترسی کاربر.", Severity.Error);
-        }
+        await SelectUserAsync(_selectedUser);
+    }
+
+    private void CancelSelectUser()
+    {
+        var cts = _selectUserCts;
+        _selectUserCts = null;
+
+        if (cts == null)
+            return;
+
+        try { cts.Cancel(); } catch { }
+        try { cts.Dispose(); } catch { }
+    }
+
+    public void Dispose()
+    {
+        CancelSelectUser();
     }
 
     private Pay2FormPermDto GetOrCreatePerm(string formName, string caption)
@@ -435,6 +547,41 @@
             {
                 _userWsIds.Add(w.WS_ID);
             }
+        }
+    }
+
+    private async Task ConfirmAndApplyPreset(Preset preset)
+    {
+        if (_selectedUser == null) return;
+
+        bool isDeleteAll = preset.Key == "NONE";
+
+        var title = isDeleteAll ? "تایید حذف دسترسی‌ها" : "تایید اعمال قالب دسترسی";
+        var message = isDeleteAll
+            ? $"آیا از حذف کامل تمامی دسترسی‌های کاربر «{_selectedUser.UserName}» در سیستم حقوق و دستمزد اطمینان دارید؟\n\nتذکر: با این کار، تمامی مجوزهای فرم‌ها و کارگاه‌های این کاربر سلب خواهد شد."
+            : $"آیا از اعمال قالب دسترسی «{preset.Title}» برای کاربر «{_selectedUser.UserName}» اطمینان دارید؟\n\nتذکر: با این کار، دسترسی‌های فعلی این کاربر جایگزین خواهند شد.";
+        var confirmBtn = isDeleteAll ? "بله، حذف شود" : "بله، اعمال شود";
+
+        var parameters = new MudBlazor.DialogParameters
+        {
+            ["Title"] = title,
+            ["ContentText"] = message,
+            ["ConfirmButtonText"] = confirmBtn,
+            ["CancelButtonText"] = "انصراف"
+        };
+
+        var options = new MudBlazor.DialogOptions
+        {
+            CloseButton = false,
+            MaxWidth = MudBlazor.MaxWidth.ExtraSmall
+        };
+
+        var dialog = DialogService.Show<Safir.Client.Shared.ConfirmDialog>(title, parameters, options);
+        var result = await dialog.Result;
+
+        if (!result.Canceled)
+        {
+            await ApplyPreset(preset.Key);
         }
     }
 
