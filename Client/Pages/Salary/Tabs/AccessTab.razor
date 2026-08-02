@@ -31,20 +31,20 @@
         transition: opacity 0.25s ease, visibility 0.25s ease;
     }
 
-    .p2-access-overlay.active {
-        opacity: 1;
-        visibility: visible;
-    }
+        .p2-access-overlay.active {
+            opacity: 1;
+            visibility: visible;
+        }
 
     .p2-access-body {
         transition: opacity 0.25s ease, filter 0.25s ease;
     }
 
-    .p2-access-body.loading {
-        opacity: 0.35;
-        filter: grayscale(20%);
-        pointer-events: none;
-    }
+        .p2-access-body.loading {
+            opacity: 0.35;
+            filter: grayscale(20%);
+            pointer-events: none;
+        }
 </style>
 
 <div class="pay2-tab-container">
@@ -146,222 +146,226 @@
                             </button>
                         </div>
 
-                    @* نوار بخش‌ها — با همان واژگان دکمه‌های سیستم، نه MudTabs *@
-                    <div class="p2-table-toolbar p2-mt-16">
-                        <div style="display: flex; gap: 8px; flex-wrap: wrap;">
-                            @foreach (var s in Sections)
-                            {
-                                <button class="@(_section == s.Key ? "btn-primary-pay2" : "btn-outline-pay2") p2-btn-sm"
-                                        @onclick="() => _section = s.Key">
-                                    <i class="bi @s.Icon"></i>
-                                    <span>@s.Title</span>
-                                </button>
-                            }
-                        </div>
-                    </div>
-
-                    @* ── بخش ۱: دسترسی فرم‌ها ─────────────────────────── *@
-                    @if (_section == "forms")
-                    {
-                        @if (IsEditingSelf)
-                        {
-                            <div class="p2-mt-16" style="display:flex; align-items:center; gap:8px; padding:10px 14px; font-size:12.5px; border-radius:var(--p2-radius-md); background:var(--p2-info-bg); color:var(--p2-info-text); border:1px solid var(--p2-info-border);">
-                                <i class="bi bi-shield-lock"></i>
-                                <span>نمی‌توانید دسترسی «مدیریت دسترسی‌ها» را از حساب خودتان بردارید — این محافظ جلوی قفل‌شدن کل سیستم را می‌گیرد. برای تغییر مدیر، اول به نفر جدید این دسترسی را بدهید، بعد با حساب او دسترسی نفر قبلی را بردارید.</span>
-                            </div>
-                        }
-                        <div class="p2-sub-card">
-                            <div class="p2-sub-card-title">اعمال سریع قالب آماده</div>
+                        @* نوار بخش‌ها — با همان واژگان دکمه‌های سیستم، نه MudTabs *@
+                        <div class="p2-table-toolbar p2-mt-16">
                             <div style="display: flex; gap: 8px; flex-wrap: wrap;">
-                                @foreach (var p in Presets)
+                                @foreach (var s in Sections)
                                 {
-                                    // «حذف کامل دسترسی» روی حساب خودتان عمداً غیرفعال است — همان محافظی
-                                    // که سرور هم اعمال می‌کند (SaveUserAccess/ApplyPreset)، ولی اینجا
-                                    // پیش از فرستادن درخواست، همان‌جا با یک توضیح روشن جلویش گرفته می‌شود.
-                                    var blockedForSelf = p.Key == "NONE" && IsEditingSelf;
-                                    <button class="@(p.Key == "NONE" ? "btn-outline-danger-pay2" : "btn-outline-pay2") p2-btn-sm"
-                                            disabled="@blockedForSelf"
-                                            title="@(blockedForSelf ? "برای جلوگیری از قفل‌شدن خودتان بیرون از سیستم، نمی‌توانید تمام دسترسی‌های حساب خودتان را حذف کنید." : "")"
-                                            @onclick="() => ConfirmAndApplyPreset(p)">
-                                        <i class="bi @p.Icon"></i>
-                                        <span>@p.Title</span>
+                                    <button class="@(_section == s.Key ? "btn-primary-pay2" : "btn-outline-pay2") p2-btn-sm"
+                                            @onclick="() => _section = s.Key">
+                                        <i class="bi @s.Icon"></i>
+                                        <span>@s.Title</span>
                                     </button>
                                 }
                             </div>
                         </div>
 
-                        <div class="pay2-table-responsive p2-mt-16">
-                            <table class="p2-table">
-                                <thead>
-                                    <tr>
-                                        <th>نام فرم / بخش</th>
-                                        <th class="p2-text-center">اجرا (ورود به فرم)</th>
-                                        <th class="p2-text-center">مشاهده</th>
-                                        <th class="p2-text-center">ایجاد</th>
-                                        <th class="p2-text-center">ویرایش</th>
-                                        <th class="p2-text-center">حذف</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    @foreach (var f in _forms.Where(x => x.IsAction == 0))
+                        @* ── بخش ۱: دسترسی فرم‌ها ─────────────────────────── *@
+                        @if (_section == "forms")
+                        {
+                            @if (IsEditingSelf)
+                            {
+                                <div class="p2-mt-16" style="display:flex; align-items:center; gap:8px; padding:10px 14px; font-size:12.5px; border-radius:var(--p2-radius-md); background:var(--p2-info-bg); color:var(--p2-info-text); border:1px solid var(--p2-info-border);">
+                                    <i class="bi bi-shield-lock"></i>
+                                    <span>نمی‌توانید دسترسی «مدیریت دسترسی‌ها» را از حساب خودتان بردارید — این محافظ جلوی قفل‌شدن کل سیستم را می‌گیرد. برای تغییر مدیر، اول به نفر جدید این دسترسی را بدهید، بعد با حساب او دسترسی نفر قبلی را بردارید.</span>
+                                </div>
+                            }
+                            <div class="p2-sub-card">
+                                <div class="p2-sub-card-title">اعمال سریع قالب آماده</div>
+                                <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                                    @foreach (var p in Presets)
                                     {
-                                        var perm = GetOrCreatePerm(f.FormName, f.Caption);
-                                        // ردیف «مدیریت دسترسی‌ها»ی خودِ کاربرِ لاگین‌کرده: چک‌باکس «اجرا» را
-                                        // قفل و همیشه تیک‌خورده نگه می‌داریم تا کسی نتواند از همین‌جا خودش
-                                        // را از این صفحه بیرون بیندازد. سرور هم همین قانون را اعمال می‌کند
-                                        // (این فقط جلوگیریِ زودتر و با توضیح روشن‌تر است، نه جایگزین آن).
-                                        var lockRun = f.FormName == Safir.Shared.Constants.Pay2Forms.AdminAcl && IsEditingSelf;
-                                        if (lockRun) perm.Run = true;
-                                        <tr>
-                                            <td>@f.Caption</td>
-                                            <td class="p2-text-center">
-                                                <input type="checkbox" checked="@perm.Run" disabled="@lockRun"
-                                                       title="@(lockRun ? "برای جلوگیری از قفل‌شدن خودتان بیرون از سیستم، این مجوز روی حساب خودتان قابل حذف نیست." : "")"
-                                                       @onchange='e => SetPerm(perm, "Run", (bool)e.Value!)' />
-                                            </td>
-                                            <td class="p2-text-center">
-                                                <input type="checkbox" checked="@perm.See"
-                                                       @onchange='e => SetPerm(perm, "See", (bool)e.Value!)' />
-                                            </td>
-                                            <td class="p2-text-center">
-                                                <input type="checkbox" checked="@perm.Inp"
-                                                       @onchange='e => SetPerm(perm, "Inp", (bool)e.Value!)' />
-                                            </td>
-                                            <td class="p2-text-center">
-                                                <input type="checkbox" checked="@perm.Upd"
-                                                       @onchange='e => SetPerm(perm, "Upd", (bool)e.Value!)' />
-                                            </td>
-                                            <td class="p2-text-center">
-                                                <input type="checkbox" checked="@perm.Del"
-                                                       @onchange='e => SetPerm(perm, "Del", (bool)e.Value!)' />
-                                            </td>
-                                        </tr>
+                                        // «حذف کامل دسترسی» روی حساب خودتان عمداً غیرفعال است — همان محافظی
+                                        // که سرور هم اعمال می‌کند (SaveUserAccess/ApplyPreset)، ولی اینجا
+                                        // پیش از فرستادن درخواست، همان‌جا با یک توضیح روشن جلویش گرفته می‌شود.
+                                        var blockedForSelf = p.Key == "NONE" && IsEditingSelf;
+                                        <button class="@(p.Key == "NONE" ? "btn-outline-danger-pay2" : "btn-outline-pay2") p2-btn-sm"
+                                                disabled="@blockedForSelf"
+                                                title="@(blockedForSelf ? "برای جلوگیری از قفل‌شدن خودتان بیرون از سیستم، نمی‌توانید تمام دسترسی‌های حساب خودتان را حذف کنید." : "")"
+                                                @onclick="() => ConfirmAndApplyPreset(p)">
+                                            <i class="bi @p.Icon"></i>
+                                            <span>@p.Title</span>
+                                        </button>
                                     }
-                                </tbody>
-                            </table>
-                        </div>
-                    }
-
-                    @* ── بخش ۲: عملیات حساس ───────────────────────────── *@
-                    @if (_section == "actions")
-                    {
-                        <div class="pay2-table-responsive p2-mt-16">
-                            <table class="p2-table">
-                                <thead>
-                                    <tr>
-                                        <th>عملیات</th>
-                                        <th class="p2-text-center">مجاز است</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    @foreach (var f in _forms.Where(x => x.IsAction == 1))
-                                    {
-                                        var perm = GetOrCreatePerm(f.FormName, f.Caption);
-                                        <tr>
-                                            <td>@f.Caption</td>
-                                            <td class="p2-text-center">
-                                                <input type="checkbox" checked="@perm.Run"
-                                                       @onchange='e => SetPerm(perm, "Run", (bool)e.Value!)' />
-                                            </td>
-                                        </tr>
-                                    }
-                                </tbody>
-                            </table>
-                        </div>
-                    }
-
-                    @* ── بخش ۳: کارگاه‌های مجاز ───────────────────────── *@
-                    @if (_section == "workshops")
-                    {
-                        <div class="p2-sub-card">
-                            <label class="pay2-wpf-checkbox-box">
-                                <input type="checkbox" checked="@AllWorkshopsSelected"
-                                       @onchange="e => ToggleAllWorkshops((bool)e.Value!)" />
-                                <span class="pay2-wpf-checkbox-label">انتخاب همه کارگاه‌ها</span>
-                            </label>
-                        </div>
-
-                        @if (!_workshops.Any())
-                        {
-                            <div class="p2-empty-state">
-                                <i class="bi bi-building"></i>
-                                <h4>کارگاهی تعریف نشده است</h4>
+                                </div>
                             </div>
-                        }
-                        else
-                        {
-                            <div class="form-grid-3 p2-mt-16">
-                                @foreach (var ws in _workshops)
-                                {
-                                    <label class="pay2-wpf-checkbox-box">
-                                        <input type="checkbox" checked="@IsWorkshopSelected(ws.WS_ID)"
-                                               @onchange="e => SetWorkshop(ws.WS_ID, (bool)e.Value!)" />
-                                        <span class="pay2-wpf-checkbox-label">@ws.WS_NAME</span>
-                                    </label>
-                                }
-                            </div>
-                        }
-                    }
 
-                    @* ── بخش ۴: سابقه دسترسی ─────────────────────────── *@
-                    @if (_section == "audit")
-                    {
-                        <div class="p2-table-toolbar p2-mt-16">
-                            <span class="p2-text-muted p2-text-sm">
-                                تلاش‌های مجاز و مسدودشده‌ی این کاربر روی بخش حقوق و دستمزد
-                            </span>
-                            <button class="btn-outline-pay2 p2-btn-sm" @onclick="LoadAudit">
-                                <i class="bi bi-arrow-clockwise"></i>
-                                <span>به‌روزرسانی</span>
-                            </button>
-                        </div>
-
-                        @if (!_logs.Any())
-                        {
-                            <div class="p2-empty-state">
-                                <i class="bi bi-clock-history"></i>
-                                <h4>سابقه‌ای ثبت نشده</h4>
-                                <p>دکمه «به‌روزرسانی» را بزنید تا سابقه خوانده شود.</p>
-                            </div>
-                        }
-                        else
-                        {
-                            <div class="pay2-table-responsive">
+                            <div class="pay2-table-responsive p2-mt-16">
                                 <table class="p2-table">
                                     <thead>
                                         <tr>
-                                            <th>تاریخ</th>
-                                            <th>فرم</th>
-                                            <th class="p2-text-center">سطح</th>
-                                            <th class="p2-text-center">وضعیت</th>
-                                            <th class="p2-text-center">IP</th>
+                                            <th>نام فرم / بخش</th>
+                                            <th class="p2-text-center">اجرا (ورود به فرم)</th>
+                                            <th class="p2-text-center">مشاهده</th>
+                                            <th class="p2-text-center">ایجاد</th>
+                                            <th class="p2-text-center">ویرایش</th>
+                                            <th class="p2-text-center">حذف</th>
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        @foreach (var l in _logs)
+                                        @foreach (var f in _forms.Where(x => x.IsAction == 0))
                                         {
+                                            var perm = GetOrCreatePerm(f.FormName, f.Caption);
+                                            // ردیف «مدیریت دسترسی‌ها»ی خودِ کاربرِ لاگین‌کرده: چک‌باکس «اجرا» را
+                                            // قفل و همیشه تیک‌خورده نگه می‌داریم تا کسی نتواند از همین‌جا خودش
+                                            // را از این صفحه بیرون بیندازد. سرور هم همین قانون را اعمال می‌کند
+                                            // (این فقط جلوگیریِ زودتر و با توضیح روشن‌تر است، نه جایگزین آن).
+                                            var lockRun = f.FormName == Safir.Shared.Constants.Pay2Forms.AdminAcl && IsEditingSelf;
+                                            if (lockRun) perm.Run = true;
                                             <tr>
-                                                <td class="p2-text-mono p2-text-sm">@l.CRT.ToString("yyyy/MM/dd HH:mm")</td>
-                                                <td>@l.FormName</td>
-                                                <td class="p2-text-center">@l.PermFlag</td>
+                                                <td>@f.Caption</td>
                                                 <td class="p2-text-center">
-                                                    @if (l.Allowed)
-                                                    {
-                                                        <span class="p2-badge-success">مجاز</span>
-                                                    }
-                                                    else
-                                                    {
-                                                        <span class="p2-badge-danger">مسدود</span>
-                                                    }
+                                                    <input type="checkbox" checked="@perm.Run" disabled="@lockRun"
+                                                           title="@(lockRun ? "برای جلوگیری از قفل‌شدن خودتان بیرون از سیستم، این مجوز روی حساب خودتان قابل حذف نیست." : "")"
+                                                           @onchange='e => SetPerm(perm, "Run", (bool)e.Value!)' />
                                                 </td>
-                                                <td class="p2-text-center p2-text-mono p2-text-sm">@l.Ip</td>
+                                                <td class="p2-text-center">
+                                                    <input type="checkbox" checked="@perm.See"
+                                                           @onchange='e => SetPerm(perm, "See", (bool)e.Value!)' />
+                                                </td>
+                                                <td class="p2-text-center">
+                                                    <input type="checkbox" checked="@perm.Inp"
+                                                           @onchange='e => SetPerm(perm, "Inp", (bool)e.Value!)' />
+                                                </td>
+                                                <td class="p2-text-center">
+                                                    <input type="checkbox" checked="@perm.Upd"
+                                                           @onchange='e => SetPerm(perm, "Upd", (bool)e.Value!)' />
+                                                </td>
+                                                <td class="p2-text-center">
+                                                    <input type="checkbox" checked="@perm.Del"
+                                                           @onchange='e => SetPerm(perm, "Del", (bool)e.Value!)' />
+                                                </td>
                                             </tr>
                                         }
                                     </tbody>
                                 </table>
                             </div>
                         }
-                    }
+
+                        @* ── بخش ۲: عملیات حساس ───────────────────────────── *@
+                        @if (_section == "actions")
+                        {
+                            <div class="pay2-table-responsive p2-mt-16">
+                                <table class="p2-table">
+                                    <thead>
+                                        <tr>
+                                            <th>عملیات</th>
+                                            <th class="p2-text-center">مجاز است</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @foreach (var f in _forms.Where(x => x.IsAction == 1))
+                                        {
+                                            var perm = GetOrCreatePerm(f.FormName, f.Caption);
+                                            <tr>
+                                                <td>@f.Caption</td>
+                                                <td class="p2-text-center">
+                                                    <input type="checkbox" checked="@perm.Run"
+                                                           @onchange='e => SetPerm(perm, "Run", (bool)e.Value!)' />
+                                                </td>
+                                            </tr>
+                                        }
+                                    </tbody>
+                                </table>
+                            </div>
+                        }
+
+                        @* ── بخش ۳: کارگاه‌های مجاز ───────────────────────── *@
+                        @if (_section == "workshops")
+                        {
+                            <div class="p2-sub-card">
+                                <label class="pay2-wpf-checkbox-box">
+                                    <input type="checkbox" checked="@AllWorkshopsSelected"
+                                           @onchange="e => ToggleAllWorkshops((bool)e.Value!)" />
+                                    <span class="pay2-wpf-checkbox-label">انتخاب همه کارگاه‌ها</span>
+                                </label>
+                            </div>
+
+                            @if (!_workshops.Any())
+                            {
+                                <div class="p2-empty-state">
+                                    <i class="bi bi-building"></i>
+                                    <h4>کارگاهی تعریف نشده است</h4>
+                                </div>
+                            }
+                            else
+                            {
+                                <div class="form-grid-3 p2-mt-16">
+                                    @foreach (var ws in _workshops)
+                                    {
+                                        <label class="pay2-wpf-checkbox-box">
+                                            <input type="checkbox" checked="@IsWorkshopSelected(ws.WS_ID)"
+                                                   @onchange="e => SetWorkshop(ws.WS_ID, (bool)e.Value!)" />
+                                            <span class="pay2-wpf-checkbox-label">@ws.WS_NAME</span>
+                                        </label>
+                                    }
+                                </div>
+                            }
+                        }
+
+                        @* ── بخش ۴: سابقه دسترسی ─────────────────────────── *@
+                        @if (_section == "audit")
+                        {
+                            <div class="p2-table-toolbar p2-mt-16">
+                                <span class="p2-text-muted p2-text-sm">
+                                    تلاش‌های مجاز و مسدودشده‌ی این کاربر روی بخش حقوق و دستمزد
+                                </span>
+                                <button class="btn-outline-pay2 p2-btn-sm" @onclick="LoadAudit">
+                                    <i class="bi bi-arrow-clockwise"></i>
+                                    <span>به‌روزرسانی</span>
+                                </button>
+                            </div>
+
+                            @if (!_logs.Any())
+                            {
+                                <div class="p2-empty-state">
+                                    <i class="bi bi-clock-history"></i>
+                                    <h4>سابقه‌ای ثبت نشده</h4>
+                                    <p>دکمه «به‌روزرسانی» را بزنید تا سابقه خوانده شود.</p>
+                                </div>
+                            }
+                            else
+                            {
+                                <div class="pay2-table-responsive">
+                                    <table class="p2-table">
+                                        <thead>
+                                            <tr>
+                                                <th>تاریخ و زمان</th>
+                                                <th>فرم / بخش</th>
+                                                <th class="p2-text-center">سطح دسترسی</th>
+                                                <th>توضیحات عملیات</th>
+                                                <th class="p2-text-center">وضعیت</th>
+                                                <th class="p2-text-center">IP</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            @foreach (var l in _logs)
+                                            {
+                                                <tr>
+                                                    <td class="p2-text-mono p2-text-sm">@FormatPersianDateTime(l.CRT)</td>
+                                                    <td style="font-weight: 600;">@(string.IsNullOrWhiteSpace(l.FormCaption) ? l.FormName : l.FormCaption)</td>
+                                                    <td class="p2-text-center">
+                                                        <span class="p2-badge-neutral">@l.PermFlagFa</span>
+                                                    </td>
+                                                    <td class="p2-text-sm p2-text-muted">@l.Details</td>
+                                                    <td class="p2-text-center">
+                                                        @if (l.Allowed)
+                                                        {
+                                                            <span class="p2-badge-success">مجاز</span>
+                                                        }
+                                                        else
+                                                        {
+                                                            <span class="p2-badge-danger">مسدود</span>
+                                                        }
+                                                    </td>
+                                                    <td class="p2-text-center p2-text-mono p2-text-sm">@(l.Ip == "::1" ? "127.0.0.1" : l.Ip)</td>
+                                                </tr>
+                                            }
+                                        </tbody>
+                                    </table>
+                                </div>
+                            }
+                        }
 
                     </div>
                 </div>
@@ -460,10 +464,21 @@
         _isLoadingUserAccess = true;
         StateHasChanged();
 
+        var startTime = DateTime.UtcNow;
+
         try
         {
             var res = await Http.GetFromJsonAsync<Safir.Shared.Models.Permissions.Pay2AccessDto>(
                 $"api/pay2/access/user/{user.UserId}", token);
+
+            if (token.IsCancellationRequested || myVersion != _selectUserVersion)
+                return;
+
+            var elapsedMs = (DateTime.UtcNow - startTime).TotalMilliseconds;
+            if (elapsedMs < 120)
+            {
+                await Task.Delay(120 - (int)elapsedMs, token);
+            }
 
             if (token.IsCancellationRequested || myVersion != _selectUserVersion)
                 return;
@@ -663,6 +678,7 @@
         public int UserCo { get; set; }
         public string? UserName { get; set; }
         public string? FormName { get; set; }
+        public string? FormCaption { get; set; }
         public string? PermFlag { get; set; }
         public int? WsId { get; set; }
         public string? EntityKey { get; set; }
@@ -672,6 +688,33 @@
         public string? Ip { get; set; }
         public string? Details { get; set; }
         public DateTime CRT { get; set; }
+
+        public string PermFlagFa => PermFlag switch
+        {
+            "Run" => "اجرا / ورود",
+            "See" => "مشاهده",
+            "Inp" => "ایجاد",
+            "Upd" => "ویرایش",
+            "Del" => "حذف",
+            _ => PermFlag ?? "—"
+        };
+    }
+
+    private static string FormatPersianDateTime(DateTime dt)
+    {
+        if (dt == default || dt == DateTime.MinValue) return "—";
+        try
+        {
+            var pc = new System.Globalization.PersianCalendar();
+            int year = pc.GetYear(dt);
+            int month = pc.GetMonth(dt);
+            int day = pc.GetDayOfMonth(dt);
+            return $"{year:0000}/{month:00}/{day:00} {dt:HH:mm}";
+        }
+        catch
+        {
+            return dt.ToString("yyyy/MM/dd HH:mm");
+        }
     }
 
     /// <summary>

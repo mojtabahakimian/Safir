@@ -282,8 +282,28 @@ VALUES (@currentUserCo, 'PAY2_ADMIN_ACL', 'Run', 1, 'Updated ACL for user ' + CA
         public async Task<IActionResult> GetAuditLogs([FromQuery] int userCo, [FromQuery] int page = 1)
         {
             int offset = (page - 1) * 50;
-            string sql = "SELECT * FROM dbo.PAY2_SEC_AUDIT WHERE USERCO = @userCo ORDER BY CRT DESC OFFSET @offset ROWS FETCH NEXT 50 ROWS ONLY";
-            var logs = await _db.DoGetDataSQLAsync<Pay2AuditEntry>(sql, new { userCo, offset });
+            const string sql = @"
+SELECT
+    A.USERCO        AS UserCo,
+    A.USER_NAME     AS UserName,
+    A.FORM_NAME     AS FormName,
+    ISNULL(F.CAPTION, A.FORM_NAME) AS FormCaption,
+    A.PERM_FLAG     AS PermFlag,
+    A.WS_ID         AS WsId,
+    A.ENTITY_KEY    AS EntityKey,
+    A.ALLOWED       AS Allowed,
+    A.HTTP_METHOD   AS HttpMethod,
+    A.PATH          AS Path,
+    A.IP            AS Ip,
+    A.DETAILS       AS Details,
+    A.CRT           AS CRT
+FROM dbo.PAY2_SEC_AUDIT A
+LEFT JOIN dbo.TFORMS F ON F.FORMNAME = A.FORM_NAME
+WHERE A.USERCO = @userCo
+ORDER BY A.CRT DESC
+OFFSET @offset ROWS FETCH NEXT 50 ROWS ONLY;";
+
+            var logs = await _db.DoGetDataSQLAsync<dynamic>(sql, new { userCo, offset });
             return Ok(logs);
         }
     }
