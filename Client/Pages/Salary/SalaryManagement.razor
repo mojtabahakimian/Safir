@@ -112,7 +112,7 @@
 }
 else
 {
-    @if (!Pay2Access.Access.AclEnforced)
+    @if (Pay2Access.IsLoaded && !Pay2Access.Access.AclEnforced)
     {
         <MudAlert Severity="Severity.Warning" Variant="Variant.Filled" ShowCloseIcon="true" Class="my-2 mx-4">
             کنترل دسترسی حقوق و دستمزد غیرفعال است — همه کاربران به تمام بخش‌ها دسترسی دارند.

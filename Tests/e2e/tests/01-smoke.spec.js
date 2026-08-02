@@ -63,6 +63,45 @@ test.describe('بالا آمدن برنامه', () => {
     // یا وارد شده و کار می‌کند، یا پیام روشن فارسی می‌دهد — نه صفحه‌ی سفید.
     expect(body).toMatch(/سفیر/);
   });
+
+  test('هشدار غیرفعال بودن ACL پیش از دریافت وضعیت دسترسی نمایش داده نمی‌شود', async ({ page }) => {
+    // توکن فقط در کلاینت parse می‌شود؛ پاسخ endpoint دسترسی را خود تست کنترل می‌کند.
+    const payload = Buffer.from(JSON.stringify({ exp: 4102444800, IDD: '9001' }))
+      .toString('base64url');
+    const token = `eyJhbGciOiJub25lIiwidHlwIjoiSldUIn0.${payload}.test`;
+    await page.addInitScript(value => localStorage.setItem('authToken', JSON.stringify(value)), token);
+
+    let releaseAccess;
+    const accessGate = new Promise(resolve => { releaseAccess = resolve; });
+    let markRequested;
+    const accessRequested = new Promise(resolve => { markRequested = resolve; });
+
+    await page.route('**/api/pay2/access/me', async route => {
+      markRequested();
+      await accessGate;
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          userCo: 9001,
+          aclEnforced: false,
+          wsScopeEnforced: true,
+          forms: [],
+          allowedWorkshopIds: [],
+        }),
+      });
+    });
+
+    await page.goto('/salary/manage', { waitUntil: 'domcontentloaded' });
+    await accessRequested;
+
+    const warning = page.getByText('کنترل دسترسی حقوق و دستمزد غیرفعال است');
+    await expect(warning, 'وضعیت پیش‌فرض DTO نباید به‌عنوان نتیجه واقعی نمایش داده شود')
+      .toHaveCount(0);
+
+    releaseAccess();
+    await expect(warning).toBeVisible({ timeout: 60_000 });
+  });
 });
 
 test.describe('کنترل دسترسی در سطح API', () => {

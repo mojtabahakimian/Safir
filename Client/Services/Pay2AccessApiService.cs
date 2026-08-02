@@ -11,6 +11,7 @@ namespace Safir.Client.Services
         private Pay2AccessDto? _access;
 
         public Pay2AccessDto Access => _access ?? new Pay2AccessDto();
+        public bool IsLoaded => _access != null;
 
         public Pay2AccessApiService(HttpClient http)
         {
