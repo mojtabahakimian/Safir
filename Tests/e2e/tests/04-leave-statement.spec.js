@@ -123,6 +123,20 @@ test('انتقال قانونی، کسر تعطیلی و مرخصی ساعتی �
   expect(hourly.totalDeductedMinutes).toBe(90);
 });
 
+test('نبود ردیف مانده، استحقاق سالانه را به اشتباه صفر نمی‌کند', async ({ request }) => {
+  const yearWithoutBalance = PREVIOUS_YEAR - 1;
+  const response = await request.get(
+    `/api/pay2/employees/${ctx.empId}/leave-statement?year=${yearWithoutBalance}`,
+    { headers: { Authorization: `Bearer ${ctx.adminToken}` } });
+  expect(response.ok(), await response.text()).toBeTruthy();
+  const statement = await response.json();
+
+  expect(statement.entitlementMin).toBe(11440); // ۲۶ روز × ۴۴۰ دقیقه از تنظیمات فعال
+  expect(statement.usedMin).toBe(0);
+  expect(statement.carriedInMin).toBe(0);
+  expect(statement.balanceMin).toBe(11440);
+});
+
 test('کارمند فقط صورت‌حساب پرونده متصل به حساب خودش را می‌بیند', async ({ request }) => {
   const response = await request.get(`/api/pay2/employees/me/leave-statement?year=${YEAR}`, {
     headers: { Authorization: `Bearer ${ctx.selfToken}` },

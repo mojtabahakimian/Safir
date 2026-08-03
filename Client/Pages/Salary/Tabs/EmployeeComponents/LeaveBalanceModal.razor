@@ -1,6 +1,7 @@
 ﻿@using Safir.Shared.Models.Salary
 @using Safir.Shared.Models
 @inject Safir.Client.Services.Pay2EmployeeApiService EmployeeApi
+@inject Safir.Client.Services.Pay2AccessApiService Pay2Access
 @inject ISnackbar Snackbar
 @inject MudBlazor.IDialogService DialogService
 @inject Microsoft.JSInterop.IJSRuntime JS
@@ -115,8 +116,10 @@
                                     <td class="p2-text-mono" style="text-align:center;">@bal.BALANCE_MIN.ToString("N0")</td>
                                     <td class="p2-text-mono" style="text-align:center; font-weight:bold; color:var(--p2-success-text);">@bal.BALANCE_DAYS.ToString("0.##")</td>
                                     <td style="text-align:center; min-width: 150px;">
-                                        <button class="btn-ghost-pay2 p2-text-primary" title="صورت‌حساب شفاف مرخصی"
-                                                disabled="@(_downloadingYear.HasValue)" @onclick="() => DownloadStatement(bal)">
+                                        <button class="btn-ghost-pay2 p2-text-primary"
+                                                disabled="@(_downloadingYear.HasValue || !CanDownloadStatement)"
+                                                title="@(CanDownloadStatement ? "صورت‌حساب شفاف مرخصی" : "دسترسی گزارش‌گیری یا خروجی PDF را ندارید.")"
+                                                @onclick="() => DownloadStatement(bal)">
                                             @if (_downloadingYear == bal.YEAR)
                                             {
                                                 <span class="p2-spinner"></span>
@@ -171,6 +174,9 @@
 
     bool IsSaving = false;
     bool IsEditing = false;
+    bool CanDownloadStatement =>
+        Pay2Access.CanSee(Safir.Shared.Constants.Pay2Forms.Reports) &&
+        Pay2Access.CanRun(Safir.Shared.Constants.Pay2Forms.ActExport);
     short? _downloadingYear;
     private int _lastProcessedEmpId = -1;
     private bool _lastOpenState = false;

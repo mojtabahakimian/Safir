@@ -908,10 +908,10 @@ namespace Safir.Server.Controllers
                 SELECT E.EMP_CODE AS EmployeeCode,
                        LTRIM(RTRIM(E.FIRST_NAME + N' ' + E.LAST_NAME)) AS EmployeeName,
                        @year AS [Year],
-                       ISNULL(LB.ENTITLEMENT_MIN, 0) AS EntitlementMin,
+                       ISNULL(LB.ENTITLEMENT_MIN, @defaultEntitlementMin) AS EntitlementMin,
                        ISNULL(LB.CARRIED_IN_MIN, 0) AS CarriedInMin,
                        ISNULL(LB.USED_MIN, 0) AS UsedMin,
-                       ISNULL(LB.ENTITLEMENT_MIN, 0) + ISNULL(LB.CARRIED_IN_MIN, 0) - ISNULL(LB.USED_MIN, 0) AS BalanceMin
+                       ISNULL(LB.ENTITLEMENT_MIN, @defaultEntitlementMin) + ISNULL(LB.CARRIED_IN_MIN, 0) - ISNULL(LB.USED_MIN, 0) AS BalanceMin
                 FROM dbo.PAY2_EMPLOYEE E
                 LEFT JOIN dbo.PAY2_LEAVE_BAL LB ON LB.EMP_ID = E.EMP_ID AND LB.[YEAR] = @year
                 WHERE E.EMP_ID = @empId";
@@ -919,7 +919,7 @@ namespace Safir.Server.Controllers
             const string configSql = @"
                 SELECT CFG_KEY, CFG_VALUE
                 FROM dbo.PAY2_CONFIG
-                WHERE CFG_KEY IN ('LEAVE_MINS_PER_DAY', 'LEAVE_CARRYOVER_MAX')";
+                WHERE CFG_KEY IN ('LEAVE_MINS_PER_DAY', 'LEAVE_CARRYOVER_MAX', 'LEAVE_ANNUAL_DAYS')";
             const string historySql = @"
                 SELECT START_DATE, END_DATE, REQ_DAYS, REQ_HOURS, REQ_MINUTES, DESCRIPTION,
                        CAST(REQ_DAYS * @leaveMinsPerDay + REQ_HOURS * 60 + REQ_MINUTES AS INT) AS TotalDeductedMinutes
@@ -937,14 +937,18 @@ namespace Safir.Server.Controllers
 
             return await _db.ExecuteInTransactionAsync<Pay2LeaveStatementDto?>(async (conn, tran) =>
             {
+                var config = (await conn.QueryAsync<Pay2ConfigValueDto>(configSql, transaction: tran))
+                    .ToDictionary(x => x.CFG_KEY, x => x.CFG_VALUE, StringComparer.OrdinalIgnoreCase);
+                var leaveMinsPerDay = ParsePositiveConfig(config, "LEAVE_MINS_PER_DAY", 440);
+                var leaveAnnualDays = ParsePositiveConfig(config, "LEAVE_ANNUAL_DAYS", 26);
+                var defaultEntitlementMin = (int)Math.Min((long)leaveMinsPerDay * leaveAnnualDays, int.MaxValue);
+
                 var statement = await conn.QuerySingleOrDefaultAsync<Pay2LeaveStatementDto>(
-                    statementSql, new { empId, year }, tran);
+                    statementSql, new { empId, year, defaultEntitlementMin }, tran);
                 if (statement == null)
                     return null;
 
-                var config = (await conn.QueryAsync<Pay2ConfigValueDto>(configSql, transaction: tran))
-                    .ToDictionary(x => x.CFG_KEY, x => x.CFG_VALUE, StringComparer.OrdinalIgnoreCase);
-                statement.LeaveMinsPerDay = ParsePositiveConfig(config, "LEAVE_MINS_PER_DAY", 440);
+                statement.LeaveMinsPerDay = leaveMinsPerDay;
                 statement.LeaveCarryoverMax = ParseNonNegativeConfig(config, "LEAVE_CARRYOVER_MAX", 9);
 
                 statement.History = (await conn.QueryAsync<Pay2LeaveStatementLineDto>(
