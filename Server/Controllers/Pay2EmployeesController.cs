@@ -804,6 +804,191 @@ namespace Safir.Server.Controllers
             return Ok(await _db.DoGetDataSQLAsync<Pay2LeaveBalDto>(sql, new { empId }));
         }
 
+        [HttpGet("{empId:int}/leave-statement")]
+        [Pay2Authorize(Pay2Forms.Employee, Pay2Perm.See)]
+        [Pay2Authorize(Pay2Forms.Reports, Pay2Perm.See)]
+        public async Task<ActionResult<Pay2LeaveStatementDto>> GetLeaveStatement(
+            int empId, [FromQuery] int year, [FromServices] Pay2ScopeResolver scopeResolver)
+        {
+            if (year is < 1200 or > 1600)
+                return BadRequest("سال گزارش مرخصی معتبر نیست.");
+
+            await scopeResolver.EnsureWorkshopAsync(
+                int.Parse(User.FindFirst(BaseknowClaimTypes.IDD)?.Value ?? "0"),
+                Pay2ScopeKind.Employee,
+                empId);
+
+            var statement = await BuildLeaveStatementAsync(empId, year);
+            return statement == null
+                ? NotFound("پرسنل مورد نظر یافت نشد.")
+                : Ok(statement);
+        }
+
+        [HttpGet("{empId:int}/leave-statement/pdf")]
+        [Pay2Authorize(Pay2Forms.Employee, Pay2Perm.See)]
+        [Pay2Authorize(Pay2Forms.Reports, Pay2Perm.See)]
+        [Pay2Authorize(Pay2Forms.ActExport, Pay2Perm.Run)]
+        public async Task<IActionResult> GetLeaveStatementPdf(
+            int empId, [FromQuery] int year, [FromServices] Pay2ScopeResolver scopeResolver)
+        {
+            if (year is < 1200 or > 1600)
+                return BadRequest("سال گزارش مرخصی معتبر نیست.");
+
+            await scopeResolver.EnsureWorkshopAsync(
+                int.Parse(User.FindFirst(BaseknowClaimTypes.IDD)?.Value ?? "0"),
+                Pay2ScopeKind.Employee,
+                empId);
+
+            var statement = await BuildLeaveStatementAsync(empId, year);
+            if (statement == null)
+                return NotFound("پرسنل مورد نظر یافت نشد.");
+
+            var pdf = new Safir.Server.Reports.LeaveStatementDocument(statement).GeneratePdf();
+            return File(pdf, "application/pdf", $"LeaveStatement_{statement.EmployeeCode}_{year}.pdf");
+        }
+
+        [HttpGet("me/leave-statement")]
+        public async Task<IActionResult> GetMyLeaveStatement([FromQuery] int year)
+        {
+            if (year is < 1200 or > 1600)
+                return BadRequest("سال گزارش مرخصی معتبر نیست.");
+
+            var resolution = await ResolveCurrentEmployeeAsync();
+            if (resolution.Error != null)
+                return resolution.Error;
+
+            var statement = await BuildLeaveStatementAsync(resolution.EmployeeId!.Value, year);
+            return statement == null
+                ? NotFound("پرسنل متناظر با کاربر جاری یافت نشد.")
+                : Ok(statement);
+        }
+
+        [HttpGet("me/leave-statement/pdf")]
+        public async Task<IActionResult> GetMyLeaveStatementPdf([FromQuery] int year)
+        {
+            if (year is < 1200 or > 1600)
+                return BadRequest("سال گزارش مرخصی معتبر نیست.");
+
+            var resolution = await ResolveCurrentEmployeeAsync();
+            if (resolution.Error != null)
+                return resolution.Error;
+
+            var statement = await BuildLeaveStatementAsync(resolution.EmployeeId!.Value, year);
+            if (statement == null)
+                return NotFound("پرسنل متناظر با کاربر جاری یافت نشد.");
+
+            var pdf = new Safir.Server.Reports.LeaveStatementDocument(statement).GeneratePdf();
+            return File(pdf, "application/pdf", $"LeaveStatement_{statement.EmployeeCode}_{year}.pdf");
+        }
+
+        private async Task<(int? EmployeeId, IActionResult? Error)> ResolveCurrentEmployeeAsync()
+        {
+            if (!int.TryParse(User.FindFirst(BaseknowClaimTypes.IDD)?.Value, out var userCo))
+                return (null, Unauthorized());
+
+            const string sql = @"
+                SELECT E.EMP_ID
+                FROM dbo.SALA_DTL U
+                INNER JOIN dbo.PAY2_EMPLOYEE E
+                    ON NULLIF(LTRIM(RTRIM(U.HES)), N'') = NULLIF(LTRIM(RTRIM(E.ACC_T)), N'')
+                WHERE U.IDD = @userCo";
+            var matches = (await _db.DoGetDataSQLAsync<int>(sql, new { userCo })).Distinct().Take(2).ToList();
+
+            if (matches.Count == 0)
+                return (null, NotFound("حساب کاربری شما هنوز به پرونده پرسنلی PAY2 متصل نشده است."));
+            if (matches.Count > 1)
+                return (null, Conflict("کد حساب کاربری به بیش از یک پرونده پرسنلی متصل است؛ لطفاً با مدیر سیستم تماس بگیرید."));
+
+            return (matches[0], null);
+        }
+
+        private async Task<Pay2LeaveStatementDto?> BuildLeaveStatementAsync(int empId, int year)
+        {
+            const string statementSql = @"
+                SELECT E.EMP_CODE AS EmployeeCode,
+                       LTRIM(RTRIM(E.FIRST_NAME + N' ' + E.LAST_NAME)) AS EmployeeName,
+                       @year AS [Year],
+                       ISNULL(LB.ENTITLEMENT_MIN, 0) AS EntitlementMin,
+                       ISNULL(LB.CARRIED_IN_MIN, 0) AS CarriedInMin,
+                       ISNULL(LB.USED_MIN, 0) AS UsedMin,
+                       ISNULL(LB.ENTITLEMENT_MIN, 0) + ISNULL(LB.CARRIED_IN_MIN, 0) - ISNULL(LB.USED_MIN, 0) AS BalanceMin
+                FROM dbo.PAY2_EMPLOYEE E
+                LEFT JOIN dbo.PAY2_LEAVE_BAL LB ON LB.EMP_ID = E.EMP_ID AND LB.[YEAR] = @year
+                WHERE E.EMP_ID = @empId";
+
+            const string configSql = @"
+                SELECT CFG_KEY, CFG_VALUE
+                FROM dbo.PAY2_CONFIG
+                WHERE CFG_KEY IN ('LEAVE_MINS_PER_DAY', 'LEAVE_CARRYOVER_MAX')";
+            const string historySql = @"
+                SELECT START_DATE, END_DATE, REQ_DAYS, REQ_HOURS, REQ_MINUTES, DESCRIPTION,
+                       CAST(REQ_DAYS * @leaveMinsPerDay + REQ_HOURS * 60 + REQ_MINUTES AS INT) AS TotalDeductedMinutes
+                FROM dbo.PAY2_LEAVE
+                WHERE EMP_ID = @empId
+                  AND START_DATE / 10000 = @year
+                  AND LEV_TYPE IN (1, 6)
+                  AND STATUS = 4
+                ORDER BY START_DATE, LEV_ID";
+
+            const string previousBalanceSql = @"
+                SELECT ISNULL(ENTITLEMENT_MIN + CARRIED_IN_MIN - USED_MIN, 0)
+                FROM dbo.PAY2_LEAVE_BAL
+                WHERE EMP_ID = @empId AND [YEAR] = @previousYear";
+
+            return await _db.ExecuteInTransactionAsync<Pay2LeaveStatementDto?>(async (conn, tran) =>
+            {
+                var statement = await conn.QuerySingleOrDefaultAsync<Pay2LeaveStatementDto>(
+                    statementSql, new { empId, year }, tran);
+                if (statement == null)
+                    return null;
+
+                var config = (await conn.QueryAsync<Pay2ConfigValueDto>(configSql, transaction: tran))
+                    .ToDictionary(x => x.CFG_KEY, x => x.CFG_VALUE, StringComparer.OrdinalIgnoreCase);
+                statement.LeaveMinsPerDay = ParsePositiveConfig(config, "LEAVE_MINS_PER_DAY", 440);
+                statement.LeaveCarryoverMax = ParseNonNegativeConfig(config, "LEAVE_CARRYOVER_MAX", 9);
+
+                statement.History = (await conn.QueryAsync<Pay2LeaveStatementLineDto>(
+                    historySql, new { empId, year, leaveMinsPerDay = statement.LeaveMinsPerDay }, tran)).ToList();
+                statement.HistoryRequestedMin = statement.History.Sum(x => x.TotalDeductedMinutes);
+
+                statement.PreviousYearBalanceMin = await conn.QuerySingleOrDefaultAsync<int?>(
+                    previousBalanceSql, new { empId, previousYear = year - 1 }, tran) ?? 0;
+                statement.CarryoverLimitMin = (int)Math.Min(
+                    (long)statement.LeaveCarryoverMax * statement.LeaveMinsPerDay, int.MaxValue);
+                statement.EligibleCarryoverMin = Math.Min(
+                    Math.Max(statement.PreviousYearBalanceMin, 0), statement.CarryoverLimitMin);
+                statement.ExpiredCarryoverMin = Math.Max(
+                    statement.PreviousYearBalanceMin - statement.CarriedInMin, 0);
+
+                statement.PrintDate = $"{FormatShamsiDate(Safir.Shared.Utility.CL_Tarikh.GetCurrentPersianDateAsLong())} - {DateTime.Now:HH:mm:ss}";
+                return statement;
+            }, IsolationLevel.RepeatableRead);
+        }
+
+        private static int ParsePositiveConfig(
+            IReadOnlyDictionary<string, string> config, string key, int fallback) =>
+            config.TryGetValue(key, out var value) && int.TryParse(value, out var parsed) && parsed > 0
+                ? parsed
+                : fallback;
+
+        private static int ParseNonNegativeConfig(
+            IReadOnlyDictionary<string, string> config, string key, int fallback) =>
+            config.TryGetValue(key, out var value) && int.TryParse(value, out var parsed) && parsed >= 0
+                ? parsed
+                : fallback;
+
+        private static string FormatShamsiDate(long date)
+        {
+            var value = date.ToString("00000000");
+            return $"{value[..4]}/{value.Substring(4, 2)}/{value.Substring(6, 2)}";
+        }
+
+        private sealed class Pay2ConfigValueDto
+        {
+            public string CFG_KEY { get; set; } = "";
+            public string CFG_VALUE { get; set; } = "";
+        }
+
         [HttpPost("leave-balance/save")]
         [Pay2Authorize(Pay2Forms.Employee, Pay2Perm.Upd)]
         public async Task<IActionResult> SaveLeaveBalance([FromBody] Pay2LeaveBalDto bal)
