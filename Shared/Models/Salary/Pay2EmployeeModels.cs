@@ -121,6 +121,47 @@
         public int BALANCE_MIN => ENTITLEMENT_MIN + CARRIED_IN_MIN - USED_MIN;
         public decimal BALANCE_DAYS => Math.Round((decimal)BALANCE_MIN / 440m, 2);
     }
+
+    public class Pay2LeaveStatementLineDto
+    {
+        public long START_DATE { get; set; }
+        public long END_DATE { get; set; }
+        public short REQ_DAYS { get; set; }
+        public byte REQ_HOURS { get; set; }
+        public byte REQ_MINUTES { get; set; }
+        public string? DESCRIPTION { get; set; }
+        public int TotalDeductedMinutes { get; set; }
+    }
+
+    public class Pay2LeaveStatementDto
+    {
+        public string EmployeeName { get; set; } = "";
+        public string EmployeeCode { get; set; } = "";
+        public int Year { get; set; }
+        public string PrintDate { get; set; } = "";
+
+        // تصویر تنظیمات فعال در لحظه تولید گزارش
+        public int LeaveMinsPerDay { get; set; }
+        public int LeaveCarryoverMax { get; set; }
+
+        // تمام مانده‌ها بر حسب دقیقه هستند
+        public int EntitlementMin { get; set; }
+        public int CarriedInMin { get; set; }
+        public int UsedMin { get; set; }
+        public int BalanceMin { get; set; }
+
+        // شفاف‌سازی انتقال از سال قبل
+        public int PreviousYearBalanceMin { get; set; }
+        public int CarryoverLimitMin { get; set; }
+        public int EligibleCarryoverMin { get; set; }
+        public int ExpiredCarryoverMin { get; set; }
+
+        // کنترل تطبیق تاریخچه درخواست‌ها با مصرف ثبت‌شده در مانده
+        public int HistoryRequestedMin { get; set; }
+        public int HistoryToBalanceDifferenceMin => UsedMin - HistoryRequestedMin;
+
+        public List<Pay2LeaveStatementLineDto> History { get; set; } = new();
+    }
     public class Pay2LoanDto
     {
         public int LOAN_ID { get; set; }

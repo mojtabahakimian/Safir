@@ -96,6 +96,8 @@ public class AclEndToEndTests : IClassFixture<AclEndToEndTests.Factory>
     [InlineData("/api/pay2/access/me")]
     [InlineData("/api/pay2/workshops")]
     [InlineData("/api/pay2/itemdefs")]
+    [InlineData("/api/pay2/employees/me/leave-statement?year=1405")]
+    [InlineData("/api/pay2/employees/me/leave-statement/pdf?year=1405")]
     public async Task Anonymous_requests_are_rejected(string path)
     {
         var res = await _factory.CreateClient().GetAsync(path);

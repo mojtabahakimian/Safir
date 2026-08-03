@@ -134,6 +134,31 @@ namespace Safir.Client.Services
             return await _http.GetFromJsonAsync<List<Pay2LeaveBalDto>>($"api/pay2/employees/{empId}/leave-balances") ?? new();
         }
 
+        public async Task<byte[]> DownloadLeaveStatementPdfAsync(int empId, int year)
+        {
+            var response = await _http.GetAsync($"api/pay2/employees/{empId}/leave-statement/pdf?year={year}");
+            if (!response.IsSuccessStatusCode)
+                throw new Exception(await response.Content.ReadAsStringAsync());
+            return await response.Content.ReadAsByteArrayAsync();
+        }
+
+        public async Task<Pay2LeaveStatementDto> GetMyLeaveStatementAsync(int year)
+        {
+            var response = await _http.GetAsync($"api/pay2/employees/me/leave-statement?year={year}");
+            if (!response.IsSuccessStatusCode)
+                throw new Exception(await response.Content.ReadAsStringAsync());
+            return await response.Content.ReadFromJsonAsync<Pay2LeaveStatementDto>()
+                ?? throw new Exception("اطلاعات صورت‌حساب مرخصی دریافت نشد.");
+        }
+
+        public async Task<byte[]> DownloadMyLeaveStatementPdfAsync(int year)
+        {
+            var response = await _http.GetAsync($"api/pay2/employees/me/leave-statement/pdf?year={year}");
+            if (!response.IsSuccessStatusCode)
+                throw new Exception(await response.Content.ReadAsStringAsync());
+            return await response.Content.ReadAsByteArrayAsync();
+        }
+
         public async Task SaveLeaveBalanceAsync(Pay2LeaveBalDto bal)
         {
             var res = await _http.PostAsJsonAsync("api/pay2/employees/leave-balance/save", bal);

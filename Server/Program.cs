@@ -74,7 +74,8 @@ try
 {
     var env = app.Services.GetRequiredService<IWebHostEnvironment>();
     // <<< --- مسیر و نام فایل فونت اصلاح شد --- >>>
-    string fontPath = Path.Combine(env.ContentRootPath, "Fonts", "IRANYekanFN.ttf"); // استفاده از فونت شما
+    // نام فایل روی Linux به حروف کوچک/بزرگ حساس است.
+    string fontPath = Path.Combine(env.ContentRootPath, "Fonts", "IRANYekanFN.TTF");
 
     if (File.Exists(fontPath))
     {
