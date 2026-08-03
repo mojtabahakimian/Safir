@@ -24,6 +24,10 @@ CONTROLLER_DIR = Path("Server/Controllers")
 ALLOWLIST = {
     ("Pay2AccessController.cs", "me"):
         "هر کاربر لاگین‌کرده باید دسترسی‌های خودش را بخواند تا UI بداند چه نمایش دهد",
+    ("Pay2EmployeesController.cs", "me/leave-statement"):
+        "صورت‌حساب سلف‌سرویس فقط با نگاشت یکتای حساب جاری به PAY2_EMPLOYEE برگردانده می‌شود و empId از کاربر نمی‌گیرد",
+    ("Pay2EmployeesController.cs", "me/leave-statement/pdf"):
+        "PDF سلف‌سرویس فقط با نگاشت یکتای حساب جاری به PAY2_EMPLOYEE برگردانده می‌شود و empId از کاربر نمی‌گیرد",
 }
 
 HTTP_RE = re.compile(r'^\s*\[Http(Get|Post|Put|Delete|Patch)\((?:"([^"]*)")?')

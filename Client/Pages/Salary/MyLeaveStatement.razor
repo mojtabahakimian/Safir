@@ -1,0 +1,152 @@
+@page "/salary/my-leave-statement"
+@using Safir.Client.Pages.Salary.Tabs
+@using Safir.Shared.Models.Salary
+@inject Safir.Client.Services.Pay2EmployeeApiService EmployeeApi
+@inject Microsoft.JSInterop.IJSRuntime JS
+@inject ISnackbar Snackbar
+
+<PageTitle>صورت‌حساب مرخصی من</PageTitle>
+
+<div dir="rtl" class="pay2-page-shell pay2-leave-statement-page">
+    <div class="card-custom">
+        <div class="p2-card-header pay2-leave-statement-header">
+            <div>
+                <h1 class="pay2-leave-statement-title"><i class="bi bi-calendar2-check"></i> صورت‌حساب شفاف مرخصی من</h1>
+                <div class="p2-text-muted pay2-leave-statement-subtitle">محاسبه مانده، انتقال از سال قبل و ریز درخواست‌های نهایی</div>
+            </div>
+            <div class="pay2-leave-statement-actions">
+                <div class="form-field pay2-leave-statement-year">
+                    <label>سال</label>
+                    <Pay2NumericInput @bind-Value="YearText" MaxLength="4" Direction="ltr" Disabled="@IsBusy" />
+                </div>
+                <button class="btn-outline-pay2" disabled="@IsBusy" @onclick="LoadStatement">مشاهده</button>
+                <button class="btn-primary-pay2" disabled="@(IsBusy || Statement == null)" @onclick="DownloadPdf">
+                    @if (IsDownloading)
+                    {
+                        <span class="p2-spinner"></span>
+                    }
+                    else
+                    {
+                        <i class="bi bi-file-earmark-pdf"></i>
+                    }
+                    دریافت PDF
+                </button>
+            </div>
+        </div>
+
+        <div class="pay2-leave-statement-body">
+            @if (IsLoading)
+            {
+                <div class="p2-empty-state"><span class="p2-spinner"></span><span>در حال محاسبه صورت‌حساب...</span></div>
+            }
+            else if (!string.IsNullOrWhiteSpace(ErrorMessage))
+            {
+                <div class="p2-empty-state p2-text-danger"><i class="bi bi-exclamation-triangle"></i><span>@ErrorMessage</span></div>
+            }
+            else if (Statement != null)
+            {
+                <div class="pay2-two-panel">
+                    <div class="card-custom pay2-leave-statement-summary-card">
+                        <div class="p2-sub-card-title">مشخصات گزارش</div>
+                        <p><b>نام:</b> @Statement.EmployeeName</p>
+                        <p><b>کد پرسنلی:</b> @Statement.EmployeeCode</p>
+                        <p><b>زمان تهیه:</b> @Statement.PrintDate</p>
+                        <p><b>مبنای هر روز:</b> @Statement.LeaveMinsPerDay.ToString("N0") دقیقه</p>
+                    </div>
+                    <div class="card-custom pay2-leave-statement-summary-card pay2-leave-statement-balance-card">
+                        <div class="p2-sub-card-title">مانده قابل استفاده</div>
+                        <div class="pay2-leave-statement-balance">@Humanize(Statement.BalanceMin)</div>
+                        <div class="p2-text-muted">@Statement.BalanceMin.ToString("N0") دقیقه</div>
+                    </div>
+                </div>
+
+                <div class="pay2-table-responsive pay2-leave-statement-table">
+                    <table class="p2-table">
+                        <thead><tr><th>شرح</th><th class="p2-text-center">مقدار قابل فهم</th><th class="p2-text-center">دقیقه</th></tr></thead>
+                        <tbody>
+                            <tr><td>استحقاق امسال</td><td class="p2-text-center">@Humanize(Statement.EntitlementMin)</td><td class="p2-text-center">@Statement.EntitlementMin.ToString("N0")</td></tr>
+                            <tr><td>انتقالی از سال قبل</td><td class="p2-text-center">@Humanize(Statement.CarriedInMin)</td><td class="p2-text-center">@Statement.CarriedInMin.ToString("N0")</td></tr>
+                            <tr><td>استفاده‌شده قطعی</td><td class="p2-text-center">@Humanize(Statement.UsedMin)</td><td class="p2-text-center">@Statement.UsedMin.ToString("N0")</td></tr>
+                            <tr class="p2-text-bold"><td>مانده نهایی</td><td class="p2-text-center">@Humanize(Statement.BalanceMin)</td><td class="p2-text-center">@Statement.BalanceMin.ToString("N0")</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <div class="pay2-leave-statement-carryover-note">
+                    طبق تنظیم فعال، حداکثر <b>@Statement.LeaveCarryoverMax روز</b> قابل انتقال بوده است.
+                    از مانده سال قبل، <b>@Humanize(Statement.CarriedInMin)</b> منتقل و
+                    <b>@Humanize(Statement.ExpiredCarryoverMin)</b> منتقل نشده یا سوخت شده است.
+                </div>
+            }
+        </div>
+    </div>
+</div>
+
+@code {
+    string YearText = "";
+    Pay2LeaveStatementDto? Statement;
+    string? ErrorMessage;
+    bool IsLoading;
+    bool IsDownloading;
+    bool IsBusy => IsLoading || IsDownloading;
+
+    protected override async Task OnInitializedAsync()
+    {
+        YearText = Safir.Shared.Utility.CL_Tarikh.GetCurrentPersianDateAsLong().ToString()[..4];
+        await LoadStatement();
+    }
+
+    async Task LoadStatement()
+    {
+        if (!int.TryParse(YearText, out var year) || year is < 1200 or > 1600)
+        {
+            Snackbar.Add("سال گزارش معتبر نیست.", MudBlazor.Severity.Warning);
+            return;
+        }
+
+        IsLoading = true;
+        ErrorMessage = null;
+        try
+        {
+            Statement = await EmployeeApi.GetMyLeaveStatementAsync(year);
+        }
+        catch (Exception ex)
+        {
+            Statement = null;
+            ErrorMessage = ex.Message.Trim('"');
+        }
+        finally
+        {
+            IsLoading = false;
+        }
+    }
+
+    async Task DownloadPdf()
+    {
+        if (Statement == null) return;
+        IsDownloading = true;
+        try
+        {
+            var bytes = await EmployeeApi.DownloadMyLeaveStatementPdfAsync(Statement.Year);
+            await JS.InvokeVoidAsync("downloadFileFromBytes", $"LeaveStatement_{Statement.EmployeeCode}_{Statement.Year}.pdf", bytes);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add(ex.Message.Trim('"'), MudBlazor.Severity.Error);
+        }
+        finally
+        {
+            IsDownloading = false;
+        }
+    }
+
+    string Humanize(int minutes)
+    {
+        var perDay = Statement?.LeaveMinsPerDay > 0 ? Statement.LeaveMinsPerDay : 440;
+        var sign = minutes < 0 ? "منفی " : "";
+        var remaining = Math.Abs((long)minutes);
+        var days = remaining / perDay;
+        remaining %= perDay;
+        return $"{sign}{days} روز، {remaining / 60} ساعت و {remaining % 60} دقیقه";
+    }
+}

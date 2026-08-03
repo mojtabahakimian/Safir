@@ -91,8 +91,14 @@ fi
 sudo apt-get update -qq
 
 [[ -x /opt/mssql/bin/sqlservr ]] || sudo DEBIAN_FRONTEND=noninteractive apt-get install -y mssql-server
-[[ -f /var/opt/mssql/mssql.conf ]] || sudo env ACCEPT_EULA=Y MSSQL_PID=Developer \
-  MSSQL_SA_PASSWORD="$SA_PASSWORD" MSSQL_TCP_PORT=1433 /opt/mssql/bin/mssql-conf -n setup
+# بسته‌ی Debian ممکن است mssql.conf حداقلی را پیش از مقداردهی رمز بسازد؛
+# وجود فایل تنظیمات به‌تنهایی نشانه‌ی setup کامل نیست. master.mdf معیار واقعی است.
+if [[ ! -f /var/opt/mssql/data/master.mdf ]]; then
+  sudo env ACCEPT_EULA=Y MSSQL_PID=Developer MSSQL_SA_PASSWORD="$SA_PASSWORD" \
+    MSSQL_TCP_PORT=1433 /opt/mssql/bin/mssql-conf -n setup
+elif ! sudo grep -q '^accepteula = Y$' /var/opt/mssql/mssql.conf; then
+  sudo /opt/mssql/bin/mssql-conf set EULA accepteula Y
+fi
 
 if [[ ! -x /opt/mssql-tools18/bin/sqlcmd ]]; then
   echo "msodbcsql18 msodbcsql18/ACCEPT_EULA boolean true" | sudo debconf-set-selections
@@ -119,8 +125,10 @@ libreoffice --headless --version
 step "۴) بالا آوردن SQL Server"
 # ═══════════════════════════════════════════════════════════════════════════
 if ! pgrep -x sqlservr >/dev/null 2>&1; then
-  sudo systemctl start mssql-server 2>/dev/null \
-    || sudo -u mssql nohup /opt/mssql/bin/sqlservr >/tmp/sqlservr.log 2>&1 &
+  if ! sudo systemctl start mssql-server 2>/dev/null; then
+    sudo -u mssql env ACCEPT_EULA=Y MSSQL_PID=Developer \
+      nohup /opt/mssql/bin/sqlservr >/tmp/sqlservr.log 2>&1 &
+  fi
 fi
 for i in $(seq 1 60); do
   sqlcmd_local -d master -Q "SET NOCOUNT ON; SELECT 1;" >/dev/null 2>&1 && { echo "✅ آماده است."; break; }
@@ -137,7 +145,10 @@ BEGIN
     ALTER DATABASE [$DB_NAME] SET SINGLE_USER WITH ROLLBACK IMMEDIATE;
     DROP DATABASE [$DB_NAME];
 END;
-CREATE DATABASE [$DB_NAME];"
+-- دیتابیس مشتریان قدیمی معمولاً Arabic_CI_AS است، در حالی که tempdb از
+-- collation پیش‌فرض سرور استفاده می‌کند. این اختلاف عمدی است تا تعارض‌های
+-- collation در رویه‌هایی که جدول موقت دارند واقعاً در E2E دیده شوند.
+CREATE DATABASE [$DB_NAME] COLLATE Arabic_CI_AS;"
 
 # ═══════════════════════════════════════════════════════════════════════════
 step "۶) وابستگی‌های قدیمی (بدون تداخل با schema.sql)"
@@ -224,7 +235,22 @@ sqlcmd_local -d "$DB_NAME" -i "$DB_DIR/pay2_schema_catchup.sql"
 sqlcmd_local -d "$DB_NAME" -i "$DB_DIR/pay2_runtime_procedures.sql"
 
 # ═══════════════════════════════════════════════════════════════════════════
-step "۹) بررسی ساختار PAY2"
+step "۹) داده نمونه و کاربران آزمایشی"
+# ═══════════════════════════════════════════════════════════════════════════
+sqlcmd_local -d "$DB_NAME" -i "$DB_DIR/pay2_seed.sql"
+
+# مهاجرت ACL باید *بعد از* seed اجرا شود.
+# علتش: pay2_seed.sql با DELETE کل PAY2_CONFIG را خالی می‌کند و ۳۸ ردیفِ
+# خودش را می‌ریزد که هیچ کلید ACL ای ندارد. اگر مهاجرت جلوتر اجرا شود،
+# seed کلیدهای ACL_ENFORCE و ACL_WS_SCOPE_ENFORCE را پاک می‌کند و کنترل
+# دسترسی خاموش می‌ماند — بدون هیچ خطایی.
+# این ترتیب با دنیای واقعی هم می‌خواند: مشتری دیتابیس دارد، مهاجرت رویش
+# اعمال می‌شود.
+sqlcmd_local -d "$DB_NAME" -i "$DB_DIR/pay2_acl_migration.sql"
+sqlcmd_local -d "$DB_NAME" -i "$DB_DIR/test_auth_and_acl_users.sql"
+
+# ═══════════════════════════════════════════════════════════════════════════
+step "۱۰) بررسی ساختار PAY2"
 # ═══════════════════════════════════════════════════════════════════════════
 sqlcmd_local -d "$DB_NAME" -Q "
 SET NOCOUNT ON;
@@ -241,21 +267,6 @@ IF (SELECT COUNT(*) FROM dbo.TFORMS WHERE FORMNAME LIKE N'PAY2[_]%') < 20
 SELECT (SELECT COUNT(*) FROM sys.tables      WHERE name LIKE N'PAY2[_]%')                AS Pay2Tables,
        (SELECT COUNT(*) FROM sys.procedures  WHERE name LIKE N'SP_PAY2[_]%')             AS Pay2Procs,
        (SELECT COUNT(*) FROM dbo.TFORMS      WHERE FORMNAME LIKE N'PAY2[_]%')            AS Pay2Forms;"
-
-# ═══════════════════════════════════════════════════════════════════════════
-step "۱۰) داده نمونه و کاربران آزمایشی"
-# ═══════════════════════════════════════════════════════════════════════════
-sqlcmd_local -d "$DB_NAME" -i "$DB_DIR/pay2_seed.sql"
-
-# مهاجرت ACL باید *بعد از* seed اجرا شود.
-# علتش: pay2_seed.sql با DELETE کل PAY2_CONFIG را خالی می‌کند و ۳۸ ردیفِ
-# خودش را می‌ریزد که هیچ کلید ACL ای ندارد. اگر مهاجرت جلوتر اجرا شود،
-# seed کلیدهای ACL_ENFORCE و ACL_WS_SCOPE_ENFORCE را پاک می‌کند و کنترل
-# دسترسی خاموش می‌ماند — بدون هیچ خطایی.
-# این ترتیب با دنیای واقعی هم می‌خواند: مشتری دیتابیس دارد، مهاجرت رویش
-# اعمال می‌شود.
-sqlcmd_local -d "$DB_NAME" -i "$DB_DIR/pay2_acl_migration.sql"
-sqlcmd_local -d "$DB_NAME" -i "$DB_DIR/test_auth_and_acl_users.sql"
 
 # سند تفصیلی کامل. بعد از seed اجرا می‌شود چون نگاشت «قلم ← تفصیلیِ حساب
 # هزینه» روی ردیف‌های PAY2_ITEM_DEF می‌نشیند و پیش از seed آن ردیف‌ها نیستند.

@@ -1632,6 +1632,89 @@
     margin-bottom: 16px !important;
 }
 
+/* ════════════════════════════════════════════════════════════
+   صورت‌حساب خودخدمتی مرخصی
+   ════════════════════════════════════════════════════════════ */
+
+.pay2-leave-statement-page {
+    max-width: 980px;
+    margin: 24px auto;
+    padding: 0 16px;
+}
+
+.pay2-leave-statement-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+.pay2-leave-statement-title {
+    font-size: 20px;
+    margin: 0;
+}
+
+.pay2-leave-statement-subtitle {
+    margin-top: 5px;
+}
+
+.pay2-leave-statement-actions {
+    display: flex;
+    align-items: flex-end;
+    gap: 8px;
+}
+
+.pay2-leave-statement-year {
+    width: 120px;
+}
+
+.pay2-leave-statement-body {
+    padding: 20px;
+}
+
+.pay2-leave-statement-summary-card {
+    padding: 16px;
+}
+
+.pay2-leave-statement-balance-card {
+    background: var(--p2-primary-light);
+}
+
+.pay2-leave-statement-balance {
+    color: var(--p2-primary);
+    font-size: 22px;
+    font-weight: 800;
+}
+
+.pay2-leave-statement-table {
+    margin-top: 18px;
+}
+
+.pay2-leave-statement-carryover-note {
+    margin-top: 16px;
+    padding: 12px;
+    border-radius: var(--p2-radius-md);
+    background: var(--p2-warning-light);
+}
+
+@media (max-width: 640px) {
+    .pay2-leave-statement-page {
+        margin: 12px auto;
+        padding: 0 8px;
+    }
+
+    .pay2-leave-statement-header,
+    .pay2-leave-statement-actions {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    .pay2-leave-statement-year {
+        width: 100%;
+    }
+}
+
 
 /* ════════════════════════════════════════════════════════════
    ۲۳. Responsive
