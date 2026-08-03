@@ -94,8 +94,14 @@ sudo apt-get update -qq
 # بسته‌ی Debian ممکن است mssql.conf حداقلی را پیش از مقداردهی رمز بسازد؛
 # وجود فایل تنظیمات به‌تنهایی نشانه‌ی setup کامل نیست. master.mdf معیار واقعی است.
 if [[ ! -f /var/opt/mssql/data/master.mdf ]]; then
-  sudo env ACCEPT_EULA=Y MSSQL_PID=Developer MSSQL_SA_PASSWORD="$SA_PASSWORD" \
-    MSSQL_TCP_PORT=1433 /opt/mssql/bin/mssql-conf -n setup
+  # در کانتینر بدون systemd، mssql-conf بعد از ساخت موفق master.mdf فقط در
+  # مرحله‌ی start service کد ۱ می‌دهد. آن را فقط وقتی setup واقعاً ناقص است
+  # خطا حساب می‌کنیم؛ خود SQL Server در گام ۴ مستقیماً اجرا می‌شود.
+  if ! sudo env ACCEPT_EULA=Y MSSQL_PID=Developer MSSQL_SA_PASSWORD="$SA_PASSWORD" \
+      MSSQL_TCP_PORT=1433 /opt/mssql/bin/mssql-conf -n setup; then
+    [[ -f /var/opt/mssql/data/master.mdf ]] \
+      || { echo "❌ مقداردهی اولیه SQL Server کامل نشد." >&2; exit 1; }
+  fi
 elif ! sudo grep -q '^accepteula = Y$' /var/opt/mssql/mssql.conf; then
   sudo /opt/mssql/bin/mssql-conf set EULA accepteula Y
 fi
