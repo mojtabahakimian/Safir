@@ -1,0 +1,7 @@
+<<<<<<< SEARCH
+                col.Item().Text("جزئیات مرخصی‌های استفاده شده (کسر شده از مانده)").FontSize(14).SemiBold().PaddingBottom(5);
+                col.Item().Text("توجه: روزهای تعطیل رسمی و جمعه‌ها که بین روزهای مرخصی شما بوده‌اند، از مانده شما کسر نشده‌اند.").FontSize(10).FontColor(Colors.Grey.Medium).PaddingBottom(10);
+=======
+                col.Item().PaddingBottom(5).Text("جزئیات مرخصی‌های استفاده شده (کسر شده از مانده)").FontSize(14).SemiBold();
+                col.Item().PaddingBottom(10).Text("توجه: روزهای تعطیل رسمی و جمعه‌ها که بین روزهای مرخصی شما بوده‌اند، از مانده شما کسر نشده‌اند.").FontSize(10).FontColor(Colors.Grey.Medium);
+>>>>>>> REPLACE

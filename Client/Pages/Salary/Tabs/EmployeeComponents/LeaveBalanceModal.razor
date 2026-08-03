@@ -3,6 +3,7 @@
 @inject Safir.Client.Services.Pay2EmployeeApiService EmployeeApi
 @inject ISnackbar Snackbar
 @inject MudBlazor.IDialogService DialogService
+@inject IJSRuntime JSRuntime
 
 @if (IsOpen)
 {
@@ -113,7 +114,8 @@
                                     <td class="p2-text-mono" style="text-align:center;">@bal.CARRIED_OUT_MIN.ToString("N0")</td>
                                     <td class="p2-text-mono" style="text-align:center;">@bal.BALANCE_MIN.ToString("N0")</td>
                                     <td class="p2-text-mono" style="text-align:center; font-weight:bold; color:var(--p2-success-text);">@bal.BALANCE_DAYS.ToString("0.##")</td>
-                                    <td style="text-align:center; min-width: 150px;">
+                                    <td style="text-align:center; min-width: 200px;">
+                                        <button class="btn-ghost-pay2 p2-text-info" @onclick="() => DownloadLeaveStatement(bal.YEAR)" title="صورت‌حساب شفاف مرخصی"><i class="bi bi-file-earmark-pdf"></i></button>
                                         <button class="btn-ghost-pay2 p2-text-primary" @onclick="() => EditBal(bal)">ویرایش</button>
                                         <button class="btn-ghost-pay2 p2-text-danger" @onclick="() => DeleteBal(bal)">حذف</button>
                                     </td>
@@ -300,6 +302,21 @@
                 Balances = await EmployeeApi.GetLeaveBalancesAsync(EmployeeId);
             }
             catch (Exception ex) { Snackbar.Add("خطا در حذف: " + ex.Message, MudBlazor.Severity.Error); }
+        }
+    }
+
+    async Task DownloadLeaveStatement(int year)
+    {
+        try
+        {
+            var pdfBytes = await EmployeeApi.DownloadLeaveStatementPdfAsync(EmployeeId, year);
+            var base64 = Convert.ToBase64String(pdfBytes);
+            var jsCode = $"var link = document.createElement('a'); link.href = 'data:application/pdf;base64,{base64}'; link.download = 'LeaveStatement_{year}.pdf'; link.click();";
+            await JSRuntime.InvokeVoidAsync("eval", jsCode);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add("خطا در دریافت گزارش: " + ex.Message, MudBlazor.Severity.Error);
         }
     }
 

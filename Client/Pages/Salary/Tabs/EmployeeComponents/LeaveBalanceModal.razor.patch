@@ -1,0 +1,22 @@
+<<<<<<< SEARCH
+    async Task Close() => await OnClose.InvokeAsync();
+}
+=======
+    async Task DownloadLeaveStatement(int year)
+    {
+        try
+        {
+            var pdfBytes = await EmployeeApi.DownloadLeaveStatementPdfAsync(EmployeeId, year);
+            var base64 = Convert.ToBase64String(pdfBytes);
+            var jsCode = $"var link = document.createElement('a'); link.href = 'data:application/pdf;base64,{base64}'; link.download = 'LeaveStatement_{year}.pdf'; link.click();";
+            await JSRuntime.InvokeVoidAsync("eval", jsCode);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add("خطا در دریافت گزارش: " + ex.Message, MudBlazor.Severity.Error);
+        }
+    }
+
+    async Task Close() => await OnClose.InvokeAsync();
+}
+>>>>>>> REPLACE

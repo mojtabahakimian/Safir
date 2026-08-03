@@ -301,6 +301,37 @@
         public bool IS_ACTIVE { get; set; } = true;
     }
 
+    public class Pay2LeaveStatementLineDto
+    {
+        public long START_DATE { get; set; }
+        public long END_DATE { get; set; }
+        public short REQ_DAYS { get; set; }
+        public byte REQ_HOURS { get; set; }
+        public byte REQ_MINUTES { get; set; }
+        public string? DESCRIPTION { get; set; }
+        public int TotalDeductedMinutes { get; set; }
+    }
+
+    public class Pay2LeaveStatementDto
+    {
+        public string EmployeeName { get; set; } = "";
+        public string EmployeeCode { get; set; } = "";
+        public int Year { get; set; }
+        public string PrintDate { get; set; } = "";
+
+        // Config Snapshots
+        public int LeaveMinsPerDay { get; set; }
+        public int LeaveCarryoverMax { get; set; }
+
+        // Balances (in minutes)
+        public int EntitlementMin { get; set; }
+        public int CarriedInMin { get; set; }
+        public int UsedMin { get; set; }
+        public int BalanceMin { get; set; }
+
+        public List<Pay2LeaveStatementLineDto> History { get; set; } = new();
+    }
+
     // --- کلاس مخصوص گزارش کلان مرخصی ---
     public class Pay2LeaveReportRowDto
     {

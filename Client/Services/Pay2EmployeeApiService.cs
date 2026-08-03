@@ -323,5 +323,13 @@ namespace Safir.Client.Services
             return await res.Content.ReadAsByteArrayAsync();
         }
 
+        public async Task<byte[]> DownloadLeaveStatementPdfAsync(int empId, int year)
+        {
+            var res = await _http.GetAsync($"api/pay2/employees/{empId}/leave-statement/{year}/pdf");
+            if (!res.IsSuccessStatusCode)
+                throw new Exception(await res.Content.ReadAsStringAsync());
+            return await res.Content.ReadAsByteArrayAsync();
+        }
+
     }
 }
