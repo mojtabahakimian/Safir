@@ -34,6 +34,29 @@ namespace Safir.Client.Services
             return (true, await res.Content.ReadFromJsonAsync<int>(), null);
         }
 
+        public async Task<(bool Ok, string? Error)> StartRunAsync(int runId, string[]? onlySteps = null)
+        {
+            var url = $"{Base}/runs/{runId}/start";
+            if (onlySteps is { Length: > 0 })
+                url += "?" + string.Join("&", onlySteps.Select(s => $"onlySteps={s}"));
+
+            var res = await _http.PostAsync(url, null);
+            return res.IsSuccessStatusCode
+                 ? (true, null)
+                 : (false, await res.Content.ReadAsStringAsync());
+        }
+
+        public async Task<(bool Ok, string? Error)> ResumeRunAsync(int runId)
+        {
+            var res = await _http.PostAsync($"{Base}/runs/{runId}/resume", null);
+            return res.IsSuccessStatusCode
+                 ? (true, null)
+                 : (false, await res.Content.ReadAsStringAsync());
+        }
+
+        public async Task CancelRunAsync(int runId)
+            => await _http.PostAsync($"{Base}/runs/{runId}/cancel", null);
+
         public async Task<List<CostRunLogDto>> GetLogsAsync(int runId, long afterId = 0)
             => await _http.GetFromJsonAsync<List<CostRunLogDto>>(
                    $"{Base}/runs/{runId}/logs?afterId={afterId}") ?? new();

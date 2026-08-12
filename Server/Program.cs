@@ -53,6 +53,25 @@ builder.Services.AddAuthentication(options =>
         IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSettings["Key"]
              ?? throw new InvalidOperationException("JWT Key not configured")))
     };
+
+    // SignalR (CostCloseHub) نمی‌تواند روی WebSocket هدر Authorization بگذارد؛
+    // مرورگر روی upgrade request اجازه هدر سفارشی نمی‌دهد. راه‌حل استاندارد
+    // ASP.NET Core: کلاینت توکن را در query string به‌عنوان access_token
+    // می‌فرستد (HubConnectionBuilder با AccessTokenProvider این کار را خودش
+    // انجام می‌دهد)، و اینجا همان مسیرهای /hubs/ را از query string می‌خوانیم.
+    options.Events = new JwtBearerEvents
+    {
+        OnMessageReceived = context =>
+        {
+            var accessToken = context.Request.Query["access_token"];
+            var path = context.HttpContext.Request.Path;
+            if (!string.IsNullOrEmpty(accessToken) && path.StartsWithSegments("/hubs"))
+            {
+                context.Token = accessToken;
+            }
+            return Task.CompletedTask;
+        }
+    };
 });
 // --- End JWT Authentication ---
 
@@ -63,6 +82,28 @@ builder.Services.AddScoped<IPermissionService, PermissionService>();
 builder.Services.AddScoped<IPay2AccessService, Pay2AccessService>();
 builder.Services.AddScoped<Safir.Server.Security.Pay2ScopeResolver>();
 builder.Services.AddScoped<Safir.Server.Services.Pay2DisketteService>();
+
+// --- ماژول بستن ماه بهای تمام‌شده (Cost Close) ---
+builder.Services.AddSingleton<Safir.Server.CostClose.CostCloseQueue>();
+builder.Services.AddSingleton<Safir.Server.CostClose.ICostCloseQueue>(
+    sp => sp.GetRequiredService<Safir.Server.CostClose.CostCloseQueue>());
+builder.Services.AddHostedService<Safir.Server.CostClose.CostCloseWorker>();
+
+builder.Services.AddSingleton<Safir.Server.CostClose.IDatabaseServiceFactory,
+                               Safir.Server.CostClose.DatabaseServiceFactory>();
+builder.Services.AddScoped<Safir.Server.CostClose.ICostCloseNotifier,
+                            Safir.Server.CostClose.CostCloseNotifier>();
+builder.Services.AddScoped<Safir.Server.CostClose.CloseOrchestrator>();
+
+// گام‌ها — با افزودن گام جدید فقط یک خط اینجا اضافه می‌شود
+builder.Services.AddScoped<Safir.Server.CostClose.ICostStep, Safir.Server.CostClose.Steps.S00_Preflight>();
+builder.Services.AddScoped<Safir.Server.CostClose.ICostStep, Safir.Server.CostClose.Steps.S02_Snapshot>();
+builder.Services.AddScoped<Safir.Server.CostClose.ICostStep, Safir.Server.CostClose.Steps.S03_DeleteEmptyDeeds>();
+builder.Services.AddScoped<Safir.Server.CostClose.ICostStep, Safir.Server.CostClose.Steps.S04_SortDeeds>();
+builder.Services.AddScoped<Safir.Server.CostClose.ICostStep, Safir.Server.CostClose.Steps.S05_Gate>();
+
+builder.Services.AddSignalR();
+// --- پایان ماژول بستن ماه بهای تمام‌شده ---
 #endregion
 
 
@@ -179,6 +220,7 @@ app.Use(async (context, next) =>
 
 app.MapRazorPages();
 app.MapControllers(); // Make sure API controllers are mapped
+app.MapHub<Safir.Server.CostClose.CostCloseHub>("/hubs/cost-close");
 
 app.MapFallbackToFile("index.html"); // Fallback for Blazor routing
 

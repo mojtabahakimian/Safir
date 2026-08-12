@@ -2,8 +2,9 @@
 """
 نگهبان کنترل دسترسی حقوق و دستمزد (PAY2)
 
-اگر کسی — انسان یا عامل خودکار — یک endpoint جدید به کنترلرهای Pay2 اضافه کند
-و یادش برود مجوز بگذارد، یا مجوز موجودی را حذف کند، این اسکریپت CI را قرمز می‌کند.
+اگر کسی — انسان یا عامل خودکار — یک endpoint جدید به کنترلرهایی که از
+[Pay2Authorize] استفاده می‌کنند اضافه کند و یادش برود مجوز بگذارد، یا مجوز
+موجودی را حذف کند، این اسکریپت CI را قرمز می‌کند.
 
 سه چیز را بررسی می‌کند:
   ۱. هر اکشن باید یا [Pay2Authorize] داشته باشد یا داخل بدنه بررسی مجوز کند
@@ -12,6 +13,12 @@
   ۳. اتریبیوت تکراری روی یک اکشن نباشد (باعث ثبت دوباره‌ی لاگ می‌شود).
 
 استثناهای مجاز در ALLOWLIST پایین با دلیل ثبت شده‌اند.
+
+دامنه: CONTROLLER_GLOBS پایین — نه فقط Pay2*.cs. ماژول «بستن ماه بهای
+تمام‌شده» (CostClose*.cs) از همان Pay2AuthorizeAttribute/Pay2AccessService
+استفاده می‌کند (فرم‌هایش در Shared/Constants/CostForms.cs)، پس همین نگهبان
+باید آن را هم ببیند. هر کنترلر دیگری که بعداً به [Pay2Authorize] وصل شد
+باید الگویش هم اینجا اضافه شود.
 """
 import re
 import sys
@@ -19,6 +26,7 @@ from collections import Counter
 from pathlib import Path
 
 CONTROLLER_DIR = Path("Server/Controllers")
+CONTROLLER_GLOBS = ("Pay2*.cs", "CostClose*.cs")
 
 # اکشن‌هایی که عمداً بدون [Pay2Authorize] هستند — هرکدام با دلیل
 ALLOWLIST = {
@@ -67,7 +75,8 @@ def main() -> int:
     problems = []
     checked = 0
 
-    for path in sorted(CONTROLLER_DIR.glob("Pay2*.cs")):
+    paths = sorted({p for pattern in CONTROLLER_GLOBS for p in CONTROLLER_DIR.glob(pattern)})
+    for path in paths:
         for line_no, route, attrs, body in scan(path):
             checked += 1
             name = path.name

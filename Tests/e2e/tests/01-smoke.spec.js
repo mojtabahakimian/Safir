@@ -212,4 +212,25 @@ test.describe('سلامت کلاینت', () => {
     expect(ccErrors, `خطای مدیریت‌نشده در ماژول بهای تمام‌شده:\n${ccErrors.join('\n')}`)
       .toHaveLength(0);
   });
+
+  /**
+   * رگرسیون: همان باگ، همان‌جا رفع شد ولی صفحه‌ی اجرای زنده (CostRunMonitor)
+   * یک‌بار دیگر تکرارش کرد — Reload() هم هیچ catch نداشت. این‌بار علاوه بر
+   * catch، یک پیام فارسی صریح («برای مشاهده این صفحه باید وارد شوید.») هم
+   * روی صفحه نشان داده می‌شود، پس هم نبود کرش و هم وجود آن پیام را می‌سنجیم.
+   */
+  test('صفحه اجرای بستن ماه بدون ورود هم نمی‌شکند', async ({ page }) => {
+    const errors = collectPageErrors(page);
+    await page.goto('/cost-close/runs/1', { waitUntil: 'networkidle' });
+    await page.waitForTimeout(3000);
+
+    const crashed = errors.filter(e => /Unhandled exception rendering component/i.test(e));
+    expect(crashed, `کامپوننت کرش کرد:\n${crashed.join('\n')}`).toHaveLength(0);
+
+    const ccErrors = errors.filter(e => /CostCloseApiService|CostClose\.CostRunMonitor/i.test(e));
+    expect(ccErrors, `خطای مدیریت‌نشده در ماژول بهای تمام‌شده:\n${ccErrors.join('\n')}`)
+      .toHaveLength(0);
+
+    await expect(page.getByText('برای مشاهده این صفحه باید وارد شوید.')).toBeVisible();
+  });
 });

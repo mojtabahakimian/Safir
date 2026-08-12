@@ -1,7 +1,9 @@
 using Dapper;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Safir.Server.CostClose;
 using Safir.Server.Security;
+using Safir.Server.Services;   // IConnectionStringProvider
 using Safir.Shared.Constants;
 using Safir.Shared.Interfaces;
 using Safir.Shared.Models.CostClose;
@@ -19,11 +21,19 @@ namespace Safir.Server.Controllers
     public class CostCloseController : ControllerBase
     {
         private readonly IDatabaseService _db;
+        private readonly ICostCloseQueue _queue;
+        private readonly IConnectionStringProvider _csProvider;
         private readonly ILogger<CostCloseController> _logger;
 
-        public CostCloseController(IDatabaseService db, ILogger<CostCloseController> logger)
+        public CostCloseController(
+            IDatabaseService db,
+            ICostCloseQueue queue,
+            IConnectionStringProvider csProvider,
+            ILogger<CostCloseController> logger)
         {
             _db = db;
+            _queue = queue;
+            _csProvider = csProvider;
             _logger = logger;
         }
 
@@ -118,6 +128,52 @@ namespace Safir.Server.Controllers
                                    req.FiscalYear, req.PeriodMonth);
                 return BadRequest(ex.Message);
             }
+        }
+
+        /// <summary>
+        /// شروع یا ادامه اجرا. کار در صف پس‌زمینه می‌رود و بلافاصله
+        /// برمی‌گردد — بستن تب مرورگر اجرا را متوقف نمی‌کند.
+        ///
+        /// رشته اتصال از درخواست جاری برداشته و همراه کار نگه داشته
+        /// می‌شود، چون کار پس‌زمینه HttpContext ندارد.
+        /// </summary>
+        [HttpPost("runs/{runId:int}/start")]
+        [Pay2Authorize(CostForms.ActStart, Pay2Perm.Run)]
+        public IActionResult StartRun(int runId, [FromQuery] string[]? onlySteps = null)
+        {
+            var job = new CostCloseJob(
+                runId,
+                _csProvider.GetConnectionString(),
+                CurrentUser,
+                onlySteps is { Length: > 0 } ? onlySteps : null);
+
+            if (!_queue.TryEnqueue(job, out var error))
+                return Conflict(error);
+
+            return Accepted(new { runId, queued = true });
+        }
+
+        [HttpPost("runs/{runId:int}/resume")]
+        [Pay2Authorize(CostForms.ActStart, Pay2Perm.Run)]
+        public async Task<IActionResult> ResumeRun(int runId)
+        {
+            var blocking = await _db.DoGetDataSQLAsyncSingle<int>(
+                @"SELECT COUNT(*) FROM dbo.CC_Exception
+                  WHERE RunId = @runId AND Severity = 2 AND IsResolved = 0",
+                new { runId });
+
+            if (blocking > 0)
+                return BadRequest($"{blocking} مورد مسدودکننده هنوز رفع نشده است.");
+
+            return StartRun(runId);
+        }
+
+        [HttpPost("runs/{runId:int}/cancel")]
+        [Pay2Authorize(CostForms.ActStart, Pay2Perm.Run)]
+        public IActionResult CancelRun(int runId)
+        {
+            _queue.RequestCancel(runId);
+            return Ok();
         }
 
         [HttpGet("runs/{runId:int}/logs")]

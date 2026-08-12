@@ -64,10 +64,12 @@
                 </NavLink>
             </div>
 
-            <MudNavLink Href="/cost-close/exceptions" Match="NavLinkMatch.Prefix"
-                        Icon="@Icons.Material.Filled.Rule">
-                مغایرت‌های بهای تمام‌شده
-            </MudNavLink>
+            <MudNavGroup Title="بهای تمام‌شده" Icon="@Icons.Material.Filled.Calculate" Expanded="false">
+                <MudNavLink Href="/cost-close/exceptions" Match="NavLinkMatch.Prefix"
+                            Icon="@Icons.Material.Filled.Rule">
+                    مغایرت‌ها
+                </MudNavLink>
+            </MudNavGroup>
 
             <MudNavLink Disabled="true" Icon="@Icons.Material.Filled.Info">
                 نسخه: @appVersion

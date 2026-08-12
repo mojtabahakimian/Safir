@@ -19,8 +19,160 @@ namespace Prg_UI.Scriptses
             {
                 db.Open();
                 SalaryScript(true, db);
+                CostCloseScript(db);
             }
         }
+
+        /// <summary>
+        /// ماژول «بستن ماه بهای تمام‌شده» (پیشوند CC_).
+        ///
+        /// نکته مهم: این بلوک فقط رویه‌های وابسته به گام S05 (دروازه
+        /// اعتبارسنجی) را می‌سازد. جدول‌های پایه CC_* (اسکریپت‌های
+        /// 10-schema.sql تا 13-chk04-and-autofix.sql) قبلاً مستقیماً
+        /// روی پایگاه مشتری اجرا شده‌اند و هنوز به این فایل اضافه
+        /// نشده‌اند — اگر روی یک پایگاه تازه (مثل محیط تست) اجرا کنید،
+        /// این بلوک با خطای «Invalid object name 'CC_Exception'» متوقف
+        /// می‌شود مگر آن اسکریپت‌ها را قبلش دستی اجرا کرده باشید.
+        /// </summary>
+        private static void CostCloseScript(SqlConnection db)
+        {
+            string s05Gate = @"
+-- ================================================================
+-- بستن ماه بهای تمام‌شده — S05: دروازه اعتبارسنجی
+-- CHK-01 کاردکس منفی | CHK-02 مغایرت کارت انبار/حسابداری | CHK-13 حواله صفر
+-- ================================================================
+
+CREATE OR ALTER PROCEDURE dbo.CC_sp_S05_Gate
+    @RunId INT,
+    @Month TINYINT,
+    @DT1   BIGINT,
+    @DT2   BIGINT
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    DELETE dbo.CC_Exception
+    WHERE  RunId = @RunId AND RuleCode IN ('CHK-01','CHK-02','CHK-13');
+
+    ;WITH Harekat AS (
+        SELECT  k.ANBAR,
+                k.code,
+                k.DATE_N,
+                k.NUMBER,
+                k.TAG,
+                CASE WHEN k.TAG IN (1, 7, 9, 24) THEN k.MEGHk ELSE -k.MEGHk END AS Meghdar
+        FROM    dbo.KALAS k
+        WHERE   k.DATE_N <= @DT2
+          AND   k.MEGHk <> 0
+    ),
+    Tajamoi AS (
+        SELECT  ANBAR, code, DATE_N, NUMBER, TAG,
+                SUM(Meghdar) OVER (
+                    PARTITION BY ANBAR, code
+                    ORDER BY DATE_N, NUMBER
+                    ROWS UNBOUNDED PRECEDING) AS Mande
+        FROM    Harekat
+    ),
+    AvvalinManfi AS (
+        SELECT  ANBAR, code, DATE_N, NUMBER, TAG, Mande,
+                ROW_NUMBER() OVER (
+                    PARTITION BY ANBAR, code
+                    ORDER BY DATE_N, NUMBER) AS rn
+        FROM    Tajamoi
+        WHERE   Mande < -0.0001
+    )
+    INSERT dbo.CC_Exception
+        (RunId, StepCode, RuleCode, ExType, Severity,
+         Anbar, Code, DocNumber, DocTag, DocDate, Amount, Description)
+    SELECT  @RunId, 'S05', 'CHK-01', 1, 2,
+            m.ANBAR, m.code, m.NUMBER, m.TAG, m.DATE_N, m.Mande,
+            CONCAT(N'موجودی در تاریخ ',
+                   m.DATE_N / 10000, '/',
+                   FORMAT(m.DATE_N / 100 % 100, '00'), '/',
+                   FORMAT(m.DATE_N % 100, '00'),
+                   N' منفی می‌شود')
+    FROM    AvvalinManfi m
+    WHERE   m.rn = 1
+      AND   m.DATE_N BETWEEN @DT1 AND @DT2;
+
+    ;WITH KartAnbar AS (
+        SELECT  k.code,
+                SUM(CASE WHEN k.TAG IN (1, 7, 9, 24)
+                         THEN k.MABL_K ELSE -k.MABL_K END) AS Mande
+        FROM    dbo.KALAS k
+        WHERE   k.DATE_N <= @DT2
+        GROUP BY k.code
+    ),
+    Hesabdari AS (
+        SELECT  TRY_CAST(d.HES_T AS BIGINT) AS code,
+                SUM(d.BED) - SUM(d.BES)     AS Mande
+        FROM    dbo.DEED_DTL d
+        JOIN    dbo.DEED_HED h ON h.N_S = d.N_S
+        WHERE   d.HES_K = 121
+          AND   h.DATE_S <= @DT2
+        GROUP BY TRY_CAST(d.HES_T AS BIGINT)
+    )
+    INSERT dbo.CC_Exception
+        (RunId, StepCode, RuleCode, ExType, Severity, Code, Amount, Description)
+    SELECT  @RunId, 'S05', 'CHK-02', 2, 2,
+            ISNULL(k.code, hh.code),
+            ISNULL(k.Mande, 0) - ISNULL(hh.Mande, 0),
+            CONCAT(N'کارت انبار ', FORMAT(ISNULL(k.Mande, 0), 'N0'),
+                   N' در برابر حسابداری ', FORMAT(ISNULL(hh.Mande, 0), 'N0'))
+    FROM    KartAnbar k
+    FULL    OUTER JOIN Hesabdari hh ON hh.code = k.code
+    WHERE   ABS(ISNULL(k.Mande, 0) - ISNULL(hh.Mande, 0)) > 1;
+
+    INSERT dbo.CC_Exception
+        (RunId, StepCode, RuleCode, ExType, Severity,
+         Anbar, Code, DocNumber, DocDate, Amount, Description)
+    SELECT  DISTINCT @RunId, 'S05', 'CHK-13', 16, 2,
+            i.ANBAR, CAST(i.CODE AS BIGINT), h.NUMBER, h.DATE_N, 0,
+            N'حواله با مقدار صفر برای ماده‌ای که در فرمول ماه مقدار دارد'
+    FROM    dbo.INVO_LST i
+    JOIN    dbo.HEAD_LST h ON h.NUMBER = i.NUMBER AND h.TAG = i.TAG
+    WHERE   h.TAG = 10
+      AND   h.DATE_N BETWEEN @DT1 AND @DT2
+      AND   ISNULL(i.MEGHK, 0) = 0
+      AND   EXISTS (
+                SELECT 1
+                FROM   dbo.DTL_MANF d
+                JOIN   dbo.HEAD_MANF hm ON hm.FNUMB = d.FNUMB AND hm.GHEYMAT = @Month
+                WHERE  CAST(d.CODE AS BIGINT) = CAST(i.CODE AS BIGINT)
+                  AND  d.MEGHk > 0);
+
+    SELECT  e.RuleCode                                            AS قاعده,
+            r.RuleName                                            AS عنوان,
+            CASE e.Severity WHEN 2 THEN N'مسدودکننده'
+                            ELSE N'هشدار' END                     AS شدت,
+            COUNT(*)                                              AS تعداد
+    FROM    dbo.CC_Exception e
+    LEFT    JOIN dbo.CC_CheckRule r ON r.RuleCode = e.RuleCode
+    WHERE   e.RunId = @RunId AND e.StepCode = 'S05' AND e.IsResolved = 0
+    GROUP BY e.RuleCode, r.RuleName, e.Severity
+    ORDER BY e.Severity DESC, e.RuleCode;
+END
+GO
+
+DROP PROCEDURE IF EXISTS dbo.CC_sp_Preflight;
+GO
+";
+            try
+            {
+                ExecuteBatches(db, s05Gate);
+                Console.WriteLine("[CostCloseScript] رویه CC_sp_S05_Gate ایجاد/به‌روزرسانی شد.");
+            }
+            catch (SqlException ex) when (ex.Message.Contains("Invalid object name 'dbo.CC_Exception'")
+                                        || ex.Message.Contains("Invalid object name 'dbo.CC_CheckRule'"))
+            {
+                // جدول‌های پایه CC_* هنوز روی این پایگاه ساخته نشده‌اند
+                // (اسکریپت‌های 10 تا 13). این بلوک را نادیده می‌گیریم تا
+                // بقیه SalaryScript/LetsGo متوقف نشود.
+                Console.WriteLine("[CostCloseScript] جدول‌های پایه CC_* پیدا نشدند — " +
+                                   "اسکریپت‌های 10-schema.sql تا 13-chk04-and-autofix.sql را اول اجرا کنید.");
+            }
+        }
+
         private static void SalaryScript(bool isCustomCall, SqlConnection db)
         {
             if (isCustomCall) //
