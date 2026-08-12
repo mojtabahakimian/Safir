@@ -6,7 +6,6 @@
 @inject Pay2AccessApiService Access
 @inject ISnackbar Snackbar
 @inject IDialogService Dialog
-@inject NavigationManager Nav
 @inject IJSRuntime JS
 
 <PageTitle>سود و زیان کالا</PageTitle>
@@ -184,9 +183,8 @@ else
 }
 </div>
 
-<style>
-    .cc-num.pos { color: var(--p2-success-text); }
-</style>
+@* .cc-num.pos و .cc-num.neg در cost-close.css تعریف شده‌اند (سراسری، در
+   همه صفحات این ماژول بارگذاری می‌شود). *@
 
 @code {
     [Parameter] public int RunId { get; set; }

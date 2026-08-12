@@ -1,6 +1,7 @@
 @page "/cost-close/exceptions"
 @using Safir.Shared.Models.CostClose
 @using Safir.Shared.Constants
+@using Safir.Shared.Utility
 @using Safir.Client.Services
 @inject CostCloseApiService Api
 @inject Pay2AccessApiService Access
@@ -12,6 +13,15 @@
 <div class="cc-page" dir="rtl">
 
     <div class="cc-toolbar">
+        <MudSelect T="short" @bind-Value="_year" Label="سال" Dense Variant="Variant.Outlined"
+                   Style="max-width:110px">
+            @foreach (var y in YearChoices)
+            {
+                var yy = y;
+                <MudSelectItem Value="@yy">@yy</MudSelectItem>
+            }
+        </MudSelect>
+
         <MudSelect T="byte" @bind-Value="_month" Label="ماه" Dense Variant="Variant.Outlined"
                    Style="max-width:120px">
             @for (byte m = 1; m <= 12; m++)
@@ -177,7 +187,22 @@
 </div>
 
 @code {
-    private byte _month = 5;
+    // سال و ماه از تاریخ جاری سیستم گرفته می‌شوند، نه عدد ثابت.
+    // نسخهٔ اول این صفحه سال ۱۴۰۵ را hard-code کرده بود؛ سال بعد بی‌صدا
+    // بازهٔ اشتباه را کوئری می‌کرد.
+    private short _year  = (short)(CL_Tarikh.GetCurrentPersianDateAsLong() / 10000);
+    private byte  _month = (byte)(CL_Tarikh.GetCurrentPersianDateAsLong() / 100 % 100);
+
+    /// <summary>سال جاری و دو سال قبل — بستن ماه گذشته‌نگر است، نه آینده‌نگر.</summary>
+    private IEnumerable<short> YearChoices
+    {
+        get
+        {
+            var now = (short)(CL_Tarikh.GetCurrentPersianDateAsLong() / 10000);
+            for (short y = now; y >= (short)(now - 2); y--) yield return y;
+        }
+    }
+
     private string _filter = "blocking";
     private bool _busy;
 
@@ -187,8 +212,11 @@
     private int _blockingCount;
     private int _warningCount;
 
-    private long DateFrom => 1405_00_00 + _month * 100 + 1;   // 14050501
-    private long DateTo   => 1405_00_00 + _month * 100 + 31;  // 14050531
+    private long DateFrom => (long)_year * 10000 + _month * 100 + 1;
+
+    // پایان ماه از تقویم شمسی گرفته می‌شود (۲۹/۳۰/۳۱ بسته به ماه و سال کبیسه)،
+    // نه عدد ثابت ۳۱.
+    private long DateTo   => CL_Tarikh.GetPersianMonthEndAsLong(DateFrom);
 
     protected override async Task OnInitializedAsync()
     {

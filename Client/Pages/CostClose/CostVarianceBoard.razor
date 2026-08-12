@@ -5,7 +5,6 @@
 @inject CostCloseApiService Api
 @inject Pay2AccessApiService Access
 @inject ISnackbar Snackbar
-@inject IJSRuntime JS
 
 <PageTitle>انحراف مصرف</PageTitle>
 
@@ -184,7 +183,7 @@ else
         border-radius: 4px; padding: 0 5px; background: var(--p2-bg-hover);
         margin: 0 1px;
     }
-    .cc-num.neg { color: var(--p2-danger-text); }
+    /* .cc-num.neg و .cc-num.pos در cost-close.css هستند (سراسری) */
     .cc-row-selected { background: var(--p2-primary-light) !important; }
     .cc-row-key { font-weight: 500; }
 </style>
