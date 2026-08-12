@@ -187,7 +187,7 @@ BEGIN
             ROUND(k.NetSales - ISNULL(sn.Cost,0), 0) AS سود_روش_سند
     FROM    AzKardex k
     LEFT    JOIN AzSanad sn ON sn.Code = k.Code
-    LEFT    JOIN dbo.STUF_DEF s ON CAST(s.CODE AS BIGINT) = k.Code
+    LEFT    JOIN dbo.STUF_DEF s ON TRY_CAST(s.CODE AS BIGINT) = k.Code
     WHERE   ABS(k.Cost - ISNULL(sn.Cost, 0)) > 1000
     ORDER BY ABS(k.Cost - ISNULL(sn.Cost, 0)) DESC;
 

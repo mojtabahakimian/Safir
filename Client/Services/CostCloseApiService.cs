@@ -192,7 +192,30 @@ namespace Safir.Client.Services
                  : (false, await res.Content.ReadAsStringAsync());
         }
 
-        public string ReportUrl(int runId) => $"{Base}/runs/{runId}/report.xlsx";
+        /// <summary>
+        /// بایت‌های گزارش اکسل هیئت‌مدیره.
+        ///
+        /// عمداً URL برنمی‌گرداند: توکن JWT و هدر X-DB-Connection روی
+        /// DefaultRequestHeaders همین HttpClient نشسته‌اند، نه در کوکی. پس
+        /// یک &lt;a href&gt; ساده (ناوبری مرورگر) بدون احراز هویت می‌رود و
+        /// endpoint محافظت‌شده ۴۰۱ می‌دهد. باید با همین HttpClient گرفته و
+        /// با downloadFileFromBytes به کاربر داده شود — همان الگویی که
+        /// PayrollTab و ReportsTab در بخش حقوق و دستمزد استفاده می‌کنند.
+        /// </summary>
+        public async Task<byte[]> GetReportBytesAsync(int runId)
+        {
+            var res = await _http.GetAsync($"{Base}/runs/{runId}/report.xlsx");
+
+            if (!res.IsSuccessStatusCode)
+            {
+                var err = await res.Content.ReadAsStringAsync();
+                throw new Exception(string.IsNullOrWhiteSpace(err)
+                    ? $"خطا در تهیهٔ گزارش اکسل (کد {(int)res.StatusCode})."
+                    : err);
+            }
+
+            return await res.Content.ReadAsByteArrayAsync();
+        }
 
         public async Task<(bool Ok, string? Error)> ApproveAsync(int runId)
         {

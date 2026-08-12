@@ -398,7 +398,7 @@ BEGIN
                 s.QtyVariance * s.Ratio / p.ProdQty  AS افزايش_در_فرمول
         FROM    #Share s
         JOIN    #Prod  p  ON p.FNUMB = s.FNUMB
-        LEFT    JOIN dbo.STUF_DEF st ON CAST(st.CODE AS BIGINT) = s.Code
+        LEFT    JOIN dbo.STUF_DEF st ON TRY_CAST(st.CODE AS BIGINT) = s.Code
         ORDER BY ABS(s.QtyVariance * s.Ratio) DESC;
         RETURN;
     END

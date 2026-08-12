@@ -84,6 +84,27 @@
                 </MudButton>
             }
 
+            @* صفحه‌های بررسی نتیجه — همیشه در دسترس، نه فقط وقتی اجرا متوقف
+               است. بدون این‌ها صفحه‌های انحراف و سود هیچ راه ورودی از داخل
+               برنامه نداشتند و فقط با تایپ مستقیم آدرس باز می‌شدند. *@
+            @if (Access.CanSee(CostForms.Variance))
+            {
+                <MudButton Variant="Variant.Outlined"
+                           StartIcon="@Icons.Material.Filled.TrendingUp"
+                           Href="@($"/cost-close/runs/{RunId}/variance")">
+                    انحراف مصرف
+                </MudButton>
+            }
+
+            @if (Access.CanSee(CostForms.Margin))
+            {
+                <MudButton Variant="Variant.Outlined"
+                           StartIcon="@Icons.Material.Filled.PriceCheck"
+                           Href="@($"/cost-close/runs/{RunId}/margin")">
+                    سود و زیان کالا
+                </MudButton>
+            }
+
             @if (_state.Run.Status == 2)
             {
                 <MudButton Variant="Variant.Outlined"
@@ -91,15 +112,6 @@
                            Href="/cost-close/exceptions">
                     مشاهده مغایرت‌ها (@_state.OpenBlockingCount)
                 </MudButton>
-
-                @if (Access.CanSee(CostForms.Variance))
-                {
-                    <MudButton Variant="Variant.Outlined"
-                               StartIcon="@Icons.Material.Filled.TrendingUp"
-                               Href="@($"/cost-close/runs/{RunId}/variance")">
-                        بررسی انحراف مصرف
-                    </MudButton>
-                }
 
                 @if (Access.CanRun(CostForms.ActStart))
                 {

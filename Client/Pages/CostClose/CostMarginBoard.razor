@@ -7,6 +7,7 @@
 @inject ISnackbar Snackbar
 @inject IDialogService Dialog
 @inject NavigationManager Nav
+@inject IJSRuntime JS
 
 <PageTitle>سود و زیان کالا</PageTitle>
 
@@ -60,10 +61,13 @@ else
 
         <MudSpacer />
 
-        <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.Download"
-                   Href="@Api.ReportUrl(RunId)" Target="_blank">
-            خروجی اکسل
-        </MudButton>
+        @if (Access.CanRun(CostForms.ActExport))
+        {
+            <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.Download"
+                       OnClick="DownloadReport" Disabled="_busy">
+                خروجی اکسل
+            </MudButton>
+        }
 
         @if (Access.CanUpd(CostForms.Margin))
         {
@@ -347,6 +351,30 @@ else
             _dirty = false;
             Snackbar.Add("اهداف اعمال شد — نرخ‌ها باید دوباره منتشر شوند", Severity.Success);
             await Load();
+        }
+        finally { _busy = false; }
+    }
+
+    /// <summary>
+    /// گزارش اکسل با همین HttpClient (که توکن و هدر پایگاه را دارد)
+    /// گرفته و بعد به مرورگر تحویل داده می‌شود. یک &lt;a href&gt; ساده
+    /// اینجا کار نمی‌کند چون ناوبری مرورگر توکن را نمی‌فرستد.
+    /// </summary>
+    private async Task DownloadReport()
+    {
+        _busy = true;
+        try
+        {
+            var bytes = await Api.GetReportBytesAsync(RunId);
+            await JS.InvokeVoidAsync("downloadFileFromBytes",
+                                     $"cost-close-{RunId}.xlsx", bytes);
+        }
+        catch (Exception ex)
+        {
+            // GetReportBytesAsync پیام سرور را (که برای ۴۰۳ فارسی است)
+            // خودش بالا می‌آورد، پس همان را نشان می‌دهیم نه پیام عمومیِ
+            // مخصوصِ بارگذاری صفحه.
+            Snackbar.Add(ex.Message, Severity.Error);
         }
         finally { _busy = false; }
     }

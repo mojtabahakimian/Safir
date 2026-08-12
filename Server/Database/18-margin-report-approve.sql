@@ -174,8 +174,8 @@ BEGIN
                 a.BalancingCode      AS کالاي_متعادل_کننده,
                 sb.NAME              AS نام_متعادل_کننده
         FROM    #Adj a
-        LEFT    JOIN dbo.STUF_DEF s  ON CAST(s.CODE  AS BIGINT) = a.Code
-        LEFT    JOIN dbo.STUF_DEF sb ON CAST(sb.CODE AS BIGINT) = a.BalancingCode
+        LEFT    JOIN dbo.STUF_DEF s  ON TRY_CAST(s.CODE  AS BIGINT) = a.Code
+        LEFT    JOIN dbo.STUF_DEF sb ON TRY_CAST(sb.CODE AS BIGINT) = a.BalancingCode
         ORDER BY ABS(a.AdjustAmount) DESC;
 
         SELECT  w.SourceCode              AS کالاي_مبدا,
@@ -268,7 +268,7 @@ BEGIN
             CASE WHEN m.SalesAmount <> 0
                  THEN ROUND(m.Profit / m.SalesAmount * 100, 0) END AS درصد
     FROM    dbo.CC_ItemMargin m
-    LEFT    JOIN dbo.STUF_DEF s ON CAST(s.CODE AS BIGINT) = m.Code
+    LEFT    JOIN dbo.STUF_DEF s ON TRY_CAST(s.CODE AS BIGINT) = m.Code
     WHERE   m.RunId = @RunId
     ORDER BY m.Profit;
 
@@ -311,8 +311,8 @@ BEGIN
             f.NewValue                    AS مقدار_بعد,
             f.Reason                      AS علت
     FROM    dbo.CC_FormulaChange f
-    LEFT    JOIN dbo.STUF_DEF sp ON CAST(sp.CODE AS BIGINT) = f.ParentCode
-    LEFT    JOIN dbo.STUF_DEF sc ON CAST(sc.CODE AS BIGINT) = f.ChildCode
+    LEFT    JOIN dbo.STUF_DEF sp ON TRY_CAST(sp.CODE AS BIGINT) = f.ParentCode
+    LEFT    JOIN dbo.STUF_DEF sc ON TRY_CAST(sc.CODE AS BIGINT) = f.ChildCode
     WHERE   f.RunId = @RunId
     ORDER BY ABS(ISNULL(f.NewValue,0) - ISNULL(f.OldValue,0)) DESC;
 END
