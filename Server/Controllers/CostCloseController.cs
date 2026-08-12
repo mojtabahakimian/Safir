@@ -359,6 +359,92 @@ namespace Safir.Server.Controllers
             }
         }
 
+        // ═══════════════════════ نتایج محاسبه ═══════════════════════
+
+        [HttpGet("runs/{runId:int}/conversion")]
+        [Pay2Authorize(CostForms.Conversion, Pay2Perm.See)]
+        public async Task<ActionResult<IEnumerable<ConversionCostDto>>> GetConversion(int runId)
+        {
+            const string sql = @"
+                SELECT c.UnitId, u.UnitName, c.CostKind, c.AbsorbedAmount,
+                       c.AbsorbedFromWip, c.ActualAmount, c.AdjustFactor, c.ApprovedBy
+                FROM   dbo.CC_ConversionCost c
+                JOIN   dbo.CC_Unit u ON u.UnitId = c.UnitId
+                WHERE  c.RunId = @runId
+                ORDER BY u.SeqNo, c.CostKind";
+
+            return Ok(await _db.DoGetDataSQLAsync<ConversionCostDto>(sql, new { runId }));
+        }
+
+        [HttpGet("runs/{runId:int}/item-costs")]
+        [Pay2Authorize(CostForms.Run, Pay2Perm.See)]
+        public async Task<ActionResult<IEnumerable<ItemCostDto>>> GetItemCosts(
+            int runId, [FromQuery] short? level = null)
+        {
+            const string sql = @"
+                SELECT ic.Code, s.NAME AS ItemName, ic.LowLevelCode, ic.SourceKind,
+                       ic.FNUMB, ic.MaterialCost, ic.WageCost, ic.OverheadCost, ic.TotalCost
+                FROM   dbo.CC_ItemCost ic
+                LEFT   JOIN dbo.STUF_DEF s ON TRY_CAST(s.CODE AS BIGINT) = ic.Code
+                WHERE  ic.RunId = @runId
+                  AND (@level IS NULL OR ic.LowLevelCode = @level)
+                ORDER BY ic.LowLevelCode, ic.TotalCost DESC";
+
+            return Ok(await _db.DoGetDataSQLAsync<ItemCostDto>(sql, new { runId, level }));
+        }
+
+        /// <summary>
+        /// تاریخچه تغییر یک کالا — پاسخ به «چرا قیمت تمام‌شده این کالا عوض شد؟»
+        /// سؤالی که امروز اصلاً قابل جواب نیست.
+        /// </summary>
+        [HttpGet("runs/{runId:int}/changes")]
+        [Pay2Authorize(CostForms.History, Pay2Perm.See)]
+        public async Task<ActionResult<IEnumerable<FormulaChangeDto>>> GetChanges(
+            int runId, [FromQuery] long? code = null, [FromQuery] string? stepCode = null)
+        {
+            const string sql = @"
+                SELECT TOP 500
+                       f.ChangeId, f.RunId, f.StepCode, f.FNUMB,
+                       f.ParentCode, sp.NAME AS ParentName,
+                       f.ChildCode,  sc.NAME AS ChildName,
+                       f.FieldName, f.OldValue, f.NewValue, f.Reason, f.ChangedAtUtc
+                FROM   dbo.CC_FormulaChange f
+                LEFT   JOIN dbo.STUF_DEF sp ON TRY_CAST(sp.CODE AS BIGINT) = f.ParentCode
+                LEFT   JOIN dbo.STUF_DEF sc ON TRY_CAST(sc.CODE AS BIGINT) = f.ChildCode
+                WHERE  f.RunId = @runId
+                  AND (@code IS NULL OR f.ParentCode = @code OR f.ChildCode = @code)
+                  AND (@stepCode IS NULL OR f.StepCode = @stepCode)
+                ORDER BY ABS(ISNULL(f.NewValue,0) - ISNULL(f.OldValue,0)) DESC";
+
+            return Ok(await _db.DoGetDataSQLAsync<FormulaChangeDto>(
+                sql, new { runId, code, stepCode }));
+        }
+
+        // ═══════════════════════ بازگردانی ═══════════════════════
+
+        [HttpPost("runs/{runId:int}/rollback")]
+        [Pay2Authorize(CostForms.ActRollback, Pay2Perm.Run)]
+        public async Task<IActionResult> Rollback(int runId, [FromBody] RollbackRequest req)
+        {
+            if (_queue.IsRunning(runId))
+                return Conflict("این اجرا در حال انجام است؛ ابتدا آن را متوقف کنید.");
+
+            try
+            {
+                var res = await _db.DoGetDataSQLAsync<dynamic>(
+                    "EXEC dbo.CC_sp_Rollback @RunId=@r, @StepCode=@s, " +
+                    "@UserName=@u, @WhatIf=@w",
+                    new { r = runId, s = req.StepCode, u = CurrentUser, w = req.WhatIf });
+
+                return Ok(res);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Rollback failed for run {RunId}", runId);
+                return BadRequest(ex.Message);
+            }
+        }
+
         // ═══════════════════════ قواعد ═══════════════════════
 
         [HttpGet("rules")]

@@ -115,6 +115,40 @@ namespace Safir.Client.Services
             return await res.Content.ReadFromJsonAsync<AutoFixResultDto>();
         }
 
+        // ───────── نتایج محاسبه ─────────
+
+        public async Task<List<ConversionCostDto>> GetConversionAsync(int runId)
+            => await _http.GetFromJsonAsync<List<ConversionCostDto>>(
+                   $"{Base}/runs/{runId}/conversion") ?? new();
+
+        public async Task<List<ItemCostDto>> GetItemCostsAsync(int runId, short? level = null)
+            => await _http.GetFromJsonAsync<List<ItemCostDto>>(
+                   $"{Base}/runs/{runId}/item-costs"
+                   + (level is not null ? $"?level={level}" : "")) ?? new();
+
+        public async Task<List<FormulaChangeDto>> GetChangesAsync(
+            int runId, long? code = null, string? stepCode = null)
+        {
+            var q = new List<string>();
+            if (code     is not null)            q.Add($"code={code}");
+            if (!string.IsNullOrEmpty(stepCode)) q.Add($"stepCode={stepCode}");
+
+            return await _http.GetFromJsonAsync<List<FormulaChangeDto>>(
+                       $"{Base}/runs/{runId}/changes"
+                       + (q.Count > 0 ? "?" + string.Join("&", q) : "")) ?? new();
+        }
+
+        public async Task<(bool Ok, string? Error)> RollbackAsync(
+            int runId, string? stepCode = null, bool whatIf = true)
+        {
+            var res = await _http.PostAsJsonAsync($"{Base}/runs/{runId}/rollback",
+                new RollbackRequest { StepCode = stepCode, WhatIf = whatIf });
+
+            return res.IsSuccessStatusCode
+                 ? (true, null)
+                 : (false, await res.Content.ReadAsStringAsync());
+        }
+
         // ───────── مرجع ─────────
 
         public async Task<List<CostCheckRuleDto>> GetRulesAsync()

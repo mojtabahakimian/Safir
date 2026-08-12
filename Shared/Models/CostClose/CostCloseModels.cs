@@ -243,6 +243,78 @@ namespace Safir.Shared.Models.CostClose
         public string? Note     { get; set; }
     }
 
+    // ───────────────────────── هزینه تبدیل ─────────────────────────
+
+    public class ConversionCostDto
+    {
+        public int      UnitId          { get; set; }
+        public string?  UnitName        { get; set; }
+        public byte     CostKind        { get; set; }   // 0=کل 1=دستمزد 2=سربار
+        public decimal  AbsorbedAmount  { get; set; }
+        public decimal? AbsorbedFromWip { get; set; }
+        public decimal  ActualAmount    { get; set; }
+        public decimal  AdjustFactor    { get; set; }
+        public string?  ApprovedBy      { get; set; }
+
+        public decimal Difference  => ActualAmount - AbsorbedAmount;
+        public decimal? WipControl => AbsorbedFromWip - AbsorbedAmount;
+
+        public string KindText => CostKind switch
+        {
+            0 => "کل هزینه تبدیل",
+            1 => "دستمزد",
+            _ => "سربار"
+        };
+    }
+
+    /// <summary>یک تغییر نرخ یا مقدار در فرمول — برای پاسخ به «چرا این عدد عوض شد؟»</summary>
+    public class FormulaChangeDto
+    {
+        public long    ChangeId     { get; set; }
+        public int     RunId        { get; set; }
+        public string  StepCode     { get; set; } = string.Empty;
+        public int     FNUMB        { get; set; }
+        public long?   ParentCode   { get; set; }
+        public string? ParentName   { get; set; }
+        public long?   ChildCode    { get; set; }
+        public string? ChildName    { get; set; }
+        public string  FieldName    { get; set; } = string.Empty;
+        public double? OldValue     { get; set; }
+        public double? NewValue     { get; set; }
+        public string? Reason       { get; set; }
+        public DateTime ChangedAtUtc { get; set; }
+
+        public double? Delta => NewValue - OldValue;
+        public double? DeltaPct =>
+            OldValue is null or 0 ? null : (NewValue - OldValue) / OldValue * 100;
+    }
+
+    public class ItemCostDto
+    {
+        public long    Code         { get; set; }
+        public string? ItemName     { get; set; }
+        public short   LowLevelCode { get; set; }
+        public byte    SourceKind   { get; set; }
+        public int?    FNUMB        { get; set; }
+        public double  MaterialCost { get; set; }
+        public double  WageCost     { get; set; }
+        public double  OverheadCost { get; set; }
+        public double  TotalCost    { get; set; }
+
+        public string SourceText => SourceKind switch
+        {
+            1 => "میانگین انبار",
+            2 => "محاسبه از فرمول",
+            _ => "بدون منبع نرخ"
+        };
+    }
+
+    public class RollbackRequest
+    {
+        public string? StepCode { get; set; }
+        public bool    WhatIf   { get; set; } = true;
+    }
+
     // ───────────────────────── تنظیمات ─────────────────────────
 
     public class CostUnitDto
