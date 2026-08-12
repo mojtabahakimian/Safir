@@ -1,0 +1,399 @@
+@page "/cost-close/runs/{RunId:int}/margin"
+@using Safir.Shared.Models.CostClose
+@using Safir.Shared.Constants
+@using Safir.Client.Services
+@inject CostCloseApiService Api
+@inject Pay2AccessApiService Access
+@inject ISnackbar Snackbar
+@inject IDialogService Dialog
+@inject NavigationManager Nav
+
+<PageTitle>سود و زیان کالا</PageTitle>
+
+<div class="cc-page" dir="rtl">
+
+@if (_loadError is not null)
+{
+    <MudAlert Severity="Severity.Error" Class="mt-3">@_loadError</MudAlert>
+}
+else
+{
+    <div class="cc-balance">
+        <div class="cc-gauge @(TotalProfit >= 0 ? "ok" : "bad")">
+            <div class="lbl">سود کل</div>
+            <div class="val">@FormatAmount(TotalProfit)</div>
+            <div class="cc-foot">
+                فروش @FormatAmount(TotalSales) · بها از کاردکس @FormatAmount(TotalCost)
+            </div>
+        </div>
+
+        <div class="cc-gauge @(LossCount == 0 ? "ok" : "warn")">
+            <div class="lbl">کالای زیان‌ده</div>
+            <div class="val">@LossCount</div>
+            <div class="cc-foot">از @_all.Count کالا</div>
+        </div>
+
+        <div class="cc-gauge @(HasRiskyBalancer ? "bad" : "ok")">
+            <div class="lbl">هدف‌گذاری‌شده</div>
+            <div class="val">@TargetedCount</div>
+            <div class="cc-foot">
+                @(HasRiskyBalancer ? "یک متعادل‌کننده زیان‌ده می‌شود" : "بدون تعارض")
+            </div>
+        </div>
+    </div>
+
+    <div class="cc-toolbar">
+        @* MudBlazor 6.21: MudChipSet در این نسخه SelectedValue/SelectionMode ندارد
+           (غیرجنریک است)، پس فیلتر با سه چیپ مستقل و OnClick پیاده شده —
+           همان الگوی CostExceptions.razor و CostVarianceBoard.razor. *@
+        <MudChip Color="Color.Error" Variant="@FilterVariant("loss")"
+                 OnClick="@(() => OnFilter("loss"))">
+            زیان‌ده @LossCount
+        </MudChip>
+        <MudChip Variant="@FilterVariant("all")" OnClick="@(() => OnFilter("all"))">
+            همه @_all.Count
+        </MudChip>
+        <MudChip Color="Color.Primary" Variant="@FilterVariant("target")"
+                 OnClick="@(() => OnFilter("target"))">
+            هدف‌دار @TargetedCount
+        </MudChip>
+
+        <MudSpacer />
+
+        <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.Download"
+                   Href="@Api.ReportUrl(RunId)" Target="_blank">
+            خروجی اکسل
+        </MudButton>
+
+        @if (Access.CanUpd(CostForms.Margin))
+        {
+            <MudButton Variant="Variant.Filled" Color="Color.Primary"
+                       StartIcon="@Icons.Material.Filled.PriceCheck"
+                       OnClick="ApplyTargets" Disabled="@(_busy || !_dirty)">
+                اعمال اهداف حاشیه
+            </MudButton>
+        }
+    </div>
+
+    @if (HasRiskyBalancer)
+    {
+        <MudAlert Severity="Severity.Warning" Dense Class="mb-3">
+            با انتخاب فعلی، یک کالای سودده به زیان می‌رود. کالای متعادل‌کننده
+            با حجم بیشتر انتخاب کنید یا اثر را بین چند کالا پخش کنید.
+        </MudAlert>
+    }
+
+    @if (_busy) { <MudProgressLinear Indeterminate Color="Color.Primary" Class="mb-3" /> }
+
+    <MudPaper Class="cc-rule-card" Elevation="0">
+        <MudTable Items="_rows" Dense Hover Breakpoint="Breakpoint.Sm" Elevation="0"
+                  T="ItemMarginDto">
+            <HeaderContent>
+                <MudTh Style="width:60px">کد</MudTh>
+                <MudTh>کالا</MudTh>
+                <MudTh Style="text-align:left;width:120px">مبلغ فروش</MudTh>
+                <MudTh Style="text-align:left;width:120px">بهای تمام‌شده</MudTh>
+                <MudTh Style="text-align:left;width:120px">سود</MudTh>
+                <MudTh Style="text-align:left;width:60px">٪</MudTh>
+                <MudTh Style="width:130px">هدف</MudTh>
+                <MudTh Style="width:200px">کالای متعادل‌کننده</MudTh>
+                <MudTh Style="text-align:left;width:120px">سود پس از اعمال</MudTh>
+            </HeaderContent>
+
+            <RowTemplate>
+                <MudTd><span class="cc-num">@context.Code</span></MudTd>
+                <MudTd>@context.ItemName</MudTd>
+
+                <MudTd Style="text-align:left">
+                    <MudTooltip Text="@SalesBreakdown(context)">
+                        <span class="cc-num">@FormatAmount(context.SalesAmount)</span>
+                    </MudTooltip>
+                </MudTd>
+
+                <MudTd Style="text-align:left">
+                    <MudTooltip Text="@CostTooltip(context)">
+                        <span class="cc-num @(context.CostAmount == 0 ? "neg" : "")">
+                            @FormatAmount(context.CostAmount)
+                        </span>
+                    </MudTooltip>
+                </MudTd>
+
+                <MudTd Style="text-align:left">
+                    <span class="cc-num @(context.Profit < 0 ? "neg" : "pos")">
+                        @FormatAmount(context.Profit)
+                    </span>
+                </MudTd>
+
+                <MudTd Style="text-align:left">
+                    <span class="cc-num @(context.ProfitPct < 0 ? "neg" : "")">
+                        @($"{context.ProfitPct:N0}")
+                    </span>
+                </MudTd>
+
+                <MudTd>
+                    @if (IsBalancer(context.Code))
+                    {
+                        <MudChip Size="Size.Small" Color="Color.Info"
+                                 Variant="Variant.Text">متعادل‌کننده</MudChip>
+                    }
+                    else
+                    {
+                        <MudSelect T="byte" Value="context.TargetKind" Dense
+                                   Variant="Variant.Outlined"
+                                   ValueChanged="@(v => SetTarget(context, v))">
+                            <MudSelectItem Value="@((byte)3)">آزاد</MudSelectItem>
+                            <MudSelectItem Value="@((byte)1)">سود صفر</MudSelectItem>
+                            <MudSelectItem Value="@((byte)2)">درصد مشخص</MudSelectItem>
+                        </MudSelect>
+                    }
+                </MudTd>
+
+                <MudTd>
+                    @if (context.TargetKind != 3 && !IsBalancer(context.Code))
+                    {
+                        <MudAutocomplete T="ItemMarginDto" Dense Variant="Variant.Outlined"
+                                         Value="@FindItem(context.BalancingCode)"
+                                         ValueChanged="@(v => SetBalancer(context, v))"
+                                         SearchFuncWithCancel="@SearchProfitable"
+                                         ToStringFunc="@BalancerLabel"
+                                         Placeholder="کالای سودده" Clearable />
+                    }
+                    else if (IsBalancer(context.Code))
+                    {
+                        <span class="cc-hint">جذب اثر @BalancerSourceName(context.Code)</span>
+                    }
+                    else
+                    {
+                        <span class="cc-hint">—</span>
+                    }
+                </MudTd>
+
+                <MudTd Style="text-align:left">
+                    @{ var after = ProfitAfter(context); }
+                    <span class="cc-num @(after < 0 ? "neg" : after > 0 ? "pos" : "")">
+                        @FormatAmount(after)
+                    </span>
+                </MudTd>
+            </RowTemplate>
+        </MudTable>
+    </MudPaper>
+}
+</div>
+
+<style>
+    .cc-num.pos { color: var(--p2-success-text); }
+</style>
+
+@code {
+    [Parameter] public int RunId { get; set; }
+
+    private List<ItemMarginDto> _all  = new();
+    private List<ItemMarginDto> _rows = new();
+
+    private string _filter = "loss";
+    private bool   _busy;
+    private bool   _dirty;
+    private string? _loadError;
+
+    private double TotalSales  => _all.Sum(r => r.SalesAmount);
+    private double TotalCost   => _all.Sum(r => r.CostAmount);
+    private double TotalProfit => TotalSales - TotalCost;
+
+    private int LossCount     => _all.Count(r => r.IsLoss);
+    private int TargetedCount => _all.Count(r => r.TargetKind != 3);
+
+    /// <summary>
+    /// آیا انتخاب فعلی، کالای سوددهی را زیان‌ده می‌کند؟
+    /// این همان اشتباهی است که بدون پیش‌نمایش، ماه بعد کشف می‌شد.
+    /// </summary>
+    private bool HasRiskyBalancer => _all
+        .Where(r => r.BalancingCode is not null)
+        .Select(r => FindItem(r.BalancingCode))
+        .Where(b => b is not null)
+        .Any(b => b!.Profit >= 0 && ProfitAfter(b) < 0);
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Access.EnsureLoadedAsync();
+        await Load();
+    }
+
+    private async Task Load()
+    {
+        _busy = true;
+        try
+        {
+            _all = await Api.GetMarginsAsync(RunId);
+            ApplyFilter();
+        }
+        catch (Exception ex)
+        {
+            // بدون این catch، یک ۴۰۱/۴۰۳ ساده از OnInitializedAsync بیرون می‌زد
+            // و کامپوننت با پیام انگلیسیِ .NET می‌شکست — همان مشکلی که در
+            // CostExceptions.razor، CostRunMonitor.razor و CostVarianceBoard.razor
+            // پیدا و رفع شد.
+            _loadError = FriendlyError(ex);
+        }
+        finally { _busy = false; }
+    }
+
+    private void OnFilter(string v) { _filter = v; ApplyFilter(); }
+
+    private Variant FilterVariant(string v) => _filter == v ? Variant.Filled : Variant.Text;
+
+    private void ApplyFilter() => _rows = (_filter switch
+    {
+        "loss"   => _all.Where(r => r.IsLoss),
+        "target" => _all.Where(r => r.TargetKind != 3 || IsBalancer(r.Code)),
+        _        => _all
+    }).OrderBy(r => r.Profit).ToList();
+
+    // ───────── ویرایش ─────────
+
+    private void SetTarget(ItemMarginDto row, byte kind)
+    {
+        row.TargetKind = kind;
+        if (kind == 3) row.BalancingCode = null;
+        _dirty = true;
+        ApplyFilter();
+    }
+
+    private void SetBalancer(ItemMarginDto row, ItemMarginDto? item)
+    {
+        row.BalancingCode = item?.Code;
+        row.BalancingName = item?.ItemName;
+        _dirty = true;
+    }
+
+    private ItemMarginDto? FindItem(long? code)
+        => code is null ? null : _all.FirstOrDefault(i => i.Code == code);
+
+    private bool IsBalancer(long code)
+        => _all.Any(r => r.BalancingCode == code);
+
+    private string BalancerSourceName(long code)
+        => _all.FirstOrDefault(r => r.BalancingCode == code)?.ItemName ?? "";
+
+    /// <summary>
+    /// سود پس از اعمال: کالای هدف به هدفش می‌رسد، و کالای
+    /// متعادل‌کننده اثر معکوس را جذب می‌کند.
+    /// </summary>
+    private double ProfitAfter(ItemMarginDto row)
+    {
+        // اگر خودش هدف دارد
+        if (row.TargetKind == 1) return 0;
+        if (row.TargetKind == 2) return row.SalesAmount * (double)(row.TargetPct ?? 0) / 100;
+
+        // اگر متعادل‌کننده دیگری است
+        var absorbed = _all.Where(r => r.BalancingCode == row.Code)
+                           .Sum(r => r.AdjustAmount);
+
+        return row.Profit - absorbed;
+    }
+
+    private Task<IEnumerable<ItemMarginDto>> SearchProfitable(string s, CancellationToken ct)
+        => Task.FromResult(
+            _all.Where(i => i.Profit > 0 &&
+                            (string.IsNullOrWhiteSpace(s) ||
+                             (i.ItemName ?? "").Contains(s) ||
+                             i.Code.ToString().Contains(s)))
+                .OrderByDescending(i => i.Profit)
+                .Take(30));
+
+    private static string BalancerLabel(ItemMarginDto? i)
+        => i is null ? "" : $"{i.ItemName} — سود {i.Profit:N0}";
+
+    // ───────── عملیات ─────────
+
+    private async Task ApplyTargets()
+    {
+        var missing = _all.Where(r => r.TargetKind != 3 && r.BalancingCode is null).ToList();
+        if (missing.Count > 0)
+        {
+            Snackbar.Add(
+                $"{missing.Count} کالا هدف دارد ولی کالای متعادل‌کننده‌اش تعیین نشده. " +
+                "بدون آن جمع کل بهای تمام‌شده به هم می‌خورد.", Severity.Warning);
+            return;
+        }
+
+        if (HasRiskyBalancer)
+        {
+            var go = await Dialog.ShowMessageBox(
+                "هشدار",
+                "با این انتخاب، یک کالای سودده به زیان می‌رود. ادامه می‌دهید؟",
+                yesText: "ادامه", cancelText: "بازبینی");
+
+            if (go != true) return;
+        }
+
+        _busy = true;
+        try
+        {
+            var input = _all.Where(r => r.TargetKind != 3 || r.BalancingCode is not null)
+                            .Select(r => new MarginTargetInput
+                            {
+                                Code          = r.Code,
+                                TargetKind    = r.TargetKind,
+                                TargetPct     = r.TargetPct,
+                                BalancingCode = r.BalancingCode
+                            }).ToList();
+
+            var (ok, err) = await Api.SaveMarginTargetsAsync(input);
+            if (!ok) { Snackbar.Add(err ?? "خطا", Severity.Error); return; }
+
+            var (ok2, err2) = await Api.ApplyMarginTargetsAsync(RunId, whatIf: false);
+            if (!ok2) { Snackbar.Add(err2 ?? "خطا", Severity.Error); return; }
+
+            _dirty = false;
+            Snackbar.Add("اهداف اعمال شد — نرخ‌ها باید دوباره منتشر شوند", Severity.Success);
+            await Load();
+        }
+        finally { _busy = false; }
+    }
+
+    private static string FormatAmount(double v)
+        => v < 0 ? $"{Math.Abs(v):N0}-" : v.ToString("N0");
+
+    /// <summary>تفکیک فروش: ناخالص، تخفیف، برگشت</summary>
+    private static string SalesBreakdown(ItemMarginDto m)
+    {
+        var parts = new List<string>();
+
+        if (m.GrossSales is not null)
+            parts.Add($"ناخالص {m.GrossSales:N0}");
+
+        if (m.Discount is > 0)
+            parts.Add($"تخفیف {m.Discount:N0}");
+
+        if (m.ReturnAmount is > 0)
+            parts.Add($"برگشت {m.ReturnAmount:N0} ({m.ReturnQty:N1} واحد)");
+
+        return parts.Count > 0 ? string.Join(" · ", parts) : "—";
+    }
+
+    /// <summary>بهای تمام‌شده از میانگین کاردکس محاسبه می‌شود</summary>
+    private static string CostTooltip(ItemMarginDto m)
+        => m.CostAmount == 0
+            ? "نرخ کاردکس این کالا صفر است — بها و سودش غیرواقعی است"
+            : m.UnitCost is not null
+                ? $"میانگین کاردکس {m.UnitCost:N0} × {m.QtySold:N1} واحد"
+                : "—";
+
+    /// <summary>
+    /// مسیرهای api/cost-close/ زیر پوشش Pay2ForbiddenHandler نیستند (آن
+    /// handler عمداً فقط api/pay2/ را می‌گیرد)، پس متن فارسی ۴۰۳ سرور
+    /// اینجا به دست ما نمی‌رسد و باید جایگزین قابل‌فهم داشته باشیم.
+    /// </summary>
+    private static string FriendlyError(Exception ex)
+    {
+        if (ex is HttpRequestException http)
+        {
+            if (http.StatusCode == System.Net.HttpStatusCode.Unauthorized)
+                return "برای مشاهده این صفحه باید وارد شوید.";
+            if (http.StatusCode == System.Net.HttpStatusCode.Forbidden)
+                return "دسترسی لازم برای مشاهده سود و زیان کالا را ندارید.";
+        }
+
+        return "خواندن اطلاعات سود و زیان کالا ناموفق بود. اگر تکرار شد به پشتیبانی اطلاع دهید.";
+    }
+}

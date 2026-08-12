@@ -497,6 +497,118 @@ namespace Safir.Server.Controllers
                 sql, new { runId, code, stepCode }));
         }
 
+        // ═══════════════════════ سود و زیان کالا ═══════════════════════
+
+        [HttpGet("runs/{runId:int}/margins")]
+        [Pay2Authorize(CostForms.Margin, Pay2Perm.See)]
+        public async Task<ActionResult<IEnumerable<ItemMarginDto>>> GetMargins(int runId)
+        {
+            const string sql = @"
+                SELECT  m.Code, s.NAME AS ItemName, m.QtySold, m.WeightKg,
+                        m.SalesAmount, m.CostAmount, m.Profit,
+                        m.UnitCost, m.UnitPrice,
+                        m.GrossSales, m.Discount, m.ReturnAmount, m.ReturnQty,
+                        ISNULL(t.TargetKind, 3) AS TargetKind,
+                        t.TargetPct, t.BalancingCode,
+                        sb.NAME AS BalancingName
+                FROM    dbo.CC_ItemMargin m
+                LEFT    JOIN dbo.CC_MarginTarget t
+                        ON t.Code = m.Code AND t.IsActive = 1
+                LEFT    JOIN dbo.STUF_DEF s  ON TRY_CAST(s.CODE  AS BIGINT) = m.Code
+                LEFT    JOIN dbo.STUF_DEF sb ON TRY_CAST(sb.CODE AS BIGINT) = t.BalancingCode
+                WHERE   m.RunId = @runId
+                ORDER BY m.Profit";
+
+            return Ok(await _db.DoGetDataSQLAsync<ItemMarginDto>(sql, new { runId }));
+        }
+
+        [HttpPut("margin-targets")]
+        [Pay2Authorize(CostForms.Margin, Pay2Perm.Upd)]
+        public async Task<IActionResult> SaveMarginTargets(
+            [FromBody] List<MarginTargetInput> items)
+        {
+            if (items is null || items.Count == 0) return BadRequest("فهرست خالی است.");
+
+            var bad = items.Where(i => i.TargetKind is 1 or 2 && i.BalancingCode is null)
+                           .ToList();
+            if (bad.Count > 0)
+                return BadRequest(
+                    $"{bad.Count} کالا هدف دارد ولی کالای متعادل‌کننده‌اش تعیین نشده. " +
+                    "بدون آن، جمع کل بهای تمام‌شده به هم می‌خورد.");
+
+            await _db.ExecuteInTransactionAsync(async (conn, tx) =>
+            {
+                foreach (var i in items)
+                {
+                    await conn.ExecuteAsync(
+                        "UPDATE dbo.CC_MarginTarget SET IsActive = 0 WHERE Code = @Code",
+                        new { i.Code }, tx);
+
+                    if (i.TargetKind != 3)
+                        await conn.ExecuteAsync(@"
+                            INSERT dbo.CC_MarginTarget
+                                (Code, TargetKind, TargetPct, BalancingCode, IsActive)
+                            VALUES (@Code, @TargetKind, @TargetPct, @BalancingCode, 1)",
+                            i, tx);
+                }
+            });
+
+            return Ok(new { saved = items.Count });
+        }
+
+        /// <summary>
+        /// اعمال اهداف حاشیه. با whatIf=true فقط پیش‌نمایش و هشدارها.
+        /// </summary>
+        [HttpPost("runs/{runId:int}/apply-margin-targets")]
+        [Pay2Authorize(CostForms.ActApplyRate, Pay2Perm.Run)]
+        public async Task<IActionResult> ApplyMarginTargets(
+            int runId, [FromQuery] bool whatIf = true)
+        {
+            var run = await _db.DoGetDataSQLAsyncSingle<CostRunDto>(
+                "SELECT * FROM dbo.CC_Run WHERE RunId = @runId", new { runId });
+
+            if (run is null) return NotFound();
+
+            var res = await _db.DoGetDataSQLAsync<dynamic>(
+                "EXEC dbo.CC_sp_S12b_ApplyMarginTargets @RunId=@r, @Month=@m, " +
+                "@DT1=@a, @DT2=@b, @WhatIf=@w",
+                new { r = runId, m = run.PeriodMonth,
+                      a = run.DateFrom, b = run.DateTo, w = whatIf });
+
+            return Ok(res);
+        }
+
+        // ═══════════════════════ گزارش و تأیید ═══════════════════════
+
+        [HttpGet("runs/{runId:int}/report.xlsx")]
+        [Pay2Authorize(CostForms.ActExport, Pay2Perm.Run)]
+        public async Task<IActionResult> GetReport(
+            int runId, [FromServices] IBoardReportBuilder builder)
+        {
+            var bytes = await builder.BuildAsync(runId);
+
+            return File(bytes,
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                $"gozaresh-cost-{runId}.xlsx");
+        }
+
+        [HttpPost("runs/{runId:int}/approve")]
+        [Pay2Authorize(CostForms.ActApprove, Pay2Perm.Run)]
+        public async Task<IActionResult> Approve(int runId)
+        {
+            try
+            {
+                await _db.DoGetStoreProcedureSQLAsync<dynamic>(
+                    "dbo.CC_sp_S14_Approve", new { RunId = runId, UserName = CurrentUser });
+
+                return Ok();
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(ex.Message);
+            }
+        }
+
         // ═══════════════════════ بازگردانی ═══════════════════════
 
         [HttpPost("runs/{runId:int}/rollback")]

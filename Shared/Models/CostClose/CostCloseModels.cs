@@ -309,6 +309,52 @@ namespace Safir.Shared.Models.CostClose
         };
     }
 
+    public class ItemMarginDto
+    {
+        public long    Code        { get; set; }
+        public string? ItemName    { get; set; }
+        public double  QtySold     { get; set; }
+        public double? WeightKg    { get; set; }
+        public double  SalesAmount { get; set; }
+        public double  CostAmount  { get; set; }
+        public double  Profit      { get; set; }
+        public double? UnitCost    { get; set; }
+        public double? UnitPrice   { get; set; }
+
+        // تفکیک فروش
+        public double? GrossSales   { get; set; }   // پیش از تخفیف
+        public double? Discount     { get; set; }
+        public double? ReturnAmount { get; set; }   // برگشت از فروش
+        public double? ReturnQty    { get; set; }
+
+        // هدف حاشیه
+        public byte     TargetKind    { get; set; } = 3;   // 3 = آزاد
+        public decimal? TargetPct     { get; set; }
+        public long?    BalancingCode { get; set; }
+        public string?  BalancingName { get; set; }
+
+        public double ProfitPct =>
+            SalesAmount == 0 ? 0 : Profit / SalesAmount * 100;
+
+        public bool IsLoss => Profit < 0;
+
+        /// <summary>مبلغی که باید جابه‌جا شود تا هدف محقق شود</summary>
+        public double AdjustAmount => TargetKind switch
+        {
+            1 => CostAmount - SalesAmount,
+            2 => CostAmount - SalesAmount * (1 - (double)(TargetPct ?? 0) / 100),
+            _ => 0
+        };
+    }
+
+    public class MarginTargetInput
+    {
+        public long     Code          { get; set; }
+        public byte     TargetKind    { get; set; }
+        public decimal? TargetPct     { get; set; }
+        public long?    BalancingCode { get; set; }
+    }
+
     public class RollbackRequest
     {
         public string? StepCode { get; set; }

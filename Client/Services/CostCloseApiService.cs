@@ -166,6 +166,42 @@ namespace Safir.Client.Services
                  : (false, await res.Content.ReadAsStringAsync());
         }
 
+        // ───────── سود و زیان کالا ─────────
+
+        public async Task<List<ItemMarginDto>> GetMarginsAsync(int runId)
+            => await _http.GetFromJsonAsync<List<ItemMarginDto>>(
+                   $"{Base}/runs/{runId}/margins") ?? new();
+
+        public async Task<(bool Ok, string? Error)> SaveMarginTargetsAsync(
+            List<MarginTargetInput> items)
+        {
+            var res = await _http.PutAsJsonAsync($"{Base}/margin-targets", items);
+            return res.IsSuccessStatusCode
+                 ? (true, null)
+                 : (false, await res.Content.ReadAsStringAsync());
+        }
+
+        public async Task<(bool Ok, string? Error)> ApplyMarginTargetsAsync(
+            int runId, bool whatIf = true)
+        {
+            var res = await _http.PostAsync(
+                $"{Base}/runs/{runId}/apply-margin-targets?whatIf={whatIf}", null);
+
+            return res.IsSuccessStatusCode
+                 ? (true, null)
+                 : (false, await res.Content.ReadAsStringAsync());
+        }
+
+        public string ReportUrl(int runId) => $"{Base}/runs/{runId}/report.xlsx";
+
+        public async Task<(bool Ok, string? Error)> ApproveAsync(int runId)
+        {
+            var res = await _http.PostAsync($"{Base}/runs/{runId}/approve", null);
+            return res.IsSuccessStatusCode
+                 ? (true, null)
+                 : (false, await res.Content.ReadAsStringAsync());
+        }
+
         // ───────── مرجع ─────────
 
         public async Task<List<CostCheckRuleDto>> GetRulesAsync()

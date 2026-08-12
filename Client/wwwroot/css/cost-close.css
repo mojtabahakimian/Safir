@@ -63,6 +63,13 @@
     cursor: help;
 }
 
+/* مثبت/منفی — مشترک بین صفحات cost-close (سود، انحراف، تراز).
+   یک <style> داخل razor فقط اگر آن کامپوننت‌ها.razor.css نباشد
+   scoped نیست، پس تعریفش اینجا (بارشده در همه صفحات) نه در یک
+   صفحه‌ی خاص، تا با ورود مستقیم به هر صفحه هم رنگ درست باشد. */
+.cc-num.pos { color: var(--p2-success-text); }
+.cc-num.neg { color: var(--p2-danger-text); }
+
 .cc-item {
     display: flex;
     align-items: baseline;
