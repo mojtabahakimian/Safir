@@ -184,4 +184,32 @@ test.describe('سلامت کلاینت', () => {
     const unexpected = errors.filter(e => !ignorableWithoutDb(e));
     expect(unexpected, `خطاهای غیرمنتظره:\n${unexpected.join('\n')}`).toHaveLength(0);
   });
+
+  /**
+   * رگرسیون: صفحه‌ی مغایرت‌های بهای تمام‌شده نباید با ۴۰۱/۴۰۳ بشکند.
+   *
+   * نسخه‌ی اول این صفحه در Load() هیچ catch نداشت، پس یک ۴۰۱ ساده از
+   * OnInitializedAsync بیرون می‌زد و کامپوننت با پیام انگلیسیِ .NET
+   * («Response status code does not indicate success») می‌شکست.
+   *
+   * توجه: نمی‌شود این را با فیلترِ ignorableWithoutDb گرفت، چون متن آن خطا
+   * خودش شامل «401» است و ignorable حساب می‌شود. نشانه‌ی درست، عبارت
+   * «Unhandled exception rendering component» است.
+   */
+  test('صفحه مغایرت‌های بهای تمام‌شده بدون ورود هم نمی‌شکند', async ({ page }) => {
+    const errors = collectPageErrors(page);
+    await page.goto('/cost-close/exceptions', { waitUntil: 'networkidle' });
+    await page.waitForTimeout(3000);
+
+    const crashed = errors.filter(e => /Unhandled exception rendering component/i.test(e));
+    expect(crashed, `کامپوننت کرش کرد:\n${crashed.join('\n')}`).toHaveLength(0);
+
+    // هیچ استثنای مدیریت‌نشده‌ای نباید از خودِ این ماژول بالا بیاید.
+    // (دامنه عمداً به CostClose محدود است: سرویس‌های دیگر برنامه مثل
+    //  UserStateApiService در محیط بدون دیتابیس ۴۰۱ خودشان را لاگ می‌کنند
+    //  و آن نویزِ از پیش موجود ربطی به این تست ندارد.)
+    const ccErrors = errors.filter(e => /CostCloseApiService|CostClose\.CostExceptions/i.test(e));
+    expect(ccErrors, `خطای مدیریت‌نشده در ماژول بهای تمام‌شده:\n${ccErrors.join('\n')}`)
+      .toHaveLength(0);
+  });
 });
