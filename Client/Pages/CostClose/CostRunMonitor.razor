@@ -92,6 +92,15 @@
                     مشاهده مغایرت‌ها (@_state.OpenBlockingCount)
                 </MudButton>
 
+                @if (Access.CanSee(CostForms.Variance))
+                {
+                    <MudButton Variant="Variant.Outlined"
+                               StartIcon="@Icons.Material.Filled.TrendingUp"
+                               Href="@($"/cost-close/runs/{RunId}/variance")">
+                        بررسی انحراف مصرف
+                    </MudButton>
+                }
+
                 @if (Access.CanRun(CostForms.ActStart))
                 {
                     <MudButton Variant="Variant.Filled" Color="Color.Primary"

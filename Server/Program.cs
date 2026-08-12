@@ -101,6 +101,9 @@ builder.Services.AddScoped<Safir.Server.CostClose.ICostStep, Safir.Server.CostCl
 builder.Services.AddScoped<Safir.Server.CostClose.ICostStep, Safir.Server.CostClose.Steps.S03_DeleteEmptyDeeds>();
 builder.Services.AddScoped<Safir.Server.CostClose.ICostStep, Safir.Server.CostClose.Steps.S04_SortDeeds>();
 builder.Services.AddScoped<Safir.Server.CostClose.ICostStep, Safir.Server.CostClose.Steps.S05_Gate>();
+builder.Services.AddScoped<Safir.Server.CostClose.ICostStep, Safir.Server.CostClose.Steps.S07_RebuildIssue>();
+builder.Services.AddScoped<Safir.Server.CostClose.ICostStep, Safir.Server.CostClose.Steps.S08_CalcVariance>();
+builder.Services.AddScoped<Safir.Server.CostClose.ICostStep, Safir.Server.CostClose.Steps.S09_ApplyDecisions>();
 builder.Services.AddScoped<Safir.Server.CostClose.ICostStep, Safir.Server.CostClose.Steps.S10_BalanceConversion>();
 builder.Services.AddScoped<Safir.Server.CostClose.ICostStep, Safir.Server.CostClose.Steps.S11_PropagateRates>();
 

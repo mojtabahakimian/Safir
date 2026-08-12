@@ -115,6 +115,23 @@ namespace Safir.Client.Services
             return await res.Content.ReadFromJsonAsync<AutoFixResultDto>();
         }
 
+        // ───────── انحراف مصرف ─────────
+
+        public async Task<List<VarianceRowDto>> GetVariancesAsync(int runId)
+            => await _http.GetFromJsonAsync<List<VarianceRowDto>>(
+                   $"{Base}/runs/{runId}/variances") ?? new();
+
+        public async Task<(bool Ok, string? Error)> SaveDecisionsAsync(
+            int runId, List<VarianceDecisionInput> items)
+        {
+            var res = await _http.PutAsJsonAsync(
+                $"{Base}/runs/{runId}/variance-decisions", items);
+
+            return res.IsSuccessStatusCode
+                 ? (true, null)
+                 : (false, await res.Content.ReadAsStringAsync());
+        }
+
         // ───────── نتایج محاسبه ─────────
 
         public async Task<List<ConversionCostDto>> GetConversionAsync(int runId)

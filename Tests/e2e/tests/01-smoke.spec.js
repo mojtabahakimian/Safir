@@ -233,4 +233,24 @@ test.describe('سلامت کلاینت', () => {
 
     await expect(page.getByText('برای مشاهده این صفحه باید وارد شوید.')).toBeVisible();
   });
+
+  /**
+   * رگرسیون: سومین تکرار همان الگو — CostVarianceBoard.Load() هم هیچ
+   * catch نداشت. همان الگوی رفع (catch + پیام فارسی روی خود صفحه) هم اینجا
+   * به کار رفت.
+   */
+  test('صفحه انحراف مصرف بدون ورود هم نمی‌شکند', async ({ page }) => {
+    const errors = collectPageErrors(page);
+    await page.goto('/cost-close/runs/1/variance', { waitUntil: 'networkidle' });
+    await page.waitForTimeout(3000);
+
+    const crashed = errors.filter(e => /Unhandled exception rendering component/i.test(e));
+    expect(crashed, `کامپوننت کرش کرد:\n${crashed.join('\n')}`).toHaveLength(0);
+
+    const ccErrors = errors.filter(e => /CostCloseApiService|CostClose\.CostVarianceBoard/i.test(e));
+    expect(ccErrors, `خطای مدیریت‌نشده در ماژول بهای تمام‌شده:\n${ccErrors.join('\n')}`)
+      .toHaveLength(0);
+
+    await expect(page.getByText('برای مشاهده این صفحه باید وارد شوید.')).toBeVisible();
+  });
 });

@@ -359,6 +359,83 @@ namespace Safir.Server.Controllers
             }
         }
 
+        // ═══════════════════════ انحراف مصرف ═══════════════════════
+
+        [HttpGet("runs/{runId:int}/variances")]
+        [Pay2Authorize(CostForms.Variance, Pay2Perm.See)]
+        public async Task<ActionResult<IEnumerable<VarianceRowDto>>> GetVariances(int runId)
+        {
+            const string sql = @"
+                SELECT  v.Code, s.NAME AS ItemName, v.Anbar,
+                        v.QtyVariance, v.UnitRate, v.AmountVariance,
+                        v.ConsumedQty,
+                        CASE WHEN ISNULL(v.ConsumedQty,0) = 0 THEN NULL
+                             ELSE v.QtyVariance / v.ConsumedQty * 100 END AS VariancePct,
+                        v.IsKeyItem,
+                        ISNULL(d.Mode, 2) AS Mode,
+                        d.TargetCode,
+                        st.NAME AS TargetName,
+                        d.TargetFNUMB,
+                        d.Note AS LastMonthHint
+                FROM    dbo.CC_Variance v
+                LEFT    JOIN dbo.CC_VarianceDecision d
+                        ON d.Code = v.Code AND d.RunId = v.RunId
+                LEFT    JOIN dbo.STUF_DEF s  ON TRY_CAST(s.CODE  AS BIGINT) = v.Code
+                LEFT    JOIN dbo.STUF_DEF st ON TRY_CAST(st.CODE AS BIGINT) = d.TargetCode
+                WHERE   v.RunId = @runId
+                ORDER BY ABS(ISNULL(v.AmountVariance,0)) DESC";
+
+            return Ok(await _db.DoGetDataSQLAsync<VarianceRowDto>(sql, new { runId }));
+        }
+
+        /// <summary>
+        /// ثبت گروهی تصمیم‌ها. عمداً یک درخواست برای همه سطرها، نه
+        /// یک درخواست به ازای هر سطر — در WASM با تأخیر شبکه تفاوتش
+        /// محسوس است.
+        /// </summary>
+        [HttpPut("runs/{runId:int}/variance-decisions")]
+        [Pay2Authorize(CostForms.ActDecide, Pay2Perm.Run)]
+        public async Task<IActionResult> SaveDecisions(
+            int runId, [FromBody] List<VarianceDecisionInput> items)
+        {
+            if (items is null || items.Count == 0) return BadRequest("فهرست خالی است.");
+
+            var bad = items.Where(i => i.Mode == 1 && i.TargetCode is null).ToList();
+            if (bad.Count > 0)
+                return BadRequest($"{bad.Count} کالا حالت «اختصاص» دارد ولی مقصدش تعیین نشده.");
+
+            var month = await _db.DoGetDataSQLAsyncSingle<byte>(
+                "SELECT PeriodMonth FROM dbo.CC_Run WHERE RunId = @runId", new { runId });
+
+            await _db.ExecuteInTransactionAsync(async (conn, tx) =>
+            {
+                await conn.ExecuteAsync(
+                    "DELETE dbo.CC_VarianceDecision WHERE RunId = @runId",
+                    new { runId }, tx);
+
+                // TargetFNUMB از TargetCode مشتق می‌شود، چون GHEYMAT
+                // شماره ماه است و فرمول هر ماه FNUMB جداگانه دارد
+                const string ins = @"
+                    INSERT dbo.CC_VarianceDecision
+                        (RunId, Code, Mode, TargetCode, TargetFNUMB, DecidedBy, Note)
+                    SELECT @runId, @code, @mode, @targetCode,
+                           (SELECT TOP 1 h.FNUMB FROM dbo.HEAD_MANF h
+                            WHERE CAST(h.CODE AS BIGINT) = @targetCode
+                              AND h.GHEYMAT = @month
+                            ORDER BY h.FNUMB DESC),
+                           @user, @note";
+
+                foreach (var i in items)
+                    await conn.ExecuteAsync(ins, new
+                    {
+                        runId, i.Code, i.Mode, i.TargetCode,
+                        month, user = CurrentUser, i.Note
+                    }, tx);
+            });
+
+            return Ok(new { saved = items.Count });
+        }
+
         // ═══════════════════════ نتایج محاسبه ═══════════════════════
 
         [HttpGet("runs/{runId:int}/conversion")]
