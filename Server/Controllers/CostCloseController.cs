@@ -7,6 +7,7 @@ using Safir.Server.Services;   // IConnectionStringProvider
 using Safir.Shared.Constants;
 using Safir.Shared.Interfaces;
 using Safir.Shared.Models.CostClose;
+using Safir.Shared.Utility;    // FixPersianChars
 using System.Data;
 
 namespace Safir.Server.Controllers
@@ -41,6 +42,40 @@ namespace Safir.Server.Controllers
             User.FindFirst(BaseknowClaimTypes.UUSER)?.Value
             ?? User.Identity?.Name
             ?? "unknown";
+
+        // ═══════════════════════ خواندن ستون‌های فارسی ═══════════════════════
+
+        /// <summary>
+        /// خواندن یک ستون فارسی از سطر Dapper، بدون حساسیت به «ی»/«ي» و «ک»/«ك».
+        ///
+        /// چرا لازم است: رویه‌های CC_sp_* نام‌مستعار فارسی برمی‌گردانند و
+        /// پایگاه با Arabic_CI_AS کار می‌کند، ولی دیکشنری Dapper مقایسهٔ
+        /// معمولی رشته انجام می‌دهد. یک اختلاف یک‌کاراکتری («تاريخ» با ي عربی
+        /// در SQL، در برابر «تاریخ» با ی فارسی در C#) کل «اصلاح خودکار» را با
+        /// KeyNotFoundException می‌شکست. از همان FixPersianChars پروژه استفاده
+        /// می‌شود که برای همین دسته مشکل نوشته شده است.
+        /// </summary>
+        private static object? Col(IDictionary<string, object> row, string name)
+        {
+            if (row.TryGetValue(name, out var direct)) return direct;
+
+            var target = name.FixPersianChars();
+            foreach (var kv in row)
+                if (kv.Key.FixPersianChars() == target) return kv.Value;
+
+            return null;
+        }
+
+        private static bool HasCol(IDictionary<string, object> row, string name)
+        {
+            if (row.ContainsKey(name)) return true;
+
+            var target = name.FixPersianChars();
+            foreach (var kv in row)
+                if (kv.Key.FixPersianChars() == target) return true;
+
+            return false;
+        }
 
         // ═══════════════════════ اجراها ═══════════════════════
 
@@ -316,33 +351,33 @@ namespace Safir.Server.Controllers
 
                     var first = (IDictionary<string, object>)rows[0];
 
-                    if (first.ContainsKey("هشدار"))
+                    if (HasCol(first, "هشدار"))
                     {
                         foreach (var r in rows.Cast<IDictionary<string, object>>())
                             result.Warnings.Add(
-                                $"{r["نام_کالا"]}: {r["هشدار"]}");
+                                $"{Col(r, "نام_کالا")}: {Col(r, "هشدار")}");
                     }
-                    else if (first.ContainsKey("شماره_برگه"))
+                    else if (HasCol(first, "شماره_برگه"))
                     {
                         foreach (var r in rows.Cast<IDictionary<string, object>>())
                             result.Rows.Add(new AutoFixPreviewRow
                             {
-                                ProdNo   = Convert.ToInt32 (r["شماره_برگه"]),
-                                ProdDate = Convert.ToInt64 (r["تاریخ"]),
-                                Code     = Convert.ToInt64 (r["کد_کالا"]),
-                                OldFnumb = r["فرمول_فعلی"] is null
-                                            ? null : Convert.ToDouble(r["فرمول_فعلی"]),
-                                NewFnumb = Convert.ToInt32 (r["فرمول_جدید"]),
-                                Meghdar  = Convert.ToDouble(r["مقدار"])
+                                ProdNo   = Convert.ToInt32 (Col(r, "شماره_برگه")),
+                                ProdDate = Convert.ToInt64 (Col(r, "تاریخ")),
+                                Code     = Convert.ToInt64 (Col(r, "کد_کالا")),
+                                OldFnumb = Col(r, "فرمول_فعلی") is null
+                                            ? null : Convert.ToDouble(Col(r, "فرمول_فعلی")),
+                                NewFnumb = Convert.ToInt32 (Col(r, "فرمول_جدید")),
+                                Meghdar  = Convert.ToDouble(Col(r, "مقدار"))
                             });
                     }
-                    else if (first.ContainsKey("تعداد_سطر_اصلاح_شده"))
+                    else if (HasCol(first, "تعداد_سطر_اصلاح_شده"))
                     {
-                        result.RowCount = Convert.ToInt32(first["تعداد_سطر_اصلاح_شده"]);
+                        result.RowCount = Convert.ToInt32(Col(first, "تعداد_سطر_اصلاح_شده"));
                     }
-                    else if (first.ContainsKey("تعداد_سطر_قابل_اصلاح"))
+                    else if (HasCol(first, "تعداد_سطر_قابل_اصلاح"))
                     {
-                        result.RowCount = Convert.ToInt32(first["تعداد_سطر_قابل_اصلاح"]);
+                        result.RowCount = Convert.ToInt32(Col(first, "تعداد_سطر_قابل_اصلاح"));
                     }
                 }
 
