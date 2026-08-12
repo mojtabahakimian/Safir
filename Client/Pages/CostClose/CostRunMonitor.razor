@@ -55,6 +55,11 @@
         </div>
 
         <div class="cc-toolbar">
+            <MudTooltip Text="بازگشت به فهرست اجراها">
+                <MudIconButton Icon="@Icons.Material.Filled.ArrowForward" Size="Size.Small"
+                               Href="/cost-close" />
+            </MudTooltip>
+
             <MudText Typo="Typo.h6">
                 اجرا #@_state.Run.RunNo — @PersianMonth(_state.Run.PeriodMonth) @_state.Run.FiscalYear
             </MudText>
@@ -74,6 +79,15 @@
                          Icon="@Icons.Material.Filled.SyncProblem">
                     اتصال زنده قطع است — به‌روزرسانی خودکار نیست
                 </MudChip>
+            }
+
+            @if (_state.Run.Status == 0 && Access.CanRun(CostForms.ActStart))
+            {
+                <MudButton Variant="Variant.Filled" Color="Color.Primary"
+                           StartIcon="@Icons.Material.Filled.PlayArrow"
+                           OnClick="Start" Disabled="_busy">
+                    شروع اجرا
+                </MudButton>
             }
 
             @if (_state.Run.Status == 1 && Access.CanRun(CostForms.ActStart))
@@ -406,6 +420,35 @@
 
         // فقط ۲۰۰ سطر آخر نگه داشته می‌شود
         if (_logs.Count > 200) _logs.RemoveRange(0, _logs.Count - 200);
+    }
+
+    /// <summary>
+    /// شروع اجرای تازه‌ساخته (وضعیت «پیش‌نویس»).
+    ///
+    /// بدون این، اجرایی که از فهرست ساخته می‌شد در وضعیت ۰ می‌ماند و هیچ
+    /// دکمه‌ای برای راه‌انداختنش نبود؛ نوار ابزار فقط وضعیت‌های ۱ و ۲ را
+    /// می‌شناخت.
+    /// </summary>
+    private async Task Start()
+    {
+        var confirm = await Dialog.ShowMessageBox(
+            "شروع اجرا",
+            _state?.Run?.RunKind == 2
+                ? "اجرای قطعی فرمول‌ها و اسناد را به‌روز می‌کند. پیش از هر گام نویسنده اسنپ‌شات گرفته می‌شود. ادامه می‌دهید؟"
+                : "اجرای آزمایشی چیزی را در داده اصلی تغییر نمی‌دهد. ادامه می‌دهید؟",
+            yesText: "شروع", cancelText: "انصراف");
+
+        if (confirm != true) return;
+
+        _busy = true;
+        try
+        {
+            var (ok, err) = await Api.StartRunAsync(RunId);
+            if (!ok) Snackbar.Add(err ?? "خطا", Severity.Error);
+            else     await Reload();
+        }
+        catch (Exception ex) { Snackbar.Add(ex.Message, Severity.Error); }
+        finally { _busy = false; }
     }
 
     private async Task Resume()

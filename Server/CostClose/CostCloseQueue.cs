@@ -106,32 +106,44 @@ namespace Safir.Server.CostClose
 
         protected override async Task ExecuteAsync(CancellationToken ct)
         {
-            await foreach (var job in _queue.Reader.ReadAllAsync(ct))
+            // خودِ ReadAllAsync وقتی صف خالي است و توکن لغو مي‌شود
+            // OperationCanceledException مي‌اندازد — يعني مسير عادي خاموش شدن
+            // برنامه. اگر اينجا نگيريمش، از ExecuteAsync بيرون مي‌زند و چون
+            // BackgroundServiceExceptionBehavior روي StopHost است، هر خاموش
+            // شدن سالم يک لاگ critical «unhandled exception» توليد مي‌کند و
+            // در پايش خطا شبيه کرش ديده مي‌شود.
+            try
             {
-                try
+                await foreach (var job in _queue.Reader.ReadAllAsync(ct))
                 {
-                    using var scope = _scopes.CreateScope();
+                    try
+                    {
+                        using var scope = _scopes.CreateScope();
 
-                    var orchestrator = scope.ServiceProvider
-                        .GetRequiredService<CloseOrchestrator>();
+                        var orchestrator = scope.ServiceProvider
+                            .GetRequiredService<CloseOrchestrator>();
 
-                    await orchestrator.RunAsync(job, ct);
+                        await orchestrator.RunAsync(job, ct);
+                    }
+                    catch (OperationCanceledException) when (ct.IsCancellationRequested)
+                    {
+                        throw;
+                    }
+                    catch (Exception ex)
+                    {
+                        // خطا اینجا نباید حلقه را بکشد؛ ارکستریتور خودش
+                        // وضعیت اجرا را روی «خطا» گذاشته است.
+                        _logger.LogError(ex, "Cost close run {RunId} failed", job.RunId);
+                    }
+                    finally
+                    {
+                        _queue.MarkFinished(job.RunId);
+                    }
                 }
-                catch (OperationCanceledException) when (ct.IsCancellationRequested)
-                {
-                    _logger.LogInformation("Cost close worker stopping.");
-                    throw;
-                }
-                catch (Exception ex)
-                {
-                    // خطا اینجا نباید حلقه را بکشد؛ ارکستریتور خودش
-                    // وضعیت اجرا را روی «خطا» گذاشته است.
-                    _logger.LogError(ex, "Cost close run {RunId} failed", job.RunId);
-                }
-                finally
-                {
-                    _queue.MarkFinished(job.RunId);
-                }
+            }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
+            {
+                _logger.LogInformation("Cost close worker stopping.");
             }
         }
     }

@@ -272,4 +272,25 @@ test.describe('سلامت کلاینت', () => {
 
     await expect(page.getByText('برای مشاهده این صفحه باید وارد شوید.')).toBeVisible();
   });
+
+  /**
+   * صفحه فهرست اجراها (/cost-close) تنها راه ورود از داخل برنامه به کل
+   * ماژول است — قبلاً وجود نداشت و تنها راه رسیدن به یک اجرا تایپ مستقیم
+   * آدرس /cost-close/runs/{id} بود. همان الگوی catch + پیام فارسی اینجا
+   * هم رعایت شده، پس همان رگرسیون را می‌سنجیم.
+   */
+  test('صفحه فهرست اجراهای بستن ماه بدون ورود هم نمی‌شکند', async ({ page }) => {
+    const errors = collectPageErrors(page);
+    await page.goto('/cost-close', { waitUntil: 'networkidle' });
+    await page.waitForTimeout(3000);
+
+    const crashed = errors.filter(e => /Unhandled exception rendering component/i.test(e));
+    expect(crashed, `کامپوننت کرش کرد:\n${crashed.join('\n')}`).toHaveLength(0);
+
+    const ccErrors = errors.filter(e => /CostCloseApiService|CostClose\.CostRunList/i.test(e));
+    expect(ccErrors, `خطای مدیریت‌نشده در ماژول بهای تمام‌شده:\n${ccErrors.join('\n')}`)
+      .toHaveLength(0);
+
+    await expect(page.getByText('برای مشاهده این صفحه باید وارد شوید.')).toBeVisible();
+  });
 });

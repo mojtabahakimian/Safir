@@ -1,0 +1,287 @@
+@page "/cost-close"
+@page "/cost-close/runs"
+@using Safir.Shared.Models.CostClose
+@using Safir.Shared.Constants
+@using Safir.Client.Services
+@using Safir.Shared.Utility
+@inject CostCloseApiService Api
+@inject Pay2AccessApiService Access
+@inject NavigationManager Nav
+@inject ISnackbar Snackbar
+@inject IDialogService Dialog
+
+<PageTitle>بستن ماه بهای تمام‌شده</PageTitle>
+
+<div class="cc-page" dir="rtl">
+
+    <div class="cc-toolbar">
+        <MudText Typo="Typo.h6">بستن ماه بهای تمام‌شده</MudText>
+
+        <MudSpacer />
+
+        <MudSelect T="short" @bind-Value="_year" Label="سال" Dense Variant="Variant.Outlined"
+                   Style="max-width:110px">
+            @foreach (var y in YearChoices)
+            {
+                var yy = y;
+                <MudSelectItem Value="@yy">@yy</MudSelectItem>
+            }
+        </MudSelect>
+
+        <MudSelect T="byte" @bind-Value="_month" Label="ماه" Dense Variant="Variant.Outlined"
+                   Style="max-width:120px">
+            @for (byte m = 1; m <= 12; m++)
+            {
+                var mm = m;
+                <MudSelectItem Value="@mm">@PersianMonth(mm)</MudSelectItem>
+            }
+        </MudSelect>
+
+        <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.Refresh"
+                   OnClick="Load" Disabled="_busy">
+            نمایش
+        </MudButton>
+
+        @if (Access.CanInp(CostForms.Run) && Access.CanRun(CostForms.ActStart))
+        {
+            <MudButton Variant="Variant.Filled" Color="Color.Primary"
+                       StartIcon="@Icons.Material.Filled.Add"
+                       OnClick="OpenCreate" Disabled="_busy">
+                اجرای جدید
+            </MudButton>
+        }
+    </div>
+
+    @if (_loadError is not null)
+    {
+        <MudAlert Severity="Severity.Error" Class="mt-3">@_loadError</MudAlert>
+    }
+    else if (_busy && _runs.Count == 0)
+    {
+        <MudProgressLinear Indeterminate Color="Color.Primary" />
+    }
+    else if (_runs.Count == 0)
+    {
+        <MudAlert Severity="Severity.Info" Class="mt-3">
+            برای @PersianMonth(_month) @_year هیچ اجرایی ثبت نشده است.
+            @if (Access.CanInp(CostForms.Run) && Access.CanRun(CostForms.ActStart))
+            {
+                <text>با دکمهٔ «اجرای جدید» شروع کنید.</text>
+            }
+        </MudAlert>
+    }
+    else
+    {
+        <MudTable Items="_runs" Dense Hover Striped Class="mt-3"
+                  RowClass="cursor-pointer"
+                  OnRowClick="@((TableRowClickEventArgs<CostRunDto> e) => Open(e.Item))">
+            <HeaderContent>
+                <MudTh>اجرا</MudTh>
+                <MudTh>دوره</MudTh>
+                <MudTh>نوع</MudTh>
+                <MudTh>وضعیت</MudTh>
+                <MudTh>شروع</MudTh>
+                <MudTh>پایان</MudTh>
+                <MudTh>کاربر</MudTh>
+                <MudTh>تأیید</MudTh>
+                <MudTh></MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd DataLabel="اجرا">
+                    #@context.RunNo
+                    @if (context.IsLatest)
+                    {
+                        <MudChip Size="Size.Small" Variant="Variant.Text" Color="Color.Primary">آخرین</MudChip>
+                    }
+                </MudTd>
+                <MudTd DataLabel="دوره">@PersianMonth(context.PeriodMonth) @context.FiscalYear</MudTd>
+                <MudTd DataLabel="نوع">
+                    <MudChip Size="Size.Small" Variant="Variant.Text"
+                             Color="@(context.RunKind == 2 ? Color.Warning : Color.Default)">
+                        @context.KindText
+                    </MudChip>
+                </MudTd>
+                <MudTd DataLabel="وضعیت">
+                    <MudChip Size="Size.Small" Variant="Variant.Text"
+                             Color="@StatusColor(context.Status)">
+                        @context.StatusText
+                    </MudChip>
+                    @if (context.FormulasDirty)
+                    {
+                        <MudTooltip Text="فرمول‌ها بعد از آخرین محاسبه تغییر کرده‌اند">
+                            <MudIcon Icon="@Icons.Material.Filled.Warning" Size="Size.Small"
+                                     Color="Color.Warning" />
+                        </MudTooltip>
+                    }
+                </MudTd>
+                <MudTd DataLabel="شروع">@LocalTime(context.StartedAtUtc)</MudTd>
+                <MudTd DataLabel="پایان">@LocalTime(context.FinishedAtUtc)</MudTd>
+                <MudTd DataLabel="کاربر">@context.StartedByUser</MudTd>
+                <MudTd DataLabel="تأیید">
+                    @if (context.ApprovedAtUtc is not null)
+                    {
+                        <MudTooltip Text="@($"{context.ApprovedByUser} — {LocalTime(context.ApprovedAtUtc)}")">
+                            <MudIcon Icon="@Icons.Material.Filled.Lock" Size="Size.Small"
+                                     Color="Color.Success" />
+                        </MudTooltip>
+                    }
+                    else
+                    {
+                        <span>—</span>
+                    }
+                </MudTd>
+                <MudTd>
+                    <MudButton Size="Size.Small" Variant="Variant.Text" Color="Color.Primary"
+                               EndIcon="@Icons.Material.Filled.ChevronLeft"
+                               OnClick="@(() => Open(context))">
+                        باز کردن
+                    </MudButton>
+                </MudTd>
+            </RowTemplate>
+        </MudTable>
+    }
+
+    <MudText Typo="Typo.caption" Class="mt-3 d-block">
+        پیش از ساختن اجرای قطعی، صفحهٔ
+        <MudLink Href="/cost-close/exceptions">مغایرت‌ها</MudLink>
+        را ببینید — اجرای قطعی با مغایرت مسدودکنندهٔ باز متوقف می‌شود.
+    </MudText>
+</div>
+
+@code {
+    private short _year  = (short)(CL_Tarikh.GetCurrentPersianDateAsLong() / 10000);
+    private byte  _month = (byte)(CL_Tarikh.GetCurrentPersianDateAsLong() / 100 % 100);
+
+    /// <summary>سال جاری و دو سال قبل — بستن ماه گذشته‌نگر است، نه آینده‌نگر.</summary>
+    private IEnumerable<short> YearChoices
+    {
+        get
+        {
+            var now = (short)(CL_Tarikh.GetCurrentPersianDateAsLong() / 10000);
+            for (short y = now; y >= (short)(now - 2); y--) yield return y;
+        }
+    }
+
+    private long DateFrom => (long)_year * 10000 + _month * 100 + 1;
+
+    // پایان ماه از تقویم شمسی گرفته می‌شود (۲۹/۳۰/۳۱ بسته به ماه و سال کبیسه).
+    private long DateTo => CL_Tarikh.GetPersianMonthEndAsLong(DateFrom);
+
+    private List<CostRunDto> _runs = new();
+    private bool    _busy;
+    private string? _loadError;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Access.EnsureLoadedAsync();
+        await Load();
+    }
+
+    private async Task Load()
+    {
+        _busy = true;
+        _loadError = null;
+        StateHasChanged();
+
+        try
+        {
+            _runs = await Api.GetRunsAsync(_year, _month);
+        }
+        catch (Exception ex)
+        {
+            // بدون این catch یک ۴۰۱/۴۰۳ ساده کامپوننت را با پیام انگلیسی .NET می‌شکست.
+            _runs = new();
+            _loadError = FriendlyError(ex);
+        }
+        finally { _busy = false; }
+    }
+
+    private void Open(CostRunDto run) => Nav.NavigateTo($"/cost-close/runs/{run.RunId}");
+
+    // ───────── ساخت اجرای جدید ─────────
+
+    private async Task OpenCreate()
+    {
+        var kind = await Dialog.ShowMessageBox(
+            title: $"اجرای جدید — {PersianMonth(_month)} {_year}",
+            markupMessage: new MarkupString(
+                $"بازهٔ محاسبه: {DateFrom} تا {DateTo}<br/><br/>" +
+                "<b>آزمایشی</b> چیزی را در داده اصلی تغییر نمی‌دهد و برای دیدن نتیجه پیش از تصمیم است.<br/>" +
+                "<b>قطعی</b> فرمول‌ها و اسناد را به‌روز می‌کند؛ پیش از هر گام نویسنده اسنپ‌شات گرفته می‌شود."),
+            yesText: "آزمایشی", noText: "قطعی", cancelText: "انصراف");
+
+        if (kind is null) return;               // انصراف
+
+        var runKind = (byte)(kind == true ? 1 : 2);
+
+        _busy = true;
+        StateHasChanged();
+        try
+        {
+            var (ok, runId, err) = await Api.CreateRunAsync(new CreateCostRunRequest
+            {
+                FiscalYear  = _year,
+                PeriodMonth = _month,
+                DateFrom    = DateFrom,
+                DateTo      = DateTo,
+                RunKind     = runKind
+            });
+
+            if (!ok)
+            {
+                Snackbar.Add(string.IsNullOrWhiteSpace(err)
+                             ? "ساخت اجرا ناموفق بود." : err, Severity.Error);
+                return;
+            }
+
+            Snackbar.Add($"اجرا ساخته شد. برای شروع، دکمهٔ «اجرا» را در همین صفحه بزنید.",
+                         Severity.Success);
+            Nav.NavigateTo($"/cost-close/runs/{runId}");
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add(FriendlyError(ex), Severity.Error);
+        }
+        finally { _busy = false; }
+    }
+
+    // ───────── کمکی ─────────
+
+    /// <summary>
+    /// پیام سرور اگر روشن باشد نمایش داده می‌شود؛ وگرنه پیام عمومی فارسی.
+    /// مسیرهای api/cost-close/ زیر پوشش Pay2ForbiddenHandler نیستند.
+    /// </summary>
+    private static string FriendlyError(Exception ex)
+    {
+        if (ex is HttpRequestException http)
+        {
+            if (http.StatusCode == System.Net.HttpStatusCode.Unauthorized)
+                return "برای مشاهده این صفحه باید وارد شوید.";
+            if (http.StatusCode == System.Net.HttpStatusCode.Forbidden)
+                return "دسترسی لازم برای مشاهده اجراهای بستن ماه را ندارید.";
+        }
+
+        return "خواندن فهرست اجراها ناموفق بود. اگر تکرار شد به پشتیبانی اطلاع دهید.";
+    }
+
+    private static string LocalTime(DateTime? utc)
+        => utc is null ? "—" : utc.Value.ToLocalTime().ToString("HH:mm");
+
+    private static Color StatusColor(byte st) => st switch
+    {
+        1 => Color.Info,
+        2 => Color.Warning,
+        3 => Color.Success,
+        4 => Color.Error,
+        _ => Color.Default
+    };
+
+    private static string PersianMonth(byte m) => m switch
+    {
+        1 => "فروردین", 2 => "اردیبهشت", 3 => "خرداد",
+        4 => "تیر",     5 => "مرداد",    6 => "شهریور",
+        7 => "مهر",     8 => "آبان",     9 => "آذر",
+        10 => "دی",     11 => "بهمن",    12 => "اسفند",
+        _ => m.ToString()
+    };
+}
