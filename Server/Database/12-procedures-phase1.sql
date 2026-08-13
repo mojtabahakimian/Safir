@@ -369,11 +369,31 @@ BEGIN
 
     IF OBJECT_ID('tempdb..#Empty') IS NOT NULL DROP TABLE #Empty;
 
+    -- «خالی» یعنی نه فقط بدون ردیف DEED_DTL، بلکه هیچ جدول دیگری هم به آن
+    -- ارجاع ندهد. طبق sys.foreign_keys، هشت جدول به DEED_HED.N_S کلید
+    -- خارجی دارند (DEED_DTL, HEAD_LST, ANBGRD_HEAD, CHKREC_H, CHREC_HP,
+    -- WORKHEAD, MO_DTL, PGET_HED, HEAD_LST_TMP_WPF). سندی که هنوز از
+    -- کاردکس انبار یا هرکدام دیگر ارجاع می‌شود واقعاً خالی نیست، حتی اگر
+    -- DEED_DTL نداشته باشد — نباید حذفش کرد، و مطلقاً نباید ارجاع آن
+    -- جدول‌ها را NULL کرد تا حذف زور بشود؛ آن ارجاع همان چیزی است که
+    -- ردگیری سند حسابداری را از رکورد انبار ممکن می‌کند.
     SELECT h.N_S, h.DATE_S
     INTO   #Empty
     FROM   dbo.DEED_HED h
     WHERE  h.DATE_S BETWEEN @DT1 AND @DT2
-      AND  NOT EXISTS (SELECT 1 FROM dbo.DEED_DTL d WHERE d.N_S = h.N_S);
+      AND  NOT EXISTS (SELECT 1 FROM dbo.DEED_DTL    d WHERE d.N_S = h.N_S)
+      AND  NOT EXISTS (SELECT 1 FROM dbo.HEAD_LST    x WHERE x.N_S = h.N_S)
+      AND  NOT EXISTS (SELECT 1 FROM dbo.ANBGRD_HEAD x WHERE x.N_S = h.N_S)
+      AND  NOT EXISTS (SELECT 1 FROM dbo.CHKREC_H    x WHERE x.N_S = h.N_S)
+      AND  NOT EXISTS (SELECT 1 FROM dbo.CHREC_HP    x WHERE x.N_S = h.N_S)
+      AND  NOT EXISTS (SELECT 1 FROM dbo.WORKHEAD    x WHERE x.N_S = h.N_S)
+      AND  NOT EXISTS (SELECT 1 FROM dbo.MO_DTL      x WHERE x.N_S = h.N_S)
+      AND  NOT EXISTS (SELECT 1 FROM dbo.PGET_HED    x WHERE x.N_S = h.N_S);
+
+    -- HEAD_LST_TMP_WPF ممکن است روی همهٔ نصب‌ها نباشد؛ اگر هست همان قاعده.
+    IF OBJECT_ID('dbo.HEAD_LST_TMP_WPF', 'U') IS NOT NULL
+        DELETE e FROM #Empty e
+        WHERE EXISTS (SELECT 1 FROM dbo.HEAD_LST_TMP_WPF t WHERE t.N_S = e.N_S);
 
     DECLARE @n INT = (SELECT COUNT(*) FROM #Empty);
 
@@ -421,12 +441,39 @@ BEGIN
         CASE WHEN @WholeYear = 1 THEN 0
              ELSE ISNULL((SELECT MAX(N_S) FROM dbo.DEED_HED WHERE DATE_S < @DT1), 0) END;
 
+    -- کل جدول را می‌آوریم (نه فقط بازهٔ ماه) چون برای جلوگیری از تلاقی با
+    -- اسناد ماه‌های بعدی باید بدانیم شمارهٔ فعلی‌شان چیست؛ اسناد بیرون بازه
+    -- در ستون NewNS همان شمارهٔ فعلی خودشان را می‌گیرند (دست‌نخورده).
     SELECT  base,
+            DATE_S,
             N_S AS OldNS,
-            @seed + ROW_NUMBER() OVER (ORDER BY DATE_S ASC, N_S ASC) AS NewNS
+            CASE WHEN @WholeYear = 1 OR DATE_S BETWEEN @DT1 AND @DT2
+                 THEN @seed + ROW_NUMBER() OVER (
+                          PARTITION BY CASE WHEN @WholeYear = 1
+                                             OR DATE_S BETWEEN @DT1 AND @DT2
+                                        THEN 1 ELSE 0 END
+                          ORDER BY DATE_S ASC, N_S ASC)
+                 ELSE N_S END AS NewNS
     INTO    #Map
-    FROM    dbo.DEED_HED
-    WHERE   @WholeYear = 1 OR DATE_S BETWEEN @DT1 AND @DT2;
+    FROM    dbo.DEED_HED;
+
+    -- اگر بازهٔ شمارهٔ جدید ماه جاری با شمارهٔ فعلی اولین سند ماه‌های بعدی
+    -- تلاقی کند، همهٔ اسناد بعد از @DT2 را به یک اندازه جلو می‌بریم؛ چون
+    -- همه با هم جابه‌جا می‌شوند، ترتیب و فاصلهٔ نسبی‌شان دست‌نخورده می‌ماند
+    -- و تلاقی تازه‌ای ایجاد نمی‌شود.
+    IF @WholeYear = 0
+    BEGIN
+        DECLARE @maxNewInMonth FLOAT =
+            ISNULL((SELECT MAX(NewNS) FROM #Map WHERE DATE_S BETWEEN @DT1 AND @DT2), @seed);
+        DECLARE @minAfterMonth FLOAT =
+            ISNULL((SELECT MIN(OldNS) FROM #Map WHERE DATE_S > @DT2), 0);
+
+        IF @minAfterMonth > 0 AND @maxNewInMonth >= @minAfterMonth
+        BEGIN
+            DECLARE @shift FLOAT = (@maxNewInMonth - @minAfterMonth) + 1;
+            UPDATE #Map SET NewNS = OldNS + @shift WHERE DATE_S > @DT2;
+        END
+    END
 
     CREATE UNIQUE CLUSTERED INDEX IX_Map ON #Map(base);
 
@@ -447,12 +494,22 @@ BEGIN
     -- تريگرهاي Audit را فقط براي همين نشست کنار مي‌گذاريم
     EXEC sp_set_session_context @key = N'cc_bulk', @value = 1;
 
-    -- ۹ جدول فرزند با ON UPDATE CASCADE خودکار به‌روز مي‌شوند
+    -- ۹ جدول فرزند با ON UPDATE CASCADE خودکار به‌روز مي‌شوند.
+    -- دو مرحله‌اي: چون شمارهٔ جدید یک سند می‌تواند برابر شمارهٔ فعلیِ سند
+    -- دیگری باشد که هنوز عوض نشده (Shift یا جابه‌جایی داخل ماه)، یک
+    -- UPDATE مستقیم وسط کار به PRIMARY KEY تکراری می‌خورد. اول همه را به
+    -- یک بازهٔ منفیِ ناهم‌پوشان می‌بریم، بعد به مقدار نهایی.
+    UPDATE  h
+       SET  h.N_S = -1000000.0 - m.NewNS
+    FROM    dbo.DEED_HED h
+    JOIN    #Map m ON m.base = h.base
+    WHERE   h.N_S <> m.NewNS;
+
     UPDATE  h
        SET  h.N_S = m.NewNS
     FROM    dbo.DEED_HED h
     JOIN    #Map m ON m.base = h.base
-    WHERE   h.N_S <> m.NewNS;
+    WHERE   h.N_S < 0;
 
     EXEC sp_set_session_context @key = N'cc_bulk', @value = 0;
 
