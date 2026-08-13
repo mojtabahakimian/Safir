@@ -637,13 +637,21 @@ namespace Safir.Server.Controllers
 
             if (run is null) return NotFound();
 
-            var res = await _db.DoGetDataSQLAsync<dynamic>(
-                "EXEC dbo.CC_sp_S12b_ApplyMarginTargets @RunId=@r, @Month=@m, " +
-                "@DT1=@a, @DT2=@b, @WhatIf=@w",
-                new { r = runId, m = run.PeriodMonth,
-                      a = run.DateFrom, b = run.DateTo, w = whatIf });
+            try
+            {
+                var res = await _db.DoGetDataSQLAsync<dynamic>(
+                    "EXEC dbo.CC_sp_S12b_ApplyMarginTargets @RunId=@r, @Month=@m, " +
+                    "@DT1=@a, @DT2=@b, @WhatIf=@w",
+                    new { r = runId, m = run.PeriodMonth,
+                          a = run.DateFrom, b = run.DateTo, w = whatIf });
 
-            return Ok(res);
+                return Ok(res);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "ApplyMarginTargets failed for run {RunId}", runId);
+                return BadRequest(ex.Message);
+            }
         }
 
         // ═══════════════════════ گزارش و تأیید ═══════════════════════
