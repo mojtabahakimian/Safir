@@ -10,6 +10,11 @@
    نصب فرق می‌کند. اسکریپت را روی پایگاه هدف اجرا کنید.
    ═══════════════════════════════════════════════════════════════════ */
 
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+
 /* ستون جدید برای نگهداری فهرست برگه‌ها و امکان اصلاح خودکار */
 IF COL_LENGTH('dbo.CC_Exception','RefList') IS NULL
     ALTER TABLE dbo.CC_Exception ADD RefList NVARCHAR(2000) NULL;

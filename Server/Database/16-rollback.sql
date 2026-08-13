@@ -10,6 +10,11 @@
    نصب فرق می‌کند. اسکریپت را روی پایگاه هدف اجرا کنید.
    ═══════════════════════════════════════════════════════════════════ */
 
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+
 CREATE OR ALTER PROCEDURE dbo.CC_sp_Rollback
     @RunId    INT,
     @StepCode VARCHAR(10) = NULL,   -- خالي = آخرين اسنپ‌شات هر جدول

@@ -26,6 +26,13 @@
    آن فایل را جایگزین می‌کند.
    ═══════════════════════════════════════════════════════════════════ */
 
+-- بدون این دو، S12 که در CC_ItemMargin (ستون محاسباتی PERSISTED) DELETE/INSERT
+-- می‌کند با خطای 1934 شکست می‌خورد — دقیقاً همان خطایی که تست واقعی گرفت.
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+
 /* ستون‌های جدید برای تفکیک تخفیف و برگشت */
 IF COL_LENGTH('dbo.CC_ItemMargin','GrossSales') IS NULL
     ALTER TABLE dbo.CC_ItemMargin ADD GrossSales FLOAT NULL;

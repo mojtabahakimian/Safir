@@ -9,6 +9,13 @@
    نصب فرق می‌کند. اسکریپت را روی پایگاه هدف اجرا کنید.
    ═══════════════════════════════════════════════════════════════════ */
 
+-- بدون این دو، S12 که در CC_ItemMargin (ستون محاسباتی PERSISTED) DELETE/INSERT
+-- می‌کند با خطای 1934 شکست می‌خورد.
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+
 /* جدول نتیجه سود کالا */
 IF OBJECT_ID('dbo.CC_ItemMargin','U') IS NULL
 CREATE TABLE dbo.CC_ItemMargin (
