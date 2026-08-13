@@ -188,10 +188,43 @@ namespace Safir.Server.Controllers
             return Accepted(new { runId, queued = true });
         }
 
+        /// <summary>
+        /// ادامه‌ی اجرا همیشه از S00 دوباره شروع می‌شود (CloseOrchestrator با
+        /// OnlySteps=null کل زنجیره را می‌سازد)، و S05 دوباره اجرا می‌شود.
+        /// اگر اینجا فقط ستون IsResolved را نگاه کنیم، «بستن استثنا» روی یک
+        /// مغایرت واقعی (مثلاً CHK-01/02/13) قبولمان می‌کند که راه باز است،
+        /// بعد در پس‌زمینه S05 دوباره از داده‌ی واقعی همان مغایرت را بدون حل
+        /// می‌سازد و اجرا بی‌هیچ توضیحی دوباره متوقف می‌شود — تجربه‌ای که کاربر
+        /// نمی‌تواند بفهمد چرا «رفع‌شده»اش دوباره برگشت. برای اینکه این چک واقعاً
+        /// راست بگوید، همان بازبینی‌هایی که ابتدای زنجیره اجرا می‌شوند
+        /// (S00Preflight، Chk04، S05Gate) همین‌جا هم زده می‌شوند تا CC_Exception
+        /// از روی داده‌ی همین لحظه تازه شود، و شمارش مسدودکننده روی همان نتیجه‌ی
+        /// تازه انجام شود.
+        /// </summary>
         [HttpPost("runs/{runId:int}/resume")]
         [Pay2Authorize(CostForms.ActStart, Pay2Perm.Run)]
         public async Task<IActionResult> ResumeRun(int runId)
         {
+            var run = await _db.DoGetDataSQLAsyncSingle<CostRunDto>(
+                "SELECT * FROM dbo.CC_Run WHERE RunId = @runId", new { runId });
+
+            if (run is null) return NotFound();
+
+            await _db.DoGetStoreProcedureSQLAsync<dynamic>(
+                "dbo.CC_sp_S00_Preflight",
+                new { Month = run.PeriodMonth, DT1 = run.DateFrom, DT2 = run.DateTo, RunId = runId },
+                commandTimeout: 600);
+
+            await _db.DoGetStoreProcedureSQLAsync<dynamic>(
+                "dbo.CC_sp_Chk04_MissingFormula",
+                new { Month = run.PeriodMonth, DT1 = run.DateFrom, DT2 = run.DateTo, RunId = runId },
+                commandTimeout: 600);
+
+            await _db.DoGetStoreProcedureSQLAsync<dynamic>(
+                "dbo.CC_sp_S05_Gate",
+                new { RunId = runId, Month = run.PeriodMonth, DT1 = run.DateFrom, DT2 = run.DateTo },
+                commandTimeout: 600);
+
             var blocking = await _db.DoGetDataSQLAsyncSingle<int>(
                 @"SELECT COUNT(*) FROM dbo.CC_Exception
                   WHERE RunId = @runId AND Severity = 2 AND IsResolved = 0",

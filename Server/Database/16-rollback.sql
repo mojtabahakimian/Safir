@@ -91,7 +91,7 @@ BEGIN
 
     BEGIN TRAN;
 
-    DECLARE @tbl SYSNAME, @bak SYSNAME, @sql NVARCHAR(MAX), @n INT = 0;
+    DECLARE @tbl SYSNAME, @bak SYSNAME, @sql NVARCHAR(MAX), @n INT = 0, @inserted INT;
 
     DECLARE cSnap CURSOR LOCAL FAST_FORWARD FOR
         SELECT TableName, BackupTable FROM #Snap;
@@ -149,6 +149,13 @@ BEGIN
             -- ۲) سندهايي که CC_sp_S03_DeleteEmptyDeeds کامل حذف کرده بود را با
             --    همان base و همان مقادير همهٔ ستون‌ها دوباره درج مي‌کنيم. امن
             --    است چون مرحلهٔ ۱ هر شمارهٔ زندهٔ همپوشان را قبلاً کنار زده.
+            -- @@ROWCOUNT را بلافاصله بعد از INSERT، داخل همان دستهٔ پویا، در
+            -- @inserted می‌ریزیم — چون SET IDENTITY_INSERT OFF که بعدش لازم
+            -- است خودش یک دستور SET است و @@ROWCOUNT را در نشستِ فراخوان صفر
+            -- می‌کند (رفتار واقعی SQL Server، با آزمایش مستقیم تأیید شد). بدون
+            -- این، بازگردانیِ سندی که فقط حذف شده بود (بدون تغییر شماره) به
+            -- کاربر «۰ سطر بازگردانده شد» نشان می‌داد، با اینکه سند واقعاً
+            -- برگشته بود.
             SET @sql = N'
                 SET IDENTITY_INSERT dbo.DEED_HED ON;
                 INSERT INTO dbo.DEED_HED
@@ -160,8 +167,10 @@ BEGIN
                        b.sgn1usid, b.sgn2usid, b.sgn3usid, b.CRT, b.UID, b.BAYEG
                 FROM   dbo.' + QUOTENAME(@bak) + N' b
                 WHERE  NOT EXISTS (SELECT 1 FROM dbo.DEED_HED h WHERE h.base = b.base);
+                SET @ins = @@ROWCOUNT;
                 SET IDENTITY_INSERT dbo.DEED_HED OFF;';
-            EXEC sp_executesql @sql;
+            EXEC sp_executesql @sql, N'@ins INT OUTPUT', @ins = @inserted OUTPUT;
+            SET @n += @inserted;
 
             -- ۳) سندهاي مرحلهٔ ۱ را از بازهٔ منفي به شمارهٔ اصلي‌شان برمي‌گردانيم.
             SET @sql = N'
