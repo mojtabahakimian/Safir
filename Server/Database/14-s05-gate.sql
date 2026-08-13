@@ -42,7 +42,12 @@ BEGIN
        دنباله همان یک مشکل‌اند و فهرست را شلوغ می‌کنند.
        ───────────────────────────────────────────────────────────── */
     ;WITH Harekat AS (
-        SELECT  k.ANBAR,
+        -- KALAS یک ویو گزارشی است، نه کاردکس خام؛ ستون انبار آن به‌جای
+        -- ANBAR، سه ستون ANBARF/ANBARCODE/ANBARAS دارد. با مقایسه با
+        -- INVO_LST.ANBAR (که مبنای درست است) روی داده واقعی تأیید شد که
+        -- فقط ANBARCODE همیشه پر و همیشه برابر همان مقدار است؛ ANBARF و
+        -- ANBARAS اکثراً NULLاند.
+        SELECT  k.ANBARCODE AS ANBAR,
                 k.code,
                 k.DATE_N,
                 k.NUMBER,
