@@ -756,13 +756,19 @@ BEGIN
     INSERT dbo.CC_Snapshot (RunId, StepCode, TableName, BackupTable, RowsCopied)
     VALUES (@RunId, @StepCode, 'HEAD_MANF', @bak, @n);
 
-    ---- DEED_HED : نگاشت شماره اسناد بازه
+    ---- DEED_HED : اسنپ‌شات کامل اسناد بازه، به‌همراه اسناد پس از @DT2 هم —
+    -- چون شاخهٔ جابه‌جايي CC_sp_S04_SortDeeds مي‌تواند شمارهٔ اسناد بعد از
+    -- پايان ماه را هم عوض کند تا با شمارهٔ تازهٔ اسناد اين ماه تلاقي نکند؛
+    -- اگر آن اسناد اينجا اسنپ‌شات نشوند، Rollback راهي براي برگرداندن
+    -- شماره‌شان ندارد. ستون‌ها هم کامل ذخيره مي‌شوند (نه فقط base/N_S/DATE_S)
+    -- تا اگر CC_sp_S03_DeleteEmptyDeeds سندي را کامل حذف کرد، Rollback
+    -- بتواند کل سطر را دوباره درج کند، نه فقط شماره‌اش را برگرداند.
     SET @bak = CONCAT('CC_BAK_DEED_HED_R', @RunId, '_', @StepCode);
     IF OBJECT_ID('dbo.' + @bak, 'U') IS NOT NULL
         EXEC('DROP TABLE dbo.' + @bak);
-    SET @sql = N'SELECT base, N_S, DATE_S INTO dbo.' + QUOTENAME(@bak) + N'
-                 FROM dbo.DEED_HED WHERE DATE_S BETWEEN @a AND @b';
-    EXEC sp_executesql @sql, N'@a BIGINT, @b BIGINT', @a = @DT1, @b = @DT2;
+    SET @sql = N'SELECT * INTO dbo.' + QUOTENAME(@bak) + N'
+                 FROM dbo.DEED_HED WHERE DATE_S >= @a';
+    EXEC sp_executesql @sql, N'@a BIGINT', @a = @DT1;
     SET @n = @@ROWCOUNT;
     INSERT dbo.CC_Snapshot (RunId, StepCode, TableName, BackupTable, RowsCopied)
     VALUES (@RunId, @StepCode, 'DEED_HED', @bak, @n);
@@ -2093,15 +2099,48 @@ BEGIN
         END
         ELSE IF @tbl = 'DEED_HED'
         BEGIN
-            -- بازگرداني شماره اسناد؛ ۹ جدول فرزند خودکار دنبال مي‌آيند
+            -- بازگرداني شماره اسناد و اسناد حذف‌شده؛ ۹ جدول فرزند خودکار دنبال
+            -- مي‌آيند. سه مرحله، به همان دليلي که CC_sp_S04_SortDeeds دو-مرحله‌اي
+            -- است: اگر شمارهٔ اصليِ يک سند برابر شمارهٔ فعليِ سند ديگري باشد که
+            -- هنوز به حالت اصلي‌اش برنگشته، UPDATE يا INSERT مستقيم به
+            -- PRIMARY KEY تکراري مي‌خورد.
             EXEC sp_set_session_context @key = N'cc_bulk', @value = 1;
 
+            -- ۱) هر سندي که شماره‌اش فرق کرده را به يک بازهٔ منفيِ ناهم‌پوشان
+            --    مي‌بريم تا شمارهٔ اصلي‌اش براي درج سندهاي حذف‌شده (مرحلهٔ ۲) و
+            --    بازگرداني خودش (مرحلهٔ ۳) آزاد و بدون برخورد باشد.
+            SET @sql = N'
+                UPDATE  h
+                   SET  h.N_S = -3000000.0 - h.N_S
+                FROM    dbo.DEED_HED h
+                JOIN    dbo.' + QUOTENAME(@bak) + N' b ON b.base = h.base
+                WHERE   h.N_S <> b.N_S';
+            EXEC sp_executesql @sql;
+
+            -- ۲) سندهايي که CC_sp_S03_DeleteEmptyDeeds کامل حذف کرده بود را با
+            --    همان base و همان مقادير همهٔ ستون‌ها دوباره درج مي‌کنيم. امن
+            --    است چون مرحلهٔ ۱ هر شمارهٔ زندهٔ همپوشان را قبلاً کنار زده.
+            SET @sql = N'
+                SET IDENTITY_INSERT dbo.DEED_HED ON;
+                INSERT INTO dbo.DEED_HED
+                    (N_S, DATE_S, SHARH_S, NO_S, ANBAR, N_FACTOR, GHATEI, USER_NAME,
+                     base, SGN1, SGN2, SGN3, SGN4, OKF, sgn1usid, sgn2usid, sgn3usid,
+                     CRT, UID, BAYEG)
+                SELECT b.N_S, b.DATE_S, b.SHARH_S, b.NO_S, b.ANBAR, b.N_FACTOR, b.GHATEI,
+                       b.USER_NAME, b.base, b.SGN1, b.SGN2, b.SGN3, b.SGN4, b.OKF,
+                       b.sgn1usid, b.sgn2usid, b.sgn3usid, b.CRT, b.UID, b.BAYEG
+                FROM   dbo.' + QUOTENAME(@bak) + N' b
+                WHERE  NOT EXISTS (SELECT 1 FROM dbo.DEED_HED h WHERE h.base = b.base);
+                SET IDENTITY_INSERT dbo.DEED_HED OFF;';
+            EXEC sp_executesql @sql;
+
+            -- ۳) سندهاي مرحلهٔ ۱ را از بازهٔ منفي به شمارهٔ اصلي‌شان برمي‌گردانيم.
             SET @sql = N'
                 UPDATE  h
                    SET  h.N_S = b.N_S
                 FROM    dbo.DEED_HED h
                 JOIN    dbo.' + QUOTENAME(@bak) + N' b ON b.base = h.base
-                WHERE   h.N_S <> b.N_S';
+                WHERE   h.N_S < 0';
             EXEC sp_executesql @sql;
             SET @n += @@ROWCOUNT;
 

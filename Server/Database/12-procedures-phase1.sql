@@ -178,13 +178,19 @@ BEGIN
     INSERT dbo.CC_Snapshot (RunId, StepCode, TableName, BackupTable, RowsCopied)
     VALUES (@RunId, @StepCode, 'HEAD_MANF', @bak, @n);
 
-    ---- DEED_HED : نگاشت شماره اسناد بازه
+    ---- DEED_HED : اسنپ‌شات کامل اسناد بازه، به‌همراه اسناد پس از @DT2 هم —
+    -- چون شاخهٔ جابه‌جايي CC_sp_S04_SortDeeds مي‌تواند شمارهٔ اسناد بعد از
+    -- پايان ماه را هم عوض کند تا با شمارهٔ تازهٔ اسناد اين ماه تلاقي نکند؛
+    -- اگر آن اسناد اينجا اسنپ‌شات نشوند، Rollback راهي براي برگرداندن
+    -- شماره‌شان ندارد. ستون‌ها هم کامل ذخيره مي‌شوند (نه فقط base/N_S/DATE_S)
+    -- تا اگر CC_sp_S03_DeleteEmptyDeeds سندي را کامل حذف کرد، Rollback
+    -- بتواند کل سطر را دوباره درج کند، نه فقط شماره‌اش را برگرداند.
     SET @bak = CONCAT('CC_BAK_DEED_HED_R', @RunId, '_', @StepCode);
     IF OBJECT_ID('dbo.' + @bak, 'U') IS NOT NULL
         EXEC('DROP TABLE dbo.' + @bak);
-    SET @sql = N'SELECT base, N_S, DATE_S INTO dbo.' + QUOTENAME(@bak) + N'
-                 FROM dbo.DEED_HED WHERE DATE_S BETWEEN @a AND @b';
-    EXEC sp_executesql @sql, N'@a BIGINT, @b BIGINT', @a = @DT1, @b = @DT2;
+    SET @sql = N'SELECT * INTO dbo.' + QUOTENAME(@bak) + N'
+                 FROM dbo.DEED_HED WHERE DATE_S >= @a';
+    EXEC sp_executesql @sql, N'@a BIGINT', @a = @DT1;
     SET @n = @@ROWCOUNT;
     INSERT dbo.CC_Snapshot (RunId, StepCode, TableName, BackupTable, RowsCopied)
     VALUES (@RunId, @StepCode, 'DEED_HED', @bak, @n);
