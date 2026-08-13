@@ -192,7 +192,11 @@
                                                OnClick="@(() => Approve(context))" />
                             }
 
-                            @if (context.Status != 5 && Access.CanRun(CostForms.ActRollback))
+                            @* اجرای تأییدشده قفل است — رویه CC_sp_Rollback هم آن را رد
+                               می‌کند؛ اینجا هم دکمه را نشان نمی‌دهیم تا کاربر با خطای
+                               بی‌دلیل روبه‌رو نشود. *@
+                            @if (context.Status != 5 && context.ApprovedAtUtc is null
+                                 && Access.CanRun(CostForms.ActRollback))
                             {
                                 <MudIconButton Icon="@Icons.Material.Filled.Undo"
                                                Size="Size.Small" Color="Color.Warning"
