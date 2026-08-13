@@ -1,0 +1,177 @@
+@page "/cost-close/settings"
+@using Safir.Shared.Models.CostClose
+@using Safir.Shared.Constants
+@using Safir.Client.Services
+@inject CostCloseApiService Api
+@inject Pay2AccessApiService Access
+@inject ISnackbar Snackbar
+
+<PageTitle>تنظیمات بهای تمام‌شده</PageTitle>
+
+<div class="cc-page" dir="rtl">
+
+    <MudText Typo="Typo.h6" Class="mb-3">تنظیمات</MudText>
+
+    @if (_busy) { <MudProgressLinear Indeterminate Color="Color.Primary" Class="mb-3" /> }
+
+    <MudTabs Elevation="0" Rounded ApplyEffectsToContainer>
+
+        <!-- واحدهای تولیدی -->
+        <MudTabPanel Text="واحدهای تولیدی">
+            <MudAlert Severity="Severity.Info" Dense Class="mb-3">
+                هر واحد باید دقیقاً یک انبار با نقش «مبنای انحراف» داشته باشد.
+                مانده آن انبار، انحراف مصرف همان واحد است.
+            </MudAlert>
+
+            @foreach (var u in _units)
+            {
+                <MudPaper Class="cc-rule-card mb-3" Elevation="0">
+                    <div class="cc-rule-head">
+                        <MudIcon Icon="@Icons.Material.Filled.Factory" Size="Size.Small" />
+                        <MudText Typo="Typo.subtitle2">@u.UnitName</MudText>
+
+                        @if (u.Depatman is not null)
+                        {
+                            <MudChip T="string" Size="Size.Small" Variant="Variant.Text">
+                                دپارتمان @u.Depatman
+                            </MudChip>
+                        }
+
+                        <MudChip T="string" Size="Size.Small" Variant="Variant.Text"
+                                 Color="@(u.SplitMode == 1 ? Color.Default : Color.Info)">
+                            @(u.SplitMode == 1 ? "یک ضریب" : "دو ضریب مجزا")
+                        </MudChip>
+
+                        <MudSpacer />
+
+                        @if (!HasBaseAnbar(u))
+                        {
+                            <MudChip T="string" Size="Size.Small" Color="Color.Error"
+                                     Variant="Variant.Text">
+                                انبار مبنای انحراف ندارد
+                            </MudChip>
+                        }
+                    </div>
+
+                    <MudTable Items="u.Anbars" Dense Elevation="0" T="CostUnitAnbarDto">
+                        <HeaderContent>
+                            <MudTh Style="width:80px">انبار</MudTh>
+                            <MudTh>نام</MudTh>
+                            <MudTh Style="width:150px">نقش</MudTh>
+                            <MudTh Style="width:120px">انبارگردانی</MudTh>
+                        </HeaderContent>
+
+                        <RowTemplate>
+                            <MudTd><span class="cc-num">@context.Anbar</span></MudTd>
+                            <MudTd>@(context.AnbarName ?? "—")</MudTd>
+
+                            <MudTd>
+                                <MudChip T="string" Size="Size.Small" Variant="Variant.Text"
+                                         Color="@(context.AnbarRole == 1 ? Color.Primary : Color.Default)">
+                                    @context.RoleText
+                                </MudChip>
+                            </MudTd>
+
+                            <MudTd>
+                                <MudIcon Icon="@(context.DoStockCount
+                                                 ? Icons.Material.Filled.CheckCircle
+                                                 : Icons.Material.Filled.RemoveCircleOutline)"
+                                         Color="@(context.DoStockCount ? Color.Success : Color.Default)"
+                                         Size="Size.Small" />
+                            </MudTd>
+                        </RowTemplate>
+                    </MudTable>
+                </MudPaper>
+            }
+        </MudTabPanel>
+
+        <!-- قواعد تشخیص -->
+        <MudTabPanel Text="قواعد تشخیص">
+            <MudAlert Severity="Severity.Info" Dense Class="mb-3">
+                هر قاعده یک کنترل خودکار است. متن «راه رفع» همان چیزی است که
+                هنگام بروز مغایرت به کاربر نشان داده می‌شود.
+            </MudAlert>
+
+            <MudPaper Class="cc-rule-card" Elevation="0">
+                <MudTable Items="_rules" Dense Hover Elevation="0" T="CostCheckRuleDto">
+                    <HeaderContent>
+                        <MudTh Style="width:80px">کد</MudTh>
+                        <MudTh Style="width:220px">قاعده</MudTh>
+                        <MudTh Style="width:60px">گام</MudTh>
+                        <MudTh Style="width:110px">شدت</MudTh>
+                        <MudTh Style="text-align:left;width:90px">آستانه</MudTh>
+                        <MudTh>راه رفع</MudTh>
+                        <MudTh Style="width:70px">فعال</MudTh>
+                    </HeaderContent>
+
+                    <RowTemplate>
+                        <MudTd><span class="cc-num">@context.RuleCode</span></MudTd>
+                        <MudTd>@context.RuleName</MudTd>
+                        <MudTd><span class="cc-num">@context.StepCode</span></MudTd>
+
+                        <MudTd>
+                            <MudChip T="string" Size="Size.Small" Variant="Variant.Text"
+                                     Color="@(context.DefaultSeverity == 2 ? Color.Error : Color.Warning)">
+                                @(context.DefaultSeverity == 2 ? "مسدودکننده" : "هشدار")
+                            </MudChip>
+                        </MudTd>
+
+                        <MudTd Style="text-align:left">
+                            <span class="cc-num">
+                                @(context.Threshold is null ? "—" : FormatThreshold(context.Threshold.Value))
+                            </span>
+                        </MudTd>
+
+                        <MudTd>
+                            <MudText Typo="Typo.caption">@context.RemedyText</MudText>
+                            @if (!string.IsNullOrEmpty(context.FixButtonText))
+                            {
+                                <MudChip T="string" Size="Size.Small" Color="Color.Primary"
+                                         Variant="Variant.Text" Class="mt-1">
+                                    <MudIcon Icon="@Icons.Material.Filled.AutoFixHigh"
+                                             Size="Size.Small" Class="ml-1" />
+                                    @context.FixButtonText
+                                </MudChip>
+                            }
+                        </MudTd>
+
+                        <MudTd>
+                            <MudIcon Icon="@(context.IsActive
+                                             ? Icons.Material.Filled.CheckCircle
+                                             : Icons.Material.Filled.RemoveCircleOutline)"
+                                     Color="@(context.IsActive ? Color.Success : Color.Default)"
+                                     Size="Size.Small" />
+                        </MudTd>
+                    </RowTemplate>
+                </MudTable>
+            </MudPaper>
+        </MudTabPanel>
+
+    </MudTabs>
+</div>
+
+@code {
+    private List<CostUnitDto>      _units = new();
+    private List<CostCheckRuleDto> _rules = new();
+    private bool _busy;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Access.EnsureLoadedAsync();
+
+        _busy = true;
+        try
+        {
+            _units = await Api.GetUnitsAsync();
+            _rules = await Api.GetRulesAsync();
+        }
+        finally { _busy = false; }
+    }
+
+    /// <summary>بدون انبار مبنای انحراف، محاسبه انحراف آن واحد کار نمی‌کند</summary>
+    private static bool HasBaseAnbar(CostUnitDto u)
+        => u.Anbars.Any(a => a.AnbarRole == 1);
+
+    private static string FormatThreshold(double v)
+        => v < 1 ? $"{v * 100:N1}٪" : v.ToString("N0");
+}

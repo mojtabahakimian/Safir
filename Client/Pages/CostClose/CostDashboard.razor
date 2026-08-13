@@ -1,0 +1,354 @@
+@page "/cost-close"
+@page "/cost-close/runs"
+@using Safir.Shared.Models.CostClose
+@using Safir.Shared.Constants
+@using Safir.Client.Services
+@inject CostCloseApiService Api
+@inject Pay2AccessApiService Access
+@inject NavigationManager Nav
+@inject ISnackbar Snackbar
+@inject IDialogService Dialog
+
+<PageTitle>بهای تمام‌شده</PageTitle>
+
+<div class="cc-page" dir="rtl">
+
+    <div class="cc-toolbar">
+        <MudText Typo="Typo.h6">بستن ماه بهای تمام‌شده</MudText>
+        <MudSpacer />
+
+        @if (Access.CanRun(CostForms.ActStart))
+        {
+            <MudButton Variant="Variant.Filled" Color="Color.Primary"
+                       StartIcon="@Icons.Material.Filled.Add" OnClick="OpenNewRun">
+                شروع بستن ماه
+            </MudButton>
+        }
+    </div>
+
+    @if (_busy) { <MudProgressLinear Indeterminate Color="Color.Primary" Class="mb-3" /> }
+
+    <MudGrid Spacing="3">
+        <!-- وضعیت ماه‌ها -->
+        <MudItem xs="12" md="7">
+            <MudPaper Class="cc-rule-card" Elevation="0">
+                <div class="cc-rule-head">
+                    <MudText Typo="Typo.subtitle2">وضعیت ماه‌ها</MudText>
+                </div>
+
+                <MudTable Items="_months" Dense Hover Elevation="0" T="MonthRow">
+                    <HeaderContent>
+                        <MudTh Style="width:90px">ماه</MudTh>
+                        <MudTh Style="width:110px">وضعیت</MudTh>
+                        <MudTh Style="text-align:left">انحراف نهایی</MudTh>
+                        <MudTh Style="text-align:left;width:90px">تغییر فرمول</MudTh>
+                        <MudTh Style="width:110px"></MudTh>
+                    </HeaderContent>
+
+                    <RowTemplate>
+                        <MudTd>@CostPeriod.MonthName(context.Month)</MudTd>
+
+                        <MudTd>
+                            <MudChip T="string" Size="Size.Small" Variant="Variant.Text"
+                                     Color="@StatusColor(context)">
+                                @context.StatusText
+                            </MudChip>
+                        </MudTd>
+
+                        <MudTd Style="text-align:left">
+                            @if (context.LatestRunId is not null)
+                            {
+                                <span class="cc-num @(Math.Abs(context.Variance) > 10_000_000 ? "neg" : "")">
+                                    @FormatAmount(context.Variance)
+                                </span>
+                            }
+                            else { <span class="cc-hint">—</span> }
+                        </MudTd>
+
+                        <MudTd Style="text-align:left">
+                            <span class="cc-num">@(context.Changes > 0 ? context.Changes.ToString("N0") : "—")</span>
+                        </MudTd>
+
+                        <MudTd>
+                            @if (context.LatestRunId is not null)
+                            {
+                                <MudButton Size="Size.Small" Variant="Variant.Text"
+                                           Href="@($"/cost-close/runs/{context.LatestRunId}")">
+                                    باز کردن
+                                </MudButton>
+                            }
+                        </MudTd>
+                    </RowTemplate>
+                </MudTable>
+            </MudPaper>
+        </MudItem>
+
+        <!-- روند انحراف -->
+        <MudItem xs="12" md="5">
+            <MudPaper Class="cc-rule-card" Elevation="0">
+                <div class="cc-rule-head">
+                    <MudText Typo="Typo.subtitle2">انحراف مصرف پس از بستن</MudText>
+                </div>
+
+                <div class="pa-4">
+                    @foreach (var m in _months.Where(x => x.LatestRunId is not null))
+                    {
+                        <div class="cc-bar-row">
+                            <span class="lbl">@CostPeriod.MonthName(m.Month)</span>
+                            <div class="wrap">
+                                <i style="width:@(BarPct(m.Variance))%;
+                                          background:@(m.IsClosed ? "var(--p2-success-text)" : "var(--p2-warning-text)")"></i>
+                            </div>
+                            <span class="cc-num val">@FormatAmount(m.Variance)</span>
+                        </div>
+                    }
+
+                    @if (!_months.Any(x => x.LatestRunId is not null))
+                    {
+                        <MudText Typo="Typo.body2" Class="mud-text-secondary">
+                            هنوز اجرایی ثبت نشده است.
+                        </MudText>
+                    }
+                </div>
+            </MudPaper>
+        </MudItem>
+
+        <!-- آخرین اجراها -->
+        <MudItem xs="12">
+            <MudPaper Class="cc-rule-card" Elevation="0">
+                <div class="cc-rule-head">
+                    <MudText Typo="Typo.subtitle2">سوابق اجرا</MudText>
+                    <MudSpacer />
+                    <span class="cc-hint">@_runs.Count اجرا</span>
+                </div>
+
+                <MudTable Items="_runs" Dense Hover Elevation="0" T="CostRunDto"
+                          Filter="@(r => true)">
+                    <HeaderContent>
+                        <MudTh Style="width:60px">#</MudTh>
+                        <MudTh Style="width:90px">دوره</MudTh>
+                        <MudTh Style="width:80px">نوبت</MudTh>
+                        <MudTh Style="width:90px">نوع</MudTh>
+                        <MudTh Style="width:110px">وضعیت</MudTh>
+                        <MudTh>کاربر</MudTh>
+                        <MudTh Style="width:150px">تأیید</MudTh>
+                        <MudTh Style="width:180px"></MudTh>
+                    </HeaderContent>
+
+                    <RowTemplate>
+                        <MudTd><span class="cc-num">@context.RunId</span></MudTd>
+                        <MudTd><span class="cc-num">@context.FiscalYear/@context.PeriodMonth</span></MudTd>
+                        <MudTd><span class="cc-num">@context.RunNo</span></MudTd>
+
+                        <MudTd>
+                            <MudChip T="string" Size="Size.Small" Variant="Variant.Text"
+                                     Color="@(context.RunKind == 2 ? Color.Primary : Color.Default)">
+                                @context.KindText
+                            </MudChip>
+                        </MudTd>
+
+                        <MudTd>
+                            <MudChip T="string" Size="Size.Small" Variant="Variant.Text"
+                                     Color="@RunStatusColor(context.Status)">
+                                @context.StatusText
+                            </MudChip>
+                        </MudTd>
+
+                        <MudTd>@context.StartedByUser</MudTd>
+
+                        <MudTd>
+                            @if (context.ApprovedAtUtc is not null)
+                            {
+                                <MudIcon Icon="@Icons.Material.Filled.Verified"
+                                         Color="Color.Success" Size="Size.Small" />
+                                <span>@context.ApprovedByUser</span>
+                            }
+                            else { <span class="cc-hint">—</span> }
+                        </MudTd>
+
+                        <MudTd>
+                            <MudIconButton Icon="@Icons.Material.Filled.OpenInNew" Size="Size.Small"
+                                           Title="باز کردن"
+                                           Href="@($"/cost-close/runs/{context.RunId}")" />
+
+                            <MudIconButton Icon="@Icons.Material.Filled.Download" Size="Size.Small"
+                                           Title="خروجی اکسل"
+                                           Href="@Api.ReportUrl(context.RunId)" Target="_blank" />
+
+                            @if (context.RunKind == 2 && context.Status == 3
+                                 && context.ApprovedAtUtc is null
+                                 && Access.CanRun(CostForms.ActApprove))
+                            {
+                                <MudIconButton Icon="@Icons.Material.Filled.Verified"
+                                               Size="Size.Small" Color="Color.Success"
+                                               Title="تأیید نهایی"
+                                               OnClick="@(() => Approve(context))" />
+                            }
+
+                            @if (context.Status != 5 && Access.CanRun(CostForms.ActRollback))
+                            {
+                                <MudIconButton Icon="@Icons.Material.Filled.Undo"
+                                               Size="Size.Small" Color="Color.Warning"
+                                               Title="بازگردانی"
+                                               OnClick="@(() => Rollback(context))" />
+                            }
+                        </MudTd>
+                    </RowTemplate>
+                </MudTable>
+            </MudPaper>
+        </MudItem>
+    </MudGrid>
+</div>
+
+<style>
+    .cc-bar-row {
+        display: grid; grid-template-columns: 70px 1fr 110px;
+        gap: 10px; align-items: center; font-size: 12.5px; margin-bottom: 9px;
+    }
+    .cc-bar-row .wrap {
+        height: 16px; background: var(--p2-bg-hover);
+        border: 1px solid var(--p2-border); position: relative;
+    }
+    .cc-bar-row .wrap i { position: absolute; top: 0; bottom: 0; right: 0; display: block; }
+    .cc-bar-row .val { text-align: left; }
+</style>
+
+@code {
+    private List<CostRunDto> _runs   = new();
+    private List<MonthRow>   _months = new();
+    private bool _busy;
+
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Access.EnsureLoadedAsync();
+        await Load();
+    }
+
+    private async Task Load()
+    {
+        _busy = true;
+        try
+        {
+            _runs = await Api.GetRunsAsync(CostPeriod.CurrentYear);
+
+            // یک سطر برای هر ماهی که اجرایی دارد
+            _months = new List<MonthRow>();
+
+            for (byte m = 1; m <= 12; m++)
+            {
+                var runs = _runs.Where(r => r.PeriodMonth == m).ToList();
+                if (runs.Count == 0) continue;
+
+                var latest   = runs.OrderByDescending(r => r.RunNo).First();
+                var approved = runs.FirstOrDefault(r => r.ApprovedAtUtc is not null);
+
+                var row = new MonthRow
+                {
+                    Month       = m,
+                    LatestRunId = latest.RunId,
+                    IsClosed    = approved is not null,
+                    Status      = latest.Status
+                };
+
+                // انحراف و تعداد تغییر از وضعیت اجرا
+                var st = await Api.GetRunStateAsync(latest.RunId);
+                if (st is not null) row.Variance = (double)st.RemainingVariance;
+
+                var ch = await Api.GetChangesAsync(latest.RunId);
+                row.Changes = ch.Count;
+
+                _months.Add(row);
+            }
+        }
+        finally { _busy = false; }
+    }
+
+    private async Task OpenNewRun()
+    {
+        var p = new DialogParameters();
+        var dlg = await Dialog.ShowAsync<NewRunDialog>("شروع بستن ماه", p);
+        var res = await dlg.Result;
+
+        if (res is { Canceled: false, Data: int runId })
+        {
+            Nav.NavigateTo($"/cost-close/runs/{runId}");
+        }
+    }
+
+    private async Task Approve(CostRunDto run)
+    {
+        var ok = await Dialog.ShowMessageBox(
+            "تأیید نهایی",
+            $"دوره {run.FiscalYear}/{run.PeriodMonth} تأیید و قفل می‌شود. " +
+            "پس از آن اجرای قطعی جدیدی برای این ماه ممکن نیست.",
+            yesText: "تأیید", cancelText: "انصراف");
+
+        if (ok != true) return;
+
+        var (done, err) = await Api.ApproveAsync(run.RunId);
+        if (done) { Snackbar.Add("دوره تأیید و قفل شد", Severity.Success); await Load(); }
+        else      { Snackbar.Add(err ?? "خطا", Severity.Error); }
+    }
+
+    private async Task Rollback(CostRunDto run)
+    {
+        // اول پیش‌نمایش
+        var (ok, err) = await Api.RollbackAsync(run.RunId, whatIf: true);
+        if (!ok) { Snackbar.Add(err ?? "خطا", Severity.Error); return; }
+
+        var go = await Dialog.ShowMessageBox(
+            "بازگردانی",
+            $"تغییرات اجرای #{run.RunId} به وضعیت پیش از اجرا برمی‌گردد. " +
+            "این کار قابل بازگشت نیست.",
+            yesText: "بازگردان", cancelText: "انصراف");
+
+        if (go != true) return;
+
+        var (done, err2) = await Api.RollbackAsync(run.RunId, whatIf: false);
+        if (done) { Snackbar.Add("بازگردانی انجام شد", Severity.Success); await Load(); }
+        else      { Snackbar.Add(err2 ?? "خطا", Severity.Error); }
+    }
+
+    // ───────── کمکی ─────────
+
+    private sealed class MonthRow
+    {
+        public byte   Month       { get; set; }
+        public int?   LatestRunId { get; set; }
+        public bool   IsClosed    { get; set; }
+        public byte   Status      { get; set; }
+        public double Variance    { get; set; }
+        public int    Changes     { get; set; }
+
+        public string StatusText => IsClosed ? "بسته" : Status switch
+        {
+            1 => "در حال اجرا",
+            2 => "متوقف",
+            3 => "تکمیل",
+            4 => "خطا",
+            5 => "بازگردانی",
+            _ => "پیش‌نویس"
+        };
+    }
+
+    private static Color StatusColor(MonthRow r)
+        => r.IsClosed ? Color.Success
+         : r.Status switch { 1 => Color.Info, 2 => Color.Warning,
+                             4 => Color.Error, _ => Color.Default };
+
+    private static Color RunStatusColor(byte st) => st switch
+    {
+        1 => Color.Info, 2 => Color.Warning, 3 => Color.Success,
+        4 => Color.Error, 5 => Color.Dark,   _ => Color.Default
+    };
+
+    private double MaxVariance =>
+        _months.Count == 0 ? 1 : Math.Max(1, _months.Max(m => Math.Abs(m.Variance)));
+
+    private int BarPct(double v) => (int)(Math.Abs(v) / MaxVariance * 100);
+
+    private static string FormatAmount(double v)
+        => v < 0 ? $"{Math.Abs(v):N0}-" : v.ToString("N0");
+
+}

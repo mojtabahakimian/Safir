@@ -1,0 +1,386 @@
+@page "/cost-close/runs/{RunId:int}/variance"
+@using Safir.Shared.Models.CostClose
+@using Safir.Shared.Constants
+@using Safir.Client.Services
+@inject CostCloseApiService Api
+@inject Pay2AccessApiService Access
+@inject ISnackbar Snackbar
+@inject IJSRuntime JS
+
+<PageTitle>انحراف مصرف</PageTitle>
+
+<div class="cc-page" dir="rtl" @onkeydown="OnKeyDown" tabindex="0" @ref="_root">
+
+    <!-- باقیمانده انحراف: عددی که باید صفر شود -->
+    <div class="cc-balance" style="grid-template-columns:repeat(3,1fr)">
+        <div class="cc-gauge @RemainClass">
+            <div class="lbl">باقیمانده پس از تصمیم‌های فعلی</div>
+            <div class="val">@FormatAmount(_remaining)</div>
+            <div class="cc-axis">
+                <i class="@(_remaining >= 0 ? "r" : "l")"
+                   style="width:@(Bar(_remaining, _initialTotal))%"></i>
+            </div>
+            <div class="cc-foot">از @FormatAmount(_initialTotal)</div>
+        </div>
+
+        <div class="cc-gauge @(UndecidedCount == 0 ? "ok" : "warn")">
+            <div class="lbl">تعیین‌تکلیف‌نشده</div>
+            <div class="val">@UndecidedCount</div>
+            <div class="cc-foot">از @_rows.Count کالا</div>
+        </div>
+
+        <div class="cc-gauge ok">
+            <div class="lbl">ارث‌برده از ماه قبل</div>
+            <div class="val">@InheritedCount</div>
+            <div class="cc-foot">@NeedsReviewCount مورد نیاز به بازبینی</div>
+        </div>
+    </div>
+
+    <div class="cc-toolbar">
+        <MudChipSet T="string" SelectedValue="@_filter" SelectedValueChanged="OnFilter"
+                    SelectionMode="SelectionMode.SingleSelection">
+            <MudChip T="string" Value="@("key")" Color="Color.Primary" Variant="Variant.Text">
+                کالای کلیدی @_all.Count(r => r.IsKeyItem)
+            </MudChip>
+            <MudChip T="string" Value="@("all")" Variant="Variant.Text">
+                همه @_all.Count
+            </MudChip>
+            <MudChip T="string" Value="@("review")" Color="Color.Warning" Variant="Variant.Text">
+                نیاز به بازبینی @NeedsReviewCount
+            </MudChip>
+        </MudChipSet>
+
+        <MudTextField @bind-Value="_search" @bind-Value:after="ApplyFilter"
+                      Placeholder="جست‌وجوی نام یا کد" Variant="Variant.Outlined"
+                      Dense Adornment="Adornment.Start"
+                      AdornmentIcon="@Icons.Material.Filled.Search"
+                      Style="max-width:240px" Immediate />
+
+        <MudSpacer />
+
+        <span class="cc-hint">
+            <kbd>1</kbd> اختصاص · <kbd>2</kbd> تسهیم · <kbd>3</kbd> بدون تخصیص ·
+            <kbd>↑</kbd><kbd>↓</kbd> جابه‌جایی
+        </span>
+
+        @if (Access.CanRun(CostForms.ActDecide))
+        {
+            <MudButton Variant="Variant.Outlined" OnClick="AcceptAllSuggestions"
+                       StartIcon="@Icons.Material.Filled.DoneAll" Disabled="_busy">
+                پذیرش همه پیشنهادها
+            </MudButton>
+
+            <MudButton Variant="Variant.Filled" Color="Color.Primary"
+                       StartIcon="@Icons.Material.Filled.Calculate"
+                       OnClick="ApplyAndRecalc" Disabled="@(_busy || !_dirty)">
+                اعمال و محاسبه مجدد
+            </MudButton>
+        }
+    </div>
+
+    @if (_busy) { <MudProgressLinear Indeterminate Color="Color.Primary" Class="mb-3" /> }
+
+    <MudPaper Class="cc-rule-card" Elevation="0">
+        <MudTable Items="_rows" Dense Hover Breakpoint="Breakpoint.Sm" Elevation="0"
+                  RowClassFunc="@RowClass" T="VarianceRowDto"
+                  OnRowClick="@(e => _selected = e.Item)">
+            <HeaderContent>
+                <MudTh Style="width:60px">کد</MudTh>
+                <MudTh>کالا</MudTh>
+                <MudTh Style="text-align:left;width:100px">مقدار</MudTh>
+                <MudTh Style="text-align:left;width:130px">مبلغ</MudTh>
+                <MudTh Style="text-align:left;width:70px">٪ مصرف</MudTh>
+                <MudTh Style="width:150px">تصمیم</MudTh>
+                <MudTh Style="width:200px">کالای مقصد</MudTh>
+                <MudTh Style="width:140px">ماه قبل</MudTh>
+            </HeaderContent>
+
+            <RowTemplate>
+                <MudTd><span class="cc-num">@context.Code</span></MudTd>
+
+                <MudTd>
+                    @if (context.IsKeyItem)
+                    {
+                        <MudIcon Icon="@Icons.Material.Filled.Star" Size="Size.Small"
+                                 Color="Color.Warning" Class="ml-1" />
+                    }
+                    @context.ItemName
+                </MudTd>
+
+                <MudTd Style="text-align:left">
+                    <span class="cc-num">@FormatQty(context.QtyVariance)</span>
+                </MudTd>
+
+                <MudTd Style="text-align:left">
+                    <span class="cc-num @(context.AmountVariance < 0 ? "neg" : "")">
+                        @FormatAmount(context.AmountVariance ?? 0)
+                    </span>
+                </MudTd>
+
+                <MudTd Style="text-align:left">
+                    <span class="cc-num">
+                        @(context.VariancePct is null ? "—" : $"{context.VariancePct:N1}")
+                    </span>
+                </MudTd>
+
+                <MudTd>
+                    <MudSelect T="byte" Value="context.Mode" Dense Variant="Variant.Outlined"
+                               ValueChanged="@(v => SetMode(context, v))">
+                        <MudSelectItem Value="@((byte)1)">اختصاص به فرمول</MudSelectItem>
+                        <MudSelectItem Value="@((byte)2)">تسهیم به نسبت مصرف</MudSelectItem>
+                        <MudSelectItem Value="@((byte)3)">بدون تخصیص</MudSelectItem>
+                    </MudSelect>
+                </MudTd>
+
+                <MudTd>
+                    @if (context.Mode == 1)
+                    {
+                        <MudAutocomplete T="ItemCostDto" Dense Variant="Variant.Outlined"
+                                         Value="@FindItem(context.TargetCode)"
+                                         ValueChanged="@(v => SetTarget(context, v))"
+                                         SearchFunc="@SearchTargets"
+                                         ToStringFunc="@(i => i?.ItemName ?? "")"
+                                         Placeholder="انتخاب کالا" Clearable />
+                    }
+                    else if (context.Mode == 2)
+                    {
+                        <span class="cc-hint">به نسبت مصرف در فرمول‌ها</span>
+                    }
+                    else
+                    {
+                        <span class="cc-hint">—</span>
+                    }
+                </MudTd>
+
+                <MudTd>
+                    @if (!string.IsNullOrEmpty(context.LastMonthHint))
+                    {
+                        <MudChip T="string" Size="Size.Small" Variant="Variant.Text"
+                                 Color="@HintColor(context.LastMonthHint)">
+                            @context.LastMonthHint
+                        </MudChip>
+                    }
+                </MudTd>
+            </RowTemplate>
+        </MudTable>
+    </MudPaper>
+</div>
+
+<style>
+    .cc-foot { font-size: 11.5px; color: var(--p2-text-light); margin-top: 5px; }
+    .cc-hint { font-size: 11.5px; color: var(--p2-text-muted); }
+    .cc-hint kbd {
+        font-family: 'IBM Plex Mono', monospace; font-size: 11px;
+        border: 1px solid var(--p2-border); border-bottom-width: 2px;
+        border-radius: 4px; padding: 0 5px; background: var(--p2-bg-hover);
+        margin: 0 1px;
+    }
+    .cc-num.neg { color: var(--p2-danger-text); }
+    .cc-row-selected { background: var(--p2-primary-light) !important; }
+    .cc-row-key { font-weight: 500; }
+</style>
+
+@code {
+    [Parameter] public int RunId { get; set; }
+
+    private List<VarianceRowDto> _all  = new();
+    private List<VarianceRowDto> _rows = new();
+    private List<ItemCostDto>    _items = new();
+
+    private VarianceRowDto? _selected;
+    private ElementReference _root;
+
+    private string _filter = "key";
+    private string _search = "";
+    private bool   _busy;
+    private bool   _dirty;
+
+    private double _initialTotal;
+    private double _remaining;
+
+    private int UndecidedCount  => _all.Count(r => r.Mode == 1 && r.TargetCode is null);
+    private int InheritedCount  => _all.Count(r => r.LastMonthHint == "مثل ماه قبل");
+    private int NeedsReviewCount => _all.Count(r =>
+        r.LastMonthHint is not null &&
+        (r.LastMonthHint.Contains("نيست") || r.LastMonthHint.Contains("بررسي")));
+
+    private string RemainClass => Math.Abs(_remaining) < _initialTotal * 0.01
+        ? "ok" : Math.Abs(_remaining) < _initialTotal * 0.2 ? "warn" : "bad";
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Access.EnsureLoadedAsync();
+        await Load();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool first)
+    {
+        if (first) await _root.FocusAsync();
+    }
+
+    private async Task Load()
+    {
+        _busy = true;
+        try
+        {
+            _all   = await Api.GetVariancesAsync(RunId);
+            _items = await Api.GetItemCostsAsync(RunId);
+
+            _initialTotal = _all.Sum(r => Math.Abs(r.AmountVariance ?? 0));
+            Recalculate();
+            ApplyFilter();
+        }
+        finally { _busy = false; }
+    }
+
+    /// <summary>
+    /// باقیمانده = انحرافی که هنوز به هیچ فرمولی تخصیص نیافته.
+    /// «بدون تخصیص» و «اختصاص بدون مقصد» تخصیص‌نیافته حساب می‌شوند.
+    /// </summary>
+    private void Recalculate() => _remaining = _all
+        .Where(r => r.Mode == 3 || (r.Mode == 1 && r.TargetCode is null))
+        .Sum(r => r.AmountVariance ?? 0);
+
+    private void OnFilter(string v) { _filter = v; ApplyFilter(); }
+
+    private void ApplyFilter()
+    {
+        IEnumerable<VarianceRowDto> q = _filter switch
+        {
+            "key"    => _all.Where(r => r.IsKeyItem),
+            "review" => _all.Where(r => r.LastMonthHint is not null &&
+                                       (r.LastMonthHint.Contains("نيست") ||
+                                        r.LastMonthHint.Contains("بررسي"))),
+            _        => _all
+        };
+
+        if (!string.IsNullOrWhiteSpace(_search))
+            q = q.Where(r => (r.ItemName ?? "").Contains(_search) ||
+                             r.Code.ToString().Contains(_search));
+
+        _rows = q.OrderByDescending(r => Math.Abs(r.AmountVariance ?? 0)).ToList();
+    }
+
+    // ───────── ویرایش ─────────
+
+    private void SetMode(VarianceRowDto row, byte mode)
+    {
+        row.Mode = mode;
+        if (mode != 1) row.TargetCode = null;
+        _dirty = true;
+        Recalculate();
+    }
+
+    private void SetTarget(VarianceRowDto row, ItemCostDto? item)
+    {
+        row.TargetCode = item?.Code;
+        row.TargetName = item?.ItemName;
+        _dirty = true;
+        Recalculate();
+    }
+
+    private ItemCostDto? FindItem(long? code)
+        => code is null ? null : _items.FirstOrDefault(i => i.Code == code);
+
+    private Task<IEnumerable<ItemCostDto>> SearchTargets(string s)
+        => Task.FromResult(
+            string.IsNullOrWhiteSpace(s)
+                ? _items.Where(i => i.FNUMB is not null).Take(30)
+                : _items.Where(i => i.FNUMB is not null &&
+                                    ((i.ItemName ?? "").Contains(s) ||
+                                     i.Code.ToString().Contains(s))).Take(30));
+
+    // ───────── صفحه‌کلید ─────────
+    // کسی که پنجاه سطر را تعیین‌تکلیف می‌کند نباید ماوس بردارد
+
+    private void OnKeyDown(KeyboardEventArgs e)
+    {
+        if (_rows.Count == 0) return;
+
+        var idx = _selected is null ? -1 : _rows.IndexOf(_selected);
+
+        switch (e.Key)
+        {
+            case "ArrowDown":
+                _selected = _rows[Math.Min(idx + 1, _rows.Count - 1)];
+                break;
+
+            case "ArrowUp":
+                _selected = _rows[Math.Max(idx - 1, 0)];
+                break;
+
+            case "1" or "2" or "3" when _selected is not null:
+                SetMode(_selected, byte.Parse(e.Key));
+                // پس از تصمیم، خودکار به سطر بعد
+                if (idx >= 0 && idx < _rows.Count - 1) _selected = _rows[idx + 1];
+                break;
+        }
+    }
+
+    private string RowClass(VarianceRowDto row, int _)
+    {
+        var cls = row.IsKeyItem ? "cc-row-key" : "";
+        if (ReferenceEquals(row, _selected)) cls += " cc-row-selected";
+        return cls;
+    }
+
+    // ───────── عملیات ─────────
+
+    private void AcceptAllSuggestions()
+    {
+        // پیشنهادها از قبل در Mode هستند؛ فقط علامت تغییر می‌خورد
+        _dirty = true;
+        Snackbar.Add("پیشنهادها پذیرفته شد — «اعمال و محاسبه مجدد» را بزنید", Severity.Info);
+    }
+
+    private async Task ApplyAndRecalc()
+    {
+        var missing = _all.Where(r => r.Mode == 1 && r.TargetCode is null).ToList();
+        if (missing.Count > 0)
+        {
+            Snackbar.Add($"{missing.Count} کالا حالت «اختصاص» دارد ولی مقصدش تعیین نشده",
+                         Severity.Warning);
+            return;
+        }
+
+        _busy = true;
+        try
+        {
+            var input = _all.Select(r => new VarianceDecisionInput
+            {
+                Code       = r.Code,
+                Mode       = r.Mode,
+                TargetCode = r.TargetCode,
+                Note       = r.Note
+            }).ToList();
+
+            var (ok, err) = await Api.SaveDecisionsAsync(RunId, input);
+            if (!ok) { Snackbar.Add(err ?? "خطا", Severity.Error); return; }
+
+            // اجرای S09 و بازتولید خودکار S07/S08
+            var (ok2, err2) = await Api.StartRunAsync(RunId, new[] { "S09" });
+            if (!ok2) { Snackbar.Add(err2 ?? "خطا", Severity.Error); return; }
+
+            _dirty = false;
+            Snackbar.Add("تصمیم‌ها ثبت شد — محاسبه در حال اجراست", Severity.Success);
+        }
+        finally { _busy = false; }
+    }
+
+    // ───────── کمکی ─────────
+
+    private static Color HintColor(string hint)
+        => hint.Contains("مثل ماه قبل") ? Color.Success
+         : hint.Contains("بررسي")       ? Color.Error
+         : hint.Contains("نيست")        ? Color.Warning
+         : Color.Default;
+
+    private static int Bar(double v, double max)
+        => max == 0 ? 0 : (int)Math.Min(50, Math.Abs(v) / max * 50);
+
+    private static string FormatAmount(double v)
+        => v < 0 ? $"{Math.Abs(v):N0}-" : v.ToString("N0");
+
+    private static string FormatQty(double v)
+        => v < 0 ? $"{Math.Abs(v):N2}-" : v.ToString("N2");
+}

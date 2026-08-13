@@ -1,0 +1,129 @@
+@using Safir.Shared.Models.CostClose
+@using Safir.Client.Services
+@inject CostCloseApiService Api
+@inject ISnackbar Snackbar
+
+<MudDialog>
+    <DialogContent>
+        <div dir="rtl" style="min-width:420px">
+
+            <MudSelect T="byte" @bind-Value="_month" Label="ماه" Dense
+                       Variant="Variant.Outlined" Class="mb-3">
+                @for (byte m = 1; m <= 12; m++)
+                {
+                    var mm = m;
+                    <MudSelectItem Value="@mm">@CostPeriod.MonthName(mm)</MudSelectItem>
+                }
+            </MudSelect>
+
+            <MudRadioGroup T="byte" @bind-Value="_kind" Class="mb-3">
+                <MudRadio T="byte" Value="@((byte)1)" Dense>
+                    آزمایشی — قابل تکرار، دوره را نمی‌بندد
+                </MudRadio>
+                <MudRadio T="byte" Value="@((byte)2)" Dense>
+                    قطعی — پس از تأیید، ماه قفل می‌شود
+                </MudRadio>
+            </MudRadioGroup>
+
+            <MudTextField @bind-Value="_note" Label="یادداشت" Dense
+                          Variant="Variant.Outlined" Lines="2" Class="mb-3" />
+
+            <MudExpansionPanels Elevation="0" Dense>
+                <MudExpansionPanel Text="انتخاب گام‌ها (اختیاری)">
+                    <MudText Typo="Typo.caption" Class="mud-text-secondary mb-2">
+                        اگر چیزی انتخاب نکنید، همه گام‌ها به ترتیب اجرا می‌شوند.
+                        برای اجرای مجدد بخشی از فرآیند، فقط همان گام‌ها را انتخاب کنید.
+                    </MudText>
+
+                    @foreach (var s in Steps)
+                    {
+                        <MudCheckBox T="bool" Dense
+                                     Value="@_selected.Contains(s.Code)"
+                                     ValueChanged="@(v => Toggle(s.Code, v))"
+                                     Label="@($"{s.Code} — {s.Title}")" />
+                    }
+                </MudExpansionPanel>
+            </MudExpansionPanels>
+
+            @if (_kind == 2)
+            {
+                <MudAlert Severity="Severity.Info" Dense Class="mt-3">
+                    اجرای قطعی برای هر ماه فقط یک بار قابل تأیید است.
+                    پیشنهاد می‌شود اول یک اجرای آزمایشی بزنید.
+                </MudAlert>
+            }
+        </div>
+    </DialogContent>
+
+    <DialogActions>
+        <MudButton OnClick="Cancel">انصراف</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled"
+                   OnClick="Create" Disabled="_busy">
+            ایجاد و شروع
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private MudDialogInstance Dialog { get; set; } = default!;
+
+    private byte    _month = 5;
+    private byte    _kind  = 1;
+    private string? _note;
+    private bool    _busy;
+
+    private readonly HashSet<string> _selected = new();
+
+
+    private static readonly (string Code, string Title)[] Steps =
+    {
+        ("S00", "بازبینی ابتدای ماه"),
+        ("S02", "اسنپ‌شات جداول"),
+        ("S03", "حذف اسناد خالی"),
+        ("S04", "مرتب‌سازی اسناد"),
+        ("S05", "دروازه اعتبارسنجی"),
+        ("S07", "بازتولید خروج مواد"),
+        ("S08", "محاسبه انحراف مصرف"),
+        ("S09", "تخصیص انحراف"),
+        ("S10", "تراز هزینه تبدیل"),
+        ("S11", "انتشار نرخ"),
+        ("S12", "سود و زیان کالا")
+    };
+
+    private void Toggle(string code, bool on)
+    {
+        if (on) _selected.Add(code); else _selected.Remove(code);
+    }
+
+    private async Task Create()
+    {
+        _busy = true;
+        try
+        {
+            var (ok, runId, err) = await Api.CreateRunAsync(new CreateCostRunRequest
+            {
+                FiscalYear  = CostPeriod.CurrentYear,
+                PeriodMonth = _month,
+                DateFrom    = CostPeriod.From(_month),
+                DateTo      = CostPeriod.To(_month),
+                RunKind     = _kind,
+                Note        = _note
+            });
+
+            if (!ok) { Snackbar.Add(err ?? "خطا در ایجاد اجرا", Severity.Error); return; }
+
+            var steps = _selected.Count > 0 ? _selected.ToArray() : null;
+            var (started, err2) = await Api.StartRunAsync(runId, steps);
+
+            if (!started) { Snackbar.Add(err2 ?? "خطا در شروع", Severity.Error); return; }
+
+            Snackbar.Add("اجرا شروع شد", Severity.Success);
+            Dialog.Close(DialogResult.Ok(runId));
+        }
+        finally { _busy = false; }
+    }
+
+    private void Cancel() => Dialog.Cancel();
+
+
+}

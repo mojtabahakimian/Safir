@@ -1,0 +1,364 @@
+@page "/cost-close/runs/{RunId:int}"
+@using Microsoft.AspNetCore.SignalR.Client
+@using Safir.Shared.Models.CostClose
+@using Safir.Shared.Constants
+@using Safir.Client.Services
+@implements IAsyncDisposable
+@inject CostCloseApiService Api
+@inject Pay2AccessApiService Access
+@inject NavigationManager Nav
+@inject ISnackbar Snackbar
+@inject IDialogService Dialog
+
+<PageTitle>اجرای بستن ماه</PageTitle>
+
+<div class="cc-page" dir="rtl">
+
+    @if (_state?.Run is null)
+    {
+        <MudProgressLinear Indeterminate Color="Color.Primary" />
+    }
+    else
+    {
+        <!-- نوار تراز: سه عددی که باید صفر شوند -->
+        <div class="cc-balance">
+            <div class="cc-gauge @(_state.RemainingVariance == 0 ? "ok" : "bad")">
+                <div class="lbl">انحراف مصرف باقیمانده</div>
+                <div class="val">@FormatAmount((double)_state.RemainingVariance)</div>
+                <div class="cc-axis">
+                    <i class="@(_state.RemainingVariance >= 0 ? "r" : "l")"
+                       style="width:@(BarWidth((double)_state.RemainingVariance, 2_000_000_000))%"></i>
+                </div>
+            </div>
+
+            <div class="cc-gauge @(_state.OpenBlockingCount == 0 ? "ok" : "bad")">
+                <div class="lbl">استثناهای مسدودکننده</div>
+                <div class="val">@_state.OpenBlockingCount</div>
+                <div class="cc-axis">
+                    <i class="r" style="width:@(BarWidth(_state.OpenBlockingCount, 20))%"></i>
+                </div>
+            </div>
+
+            <div class="cc-gauge @(_state.OpenWarningCount == 0 ? "ok" : "warn")">
+                <div class="lbl">هشدارها</div>
+                <div class="val">@_state.OpenWarningCount</div>
+                <div class="cc-axis">
+                    <i class="r" style="width:@(BarWidth(_state.OpenWarningCount, 50))%"></i>
+                </div>
+            </div>
+        </div>
+
+        <div class="cc-toolbar">
+            <MudText Typo="Typo.h6">
+                اجرا #@_state.Run.RunNo — @CostPeriod.MonthName(_state.Run.PeriodMonth) @_state.Run.FiscalYear
+            </MudText>
+            <MudChip T="string" Size="Size.Small"
+                     Color="@StatusColor(_state.Run.Status)" Variant="Variant.Text">
+                @_state.Run.StatusText
+            </MudChip>
+            <MudChip T="string" Size="Size.Small" Variant="Variant.Text">
+                @_state.Run.KindText
+            </MudChip>
+
+            <MudSpacer />
+
+            @if (_state.Run.Status == 1 && Access.CanRun(CostForms.ActStart))
+            {
+                <MudButton Variant="Variant.Outlined" Color="Color.Warning"
+                           StartIcon="@Icons.Material.Filled.Stop" OnClick="Cancel">
+                    توقف
+                </MudButton>
+            }
+
+            @if (_state.Run.Status == 2)
+            {
+                <MudButton Variant="Variant.Outlined"
+                           StartIcon="@Icons.Material.Filled.Rule"
+                           Href="/cost-close/exceptions">
+                    مشاهده مغایرت‌ها (@_state.OpenBlockingCount)
+                </MudButton>
+
+                <MudButton Variant="Variant.Filled" Color="Color.Primary"
+                           StartIcon="@Icons.Material.Filled.PlayArrow"
+                           Disabled="@(_state.OpenBlockingCount > 0 || _busy)"
+                           OnClick="Resume">
+                    ادامه اجرا
+                </MudButton>
+            }
+        </div>
+
+        @if (_state.Run.Status == 2 && _state.OpenBlockingCount > 0)
+        {
+            <MudAlert Severity="Severity.Warning" Dense Class="mb-3">
+                اجرا متوقف شد. @_state.OpenBlockingCount مورد مسدودکننده باید رفع شود؛
+                سپس «ادامه اجرا» فعال می‌شود.
+            </MudAlert>
+        }
+
+        @if (_state.Run.FormulasDirty)
+        {
+            <MudAlert Severity="Severity.Info" Dense Class="mb-3">
+                فرمول‌ها تغییر کرده‌اند — خروج مواد و انحراف مصرف بازسازی می‌شوند.
+            </MudAlert>
+        }
+
+        <MudGrid Spacing="3">
+            <!-- ستون گام‌ها -->
+            <MudItem xs="12" md="7">
+                <MudPaper Class="cc-rule-card" Elevation="0">
+                    <div class="cc-rule-head">
+                        <MudText Typo="Typo.subtitle2">گام‌ها</MudText>
+                        <MudSpacer />
+                        <span class="cc-num">@_state.Steps.Count(s => s.Status == 2) / @_state.Steps.Count</span>
+                    </div>
+
+                    <MudList T="string" Dense>
+                        @foreach (var s in _state.Steps.OrderBy(x => x.SeqNo))
+                        {
+                            <MudListItem T="string">
+                                <div class="d-flex align-center gap-3">
+                                    <MudIcon Icon="@StepIcon(s.Status)"
+                                             Color="@StepColor(s.Status)" Size="Size.Small" />
+                                    <div class="flex-grow-1">
+                                        <MudText Typo="Typo.body2">@s.StepTitle</MudText>
+                                        @if (_progress.TryGetValue(s.StepCode, out var p)
+                                             && s.Status == 1)
+                                        {
+                                            <MudText Typo="Typo.caption" Class="mud-text-secondary">
+                                                @p.Message
+                                            </MudText>
+                                            <MudProgressLinear Value="@p.Percent" Color="Color.Primary"
+                                                               Class="mt-1" Style="height:3px" />
+                                        }
+                                        else if (!string.IsNullOrEmpty(s.ErrorMessage))
+                                        {
+                                            <MudText Typo="Typo.caption" Color="Color.Error">
+                                                @s.ErrorMessage
+                                            </MudText>
+                                        }
+                                        else if (s.RowsAffected > 0)
+                                        {
+                                            <MudText Typo="Typo.caption" Class="mud-text-secondary">
+                                                <span class="cc-num">@s.RowsAffected?.ToString("N0")</span> سطر
+                                            </MudText>
+                                        }
+                                    </div>
+                                    <span class="cc-num mud-text-secondary">@s.DurationText</span>
+                                </div>
+                            </MudListItem>
+                        }
+                    </MudList>
+                </MudPaper>
+            </MudItem>
+
+            <!-- ستون لاگ -->
+            <MudItem xs="12" md="5">
+                <MudPaper Class="cc-rule-card" Elevation="0">
+                    <div class="cc-rule-head">
+                        <MudText Typo="Typo.subtitle2">لاگ</MudText>
+                        <MudSpacer />
+                        <MudIconButton Icon="@Icons.Material.Filled.Refresh" Size="Size.Small"
+                                       OnClick="LoadLogs" />
+                    </div>
+                    <div class="cc-log">
+                        @foreach (var l in _logs)
+                        {
+                            <div class="cc-log-row">
+                                <span class="cc-num t">@l.LoggedAtUtc.ToLocalTime().ToString("HH:mm:ss")</span>
+                                @if (!string.IsNullOrEmpty(l.StepCode))
+                                {
+                                    <span class="cc-num s">@l.StepCode</span>
+                                }
+                                <span class="m @(l.Severity >= 3 ? "err" : l.Severity == 2 ? "warn" : "")">
+                                    @l.Message
+                                </span>
+                            </div>
+                        }
+                        @if (_logs.Count == 0)
+                        {
+                            <div class="cc-log-row mud-text-secondary">—</div>
+                        }
+                    </div>
+                </MudPaper>
+            </MudItem>
+        </MudGrid>
+    }
+</div>
+
+<style>
+    .cc-log {
+        background: #16202B;
+        color: #B7C4D1;
+        font-family: 'IBM Plex Mono', ui-monospace, monospace;
+        font-size: 11.5px;
+        direction: ltr;
+        text-align: left;
+        padding: 10px 12px;
+        max-height: 380px;
+        overflow: auto;
+        line-height: 1.9;
+    }
+    .cc-log-row { display: flex; gap: 8px; }
+    .cc-log-row .t { color: #5E6D7C; }
+    .cc-log-row .s { color: #7FB3F0; }
+    .cc-log-row .m { direction: rtl; text-align: right; flex: 1;
+                     font-family: var(--p2-font); }
+    .cc-log-row .m.warn { color: #E8C170; }
+    .cc-log-row .m.err  { color: #E88; }
+</style>
+
+@code {
+    [Parameter] public int RunId { get; set; }
+
+    private CostRunStateDto? _state;
+    private HubConnection?   _hub;
+    private bool             _busy;
+
+    private readonly List<CostRunLogDto> _logs = new();
+    private long _lastLogId;
+
+    private readonly Dictionary<string, (int Percent, string Message)> _progress = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Access.EnsureLoadedAsync();
+
+        // ۱) اول وضعیت کامل — تا رفرش صفحه چیزی را از دست ندهد
+        await Reload();
+        await LoadLogs();
+
+        // ۲) بعد اشتراک در رویدادهای زنده
+        _hub = new HubConnectionBuilder()
+            .WithUrl(Nav.ToAbsoluteUri("/hubs/cost-close"))
+            .WithAutomaticReconnect()
+            .Build();
+
+        _hub.On<ProgressPayload>("StepProgress", p =>
+        {
+            _progress[p.StepCode] = (p.Percent, p.Message);
+            InvokeAsync(StateHasChanged);
+        });
+
+        _hub.On<FinishedPayload>("StepFinished", async _ =>
+        {
+            await Reload();
+            await LoadLogs();
+            await InvokeAsync(StateHasChanged);
+        });
+
+        _hub.On<string>("RunPaused", async _ =>
+        {
+            await Reload();
+            Snackbar.Add("اجرا متوقف شد — مغایرت‌ها را بررسی کنید", Severity.Warning);
+            await InvokeAsync(StateHasChanged);
+        });
+
+        _hub.On<int>("RunCompleted", async _ =>
+        {
+            await Reload();
+            Snackbar.Add("بستن ماه تکمیل شد", Severity.Success);
+            await InvokeAsync(StateHasChanged);
+        });
+
+        // پس از هر بازاتصال، وضعیت را دوباره همگام کن
+        _hub.Reconnected += async _ =>
+        {
+            await Reload();
+            await LoadLogs();
+            await _hub!.InvokeAsync("Subscribe", RunId);
+            await InvokeAsync(StateHasChanged);
+        };
+
+        await _hub.StartAsync();
+        await _hub.InvokeAsync("Subscribe", RunId);
+    }
+
+    private async Task Reload() => _state = await Api.GetRunStateAsync(RunId);
+
+    private async Task LoadLogs()
+    {
+        var fresh = await Api.GetLogsAsync(RunId, _lastLogId);
+        if (fresh.Count == 0) return;
+
+        _logs.AddRange(fresh);
+        _lastLogId = fresh.Max(l => l.LogId);
+
+        // فقط ۲۰۰ سطر آخر نگه داشته می‌شود
+        if (_logs.Count > 200) _logs.RemoveRange(0, _logs.Count - 200);
+    }
+
+    private async Task Resume()
+    {
+        _busy = true;
+        try
+        {
+            var (ok, err) = await Api.ResumeRunAsync(RunId);
+            if (!ok) Snackbar.Add(err ?? "خطا", Severity.Error);
+            else     await Reload();
+        }
+        finally { _busy = false; }
+    }
+
+    private async Task Cancel()
+    {
+        var ok = await Dialog.ShowMessageBox(
+            "توقف اجرا",
+            "اجرا پس از پایان گام جاری متوقف می‌شود. ادامه می‌دهید؟",
+            yesText: "توقف", cancelText: "انصراف");
+
+        if (ok == true)
+        {
+            await Api.CancelRunAsync(RunId);
+            Snackbar.Add("درخواست توقف ثبت شد", Severity.Info);
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_hub is not null)
+        {
+            try { await _hub.InvokeAsync("Unsubscribe", RunId); } catch { }
+            await _hub.DisposeAsync();
+        }
+    }
+
+    // ───────── کمکی ─────────
+
+    private sealed record ProgressPayload(string StepCode, int Percent, string Message);
+    private sealed record FinishedPayload(string StepCode, byte Status);
+
+    private static string StepIcon(byte st) => st switch
+    {
+        1 => Icons.Material.Filled.Autorenew,
+        2 => Icons.Material.Filled.CheckCircle,
+        3 => Icons.Material.Filled.Warning,
+        4 => Icons.Material.Filled.Error,
+        5 => Icons.Material.Filled.RemoveCircleOutline,
+        _ => Icons.Material.Filled.RadioButtonUnchecked
+    };
+
+    private static Color StepColor(byte st) => st switch
+    {
+        1 => Color.Info,
+        2 => Color.Success,
+        3 => Color.Warning,
+        4 => Color.Error,
+        _ => Color.Default
+    };
+
+    private static Color StatusColor(byte st) => st switch
+    {
+        1 => Color.Info,
+        2 => Color.Warning,
+        3 => Color.Success,
+        4 => Color.Error,
+        _ => Color.Default
+    };
+
+    private static int BarWidth(double v, double max)
+        => (int)Math.Min(50, Math.Abs(v) / max * 50);
+
+    private static string FormatAmount(double v)
+        => v < 0 ? $"{Math.Abs(v):N0}-" : v.ToString("N0");
+
+}
