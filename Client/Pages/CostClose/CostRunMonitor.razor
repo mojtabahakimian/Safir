@@ -119,6 +119,15 @@
                 </MudButton>
             }
 
+            @if (Access.CanSee(CostForms.Conversion))
+            {
+                <MudButton Variant="Variant.Outlined"
+                           StartIcon="@Icons.Material.Filled.Factory"
+                           Href="@($"/cost-close/runs/{RunId}/conversion")">
+                    هزینه تبدیل
+                </MudButton>
+            }
+
             @if (_state.Run.Status == 2)
             {
                 <MudButton Variant="Variant.Outlined"

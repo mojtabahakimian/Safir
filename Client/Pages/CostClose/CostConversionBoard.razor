@@ -1,0 +1,165 @@
+@page "/cost-close/runs/{RunId:int}/conversion"
+@using Safir.Shared.Models.CostClose
+@using Safir.Shared.Constants
+@using Safir.Client.Services
+@inject CostCloseApiService Api
+@inject Pay2AccessApiService Access
+
+<PageTitle>هزینه تبدیل</PageTitle>
+
+<div class="cc-page" dir="rtl">
+
+    <MudText Typo="Typo.h6" Class="mb-3">هزینه تبدیل</MudText>
+
+    @if (_busy) { <MudProgressLinear Indeterminate Color="Color.Primary" Class="mb-3" /> }
+
+    @if (_loadError is not null)
+    {
+        <MudAlert Severity="Severity.Error" Class="mb-3">@_loadError</MudAlert>
+    }
+    else if (!_busy && _rows.Count == 0)
+    {
+        <MudAlert Severity="Severity.Info" Dense>
+            هنوز محاسبه‌ای انجام نشده است. گام «تراز هزینه تبدیل» باید اجرا شود.
+        </MudAlert>
+    }
+
+    @foreach (var unit in _rows.GroupBy(r => r.UnitName))
+    {
+        var total = unit.FirstOrDefault(r => r.CostKind == 0);
+        var wage  = unit.FirstOrDefault(r => r.CostKind == 1);
+        var oh    = unit.FirstOrDefault(r => r.CostKind == 2);
+
+        <MudPaper Class="cc-rule-card mb-3" Elevation="0">
+            <div class="cc-rule-head">
+                <MudIcon Icon="@Icons.Material.Filled.Factory" Size="Size.Small" />
+                <MudText Typo="Typo.subtitle2">@unit.Key</MudText>
+
+                @if (total is not null)
+                {
+                    <MudChip T="string" Size="Size.Small" Variant="Variant.Text"
+                             Color="@FactorColor(total.AdjustFactor)">
+                        ضریب @total.AdjustFactor.ToString("N5")
+                    </MudChip>
+                }
+
+                <MudSpacer />
+
+                @if (total?.WipControl is not null && Math.Abs(total.WipControl.Value) > 10_000_000)
+                {
+                    <MudTooltip Text="اختلاف بین جذب برگه‌های تولید و گردش حساب ۷۵۱">
+                        <MudChip T="string" Size="Size.Small" Color="Color.Warning"
+                                 Variant="Variant.Text">
+                            کنترل ۷۵۱: @FormatAmount((double)total.WipControl.Value)
+                        </MudChip>
+                    </MudTooltip>
+                }
+            </div>
+
+            <div class="pa-4">
+                <div class="cc-conv-grid">
+                    <div></div>
+                    <div class="h">جذب‌شده</div>
+                    <div class="h">واقعی</div>
+                    <div class="h">اختلاف</div>
+                    <div class="h">ضریب</div>
+
+                    @foreach (var r in unit.OrderBy(x => x.CostKind))
+                    {
+                        <div class="lbl @(r.CostKind == 0 ? "bold" : "")">@r.KindText</div>
+                        <div class="cc-num">@FormatAmount((double)r.AbsorbedAmount)</div>
+                        <div class="cc-num">@FormatAmount((double)r.ActualAmount)</div>
+                        <div class="cc-num @(r.Difference < 0 ? "neg" : r.Difference > 0 ? "pos" : "")">
+                            @FormatAmount((double)r.Difference)
+                        </div>
+                        <div class="cc-num">@r.AdjustFactor.ToString("N5")</div>
+                    }
+                </div>
+
+                @if (total is not null && total.AbsorbedFromWip is not null)
+                {
+                    <MudDivider Class="my-3" />
+
+                    <div class="cc-check">
+                        <MudIcon Icon="@Icons.Material.Filled.Balance" Size="Size.Small" />
+                        <span>کنترل متقابل با حساب کالای در جریان ساخت:</span>
+                        <span class="cc-num">@FormatAmount((double)total.AbsorbedFromWip.Value)</span>
+                        <span class="cc-hint">
+                            (گردش بستانکار ۷۵۱ با تفصیلی دستمزد)
+                        </span>
+                    </div>
+                }
+            </div>
+        </MudPaper>
+    }
+
+    @if (_rows.Count > 0)
+    {
+        <MudAlert Severity="Severity.Normal" Dense>
+            ضریب تعدیل روی نرخ جذب فرمول‌های کالاهایی اعمال می‌شود که در همان
+            واحد تولید شده‌اند. چون مقدار تولید ثابت است، یک ضریب یکنواخت
+            دقیقاً جذب را برابر واقعی می‌کند — مستقل از نرخ مواد.
+        </MudAlert>
+    }
+</div>
+
+<style>
+    .cc-conv-grid {
+        display: grid;
+        grid-template-columns: 130px 1fr 1fr 1fr 90px;
+        gap: 8px 12px;
+        align-items: center;
+        font-size: 13px;
+    }
+    .cc-conv-grid .h {
+        font-size: 11.5px; color: var(--p2-text-muted);
+        text-align: left; border-bottom: 1px solid var(--p2-border);
+        padding-bottom: 4px;
+    }
+    .cc-conv-grid .lbl { color: var(--p2-text-muted); }
+    .cc-conv-grid .lbl.bold { color: var(--p2-text-main); font-weight: 500; }
+    .cc-conv-grid .cc-num { text-align: left; }
+    .cc-check {
+        display: flex; align-items: center; gap: 8px;
+        font-size: 12.5px; color: var(--p2-text-muted);
+    }
+</style>
+
+@code {
+    [Parameter] public int RunId { get; set; }
+
+    private List<ConversionCostDto> _rows = new();
+    private bool _busy;
+    private string? _loadError;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Access.EnsureLoadedAsync();
+
+        _busy = true;
+        try { _rows = await Api.GetConversionAsync(RunId); }
+        catch (Exception ex) { _loadError = FriendlyError(ex); }
+        finally { _busy = false; }
+    }
+
+    private static string FriendlyError(Exception ex)
+    {
+        if (ex is HttpRequestException http)
+        {
+            if (http.StatusCode == System.Net.HttpStatusCode.Unauthorized)
+                return "برای مشاهده این صفحه باید وارد شوید.";
+            if (http.StatusCode == System.Net.HttpStatusCode.Forbidden)
+                return "دسترسی لازم برای مشاهده هزینه تبدیل را ندارید.";
+        }
+
+        return "خواندن هزینه تبدیل ناموفق بود. اگر تکرار شد به پشتیبانی اطلاع دهید.";
+    }
+
+    private static Color FactorColor(decimal f)
+        => Math.Abs(f - 1) < 0.001m ? Color.Success
+         : Math.Abs(f - 1) < 0.05m  ? Color.Info
+         : Color.Warning;
+
+    private static string FormatAmount(double v)
+        => v < 0 ? $"{Math.Abs(v):N0}-" : v.ToString("N0");
+}
