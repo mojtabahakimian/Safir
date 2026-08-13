@@ -170,6 +170,43 @@ BEGIN
       AND   bm.Profit - a.AdjustAmount < 0
       AND   bm.Profit >= 0;
 
+    ---- نگهبان: نرخ جذب منفي
+    -- هشدار #Warn بالا فقط سودِ کالاي متعادل‌کننده را مي‌سنجد، نه نرخي که
+    -- واقعاً نوشته مي‌شود. اگر مبلغ تعديل از جذب فعلي بزرگ‌تر باشد،
+    -- IMBIBE_MANF منفي مي‌شود — نرخ جذب دستمزدِ منفي در بهاي تمام‌شده
+    -- بي‌معناست و S11 همان را به کل درخت محصول منتشر مي‌کند. اين حالت
+    -- روي داده واقعي ديده شد: کالايي که نرخ کاردکسش صفر بود (CHK-14) با
+    -- هدف «سود صفر»، جذب متعادل‌کننده را به عدد منفي برد.
+    IF OBJECT_ID('tempdb..#Neg') IS NOT NULL DROP TABLE #Neg;
+
+    SELECT q.Code, q.Naghsh, q.NerkhBefore, q.NerkhAfter
+    INTO   #Neg
+    FROM (
+        SELECT  CAST(hm.CODE AS BIGINT) AS Code,
+                N'کالاي هدف' AS Naghsh,
+                hm.IMBIBE_MANF AS NerkhBefore,
+                hm.IMBIBE_MANF - (a.AdjustAmount / NULLIF(a.QtySold, 0)) AS NerkhAfter
+        FROM    dbo.HEAD_MANF hm
+        JOIN    #Adj a ON CAST(hm.CODE AS BIGINT) = a.Code
+        WHERE   hm.GHEYMAT = @Month
+        UNION ALL
+        SELECT  CAST(hm.CODE AS BIGINT),
+                N'متعادل‌کننده',
+                hm.IMBIBE_MANF,
+                hm.IMBIBE_MANF + (x.Amount / NULLIF(x.Qty, 0))
+        FROM    dbo.HEAD_MANF hm
+        JOIN   (SELECT a.BalancingCode AS Code,
+                       SUM(a.AdjustAmount) AS Amount,
+                       MAX(bm.QtySold) AS Qty
+                FROM   #Adj a
+                JOIN   dbo.CC_ItemMargin bm
+                       ON bm.Code = a.BalancingCode AND bm.RunId = @RunId
+                WHERE  a.BalancingCode IS NOT NULL AND bm.QtySold <> 0
+                GROUP BY a.BalancingCode) x ON CAST(hm.CODE AS BIGINT) = x.Code
+        WHERE   hm.GHEYMAT = @Month
+    ) q
+    WHERE  q.NerkhAfter < 0;
+
     IF @WhatIf = 1
     BEGIN
         SELECT  a.Code               AS کد_کالا,
@@ -192,6 +229,25 @@ BEGIN
                 N'کالاي متعادل‌کننده زيان‌ده مي‌شود' AS هشدار
         FROM    #Warn w;
 
+        SELECT  n.Code        AS کد_کالا,
+                n.Naghsh      AS نقش,
+                n.NerkhBefore AS نرخ_جذب_فعلي,
+                n.NerkhAfter  AS نرخ_جذب_پس_از_اعمال,
+                N'نرخ جذب منفي مي‌شود — اعمال نخواهد شد' AS خطا
+        FROM    #Neg n;
+
+        RETURN;
+    END
+
+    IF EXISTS (SELECT 1 FROM #Neg)
+    BEGIN
+        SELECT  n.Code        AS کد_کالا,
+                n.Naghsh      AS نقش,
+                n.NerkhBefore AS نرخ_جذب_فعلي,
+                n.NerkhAfter  AS نرخ_جذب_پس_از_اعمال
+        FROM    #Neg n;
+
+        RAISERROR(N'اعمال هدف حاشيه سود، نرخ جذب را منفي مي‌کند و بهاي تمام‌شده را خراب مي‌کند؛ کالاي متعادل‌کننده يا هدف را تغيير دهيد.', 16, 1);
         RETURN;
     END
 

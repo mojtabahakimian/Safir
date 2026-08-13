@@ -151,7 +151,14 @@ BEGIN
     ---- سطرهايي که تغيير خواهند کرد
     IF OBJECT_ID('tempdb..#Rows') IS NOT NULL DROP TABLE #Rows;
 
-    SELECT  h.NUMBER            AS ProdNo,
+    -- کليد تطبيق id است نه (NUMBER, RADIF): ستون RADIF در INVO_LST
+    -- nullable است و روي داده‌ي واقعي مي‌تواند خالي باشد؛ آن‌وقت شرط
+    -- «r.Radif = pl.RADIF» در UPDATE هرگز برقرار نمي‌شود (NULL = NULL
+    -- در SQL نادرست است) و اصلاح خودکار بي‌صدا هيچ سطري را عوض
+    -- نمي‌کند، درحالي‌که تعداد را گزارش مي‌دهد و استثنا را هم مي‌بندد.
+    -- id کليد اصلي جدول است و اين حالت را کاملاً حذف مي‌کند.
+    SELECT  pl.id               AS InvoId,
+            h.NUMBER            AS ProdNo,
             h.DATE_N            AS ProdDate,
             pl.RADIF            AS Radif,
             CAST(pl.CODE AS BIGINT) AS Code,
@@ -195,36 +202,49 @@ BEGIN
 
     BEGIN TRAN;
 
+    -- کدهايي که واقعاً عوض شدند را نگه مي‌داريم تا فقط استثناي همان‌ها
+    -- بسته شود. اگر UPDATE به هر دليلي سطري را نگيرد، نبايد استثنا را
+    -- «رفع‌شده» علامت بزنيم و عدد قابل‌اصلاح را به‌عنوان عدد اصلاح‌شده
+    -- گزارش کنيم — کاربر بايد ببيند که کاري انجام نشده.
+    DECLARE @Applied TABLE (Code BIGINT);
+
     UPDATE  pl
        SET  pl.N_KOL = r.NewFnumb
+    OUTPUT  CAST(inserted.CODE AS BIGINT) INTO @Applied(Code)
     FROM    dbo.INVO_LST pl
-    JOIN    #Rows r ON r.ProdNo = pl.NUMBER AND r.Radif = pl.RADIF
+    JOIN    #Rows r ON r.InvoId = pl.id
     WHERE   pl.TAG = 9;
+
+    DECLARE @appliedRows INT = @@ROWCOUNT;
 
     ---- ثبت در سابقه
     INSERT dbo.CC_RunLog (RunId, StepCode, Severity, Message, ContextJson)
-    SELECT  @RunId, 'S00', 1,
-            CONCAT(N'اصلاح خودکار فرمول برگه‌هاي توليد: ', @n, N' سطر توسط ', @UserName),
+    SELECT  @RunId, 'S00', CASE WHEN @appliedRows = 0 AND @n > 0 THEN 2 ELSE 1 END,
+            CASE WHEN @appliedRows = 0 AND @n > 0
+                 THEN CONCAT(N'اصلاح خودکار هيچ سطري را عوض نکرد (', @n,
+                             N' سطر نامزد بود) — توسط ', @UserName)
+                 ELSE CONCAT(N'اصلاح خودکار فرمول برگه‌هاي توليد: ', @appliedRows,
+                             N' سطر توسط ', @UserName) END,
             (SELECT ProdNo, Code, OldFnumb, NewFnumb FROM #Rows FOR JSON PATH);
 
-    ---- استثناها بسته مي‌شوند
+    ---- استثناها بسته مي‌شوند — فقط براي کدهايي که واقعاً اصلاح شدند
     UPDATE  e
        SET  e.IsResolved     = 1,
             e.ResolvedBy     = @UserName,
             e.ResolvedAtUtc  = SYSUTCDATETIME(),
             e.ResolutionNote = N'اصلاح خودکار — فرمول ماه به برگه‌ها نسبت داده شد'
     FROM    dbo.CC_Exception e
-    JOIN    #Target t ON t.Code = e.Code
     WHERE   e.RuleCode = 'CHK-04'
-      AND   ISNULL(e.RunId,-1) = ISNULL(@RunId,-1);
+      AND   ISNULL(e.RunId,-1) = ISNULL(@RunId,-1)
+      AND   EXISTS (SELECT 1 FROM @Applied a WHERE a.Code = e.Code);
 
     ---- خروج مواد بايد بازسازي شود، چون فرمول برگه عوض شد
-    IF @RunId IS NOT NULL
+    IF @RunId IS NOT NULL AND @appliedRows > 0
         UPDATE dbo.CC_Run SET FormulasDirty = 1 WHERE RunId = @RunId;
 
     COMMIT;
 
-    SELECT @n AS تعداد_سطر_اصلاح_شده;
+    SELECT @appliedRows AS تعداد_سطر_اصلاح_شده, @n AS تعداد_سطر_نامزد;
 END
 GO
 
