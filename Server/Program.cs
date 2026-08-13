@@ -2,6 +2,8 @@
 using Microsoft.IdentityModel.Tokens;
 using QuestPDF.Drawing;
 using QuestPDF.Infrastructure;
+using Safir.Server.CostClose;
+using Safir.Server.CostClose.Steps;
 using Safir.Server.Services;
 using Safir.Shared.Interfaces;
 using Stimulsoft.Base;
@@ -63,6 +65,34 @@ builder.Services.AddScoped<IPermissionService, PermissionService>();
 builder.Services.AddScoped<IPay2AccessService, Pay2AccessService>();
 builder.Services.AddScoped<Safir.Server.Security.Pay2ScopeResolver>();
 builder.Services.AddScoped<Safir.Server.Services.Pay2DisketteService>();
+
+// --- ماژول بستن ماه بهای تمام‌شده (CostClose) ---
+// زیرساخت اجرای پس‌زمینه
+builder.Services.AddSingleton<CostCloseQueue>();
+builder.Services.AddSingleton<ICostCloseQueue>(sp => sp.GetRequiredService<CostCloseQueue>());
+builder.Services.AddHostedService<CostCloseWorker>();
+
+builder.Services.AddSingleton<IDatabaseServiceFactory, DatabaseServiceFactory>();
+builder.Services.AddScoped<ICostCloseNotifier, CostCloseNotifier>();
+builder.Services.AddScoped<CloseOrchestrator>();
+
+// گام‌ها — با افزودن گام جدید فقط یک خط اینجا اضافه می‌شود
+builder.Services.AddScoped<ICostStep, S00_Preflight>();
+builder.Services.AddScoped<ICostStep, S02_Snapshot>();
+builder.Services.AddScoped<ICostStep, S03_DeleteEmptyDeeds>();
+builder.Services.AddScoped<ICostStep, S04_SortDeeds>();
+builder.Services.AddScoped<ICostStep, S05_Gate>();
+builder.Services.AddScoped<ICostStep, S07_RebuildIssue>();
+builder.Services.AddScoped<ICostStep, S08_CalcVariance>();
+builder.Services.AddScoped<ICostStep, S09_ApplyDecisions>();
+builder.Services.AddScoped<ICostStep, S10_BalanceConversion>();
+builder.Services.AddScoped<ICostStep, S11_PropagateRates>();
+builder.Services.AddScoped<ICostStep, S12_CalcMargin>();
+
+builder.Services.AddScoped<IBoardReportBuilder, BoardReportBuilder>();
+
+builder.Services.AddSignalR();
+// --- پایان ماژول CostClose ---
 #endregion
 
 
@@ -179,6 +209,7 @@ app.Use(async (context, next) =>
 
 app.MapRazorPages();
 app.MapControllers(); // Make sure API controllers are mapped
+app.MapHub<CostCloseHub>("/hubs/cost-close");
 
 app.MapFallbackToFile("index.html"); // Fallback for Blazor routing
 
