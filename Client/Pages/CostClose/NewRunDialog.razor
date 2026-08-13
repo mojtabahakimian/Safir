@@ -68,15 +68,12 @@
 @code {
     [CascadingParameter] private MudDialogInstance MudDialog { get; set; } = default!;
 
-    private byte    _month = (byte)(CL_Tarikh.GetCurrentPersianDateAsLong() / 100 % 100);
+    private byte    _month = CostPeriod.MonthOf(CL_Tarikh.GetCurrentPersianDateAsLong());
     private byte    _kind  = 1;
     private string? _note;
     private bool    _busy;
 
     private readonly HashSet<string> _selected = new();
-
-    /// <summary>سال جاری شمسی — محاسبه‌شده، نه ثابت، وگرنه اول هر سال جدید خراب می‌شود.</summary>
-    private short Year => (short)(CL_Tarikh.GetCurrentPersianDateAsLong() / 10000);
 
     private static readonly (string Code, string Title)[] Steps =
     {
@@ -103,13 +100,12 @@
         _busy = true;
         try
         {
-            var dateFrom = MakeDate(_month, 1);
             var (ok, runId, err) = await Api.CreateRunAsync(new CreateCostRunRequest
             {
-                FiscalYear  = Year,
+                FiscalYear  = CostPeriod.CurrentYear,
                 PeriodMonth = _month,
-                DateFrom    = dateFrom,
-                DateTo      = CL_Tarikh.GetPersianMonthEndAsLong(dateFrom),
+                DateFrom    = CostPeriod.From(_month),
+                DateTo      = CostPeriod.To(_month),
                 RunKind     = _kind,
                 Note        = _note
             });
@@ -128,9 +124,6 @@
     }
 
     private void Cancel() => MudDialog.Cancel();
-
-    private long MakeDate(byte month, byte day)
-        => Year * 10000L + month * 100L + day;
 
     private static string PersianMonth(byte m) => m switch
     {

@@ -96,9 +96,11 @@ namespace Safir.Server.CostClose.Steps
         {
             await ctx.ReportProgress(StepCode, 30, "یافتن اسناد بدون ردیف…");
 
-            var res = await ctx.Db.DoGetDataSQLAsync<CountResult>(
-                "EXEC dbo.CC_sp_S03_DeleteEmptyDeeds @RunId=@r, @DT1=@a, @DT2=@b, @WhatIf=0",
-                new { r = ctx.RunId, a = ctx.DateFrom, b = ctx.DateTo });
+            var res = await ctx.Db.DoGetStoreProcedureSQLAsync<CountResult>(
+                "dbo.CC_sp_S03_DeleteEmptyDeeds",
+                new { RunId = ctx.RunId, DT1 = ctx.DateFrom,
+                      DT2 = ctx.DateTo, WhatIf = false },
+                commandTimeout: 600);
 
             var n = res.LastOrDefault()?.Value ?? 0;
 
@@ -122,10 +124,11 @@ namespace Safir.Server.CostClose.Steps
         {
             await ctx.ReportProgress(StepCode, 20, "بازشماره‌گذاری اسناد بازه…");
 
-            var res = await ctx.Db.DoGetDataSQLAsync<CountResult>(
-                "EXEC dbo.CC_sp_S04_SortDeeds @RunId=@r, @DT1=@a, @DT2=@b, " +
-                "@WholeYear=0, @WhatIf=0",
-                new { r = ctx.RunId, a = ctx.DateFrom, b = ctx.DateTo });
+            var res = await ctx.Db.DoGetStoreProcedureSQLAsync<CountResult>(
+                "dbo.CC_sp_S04_SortDeeds",
+                new { RunId = ctx.RunId, DT1 = ctx.DateFrom, DT2 = ctx.DateTo,
+                      WholeYear = false, WhatIf = false },
+                commandTimeout: 1800);
 
             var n = res.LastOrDefault()?.Value ?? 0;
 

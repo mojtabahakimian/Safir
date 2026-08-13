@@ -227,8 +227,7 @@
     private bool _downloading;
     private string? _loadError;
 
-    /// <summary>سال جاری شمسی — محاسبه‌شده، نه ثابت، وگرنه اول هر سال جدید خراب می‌شود.</summary>
-    private short CurrentYear => (short)(CL_Tarikh.GetCurrentPersianDateAsLong() / 10000);
+    private static short CurrentYear => CostPeriod.CurrentYear;
 
     protected override async Task OnInitializedAsync()
     {

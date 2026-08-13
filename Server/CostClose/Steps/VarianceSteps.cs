@@ -21,11 +21,13 @@ namespace Safir.Server.CostClose.Steps
         {
             await ctx.ReportProgress(StepCode, 20, "بازتولید خروج مواد…");
 
-            var res = (await ctx.Db.DoGetDataSQLAsync<RebuildResult>(
-                "EXEC dbo.CC_sp_S07_RebuildIssue @RunId=@r, @Month=@m, " +
-                "@DT1=@a, @DT2=@b, @WhatIf=0",
-                new { r = ctx.RunId, m = ctx.Month, a = ctx.DateFrom, b = ctx.DateTo }))
-                .FirstOrDefault();
+            // انبارگردانی روی چند انبار و چند روز اجرا می‌شود؛
+            // مهلت پیش‌فرض ۳۰ ثانیه کافی نیست.
+            var res = (await ctx.Db.DoGetStoreProcedureSQLAsync<RebuildResult>(
+                "dbo.CC_sp_S07_RebuildIssue",
+                new { RunId = ctx.RunId, Month = ctx.Month,
+                      DT1 = ctx.DateFrom, DT2 = ctx.DateTo, WhatIf = false },
+                commandTimeout: 3600)).FirstOrDefault();
 
             await ctx.ReportProgress(StepCode, 100,
                 $"{res?.Inserted ?? 0} سطر خروج، {res?.StockCount ?? 0} سطر انبارگردانی");
@@ -66,10 +68,11 @@ namespace Safir.Server.CostClose.Steps
         {
             await ctx.ReportProgress(StepCode, 30, "محاسبه انحراف…");
 
-            var res = (await ctx.Db.DoGetDataSQLAsync<VarianceSummary>(
-                "EXEC dbo.CC_sp_S08_CalcVariance @RunId=@r, @Month=@m, @DT1=@a, @DT2=@b",
-                new { r = ctx.RunId, m = ctx.Month, a = ctx.DateFrom, b = ctx.DateTo }))
-                .FirstOrDefault();
+            var res = (await ctx.Db.DoGetStoreProcedureSQLAsync<VarianceSummary>(
+                "dbo.CC_sp_S08_CalcVariance",
+                new { RunId = ctx.RunId, Month = ctx.Month,
+                      DT1 = ctx.DateFrom, DT2 = ctx.DateTo },
+                commandTimeout: 1800)).FirstOrDefault();
 
             await ctx.ReportProgress(StepCode, 70, "تولید پیشنهاد از ماه قبل…");
 
