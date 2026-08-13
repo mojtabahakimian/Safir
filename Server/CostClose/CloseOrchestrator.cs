@@ -104,136 +104,167 @@ namespace Safir.Server.CostClose
 
             await SetRunStatusAsync(db, job.RunId, CostRunStatus.Running);
 
-            var ordered = _steps
-                .OrderBy(s => s.SeqNo)
-                .Where(s => job.OnlySteps is null || job.OnlySteps.Contains(s.StepCode))
-                .ToList();
-
-            // اجرای گام‌ها؛ فهرست ممکن است حین اجرا گسترش یابد
-            // (وقتی فرمول‌ها عوض شده و بازتولید لازم است)
-            var pending = new Queue<ICostStep>(ordered);
-
-            while (pending.Count > 0)
+            // این try/catch بیرونی، نه گام‌به‌گام: CC_sp_StepStart/Finish و
+            // CC_sp_SetFormulasDirty بین گام‌ها خارج از try داخلی‌اند. اگر هرکدام
+            // خطا بدهد (قفل، Timeout، هرچیزی)، بدون این، استثنا تا
+            // CostCloseWorker بالا می‌رود که فقط لاگ می‌کند و MarkFinished
+            // صدا می‌زند — CC_Run.Status همان «در حال اجرا» می‌ماند، برای همیشه،
+            // بدون هیچ خطای قابل‌دیدن در رابط کاربری یا CC_RunLog. کاربر فقط
+            // یک اجرای گیرافتاده می‌بیند که هیچ‌وقت گام بعدی را شروع نمی‌کند،
+            // و تنها ردِ واقعی خطا در لاگ سمت سرور است.
+            try
             {
-                if (ct.IsCancellationRequested || _queue.IsCancelRequested(job.RunId))
+                var ordered = _steps
+                    .OrderBy(s => s.SeqNo)
+                    .Where(s => job.OnlySteps is null || job.OnlySteps.Contains(s.StepCode))
+                    .ToList();
+
+                // اجرای گام‌ها؛ فهرست ممکن است حین اجرا گسترش یابد
+                // (وقتی فرمول‌ها عوض شده و بازتولید لازم است)
+                var pending = new Queue<ICostStep>(ordered);
+
+                while (pending.Count > 0)
                 {
-                    await LogAsync(db, job.RunId, null, 2, "اجرا توسط کاربر متوقف شد");
-                    await SetRunStatusAsync(db, job.RunId, CostRunStatus.Paused);
-                    await _notify.RunPausedAsync(job.RunId, "cancelled");
-                    return;
+                    if (ct.IsCancellationRequested || _queue.IsCancelRequested(job.RunId))
+                    {
+                        await LogAsync(db, job.RunId, null, 2, "اجرا توسط کاربر متوقف شد");
+                        await SetRunStatusAsync(db, job.RunId, CostRunStatus.Paused);
+                        await _notify.RunPausedAsync(job.RunId, "cancelled");
+                        return;
+                    }
+
+                    var step = pending.Dequeue();
+
+                    var ctx = new StepContext
+                    {
+                        RunId      = job.RunId,
+                        FiscalYear = run.FiscalYear,
+                        Month      = run.PeriodMonth,
+                        DateFrom   = run.DateFrom,
+                        DateTo     = run.DateTo,
+                        UserName   = job.UserName,
+                        RunKind    = run.RunKind,
+                        Db         = db,
+                        Ct         = ct,
+                        ReportProgress = (code, pct, msg) =>
+                            _notify.StepProgressAsync(job.RunId, code, pct, msg)
+                    };
+
+                    await db.DoGetStoreProcedureSQLAsync<dynamic>("dbo.CC_sp_StepStart", new
+                    {
+                        RunId    = job.RunId,
+                        StepCode = step.StepCode,
+                        Title    = step.Title,
+                        SeqNo    = step.SeqNo
+                    });
+
+                    await _notify.StepProgressAsync(job.RunId, step.StepCode, 0, step.Title);
+
+                    StepResult result;
+
+                    try
+                    {
+                        if (step.RequiresSnapshot)
+                        {
+                            await ctx.ReportProgress(step.StepCode, 5, "گرفتن اسنپ‌شات…");
+                            await db.DoGetStoreProcedureSQLAsync<dynamic>("dbo.CC_sp_Snapshot", new
+                            {
+                                RunId    = job.RunId,
+                                StepCode = step.StepCode,
+                                Month    = run.PeriodMonth,
+                                DT1      = run.DateFrom,
+                                DT2      = run.DateTo
+                            }, commandTimeout: 1800);
+                        }
+
+                        result = await step.ExecuteAsync(ctx);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "Step {Step} failed in run {RunId}",
+                                         step.StepCode, job.RunId);
+                        result = StepResult.Fail(ex.Message);
+                    }
+
+                    await db.DoGetStoreProcedureSQLAsync<dynamic>("dbo.CC_sp_StepFinish", new
+                    {
+                        RunId    = job.RunId,
+                        StepCode = step.StepCode,
+                        Status   = (byte)result.Status,
+                        Rows     = result.RowsAffected,
+                        Result   = result.Result is null
+                                     ? null : JsonSerializer.Serialize(result.Result),
+                        Error    = result.Error
+                    });
+
+                    await _notify.StepFinishedAsync(job.RunId, step.StepCode, (byte)result.Status);
+
+                    // ── خطا: توقف کامل ──
+                    if (result.Status == CostStepStatus.Failed)
+                    {
+                        await SetRunStatusAsync(db, job.RunId, CostRunStatus.Failed);
+                        await _notify.RunFailedAsync(job.RunId, step.StepCode, result.Error);
+                        return;
+                    }
+
+                    // ── دروازه بسته: توقف تا رفع مغایرت ──
+                    if (step.IsGate && result.Status != CostStepStatus.Success)
+                    {
+                        await SetRunStatusAsync(db, job.RunId, CostRunStatus.Paused);
+                        await _notify.RunPausedAsync(job.RunId, step.StepCode);
+                        return;
+                    }
+
+                    // ── فرمول‌ها عوض شد: بازتولید خروج مواد و انحراف ──
+                    //    درسی که از کالای ۲۸۴۱ گرفتیم: حواله‌ای که پس از
+                    //    ویرایش فرمول بازسازی نشود، مقدارش با فرمول نمی‌خواند.
+                    if (step.WritesFormulas)
+                    {
+                        await db.DoGetStoreProcedureSQLAsync<dynamic>(
+                            "dbo.CC_sp_SetFormulasDirty",
+                            new { RunId = job.RunId, Dirty = true });
+
+                        var rebuild = _steps
+                            .Where(s => s.StepCode is "S07" or "S08")
+                            .OrderBy(s => s.SeqNo);
+
+                        foreach (var rs in rebuild)
+                            if (!pending.Contains(rs))
+                                pending.Enqueue(rs);
+
+                        await LogAsync(db, job.RunId, step.StepCode, 1,
+                            "فرمول‌ها تغییر کرد — خروج مواد و انحراف بازسازی می‌شوند");
+                    }
+
+                    if (step.StepCode == "S08")
+                        await db.DoGetStoreProcedureSQLAsync<dynamic>(
+                            "dbo.CC_sp_SetFormulasDirty",
+                            new { RunId = job.RunId, Dirty = false });
                 }
 
-                var step = pending.Dequeue();
-
-                var ctx = new StepContext
-                {
-                    RunId      = job.RunId,
-                    FiscalYear = run.FiscalYear,
-                    Month      = run.PeriodMonth,
-                    DateFrom   = run.DateFrom,
-                    DateTo     = run.DateTo,
-                    UserName   = job.UserName,
-                    RunKind    = run.RunKind,
-                    Db         = db,
-                    Ct         = ct,
-                    ReportProgress = (code, pct, msg) =>
-                        _notify.StepProgressAsync(job.RunId, code, pct, msg)
-                };
-
-                await db.DoGetStoreProcedureSQLAsync<dynamic>("dbo.CC_sp_StepStart", new
-                {
-                    RunId    = job.RunId,
-                    StepCode = step.StepCode,
-                    Title    = step.Title,
-                    SeqNo    = step.SeqNo
-                });
-
-                await _notify.StepProgressAsync(job.RunId, step.StepCode, 0, step.Title);
-
-                StepResult result;
+                await SetRunStatusAsync(db, job.RunId, CostRunStatus.Completed);
+                await _notify.RunCompletedAsync(job.RunId);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Run {RunId} failed outside step handling", job.RunId);
 
                 try
                 {
-                    if (step.RequiresSnapshot)
-                    {
-                        await ctx.ReportProgress(step.StepCode, 5, "گرفتن اسنپ‌شات…");
-                        await db.DoGetStoreProcedureSQLAsync<dynamic>("dbo.CC_sp_Snapshot", new
-                        {
-                            RunId    = job.RunId,
-                            StepCode = step.StepCode,
-                            Month    = run.PeriodMonth,
-                            DT1      = run.DateFrom,
-                            DT2      = run.DateTo
-                        }, commandTimeout: 1800);
-                    }
-
-                    result = await step.ExecuteAsync(ctx);
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogError(ex, "Step {Step} failed in run {RunId}",
-                                     step.StepCode, job.RunId);
-                    result = StepResult.Fail(ex.Message);
-                }
-
-                await db.DoGetStoreProcedureSQLAsync<dynamic>("dbo.CC_sp_StepFinish", new
-                {
-                    RunId    = job.RunId,
-                    StepCode = step.StepCode,
-                    Status   = (byte)result.Status,
-                    Rows     = result.RowsAffected,
-                    Result   = result.Result is null
-                                 ? null : JsonSerializer.Serialize(result.Result),
-                    Error    = result.Error
-                });
-
-                await _notify.StepFinishedAsync(job.RunId, step.StepCode, (byte)result.Status);
-
-                // ── خطا: توقف کامل ──
-                if (result.Status == CostStepStatus.Failed)
-                {
+                    await LogAsync(db, job.RunId, null, 2,
+                        $"اجرا با خطای غیرمنتظره متوقف شد: {ex.Message}");
                     await SetRunStatusAsync(db, job.RunId, CostRunStatus.Failed);
-                    await _notify.RunFailedAsync(job.RunId, step.StepCode, result.Error);
-                    return;
+                    await _notify.RunFailedAsync(job.RunId, string.Empty, ex.Message);
                 }
-
-                // ── دروازه بسته: توقف تا رفع مغایرت ──
-                if (step.IsGate && result.Status != CostStepStatus.Success)
+                catch (Exception logEx)
                 {
-                    await SetRunStatusAsync(db, job.RunId, CostRunStatus.Paused);
-                    await _notify.RunPausedAsync(job.RunId, step.StepCode);
-                    return;
+                    // اگر همین گزارش‌کردن هم به دیتابیس نرسد (مثلاً اتصال قطع
+                    // شده)، حداقل اجرا در وضعیت «در حال اجرا» یخ‌زده نمی‌ماند
+                    // بدون هیچ رد پایی در لاگ سرور.
+                    _logger.LogError(logEx,
+                        "Could not mark run {RunId} as failed after the original error", job.RunId);
                 }
-
-                // ── فرمول‌ها عوض شد: بازتولید خروج مواد و انحراف ──
-                //    درسی که از کالای ۲۸۴۱ گرفتیم: حواله‌ای که پس از
-                //    ویرایش فرمول بازسازی نشود، مقدارش با فرمول نمی‌خواند.
-                if (step.WritesFormulas)
-                {
-                    await db.DoGetStoreProcedureSQLAsync<dynamic>(
-                        "dbo.CC_sp_SetFormulasDirty",
-                        new { RunId = job.RunId, Dirty = true });
-
-                    var rebuild = _steps
-                        .Where(s => s.StepCode is "S07" or "S08")
-                        .OrderBy(s => s.SeqNo);
-
-                    foreach (var rs in rebuild)
-                        if (!pending.Contains(rs))
-                            pending.Enqueue(rs);
-
-                    await LogAsync(db, job.RunId, step.StepCode, 1,
-                        "فرمول‌ها تغییر کرد — خروج مواد و انحراف بازسازی می‌شوند");
-                }
-
-                if (step.StepCode == "S08")
-                    await db.DoGetStoreProcedureSQLAsync<dynamic>(
-                        "dbo.CC_sp_SetFormulasDirty",
-                        new { RunId = job.RunId, Dirty = false });
             }
-
-            await SetRunStatusAsync(db, job.RunId, CostRunStatus.Completed);
-            await _notify.RunCompletedAsync(job.RunId);
         }
 
         private static Task SetRunStatusAsync(IDatabaseService db, int runId, CostRunStatus st)
