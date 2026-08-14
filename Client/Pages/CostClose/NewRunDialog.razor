@@ -46,6 +46,14 @@
                 </MudExpansionPanel>
             </MudExpansionPanels>
 
+            @if (_kind == 1)
+            {
+                <MudAlert Severity="Severity.Warning" Dense Class="mt-3">
+                    اجرای آزمایشی هم داده واقعی (اسناد، فرمول‌ها، نرخ جذب) را واقعاً تغییر می‌دهد —
+                    فقط قابل تأیید و قفل نیست. قبل از اجرا یک اسنپ‌شات خودکار گرفته می‌شود؛
+                    اگر نتیجه را نخواستید، از دکمهٔ «بازگردانی» در داشبورد استفاده کنید.
+                </MudAlert>
+            }
             @if (_kind == 2)
             {
                 <MudAlert Severity="Severity.Info" Dense Class="mt-3">
