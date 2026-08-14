@@ -177,6 +177,22 @@ public class AclEndToEndTests : IClassFixture<AclEndToEndTests.Factory>
     }
 
     [Fact]
+    public async Task User_without_cost_close_form_access_gets_http_403_forbidden()
+    {
+        // payviewer دسترسی‌اش فقط روی فرم‌های Pay2 است (AllForms بالا)؛ هیچ
+        // ردیفی برای COST_HISTORY ندارد، پس TFORMS آن را در فهرست فرم‌هایش
+        // برنمی‌گرداند و Pay2Authorize باید رد کند — از پایین‌ترین لایه‌ی
+        // HTTP واقعی، نه با بازرسی کد.
+        var res = await ClientFor(ViewerCo).GetAsync("/api/cost-close/runs");
+
+        Assert.Equal(HttpStatusCode.Forbidden, res.StatusCode);
+
+        var body = await res.Content.ReadAsStringAsync();
+        Assert.Contains("دسترسی", body);
+        Assert.Contains(CostForms.History, body);
+    }
+
+    [Fact]
     public async Task The_403_body_explains_what_was_missing_in_Persian()
     {
         var res = await ClientFor(ViewerCo).DeleteAsync("/api/pay2/itemdefs/1");

@@ -141,6 +141,24 @@ public class Pay2AuthorizeAttributeTests
     }
 
     [Fact]
+    public async Task User_without_cost_close_permission_returns_http_403()
+    {
+        // کاربری با ACL روشن که هیچ فرمی (از جمله COST_HISTORY) در اختیارش
+        // نیست — دقیقاً وضعیتی که ماژول بستن ماه باید ۴۰۳ بدهد.
+        var noAccess = new FakePay2AccessService(new Safir.Shared.Models.Permissions.Pay2AccessDto
+        {
+            UserCo = 9999,
+            AclEnforced = true,
+        });
+        var ctx = MakeContext(noAccess, LoggedIn("9999", "no_cost_user"));
+
+        await new Pay2AuthorizeAttribute(CostForms.History, Pay2Perm.See).OnAuthorizationAsync(ctx);
+
+        var result = Assert.IsType<ObjectResult>(ctx.Result);
+        Assert.Equal(403, result.StatusCode);
+    }
+
+    [Fact]
     public async Task Denial_message_is_in_Persian_and_names_the_form()
     {
         var ctx = MakeContext(FakePay2AccessService.ViewOnly(Form), LoggedIn("9002"));

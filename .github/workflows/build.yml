@@ -44,6 +44,15 @@ jobs:
       - name: بررسی کنترل دسترسی PAY2
         run: python3 .github/scripts/check_pay2_acl.py
 
+      # نگهبان دامنه‌ی فرم: اگر ماژول جدیدی با پیشوند فرم تازه به
+      # [Pay2Authorize] وصل شود ولی کوئری‌های TFORMS در Pay2AccessService/
+      # Pay2AccessController به‌روز نشوند، هیچ‌کس هرگز از آن عبور نمی‌کند —
+      # دقیقاً همان باگی که برای COST_* رخ داد و فقط با دیتابیس واقعی
+      # کشف شد، چون InMemoryDatabase تست‌ها این فیلتر LIKE را شبیه‌سازی
+      # نمی‌کند.
+      - name: بررسی دامنه‌ی فرم TFORMS
+        run: python3 .github/scripts/check_pay2_form_scope.py
+
       # تست‌های واحد کنترل دسترسی — به دیتابیس نیاز ندارند.
       - name: تست‌های واحد
         run: dotnet test Safir.sln --configuration Release --no-build --verbosity normal

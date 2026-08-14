@@ -100,7 +100,12 @@ SELECT F.FORMNAME as FormName, F.CAPTION as Caption,
        CAST(ISNULL(SC.[DEL],0) AS BIT) AS [Del]
 FROM dbo.TFORMS F
 LEFT JOIN dbo.SAL_CHEK SC ON SC.[OBJECT] = F.IDH AND SC.USERCO = @userCo
-WHERE F.FORMNAME LIKE N'PAY2!_%' ESCAPE N'!';";
+WHERE F.FORMNAME LIKE N'PAY2!_%' ESCAPE N'!'
+   OR F.FORMNAME LIKE N'COST!_%' ESCAPE N'!';";
+            // بدون شرط COST!_، Pay2AuthorizeAttribute هرگز فرم‌های ماژول بستن ماه
+            // را در Forms نمی‌بیند — یعنی [Pay2Authorize(CostForms.*, ...)] برای
+            // همه‌ی کاربران همیشه 403 می‌دهد، حتی برای مدیری که در SAL_CHEK
+            // دسترسی کامل دارد، چون HasAsync از همین لیست می‌خواند.
 
             var forms = await _db.DoGetDataSQLAsync<Pay2FormPermDto>(sqlForms, new { userCo });
 

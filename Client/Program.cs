@@ -102,6 +102,13 @@ builder.Services.AddScoped<Pay2DashboardApiService>();
 
 builder.Services.AddScoped<IProductionReportApiService, ProductionReportApiService>();
 
+builder.Services.AddScoped<CostCloseApiService>();
+
+// سال مالی جاری برای ماژول بستن ماه — یک‌بار اینجا محاسبه می‌شود تا
+// صفحات مختلف هرکدام جداگانه حسابش نکنند و اول هر سال ناهماهنگ نشوند.
+Safir.Shared.Models.CostClose.CostPeriod.CurrentYear =
+    (short)(Safir.Shared.Utility.CL_Tarikh.GetCurrentPersianDateAsLong() / 10000);
+
 builder.Services.AddSyncfusionBlazor();
 
 // محلی‌سازِ فارسیِ کامپوننت‌های Syncfusion (برچسب‌های فیلترِ گرید و ...)

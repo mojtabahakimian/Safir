@@ -184,4 +184,113 @@ test.describe('سلامت کلاینت', () => {
     const unexpected = errors.filter(e => !ignorableWithoutDb(e));
     expect(unexpected, `خطاهای غیرمنتظره:\n${unexpected.join('\n')}`).toHaveLength(0);
   });
+
+  /**
+   * رگرسیون: صفحه‌ی مغایرت‌های بهای تمام‌شده نباید با ۴۰۱/۴۰۳ بشکند.
+   *
+   * نسخه‌ی اول این صفحه در Load() هیچ catch نداشت، پس یک ۴۰۱ ساده از
+   * OnInitializedAsync بیرون می‌زد و کامپوننت با پیام انگلیسیِ .NET
+   * («Response status code does not indicate success») می‌شکست.
+   *
+   * توجه: نمی‌شود این را با فیلترِ ignorableWithoutDb گرفت، چون متن آن خطا
+   * خودش شامل «401» است و ignorable حساب می‌شود. نشانه‌ی درست، عبارت
+   * «Unhandled exception rendering component» است.
+   */
+  test('صفحه مغایرت‌های بهای تمام‌شده بدون ورود هم نمی‌شکند', async ({ page }) => {
+    const errors = collectPageErrors(page);
+    await page.goto('/cost-close/exceptions', { waitUntil: 'networkidle' });
+    await page.waitForTimeout(3000);
+
+    const crashed = errors.filter(e => /Unhandled exception rendering component/i.test(e));
+    expect(crashed, `کامپوننت کرش کرد:\n${crashed.join('\n')}`).toHaveLength(0);
+
+    // هیچ استثنای مدیریت‌نشده‌ای نباید از خودِ این ماژول بالا بیاید.
+    // (دامنه عمداً به CostClose محدود است: سرویس‌های دیگر برنامه مثل
+    //  UserStateApiService در محیط بدون دیتابیس ۴۰۱ خودشان را لاگ می‌کنند
+    //  و آن نویزِ از پیش موجود ربطی به این تست ندارد.)
+    const ccErrors = errors.filter(e => /CostCloseApiService|CostClose\.CostExceptions/i.test(e));
+    expect(ccErrors, `خطای مدیریت‌نشده در ماژول بهای تمام‌شده:\n${ccErrors.join('\n')}`)
+      .toHaveLength(0);
+  });
+
+  /**
+   * رگرسیون: همان باگ، همان‌جا رفع شد ولی صفحه‌ی اجرای زنده (CostRunMonitor)
+   * یک‌بار دیگر تکرارش کرد — Reload() هم هیچ catch نداشت. این‌بار علاوه بر
+   * catch، یک پیام فارسی صریح («برای مشاهده این صفحه باید وارد شوید.») هم
+   * روی صفحه نشان داده می‌شود، پس هم نبود کرش و هم وجود آن پیام را می‌سنجیم.
+   */
+  test('صفحه اجرای بستن ماه بدون ورود هم نمی‌شکند', async ({ page }) => {
+    const errors = collectPageErrors(page);
+    await page.goto('/cost-close/runs/1', { waitUntil: 'networkidle' });
+    await page.waitForTimeout(3000);
+
+    const crashed = errors.filter(e => /Unhandled exception rendering component/i.test(e));
+    expect(crashed, `کامپوننت کرش کرد:\n${crashed.join('\n')}`).toHaveLength(0);
+
+    const ccErrors = errors.filter(e => /CostCloseApiService|CostClose\.CostRunMonitor/i.test(e));
+    expect(ccErrors, `خطای مدیریت‌نشده در ماژول بهای تمام‌شده:\n${ccErrors.join('\n')}`)
+      .toHaveLength(0);
+
+    await expect(page.getByText('برای مشاهده این صفحه باید وارد شوید.')).toBeVisible();
+  });
+
+  /**
+   * رگرسیون: سومین تکرار همان الگو — CostVarianceBoard.Load() هم هیچ
+   * catch نداشت. همان الگوی رفع (catch + پیام فارسی روی خود صفحه) هم اینجا
+   * به کار رفت.
+   */
+  test('صفحه انحراف مصرف بدون ورود هم نمی‌شکند', async ({ page }) => {
+    const errors = collectPageErrors(page);
+    await page.goto('/cost-close/runs/1/variance', { waitUntil: 'networkidle' });
+    await page.waitForTimeout(3000);
+
+    const crashed = errors.filter(e => /Unhandled exception rendering component/i.test(e));
+    expect(crashed, `کامپوننت کرش کرد:\n${crashed.join('\n')}`).toHaveLength(0);
+
+    const ccErrors = errors.filter(e => /CostCloseApiService|CostClose\.CostVarianceBoard/i.test(e));
+    expect(ccErrors, `خطای مدیریت‌نشده در ماژول بهای تمام‌شده:\n${ccErrors.join('\n')}`)
+      .toHaveLength(0);
+
+    await expect(page.getByText('برای مشاهده این صفحه باید وارد شوید.')).toBeVisible();
+  });
+
+  /**
+   * رگرسیون: چهارمین تکرار همان الگو — CostMarginBoard.Load() هم هیچ
+   * catch نداشت. همان الگوی رفع اینجا هم به کار رفت.
+   */
+  test('صفحه سود و زیان کالا بدون ورود هم نمی‌شکند', async ({ page }) => {
+    const errors = collectPageErrors(page);
+    await page.goto('/cost-close/runs/1/margin', { waitUntil: 'networkidle' });
+    await page.waitForTimeout(3000);
+
+    const crashed = errors.filter(e => /Unhandled exception rendering component/i.test(e));
+    expect(crashed, `کامپوننت کرش کرد:\n${crashed.join('\n')}`).toHaveLength(0);
+
+    const ccErrors = errors.filter(e => /CostCloseApiService|CostClose\.CostMarginBoard/i.test(e));
+    expect(ccErrors, `خطای مدیریت‌نشده در ماژول بهای تمام‌شده:\n${ccErrors.join('\n')}`)
+      .toHaveLength(0);
+
+    await expect(page.getByText('برای مشاهده این صفحه باید وارد شوید.')).toBeVisible();
+  });
+
+  /**
+   * صفحه داشبورد (/cost-close) تنها راه ورود از داخل برنامه به کل ماژول
+   * است — قبلاً وجود نداشت و تنها راه رسیدن به یک اجرا تایپ مستقیم آدرس
+   * /cost-close/runs/{id} بود. همان الگوی catch + پیام فارسی اینجا هم
+   * رعایت شده، پس همان رگرسیون را می‌سنجیم.
+   */
+  test('داشبورد بستن ماه بدون ورود هم نمی‌شکند', async ({ page }) => {
+    const errors = collectPageErrors(page);
+    await page.goto('/cost-close', { waitUntil: 'networkidle' });
+    await page.waitForTimeout(3000);
+
+    const crashed = errors.filter(e => /Unhandled exception rendering component/i.test(e));
+    expect(crashed, `کامپوننت کرش کرد:\n${crashed.join('\n')}`).toHaveLength(0);
+
+    const ccErrors = errors.filter(e => /CostCloseApiService|CostClose\.CostDashboard/i.test(e));
+    expect(ccErrors, `خطای مدیریت‌نشده در ماژول بهای تمام‌شده:\n${ccErrors.join('\n')}`)
+      .toHaveLength(0);
+
+    await expect(page.getByText('برای مشاهده این صفحه باید وارد شوید.')).toBeVisible();
+  });
 });

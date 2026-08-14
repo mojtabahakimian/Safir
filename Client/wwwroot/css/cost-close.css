@@ -1,0 +1,154 @@
+/* ══════════════════════════════════════════════════════════════
+   ماژول بستن ماه بهای تمام‌شده
+   توکن‌ها از pay2-salary.css به ارث می‌رسند تا ظاهر یکدست بماند.
+   ══════════════════════════════════════════════════════════════ */
+
+.cc-page {
+    font-family: var(--p2-font);
+    background: var(--p2-bg-main);
+    color: var(--p2-text-main);
+    padding: 16px;
+    min-height: 100%;
+}
+
+.cc-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-bottom: 16px;
+}
+
+.cc-rule-card {
+    background: var(--p2-bg-white);
+    border: 1px solid var(--p2-border);
+    border-radius: var(--p2-radius-md);
+    overflow: hidden;
+}
+
+.cc-rule-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--p2-border-light);
+    background: var(--p2-bg-hover);
+}
+
+/* راهنمای رفع — همان چیزی که کاربر باید بخواند */
+.cc-remedy {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    padding: 9px 14px;
+    background: var(--p2-info-bg);
+    border-bottom: 1px solid var(--p2-info-border);
+    color: var(--p2-info-text);
+    font-size: 12.5px;
+    line-height: 1.8;
+}
+
+/* اعداد: عرض ثابت، چپ‌چین حتی در صفحه راست‌چین */
+.cc-num {
+    font-family: 'IBM Plex Mono', ui-monospace, monospace;
+    font-variant-numeric: tabular-nums;
+    direction: ltr;
+    unicode-bidi: embed;
+    display: inline-block;
+}
+
+.cc-reflist {
+    font-size: 12px;
+    color: var(--p2-text-muted);
+    cursor: help;
+}
+
+/* مثبت/منفی — مشترک بین صفحات cost-close (سود، انحراف، تراز).
+   یک <style> داخل razor فقط اگر آن کامپوننت‌ها.razor.css نباشد
+   scoped نیست، پس تعریفش اینجا (بارشده در همه صفحات) نه در یک
+   صفحه‌ی خاص، تا با ورود مستقیم به هر صفحه هم رنگ درست باشد. */
+.cc-num.pos { color: var(--p2-success-text); }
+.cc-num.neg { color: var(--p2-danger-text); }
+
+.cc-item {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+}
+
+.cc-item .cc-num {
+    color: var(--p2-text-muted);
+    font-size: 12px;
+    min-width: 44px;
+}
+
+/* نوار تراز — سه عددی که باید صفر شوند */
+.cc-balance {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 1px;
+    background: var(--p2-border);
+    border: 1px solid var(--p2-border);
+    border-radius: var(--p2-radius-md);
+    overflow: hidden;
+    margin-bottom: 16px;
+}
+
+.cc-gauge {
+    background: var(--p2-bg-white);
+    padding: 12px 16px 14px;
+}
+
+.cc-gauge .lbl {
+    font-size: 12px;
+    color: var(--p2-text-muted);
+}
+
+.cc-gauge .val {
+    font-family: 'IBM Plex Mono', ui-monospace, monospace;
+    font-variant-numeric: tabular-nums;
+    direction: ltr;
+    text-align: left;
+    font-size: 19px;
+    font-weight: 500;
+    margin: 2px 0 8px;
+}
+
+.cc-gauge.ok   .val { color: var(--p2-success-text); }
+.cc-gauge.warn .val { color: var(--p2-warning-text); }
+.cc-gauge.bad  .val { color: var(--p2-danger-text); }
+
+.cc-axis {
+    position: relative;
+    height: 7px;
+    background: var(--p2-bg-hover);
+    border: 1px solid var(--p2-border);
+}
+
+.cc-axis::after {
+    content: "";
+    position: absolute;
+    right: 50%;
+    top: -3px;
+    bottom: -3px;
+    width: 1px;
+    background: var(--p2-border);
+}
+
+.cc-axis i {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    display: block;
+}
+
+.cc-axis i.r { right: 50%; }
+.cc-axis i.l { left: 50%; }
+
+.cc-gauge.ok   .cc-axis i { background: var(--p2-success-text); }
+.cc-gauge.warn .cc-axis i { background: var(--p2-warning-text); }
+.cc-gauge.bad  .cc-axis i { background: var(--p2-danger-text); }
+
+@media (max-width: 900px) {
+    .cc-balance { grid-template-columns: 1fr; }
+}

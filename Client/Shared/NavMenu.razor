@@ -64,6 +64,21 @@
                 </NavLink>
             </div>
 
+            <MudNavGroup Title="بهای تمام‌شده" Icon="@Icons.Material.Filled.Calculate" Expanded="false">
+                <MudNavLink Href="/cost-close" Match="NavLinkMatch.All"
+                            Icon="@Icons.Material.Filled.Dashboard">
+                    داشبورد
+                </MudNavLink>
+                <MudNavLink Href="/cost-close/exceptions" Match="NavLinkMatch.Prefix"
+                            Icon="@Icons.Material.Filled.Rule">
+                    مغایرت‌ها
+                </MudNavLink>
+                <MudNavLink Href="/cost-close/settings" Match="NavLinkMatch.Prefix"
+                            Icon="@Icons.Material.Filled.Settings">
+                    تنظیمات
+                </MudNavLink>
+            </MudNavGroup>
+
             <MudNavLink Disabled="true" Icon="@Icons.Material.Filled.Info">
                 نسخه: @appVersion
             </MudNavLink>

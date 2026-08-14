@@ -1,0 +1,394 @@
+@page "/cost-close/exceptions"
+@using Safir.Shared.Models.CostClose
+@using Safir.Shared.Constants
+@using Safir.Shared.Utility
+@using Safir.Client.Services
+@inject CostCloseApiService Api
+@inject Pay2AccessApiService Access
+@inject ISnackbar Snackbar
+@inject IDialogService Dialog
+
+<PageTitle>مغایرت‌های بهای تمام‌شده</PageTitle>
+
+<div class="cc-page" dir="rtl">
+
+    <div class="cc-toolbar">
+        <MudSelect T="short" @bind-Value="_year" Label="سال" Dense Variant="Variant.Outlined"
+                   Style="max-width:110px">
+            @foreach (var y in YearChoices)
+            {
+                var yy = y;
+                <MudSelectItem Value="@yy">@yy</MudSelectItem>
+            }
+        </MudSelect>
+
+        <MudSelect T="byte" @bind-Value="_month" Label="ماه" Dense Variant="Variant.Outlined"
+                   Style="max-width:120px">
+            @for (byte m = 1; m <= 12; m++)
+            {
+                var mm = m;
+                <MudSelectItem Value="@mm">@PersianMonth(mm)</MudSelectItem>
+            }
+        </MudSelect>
+
+        <MudButton Variant="Variant.Filled" Color="Color.Primary"
+                   StartIcon="@Icons.Material.Filled.PlayArrow"
+                   OnClick="RunPreflight" Disabled="_busy">
+            بازبینی مجدد
+        </MudButton>
+
+        <MudSpacer />
+
+        @* MudBlazor 6.21: MudChipSet در این نسخه SelectedValue/SelectionMode ندارد،
+           پس فیلتر با سه چیپ مستقل و OnClick پیاده شده است. *@
+        <MudChip Color="Color.Error" Size="Size.Small"
+                 Variant="@FilterVariant("blocking")"
+                 OnClick="@(() => SetFilter("blocking"))">
+            مسدودکننده @_blockingCount
+        </MudChip>
+        <MudChip Color="Color.Warning" Size="Size.Small"
+                 Variant="@FilterVariant("warning")"
+                 OnClick="@(() => SetFilter("warning"))">
+            هشدار @_warningCount
+        </MudChip>
+        <MudChip Color="Color.Default" Size="Size.Small"
+                 Variant="@FilterVariant("resolved")"
+                 OnClick="@(() => SetFilter("resolved"))">
+            رفع‌شده
+        </MudChip>
+    </div>
+
+    @if (_busy)
+    {
+        <MudProgressLinear Color="Color.Primary" Indeterminate Class="my-3" />
+    }
+
+    @if (_blockingCount > 0 && _filter == "blocking")
+    {
+        <MudAlert Severity="Severity.Warning" Dense Class="mb-3">
+            تا رفع نشدن موارد مسدودکننده، گام‌های محاسباتی اجرا نمی‌شوند.
+        </MudAlert>
+    }
+
+    @if (!_busy && _rows.Count == 0)
+    {
+        <MudPaper Class="pa-8 text-center" Elevation="0">
+            <MudIcon Icon="@Icons.Material.Filled.CheckCircle" Color="Color.Success" Size="Size.Large" />
+            <MudText Typo="Typo.h6" Class="mt-2">موردی یافت نشد</MudText>
+            <MudText Typo="Typo.body2" Class="mud-text-secondary">
+                برای بررسی وضعیت این ماه، «بازبینی مجدد» را بزنید.
+            </MudText>
+        </MudPaper>
+    }
+
+    @foreach (var g in _rows.GroupBy(r => new { r.RuleCode, r.RuleName }))
+    {
+        <MudPaper Class="cc-rule-card mb-3" Elevation="0">
+            <div class="cc-rule-head">
+                <MudIcon Icon="@(g.First().IsBlocking
+                                 ? Icons.Material.Filled.Block
+                                 : Icons.Material.Filled.Warning)"
+                         Color="@(g.First().IsBlocking ? Color.Error : Color.Warning)"
+                         Size="Size.Small" />
+                <MudText Typo="Typo.subtitle2">@g.Key.RuleName</MudText>
+                <MudChip Size="Size.Small" Variant="Variant.Text">@g.Count() مورد</MudChip>
+
+                <MudSpacer />
+
+                @if (g.First().CanAutoFix && !string.IsNullOrEmpty(g.First().FixButtonText)
+                     && Access.CanRun(CostForms.ActAutoFix))
+                {
+                    <MudButton Size="Size.Small" Variant="Variant.Outlined" Color="Color.Primary"
+                               StartIcon="@Icons.Material.Filled.AutoFixHigh"
+                               OnClick="@(() => OpenAutoFix(null))">
+                        @g.First().FixButtonText (همه)
+                    </MudButton>
+                }
+            </div>
+
+            @if (!string.IsNullOrEmpty(g.First().RemedyText))
+            {
+                <div class="cc-remedy">
+                    <MudIcon Icon="@Icons.Material.Filled.Lightbulb" Size="Size.Small" />
+                    <span>@g.First().RemedyText</span>
+                </div>
+            }
+
+            <MudTable T="CostExceptionDto" Items="g" Dense Hover Breakpoint="Breakpoint.Sm" Elevation="0">
+                <HeaderContent>
+                    <MudTh>کالا</MudTh>
+                    <MudTh>شرح</MudTh>
+                    <MudTh Style="text-align:left">برگه‌ها</MudTh>
+                    <MudTh Style="text-align:left">مبلغ / مقدار</MudTh>
+                    <MudTh Style="width:150px"></MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd>
+                        @if (context.Code is not null)
+                        {
+                            <div class="cc-item">
+                                <span class="cc-num">@context.Code</span>
+                                <span>@context.ItemName</span>
+                            </div>
+                        }
+                        else { <span class="mud-text-secondary">—</span> }
+                    </MudTd>
+
+                    <MudTd>
+                        <MudText Typo="Typo.body2">@context.Description</MudText>
+                        @if (context.DocDate is not null)
+                        {
+                            <MudText Typo="Typo.caption" Class="mud-text-secondary">
+                                @FormatDate(context.DocDate.Value)
+                            </MudText>
+                        }
+                    </MudTd>
+
+                    <MudTd Style="text-align:left">
+                        @if (!string.IsNullOrEmpty(context.RefList))
+                        {
+                            <MudTooltip Text="@context.RefList">
+                                <span class="cc-num cc-reflist">@Shorten(context.RefList)</span>
+                            </MudTooltip>
+                        }
+                        else if (context.DocNumber is not null)
+                        {
+                            <span class="cc-num">@context.DocNumber</span>
+                        }
+                        else { <span class="mud-text-secondary">—</span> }
+                    </MudTd>
+
+                    <MudTd Style="text-align:left">
+                        <span class="cc-num">@FormatAmount(context.Amount)</span>
+                    </MudTd>
+
+                    <MudTd Style="text-align:left">
+                        @if (context.CanAutoFix && Access.CanRun(CostForms.ActAutoFix))
+                        {
+                            <MudIconButton Icon="@Icons.Material.Filled.AutoFixHigh"
+                                           Size="Size.Small" Color="Color.Primary"
+                                           Title="@context.FixButtonText"
+                                           OnClick="@(() => OpenAutoFix(context.ExceptionId))" />
+                        }
+                        @if (!context.IsResolved && Access.CanRun(CostForms.ActResolve))
+                        {
+                            <MudIconButton Icon="@Icons.Material.Filled.Check"
+                                           Size="Size.Small" Title="رفع شد"
+                                           OnClick="@(() => Resolve(context))" />
+                            <MudIconButton Icon="@Icons.Material.Filled.DoNotDisturbOn"
+                                           Size="Size.Small" Title="پذیرش دائمی"
+                                           OnClick="@(() => AcceptPermanently(context))" />
+                        }
+                    </MudTd>
+                </RowTemplate>
+            </MudTable>
+        </MudPaper>
+    }
+</div>
+
+@code {
+    // سال و ماه از تاریخ جاری سیستم گرفته می‌شوند، نه عدد ثابت.
+    // نسخهٔ اول این صفحه سال ۱۴۰۵ را hard-code کرده بود؛ سال بعد بی‌صدا
+    // بازهٔ اشتباه را کوئری می‌کرد.
+    private short _year  = (short)(CL_Tarikh.GetCurrentPersianDateAsLong() / 10000);
+    private byte  _month = (byte)(CL_Tarikh.GetCurrentPersianDateAsLong() / 100 % 100);
+
+    /// <summary>سال جاری و دو سال قبل — بستن ماه گذشته‌نگر است، نه آینده‌نگر.</summary>
+    private IEnumerable<short> YearChoices
+    {
+        get
+        {
+            var now = (short)(CL_Tarikh.GetCurrentPersianDateAsLong() / 10000);
+            for (short y = now; y >= (short)(now - 2); y--) yield return y;
+        }
+    }
+
+    private string _filter = "blocking";
+    private bool _busy;
+
+    private List<CostExceptionDto> _all = new();
+    private List<CostExceptionDto> _rows = new();
+
+    private int _blockingCount;
+    private int _warningCount;
+
+    private long DateFrom => (long)_year * 10000 + _month * 100 + 1;
+
+    // پایان ماه از تقویم شمسی گرفته می‌شود (۲۹/۳۰/۳۱ بسته به ماه و سال کبیسه)،
+    // نه عدد ثابت ۳۱.
+    private long DateTo   => CL_Tarikh.GetPersianMonthEndAsLong(DateFrom);
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Access.EnsureLoadedAsync();
+        await Load();
+    }
+
+    private async Task Load()
+    {
+        _busy = true;
+        try
+        {
+            _all = await Api.GetExceptionsAsync(includeResolved: true);
+            Recount();
+            ApplyFilter();
+        }
+        catch (Exception ex)
+        {
+            // بدون این catch، یک ۴۰۱/۴۰۳ ساده از OnInitializedAsync بیرون می‌زد و
+            // کامپوننت با پیام انگلیسیِ .NET می‌شکست («Response status code does not
+            // indicate success»). کاربر باید پیام فارسی ببیند و صفحه سرِپا بماند.
+            _all = new();
+            Recount();
+            ApplyFilter();
+            Snackbar.Add(FriendlyError(ex), Severity.Error);
+        }
+        finally { _busy = false; }
+    }
+
+    /// <summary>
+    /// پیام سرور اگر فارسی و روشن باشد نمایش داده می‌شود؛ وگرنه پیام عمومی فارسی.
+    /// مسیرهای api/cost-close/ زیر پوشش Pay2ForbiddenHandler نیستند، پس متن ۴۰۳
+    /// سرور اینجا به دست ما نمی‌رسد و باید جایگزین قابل‌فهم داشته باشیم.
+    /// </summary>
+    private static string FriendlyError(Exception ex)
+    {
+        if (ex is HttpRequestException http)
+        {
+            if (http.StatusCode == System.Net.HttpStatusCode.Unauthorized)
+                return "برای مشاهده این صفحه باید وارد شوید.";
+            if (http.StatusCode == System.Net.HttpStatusCode.Forbidden)
+                return "دسترسی لازم برای مشاهده مغایرت‌های بهای تمام‌شده را ندارید.";
+        }
+
+        return "خواندن فهرست مغایرت‌ها ناموفق بود. اگر تکرار شد به پشتیبانی اطلاع دهید.";
+    }
+
+    private async Task RunPreflight()
+    {
+        _busy = true;
+        StateHasChanged();
+        try
+        {
+            await Api.RunPreflightAsync(_month, DateFrom, DateTo);
+            _all = await Api.GetExceptionsAsync(includeResolved: true);
+            Recount();
+            ApplyFilter();
+            Snackbar.Add($"بازبینی انجام شد — {_blockingCount} مسدودکننده، {_warningCount} هشدار",
+                         _blockingCount > 0 ? Severity.Warning : Severity.Success);
+        }
+        catch (Exception ex) { Snackbar.Add(FriendlyError(ex), Severity.Error); }
+        finally { _busy = false; }
+    }
+
+    private void Recount()
+    {
+        _blockingCount = _all.Count(x => !x.IsResolved && x.Severity == 2);
+        _warningCount  = _all.Count(x => !x.IsResolved && x.Severity == 1);
+    }
+
+    private void SetFilter(string v) { _filter = v; ApplyFilter(); }
+
+    private Variant FilterVariant(string v) => _filter == v ? Variant.Filled : Variant.Text;
+
+    private void ApplyFilter() => _rows = _filter switch
+    {
+        "blocking" => _all.Where(x => !x.IsResolved && x.Severity == 2).ToList(),
+        "warning"  => _all.Where(x => !x.IsResolved && x.Severity == 1).ToList(),
+        _          => _all.Where(x =>  x.IsResolved).ToList()
+    };
+
+    // ───────── اصلاح خودکار ─────────
+
+    private async Task OpenAutoFix(long? exceptionId)
+    {
+        // گام ۱ — پیش‌نمایش
+        var preview = await Api.FixMissingFormulaAsync(new AutoFixRequest
+        {
+            PeriodMonth = _month, DateFrom = DateFrom, DateTo = DateTo,
+            ExceptionId = exceptionId, WhatIf = true
+        });
+
+        if (preview is null || preview.RowCount == 0)
+        {
+            Snackbar.Add(preview?.Message ?? "موردی برای اصلاح یافت نشد", Severity.Info);
+            return;
+        }
+
+        var body = $"{preview.RowCount} سطر از برگه‌های تولید اصلاح می‌شود "
+                 + "و فرمول همان ماه به آنها نسبت داده خواهد شد.";
+
+        if (preview.Warnings.Count > 0)
+            body += "\n\n" + string.Join("\n", preview.Warnings);
+
+        body += "\n\nپس از اصلاح، خروج مواد باید بازسازی شود.";
+
+        var ok = await Dialog.ShowMessageBox(
+            "تأیید اصلاح خودکار", body, yesText: "اصلاح کن", cancelText: "انصراف");
+
+        if (ok != true) return;
+
+        // گام ۲ — اجرای واقعی
+        _busy = true;
+        try
+        {
+            var res = await Api.FixMissingFormulaAsync(new AutoFixRequest
+            {
+                PeriodMonth = _month, DateFrom = DateFrom, DateTo = DateTo,
+                ExceptionId = exceptionId, WhatIf = false
+            });
+
+            Snackbar.Add(res?.Message ?? "انجام شد", Severity.Success);
+            await Load();
+        }
+        catch (Exception ex) { Snackbar.Add(ex.Message, Severity.Error); }
+        finally { _busy = false; }
+    }
+
+    private async Task Resolve(CostExceptionDto ex)
+    {
+        if (await Api.ResolveAsync(ex.ExceptionId, null))
+        {
+            Snackbar.Add("رفع شد", Severity.Success);
+            await Load();
+        }
+    }
+
+    private async Task AcceptPermanently(CostExceptionDto ex)
+    {
+        var reason = await Dialog.ShowMessageBox(
+            "پذیرش دائمی",
+            $"«{ex.RuleName}» برای این مورد دیگر در ماه‌های بعد هشدار نخواهد داد. مطمئن‌اید؟",
+            yesText: "بله، بپذیر", cancelText: "انصراف");
+
+        if (reason != true) return;
+
+        if (await Api.AcceptPermanentlyAsync(ex.ExceptionId, "پذیرش توسط کاربر از صفحه مغایرت‌ها"))
+        {
+            Snackbar.Add("به فهرست استثناهای پذیرفته‌شده اضافه شد", Severity.Success);
+            await Load();
+        }
+    }
+
+    // ───────── کمکی ─────────
+
+    private static string Shorten(string s, int max = 28)
+        => s.Length <= max ? s : s[..max] + " …";
+
+    private static string FormatAmount(double? v)
+        => v is null ? "—" : v.Value < 0
+            ? $"{Math.Abs(v.Value):N0}-"
+            : v.Value.ToString("N0");
+
+    private static string FormatDate(long d)
+        => $"{d / 10000}/{d / 100 % 100:00}/{d % 100:00}";
+
+    private static string PersianMonth(byte m) => m switch
+    {
+        1 => "فروردین", 2 => "اردیبهشت", 3 => "خرداد",
+        4 => "تیر",     5 => "مرداد",    6 => "شهریور",
+        7 => "مهر",     8 => "آبان",     9 => "آذر",
+        10 => "دی",     11 => "بهمن",    12 => "اسفند",
+        _ => m.ToString()
+    };
+}

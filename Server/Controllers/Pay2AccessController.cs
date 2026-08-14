@@ -50,7 +50,11 @@ namespace Safir.Server.Controllers
         [Pay2Authorize(Pay2Forms.AdminAcl, Pay2Perm.Run)]
         public async Task<IActionResult> GetForms()
         {
-            string sql = "SELECT FORMNAME as FormName, CAPTION as Caption, CASE WHEN FORMNAME LIKE 'PAY2_ACT_%' THEN 1 ELSE 0 END as IsAction FROM dbo.TFORMS WHERE FORMNAME LIKE N'PAY2!_%' ESCAPE N'!' ORDER BY IsAction, CAPTION;";
+            // بدون شرط COST!_، مدیر هرگز فرم‌های ماژول بستن ماه را در این
+            // گرید نمی‌بیند و راهی برای دادن دسترسی به آن‌ها ندارد — حتی به
+            // خودش. IsAction هم روی COST_ACT_% هم بررسی می‌شود تا اعمال حساس
+            // آن ماژول در همان بخشی نمایش داده شوند که PAY2_ACT_* هست.
+            string sql = "SELECT FORMNAME as FormName, CAPTION as Caption, CASE WHEN FORMNAME LIKE 'PAY2_ACT_%' OR FORMNAME LIKE 'COST_ACT_%' THEN 1 ELSE 0 END as IsAction FROM dbo.TFORMS WHERE FORMNAME LIKE N'PAY2!_%' ESCAPE N'!' OR FORMNAME LIKE N'COST!_%' ESCAPE N'!' ORDER BY IsAction, CAPTION;";
             var res = await _db.DoGetDataSQLAsync<dynamic>(sql);
             return Ok(res);
         }
@@ -119,7 +123,9 @@ ORDER BY WS_ID;";
             // Even if acl is off, the admin needs the actual DB state, so we query directly or use the DTO if AclEnforced=true.
             // But if kill switch is off, GetAccessAsync returns fake data. So we should query actual raw data for admin UI.
 
-            string sqlForms = "SELECT F.FORMNAME as FormName, F.CAPTION as Caption, CAST(ISNULL(SC.[RUN],0) AS BIT) AS [Run], CAST(ISNULL(SC.[SEE],0) AS BIT) AS [See], CAST(ISNULL(SC.[INP],0) AS BIT) AS [Inp], CAST(ISNULL(SC.[UPD],0) AS BIT) AS [Upd], CAST(ISNULL(SC.[DEL],0) AS BIT) AS [Del] FROM dbo.TFORMS F LEFT JOIN dbo.SAL_CHEK SC ON SC.[OBJECT] = F.IDH AND SC.USERCO = @userCo WHERE F.FORMNAME LIKE N'PAY2!_%' ESCAPE N'!';";
+            // مثل GetForms، بدون COST!_ فرم‌های ماژول بستن ماه در گرید ویرایش
+            // دسترسیِ این کاربر اصلاً دیده نمی‌شوند.
+            string sqlForms = "SELECT F.FORMNAME as FormName, F.CAPTION as Caption, CAST(ISNULL(SC.[RUN],0) AS BIT) AS [Run], CAST(ISNULL(SC.[SEE],0) AS BIT) AS [See], CAST(ISNULL(SC.[INP],0) AS BIT) AS [Inp], CAST(ISNULL(SC.[UPD],0) AS BIT) AS [Upd], CAST(ISNULL(SC.[DEL],0) AS BIT) AS [Del] FROM dbo.TFORMS F LEFT JOIN dbo.SAL_CHEK SC ON SC.[OBJECT] = F.IDH AND SC.USERCO = @userCo WHERE F.FORMNAME LIKE N'PAY2!_%' ESCAPE N'!' OR F.FORMNAME LIKE N'COST!_%' ESCAPE N'!';";
             var forms = await _db.DoGetDataSQLAsync<Pay2FormPermDto>(sqlForms, new { userCo });
 
             string sqlWs = "SELECT WS_ID FROM dbo.PAY2_USER_WS WHERE USERCO = @userCo";
@@ -150,11 +156,16 @@ ORDER BY WS_ID;";
 
             await _db.ExecuteInTransactionAsync(async (conn, tran) =>
             {
-                // Delete existing payroll form perms
+                // Delete existing payroll + cost-close form perms — باید با
+                // فرم‌هایی که GetUserAccess به گرید فرستاده (PAY2 و COST هر دو)
+                // یکی باشد، وگرنه ذخیره نمی‌تواند تیک برداشته‌شده از یک فرم
+                // COST_* را واقعاً پاک کند.
                 await Dapper.SqlMapper.ExecuteAsync(conn, @"
 DELETE FROM dbo.SAL_CHEK
 WHERE USERCO = @userCo
-  AND [OBJECT] IN (SELECT IDH FROM dbo.TFORMS WHERE FORMNAME LIKE N'PAY2!_%' ESCAPE N'!')",
+  AND [OBJECT] IN (SELECT IDH FROM dbo.TFORMS
+                    WHERE FORMNAME LIKE N'PAY2!_%' ESCAPE N'!'
+                       OR FORMNAME LIKE N'COST!_%' ESCAPE N'!')",
                 new { userCo }, tran);
 
                 // Insert new form perms
