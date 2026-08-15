@@ -86,19 +86,23 @@ namespace Safir.Client.Services
                        $"{Base}/exceptions?{string.Join("&", q)}") ?? new();
         }
 
-        public async Task<bool> ResolveAsync(long id, string? note)
+        public async Task<(bool Ok, string? Error)> ResolveAsync(long id, string? note)
         {
             var res = await _http.PostAsJsonAsync(
                 $"{Base}/exceptions/{id}/resolve", new ResolveExceptionRequest { Note = note });
-            return res.IsSuccessStatusCode;
+            return res.IsSuccessStatusCode
+                 ? (true, null)
+                 : (false, await res.Content.ReadAsStringAsync());
         }
 
-        public async Task<bool> AcceptPermanentlyAsync(long id, string reason)
+        public async Task<(bool Ok, string? Error)> AcceptPermanentlyAsync(long id, string reason)
         {
             var res = await _http.PostAsJsonAsync(
                 $"{Base}/exceptions/{id}/accept-permanently",
                 new ResolveExceptionRequest { Note = reason });
-            return res.IsSuccessStatusCode;
+            return res.IsSuccessStatusCode
+                 ? (true, null)
+                 : (false, await res.Content.ReadAsStringAsync());
         }
 
         // ───────── اصلاح خودکار ─────────

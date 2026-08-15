@@ -14,23 +14,38 @@
 
     <div class="cc-toolbar">
         <CostBackButton />
-        <MudSelect T="short" @bind-Value="_year" Label="سال" Dense Variant="Variant.Outlined"
-                   Style="max-width:110px">
-            @foreach (var y in YearChoices)
-            {
-                var yy = y;
-                <MudSelectItem Value="@yy">@yy</MudSelectItem>
-            }
-        </MudSelect>
 
-        <MudSelect T="byte" @bind-Value="_month" Label="ماه" Dense Variant="Variant.Outlined"
-                   Style="max-width:120px">
-            @for (byte m = 1; m <= 12; m++)
-            {
-                var mm = m;
-                <MudSelectItem Value="@mm">@PersianMonth(mm)</MudSelectItem>
-            }
-        </MudSelect>
+        @if (RunId is null)
+        {
+            <MudSelect T="short" @bind-Value="_year" Label="سال" Dense Variant="Variant.Outlined"
+                       Style="max-width:110px">
+                @foreach (var y in YearChoices)
+                {
+                    var yy = y;
+                    <MudSelectItem Value="@yy">@yy</MudSelectItem>
+                }
+            </MudSelect>
+
+            <MudSelect T="byte" @bind-Value="_month" Label="ماه" Dense Variant="Variant.Outlined"
+                       Style="max-width:120px">
+                @for (byte m = 1; m <= 12; m++)
+                {
+                    var mm = m;
+                    <MudSelectItem Value="@mm">@PersianMonth(mm)</MudSelectItem>
+                }
+            </MudSelect>
+        }
+        else
+        {
+            @* وقتی از داخل یک اجرای مشخص باز شده‌ایم، ماه/سال باید همان دورهٔ
+               واقعی آن اجرا باشد و غیرقابل‌تغییر — وگرنه «بازبینی مجدد» با
+               بازهٔ تاریخ یک ماه نامرتبط صدا زده می‌شود و می‌تواند استثناهای
+               واقعیِ همین اجرا را با نتیجهٔ بازبینیِ ماه اشتباه جایگزین کند. *@
+            <MudChip T="string" Size="Size.Small" Variant="Variant.Text"
+                     Icon="@Icons.Material.Filled.Lock">
+                دورهٔ این اجرا: @PersianMonth(_month) @_year
+            </MudChip>
+        }
 
         <MudButton Variant="Variant.Filled" Color="Color.Primary"
                    StartIcon="@Icons.Material.Filled.PlayArrow"
@@ -256,6 +271,21 @@
     protected override async Task OnInitializedAsync()
     {
         await Access.EnsureLoadedAsync();
+
+        if (RunId is not null)
+        {
+            // بدون این، _year/_month روی ماه جاری سیستم می‌ماندند (پیش‌فرض
+            // پایین‌تر) در حالی که داریم مغایرت‌های یک اجرای واقعاً مربوط به
+            // ماه دیگری را می‌بینیم — و «بازبینی مجدد» همان مقدار غلط را به
+            // preflight می‌داد.
+            var state = await Api.GetRunStateAsync(RunId.Value);
+            if (state?.Run is not null)
+            {
+                _year  = state.Run.FiscalYear;
+                _month = state.Run.PeriodMonth;
+            }
+        }
+
         await Load();
     }
 
@@ -439,26 +469,38 @@
 
     private async Task Resolve(CostExceptionDto ex)
     {
-        if (await Api.ResolveAsync(ex.ExceptionId, null))
+        var (ok, err) = await Api.ResolveAsync(ex.ExceptionId, null);
+        if (ok)
         {
             Snackbar.Add("رفع شد", Severity.Success);
             await Load();
+        }
+        else
+        {
+            // بدون این else، شکست درخواست کاملاً بی‌صدا بود: نه پیام خطا، نه
+            // تغییری در ردیف — کاربر نمی‌فهمید عملیات واقعاً انجام شد یا نه.
+            Snackbar.Add(err ?? "رفع مورد ناموفق بود", Severity.Error);
         }
     }
 
     private async Task AcceptPermanently(CostExceptionDto ex)
     {
-        var reason = await Dialog.ShowMessageBox(
+        var confirm = await Dialog.ShowMessageBox(
             "پذیرش دائمی",
             $"«{ex.RuleName}» برای این مورد دیگر در ماه‌های بعد هشدار نخواهد داد. مطمئن‌اید؟",
             yesText: "بله، بپذیر", cancelText: "انصراف");
 
-        if (reason != true) return;
+        if (confirm != true) return;
 
-        if (await Api.AcceptPermanentlyAsync(ex.ExceptionId, "پذیرش توسط کاربر از صفحه مغایرت‌ها"))
+        var (ok, err) = await Api.AcceptPermanentlyAsync(ex.ExceptionId, "پذیرش توسط کاربر از صفحه مغایرت‌ها");
+        if (ok)
         {
             Snackbar.Add("به فهرست استثناهای پذیرفته‌شده اضافه شد", Severity.Success);
             await Load();
+        }
+        else
+        {
+            Snackbar.Add(err ?? "پذیرش دائمی ناموفق بود", Severity.Error);
         }
     }
 

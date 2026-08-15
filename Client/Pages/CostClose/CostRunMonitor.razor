@@ -167,7 +167,11 @@
                     <div class="cc-rule-head">
                         <MudText Typo="Typo.subtitle2">گام‌ها</MudText>
                         <MudSpacer />
-                        <span class="cc-num">@_state.Steps.Count(s => s.Status == 2) / @_state.Steps.Count</span>
+                        @* گام با وضعیت «هشدار» (مثلاً دروازهٔ S05 که با موارد
+                           مسدودکننده متوقف شده) واقعاً اجرا و تمام شده — فقط
+                           شمردنِ Success در صورت‌کسر باعث می‌شد شمارنده کمتر
+                           از واقعیت نشان بدهد و به نظر برسد اجرا «نصفه مانده». *@
+                        <span class="cc-num">@_state.Steps.Count(s => s.Status is 2 or 3) / @_state.Steps.Count</span>
                     </div>
 
                     <MudList Dense>
@@ -190,7 +194,8 @@
                                         }
                                         else if (!string.IsNullOrEmpty(s.ErrorMessage))
                                         {
-                                            <MudText Typo="Typo.caption" Color="Color.Error">
+                                            <MudText Typo="Typo.caption"
+                                                     Color="@(s.Status == 4 ? Color.Error : Color.Warning)">
                                                 @s.ErrorMessage
                                             </MudText>
                                         }
