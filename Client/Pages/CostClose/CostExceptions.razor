@@ -219,6 +219,13 @@
                             <MudIconButton Icon="@Icons.Material.Filled.Check"
                                            Size="Size.Small" Title="رفع شد"
                                            OnClick="@(() => Resolve(context))" />
+                        }
+                        @* پذیرش دائمی سرورسمت به مجوز Upd نیاز دارد (چون یک قاعدهٔ دائمی در
+                           CC_AcceptedException می‌سازد)، نه فقط Run مثل «رفع شد» — قبلاً هر دو
+                           دکمه زیر یک شرط بودند، پس کاربری با فقط Run دکمه را می‌دید ولی با ۴۰۳
+                           رد می‌شد. *@
+                        @if (!context.IsResolved && Access.CanUpd(CostForms.ActResolve))
+                        {
                             <MudIconButton Icon="@Icons.Material.Filled.DoNotDisturbOn"
                                            Size="Size.Small" Title="پذیرش دائمی"
                                            OnClick="@(() => AcceptPermanently(context))" />
