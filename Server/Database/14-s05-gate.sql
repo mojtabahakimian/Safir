@@ -42,13 +42,11 @@ BEGIN
        (TAGCOD — مثلاً انتقالی-ورود، اضافه گردانی، حواله خروج) دنباله‌ی
        واحد و قابل‌اتکایی نیست، چون هرکدام شماره‌گذاری مستقل خودشان را
        دارند (همان الگویی که برای DEED_DTL.RADIF هم شناخته‌شده است).
-       TAGCOD ستون ترتیب صریح ندارد (فقط CODE و شرح تگ)؛ ترتیب واقعی از
-       جهت حرکت می‌آید: در همان روز، هر ورودی (TAG در ۱،۷،۹،۲۴) باید
-       قبل از هر خروجی/تعدیل پردازش شود — چون کالا اول باید برسد تا
-       بشود مصرفش کرد. مرتب‌سازی قبلی («ORDER BY DATE_N, NUMBER» بدون
-       این جهت) در داده‌ی واقعی می‌توانست یک حوالهٔ خروج را قبل از
-       رسید همان روزش پردازش کند و مانده را کاذباً منفی نشان دهد، در
-       حالی که در پایان همان روز موجودی صفر یا مثبت بود.
+       ترتیب واقعی طبق قرارداد این سیستم از شرح تگ (TAGCOD.BARGAH)
+       می‌آید، نه از NUMBER. مرتب‌سازی قبلی («ORDER BY DATE_N, NUMBER»
+       بدون این کلید) در داده‌ی واقعی می‌توانست یک حوالهٔ خروج را قبل
+       از رسید همان روزش پردازش کند و مانده را کاذباً منفی نشان دهد،
+       در حالی که در پایان همان روز موجودی صفر یا مثبت بود.
 
        فقط اولین نقطه منفی هر کالا/انبار گزارش می‌شود؛ بقیه
        دنباله همان یک مشکل‌اند و فهرست را شلوغ می‌کنند.
@@ -64,17 +62,18 @@ BEGIN
                 k.DATE_N,
                 k.NUMBER,
                 k.TAG,
-                CASE WHEN k.TAG IN (1, 7, 9, 24) THEN 0 ELSE 1 END AS Jahat,
+                ISNULL(tc.BARGAH, N'') AS Bargah,
                 CASE WHEN k.TAG IN (1, 7, 9, 24) THEN k.MEGHk ELSE -k.MEGHk END AS Meghdar
         FROM    dbo.KALAS k
+        LEFT    JOIN dbo.TAGCOD tc ON tc.CODE = k.TAG
         WHERE   k.DATE_N <= @DT2
           AND   k.MEGHk <> 0
     ),
     Tajamoi AS (
-        SELECT  ANBAR, code, DATE_N, NUMBER, TAG,
+        SELECT  ANBAR, code, DATE_N, NUMBER, TAG, Bargah,
                 SUM(Meghdar) OVER (
                     PARTITION BY ANBAR, code
-                    ORDER BY DATE_N, Jahat, NUMBER
+                    ORDER BY DATE_N, Bargah, NUMBER
                     ROWS UNBOUNDED PRECEDING) AS Mande
         FROM    Harekat
     ),
@@ -82,7 +81,7 @@ BEGIN
         SELECT  ANBAR, code, DATE_N, NUMBER, TAG, Mande,
                 ROW_NUMBER() OVER (
                     PARTITION BY ANBAR, code
-                    ORDER BY DATE_N, Jahat, NUMBER) AS rn
+                    ORDER BY DATE_N, Bargah, NUMBER) AS rn
         FROM    Tajamoi
         WHERE   Mande < -0.0001
     )
