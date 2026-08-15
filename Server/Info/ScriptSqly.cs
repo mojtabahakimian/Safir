@@ -1587,21 +1587,24 @@ BEGIN
     /* ─────────────────────────────────────────────────────────────
        CHK-01 — کاردکس منفی
 
-       مانده پایان هر روز (نه لحظه‌به‌لحظه تراکنش‌به‌تراکنش) محاسبه و
+       موجودی تجمعی هر کالا در هر انبار به ترتیب تاریخ محاسبه و
        هر جا منفی شد علامت می‌خورد. معمولاً یعنی تاریخ رسید بعد از
        تاریخ حواله ثبت شده است.
 
-       چرا پایان روز و نه ترتیب واقعی تراکنش‌ها: NUMBER بین انواع
-       مختلف برگه (انتقالی-ورود، اضافه گردانی، حواله خروج) دنباله‌ی
-       واحد و قابل‌اتکایی نیست — همان الگویی که برای DEED_DTL.RADIF هم
-       شناخته‌شده است. مرتب‌سازی قبلی («ORDER BY DATE_N, NUMBER») در
-       داده‌ی واقعی می‌توانست یک حوالهٔ خروج را قبل از رسید همان روزش
-       پردازش کند و مانده را کاذباً منفی نشان دهد، در حالی که در پایان
-       همان روز موجودی صفر یا مثبت بود. جمع‌زدن خالص هر روز قبل از
-       تجمعی، این وابستگی به ترتیب داخل‌روز را کاملاً حذف می‌کند.
+       ترتیب داخل یک روز: NUMBER به‌تنهایی بین انواع مختلف برگه
+       (TAGCOD — مثلاً انتقالی-ورود، اضافه گردانی، حواله خروج) دنباله‌ی
+       واحد و قابل‌اتکایی نیست، چون هرکدام شماره‌گذاری مستقل خودشان را
+       دارند (همان الگویی که برای DEED_DTL.RADIF هم شناخته‌شده است).
+       TAGCOD ستون ترتیب صریح ندارد (فقط CODE و شرح تگ)؛ ترتیب واقعی از
+       جهت حرکت می‌آید: در همان روز، هر ورودی (TAG در ۱،۷،۹،۲۴) باید
+       قبل از هر خروجی/تعدیل پردازش شود — چون کالا اول باید برسد تا
+       بشود مصرفش کرد. مرتب‌سازی قبلی («ORDER BY DATE_N, NUMBER» بدون
+       این جهت) در داده‌ی واقعی می‌توانست یک حوالهٔ خروج را قبل از
+       رسید همان روزش پردازش کند و مانده را کاذباً منفی نشان دهد، در
+       حالی که در پایان همان روز موجودی صفر یا مثبت بود.
 
-       فقط اولین روز منفی هر کالا/انبار گزارش می‌شود؛ بقیه دنباله همان
-       یک مشکل‌اند و فهرست را شلوغ می‌کنند.
+       فقط اولین نقطه منفی هر کالا/انبار گزارش می‌شود؛ بقیه
+       دنباله همان یک مشکل‌اند و فهرست را شلوغ می‌کنند.
        ───────────────────────────────────────────────────────────── */
     ;WITH Harekat AS (
         -- KALAS یک ویو گزارشی است، نه کاردکس خام؛ ستون انبار آن به‌جای
@@ -1612,38 +1615,36 @@ BEGIN
         SELECT  k.ANBARCODE AS ANBAR,
                 k.code,
                 k.DATE_N,
+                k.NUMBER,
+                k.TAG,
+                CASE WHEN k.TAG IN (1, 7, 9, 24) THEN 0 ELSE 1 END AS Jahat,
                 CASE WHEN k.TAG IN (1, 7, 9, 24) THEN k.MEGHk ELSE -k.MEGHk END AS Meghdar
         FROM    dbo.KALAS k
         WHERE   k.DATE_N <= @DT2
           AND   k.MEGHk <> 0
     ),
-    Roozaneh AS (
-        SELECT  ANBAR, code, DATE_N, SUM(Meghdar) AS NetRooz
-        FROM    Harekat
-        GROUP BY ANBAR, code, DATE_N
-    ),
     Tajamoi AS (
-        SELECT  ANBAR, code, DATE_N,
-                SUM(NetRooz) OVER (
+        SELECT  ANBAR, code, DATE_N, NUMBER, TAG,
+                SUM(Meghdar) OVER (
                     PARTITION BY ANBAR, code
-                    ORDER BY DATE_N
+                    ORDER BY DATE_N, Jahat, NUMBER
                     ROWS UNBOUNDED PRECEDING) AS Mande
-        FROM    Roozaneh
+        FROM    Harekat
     ),
     AvvalinManfi AS (
-        SELECT  ANBAR, code, DATE_N, Mande,
+        SELECT  ANBAR, code, DATE_N, NUMBER, TAG, Mande,
                 ROW_NUMBER() OVER (
                     PARTITION BY ANBAR, code
-                    ORDER BY DATE_N) AS rn
+                    ORDER BY DATE_N, Jahat, NUMBER) AS rn
         FROM    Tajamoi
         WHERE   Mande < -0.0001
     )
     INSERT dbo.CC_Exception
         (RunId, StepCode, RuleCode, ExType, Severity,
-         Anbar, Code, DocDate, Amount, Description)
+         Anbar, Code, DocNumber, DocTag, DocDate, Amount, Description)
     SELECT  @RunId, 'S05', 'CHK-01', 1, 2,
-            m.ANBAR, m.code, m.DATE_N, m.Mande,
-            CONCAT(N'انبار ', m.ANBAR, N' (', ISNULL(a.NAMES, N'نامشخص'), N'): موجودی در پایان روز ',
+            m.ANBAR, m.code, m.NUMBER, m.TAG, m.DATE_N, m.Mande,
+            CONCAT(N'انبار ', m.ANBAR, N' (', ISNULL(a.NAMES, N'نامشخص'), N'): موجودی در تاریخ ',
                    m.DATE_N / 10000, '/',
                    FORMAT(m.DATE_N / 100 % 100, '00'), '/',
                    FORMAT(m.DATE_N % 100, '00'),
