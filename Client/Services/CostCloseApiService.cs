@@ -115,6 +115,32 @@ namespace Safir.Client.Services
             return await res.Content.ReadFromJsonAsync<AutoFixResultDto>();
         }
 
+        /// <summary>دکمه «بازسازی نرخ» برای CHK-09 — S10 و S11 را دوباره اجرا می‌کند.</summary>
+        public async Task<(bool Ok, int Remaining, string? Error)> RebuildRatesAsync(int runId)
+        {
+            var res = await _http.PostAsync($"{Base}/runs/{runId}/rebuild-rates", null);
+            if (!res.IsSuccessStatusCode)
+                return (false, 0, await res.Content.ReadAsStringAsync());
+
+            var body = await res.Content.ReadFromJsonAsync<RebuildRatesResultDto>();
+            return (true, body?.Remaining ?? 0, null);
+        }
+
+        /// <summary>اصلاح CHK-15 — «صفر کن» یا «حذف کن» روی یک سطر فرمول.</summary>
+        public async Task<(bool Ok, string? Error)> FixNegativeFormulaQtyAsync(
+            long exceptionId, string action, int? runId)
+        {
+            var res = await _http.PostAsJsonAsync($"{Base}/fix/negative-formula-qty",
+                new FixNegativeFormulaQtyRequest
+                {
+                    ExceptionId = exceptionId, Action = action, RunId = runId, WhatIf = false
+                });
+
+            return res.IsSuccessStatusCode
+                 ? (true, null)
+                 : (false, await res.Content.ReadAsStringAsync());
+        }
+
         // ───────── انحراف مصرف ─────────
 
         public async Task<List<VarianceRowDto>> GetVariancesAsync(int runId)
@@ -232,5 +258,100 @@ namespace Safir.Client.Services
 
         public async Task<List<CostUnitDto>> GetUnitsAsync()
             => await _http.GetFromJsonAsync<List<CostUnitDto>>($"{Base}/units") ?? new();
+
+        // ───────── مدیریت واحدها (تنظیمات) ─────────
+
+        public async Task<(bool Ok, int UnitId, string? Error)> CreateUnitAsync(UpsertUnitRequest req)
+        {
+            var res = await _http.PostAsJsonAsync($"{Base}/units", req);
+            if (!res.IsSuccessStatusCode)
+                return (false, 0, await res.Content.ReadAsStringAsync());
+
+            return (true, await res.Content.ReadFromJsonAsync<int>(), null);
+        }
+
+        public async Task<(bool Ok, string? Error)> UpdateUnitAsync(int unitId, UpsertUnitRequest req)
+        {
+            var res = await _http.PutAsJsonAsync($"{Base}/units/{unitId}", req);
+            return res.IsSuccessStatusCode
+                 ? (true, null)
+                 : (false, await res.Content.ReadAsStringAsync());
+        }
+
+        public async Task<(bool Ok, string? Error)> DeleteUnitAsync(int unitId)
+        {
+            var res = await _http.DeleteAsync($"{Base}/units/{unitId}");
+            return res.IsSuccessStatusCode
+                 ? (true, null)
+                 : (false, await res.Content.ReadAsStringAsync());
+        }
+
+        public async Task<(bool Ok, string? Error)> AddUnitWarehouseAsync(
+            int unitId, UpsertUnitAnbarRequest req)
+        {
+            var res = await _http.PostAsJsonAsync($"{Base}/units/{unitId}/warehouses", req);
+            return res.IsSuccessStatusCode
+                 ? (true, null)
+                 : (false, await res.Content.ReadAsStringAsync());
+        }
+
+        public async Task<(bool Ok, string? Error)> UpdateUnitWarehouseAsync(
+            int unitId, int anbar, UpsertUnitAnbarRequest req)
+        {
+            var res = await _http.PutAsJsonAsync($"{Base}/units/{unitId}/warehouses/{anbar}", req);
+            return res.IsSuccessStatusCode
+                 ? (true, null)
+                 : (false, await res.Content.ReadAsStringAsync());
+        }
+
+        public async Task<(bool Ok, string? Error)> DeleteUnitWarehouseAsync(int unitId, int anbar)
+        {
+            var res = await _http.DeleteAsync($"{Base}/units/{unitId}/warehouses/{anbar}");
+            return res.IsSuccessStatusCode
+                 ? (true, null)
+                 : (false, await res.Content.ReadAsStringAsync());
+        }
+
+        public async Task<(bool Ok, string? Error)> AddUnitAccountAsync(
+            int unitId, UpsertUnitAccRequest req)
+        {
+            var res = await _http.PostAsJsonAsync($"{Base}/units/{unitId}/accounts", req);
+            return res.IsSuccessStatusCode
+                 ? (true, null)
+                 : (false, await res.Content.ReadAsStringAsync());
+        }
+
+        public async Task<(bool Ok, string? Error)> UpdateUnitAccountAsync(
+            int unitId, int accId, UpsertUnitAccRequest req)
+        {
+            var res = await _http.PutAsJsonAsync($"{Base}/units/{unitId}/accounts/{accId}", req);
+            return res.IsSuccessStatusCode
+                 ? (true, null)
+                 : (false, await res.Content.ReadAsStringAsync());
+        }
+
+        public async Task<(bool Ok, string? Error)> DeleteUnitAccountAsync(int unitId, int accId)
+        {
+            var res = await _http.DeleteAsync($"{Base}/units/{unitId}/accounts/{accId}");
+            return res.IsSuccessStatusCode
+                 ? (true, null)
+                 : (false, await res.Content.ReadAsStringAsync());
+        }
+
+        // ───────── جستجوی زنجیره‌ای حساب ─────────
+
+        public async Task<List<AccountLookupDto>> SearchKolAsync(string? q)
+            => await _http.GetFromJsonAsync<List<AccountLookupDto>>(
+                   $"{Base}/accounts/kol" + (string.IsNullOrEmpty(q) ? "" : $"?q={Uri.EscapeDataString(q)}")) ?? new();
+
+        public async Task<List<AccountLookupDto>> SearchMoinAsync(int kol, string? q)
+            => await _http.GetFromJsonAsync<List<AccountLookupDto>>(
+                   $"{Base}/accounts/moin?kol={kol}"
+                   + (string.IsNullOrEmpty(q) ? "" : $"&q={Uri.EscapeDataString(q)}")) ?? new();
+
+        public async Task<List<AccountLookupDto>> SearchTafsiliAsync(int kol, int moin, string? q)
+            => await _http.GetFromJsonAsync<List<AccountLookupDto>>(
+                   $"{Base}/accounts/tafsili?kol={kol}&moin={moin}"
+                   + (string.IsNullOrEmpty(q) ? "" : $"&q={Uri.EscapeDataString(q)}")) ?? new();
     }
 }

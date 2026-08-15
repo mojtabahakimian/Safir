@@ -213,6 +213,25 @@ namespace Safir.Shared.Models.CostClose
         public List<string>            Warnings { get; set; } = new();
     }
 
+    public class RebuildRatesResultDto
+    {
+        public int Remaining { get; set; }
+    }
+
+    public class FixNegativeFormulaQtyRequest
+    {
+        public long   ExceptionId { get; set; }
+        public string Action      { get; set; } = "zero";   // "zero" یا "delete"
+        public int?   RunId       { get; set; }
+        public bool   WhatIf      { get; set; } = true;
+    }
+
+    public class FixNegativeFormulaQtyResultDto
+    {
+        public bool   Changed { get; set; }
+        public string Status  { get; set; } = string.Empty;
+    }
+
     // ───────────────────────── انحراف مصرف ─────────────────────────
 
     public class VarianceRowDto
@@ -371,7 +390,8 @@ namespace Safir.Shared.Models.CostClose
         public byte   SplitMode { get; set; }
         public bool   IsActive  { get; set; }
         public short  SeqNo     { get; set; }
-        public List<CostUnitAnbarDto> Anbars { get; set; } = new();
+        public List<CostUnitAnbarDto> Anbars   { get; set; } = new();
+        public List<CostUnitAccDto>   Accounts { get; set; } = new();
     }
 
     public class CostUnitAnbarDto
@@ -390,5 +410,60 @@ namespace Safir.Shared.Models.CostClose
             3 => "محصول",
             _ => "سایر"
         };
+    }
+
+    public class CostUnitAccDto
+    {
+        public int     Id          { get; set; }
+        public int     UnitId      { get; set; }
+        public int     HesKol      { get; set; }
+        public int?    HesMoin     { get; set; }
+        public int?    HesTafsili  { get; set; }
+        public byte    CostKind    { get; set; }   // 1=دستمزد 2=سربار
+        public decimal Ratio       { get; set; }
+        public bool    IsActive    { get; set; }
+        public string? Note        { get; set; }
+        public string? KolName     { get; set; }
+        public string? MoinName    { get; set; }
+        public string? TafsiliName { get; set; }
+
+        public string CostKindText => CostKind == 1 ? "دستمزد" : "سربار";
+    }
+
+    // ───────────────────────── مدیریت واحدها (تنظیمات) ─────────────────────────
+
+    public class UpsertUnitRequest
+    {
+        public string UnitName  { get; set; } = string.Empty;
+        public int?   Depatman  { get; set; }
+        public byte   SplitMode { get; set; } = 1;
+        public bool   IsActive  { get; set; } = true;
+        public short  SeqNo     { get; set; } = 1;
+    }
+
+    public class UpsertUnitAnbarRequest
+    {
+        public int   Anbar        { get; set; }
+        public byte  AnbarRole    { get; set; }
+        public bool  DoStockCount { get; set; } = true;
+        public short SeqNo        { get; set; } = 1;
+    }
+
+    public class UpsertUnitAccRequest
+    {
+        public int     HesKol     { get; set; }
+        public int?    HesMoin    { get; set; }
+        public int?    HesTafsili { get; set; }
+        public byte    CostKind   { get; set; }
+        public decimal Ratio      { get; set; } = 1;
+        public bool    IsActive   { get; set; } = true;
+        public string? Note       { get; set; }
+    }
+
+    /// <summary>یک نتیجهٔ جستجوی زنجیره‌ای حساب (کل/معین/تفصیلی).</summary>
+    public class AccountLookupDto
+    {
+        public long   Code { get; set; }
+        public string Name { get; set; } = string.Empty;
     }
 }

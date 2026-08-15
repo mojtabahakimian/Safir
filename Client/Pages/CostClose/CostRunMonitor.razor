@@ -55,10 +55,7 @@
         </div>
 
         <div class="cc-toolbar">
-            <MudTooltip Text="بازگشت به فهرست اجراها">
-                <MudIconButton Icon="@Icons.Material.Filled.ArrowForward" Size="Size.Small"
-                               Href="/cost-close" />
-            </MudTooltip>
+            <CostBackButton />
 
             <MudText Typo="Typo.h6">
                 اجرا #@_state.Run.RunNo — @PersianMonth(_state.Run.PeriodMonth) @_state.Run.FiscalYear
@@ -132,7 +129,7 @@
             {
                 <MudButton Variant="Variant.Outlined"
                            StartIcon="@Icons.Material.Filled.Rule"
-                           Href="/cost-close/exceptions">
+                           Href="@($"/cost-close/exceptions?runId={RunId}")">
                     مشاهده مغایرت‌ها (@_state.OpenBlockingCount)
                 </MudButton>
 

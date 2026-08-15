@@ -1,0 +1,119 @@
+@using Safir.Shared.Models.CostClose
+@using Safir.Client.Services
+@inject CostCloseApiService Api
+
+<MudDialog>
+    <DialogContent>
+        <div dir="rtl" style="min-width:420px">
+            <MudAutocomplete T="AccountLookupDto" Label="حساب کل" Dense Variant="Variant.Outlined"
+                              Class="mb-3" Value="_kol" ValueChanged="OnKolChanged"
+                              SearchFuncWithCancel="SearchKol" ToStringFunc="AccText" />
+
+            <MudAutocomplete T="AccountLookupDto" Label="حساب معین (اختیاری)" Dense Variant="Variant.Outlined"
+                              Class="mb-3" Value="_moin" ValueChanged="OnMoinChanged"
+                              SearchFuncWithCancel="SearchMoin" ToStringFunc="AccText"
+                              Disabled="@(_kol is null)" Clearable ResetValueOnEmptyText />
+
+            <MudAutocomplete T="AccountLookupDto" Label="حساب تفصیلی (اختیاری)" Dense Variant="Variant.Outlined"
+                              Class="mb-3" @bind-Value="_tafsili"
+                              SearchFuncWithCancel="SearchTafsili" ToStringFunc="AccText"
+                              Disabled="@(_moin is null)" Clearable ResetValueOnEmptyText />
+
+            <MudRadioGroup T="byte" @bind-Value="_costKind" Class="mb-3">
+                <MudRadio T="byte" Value="@((byte)1)" Dense>دستمزد</MudRadio>
+                <MudRadio T="byte" Value="@((byte)2)" Dense>سربار (هزینه تبدیل)</MudRadio>
+            </MudRadioGroup>
+
+            <MudNumericField T="decimal" @bind-Value="_ratio" Label="ضریب سهم" Dense
+                              Variant="Variant.Outlined" Class="mb-3" />
+
+            <MudSwitch T="bool" @bind-Value="_isActive" Label="فعال" Color="Color.Primary"
+                       Class="mb-3" />
+
+            <MudTextField @bind-Value="_note" Label="یادداشت (اختیاری)" Dense
+                          Variant="Variant.Outlined" Lines="2" />
+        </div>
+    </DialogContent>
+
+    <DialogActions>
+        <MudButton OnClick="Cancel">انصراف</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled"
+                   Disabled="@(_kol is null)" OnClick="Save">
+            ذخیره
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private MudDialogInstance MudDialog { get; set; } = default!;
+    [Parameter] public CostUnitAccDto? Existing { get; set; }
+
+    private AccountLookupDto? _kol;
+    private AccountLookupDto? _moin;
+    private AccountLookupDto? _tafsili;
+    private byte    _costKind = 2;
+    private decimal _ratio    = 1;
+    private bool    _isActive = true;
+    private string? _note;
+
+    protected override void OnInitialized()
+    {
+        if (Existing is not null)
+        {
+            _kol = new AccountLookupDto { Code = Existing.HesKol, Name = Existing.KolName ?? "" };
+            if (Existing.HesMoin is not null)
+                _moin = new AccountLookupDto { Code = Existing.HesMoin.Value, Name = Existing.MoinName ?? "" };
+            if (Existing.HesTafsili is not null)
+                _tafsili = new AccountLookupDto { Code = Existing.HesTafsili.Value, Name = Existing.TafsiliName ?? "" };
+
+            _costKind = Existing.CostKind;
+            _ratio    = Existing.Ratio;
+            _isActive = Existing.IsActive;
+            _note     = Existing.Note;
+        }
+    }
+
+    private void OnKolChanged(AccountLookupDto? v)
+    {
+        _kol = v;
+        _moin = null;
+        _tafsili = null;
+    }
+
+    private void OnMoinChanged(AccountLookupDto? v)
+    {
+        _moin = v;
+        _tafsili = null;
+    }
+
+    private static string AccText(AccountLookupDto? a)
+        => a is null ? "" : $"{a.Code} - {a.Name}";
+
+    private async Task<IEnumerable<AccountLookupDto>> SearchKol(string s, CancellationToken ct)
+        => await Api.SearchKolAsync(s);
+
+    private async Task<IEnumerable<AccountLookupDto>> SearchMoin(string s, CancellationToken ct)
+        => _kol is null ? Array.Empty<AccountLookupDto>() : await Api.SearchMoinAsync((int)_kol.Code, s);
+
+    private async Task<IEnumerable<AccountLookupDto>> SearchTafsili(string s, CancellationToken ct)
+        => _kol is null || _moin is null
+            ? Array.Empty<AccountLookupDto>()
+            : await Api.SearchTafsiliAsync((int)_kol.Code, (int)_moin.Code, s);
+
+    private void Cancel() => MudDialog.Cancel();
+
+    private void Save()
+    {
+        var req = new UpsertUnitAccRequest
+        {
+            HesKol     = (int)_kol!.Code,
+            HesMoin    = _moin is null ? null : (int)_moin.Code,
+            HesTafsili = _tafsili is null ? null : (int)_tafsili.Code,
+            CostKind   = _costKind,
+            Ratio      = _ratio,
+            IsActive   = _isActive,
+            Note       = string.IsNullOrWhiteSpace(_note) ? null : _note.Trim()
+        };
+        MudDialog.Close(DialogResult.Ok(req));
+    }
+}

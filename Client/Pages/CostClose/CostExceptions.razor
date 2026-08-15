@@ -13,6 +13,7 @@
 <div class="cc-page" dir="rtl">
 
     <div class="cc-toolbar">
+        <CostBackButton />
         <MudSelect T="short" @bind-Value="_year" Label="سال" Dense Variant="Variant.Outlined"
                    Style="max-width:110px">
             @foreach (var y in YearChoices)
@@ -104,6 +105,26 @@
                         @g.First().FixButtonText (همه)
                     </MudButton>
                 }
+
+                @if (g.Key.RuleCode == "CHK-09" && Access.CanRun(CostForms.ActRollup))
+                {
+                    @if (RunId is not null)
+                    {
+                        <MudButton Size="Size.Small" Variant="Variant.Outlined" Color="Color.Primary"
+                                   StartIcon="@Icons.Material.Filled.Sync"
+                                   OnClick="OpenRebuildRates">
+                            بازسازی نرخ
+                        </MudButton>
+                    }
+                    else
+                    {
+                        <MudTooltip Text="برای بازسازی نرخ باید از داخل یک اجرای مشخص وارد شوید.">
+                            <MudChip T="string" Size="Size.Small" Variant="Variant.Text">
+                                فقط از صفحه اجرا قابل رفع است
+                            </MudChip>
+                        </MudTooltip>
+                    }
+                }
             </div>
 
             @if (!string.IsNullOrEmpty(g.First().RemedyText))
@@ -170,6 +191,14 @@
                                            Title="@context.FixButtonText"
                                            OnClick="@(() => OpenAutoFix(context.ExceptionId))" />
                         }
+                        @if (context.RuleCode == "CHK-15" && !context.IsResolved
+                             && Access.CanRun(CostForms.ActAutoFix))
+                        {
+                            <MudIconButton Icon="@Icons.Material.Filled.Build"
+                                           Size="Size.Small" Color="Color.Primary"
+                                           Title="اصلاح سطر فرمول منفی"
+                                           OnClick="@(() => OpenNegativeFormulaFix(context))" />
+                        }
                         @if (!context.IsResolved && Access.CanRun(CostForms.ActResolve))
                         {
                             <MudIconButton Icon="@Icons.Material.Filled.Check"
@@ -187,6 +216,12 @@
 </div>
 
 @code {
+    // اگر از صفحهٔ پایش یک اجرا آمده باشیم، RunId ست می‌شود — فقط آن‌وقت
+    // دکمهٔ «بازسازی نرخ» (CHK-09) معنا دارد، چون S10/S11 نتیجه را به یک
+    // اجرای مشخص وصل می‌کنند، نه به بازبینی سراسری بدون اجرا.
+    [SupplyParameterFromQuery(Name = "runId")]
+    public int? RunId { get; set; }
+
     // سال و ماه از تاریخ جاری سیستم گرفته می‌شوند، نه عدد ثابت.
     // نسخهٔ اول این صفحه سال ۱۴۰۵ را hard-code کرده بود؛ سال بعد بی‌صدا
     // بازهٔ اشتباه را کوئری می‌کرد.
@@ -229,7 +264,7 @@
         _busy = true;
         try
         {
-            _all = await Api.GetExceptionsAsync(includeResolved: true);
+            _all = await Api.GetExceptionsAsync(runId: RunId, includeResolved: true);
             Recount();
             ApplyFilter();
         }
@@ -270,8 +305,8 @@
         StateHasChanged();
         try
         {
-            await Api.RunPreflightAsync(_month, DateFrom, DateTo);
-            _all = await Api.GetExceptionsAsync(includeResolved: true);
+            await Api.RunPreflightAsync(_month, DateFrom, DateTo, RunId);
+            _all = await Api.GetExceptionsAsync(runId: RunId, includeResolved: true);
             Recount();
             ApplyFilter();
             Snackbar.Add($"بازبینی انجام شد — {_blockingCount} مسدودکننده، {_warningCount} هشدار",
@@ -342,6 +377,63 @@
             await Load();
         }
         catch (Exception ex) { Snackbar.Add(ex.Message, Severity.Error); }
+        finally { _busy = false; }
+    }
+
+    // ───────── بازسازی نرخ (CHK-09) ─────────
+
+    private async Task OpenRebuildRates()
+    {
+        if (RunId is null) return;
+
+        var ok = await Dialog.ShowMessageBox(
+            "تأیید بازسازی نرخ",
+            "تراز هزینه تبدیل و انتشار نرخ برای این اجرا دوباره محاسبه می‌شود. "
+          + "اگر بعد از این هم نرخی منتشرنشده باقی بماند، یعنی خودِ فرمول ایراد دارد.",
+            yesText: "بازسازی کن", cancelText: "انصراف");
+
+        if (ok != true) return;
+
+        _busy = true;
+        try
+        {
+            var (success, remaining, error) = await Api.RebuildRatesAsync(RunId.Value);
+            if (!success)
+            {
+                Snackbar.Add(error ?? "بازسازی ناموفق بود", Severity.Error);
+            }
+            else
+            {
+                Snackbar.Add(remaining == 0
+                    ? "بازسازی انجام شد — نرخ منتشرنشده‌ای باقی نماند"
+                    : $"بازسازی انجام شد — {remaining} کالا هنوز نرخ منتشرنشده دارد؛ فرمول آنها را بررسی کنید",
+                    remaining == 0 ? Severity.Success : Severity.Warning);
+                await Load();
+            }
+        }
+        finally { _busy = false; }
+    }
+
+    // ───────── فرمول با مقدار منفی (CHK-15) ─────────
+
+    private async Task OpenNegativeFormulaFix(CostExceptionDto ex)
+    {
+        var choice = await Dialog.ShowMessageBox(
+            "اصلاح سطر فرمول منفی",
+            $"{ex.Description}\n\nاین سطر چه شود؟",
+            yesText: "صفر کن", noText: "حذف کن", cancelText: "انصراف");
+
+        if (choice is null) return;   // انصراف
+        var action = choice == true ? "zero" : "delete";
+
+        _busy = true;
+        try
+        {
+            var (ok, error) = await Api.FixNegativeFormulaQtyAsync(ex.ExceptionId, action, RunId);
+            Snackbar.Add(ok ? "انجام شد" : (error ?? "اصلاح ناموفق بود"),
+                         ok ? Severity.Success : Severity.Error);
+            if (ok) await Load();
+        }
         finally { _busy = false; }
     }
 
