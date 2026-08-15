@@ -215,6 +215,19 @@ BEGIN
 END
 GO
 
+-- نگاشت انبار به حساب موجودی جنسی (کل/معین)، برای CHK-02.
+-- TCOD_ANBAR هیچ ستون حسابداری ندارد و این نگاشت شرکت‌به‌شرکت فرق
+-- می‌کند (هر انبار زیر یک معین جداگانه در حسابداری ثبت می‌شود، نه یک
+-- معین ثابت مشترک) — پس باید از تنظیمات وارد شود، نه هاردکد در کد.
+IF OBJECT_ID('dbo.CC_AnbarHes','U') IS NULL
+CREATE TABLE dbo.CC_AnbarHes (
+    Anbar    INT           NOT NULL PRIMARY KEY,
+    HesKol   INT           NOT NULL,
+    HesMoin  INT           NOT NULL,
+    Note     NVARCHAR(200) NULL
+);
+GO
+
 /* ───────────────────────── نتایج محاسبه ───────────────────────── */
 
 IF OBJECT_ID('dbo.CC_ItemCost','U') IS NULL

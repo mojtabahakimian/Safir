@@ -466,4 +466,24 @@ namespace Safir.Shared.Models.CostClose
         public long   Code { get; set; }
         public string Name { get; set; } = string.Empty;
     }
+
+    /// <summary>نگاشت انبار به حساب موجودی جنسی (کل/معین)، برای CHK-02.</summary>
+    public class CostAnbarHesDto
+    {
+        public int     Anbar    { get; set; }
+        public string? AnbarName { get; set; }
+        public int     HesKol   { get; set; }
+        public int     HesMoin  { get; set; }
+        public string? KolName  { get; set; }
+        public string? MoinName { get; set; }
+        public string? Note     { get; set; }
+    }
+
+    public class UpsertAnbarHesRequest
+    {
+        public int     Anbar   { get; set; }
+        public int     HesKol  { get; set; }
+        public int     HesMoin { get; set; }
+        public string? Note    { get; set; }
+    }
 }

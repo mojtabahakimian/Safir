@@ -206,6 +206,54 @@
             }
         </MudTabPanel>
 
+        <!-- نگاشت انبار به حساب موجودی -->
+        <MudTabPanel Text="نگاشت انبار⇄حساب">
+            <MudAlert Severity="Severity.Info" Dense Class="mb-3">
+                هر انبار زیر یک معین جداگانه در حسابداری ثبت می‌شود، نه یک معین
+                مشترک برای همه. بدون این نگاشت، کنترل «مغایرت کارت انبار و
+                حسابداری» (CHK-02) غیرفعال می‌ماند.
+            </MudAlert>
+
+            @if (Access.CanInp(CostForms.Settings))
+            {
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Small"
+                           StartIcon="@Icons.Material.Filled.Add" Class="mb-3"
+                           OnClick="OpenAddAnbarHes">
+                    افزودن نگاشت انبار
+                </MudButton>
+            }
+
+            <MudPaper Class="cc-rule-card" Elevation="0">
+                <MudTable Items="_anbarHes" Dense Hover Elevation="0" T="CostAnbarHesDto">
+                    <HeaderContent>
+                        <MudTh Style="width:110px">انبار</MudTh>
+                        <MudTh>کل</MudTh>
+                        <MudTh>معین</MudTh>
+                        <MudTh>یادداشت</MudTh>
+                        <MudTh Style="width:90px"></MudTh>
+                    </HeaderContent>
+                    <RowTemplate>
+                        <MudTd><span class="cc-num">@context.Anbar</span> @(context.AnbarName ?? "")</MudTd>
+                        <MudTd><span class="cc-num">@context.HesKol</span> @(context.KolName ?? "")</MudTd>
+                        <MudTd><span class="cc-num">@context.HesMoin</span> @(context.MoinName ?? "")</MudTd>
+                        <MudTd>@(context.Note ?? "—")</MudTd>
+                        <MudTd>
+                            @if (Access.CanUpd(CostForms.Settings))
+                            {
+                                <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small"
+                                               OnClick="@(() => OpenEditAnbarHes(context))" />
+                            }
+                            @if (Access.CanDel(CostForms.Settings))
+                            {
+                                <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small"
+                                               Color="Color.Error" OnClick="@(() => DeleteAnbarHes(context))" />
+                            }
+                        </MudTd>
+                    </RowTemplate>
+                </MudTable>
+            </MudPaper>
+        </MudTabPanel>
+
         <!-- قواعد تشخیص -->
         <MudTabPanel Text="قواعد تشخیص">
             <MudAlert Severity="Severity.Info" Dense Class="mb-3">
@@ -274,6 +322,7 @@
 @code {
     private List<CostUnitDto>      _units = new();
     private List<CostCheckRuleDto> _rules = new();
+    private List<CostAnbarHesDto>  _anbarHes = new();
     private bool _busy;
     private string? _loadError;
 
@@ -284,11 +333,55 @@
         _busy = true;
         try
         {
-            _units = await Api.GetUnitsAsync();
-            _rules = await Api.GetRulesAsync();
+            _units    = await Api.GetUnitsAsync();
+            _rules    = await Api.GetRulesAsync();
+            _anbarHes = await Api.GetAnbarHesAsync();
         }
         catch (Exception ex) { _loadError = FriendlyError(ex); }
         finally { _busy = false; }
+    }
+
+    private async Task ReloadAnbarHes()
+    {
+        try { _anbarHes = await Api.GetAnbarHesAsync(); }
+        catch (Exception ex) { Snackbar.Add(FriendlyError(ex), Severity.Error); }
+    }
+
+    private async Task OpenAddAnbarHes()
+    {
+        var dlg = await Dialog.ShowAsync<AnbarHesEditDialog>("افزودن نگاشت انبار", new DialogParameters());
+        var res = await dlg.Result;
+        if (res is { Canceled: false, Data: UpsertAnbarHesRequest req })
+        {
+            var (ok, err) = await Api.AddAnbarHesAsync(req);
+            if (ok) { Snackbar.Add("نگاشت افزوده شد.", Severity.Success); await ReloadAnbarHes(); }
+            else Snackbar.Add(err ?? "افزودن نگاشت ناموفق بود.", Severity.Error);
+        }
+    }
+
+    private async Task OpenEditAnbarHes(CostAnbarHesDto row)
+    {
+        var p = new DialogParameters { ["Existing"] = row };
+        var dlg = await Dialog.ShowAsync<AnbarHesEditDialog>("ویرایش نگاشت انبار", p);
+        var res = await dlg.Result;
+        if (res is { Canceled: false, Data: UpsertAnbarHesRequest req })
+        {
+            var (ok, err) = await Api.UpdateAnbarHesAsync(row.Anbar, req);
+            if (ok) { Snackbar.Add("نگاشت به‌روزرسانی شد.", Severity.Success); await ReloadAnbarHes(); }
+            else Snackbar.Add(err ?? "به‌روزرسانی نگاشت ناموفق بود.", Severity.Error);
+        }
+    }
+
+    private async Task DeleteAnbarHes(CostAnbarHesDto row)
+    {
+        var ok = await Dialog.ShowMessageBox(
+            "حذف نگاشت", $"نگاشت انبار «{row.AnbarName ?? row.Anbar.ToString()}» حذف شود؟",
+            yesText: "حذف", cancelText: "انصراف");
+        if (ok != true) return;
+
+        var (done, err) = await Api.DeleteAnbarHesAsync(row.Anbar);
+        if (done) { Snackbar.Add("نگاشت حذف شد.", Severity.Success); await ReloadAnbarHes(); }
+        else Snackbar.Add(err ?? "حذف نگاشت ناموفق بود.", Severity.Error);
     }
 
     private async Task ReloadUnits()
