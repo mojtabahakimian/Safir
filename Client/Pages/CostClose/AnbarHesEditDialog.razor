@@ -1,0 +1,93 @@
+@using Safir.Shared.Models.CostClose
+@using Safir.Shared.Models.Kala
+@using Safir.Client.Services
+@inject LookupApiService Lookup
+@inject CostCloseApiService Api
+
+<MudDialog>
+    <DialogContent>
+        <div dir="rtl" style="min-width:400px">
+            <MudSelect T="int" @bind-Value="_anbar" Label="انبار" Dense
+                       Variant="Variant.Outlined" Class="mb-3"
+                       Disabled="@(Existing is not null)">
+                @foreach (var a in _anbarha)
+                {
+                    <MudSelectItem T="int" Value="@a.CODE">@a.CODE - @a.NAMES</MudSelectItem>
+                }
+            </MudSelect>
+
+            <MudAutocomplete T="AccountLookupDto" Label="حساب کل" Dense Variant="Variant.Outlined"
+                              Class="mb-3" Value="_kol" ValueChanged="OnKolChanged"
+                              SearchFuncWithCancel="SearchKol" ToStringFunc="AccText" />
+
+            <MudAutocomplete T="AccountLookupDto" Label="حساب معین" Dense Variant="Variant.Outlined"
+                              Class="mb-3" @bind-Value="_moin"
+                              SearchFuncWithCancel="SearchMoin" ToStringFunc="AccText"
+                              Disabled="@(_kol is null)" />
+
+            <MudTextField @bind-Value="_note" Label="یادداشت (اختیاری)" Dense
+                          Variant="Variant.Outlined" Lines="2" />
+        </div>
+    </DialogContent>
+
+    <DialogActions>
+        <MudButton OnClick="Cancel">انصراف</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled"
+                   Disabled="@(_anbar <= 0 || _kol is null || _moin is null)" OnClick="Save">
+            ذخیره
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private MudDialogInstance MudDialog { get; set; } = default!;
+    [Parameter] public CostAnbarHesDto? Existing { get; set; }
+
+    private List<TCOD_ANBAR> _anbarha = new();
+    private int _anbar;
+    private AccountLookupDto? _kol;
+    private AccountLookupDto? _moin;
+    private string? _note;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _anbarha = await Lookup.GetAnbarhaAsync() ?? new();
+
+        if (Existing is not null)
+        {
+            _anbar = Existing.Anbar;
+            _kol   = new AccountLookupDto { Code = Existing.HesKol, Name = Existing.KolName ?? "" };
+            _moin  = new AccountLookupDto { Code = Existing.HesMoin, Name = Existing.MoinName ?? "" };
+            _note  = Existing.Note;
+        }
+    }
+
+    private void OnKolChanged(AccountLookupDto? v)
+    {
+        _kol = v;
+        _moin = null;
+    }
+
+    private static string AccText(AccountLookupDto? a)
+        => a is null ? "" : $"{a.Code} - {a.Name}";
+
+    private async Task<IEnumerable<AccountLookupDto>> SearchKol(string s, CancellationToken ct)
+        => await Api.SearchKolAsync(s);
+
+    private async Task<IEnumerable<AccountLookupDto>> SearchMoin(string s, CancellationToken ct)
+        => _kol is null ? Array.Empty<AccountLookupDto>() : await Api.SearchMoinAsync((int)_kol.Code, s);
+
+    private void Cancel() => MudDialog.Cancel();
+
+    private void Save()
+    {
+        var req = new UpsertAnbarHesRequest
+        {
+            Anbar   = _anbar,
+            HesKol  = (int)_kol!.Code,
+            HesMoin = (int)_moin!.Code,
+            Note    = string.IsNullOrWhiteSpace(_note) ? null : _note.Trim()
+        };
+        MudDialog.Close(DialogResult.Ok(req));
+    }
+}

@@ -342,6 +342,35 @@ namespace Safir.Client.Services
                  : (false, await res.Content.ReadAsStringAsync());
         }
 
+        // ───────── نگاشت انبار به حساب موجودی (CHK-02) ─────────
+
+        public async Task<List<CostAnbarHesDto>> GetAnbarHesAsync()
+            => await _http.GetFromJsonAsync<List<CostAnbarHesDto>>($"{Base}/anbar-hes") ?? new();
+
+        public async Task<(bool Ok, string? Error)> AddAnbarHesAsync(UpsertAnbarHesRequest req)
+        {
+            var res = await _http.PostAsJsonAsync($"{Base}/anbar-hes", req);
+            return res.IsSuccessStatusCode
+                 ? (true, null)
+                 : (false, await res.Content.ReadAsStringAsync());
+        }
+
+        public async Task<(bool Ok, string? Error)> UpdateAnbarHesAsync(int anbar, UpsertAnbarHesRequest req)
+        {
+            var res = await _http.PutAsJsonAsync($"{Base}/anbar-hes/{anbar}", req);
+            return res.IsSuccessStatusCode
+                 ? (true, null)
+                 : (false, await res.Content.ReadAsStringAsync());
+        }
+
+        public async Task<(bool Ok, string? Error)> DeleteAnbarHesAsync(int anbar)
+        {
+            var res = await _http.DeleteAsync($"{Base}/anbar-hes/{anbar}");
+            return res.IsSuccessStatusCode
+                 ? (true, null)
+                 : (false, await res.Content.ReadAsStringAsync());
+        }
+
         // ───────── جستجوی زنجیره‌ای حساب ─────────
 
         public async Task<List<AccountLookupDto>> SearchKolAsync(string? q)

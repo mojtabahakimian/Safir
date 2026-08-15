@@ -78,12 +78,13 @@ BEGIN
          Anbar, Code, DocNumber, DocTag, DocDate, Amount, Description)
     SELECT  @RunId, 'S05', 'CHK-01', 1, 2,
             m.ANBAR, m.code, m.NUMBER, m.TAG, m.DATE_N, m.Mande,
-            CONCAT(N'موجودی در تاریخ ',
+            CONCAT(N'انبار ', m.ANBAR, N' (', ISNULL(a.NAMES, N'نامشخص'), N'): موجودی در تاریخ ',
                    m.DATE_N / 10000, '/',
                    FORMAT(m.DATE_N / 100 % 100, '00'), '/',
                    FORMAT(m.DATE_N % 100, '00'),
                    N' منفی می‌شود')
     FROM    AvvalinManfi m
+    LEFT    JOIN dbo.TCOD_ANBAR a ON a.CODE = m.ANBAR
     WHERE   m.rn = 1
       AND   m.DATE_N BETWEEN @DT1 AND @DT2;
 
@@ -91,38 +92,65 @@ BEGIN
        CHK-02 — مغایرت کارت انبار و حسابداری
 
        مانده ریالی کارت انبار (KALAS) با مانده حساب موجودی جنسی
-       (۱۲۱) مقایسه می‌شود. اختلاف معمولاً یعنی حواله‌ای که فاکتورش
+       مقایسه می‌شود. اختلاف معمولاً یعنی حواله‌ای که فاکتورش
        صادر نشده، یا تاریخ فاکتور در ماه بعد افتاده.
+
+       هر انبار زیر یک معین جداگانه در حسابداری ثبت می‌شود، نه یک
+       معین ثابت مشترک برای همهٔ انبارها (تفصیلی طبق ساختار خودِ
+       دیتابیس فقط زیر یک معین مشخص یکتاست: TDETA_HES.PK =
+       (N_KOL,NUMBER,TNUMBER)). قبلاً این کنترل فقط با کل=۱۲۱ و
+       بدون معین مقایسه می‌کرد، یعنی اگر همان شماره تفصیلی زیر چند
+       معین مختلف (چند انبار) تراکنش داشت، همه را با هم جمع می‌زد و
+       برای تقریباً هر کالا یک مانده کاملاً غلط و متورم می‌ساخت.
+       نگاشت واقعیِ انبار⇄معین از CC_AnbarHes (تنظیمات) خوانده
+       می‌شود، نه هاردکد، چون شرکت‌به‌شرکت فرق می‌کند.
 
        آستانه یک ریال است چون این دو باید دقیقاً یکی باشند.
        ───────────────────────────────────────────────────────────── */
-    ;WITH KartAnbar AS (
-        SELECT  k.code,
-                SUM(CASE WHEN k.TAG IN (1, 7, 9, 24)
-                         THEN k.MABL_K ELSE -k.MABL_K END) AS Mande
-        FROM    dbo.KALAS k
-        WHERE   k.DATE_N <= @DT2
-        GROUP BY k.code
-    ),
-    Hesabdari AS (
-        SELECT  TRY_CAST(d.HES_T AS BIGINT) AS code,
-                SUM(d.BED) - SUM(d.BES)     AS Mande
-        FROM    dbo.DEED_DTL d
-        JOIN    dbo.DEED_HED h ON h.N_S = d.N_S
-        WHERE   d.HES_K = 121
-          AND   h.DATE_S <= @DT2
-        GROUP BY TRY_CAST(d.HES_T AS BIGINT)
-    )
-    INSERT dbo.CC_Exception
-        (RunId, StepCode, RuleCode, ExType, Severity, Code, Amount, Description)
-    SELECT  @RunId, 'S05', 'CHK-02', 2, 2,
-            ISNULL(k.code, hh.code),
-            ISNULL(k.Mande, 0) - ISNULL(hh.Mande, 0),
-            CONCAT(N'کارت انبار ', FORMAT(ISNULL(k.Mande, 0), 'N0'),
-                   N' در برابر حسابداری ', FORMAT(ISNULL(hh.Mande, 0), 'N0'))
-    FROM    KartAnbar k
-    FULL    OUTER JOIN Hesabdari hh ON hh.code = k.code
-    WHERE   ABS(ISNULL(k.Mande, 0) - ISNULL(hh.Mande, 0)) > 1;
+    IF NOT EXISTS (SELECT 1 FROM dbo.CC_AnbarHes)
+    BEGIN
+        -- بدون نگاشت انبار⇄معین نمی‌توان درست مقایسه کرد؛ به‌جای هزاران
+        -- مورد کاذب، یک هشدار واحد می‌گوید چه باید تنظیم شود.
+        INSERT dbo.CC_Exception
+            (RunId, StepCode, RuleCode, ExType, Severity, Description)
+        VALUES
+            (@RunId, 'S05', 'CHK-02', 2, 1,
+             N'نگاشت انبار به حساب موجودی (کل/معین) در تنظیمات ثبت نشده؛ این کنترل غیرفعال است.');
+    END
+    ELSE
+    BEGIN
+        ;WITH KartAnbar AS (
+            SELECT  k.ANBARCODE AS Anbar, k.code,
+                    SUM(CASE WHEN k.TAG IN (1, 7, 9, 24)
+                             THEN k.MABL_K ELSE -k.MABL_K END) AS Mande
+            FROM    dbo.KALAS k
+            WHERE   k.DATE_N <= @DT2
+              AND   k.ANBARCODE IN (SELECT Anbar FROM dbo.CC_AnbarHes)
+            GROUP BY k.ANBARCODE, k.code
+        ),
+        Hesabdari AS (
+            SELECT  am.Anbar, TRY_CAST(d.HES_T AS BIGINT) AS code,
+                    SUM(d.BED) - SUM(d.BES) AS Mande
+            FROM    dbo.DEED_DTL d
+            JOIN    dbo.DEED_HED  h  ON h.N_S = d.N_S
+            JOIN    dbo.CC_AnbarHes am ON am.HesKol = d.HES_K AND am.HesMoin = d.HES_M
+            WHERE   h.DATE_S <= @DT2
+            GROUP BY am.Anbar, TRY_CAST(d.HES_T AS BIGINT)
+        )
+        INSERT dbo.CC_Exception
+            (RunId, StepCode, RuleCode, ExType, Severity, Anbar, Code, Amount, Description)
+        SELECT  @RunId, 'S05', 'CHK-02', 2, 2,
+                ISNULL(k.Anbar, hh.Anbar), ISNULL(k.code, hh.code),
+                ISNULL(k.Mande, 0) - ISNULL(hh.Mande, 0),
+                CONCAT(N'انبار ', ISNULL(k.Anbar, hh.Anbar),
+                       N' (', ISNULL(a.NAMES, N'نامشخص'), N'): کارت انبار ',
+                       FORMAT(ISNULL(k.Mande, 0), 'N0'),
+                       N' در برابر حسابداری ', FORMAT(ISNULL(hh.Mande, 0), 'N0'))
+        FROM    KartAnbar k
+        FULL    OUTER JOIN Hesabdari hh ON hh.Anbar = k.Anbar AND hh.code = k.code
+        LEFT    JOIN dbo.TCOD_ANBAR a ON a.CODE = ISNULL(k.Anbar, hh.Anbar)
+        WHERE   ABS(ISNULL(k.Mande, 0) - ISNULL(hh.Mande, 0)) > 1;
+    END
 
     /* ─────────────────────────────────────────────────────────────
        CHK-13 — حواله با مقدار صفر

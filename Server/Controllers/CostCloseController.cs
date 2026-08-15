@@ -1011,6 +1011,71 @@ namespace Safir.Server.Controllers
             return rows > 0 ? NoContent() : NotFound();
         }
 
+        // ───────── نگاشت انبار به حساب موجودی (CHK-02) ─────────
+        // TCOD_ANBAR ستون حسابداری ندارد و هر انبار زیر معین جداگانه‌ای
+        // ثبت می‌شود — این نگاشت باید از تنظیمات وارد شود، نه هاردکد.
+
+        [HttpGet("anbar-hes")]
+        [Pay2Authorize(CostForms.Settings, Pay2Perm.See)]
+        public async Task<ActionResult<IEnumerable<CostAnbarHesDto>>> GetAnbarHes()
+        {
+            const string sql = @"
+                SELECT   m.Anbar, n.NAMES AS AnbarName,
+                         m.HesKol, m.HesMoin, m.Note,
+                         tk.NAME AS KolName, tm.NAME AS MoinName
+                FROM     dbo.CC_AnbarHes m
+                LEFT     JOIN dbo.TCOD_ANBAR n ON n.CODE  = m.Anbar
+                LEFT     JOIN dbo.TOTA_HES  tk ON tk.NUMBER = m.HesKol
+                LEFT     JOIN dbo.DETA_HES  tm ON tm.N_KOL  = m.HesKol AND tm.NUMBER = m.HesMoin
+                ORDER BY m.Anbar";
+
+            return Ok(await _db.DoGetDataSQLAsync<CostAnbarHesDto>(sql));
+        }
+
+        [HttpPost("anbar-hes")]
+        [Pay2Authorize(CostForms.Settings, Pay2Perm.Inp)]
+        public async Task<IActionResult> AddAnbarHes([FromBody] UpsertAnbarHesRequest req)
+        {
+            const string sql = @"
+                INSERT dbo.CC_AnbarHes (Anbar, HesKol, HesMoin, Note)
+                VALUES (@Anbar, @HesKol, @HesMoin, @Note)";
+
+            try
+            {
+                await _db.DoExecuteSQLAsync(sql, new { req.Anbar, req.HesKol, req.HesMoin, req.Note });
+                return Ok();
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(ex.Message);
+            }
+        }
+
+        [HttpPut("anbar-hes/{anbar:int}")]
+        [Pay2Authorize(CostForms.Settings, Pay2Perm.Upd)]
+        public async Task<IActionResult> UpdateAnbarHes(int anbar, [FromBody] UpsertAnbarHesRequest req)
+        {
+            const string sql = @"
+                UPDATE dbo.CC_AnbarHes
+                   SET HesKol = @HesKol, HesMoin = @HesMoin, Note = @Note
+                 WHERE Anbar = @anbar";
+
+            var rows = await _db.DoExecuteSQLAsync(sql,
+                new { anbar, req.HesKol, req.HesMoin, req.Note });
+
+            return rows > 0 ? NoContent() : NotFound();
+        }
+
+        [HttpDelete("anbar-hes/{anbar:int}")]
+        [Pay2Authorize(CostForms.Settings, Pay2Perm.Del)]
+        public async Task<IActionResult> DeleteAnbarHes(int anbar)
+        {
+            var rows = await _db.DoExecuteSQLAsync(
+                "DELETE FROM dbo.CC_AnbarHes WHERE Anbar = @anbar", new { anbar });
+
+            return rows > 0 ? NoContent() : NotFound();
+        }
+
         // ───────── جستجوی زنجیره‌ای حساب (کل/معین/تفصیلی) ─────────
         // برای انتخاب حساب دستمزد/سربار هر واحد از روی دیتابیس واقعی،
         // نه تایپ دستی کد — تا احتمال خطای تایپی از بین برود.
