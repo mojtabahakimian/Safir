@@ -427,6 +427,88 @@ namespace Safir.Server.Controllers
             }
         }
 
+        /// <summary>
+        /// دکمه «بازسازی نرخ» برای CHK-09 (نرخ منتشرنشده نیمه‌ساخته).
+        /// S10 و S11 را دوباره روی داده زنده اجرا می‌کند؛ چون S11 خودش
+        /// در انتها استثناهای CHK-09 را پاک و از نو می‌سازد، اگر بعد از
+        /// این فراخوانی هنوز چیزی باز مانده باشد یعنی خودِ فرمول ایراد دارد.
+        /// </summary>
+        [HttpPost("runs/{runId:int}/rebuild-rates")]
+        [Pay2Authorize(CostForms.ActRollup, Pay2Perm.Run)]
+        public async Task<IActionResult> RebuildRates(int runId)
+        {
+            if (_queue.IsRunning(runId))
+                return Conflict("این اجرا در حال انجام است؛ ابتدا آن را متوقف کنید.");
+
+            var run = await _db.DoGetDataSQLAsyncSingle<CostRunDto>(
+                "SELECT * FROM dbo.CC_Run WHERE RunId = @runId", new { runId });
+
+            if (run is null) return NotFound();
+
+            try
+            {
+                await _db.DoGetStoreProcedureSQLAsync<dynamic>(
+                    "dbo.CC_sp_S10_BalanceConversion",
+                    new { RunId = runId, Month = run.PeriodMonth,
+                          DT1 = run.DateFrom, DT2 = run.DateTo, WhatIf = false },
+                    commandTimeout: 1800);
+
+                await _db.DoGetStoreProcedureSQLAsync<dynamic>(
+                    "dbo.CC_sp_S11_PropagateRates",
+                    new { RunId = runId, Month = run.PeriodMonth, WhatIf = false },
+                    commandTimeout: 3600);
+
+                var remaining = await _db.DoGetDataSQLAsyncSingle<int>(
+                    @"SELECT COUNT(*) FROM dbo.CC_Exception
+                      WHERE RunId = @r AND RuleCode = 'CHK-09' AND IsResolved = 0",
+                    new { r = runId });
+
+                return Ok(new { remaining });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "RebuildRates failed for run {RunId}", runId);
+                return BadRequest(ex.Message);
+            }
+        }
+
+        /// <summary>
+        /// اصلاح CHK-15 (فرمول با مقدار منفی). کاربر بین «صفر کن» و «حذف کن»
+        /// انتخاب می‌کند؛ هر استثنا به یک سطر مشخص از DTL_MANF وصل است.
+        /// </summary>
+        [HttpPost("fix/negative-formula-qty")]
+        [Pay2Authorize(CostForms.ActAutoFix, Pay2Perm.Run)]
+        public async Task<ActionResult<FixNegativeFormulaQtyResultDto>> FixNegativeFormulaQty(
+            [FromBody] FixNegativeFormulaQtyRequest req)
+        {
+            if (req.Action != "zero" && req.Action != "delete")
+                return BadRequest("Action باید zero یا delete باشد.");
+
+            try
+            {
+                var rows = (await _db.DoGetDataSQLAsync<dynamic>(
+                    "EXEC dbo.CC_sp_Fix_NegativeFormulaQty @ExceptionId=@e, @Action=@a, " +
+                    "@RunId=@r, @UserName=@u, @WhatIf=@w",
+                    new { e = req.ExceptionId, a = req.Action, r = req.RunId,
+                          u = CurrentUser, w = req.WhatIf })).ToList();
+
+                var first = rows.FirstOrDefault() as IDictionary<string, object>;
+                if (first is null) return Ok(new FixNegativeFormulaQtyResultDto());
+
+                return Ok(new FixNegativeFormulaQtyResultDto
+                {
+                    Changed = Convert.ToInt32(Col(first, "تغییر_یافت") ?? 0) == 1,
+                    Status  = Col(first, "وضعیت")?.ToString() ?? ""
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "FixNegativeFormulaQty failed for exception {ExceptionId}",
+                                   req.ExceptionId);
+                return BadRequest(ex.Message);
+            }
+        }
+
         // ═══════════════════════ انحراف مصرف ═══════════════════════
 
         [HttpGet("runs/{runId:int}/variances")]
@@ -732,17 +814,249 @@ namespace Safir.Server.Controllers
                 SELECT a.*, n.NAMES AS AnbarName
                 FROM   dbo.CC_UnitAnbar a
                 LEFT   JOIN dbo.TCOD_ANBAR n ON n.CODE = a.Anbar
-                ORDER BY a.UnitId, a.SeqNo;";
+                ORDER BY a.UnitId, a.SeqNo;
+
+                SELECT   m.*,
+                         tk.NAME AS KolName, tm.NAME AS MoinName, tt.NAME AS TafsiliName
+                FROM     dbo.CC_UnitAcc m
+                LEFT     JOIN dbo.TOTA_HES  tk ON tk.NUMBER  = m.HesKol
+                LEFT     JOIN dbo.DETA_HES  tm ON tm.N_KOL   = m.HesKol AND tm.NUMBER  = m.HesMoin
+                LEFT     JOIN dbo.TDETA_HES tt ON tt.N_KOL   = m.HesKol AND tt.NUMBER  = m.HesMoin
+                                                AND tt.TNUMBER = m.HesTafsili
+                ORDER BY m.UnitId, m.HesKol;";
 
             using var grid = await _db.DoGetDataSQLAsyncMultiple(sql);
 
-            var units  = (await grid.ReadAsync<CostUnitDto>()).ToList();
-            var anbars = (await grid.ReadAsync<CostUnitAnbarDto>()).ToList();
+            var units    = (await grid.ReadAsync<CostUnitDto>()).ToList();
+            var anbars   = (await grid.ReadAsync<CostUnitAnbarDto>()).ToList();
+            var accounts = (await grid.ReadAsync<CostUnitAccDto>()).ToList();
 
             foreach (var u in units)
+            {
                 u.Anbars = anbars.Where(a => a.UnitId == u.UnitId).ToList();
+                u.Accounts = accounts.Where(a => a.UnitId == u.UnitId).ToList();
+            }
 
             return Ok(units);
+        }
+
+        [HttpPost("units")]
+        [Pay2Authorize(CostForms.Settings, Pay2Perm.Inp)]
+        public async Task<ActionResult<int>> CreateUnit([FromBody] UpsertUnitRequest req)
+        {
+            const string sql = @"
+                INSERT dbo.CC_Unit (UnitName, Depatman, SplitMode, IsActive, SeqNo)
+                OUTPUT inserted.UnitId
+                VALUES (@UnitName, @Depatman, @SplitMode, @IsActive, @SeqNo)";
+
+            return Ok(await _db.DoGetDataSQLAsyncSingle<int>(sql, req));
+        }
+
+        [HttpPut("units/{unitId:int}")]
+        [Pay2Authorize(CostForms.Settings, Pay2Perm.Upd)]
+        public async Task<IActionResult> UpdateUnit(int unitId, [FromBody] UpsertUnitRequest req)
+        {
+            const string sql = @"
+                UPDATE dbo.CC_Unit
+                   SET UnitName = @UnitName, Depatman = @Depatman, SplitMode = @SplitMode,
+                       IsActive = @IsActive, SeqNo = @SeqNo
+                 WHERE UnitId = @unitId";
+
+            var rows = await _db.DoExecuteSQLAsync(sql,
+                new { req.UnitName, req.Depatman, req.SplitMode, req.IsActive, req.SeqNo, unitId });
+
+            return rows > 0 ? NoContent() : NotFound();
+        }
+
+        [HttpDelete("units/{unitId:int}")]
+        [Pay2Authorize(CostForms.Settings, Pay2Perm.Del)]
+        public async Task<IActionResult> DeleteUnit(int unitId)
+        {
+            var used = await _db.DoGetDataSQLAsyncSingle<int>(
+                "SELECT COUNT(*) FROM dbo.CC_ConversionCost WHERE UnitId = @unitId",
+                new { unitId });
+
+            if (used > 0)
+                return BadRequest("این واحد در نتیجهٔ اجراهای قبلی استفاده شده و قابل حذف نیست — می‌توانید غیرفعالش کنید.");
+
+            try
+            {
+                await _db.ExecuteInTransactionAsync(async (conn, tx) =>
+                {
+                    await conn.ExecuteAsync(
+                        "DELETE FROM dbo.CC_UnitAcc WHERE UnitId = @unitId", new { unitId }, tx);
+                    await conn.ExecuteAsync(
+                        "DELETE FROM dbo.CC_UnitAnbar WHERE UnitId = @unitId", new { unitId }, tx);
+                    await conn.ExecuteAsync(
+                        "DELETE FROM dbo.CC_Unit WHERE UnitId = @unitId", new { unitId }, tx);
+                });
+
+                return NoContent();
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(ex.Message);
+            }
+        }
+
+        // ───────── انبارهای واحد ─────────
+
+        [HttpPost("units/{unitId:int}/warehouses")]
+        [Pay2Authorize(CostForms.Settings, Pay2Perm.Inp)]
+        public async Task<IActionResult> AddUnitWarehouse(
+            int unitId, [FromBody] UpsertUnitAnbarRequest req)
+        {
+            const string sql = @"
+                INSERT dbo.CC_UnitAnbar (UnitId, Anbar, AnbarRole, DoStockCount, SeqNo)
+                VALUES (@unitId, @Anbar, @AnbarRole, @DoStockCount, @SeqNo)";
+
+            try
+            {
+                await _db.DoExecuteSQLAsync(sql,
+                    new { unitId, req.Anbar, req.AnbarRole, req.DoStockCount, req.SeqNo });
+                return Ok();
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(ex.Message);
+            }
+        }
+
+        [HttpPut("units/{unitId:int}/warehouses/{anbar:int}")]
+        [Pay2Authorize(CostForms.Settings, Pay2Perm.Upd)]
+        public async Task<IActionResult> UpdateUnitWarehouse(
+            int unitId, int anbar, [FromBody] UpsertUnitAnbarRequest req)
+        {
+            const string sql = @"
+                UPDATE dbo.CC_UnitAnbar
+                   SET AnbarRole = @AnbarRole, DoStockCount = @DoStockCount, SeqNo = @SeqNo
+                 WHERE UnitId = @unitId AND Anbar = @anbar";
+
+            var rows = await _db.DoExecuteSQLAsync(sql,
+                new { unitId, anbar, req.AnbarRole, req.DoStockCount, req.SeqNo });
+
+            return rows > 0 ? NoContent() : NotFound();
+        }
+
+        [HttpDelete("units/{unitId:int}/warehouses/{anbar:int}")]
+        [Pay2Authorize(CostForms.Settings, Pay2Perm.Del)]
+        public async Task<IActionResult> DeleteUnitWarehouse(int unitId, int anbar)
+        {
+            var rows = await _db.DoExecuteSQLAsync(
+                "DELETE FROM dbo.CC_UnitAnbar WHERE UnitId = @unitId AND Anbar = @anbar",
+                new { unitId, anbar });
+
+            return rows > 0 ? NoContent() : NotFound();
+        }
+
+        // ───────── حساب‌های دستمزد/سربار واحد ─────────
+
+        [HttpPost("units/{unitId:int}/accounts")]
+        [Pay2Authorize(CostForms.Settings, Pay2Perm.Inp)]
+        public async Task<ActionResult<int>> AddUnitAccount(
+            int unitId, [FromBody] UpsertUnitAccRequest req)
+        {
+            const string sql = @"
+                INSERT dbo.CC_UnitAcc
+                    (UnitId, HesKol, HesMoin, HesTafsili, CostKind, Ratio, IsActive, Note)
+                OUTPUT inserted.Id
+                VALUES
+                    (@unitId, @HesKol, @HesMoin, @HesTafsili, @CostKind, @Ratio, @IsActive, @Note)";
+
+            try
+            {
+                return Ok(await _db.DoGetDataSQLAsyncSingle<int>(sql,
+                    new { unitId, req.HesKol, req.HesMoin, req.HesTafsili,
+                          req.CostKind, req.Ratio, req.IsActive, req.Note }));
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(ex.Message);
+            }
+        }
+
+        [HttpPut("units/{unitId:int}/accounts/{accId:int}")]
+        [Pay2Authorize(CostForms.Settings, Pay2Perm.Upd)]
+        public async Task<IActionResult> UpdateUnitAccount(
+            int unitId, int accId, [FromBody] UpsertUnitAccRequest req)
+        {
+            const string sql = @"
+                UPDATE dbo.CC_UnitAcc
+                   SET HesKol = @HesKol, HesMoin = @HesMoin, HesTafsili = @HesTafsili,
+                       CostKind = @CostKind, Ratio = @Ratio, IsActive = @IsActive, Note = @Note
+                 WHERE UnitId = @unitId AND Id = @accId";
+
+            try
+            {
+                var rows = await _db.DoExecuteSQLAsync(sql,
+                    new { unitId, accId, req.HesKol, req.HesMoin, req.HesTafsili,
+                          req.CostKind, req.Ratio, req.IsActive, req.Note });
+
+                return rows > 0 ? NoContent() : NotFound();
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(ex.Message);
+            }
+        }
+
+        [HttpDelete("units/{unitId:int}/accounts/{accId:int}")]
+        [Pay2Authorize(CostForms.Settings, Pay2Perm.Del)]
+        public async Task<IActionResult> DeleteUnitAccount(int unitId, int accId)
+        {
+            var rows = await _db.DoExecuteSQLAsync(
+                "DELETE FROM dbo.CC_UnitAcc WHERE UnitId = @unitId AND Id = @accId",
+                new { unitId, accId });
+
+            return rows > 0 ? NoContent() : NotFound();
+        }
+
+        // ───────── جستجوی زنجیره‌ای حساب (کل/معین/تفصیلی) ─────────
+        // برای انتخاب حساب دستمزد/سربار هر واحد از روی دیتابیس واقعی،
+        // نه تایپ دستی کد — تا احتمال خطای تایپی از بین برود.
+
+        [HttpGet("accounts/kol")]
+        [Pay2Authorize(CostForms.Settings, Pay2Perm.See)]
+        public async Task<ActionResult<IEnumerable<AccountLookupDto>>> SearchKol(
+            [FromQuery] string? q = null)
+        {
+            const string sql = @"
+                SELECT TOP 30 NUMBER AS Code, NAME AS Name
+                FROM   dbo.TOTA_HES
+                WHERE  @q IS NULL OR CAST(NUMBER AS NVARCHAR(20)) LIKE @q + '%' OR NAME LIKE '%' + @q + '%'
+                ORDER BY NUMBER";
+
+            return Ok(await _db.DoGetDataSQLAsync<AccountLookupDto>(sql, new { q }));
+        }
+
+        [HttpGet("accounts/moin")]
+        [Pay2Authorize(CostForms.Settings, Pay2Perm.See)]
+        public async Task<ActionResult<IEnumerable<AccountLookupDto>>> SearchMoin(
+            [FromQuery] int kol, [FromQuery] string? q = null)
+        {
+            const string sql = @"
+                SELECT TOP 30 NUMBER AS Code, NAME AS Name
+                FROM   dbo.DETA_HES
+                WHERE  N_KOL = @kol
+                  AND  (@q IS NULL OR CAST(NUMBER AS NVARCHAR(20)) LIKE @q + '%' OR NAME LIKE '%' + @q + '%')
+                ORDER BY NUMBER";
+
+            return Ok(await _db.DoGetDataSQLAsync<AccountLookupDto>(sql, new { kol, q }));
+        }
+
+        [HttpGet("accounts/tafsili")]
+        [Pay2Authorize(CostForms.Settings, Pay2Perm.See)]
+        public async Task<ActionResult<IEnumerable<AccountLookupDto>>> SearchTafsili(
+            [FromQuery] int kol, [FromQuery] int moin, [FromQuery] string? q = null)
+        {
+            const string sql = @"
+                SELECT TOP 30 TNUMBER AS Code, NAME AS Name
+                FROM   dbo.TDETA_HES
+                WHERE  N_KOL = @kol AND NUMBER = @moin
+                  AND  (@q IS NULL OR CAST(TNUMBER AS NVARCHAR(20)) LIKE @q + '%' OR NAME LIKE '%' + @q + '%')
+                ORDER BY TNUMBER";
+
+            return Ok(await _db.DoGetDataSQLAsync<AccountLookupDto>(sql, new { kol, moin, q }));
         }
     }
 }

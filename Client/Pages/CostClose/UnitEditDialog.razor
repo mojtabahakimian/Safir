@@ -1,0 +1,74 @@
+@using Safir.Shared.Models.CostClose
+
+<MudDialog>
+    <DialogContent>
+        <div dir="rtl" style="min-width:380px">
+            <MudTextField @bind-Value="_name" Label="نام واحد" Dense
+                          Variant="Variant.Outlined" Class="mb-3" />
+
+            <MudNumericField T="int?" @bind-Value="_depatman" Label="دپارتمان (اختیاری)"
+                              Dense Variant="Variant.Outlined" Class="mb-3" />
+
+            <MudRadioGroup T="byte" @bind-Value="_splitMode" Class="mb-3">
+                <MudRadio T="byte" Value="@((byte)1)" Dense>
+                    یک ضریب برای کل هزینه تبدیل
+                </MudRadio>
+                <MudRadio T="byte" Value="@((byte)2)" Dense>
+                    دو ضریب مجزا (دستمزد و سربار جدا)
+                </MudRadio>
+            </MudRadioGroup>
+
+            <MudSwitch T="bool" @bind-Value="_isActive" Label="فعال" Color="Color.Primary"
+                       Class="mb-3" />
+
+            <MudNumericField T="short" @bind-Value="_seqNo" Label="ترتیب نمایش"
+                              Dense Variant="Variant.Outlined" />
+        </div>
+    </DialogContent>
+
+    <DialogActions>
+        <MudButton OnClick="Cancel">انصراف</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled"
+                   Disabled="@string.IsNullOrWhiteSpace(_name)" OnClick="Save">
+            ذخیره
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private MudDialogInstance MudDialog { get; set; } = default!;
+    [Parameter] public CostUnitDto? Existing { get; set; }
+
+    private string _name = "";
+    private int?   _depatman;
+    private byte   _splitMode = 1;
+    private bool   _isActive  = true;
+    private short  _seqNo     = 1;
+
+    protected override void OnInitialized()
+    {
+        if (Existing is not null)
+        {
+            _name      = Existing.UnitName;
+            _depatman  = Existing.Depatman;
+            _splitMode = Existing.SplitMode;
+            _isActive  = Existing.IsActive;
+            _seqNo     = Existing.SeqNo;
+        }
+    }
+
+    private void Cancel() => MudDialog.Cancel();
+
+    private void Save()
+    {
+        var req = new UpsertUnitRequest
+        {
+            UnitName  = _name.Trim(),
+            Depatman  = _depatman,
+            SplitMode = _splitMode,
+            IsActive  = _isActive,
+            SeqNo     = _seqNo
+        };
+        MudDialog.Close(DialogResult.Ok(req));
+    }
+}

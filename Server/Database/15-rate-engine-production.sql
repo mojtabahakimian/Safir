@@ -98,16 +98,23 @@ BEGIN
         ---- ۳) واقعي از تراز، طبق نگاشت قابل ويرايش کاربر
         DECLARE @actWage FLOAT, @actOh FLOAT;
 
+        -- CROSS APPLY نه JOIN روي جمعِ از‌قبل‌گروه‌بندی‌شده، چون هر سطر
+        -- CC_UnitAcc ممکن است سطح معین/تفصیلی متفاوتی مشخص کرده باشد؛
+        -- خالی‌بودن هرکدام یعنی «همهٔ آن سطح» (نگاشت گسترده‌تر، مثل قبل).
         SELECT  @actWage = ISNULL(SUM(CASE WHEN m.CostKind = 1
                                            THEN t.Amount * m.Ratio ELSE 0 END), 0),
                 @actOh   = ISNULL(SUM(CASE WHEN m.CostKind = 2
                                            THEN t.Amount * m.Ratio ELSE 0 END), 0)
         FROM    dbo.CC_UnitAcc m
-        JOIN   (SELECT d.HES_K, SUM(d.BED) - SUM(d.BES) AS Amount
-                FROM   dbo.DEED_DTL d
-                JOIN   dbo.DEED_HED hd ON hd.N_S = d.N_S
-                WHERE  hd.DATE_S BETWEEN @DT1 AND @DT2
-                GROUP BY d.HES_K) t ON t.HES_K = m.HesKol
+        CROSS   APPLY (
+                    SELECT SUM(d.BED) - SUM(d.BES) AS Amount
+                    FROM   dbo.DEED_DTL d
+                    JOIN   dbo.DEED_HED hd ON hd.N_S = d.N_S
+                    WHERE  hd.DATE_S BETWEEN @DT1 AND @DT2
+                      AND  d.HES_K = m.HesKol
+                      AND  (m.HesMoin    IS NULL OR d.HES_M = m.HesMoin)
+                      AND  (m.HesTafsili IS NULL OR d.HES_T = m.HesTafsili)
+                ) t
         WHERE   m.IsActive = 1 AND m.UnitId = @UnitId;
 
         DECLARE @actTotal FLOAT = @actWage + @actOh;
@@ -137,7 +144,7 @@ BEGIN
         VALUES
             (@RunId, @UnitId, 0, @absTotal, @absWip, @actTotal,
              CASE WHEN @absTotal <> 0 THEN @actTotal / @absTotal ELSE 1 END,
-             (SELECT m.HesKol, m.CostKind, m.Ratio
+             (SELECT m.HesKol, m.HesMoin, m.HesTafsili, m.CostKind, m.Ratio
               FROM   dbo.CC_UnitAcc m
               WHERE  m.UnitId = @UnitId AND m.IsActive = 1
               FOR JSON PATH)),

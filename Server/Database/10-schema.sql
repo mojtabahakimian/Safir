@@ -182,15 +182,37 @@ GO
 
 IF OBJECT_ID('dbo.CC_UnitAcc','U') IS NULL
 CREATE TABLE dbo.CC_UnitAcc (
-    Id       INT IDENTITY(1,1) PRIMARY KEY,
-    UnitId   INT           NOT NULL REFERENCES dbo.CC_Unit(UnitId),
-    HesKol   INT           NOT NULL,
-    CostKind TINYINT       NOT NULL,          -- 1=دستمزد 2=سربار
-    Ratio    DECIMAL(9,6)  NOT NULL DEFAULT 1,
-    IsActive BIT           NOT NULL DEFAULT 1,
-    Note     NVARCHAR(200) NULL,
-    CONSTRAINT UQ_CC_UnitAcc UNIQUE (UnitId, HesKol)
+    Id         INT           IDENTITY(1,1) PRIMARY KEY,
+    UnitId     INT           NOT NULL REFERENCES dbo.CC_Unit(UnitId),
+    HesKol     INT           NOT NULL,
+    HesMoin    INT           NULL,   -- خالی = همه معین‌های این کل
+    HesTafsili INT           NULL,   -- خالی = همه تفصیلی‌های همان معین
+    CostKind   TINYINT       NOT NULL,          -- 1=دستمزد 2=سربار
+    Ratio      DECIMAL(9,6)  NOT NULL DEFAULT 1,
+    IsActive   BIT           NOT NULL DEFAULT 1,
+    Note       NVARCHAR(200) NULL,
+    CONSTRAINT UQ_CC_UnitAcc UNIQUE (UnitId, HesKol, HesMoin, HesTafsili)
 );
+GO
+
+-- روی نصب‌های قدیمی‌تر که این جدول را بدون سطح معین/تفصیلی دارند
+IF COL_LENGTH('dbo.CC_UnitAcc','HesMoin') IS NULL
+    ALTER TABLE dbo.CC_UnitAcc ADD HesMoin INT NULL;
+GO
+IF COL_LENGTH('dbo.CC_UnitAcc','HesTafsili') IS NULL
+    ALTER TABLE dbo.CC_UnitAcc ADD HesTafsili INT NULL;
+GO
+IF EXISTS (SELECT 1 FROM sys.key_constraints
+           WHERE name = 'UQ_CC_UnitAcc' AND parent_object_id = OBJECT_ID('dbo.CC_UnitAcc'))
+   AND NOT EXISTS (SELECT 1 FROM sys.index_columns ic
+                   JOIN sys.indexes i ON i.object_id = ic.object_id AND i.index_id = ic.index_id
+                   JOIN sys.columns c ON c.object_id = ic.object_id AND c.column_id = ic.column_id
+                   WHERE i.name = 'UQ_CC_UnitAcc' AND c.name = 'HesMoin')
+BEGIN
+    ALTER TABLE dbo.CC_UnitAcc DROP CONSTRAINT UQ_CC_UnitAcc;
+    ALTER TABLE dbo.CC_UnitAcc ADD CONSTRAINT UQ_CC_UnitAcc
+        UNIQUE (UnitId, HesKol, HesMoin, HesTafsili);
+END
 GO
 
 /* ───────────────────────── نتایج محاسبه ───────────────────────── */

@@ -9,7 +9,10 @@
 
 <div class="cc-page" dir="rtl">
 
-    <MudText Typo="Typo.h6" Class="mb-3">هزینه تبدیل</MudText>
+    <div class="cc-toolbar">
+        <CostBackButton />
+        <MudText Typo="Typo.h6">هزینه تبدیل</MudText>
+    </div>
 
     @if (_busy) { <MudProgressLinear Indeterminate Color="Color.Primary" Class="mb-3" /> }
 

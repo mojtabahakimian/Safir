@@ -264,6 +264,20 @@ BEGIN
                         WHERE k.code = CAST(d.CODE AS BIGINT)
                           AND k.TAG = 10 AND k.MM = @Month AND k.MEGHk <> 0);
 
+    ---- CHK-15 : فرمول با مقدار منفی
+    -- مقدار منفی در فرمول یعنی مانده حساب کالای در جریان ساخت (۷۵۱) هرگز
+    -- متوازن نمی‌شود (CHK-07)؛ چون خروج مواد از روی همین عدد بازتولید
+    -- می‌شود. کد سطر (DTL_MANF.id) در DocNumber ذخیره می‌شود تا اصلاح
+    -- خودکار دقیقاً همان سطر را هدف بگیرد.
+    INSERT dbo.CC_Exception
+        (RunId, StepCode, RuleCode, ExType, Severity, Code, DocNumber, Amount, Description)
+    SELECT  @RunId, 'S00', 'CHK-15', 17, 2, CAST(d.CODE AS BIGINT),
+            CAST(d.id AS INT), d.MEGH,
+            CONCAT(N'فرمول ', h.FNUMB, N' مقدار منفی دارد: ', d.MEGH)
+    FROM    dbo.DTL_MANF  d
+    JOIN    dbo.HEAD_MANF h ON h.FNUMB = d.FNUMB AND h.GHEYMAT = @Month
+    WHERE   d.MEGH < 0 OR d.MEGHk < 0;
+
     ---- CHK-06 : حلقه در ساختار فرمول
     IF OBJECT_ID('tempdb..#E') IS NOT NULL DROP TABLE #E;
     SELECT DISTINCT CAST(h.CODE AS BIGINT) AS P, CAST(d.CODE AS BIGINT) AS C
@@ -298,11 +312,14 @@ BEGIN
     DECLARE @th FLOAT =
         ISNULL((SELECT Threshold FROM dbo.CC_CheckRule WHERE RuleCode='CHK-07'), 0.001);
 
+    -- DocNumber عمداً پر نمی‌شود: این قاعده مانده یک کالا را در کل بازه بررسی
+    -- می‌کند، نه یک سند مشخص را؛ ستون HES_M (کد معین حسابداری) شمارهٔ برگهٔ
+    -- تولید نیست و نمایشش به کاربر گمراه‌کننده بود.
     INSERT dbo.CC_Exception
-        (RunId, StepCode, RuleCode, ExType, Severity, Code, DocNumber, Amount, Description)
+        (RunId, StepCode, RuleCode, ExType, Severity, Code, Amount, Description)
     SELECT  @RunId, 'S00', 'CHK-07', 13,
             CASE WHEN SUM(d.BED) = 0 OR SUM(d.BES) = 0 THEN 2 ELSE 1 END,
-            TRY_CAST(d.HES_T AS BIGINT), TRY_CAST(d.HES_M AS INT),
+            TRY_CAST(d.HES_T AS BIGINT),
             SUM(d.BED) - SUM(d.BES),
             CASE WHEN SUM(d.BED) = 0
                  THEN N'ماده با توليد خارج شده ولي با حواله وارد نشده'

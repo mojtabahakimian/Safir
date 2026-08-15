@@ -1,0 +1,79 @@
+@using Safir.Shared.Models.CostClose
+@using Safir.Shared.Models.Kala
+@using Safir.Client.Services
+@inject LookupApiService Lookup
+
+<MudDialog>
+    <DialogContent>
+        <div dir="rtl" style="min-width:380px">
+            <MudSelect T="int" @bind-Value="_anbar" Label="انبار" Dense
+                       Variant="Variant.Outlined" Class="mb-3"
+                       Disabled="@(Existing is not null)">
+                @foreach (var a in _anbarha)
+                {
+                    <MudSelectItem T="int" Value="@a.CODE">@a.CODE - @a.NAMES</MudSelectItem>
+                }
+            </MudSelect>
+
+            <MudSelect T="byte" @bind-Value="_anbarRole" Label="نقش انبار" Dense
+                       Variant="Variant.Outlined" Class="mb-3">
+                <MudSelectItem T="byte" Value="@((byte)1)">مبنای انحراف</MudSelectItem>
+                <MudSelectItem T="byte" Value="@((byte)2)">مواد اولیه</MudSelectItem>
+                <MudSelectItem T="byte" Value="@((byte)3)">محصول</MudSelectItem>
+                <MudSelectItem T="byte" Value="@((byte)4)">سایر</MudSelectItem>
+            </MudSelect>
+
+            <MudSwitch T="bool" @bind-Value="_doStockCount" Label="مشمول انبارگردانی" Color="Color.Primary"
+                       Class="mb-3" />
+
+            <MudNumericField T="short" @bind-Value="_seqNo" Label="ترتیب نمایش"
+                              Dense Variant="Variant.Outlined" />
+        </div>
+    </DialogContent>
+
+    <DialogActions>
+        <MudButton OnClick="Cancel">انصراف</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled"
+                   Disabled="@(_anbar <= 0)" OnClick="Save">
+            ذخیره
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private MudDialogInstance MudDialog { get; set; } = default!;
+    [Parameter] public CostUnitAnbarDto? Existing { get; set; }
+
+    private List<TCOD_ANBAR> _anbarha = new();
+    private int   _anbar;
+    private byte  _anbarRole    = 2;
+    private bool  _doStockCount = true;
+    private short _seqNo        = 1;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _anbarha = await Lookup.GetAnbarhaAsync() ?? new();
+
+        if (Existing is not null)
+        {
+            _anbar        = Existing.Anbar;
+            _anbarRole    = Existing.AnbarRole;
+            _doStockCount = Existing.DoStockCount;
+            _seqNo        = Existing.SeqNo;
+        }
+    }
+
+    private void Cancel() => MudDialog.Cancel();
+
+    private void Save()
+    {
+        var req = new UpsertUnitAnbarRequest
+        {
+            Anbar        = _anbar,
+            AnbarRole    = _anbarRole,
+            DoStockCount = _doStockCount,
+            SeqNo        = _seqNo
+        };
+        MudDialog.Close(DialogResult.Ok(req));
+    }
+}

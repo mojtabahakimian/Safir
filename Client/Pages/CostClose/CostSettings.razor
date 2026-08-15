@@ -5,12 +5,16 @@
 @inject CostCloseApiService Api
 @inject Pay2AccessApiService Access
 @inject ISnackbar Snackbar
+@inject IDialogService Dialog
 
 <PageTitle>تنظیمات بهای تمام‌شده</PageTitle>
 
 <div class="cc-page" dir="rtl">
 
-    <MudText Typo="Typo.h6" Class="mb-3">تنظیمات</MudText>
+    <div class="cc-toolbar">
+        <CostBackButton />
+        <MudText Typo="Typo.h6">تنظیمات</MudText>
+    </div>
 
     @if (_busy) { <MudProgressLinear Indeterminate Color="Color.Primary" Class="mb-3" /> }
 
@@ -27,6 +31,15 @@
                 هر واحد باید دقیقاً یک انبار با نقش «مبنای انحراف» داشته باشد.
                 مانده آن انبار، انحراف مصرف همان واحد است.
             </MudAlert>
+
+            @if (Access.CanInp(CostForms.Settings))
+            {
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Small"
+                           StartIcon="@Icons.Material.Filled.Add" Class="mb-3"
+                           OnClick="OpenAddUnit">
+                    افزودن واحد
+                </MudButton>
+            }
 
             @foreach (var u in _units)
             {
@@ -56,14 +69,27 @@
                                 انبار مبنای انحراف ندارد
                             </MudChip>
                         }
+
+                        @if (Access.CanUpd(CostForms.Settings))
+                        {
+                            <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small"
+                                           OnClick="@(() => OpenEditUnit(u))" />
+                        }
+                        @if (Access.CanDel(CostForms.Settings))
+                        {
+                            <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small"
+                                           Color="Color.Error" OnClick="@(() => DeleteUnit(u))" />
+                        }
                     </div>
 
+                    <MudText Typo="Typo.caption" Class="cc-hint mt-2">انبارها</MudText>
                     <MudTable Items="u.Anbars" Dense Elevation="0" T="CostUnitAnbarDto">
                         <HeaderContent>
                             <MudTh Style="width:80px">انبار</MudTh>
                             <MudTh>نام</MudTh>
                             <MudTh Style="width:150px">نقش</MudTh>
                             <MudTh Style="width:120px">انبارگردانی</MudTh>
+                            <MudTh Style="width:90px"></MudTh>
                         </HeaderContent>
 
                         <RowTemplate>
@@ -84,8 +110,98 @@
                                          Color="@(context.DoStockCount ? Color.Success : Color.Default)"
                                          Size="Size.Small" />
                             </MudTd>
+
+                            <MudTd>
+                                @if (Access.CanUpd(CostForms.Settings))
+                                {
+                                    <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small"
+                                                   OnClick="@(() => OpenEditAnbar(u, context))" />
+                                }
+                                @if (Access.CanDel(CostForms.Settings))
+                                {
+                                    <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small"
+                                                   Color="Color.Error" OnClick="@(() => DeleteAnbar(u, context))" />
+                                }
+                            </MudTd>
                         </RowTemplate>
                     </MudTable>
+
+                    @if (Access.CanInp(CostForms.Settings))
+                    {
+                        <MudButton Variant="Variant.Text" Size="Size.Small"
+                                   StartIcon="@Icons.Material.Filled.Add" Class="mt-1"
+                                   OnClick="@(() => OpenAddAnbar(u))">
+                            افزودن انبار
+                        </MudButton>
+                    }
+
+                    <MudText Typo="Typo.caption" Class="cc-hint mt-3">حساب‌های دستمزد و سربار</MudText>
+                    <MudTable Items="u.Accounts" Dense Elevation="0" T="CostUnitAccDto">
+                        <HeaderContent>
+                            <MudTh>کل</MudTh>
+                            <MudTh>معین</MudTh>
+                            <MudTh>تفصیلی</MudTh>
+                            <MudTh Style="width:90px">نوع</MudTh>
+                            <MudTh Style="width:80px">ضریب</MudTh>
+                            <MudTh Style="width:70px">فعال</MudTh>
+                            <MudTh>یادداشت</MudTh>
+                            <MudTh Style="width:90px"></MudTh>
+                        </HeaderContent>
+
+                        <RowTemplate>
+                            <MudTd><span class="cc-num">@context.HesKol</span> @(context.KolName ?? "")</MudTd>
+                            <MudTd>
+                                @if (context.HesMoin is not null)
+                                {
+                                    <span><span class="cc-num">@context.HesMoin</span> @(context.MoinName ?? "")</span>
+                                }
+                                else { <span class="cc-hint">همه</span> }
+                            </MudTd>
+                            <MudTd>
+                                @if (context.HesTafsili is not null)
+                                {
+                                    <span><span class="cc-num">@context.HesTafsili</span> @(context.TafsiliName ?? "")</span>
+                                }
+                                else { <span class="cc-hint">همه</span> }
+                            </MudTd>
+                            <MudTd>
+                                <MudChip T="string" Size="Size.Small" Variant="Variant.Text"
+                                         Color="@(context.CostKind == 1 ? Color.Info : Color.Warning)">
+                                    @context.CostKindText
+                                </MudChip>
+                            </MudTd>
+                            <MudTd><span class="cc-num">@context.Ratio</span></MudTd>
+                            <MudTd>
+                                <MudIcon Icon="@(context.IsActive
+                                                 ? Icons.Material.Filled.CheckCircle
+                                                 : Icons.Material.Filled.RemoveCircleOutline)"
+                                         Color="@(context.IsActive ? Color.Success : Color.Default)"
+                                         Size="Size.Small" />
+                            </MudTd>
+                            <MudTd>@(context.Note ?? "—")</MudTd>
+                            <MudTd>
+                                @if (Access.CanUpd(CostForms.Settings))
+                                {
+                                    <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small"
+                                                   OnClick="@(() => OpenEditAcc(u, context))" />
+                                }
+                                @if (Access.CanDel(CostForms.Settings))
+                                {
+                                    <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small"
+                                                   Color="Color.Error" OnClick="@(() => DeleteAcc(u, context))" />
+                                }
+                            </MudTd>
+                        </RowTemplate>
+                    </MudTable>
+
+                    @if (Access.CanInp(CostForms.Settings))
+                    {
+                        <MudButton Variant="Variant.Text" Size="Size.Small"
+                                   StartIcon="@Icons.Material.Filled.Add" Class="mt-1"
+                                   OnClick="@(() => OpenAddAcc(u))">
+                            افزودن حساب
+                        </MudButton>
+                    }
                 </MudPaper>
             }
         </MudTabPanel>
@@ -173,6 +289,129 @@
         }
         catch (Exception ex) { _loadError = FriendlyError(ex); }
         finally { _busy = false; }
+    }
+
+    private async Task ReloadUnits()
+    {
+        try { _units = await Api.GetUnitsAsync(); }
+        catch (Exception ex) { Snackbar.Add(FriendlyError(ex), Severity.Error); }
+    }
+
+    // ───────── واحد ─────────
+
+    private async Task OpenAddUnit()
+    {
+        var dlg = await Dialog.ShowAsync<UnitEditDialog>("افزودن واحد", new DialogParameters());
+        var res = await dlg.Result;
+        if (res is { Canceled: false, Data: UpsertUnitRequest req })
+        {
+            var (ok, _, err) = await Api.CreateUnitAsync(req);
+            if (ok) { Snackbar.Add("واحد افزوده شد.", Severity.Success); await ReloadUnits(); }
+            else Snackbar.Add(err ?? "افزودن واحد ناموفق بود.", Severity.Error);
+        }
+    }
+
+    private async Task OpenEditUnit(CostUnitDto u)
+    {
+        var p = new DialogParameters { ["Existing"] = u };
+        var dlg = await Dialog.ShowAsync<UnitEditDialog>("ویرایش واحد", p);
+        var res = await dlg.Result;
+        if (res is { Canceled: false, Data: UpsertUnitRequest req })
+        {
+            var (ok, err) = await Api.UpdateUnitAsync(u.UnitId, req);
+            if (ok) { Snackbar.Add("واحد به‌روزرسانی شد.", Severity.Success); await ReloadUnits(); }
+            else Snackbar.Add(err ?? "به‌روزرسانی واحد ناموفق بود.", Severity.Error);
+        }
+    }
+
+    private async Task DeleteUnit(CostUnitDto u)
+    {
+        var ok = await Dialog.ShowMessageBox(
+            "حذف واحد", $"واحد «{u.UnitName}» حذف شود؟ در صورت استفاده در اجراهای قبلی، حذف رد می‌شود.",
+            yesText: "حذف", cancelText: "انصراف");
+        if (ok != true) return;
+
+        var (done, err) = await Api.DeleteUnitAsync(u.UnitId);
+        if (done) { Snackbar.Add("واحد حذف شد.", Severity.Success); await ReloadUnits(); }
+        else Snackbar.Add(err ?? "حذف واحد ناموفق بود.", Severity.Error);
+    }
+
+    // ───────── انبار واحد ─────────
+
+    private async Task OpenAddAnbar(CostUnitDto u)
+    {
+        var dlg = await Dialog.ShowAsync<UnitAnbarEditDialog>("افزودن انبار", new DialogParameters());
+        var res = await dlg.Result;
+        if (res is { Canceled: false, Data: UpsertUnitAnbarRequest req })
+        {
+            var (ok, err) = await Api.AddUnitWarehouseAsync(u.UnitId, req);
+            if (ok) { Snackbar.Add("انبار افزوده شد.", Severity.Success); await ReloadUnits(); }
+            else Snackbar.Add(err ?? "افزودن انبار ناموفق بود.", Severity.Error);
+        }
+    }
+
+    private async Task OpenEditAnbar(CostUnitDto u, CostUnitAnbarDto a)
+    {
+        var p = new DialogParameters { ["Existing"] = a };
+        var dlg = await Dialog.ShowAsync<UnitAnbarEditDialog>("ویرایش انبار", p);
+        var res = await dlg.Result;
+        if (res is { Canceled: false, Data: UpsertUnitAnbarRequest req })
+        {
+            var (ok, err) = await Api.UpdateUnitWarehouseAsync(u.UnitId, a.Anbar, req);
+            if (ok) { Snackbar.Add("انبار به‌روزرسانی شد.", Severity.Success); await ReloadUnits(); }
+            else Snackbar.Add(err ?? "به‌روزرسانی انبار ناموفق بود.", Severity.Error);
+        }
+    }
+
+    private async Task DeleteAnbar(CostUnitDto u, CostUnitAnbarDto a)
+    {
+        var ok = await Dialog.ShowMessageBox(
+            "حذف انبار", $"انبار «{a.AnbarName ?? a.Anbar.ToString()}» از واحد «{u.UnitName}» حذف شود؟",
+            yesText: "حذف", cancelText: "انصراف");
+        if (ok != true) return;
+
+        var (done, err) = await Api.DeleteUnitWarehouseAsync(u.UnitId, a.Anbar);
+        if (done) { Snackbar.Add("انبار حذف شد.", Severity.Success); await ReloadUnits(); }
+        else Snackbar.Add(err ?? "حذف انبار ناموفق بود.", Severity.Error);
+    }
+
+    // ───────── حساب دستمزد/سربار واحد ─────────
+
+    private async Task OpenAddAcc(CostUnitDto u)
+    {
+        var dlg = await Dialog.ShowAsync<UnitAccEditDialog>("افزودن حساب", new DialogParameters());
+        var res = await dlg.Result;
+        if (res is { Canceled: false, Data: UpsertUnitAccRequest req })
+        {
+            var (ok, err) = await Api.AddUnitAccountAsync(u.UnitId, req);
+            if (ok) { Snackbar.Add("حساب افزوده شد.", Severity.Success); await ReloadUnits(); }
+            else Snackbar.Add(err ?? "افزودن حساب ناموفق بود.", Severity.Error);
+        }
+    }
+
+    private async Task OpenEditAcc(CostUnitDto u, CostUnitAccDto acc)
+    {
+        var p = new DialogParameters { ["Existing"] = acc };
+        var dlg = await Dialog.ShowAsync<UnitAccEditDialog>("ویرایش حساب", p);
+        var res = await dlg.Result;
+        if (res is { Canceled: false, Data: UpsertUnitAccRequest req })
+        {
+            var (ok, err) = await Api.UpdateUnitAccountAsync(u.UnitId, acc.Id, req);
+            if (ok) { Snackbar.Add("حساب به‌روزرسانی شد.", Severity.Success); await ReloadUnits(); }
+            else Snackbar.Add(err ?? "به‌روزرسانی حساب ناموفق بود.", Severity.Error);
+        }
+    }
+
+    private async Task DeleteAcc(CostUnitDto u, CostUnitAccDto acc)
+    {
+        var ok = await Dialog.ShowMessageBox(
+            "حذف حساب", $"حساب «{acc.HesKol}» از واحد «{u.UnitName}» حذف شود؟",
+            yesText: "حذف", cancelText: "انصراف");
+        if (ok != true) return;
+
+        var (done, err) = await Api.DeleteUnitAccountAsync(u.UnitId, acc.Id);
+        if (done) { Snackbar.Add("حساب حذف شد.", Severity.Success); await ReloadUnits(); }
+        else Snackbar.Add(err ?? "حذف حساب ناموفق بود.", Severity.Error);
     }
 
     private static string FriendlyError(Exception ex)

@@ -1,0 +1,13 @@
+@* دکمه بازگشت یکسان برای همه صفحه‌های بهای تمام‌شده — یک صفحه عقب،
+   دقیقاً مثل دکمه Back مرورگر (نه یک مقصد ثابت)، چون کاربر ممکن است
+   از داشبورد، از یک اجرا، یا از یک لینک مستقیم وارد شده باشد. *@
+@inject IJSRuntime JS
+
+<MudTooltip Text="بازگشت">
+    <MudIconButton Icon="@Icons.Material.Filled.ArrowForward" Size="Size.Small"
+                   OnClick="GoBack" />
+</MudTooltip>
+
+@code {
+    private async Task GoBack() => await JS.InvokeVoidAsync("history.back");
+}

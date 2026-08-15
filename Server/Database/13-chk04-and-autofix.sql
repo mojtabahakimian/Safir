@@ -249,6 +249,107 @@ END
 GO
 
 
+/* ═══════════════════════════════════════════════════════════════════
+   CHK-15 — اصلاح فرمول با مقدار منفی
+
+   @ExceptionId الزامی است: هر سطر فرمول منفی جدا اصلاح می‌شود، نه گروهی،
+   چون هر سطر می‌تواند تصمیم متفاوتی بخواهد (صفر یا حذف). شناسه سطر
+   (DTL_MANF.id) در CC_Exception.DocNumber ذخیره شده — نگاه کنید به
+   CC_sp_S00_Preflight بخش CHK-15.
+
+   @Action = 'zero'   → مقدار (MEGH/MEGHk/MABLK/SMABL) صفر می‌شود، سطر می‌ماند
+   @Action = 'delete' → کل سطر فرمول حذف می‌شود
+
+   @WhatIf = 1 پیش‌فرض است: فقط نشان می‌دهد چه چیزی تغییر خواهد کرد.
+   ═══════════════════════════════════════════════════════════════════ */
+CREATE OR ALTER PROCEDURE dbo.CC_sp_Fix_NegativeFormulaQty
+    @ExceptionId BIGINT,
+    @Action      VARCHAR(10),
+    @RunId       INT           = NULL,
+    @UserName    NVARCHAR(50)  = N'system',
+    @WhatIf      BIT           = 1
+AS
+BEGIN
+    SET NOCOUNT ON;
+    SET XACT_ABORT ON;
+
+    IF @Action NOT IN ('zero', 'delete')
+    BEGIN
+        RAISERROR(N'مقدار @Action باید zero یا delete باشد.', 16, 1);
+        RETURN;
+    END
+
+    DECLARE @DtlId BIGINT, @Code BIGINT;
+
+    SELECT  @DtlId = e.DocNumber, @Code = e.Code
+    FROM    dbo.CC_Exception e
+    WHERE   e.ExceptionId = @ExceptionId AND e.RuleCode = 'CHK-15';
+
+    IF @DtlId IS NULL
+    BEGIN
+        RAISERROR(N'این استثنا یافت نشد یا مربوط به CHK-15 نیست.', 16, 1);
+        RETURN;
+    END
+
+    IF NOT EXISTS (SELECT 1 FROM dbo.DTL_MANF WHERE id = @DtlId)
+    BEGIN
+        -- سطر قبلاً حذف يا اصلاح شده — فقط استثنا را ببند
+        IF @WhatIf = 0
+            UPDATE dbo.CC_Exception
+               SET IsResolved = 1, ResolvedBy = @UserName, ResolvedAtUtc = SYSUTCDATETIME(),
+                   ResolutionNote = N'سطر فرمول از قبل اصلاح شده بود'
+             WHERE ExceptionId = @ExceptionId;
+
+        SELECT 0 AS تغيير_يافت, N'سطر فرمول از قبل اصلاح يا حذف شده بود' AS وضعيت;
+        RETURN;
+    END
+
+    IF @WhatIf = 1
+    BEGIN
+        SELECT  d.id AS شناسه_سطر, h.FNUMB AS شماره_فرمول, d.CODE AS کد_ماده,
+                d.MEGH AS مقدار_فعلي, d.MEGHk AS مقدار_کوچک_فعلي,
+                CASE @Action WHEN 'zero' THEN N'مقدار صفر مي‌شود'
+                             ELSE N'کل سطر فرمول حذف مي‌شود' END AS عمليات
+        FROM    dbo.DTL_MANF d
+        JOIN    dbo.HEAD_MANF h ON h.FNUMB = d.FNUMB
+        WHERE   d.id = @DtlId;
+        RETURN;
+    END
+
+    BEGIN TRAN;
+
+    DECLARE @Fnumb INT;
+    SELECT @Fnumb = FNUMB FROM dbo.DTL_MANF WHERE id = @DtlId;
+
+    IF @Action = 'zero'
+        UPDATE dbo.DTL_MANF
+           SET MEGH = 0, MEGHk = 0, MABLK = 0, SMABL = 0
+         WHERE id = @DtlId;
+    ELSE
+        DELETE dbo.DTL_MANF WHERE id = @DtlId;
+
+    UPDATE dbo.CC_Exception
+       SET IsResolved = 1, ResolvedBy = @UserName, ResolvedAtUtc = SYSUTCDATETIME(),
+           ResolutionNote = CASE @Action WHEN 'zero' THEN N'مقدار سطر فرمول صفر شد'
+                                          ELSE N'سطر فرمول حذف شد' END
+     WHERE ExceptionId = @ExceptionId;
+
+    INSERT dbo.CC_RunLog (RunId, StepCode, Severity, Message)
+    VALUES (@RunId, 'S00', 1,
+            CONCAT(N'اصلاح فرمول با مقدار منفي — فرمول ', @Fnumb, N', کالا ', @Code,
+                   CASE @Action WHEN 'zero' THEN N' — مقدار صفر شد' ELSE N' — سطر حذف شد' END,
+                   N' توسط ', @UserName));
+
+    IF @RunId IS NOT NULL
+        UPDATE dbo.CC_Run SET FormulasDirty = 1 WHERE RunId = @RunId;
+
+    COMMIT;
+
+    SELECT 1 AS تغيير_يافت, N'انجام شد' AS وضعيت;
+END
+GO
+
+
 PRINT N'CHK-04 و اصلاح خودکار آماده شد.';
 
 /* نمونه:
