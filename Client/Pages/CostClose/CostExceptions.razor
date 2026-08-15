@@ -140,6 +140,26 @@
                         </MudTooltip>
                     }
                 }
+
+                @if (g.Key.RuleCode == "CHK-08" && Access.CanRun(CostForms.ActAutoFix))
+                {
+                    @if (RunId is not null)
+                    {
+                        <MudButton Size="Size.Small" Variant="Variant.Outlined" Color="Color.Primary"
+                                   StartIcon="@Icons.Material.Filled.ReceiptLong"
+                                   OnClick="OpenRebuildMaterialIssueDocs">
+                            بازسازی سند حواله خروج مواد
+                        </MudButton>
+                    }
+                    else
+                    {
+                        <MudTooltip Text="برای بازسازی سند باید از داخل یک اجرای مشخص وارد شوید.">
+                            <MudChip T="string" Size="Size.Small" Variant="Variant.Text">
+                                فقط از صفحه اجرا قابل رفع است
+                            </MudChip>
+                        </MudTooltip>
+                    }
+                }
             </div>
 
             @if (!string.IsNullOrEmpty(g.First().RemedyText))
@@ -445,6 +465,44 @@
                     ? "بازسازی انجام شد — نرخ منتشرنشده‌ای باقی نماند"
                     : $"بازسازی انجام شد — {remaining} کالا هنوز نرخ منتشرنشده دارد؛ فرمول آنها را بررسی کنید",
                     remaining == 0 ? Severity.Success : Severity.Warning);
+                await Load();
+            }
+        }
+        finally { _busy = false; }
+    }
+
+    // ───────── بازسازی سند حواله خروج مواد (CHK-08) ─────────
+
+    private async Task OpenRebuildMaterialIssueDocs()
+    {
+        if (RunId is null) return;
+
+        var ok = await Dialog.ShowMessageBox(
+            "تأیید بازسازی سند حواله خروج مواد",
+            "سند حسابداری برگه‌های تولید همین ماه دوباره از فرمول فعلی ساخته می‌شود — "
+          + "چون بعد از اصلاح نرخ فرمول، سند قدیمی هنوز نرخ کهنه را نشان می‌دهد. "
+          + "این کار روی حساب‌های واقعی می‌نویسد؛ فقط وقتی بزنید که از نرخ تازه مطمئن‌اید.",
+            yesText: "بازسازی کن", cancelText: "انصراف");
+
+        if (ok != true) return;
+
+        _busy = true;
+        try
+        {
+            var (success, res, error) = await Api.RebuildMaterialIssueDocsAsync(RunId.Value);
+            if (!success || res is null)
+            {
+                Snackbar.Add(error ?? "بازسازی ناموفق بود", Severity.Error);
+            }
+            else if (!res.Success)
+            {
+                var detail = res.Log.Count > 0 ? " — " + res.Log[^1] : "";
+                Snackbar.Add($"بازسازی با خطا تمام شد ({res.SheetCount} برگه){detail}", Severity.Error);
+                await Load();
+            }
+            else
+            {
+                Snackbar.Add($"بازسازی انجام شد — {res.SheetCount} برگه.", Severity.Success);
                 await Load();
             }
         }

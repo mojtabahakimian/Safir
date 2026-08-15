@@ -473,6 +473,65 @@ namespace Safir.Server.Controllers
         }
 
         /// <summary>
+        /// بازسازی سند حواله خروج مواد (DEED_HED/DEED_DTL برای HEAD_LST.TAG=10) بعد از
+        /// اصلاح نرخ فرمول — تا وقتی این اجرا نشود، سند حسابداری همچنان نرخ قدیمی را
+        /// نشان می‌دهد و CHK-02/CHK-08 روی داده کهنه مقایسه می‌کنند.
+        /// عمداً فقط برگه‌های همان ماه اجرا (نه کل تاریخچه) بازسازی می‌شوند.
+        /// </summary>
+        [HttpPost("runs/{runId:int}/rebuild-material-issue-docs")]
+        [Pay2Authorize(CostForms.ActAutoFix, Pay2Perm.Run)]
+        public async Task<ActionResult<MaterialIssueRebuildResultDto>> RebuildMaterialIssueDocs(int runId)
+        {
+            if (_queue.IsRunning(runId))
+                return Conflict("این اجرا در حال انجام است؛ ابتدا آن را متوقف کنید.");
+
+            var run = await _db.DoGetDataSQLAsyncSingle<CostRunDto>(
+                "SELECT * FROM dbo.CC_Run WHERE RunId = @runId", new { runId });
+
+            if (run is null) return NotFound();
+
+            var range = await _db.DoGetDataSQLAsyncSingle<MaterialIssueRange>(
+                @"SELECT MIN(NUMBER) AS MinNum, MAX(NUMBER) AS MaxNum
+                  FROM   dbo.HEAD_LST
+                  WHERE  TAG = 10 AND DATE_N BETWEEN @dt1 AND @dt2",
+                new { dt1 = run.DateFrom, dt2 = run.DateTo });
+
+            if (range?.MinNum is null || range.MaxNum is null)
+            {
+                return Ok(new MaterialIssueRebuildResultDto
+                {
+                    Success = true, SheetCount = 0,
+                    Log = new() { "برگه حواله خروج موادی برای این ماه یافت نشد." }
+                });
+            }
+
+            try
+            {
+                var svc = new Safir.Server.CostClose.MaterialIssueRebuild.MaterialIssueRebuildService(_db);
+                var res = await svc.RebuildAsync(range.MinNum.Value, range.MaxNum.Value);
+
+                return Ok(new MaterialIssueRebuildResultDto
+                {
+                    Success = res.Success,
+                    SheetCount = res.SheetCount,
+                    LastSanadNumber = res.LastSanadNumber,
+                    Log = res.Log
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "RebuildMaterialIssueDocs failed for run {RunId}", runId);
+                return BadRequest(ex.Message);
+            }
+        }
+
+        private sealed class MaterialIssueRange
+        {
+            public long? MinNum { get; set; }
+            public long? MaxNum { get; set; }
+        }
+
+        /// <summary>
         /// اصلاح CHK-15 (فرمول با مقدار منفی). کاربر بین «صفر کن» و «حذف کن»
         /// انتخاب می‌کند؛ هر استثنا به یک سطر مشخص از DTL_MANF وصل است.
         /// </summary>

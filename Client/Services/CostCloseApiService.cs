@@ -130,6 +130,20 @@ namespace Safir.Client.Services
             return (true, body?.Remaining ?? 0, null);
         }
 
+        /// <summary>
+        /// بازسازی سند حواله خروج مواد برای برگه‌های همان ماه این اجرا — بعد از اصلاح
+        /// نرخ فرمول لازم است تا سند حسابداری با نرخ تازه هم‌خوان شود.
+        /// </summary>
+        public async Task<(bool Ok, MaterialIssueRebuildResultDto? Result, string? Error)> RebuildMaterialIssueDocsAsync(int runId)
+        {
+            var res = await _http.PostAsync($"{Base}/runs/{runId}/rebuild-material-issue-docs", null);
+            if (!res.IsSuccessStatusCode)
+                return (false, null, await res.Content.ReadAsStringAsync());
+
+            var body = await res.Content.ReadFromJsonAsync<MaterialIssueRebuildResultDto>();
+            return (true, body, null);
+        }
+
         /// <summary>اصلاح CHK-15 — «صفر کن» یا «حذف کن» روی یک سطر فرمول.</summary>
         public async Task<(bool Ok, string? Error)> FixNegativeFormulaQtyAsync(
             long exceptionId, string action, int? runId)
