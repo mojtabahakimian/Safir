@@ -380,6 +380,15 @@ namespace Safir.Shared.Models.CostClose
         public bool    WhatIf   { get; set; } = true;
     }
 
+    /// <summary>نتیجه بازسازی سند حواله خروج مواد (بعد از اصلاح فرمول/نرخ).</summary>
+    public class MaterialIssueRebuildResultDto
+    {
+        public bool         Success         { get; set; }
+        public int          SheetCount      { get; set; }
+        public long?        LastSanadNumber { get; set; }
+        public List<string> Log             { get; set; } = new();
+    }
+
     // ───────────────────────── تنظیمات ─────────────────────────
 
     public class CostUnitDto
