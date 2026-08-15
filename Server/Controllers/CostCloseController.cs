@@ -8,6 +8,7 @@ using Safir.Shared.Constants;
 using Safir.Shared.Interfaces;
 using Safir.Shared.Models.CostClose;
 using Safir.Shared.Utility;    // FixPersianChars
+using System.Collections.Concurrent;
 using System.Data;
 
 namespace Safir.Server.Controllers
@@ -25,6 +26,11 @@ namespace Safir.Server.Controllers
         private readonly ICostCloseQueue _queue;
         private readonly IConnectionStringProvider _csProvider;
         private readonly ILogger<CostCloseController> _logger;
+
+        // یک کنترلر جدید برای هر درخواست ساخته می‌شود؛ برای جلوگیری از دو اجرای
+        // همزمان بازسازی سند برای یک runId باید در سطح فرآیند (static) نگه داشته شود —
+        // مشابه الگوی _active در CostCloseQueue.
+        private static readonly ConcurrentDictionary<int, byte> _rebuildInProgress = new();
 
         public CostCloseController(
             IDatabaseService db,
@@ -479,42 +485,46 @@ namespace Safir.Server.Controllers
         /// عمداً فقط برگه‌های همان ماه اجرا (نه کل تاریخچه) بازسازی می‌شوند.
         /// </summary>
         [HttpPost("runs/{runId:int}/rebuild-material-issue-docs")]
-        [Pay2Authorize(CostForms.ActAutoFix, Pay2Perm.Run)]
+        [Pay2Authorize(CostForms.ActRebuildDocs, Pay2Perm.Run)]
         public async Task<ActionResult<MaterialIssueRebuildResultDto>> RebuildMaterialIssueDocs(int runId)
         {
             if (_queue.IsRunning(runId))
                 return Conflict("این اجرا در حال انجام است؛ ابتدا آن را متوقف کنید.");
 
-            var run = await _db.DoGetDataSQLAsyncSingle<CostRunDto>(
-                "SELECT * FROM dbo.CC_Run WHERE RunId = @runId", new { runId });
-
-            if (run is null) return NotFound();
-
-            var range = await _db.DoGetDataSQLAsyncSingle<MaterialIssueRange>(
-                @"SELECT MIN(NUMBER) AS MinNum, MAX(NUMBER) AS MaxNum
-                  FROM   dbo.HEAD_LST
-                  WHERE  TAG = 10 AND DATE_N BETWEEN @dt1 AND @dt2",
-                new { dt1 = run.DateFrom, dt2 = run.DateTo });
-
-            if (range?.MinNum is null || range.MaxNum is null)
-            {
-                return Ok(new MaterialIssueRebuildResultDto
-                {
-                    Success = true, SheetCount = 0,
-                    Log = new() { "برگه حواله خروج موادی برای این ماه یافت نشد." }
-                });
-            }
+            if (!_rebuildInProgress.TryAdd(runId, 1))
+                return Conflict("بازسازی سند حواله خروج مواد برای این اجرا از قبل در حال انجام است.");
 
             try
             {
+                var run = await _db.DoGetDataSQLAsyncSingle<CostRunDto>(
+                    "SELECT * FROM dbo.CC_Run WHERE RunId = @runId", new { runId });
+
+                if (run is null) return NotFound();
+
+                var range = await _db.DoGetDataSQLAsyncSingle<MaterialIssueRange>(
+                    @"SELECT MIN(NUMBER) AS MinNum, MAX(NUMBER) AS MaxNum
+                      FROM   dbo.HEAD_LST
+                      WHERE  TAG = 10 AND DATE_N BETWEEN @dt1 AND @dt2",
+                    new { dt1 = run.DateFrom, dt2 = run.DateTo });
+
+                if (range?.MinNum is null || range.MaxNum is null)
+                {
+                    return Ok(new MaterialIssueRebuildResultDto
+                    {
+                        Success = true, SheetCount = 0,
+                        Log = new() { "برگه حواله خروج موادی برای این ماه یافت نشد." }
+                    });
+                }
+
                 var svc = new Safir.Server.CostClose.MaterialIssueRebuild.MaterialIssueRebuildService(_db);
-                var res = await svc.RebuildAsync(range.MinNum.Value, range.MaxNum.Value);
+                var res = await svc.RebuildAsync(range.MinNum.Value, range.MaxNum.Value, run.DateFrom, run.DateTo);
 
                 return Ok(new MaterialIssueRebuildResultDto
                 {
                     Success = res.Success,
                     SheetCount = res.SheetCount,
                     LastSanadNumber = res.LastSanadNumber,
+                    FirstError = res.FirstError,
                     Log = res.Log
                 });
             }
@@ -522,6 +532,10 @@ namespace Safir.Server.Controllers
             {
                 _logger.LogError(ex, "RebuildMaterialIssueDocs failed for run {RunId}", runId);
                 return BadRequest(ex.Message);
+            }
+            finally
+            {
+                _rebuildInProgress.TryRemove(runId, out _);
             }
         }
 

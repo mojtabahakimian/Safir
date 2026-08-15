@@ -39,6 +39,10 @@ namespace Safir.Server.CostClose.MaterialIssueRebuild
         public bool     Success        { get; set; }
         public int      SheetCount     { get; set; }
         public long?    LastSanadNumber{ get; set; }
+
+        /// <summary>اولین خطای واقعیِ رخ‌داده — چون Log آخرین سطرش همیشه خلاصهٔ
+        /// کلی «پایان» است و برای کاربر توضیح نمی‌دهد چرا شکست خورد.</summary>
+        public string?  FirstError     { get; set; }
         public List<string> Log        { get; set; } = new();
     }
 
@@ -159,14 +163,34 @@ namespace Safir.Server.CostClose.MaterialIssueRebuild
 
         /// <summary>
         /// بازسازی سند حواله خروج مواد برای برگه‌های HEAD_LST با TAG=10 در بازه
-        /// [fromNumber, toNumber]. فراخوان مسئول محدود کردن این بازه به شماره‌های
-        /// همان ماه (نه کل تاریخچه شرکت) است — این متد خودش تاریخ را فیلتر نمی‌کند.
+        /// [fromNumber, toNumber] که تاریخشان هم در [dateFrom, dateTo] باشد.
+        ///
+        /// چرا هر دو شرط لازم است: شماره برگه لزوماً با تاریخ هم‌ترتیب نیست (دقیقاً
+        /// همان یافته‌ای که در همین PR باعث اصلاح CHK-01 شد) — یک برگهٔ ماه مجاور که
+        /// دیرهنگام ثبت شده می‌تواند شماره‌اش داخل بازهٔ این ماه بیفتد. اگر فقط به
+        /// بازهٔ شماره‌ای که فراخوان از تاریخ استخراج کرده اعتماد کنیم، آن برگهٔ
+        /// نامرتبط هم بی‌صدا بازسازی می‌شود. اینجا خودِ این متد هم تاریخ را دوباره
+        /// می‌سنجد تا این تضمین به فراخوان وابسته نماند.
         /// </summary>
         public async Task<MaterialIssueRebuildResult> RebuildAsync(
-            long fromNumber, long toNumber, CancellationToken ct = default)
+            long fromNumber, long toNumber, long dateFrom, long dateTo, CancellationToken ct = default)
         {
             var log = new List<string>();
             var result = new MaterialIssueRebuildResult { Log = log };
+            var logLock = new object();
+            string? firstError = null;
+
+            // چند برگه هم‌زمان (تا ۱۶ Task) ممکن است لاگ بنویسند؛ List<string> برای
+            // نویسنده‌های هم‌زمان امن نیست، پس هر افزودن از این دو تابع رد می‌شود.
+            void AddLog(string msg) { lock (logLock) { log.Add(msg); } }
+            void RecordFailure(string msg)
+            {
+                lock (logLock)
+                {
+                    log.Add(msg);
+                    firstError ??= msg;
+                }
+            }
 
             var existingAccounts = new ConcurrentDictionary<(long, long, long), bool>();
             var kalaNameCache     = new ConcurrentDictionary<double, string>();
@@ -180,7 +204,8 @@ namespace Safir.Server.CostClose.MaterialIssueRebuild
                 || acc.AMALKARD is null || acc.CONKAL is null)
             {
                 result.Success = false;
-                log.Add("حساب‌های پایه (موجودی/فاز تولید/هزینه تولید/عملکرد/کنترل کالا) در SAZMAN تنظیم نشده‌اند؛ بازسازی متوقف شد.");
+                RecordFailure("حساب‌های پایه (موجودی/فاز تولید/هزینه تولید/عملکرد/کنترل کالا) در SAZMAN تنظیم نشده‌اند؛ بازسازی متوقف شد.");
+                result.FirstError = firstError;
                 return result;
             }
 
@@ -247,7 +272,7 @@ END CATCH;";
                 catch (Exception ex)
                 {
                     existingAccounts.TryRemove((kolV, moinV, tafV), out _);
-                    log.Add($"[CREATHES] خطا در ساخت حساب {kolV}-{moinV}-{tafV} ({accName}): {ex.Message}");
+                    RecordFailure($"[CREATHES] خطا در ساخت حساب {kolV}-{moinV}-{tafV} ({accName}): {ex.Message}");
                     throw;
                 }
             }
@@ -283,10 +308,10 @@ END CATCH;";
 
             var headRows = (await _db.DoGetDataSQLAsync<HeadRow>(
                 "SELECT NUMBER, TAG, ANBAR, DATE_N, N_S, FNUMCO, USER_NAME FROM dbo.HEAD_LST " +
-                "WHERE NUMBER BETWEEN @From AND @To AND TAG = 10 ORDER BY NUMBER",
-                new { From = fromNumber, To = toNumber })).ToList();
+                "WHERE NUMBER BETWEEN @From AND @To AND TAG = 10 AND DATE_N BETWEEN @DateFrom AND @DateTo ORDER BY NUMBER",
+                new { From = fromNumber, To = toNumber, DateFrom = dateFrom, DateTo = dateTo })).ToList();
 
-            log.Add($"SANADKHORUGMAVAD: شروع بازسازی از برگ {fromNumber} تا {toNumber} — {headRows.Count} برگه یافت شد.");
+            AddLog($"SANADKHORUGMAVAD: شروع بازسازی از برگ {fromNumber} تا {toNumber} — {headRows.Count} برگه یافت شد.");
 
             if (headRows.Count == 0)
             {
@@ -300,7 +325,7 @@ END CATCH;";
                 var h = headRows[i];
                 if (h.NUMBER is null || h.DATE_N is null || h.DATE_N < 10101)
                 {
-                    log.Add($"برگ {h.NUMBER}: تاریخ نامعتبر ({h.DATE_N})؛ رد شد.");
+                    AddLog($"برگ {h.NUMBER}: تاریخ نامعتبر ({h.DATE_N})؛ رد شد.");
                     continue;
                 }
                 sheetUsable[i] = true;
@@ -429,7 +454,7 @@ END CATCH;";
                         var lines = finalLinesBySheet.TryGetValue(sheetNo, out var b) ? b : new List<FinalLineRow>();
                         foreach (var line in lines)
                         {
-                            await ProcessFinalLineAsync(line, sheet, sheetNo, acc, AddDetail, CreatHesAsync, IsHesabAsync, GetKalaNameAsync, log);
+                            await ProcessFinalLineAsync(line, sheet, sheetNo, acc, AddDetail, CreatHesAsync, IsHesabAsync, GetKalaNameAsync, AddLog);
                         }
                     }
 
@@ -462,7 +487,7 @@ END CATCH;";
                 catch (Exception ex)
                 {
                     Interlocked.Exchange(ref successFlag, 0);
-                    lock (log) { log.Add($"برگ {sheetNo} (سند {nsValue}): {ex.Message}"); }
+                    RecordFailure($"برگ {sheetNo} (سند {nsValue}): {ex.Message}");
                 }
             });
 
@@ -491,7 +516,7 @@ END CATCH;";
                 if (unbalanced.Count > 0)
                 {
                     try { await CreatHesAsync(acc.AMALKARD, 99999, 99999, "كسر دهم ريال"); }
-                    catch (Exception ex) { log.Add($"حساب کسر دهم ریال: {ex.Message}"); }
+                    catch (Exception ex) { AddLog($"حساب کسر دهم ریال: {ex.Message}"); }
 
                     var rows = new List<string>();
                     foreach (var item in unbalanced)
@@ -523,13 +548,14 @@ END CATCH;";
                     catch (Exception ex)
                     {
                         Interlocked.Exchange(ref successFlag, 0);
-                        log.Add($"درج ردیف کسر دهم ریال: {ex.Message}");
+                        RecordFailure($"درج ردیف کسر دهم ریال: {ex.Message}");
                     }
                 }
             }
 
             result.Success = Volatile.Read(ref successFlag) == 1;
-            result.SheetCount = headRows.Count(h => h.NUMBER is not null);
+            result.SheetCount = sheetUsable.Count(u => u);
+            result.FirstError = firstError;
             for (int i = headRows.Count - 1; i >= 0; i--)
             {
                 if (sheetUsable[i] && headRows[i].N_S is not null)
@@ -539,7 +565,10 @@ END CATCH;";
                 }
             }
 
-            log.Add($"SANADKHORUGMAVAD: پایان — {result.SheetCount} برگه، موفق={result.Success}.");
+            // این خط عمداً از AddLog است نه RecordFailure: خلاصهٔ کلی است، نه علت
+            // شکست — اگر با RecordFailure ثبت می‌شد، چون همیشه آخرین سطر Log است،
+            // FirstError واقعی (که بالاتر، از دل خطای هر برگه ثبت شده) بازنویسی می‌شد.
+            AddLog($"SANADKHORUGMAVAD: پایان — {result.SheetCount} برگه، موفق={result.Success}.");
             return result;
         }
 
@@ -633,7 +662,7 @@ END CATCH;";
             Func<double?, double?, double?, string, Task> creatHes,
             Func<double, double, double, Task<bool>> isHesab,
             Func<double, Task<string>> getKalaName,
-            List<string> log)
+            Action<string> addLog)
         {
             var lineSharh = LeftTrim(
                 $"حواله خروج شماره {sheet.NUMBER}-{sheet.FNUMCO} مورخ {PersianDate(sheet.DATE_N!.Value)} به مقدار{line.MEGHk}", 255);
@@ -674,7 +703,7 @@ END CATCH;";
             if (jamch - sakht != 0)
             {
                 try { await creatHes(acc.AMALKARD, 99999, codeNum, kalaName); }
-                catch (Exception ex) { log.Add($"برگ {sheetNo}: حساب عملکرد {acc.AMALKARD}-99999-{line.CODE}: {ex.Message}"); }
+                catch (Exception ex) { addLog($"برگ {sheetNo}: حساب عملکرد {acc.AMALKARD}-99999-{line.CODE}: {ex.Message}"); }
 
                 var amalIsBed = jamch > sakht;
                 var amalValue = amalIsBed ? Math.Round(jamch - sakht) : Math.Round(sakht - jamch);
@@ -698,12 +727,16 @@ END CATCH;";
                 {
                     var chunk = new List<double>(length);
 
-                    // قفل عمدی روی یک ردیف ثابت: باعث می‌شود رزروهای هم‌زمان (اگر روزی
-                    // این متد از دو جا صدا زده شود) به‌جای شماره تکراری، پشت هم صف بکشند.
-                    await conn.ExecuteAsync("UPDATE TOP(1) dbo.DEED_HED SET ANBAR = ANBAR", transaction: tx, commandTimeout: 3600);
+                    // قفل صریح روی همان منبع نام‌گذاری‌شده‌ای که Pay2RunController برای
+                    // شماره‌گذاری DEED_HED استفاده می‌کند (Pay2RunController.cs:596-599).
+                    // برخلاف ترفند «UPDATE یک ردیف ثابت»، این روش وقتی جدول خالی است هم
+                    // واقعاً قفل می‌گیرد.
+                    await conn.ExecuteAsync(
+                        "EXEC sp_getapplock @Resource = 'DeedNumberAllocation', @LockMode = 'Exclusive', @LockOwner = 'Transaction', @LockTimeout = 15000",
+                        transaction: tx, commandTimeout: 3600);
 
-                    var maxNs = (await conn.QueryAsync<double?>("SELECT MAX(N_S) FROM dbo.DEED_HED", transaction: tx)).FirstOrDefault();
-                    var maxBg = (await conn.QueryAsync<double?>("SELECT MAX(BAYEG) FROM dbo.DEED_HED", transaction: tx)).FirstOrDefault();
+                    var maxNs = (await conn.QueryAsync<double?>("SELECT MAX(N_S) FROM dbo.DEED_HED WITH (UPDLOCK)", transaction: tx)).FirstOrDefault();
+                    var maxBg = (await conn.QueryAsync<double?>("SELECT MAX(BAYEG) FROM dbo.DEED_HED WITH (UPDLOCK)", transaction: tx)).FirstOrDefault();
 
                     var nextNs = (maxNs ?? 0) + 1;
                     var nextBg = maxBg.HasValue ? maxBg.Value + 1 : 100000000;
