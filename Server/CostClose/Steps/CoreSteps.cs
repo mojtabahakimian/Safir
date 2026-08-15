@@ -45,10 +45,16 @@ namespace Safir.Server.CostClose.Steps
 
             await ctx.ReportProgress(StepCode, 100, "پایان");
 
-            var res = new { blocking = counts?.Blocking ?? 0, warning = counts?.Warning ?? 0 };
+            var blocking = counts?.Blocking ?? 0;
+            var warning  = counts?.Warning  ?? 0;
+            var res = new { blocking, warning };
 
-            return (counts?.Blocking ?? 0) > 0 || (counts?.Warning ?? 0) > 0
-                 ? StepResult.Warn(0, res)
+            // بدون این پیام، ردیف این گام در صفحه پایش فقط یک آیکون هشدار
+            // خالی نشان می‌داد و کاربر نمی‌فهمید چرا — باید تا پایین صفحه
+            // اسکرول می‌کرد تا نوار هشدار جداگانه را ببیند.
+            return blocking > 0 || warning > 0
+                 ? new StepResult(CostStepStatus.Warning, 0, res,
+                       $"{blocking} مسدودکننده، {warning} هشدار یافت شد")
                  : StepResult.Ok(0, res);
         }
 
@@ -176,9 +182,13 @@ namespace Safir.Server.CostClose.Steps
 
             var payload = new { blocking, warning };
 
-            // شکست دروازه = توقف pipeline (ارکستریتور خودش می‌فهمد)
+            // شکست دروازه = توقف pipeline (ارکستریتور خودش می‌فهمد).
+            // پیام صریح لازم است چون بدون آن ردیف «دروازه اعتبارسنجی» در
+            // صفحه پایش فقط یک آیکون هشدار خالی نشان می‌داد؛ کاربر می‌پرسید
+            // «چرا اجرا اینجا متوقف شد؟» بدون اینکه ردیف خودش جواب بدهد.
             return blocking > 0
-                 ? StepResult.Warn(0, payload)
+                 ? new StepResult(CostStepStatus.Warning, 0, payload,
+                       $"{blocking} مورد مسدودکننده — رفع کنید، سپس «ادامه اجرا» را بزنید")
                  : StepResult.Ok(0, payload);
         }
 
