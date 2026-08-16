@@ -141,7 +141,7 @@
                     }
                 }
 
-                @if (g.Key.RuleCode == "CHK-08" && Access.CanRun(CostForms.ActAutoFix))
+                @if (g.Key.RuleCode == "CHK-08" && Access.CanRun(CostForms.ActRebuildDocs))
                 {
                     @if (RunId is not null)
                     {
@@ -496,7 +496,8 @@
             }
             else if (!res.Success)
             {
-                var detail = res.Log.Count > 0 ? " — " + res.Log[^1] : "";
+                var detail = !string.IsNullOrEmpty(res.FirstError) ? " — " + res.FirstError
+                           : res.Log.Count > 0 ? " — " + res.Log[^1] : "";
                 Snackbar.Add($"بازسازی با خطا تمام شد ({res.SheetCount} برگه){detail}", Severity.Error);
                 await Load();
             }

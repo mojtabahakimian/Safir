@@ -386,6 +386,7 @@ namespace Safir.Shared.Models.CostClose
         public bool         Success         { get; set; }
         public int          SheetCount      { get; set; }
         public long?        LastSanadNumber { get; set; }
+        public string?      FirstError      { get; set; }
         public List<string> Log             { get; set; } = new();
     }
 
