@@ -125,7 +125,7 @@
                 </MudButton>
             }
 
-            @if (_state.Run.Status == 2)
+            @if (_state.Run.Status is 2 or 3 or 4)
             {
                 <MudButton Variant="Variant.Outlined"
                            StartIcon="@Icons.Material.Filled.Rule"
@@ -135,11 +135,44 @@
 
                 @if (Access.CanRun(CostForms.ActStart))
                 {
-                    <MudButton Variant="Variant.Filled" Color="Color.Primary"
-                               StartIcon="@Icons.Material.Filled.PlayArrow"
-                               Disabled="@(_state.OpenBlockingCount > 0 || _busy)"
-                               OnClick="Resume">
-                        ادامه اجرا
+                    @if (_state.Run.Status == 2)
+                    {
+                        <MudButton Variant="Variant.Filled" Color="Color.Primary"
+                                   StartIcon="@Icons.Material.Filled.PlayArrow"
+                                   Disabled="@(_state.OpenBlockingCount > 0 || _busy)"
+                                   OnClick="Resume">
+                            ادامه اجرا
+                        </MudButton>
+                    }
+
+                    @* رفع مغایرت‌های مسدودکننده اغلب نیاز به اجرای دوباره‌ی یک
+                       یا چند گام دارد (بازتولید خروج مواد، انبارگردانی، نرخ
+                       میانگین و...) — این کار نباید منتظر رفع کامل مغایرت‌ها
+                       بماند، چون خودِ همین اجراها معمولاً راه رفع مغایرت‌اند؛
+                       پس برخلاف «ادامه اجرا»، همیشه (چه اجرا متوقف مانده باشد،
+                       چه تکمیل شده) در دسترس است و کاربر می‌تواند هر تعداد بار
+                       که لازم باشد، هر ترکیبی از گام‌ها را دوباره اجرا کند —
+                       اجرای یک بار این دکمه نباید صفحه را «ببندد»؛ چون نتیجه‌ی
+                       اجرا معمولاً «تکمیل» می‌شود (نه «متوقف»)، این دکمه دیگر
+                       به‌جای وضعیت ۲ به وضعیت‌های ۲/۳/۴ گره خورده تا بعد از هر
+                       اجرای مجدد هم در دسترس بماند. *@
+                    <MudButton Variant="Variant.Outlined"
+                               StartIcon="@Icons.Material.Filled.Replay"
+                               Disabled="_busy"
+                               OnClick="OpenRerunSteps">
+                        اجرای مجدد گام‌ها
+                    </MudButton>
+
+                    @* اسناد گروهی (فروش/انتقالی/برگشت فروش/خروج سایر/ورود ساخته‌شده/
+                       انبارگردانی) هم مثل «بازسازی سند حواله خروج مواد» فقط دستی و
+                       عمداً بازسازی می‌شوند — نه بخشی از گام‌های خودکار S00..S12 —
+                       چون معمولاً فقط وقتی لازم‌اند که یک برگهٔ مبدأ بعد از صدور
+                       اصلاح شده باشد. *@
+                    <MudButton Variant="Variant.Outlined"
+                               StartIcon="@Icons.Material.Filled.ReceiptLong"
+                               Disabled="_busy"
+                               OnClick="OpenRebuildGroupDocs">
+                        بازسازی اسناد گروهی
                     </MudButton>
                 }
             }
@@ -472,6 +505,24 @@
             else     await Reload();
         }
         finally { _busy = false; }
+    }
+
+    private async Task OpenRerunSteps()
+    {
+        var p = new DialogParameters { ["RunId"] = RunId };
+        var dlg = await Dialog.ShowAsync<RerunStepsDialog>("اجرای مجدد گام‌ها", p);
+        var res = await dlg.Result;
+        if (res is { Canceled: false })
+            await Reload();
+    }
+
+    private async Task OpenRebuildGroupDocs()
+    {
+        var p = new DialogParameters { ["RunId"] = RunId };
+        var dlg = await Dialog.ShowAsync<RebuildGroupDocsDialog>("بازسازی اسناد گروهی", p);
+        var res = await dlg.Result;
+        if (res is { Canceled: false })
+            await Reload();
     }
 
     private async Task Cancel()

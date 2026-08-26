@@ -105,6 +105,24 @@ namespace Safir.Client.Services
                  : (false, await res.Content.ReadAsStringAsync());
         }
 
+        public async Task<(bool Ok, int Count, string? Error)> BulkResolveAsync(List<long> ids, string? note)
+        {
+            var res = await _http.PostAsJsonAsync($"{Base}/exceptions/bulk-resolve",
+                new BulkResolveRequest { ExceptionIds = ids, Note = note });
+            if (!res.IsSuccessStatusCode) return (false, 0, await res.Content.ReadAsStringAsync());
+
+            var body = await res.Content.ReadFromJsonAsync<Dictionary<string, int>>();
+            return (true, body?.GetValueOrDefault("count") ?? 0, null);
+        }
+
+        /// <summary>رفع مغایرت CHK-02 با سند اصلاحی — WhatIf=true فقط پیش‌نمایش می‌دهد.</summary>
+        public async Task<PostCorrectionResultDto?> PostCorrectionAsync(PostCorrectionRequest req)
+        {
+            var res = await _http.PostAsJsonAsync($"{Base}/exceptions/post-correction", req);
+            if (!res.IsSuccessStatusCode) return null;
+            return await res.Content.ReadFromJsonAsync<PostCorrectionResultDto>();
+        }
+
         // ───────── اصلاح خودکار ─────────
 
         public async Task<AutoFixResultDto?> FixMissingFormulaAsync(AutoFixRequest req)
@@ -141,6 +159,23 @@ namespace Safir.Client.Services
                 return (false, null, await res.Content.ReadAsStringAsync());
 
             var body = await res.Content.ReadFromJsonAsync<MaterialIssueRebuildResultDto>();
+            return (true, body, null);
+        }
+
+        /// <summary>
+        /// بازسازی یکی از ۵ سند گروهی دیگر (انتقالی/فروش/برگشت فروش/خروج سایر/
+        /// ورود ساخته‌شده/انبارگردانی) برای برگه‌های همان ماه این اجرا. endpointSuffix
+        /// یکی از rebuild-transfer-docs، rebuild-sale-docs، rebuild-sale-return-docs،
+        /// rebuild-other-issue-docs، rebuild-production-receipt-docs، rebuild-stock-count-docs.
+        /// </summary>
+        public async Task<(bool Ok, GroupDocumentRebuildResultDto? Result, string? Error)> RebuildGroupDocsAsync(
+            int runId, string endpointSuffix)
+        {
+            var res = await _http.PostAsync($"{Base}/runs/{runId}/{endpointSuffix}", null);
+            if (!res.IsSuccessStatusCode)
+                return (false, null, await res.Content.ReadAsStringAsync());
+
+            var body = await res.Content.ReadFromJsonAsync<GroupDocumentRebuildResultDto>();
             return (true, body, null);
         }
 
@@ -236,6 +271,33 @@ namespace Safir.Client.Services
                  : (false, await res.Content.ReadAsStringAsync());
         }
 
+        // ───────── جابه‌جایی مصرف ماده بین فرمول‌ها ─────────
+
+        public async Task<List<FormulaMaterialDto>> GetFormulaMaterialsAsync(int runId, string? search = null)
+        {
+            var url = $"{Base}/runs/{runId}/formula-materials";
+            if (!string.IsNullOrWhiteSpace(search))
+                url += $"?search={Uri.EscapeDataString(search)}";
+
+            return await _http.GetFromJsonAsync<List<FormulaMaterialDto>>(url) ?? new();
+        }
+
+        public async Task<List<MaterialConsumerDto>> GetMaterialConsumersAsync(int runId, long materialCode)
+            => await _http.GetFromJsonAsync<List<MaterialConsumerDto>>(
+                   $"{Base}/runs/{runId}/material-consumers/{materialCode}") ?? new();
+
+        public async Task<(bool Ok, List<RebalancePreviewDto>? Preview, string? Error)> RebalanceMaterialAsync(
+            int runId, RebalanceMaterialRequest req, bool whatIf = true)
+        {
+            var res = await _http.PostAsJsonAsync(
+                $"{Base}/runs/{runId}/rebalance-material?whatIf={whatIf}", req);
+
+            if (!res.IsSuccessStatusCode)
+                return (false, null, await res.Content.ReadAsStringAsync());
+
+            return (true, await res.Content.ReadFromJsonAsync<List<RebalancePreviewDto>>(), null);
+        }
+
         /// <summary>
         /// بایت‌های گزارش اکسل هیئت‌مدیره.
         ///
@@ -273,6 +335,15 @@ namespace Safir.Client.Services
 
         public async Task<List<CostCheckRuleDto>> GetRulesAsync()
             => await _http.GetFromJsonAsync<List<CostCheckRuleDto>>($"{Base}/rules") ?? new();
+
+        public async Task<(bool Ok, string? Error)> UpdateRuleThresholdAsync(string ruleCode, double? threshold)
+        {
+            var res = await _http.PutAsJsonAsync($"{Base}/rules/{ruleCode}/threshold",
+                new UpdateRuleThresholdRequest { Threshold = threshold });
+            return res.IsSuccessStatusCode
+                 ? (true, null)
+                 : (false, await res.Content.ReadAsStringAsync());
+        }
 
         public async Task<List<CostUnitDto>> GetUnitsAsync()
             => await _http.GetFromJsonAsync<List<CostUnitDto>>($"{Base}/units") ?? new();

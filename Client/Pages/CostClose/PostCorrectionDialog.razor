@@ -1,0 +1,229 @@
+@using Safir.Shared.Models.CostClose
+@using Safir.Client.Services
+@using Safir.Client.Pages.Salary.Tabs
+@inject CostCloseApiService Api
+@inject ISnackbar Snackbar
+@inject ILocalStorageService LocalStorage
+
+<MudDialog>
+    <DialogContent>
+        <div dir="rtl" style="min-width:480px">
+            <MudText Typo="Typo.body2" Class="mb-3">
+                اختلاف کارت‌انبار/حسابداریِ @Count.ToString("N0") مورد انتخاب‌شده، بین حساب موجودیِ
+                همان انبار و حساب مقصدی که این‌جا انتخاب می‌کنید جابه‌جا می‌شود — تا مغایرت صفر شود.
+                این سند روی حساب‌های واقعی می‌نویسد.
+            </MudText>
+
+            <div class="form-field mb-3">
+                <label>تاریخ سند (شمسی) *</label>
+                <Pay2NumericInput @bind-Value="_dateStr" InputMode="Pay2NumericInput.NumericInputMode.PersianDate" Direction="ltr" />
+                <MudText Typo="Typo.caption" Class="mud-text-secondary">
+                    باید داخل (یا آخرِ) دوره‌ای باشد که این مغایرت‌ها ازش آمده‌اند — وگرنه CHK-02 سند را نمی‌بیند.
+                </MudText>
+            </div>
+
+            <MudSwitch T="bool" @bind-Value="_manualMode" Label="ورود دستی کد حساب" Color="Color.Primary" Class="mb-2" />
+
+            @if (!_manualMode)
+            {
+                <MudAutocomplete T="AccountLookupDto" Label="حساب کل" Dense Variant="Variant.Outlined"
+                                  Class="mb-3" Value="_kol" ValueChanged="OnKolChanged"
+                                  SearchFuncWithCancel="SearchKol" ToStringFunc="AccText" />
+
+                <MudAutocomplete T="AccountLookupDto" Label="حساب معین" Dense Variant="Variant.Outlined"
+                                  Class="mb-3" Value="_moin" ValueChanged="OnMoinChanged"
+                                  SearchFuncWithCancel="SearchMoin" ToStringFunc="AccText"
+                                  Disabled="@(_kol is null)" Clearable ResetValueOnEmptyText />
+
+                <MudAutocomplete T="AccountLookupDto" Label="حساب تفصیلی (اختیاری — پیش‌فرض ۱)" Dense Variant="Variant.Outlined"
+                                  Class="mb-3" @bind-Value="_tafsili"
+                                  SearchFuncWithCancel="SearchTafsili" ToStringFunc="AccText"
+                                  Disabled="@(_moin is null)" Clearable ResetValueOnEmptyText />
+            }
+            else
+            {
+                <div class="d-flex gap-2 mb-3">
+                    <MudNumericField T="int?" @bind-Value="_manualKol" Label="کل" Dense Variant="Variant.Outlined" />
+                    <MudNumericField T="int?" @bind-Value="_manualMoin" Label="معین" Dense Variant="Variant.Outlined" />
+                    <MudNumericField T="int?" @bind-Value="_manualTaf" Label="تفصیلی" Dense Variant="Variant.Outlined" Placeholder="۱" />
+                </div>
+            }
+
+            <MudTextField @bind-Value="_note" Label="یادداشت (اختیاری)" Dense
+                          Variant="Variant.Outlined" Lines="2" Class="mb-3" />
+
+            <MudButton Variant="Variant.Outlined" Color="Color.Primary" Disabled="@(!CanPreview || _busy)"
+                       OnClick="LoadPreview" Class="mb-3">
+                پیش‌نمایش
+            </MudButton>
+
+            @if (_preview is not null)
+            {
+                <MudAlert Severity="@(_preview.Skipped.Count > 0 ? Severity.Warning : Severity.Info)" Dense Class="mb-2">
+                    @_preview.Count.ToString("N0") مورد، مجموع @_preview.TotalAbs.ToString("N0") ریال سند خواهد خورد.
+                    @if (_preview.Skipped.Count > 0)
+                    {
+                        <div>@_preview.Skipped.Count.ToString("N0") مورد رد شد (نگاشت انبار ندارند یا قبلاً رفع شده‌اند).</div>
+                    }
+                </MudAlert>
+
+                @if (_preview.Lines.Count > 0)
+                {
+                    <MudSimpleTable Dense Style="max-height:260px;overflow-y:auto">
+                        <thead>
+                            <tr><th>کالا</th><th>انبار</th><th style="text-align:left">مبلغ</th><th>جهت</th></tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var l in _preview.Lines)
+                            {
+                                <tr>
+                                    <td>@l.Code — @l.ItemName</td>
+                                    <td>@l.Anbar</td>
+                                    <td style="text-align:left">@l.AdjustAbs.ToString("N0")</td>
+                                    <td>@(l.DebitIsInventory ? "بدهکار انبار" : "بستانکار انبار")</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </MudSimpleTable>
+                }
+            }
+        </div>
+    </DialogContent>
+
+    <DialogActions>
+        <MudButton OnClick="Cancel">انصراف</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled"
+                   Disabled="@(_preview is null || _preview.Count == 0 || _busy)"
+                   OnClick="Apply">
+            صدور سند
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private MudDialogInstance MudDialog { get; set; } = default!;
+    [Parameter] public List<long> ExceptionIds { get; set; } = new();
+
+    /// <summary>پایان دوره‌ی همون اجرا — سند اصلاحی با همین تاریخ ثبت می‌شود
+    /// تا CHK-02 (که فقط تا این تاریخ می‌خواند) همین بستنِ ماه ببیندش.</summary>
+    [Parameter] public long? DateS { get; set; }
+
+    private int Count => ExceptionIds.Count;
+
+    private string? _dateStr;
+    private bool _manualMode;
+    private AccountLookupDto? _kol;
+    private AccountLookupDto? _moin;
+    private AccountLookupDto? _tafsili;
+    private int? _manualKol;
+    private int? _manualMoin;
+    private int? _manualTaf;
+    private string? _note;
+    private bool _busy;
+
+    private PostCorrectionResultDto? _preview;
+
+    private const string LastAccountKey = "CostClose_LastCorrectionAccount";
+
+    private sealed class LastAccount
+    {
+        public bool ManualMode { get; set; }
+        public AccountLookupDto? Kol { get; set; }
+        public AccountLookupDto? Moin { get; set; }
+        public AccountLookupDto? Tafsili { get; set; }
+        public int? ManualKol { get; set; }
+        public int? ManualMoin { get; set; }
+        public int? ManualTaf { get; set; }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        _dateStr = (DateS ?? Safir.Shared.Utility.CL_Tarikh.GetCurrentPersianDateAsLong()).ToString();
+
+        // آخرین حسابِ استفاده‌شده را پیش‌فرض بگذار — کاربر همچنان می‌تواند عوضش کند.
+        var last = await LocalStorage.GetItemAsync<LastAccount>(LastAccountKey);
+        if (last is not null)
+        {
+            _manualMode = last.ManualMode;
+            _kol = last.Kol;
+            _moin = last.Moin;
+            _tafsili = last.Tafsili;
+            _manualKol = last.ManualKol;
+            _manualMoin = last.ManualMoin;
+            _manualTaf = last.ManualTaf;
+        }
+    }
+
+    private async Task SaveLastAccount() => await LocalStorage.SetItemAsync(LastAccountKey, new LastAccount
+    {
+        ManualMode = _manualMode,
+        Kol = _kol,
+        Moin = _moin,
+        Tafsili = _tafsili,
+        ManualKol = _manualKol,
+        ManualMoin = _manualMoin,
+        ManualTaf = _manualTaf
+    });
+
+    private long? ParsedDateS => long.TryParse(_dateStr?.Replace("/", ""), out var d) ? d : null;
+
+    private bool CanPreview => Count > 0 && ParsedDateS is not null && (
+        _manualMode ? (_manualKol is > 0 && _manualMoin is > 0)
+                    : (_kol is not null && _moin is not null));
+
+    private void OnKolChanged(AccountLookupDto? v) { _kol = v; _moin = null; _tafsili = null; _preview = null; }
+    private void OnMoinChanged(AccountLookupDto? v) { _moin = v; _tafsili = null; _preview = null; }
+
+    private static string AccText(AccountLookupDto? a) => a is null ? "" : $"{a.Code} - {a.Name}";
+
+    private async Task<IEnumerable<AccountLookupDto>> SearchKol(string s, CancellationToken ct) => await Api.SearchKolAsync(s);
+
+    private async Task<IEnumerable<AccountLookupDto>> SearchMoin(string s, CancellationToken ct)
+        => _kol is null ? Array.Empty<AccountLookupDto>() : await Api.SearchMoinAsync((int)_kol.Code, s);
+
+    private async Task<IEnumerable<AccountLookupDto>> SearchTafsili(string s, CancellationToken ct)
+        => _kol is null || _moin is null ? Array.Empty<AccountLookupDto>() : await Api.SearchTafsiliAsync((int)_kol.Code, (int)_moin.Code, s);
+
+    private PostCorrectionRequest BuildRequest(bool whatIf) => new()
+    {
+        ExceptionIds = ExceptionIds,
+        TargetKol  = _manualMode ? _manualKol!.Value  : (int)_kol!.Code,
+        TargetMoin = _manualMode ? _manualMoin!.Value : (int)_moin!.Code,
+        TargetTaf  = _manualMode ? (_manualTaf ?? 1)  : (int)(_tafsili?.Code ?? 1),
+        Note   = string.IsNullOrWhiteSpace(_note) ? null : _note.Trim(),
+        WhatIf = whatIf,
+        DateS  = ParsedDateS
+    };
+
+    private async Task LoadPreview()
+    {
+        _busy = true;
+        try
+        {
+            _preview = await Api.PostCorrectionAsync(BuildRequest(whatIf: true));
+            if (_preview is null) Snackbar.Add("پیش‌نمایش ناموفق بود", Severity.Error);
+        }
+        finally { _busy = false; }
+    }
+
+    private async Task Apply()
+    {
+        _busy = true;
+        try
+        {
+            var res = await Api.PostCorrectionAsync(BuildRequest(whatIf: false));
+            if (res is null || !res.Success)
+            {
+                Snackbar.Add(res?.FirstError ?? "صدور سند ناموفق بود", Severity.Error);
+                return;
+            }
+
+            await SaveLastAccount();
+            Snackbar.Add($"سند شماره {res.SanadNumber} صادر شد — {res.Count} مورد رفع شد.", Severity.Success);
+            MudDialog.Close(DialogResult.Ok(true));
+        }
+        finally { _busy = false; }
+    }
+
+    private void Cancel() => MudDialog.Cancel();
+}

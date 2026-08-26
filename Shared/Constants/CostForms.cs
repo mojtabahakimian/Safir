@@ -27,5 +27,6 @@ namespace Safir.Shared.Constants
         public const string ActApprove    = "COST_ACT_APPROVE";     // تأیید نهایی و قفل ماه
         public const string ActExport     = "COST_ACT_EXPORT";      // خروجی اکسل
         public const string ActRebuildDocs = "COST_ACT_REBUILD_DOCS"; // بازسازی سند حواله خروج مواد
+        public const string ActPostCorrection = "COST_ACT_POST_CORRECTION"; // سند اصلاحی مغایرت CHK-02
     }
 }

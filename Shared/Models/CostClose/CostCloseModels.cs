@@ -132,6 +132,7 @@ namespace Safir.Shared.Models.CostClose
         public byte    ExType        { get; set; }
         public byte    Severity      { get; set; }
         public int?    Anbar         { get; set; }
+        public string? AnbarName     { get; set; }
         public long?   Code          { get; set; }
         public string? ItemName      { get; set; }
         public int?    DocNumber     { get; set; }
@@ -147,6 +148,14 @@ namespace Safir.Shared.Models.CostClose
         public string? ResolvedBy    { get; set; }
         public DateTime? ResolvedAtUtc  { get; set; }
         public string? ResolutionNote  { get; set; }
+
+        /// <summary>
+        /// فقط برای CHK-02: یعنی سمت حسابداریِ این (انبار،کد) دقیقاً یک سند
+        /// دارد و آن سند «افتتاحیه» است — یعنی موجودی اول دوره در STUF_FSK
+        /// هیچ‌وقت seed نشده. این‌ها بخش عمده‌ی مغایرت‌های CHK-02 هستند و
+        /// معمولاً همه‌شان با یک سند اصلاحیِ دسته‌جمعی رفع می‌شوند.
+        /// </summary>
+        public bool    IsOpeningOnly { get; set; }
 
         public bool IsBlocking => Severity == 2;
     }
@@ -168,6 +177,11 @@ namespace Safir.Shared.Models.CostClose
 
     // ───────────────────────── درخواست‌ها ─────────────────────────
 
+    public class UpdateRuleThresholdRequest
+    {
+        public double? Threshold { get; set; }
+    }
+
     public class CreateCostRunRequest
     {
         public short  FiscalYear  { get; set; }
@@ -181,6 +195,63 @@ namespace Safir.Shared.Models.CostClose
     public class ResolveExceptionRequest
     {
         public string? Note { get; set; }
+    }
+
+    public class BulkResolveRequest
+    {
+        public List<long> ExceptionIds { get; set; } = new();
+        public string?     Note         { get; set; }
+    }
+
+    /// <summary>
+    /// درخواست «رفع مغایرت CHK-02 با سند اصلاحی» — اختلاف کارت‌انبار/حسابداری
+    /// بین حساب موجودیِ همان انبار و یک حساب مقصدِ دلخواه (مثلاً سود و زیان)
+    /// جابه‌جا می‌شود. WhatIf=true فقط پیش‌نمایش می‌دهد، چیزی نمی‌نویسد.
+    /// </summary>
+    public class PostCorrectionRequest
+    {
+        public List<long> ExceptionIds { get; set; } = new();
+        public int     TargetKol  { get; set; }
+        public int     TargetMoin { get; set; }
+        public int     TargetTaf  { get; set; } = 1;
+        public string? Note       { get; set; }
+        public bool    WhatIf     { get; set; } = true;
+
+        /// <summary>
+        /// تاریخ سند — باید داخل (یا آخرِ) بازه‌ی همون دوره‌ای باشد که این
+        /// مغایرت‌ها ازش آمده‌اند، وگرنه CHK-02 (که فقط تا @DT2 آن دوره
+        /// می‌خواند) سند را نمی‌بیند و مغایرت بسته‌نشده می‌ماند. خالی =
+        /// تاریخ امروز (فقط برای استفاده‌ی موردیِ خارج از یک اجرای مشخص).
+        /// </summary>
+        public long?   DateS      { get; set; }
+    }
+
+    public class CorrectionPreviewLineDto
+    {
+        public long    ExceptionId      { get; set; }
+        public int     Anbar            { get; set; }
+        public long    Code             { get; set; }
+        public string? ItemName         { get; set; }
+        public double  Amount           { get; set; }
+        public double  AdjustAbs        { get; set; }
+        public bool    DebitIsInventory { get; set; }
+    }
+
+    public class CorrectionSkippedDto
+    {
+        public long   ExceptionId { get; set; }
+        public string Reason      { get; set; } = string.Empty;
+    }
+
+    public class PostCorrectionResultDto
+    {
+        public bool    Success      { get; set; }
+        public int     Count        { get; set; }
+        public double  TotalAbs     { get; set; }
+        public double? SanadNumber  { get; set; }
+        public List<CorrectionPreviewLineDto> Lines   { get; set; } = new();
+        public List<CorrectionSkippedDto>     Skipped { get; set; } = new();
+        public string? FirstError   { get; set; }
     }
 
     public class AutoFixRequest
@@ -346,7 +417,8 @@ namespace Safir.Shared.Models.CostClose
         public double? ReturnAmount { get; set; }   // برگشت از فروش
         public double? ReturnQty    { get; set; }
 
-        // هدف حاشیه
+        // هدف حاشیه: 1=سود صفر (متعادل‌کننده دستی) 2=درصد مشخص 3=آزاد
+        // 4=سود صفر با پخش خودکار بین همه کالاهای سودده (بدون BalancingCode)
         public byte     TargetKind    { get; set; } = 3;   // 3 = آزاد
         public decimal? TargetPct     { get; set; }
         public long?    BalancingCode { get; set; }
@@ -362,6 +434,7 @@ namespace Safir.Shared.Models.CostClose
         {
             1 => CostAmount - SalesAmount,
             2 => CostAmount - SalesAmount * (1 - (double)(TargetPct ?? 0) / 100),
+            4 => CostAmount - SalesAmount,
             _ => 0
         };
     }
@@ -372,6 +445,46 @@ namespace Safir.Shared.Models.CostClose
         public byte     TargetKind    { get; set; }
         public decimal? TargetPct     { get; set; }
         public long?    BalancingCode { get; set; }
+    }
+
+    // ───────── جابه‌جایی مصرف ماده بین فرمول‌ها ─────────
+
+    /// <summary>یک ماده که در فرمول‌های ماه جاری مصرف شده — برای انتخاب ماده در ابزار جابه‌جایی</summary>
+    public class FormulaMaterialDto
+    {
+        public long    Code { get; set; }
+        public string? Name { get; set; }
+    }
+
+    /// <summary>یک فرمول که ماده‌ی انتخاب‌شده را مصرف می‌کند — برای انتخاب فرمول مبدأ/مقصد</summary>
+    public class MaterialConsumerDto
+    {
+        public long    ParentCode { get; set; }
+        public string? ParentName { get; set; }
+        public double  MEGHk      { get; set; }   // مصرف فعلی به‌ازای هر واحد محصول
+        public double  Rate       { get; set; }   // نرخ ماده (ریال به‌ازای واحد)
+        public double? ProdQty    { get; set; }   // مقدار تولید این فرمول در ماه (null یعنی سند تولید ندارد)
+    }
+
+    public class RebalanceMaterialRequest
+    {
+        public long   MaterialCode   { get; set; }
+        public long   FromParentCode { get; set; }
+        public long   ToParentCode   { get; set; }
+        public double Qty            { get; set; }
+    }
+
+    /// <summary>خروجی پیش‌نمایش/اعمالِ CC_sp_RebalanceMaterialQty برای یک طرف (مبدأ یا مقصد)</summary>
+    public class RebalancePreviewDto
+    {
+        public long    ParentCode        { get; set; }
+        public string? ParentName        { get; set; }
+        public double  MEGHkBefore       { get; set; }
+        public double  MEGHkAfter        { get; set; }
+        public double  Rate              { get; set; }
+        public double  CostPerUnitBefore { get; set; }
+        public double  CostPerUnitAfter  { get; set; }
+        public double  ProdQty           { get; set; }
     }
 
     public class RollbackRequest
@@ -385,6 +498,22 @@ namespace Safir.Shared.Models.CostClose
     {
         public bool         Success         { get; set; }
         public int          SheetCount      { get; set; }
+        public long?        LastSanadNumber { get; set; }
+        public string?      FirstError      { get; set; }
+        public List<string> Log             { get; set; } = new();
+    }
+
+    /// <summary>
+    /// مشترک بین بازسازی سندهای انتقالی، فروش، برگشت فروش، انبارگردانی،
+    /// خروج سایر و تولید — همان قرارداد MaterialIssueRebuildResultDto،
+    /// به‌علاوه‌ی تعداد برگه‌هایی که عمداً سند نگرفتند (مثلاً انبار
+    /// خرده‌فروشی در حالت غیرصنعتی).
+    /// </summary>
+    public class GroupDocumentRebuildResultDto
+    {
+        public bool         Success         { get; set; }
+        public int          SheetCount      { get; set; }
+        public int          SkippedCount    { get; set; }
         public long?        LastSanadNumber { get; set; }
         public string?      FirstError      { get; set; }
         public List<string> Log             { get; set; } = new();

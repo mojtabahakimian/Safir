@@ -1,0 +1,142 @@
+@using Safir.Client.Services
+@using Safir.Shared.Models.CostClose
+@inject CostCloseApiService Api
+@inject ISnackbar Snackbar
+
+<MudDialog>
+    <DialogContent>
+        <div dir="rtl" style="min-width:440px">
+            <MudText Typo="Typo.body2" Class="mb-3">
+                هر کدام از این اسناد فقط وقتی نیاز به بازسازی دارند که برگهٔ مبدأشان
+                (فاکتور فروش، حواله انتقالی، برگه ورود و…) بعد از صدور اصلاح شده
+                باشد — وگرنه سند حسابداری با کارت انبار/فرمول هم‌خوان نمی‌ماند و
+                CHK-02 مغایرت کاذب نشان می‌دهد. سند(های) مورد نظر را انتخاب کنید؛
+                فقط برگه‌های همین ماه اجرا بازسازی می‌شوند.
+            </MudText>
+
+            <MudCheckBox T="bool" Dense
+                         Value="@(_selected.Count == Docs.Length)"
+                         ValueChanged="@ToggleAll"
+                         Label="انتخاب همه" Disabled="_busy" Class="mb-1" />
+            <MudDivider Class="mb-2" />
+
+            @foreach (var d in Docs)
+            {
+                var status = _status.TryGetValue(d.Suffix, out var s) ? s : ItemStatus.Pending;
+
+                <div class="rgd-row">
+                    <MudCheckBox T="bool" Dense
+                                 Value="@_selected.Contains(d.Suffix)"
+                                 ValueChanged="@(v => Toggle(d.Suffix, v))"
+                                 Label="@d.Title" Disabled="_busy" />
+
+                    @if (status == ItemStatus.Running)
+                    {
+                        <MudProgressLinear Indeterminate Color="Color.Primary" Class="rgd-progress" />
+                    }
+                    else if (status == ItemStatus.Done && _results.TryGetValue(d.Suffix, out var r))
+                    {
+                        <div class="rgd-result @(r.Success ? "ok" : "err")">
+                            @if (r.Success)
+                            {
+                                <span>@r.SheetCount برگه بازسازی شد.</span>
+                            }
+                            else
+                            {
+                                <span>خطا: @(r.FirstError ?? "نامشخص")</span>
+                            }
+                        </div>
+                    }
+                </div>
+            }
+        </div>
+    </DialogContent>
+
+    <DialogActions>
+        <MudButton OnClick="Close">بستن</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled"
+                   OnClick="Run" Disabled="@(_selected.Count == 0 || _busy)">
+            @(_busy ? "در حال اجرا..." : "اجرا")
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+<style>
+    .rgd-row { margin-bottom: 4px; }
+    .rgd-progress { margin: 2px 0 8px 28px; width: calc(100% - 28px); height: 4px; }
+    .rgd-result { font-size: 12px; margin: 2px 0 8px 28px; }
+    .rgd-result.ok  { color: var(--mud-palette-success); }
+    .rgd-result.err { color: var(--mud-palette-error); }
+</style>
+
+@code {
+    [CascadingParameter] private MudDialogInstance MudDialog { get; set; } = default!;
+    [Parameter] public int RunId { get; set; }
+
+    private enum ItemStatus { Pending, Running, Done }
+
+    private bool _busy;
+    private readonly HashSet<string> _selected = new();
+    private readonly Dictionary<string, GroupDocumentRebuildResultDto> _results = new();
+    private readonly Dictionary<string, ItemStatus> _status = new();
+
+    private static readonly (string Suffix, string Title)[] Docs =
+    {
+        ("rebuild-material-issue-docs",     "حواله خروج مواد اولیه"),
+        ("rebuild-transfer-docs",           "انتقال کالا از انبار به انبار"),
+        ("rebuild-sale-docs",               "فروش"),
+        ("rebuild-sale-return-docs",        "برگشت فروش"),
+        ("rebuild-other-issue-docs",        "حواله خروج سایر مواد"),
+        ("rebuild-production-receipt-docs", "ورود کالای ساخته‌شده به انبار"),
+        ("rebuild-stock-count-docs",        "انبارگردانی"),
+        ("rebuild-purchase-return-free-docs", "برگشت خرید آزاد"),
+    };
+
+    private void Toggle(string suffix, bool on)
+    {
+        if (on) _selected.Add(suffix); else _selected.Remove(suffix);
+    }
+
+    private void ToggleAll(bool on)
+    {
+        _selected.Clear();
+        if (on) foreach (var d in Docs) _selected.Add(d.Suffix);
+    }
+
+    private async Task Run()
+    {
+        _busy = true;
+        _results.Clear();
+        _status.Clear();
+        var anyFailed = false;
+        try
+        {
+            foreach (var suffix in _selected)
+            {
+                _status[suffix] = ItemStatus.Running;
+                StateHasChanged();
+
+                var (ok, result, error) = await Api.RebuildGroupDocsAsync(RunId, suffix);
+                if (!ok || result is null)
+                {
+                    anyFailed = true;
+                    _results[suffix] = new GroupDocumentRebuildResultDto { Success = false, FirstError = error ?? "خطا" };
+                }
+                else
+                {
+                    _results[suffix] = result;
+                    if (!result.Success) anyFailed = true;
+                }
+
+                _status[suffix] = ItemStatus.Done;
+                StateHasChanged();
+            }
+
+            Snackbar.Add(anyFailed ? "بازسازی با خطا همراه بود — جزئیات را ببینید" : "بازسازی با موفقیت انجام شد",
+                anyFailed ? Severity.Warning : Severity.Success);
+        }
+        finally { _busy = false; }
+    }
+
+    private void Close() => MudDialog.Close(DialogResult.Ok(_results.Count > 0));
+}

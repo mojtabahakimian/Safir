@@ -53,6 +53,17 @@
             بازبینی مجدد
         </MudButton>
 
+        <MudSelect T="int?" Value="_anbarFilter" ValueChanged="OnAnbarFilterChanged"
+                   Label="انبار" Dense Variant="Variant.Outlined" Clearable Style="min-width:170px">
+            @foreach (var a in AnbarChoices)
+            {
+                @* T="int?" باید صریح باشد؛ اگر از روی a.Anbar (که int است، نه
+                   int?) استنتاج شود، نوع آیتم با نوع MudSelect جور در نمی‌آید
+                   و آیتم‌ها بی‌صدا توی لیست ظاهر نمی‌شوند. *@
+                <MudSelectItem T="int?" Value="@((int?)a.Anbar)">@a.Anbar — @(a.AnbarName ?? "؟")</MudSelectItem>
+            }
+        </MudSelect>
+
         <MudSpacer />
 
         @* MudBlazor 6.21: MudChipSet در این نسخه SelectedValue/SelectionMode ندارد،
@@ -170,90 +181,156 @@
                 </div>
             }
 
-            <MudTable T="CostExceptionDto" Items="g" Dense Hover Breakpoint="Breakpoint.Sm" Elevation="0">
-                <HeaderContent>
-                    <MudTh>کالا</MudTh>
-                    <MudTh>شرح</MudTh>
-                    <MudTh Style="text-align:left">برگه‌ها</MudTh>
-                    <MudTh Style="text-align:left">مبلغ / مقدار</MudTh>
-                    <MudTh Style="width:150px"></MudTh>
-                </HeaderContent>
-                <RowTemplate>
-                    <MudTd>
-                        @if (context.Code is not null)
-                        {
-                            <div class="cc-item">
-                                <span class="cc-num">@context.Code</span>
-                                <span>@context.ItemName</span>
-                            </div>
-                        }
-                        else { <span class="mud-text-secondary">—</span> }
-                    </MudTd>
+            @{ var groupSelectedCount = g.Count(x => _selected.Contains(x.ExceptionId)); }
+            @if (groupSelectedCount > 0)
+            {
+                <div class="cc-bulk-toolbar">
+                    <MudText Typo="Typo.body2">@groupSelectedCount انتخاب‌شده</MudText>
 
-                    <MudTd>
-                        <MudText Typo="Typo.body2">@context.Description</MudText>
-                        @if (context.DocDate is not null)
-                        {
-                            <MudText Typo="Typo.caption" Class="mud-text-secondary">
-                                @FormatDate(context.DocDate.Value)
-                            </MudText>
-                        }
-                    </MudTd>
+                    @if (Access.CanRun(CostForms.ActResolve))
+                    {
+                        <MudButton Size="Size.Small" Variant="Variant.Outlined"
+                                   StartIcon="@Icons.Material.Filled.DoDisturb"
+                                   OnClick="@(() => BulkResolve(g))">
+                            نادیده گرفتن
+                        </MudButton>
+                    }
 
-                    <MudTd Style="text-align:left">
-                        @if (!string.IsNullOrEmpty(context.RefList))
-                        {
-                            <MudTooltip Text="@context.RefList">
-                                <span class="cc-num cc-reflist">@Shorten(context.RefList)</span>
-                            </MudTooltip>
-                        }
-                        else if (context.DocNumber is not null)
-                        {
-                            <span class="cc-num">@context.DocNumber</span>
-                        }
-                        else { <span class="mud-text-secondary">—</span> }
-                    </MudTd>
+                    @if (g.Key.RuleCode == "CHK-02" && Access.CanRun(CostForms.ActPostCorrection))
+                    {
+                        <MudButton Size="Size.Small" Variant="Variant.Filled" Color="Color.Primary"
+                                   StartIcon="@Icons.Material.Filled.ReceiptLong"
+                                   OnClick="@(() => OpenPostCorrection(g))">
+                            زدن سند اصلاحی
+                        </MudButton>
+                    }
+                </div>
+            }
 
-                    <MudTd Style="text-align:left">
-                        <span class="cc-num">@FormatAmount(context.Amount)</span>
-                    </MudTd>
+            @if (g.Key.RuleCode == "CHK-02")
+            {
+                @* مغایرت‌های افتتاحیه (کارت انبار صفر، فقط یک سند بدهکار بدون
+                   گردش — یعنی موجودی اول دوره در STUF_FSK seed نشده) اکثریت
+                   CHK-02 را تشکیل می‌دهند و معمولاً همه‌شان یک‌جا با یک حساب
+                   مقصد بسته می‌شوند — به همین خاطر جدا و با «انتخاب همه»ی
+                   مستقل نشان داده می‌شوند، نه قاطی بقیه‌ی مغایرت‌ها. *@
+                var opening = g.Where(x => x.IsOpeningOnly).ToList();
+                var other   = g.Where(x => !x.IsOpeningOnly).ToList();
 
-                    <MudTd Style="text-align:left">
-                        @if (context.CanAutoFix && Access.CanRun(CostForms.ActAutoFix))
-                        {
-                            <MudIconButton Icon="@Icons.Material.Filled.AutoFixHigh"
-                                           Size="Size.Small" Color="Color.Primary"
-                                           Title="@context.FixButtonText"
-                                           OnClick="@(() => OpenAutoFix(context.ExceptionId))" />
-                        }
-                        @if (context.RuleCode == "CHK-15" && !context.IsResolved
-                             && Access.CanRun(CostForms.ActAutoFix))
-                        {
-                            <MudIconButton Icon="@Icons.Material.Filled.Build"
-                                           Size="Size.Small" Color="Color.Primary"
-                                           Title="اصلاح سطر فرمول منفی"
-                                           OnClick="@(() => OpenNegativeFormulaFix(context))" />
-                        }
-                        @if (!context.IsResolved && Access.CanRun(CostForms.ActResolve))
-                        {
-                            <MudIconButton Icon="@Icons.Material.Filled.Check"
-                                           Size="Size.Small" Title="رفع شد"
-                                           OnClick="@(() => Resolve(context))" />
-                        }
-                        @* پذیرش دائمی سرورسمت به مجوز Upd نیاز دارد (چون یک قاعدهٔ دائمی در
-                           CC_AcceptedException می‌سازد)، نه فقط Run مثل «رفع شد» — قبلاً هر دو
-                           دکمه زیر یک شرط بودند، پس کاربری با فقط Run دکمه را می‌دید ولی با ۴۰۳
-                           رد می‌شد. *@
-                        @if (!context.IsResolved && Access.CanUpd(CostForms.ActResolve))
-                        {
-                            <MudIconButton Icon="@Icons.Material.Filled.DoNotDisturbOn"
-                                           Size="Size.Small" Title="پذیرش دائمی"
-                                           OnClick="@(() => AcceptPermanently(context))" />
-                        }
-                    </MudTd>
-                </RowTemplate>
-            </MudTable>
+                if (opening.Count > 0)
+                {
+                    <MudText Typo="Typo.caption" Class="cc-subgroup-label">
+                        مغایرت افتتاحیه — موجودی اول دوره seed نشده (@opening.Count مورد)
+                    </MudText>
+                    @ExceptionTable(opening)
+                }
+                if (other.Count > 0)
+                {
+                    <MudText Typo="Typo.caption" Class="cc-subgroup-label">
+                        سایر مغایرت‌ها (@other.Count مورد)
+                    </MudText>
+                    @ExceptionTable(other)
+                }
+            }
+            else
+            {
+                @ExceptionTable(g.ToList())
+            }
         </MudPaper>
+    }
+
+    @{
+        RenderFragment ExceptionTable(List<CostExceptionDto> rows) => @<MudTable T="CostExceptionDto" Items="rows" Dense Hover Breakpoint="Breakpoint.Sm" Elevation="0">
+            <HeaderContent>
+                <MudTh Style="width:40px">
+                    <MudCheckBox T="bool" Dense Value="@AllSelected(rows)"
+                                 ValueChanged="@(v => ToggleSelectAll(rows, v))" />
+                </MudTh>
+                <MudTh>کالا</MudTh>
+                <MudTh>شرح</MudTh>
+                <MudTh Style="text-align:left">برگه‌ها</MudTh>
+                <MudTh Style="text-align:left">مبلغ / مقدار</MudTh>
+                <MudTh Style="width:150px"></MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd>
+                    <MudCheckBox T="bool" Dense Value="@_selected.Contains(context.ExceptionId)"
+                                 ValueChanged="@(v => ToggleOne(context.ExceptionId, v))" />
+                </MudTd>
+                <MudTd>
+                    @if (context.Code is not null)
+                    {
+                        <div class="cc-item">
+                            <span class="cc-num">@context.Code</span>
+                            <span>@context.ItemName</span>
+                        </div>
+                    }
+                    else { <span class="mud-text-secondary">—</span> }
+                </MudTd>
+
+                <MudTd>
+                    <MudText Typo="Typo.body2">@context.Description</MudText>
+                    @if (context.DocDate is not null)
+                    {
+                        <MudText Typo="Typo.caption" Class="mud-text-secondary">
+                            @FormatDate(context.DocDate.Value)
+                        </MudText>
+                    }
+                </MudTd>
+
+                <MudTd Style="text-align:left">
+                    @if (!string.IsNullOrEmpty(context.RefList))
+                    {
+                        <MudTooltip Text="@context.RefList">
+                            <span class="cc-num cc-reflist">@Shorten(context.RefList)</span>
+                        </MudTooltip>
+                    }
+                    else if (context.DocNumber is not null)
+                    {
+                        <span class="cc-num">@context.DocNumber</span>
+                    }
+                    else { <span class="mud-text-secondary">—</span> }
+                </MudTd>
+
+                <MudTd Style="text-align:left">
+                    <span class="cc-num">@FormatAmount(context.Amount)</span>
+                </MudTd>
+
+                <MudTd Style="text-align:left">
+                    @if (context.CanAutoFix && Access.CanRun(CostForms.ActAutoFix))
+                    {
+                        <MudIconButton Icon="@Icons.Material.Filled.AutoFixHigh"
+                                       Size="Size.Small" Color="Color.Primary"
+                                       Title="@context.FixButtonText"
+                                       OnClick="@(() => OpenAutoFix(context.ExceptionId))" />
+                    }
+                    @if (context.RuleCode == "CHK-15" && !context.IsResolved
+                         && Access.CanRun(CostForms.ActAutoFix))
+                    {
+                        <MudIconButton Icon="@Icons.Material.Filled.Build"
+                                       Size="Size.Small" Color="Color.Primary"
+                                       Title="اصلاح سطر فرمول منفی"
+                                       OnClick="@(() => OpenNegativeFormulaFix(context))" />
+                    }
+                    @if (!context.IsResolved && Access.CanRun(CostForms.ActResolve))
+                    {
+                        <MudIconButton Icon="@Icons.Material.Filled.Check"
+                                       Size="Size.Small" Title="رفع شد"
+                                       OnClick="@(() => Resolve(context))" />
+                    }
+                    @* پذیرش دائمی سرورسمت به مجوز Upd نیاز دارد (چون یک قاعدهٔ دائمی در
+                       CC_AcceptedException می‌سازد)، نه فقط Run مثل «رفع شد» — قبلاً هر دو
+                       دکمه زیر یک شرط بودند، پس کاربری با فقط Run دکمه را می‌دید ولی با ۴۰۳
+                       رد می‌شد. *@
+                    @if (!context.IsResolved && Access.CanUpd(CostForms.ActResolve))
+                    {
+                        <MudIconButton Icon="@Icons.Material.Filled.DoNotDisturbOn"
+                                       Size="Size.Small" Title="پذیرش دائمی"
+                                       OnClick="@(() => AcceptPermanently(context))" />
+                    }
+                </MudTd>
+            </RowTemplate>
+        </MudTable>;
     }
 </div>
 
@@ -383,12 +460,31 @@
 
     private Variant FilterVariant(string v) => _filter == v ? Variant.Filled : Variant.Text;
 
-    private void ApplyFilter() => _rows = _filter switch
+    // فیلتر انبار — مستقل از فیلتر شدت/رفع‌شده، هر دو با هم اعمال می‌شوند.
+    private int? _anbarFilter;
+
+    private IEnumerable<(int Anbar, string? AnbarName)> AnbarChoices
+        => _all.Where(x => x.Anbar is not null)
+               .Select(x => (Anbar: x.Anbar!.Value, x.AnbarName))
+               .Distinct()
+               .OrderBy(x => x.Anbar);
+
+    private void OnAnbarFilterChanged(int? v) { _anbarFilter = v; ApplyFilter(); }
+
+    private void ApplyFilter()
     {
-        "blocking" => _all.Where(x => !x.IsResolved && x.Severity == 2).ToList(),
-        "warning"  => _all.Where(x => !x.IsResolved && x.Severity == 1).ToList(),
-        _          => _all.Where(x =>  x.IsResolved).ToList()
-    };
+        IEnumerable<CostExceptionDto> rows = _filter switch
+        {
+            "blocking" => _all.Where(x => !x.IsResolved && x.Severity == 2),
+            "warning"  => _all.Where(x => !x.IsResolved && x.Severity == 1),
+            _          => _all.Where(x =>  x.IsResolved)
+        };
+
+        if (_anbarFilter is not null)
+            rows = rows.Where(x => x.Anbar == _anbarFilter);
+
+        _rows = rows.ToList();
+    }
 
     // ───────── اصلاح خودکار ─────────
 
@@ -531,6 +627,72 @@
             if (ok) await Load();
         }
         finally { _busy = false; }
+    }
+
+    // ───────── انتخاب دسته‌جمعی و رفع با سند اصلاحی ─────────
+
+    private readonly HashSet<long> _selected = new();
+
+    private bool AllSelected(IEnumerable<CostExceptionDto> group)
+    {
+        var list = group as IList<CostExceptionDto> ?? group.ToList();
+        return list.Count > 0 && list.All(x => _selected.Contains(x.ExceptionId));
+    }
+
+    private void ToggleSelectAll(IEnumerable<CostExceptionDto> group, bool value)
+    {
+        foreach (var x in group)
+        {
+            if (value) _selected.Add(x.ExceptionId);
+            else _selected.Remove(x.ExceptionId);
+        }
+    }
+
+    private void ToggleOne(long exceptionId, bool value)
+    {
+        if (value) _selected.Add(exceptionId);
+        else _selected.Remove(exceptionId);
+    }
+
+    private async Task BulkResolve(IEnumerable<CostExceptionDto> group)
+    {
+        var ids = group.Where(x => _selected.Contains(x.ExceptionId)).Select(x => x.ExceptionId).ToList();
+        if (ids.Count == 0) return;
+
+        var confirm = await Dialog.ShowMessageBox(
+            "نادیده گرفتن دسته‌جمعی",
+            $"{ids.Count} مورد بدون صدور سند رفع می‌شود. مطمئن‌اید؟",
+            yesText: "بله، رفع کن", cancelText: "انصراف");
+
+        if (confirm != true) return;
+
+        var (ok, count, err) = await Api.BulkResolveAsync(ids, "نادیده‌گرفتن دسته‌جمعی از صفحه مغایرت‌ها");
+        if (ok)
+        {
+            foreach (var id in ids) _selected.Remove(id);
+            Snackbar.Add($"{count} مورد رفع شد", Severity.Success);
+            await Load();
+        }
+        else
+        {
+            Snackbar.Add(err ?? "رفع دسته‌جمعی ناموفق بود", Severity.Error);
+        }
+    }
+
+    private async Task OpenPostCorrection(IEnumerable<CostExceptionDto> group)
+    {
+        var ids = group.Where(x => _selected.Contains(x.ExceptionId)).Select(x => x.ExceptionId).ToList();
+        if (ids.Count == 0) return;
+
+        var p = new DialogParameters { ["ExceptionIds"] = ids, ["DateS"] = DateTo };
+        var dlg = await Dialog.ShowAsync<PostCorrectionDialog>("سند اصلاحی مغایرت", p);
+        var result = await dlg.Result;
+
+        if (result is { Canceled: false })
+        {
+            foreach (var id in ids) _selected.Remove(id);
+            await Load();
+        }
     }
 
     private async Task Resolve(CostExceptionDto ex)

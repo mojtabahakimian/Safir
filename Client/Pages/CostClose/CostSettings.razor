@@ -286,9 +286,30 @@
                         </MudTd>
 
                         <MudTd Style="text-align:left">
-                            <span class="cc-num">
-                                @(context.Threshold is null ? "—" : FormatThreshold(context.Threshold.Value))
-                            </span>
+                            @if (_editingRuleCode == context.RuleCode)
+                            {
+                                <div style="display:flex;align-items:center;gap:4px">
+                                    <MudNumericField T="double?" @bind-Value="_editingThreshold"
+                                                      Format="0.######" Dense Immediate
+                                                      Style="width:110px" />
+                                    <MudIconButton Icon="@Icons.Material.Filled.Check" Size="Size.Small"
+                                                   Color="Color.Success"
+                                                   OnClick="@(() => SaveThreshold(context.RuleCode))" />
+                                    <MudIconButton Icon="@Icons.Material.Filled.Close" Size="Size.Small"
+                                                   OnClick="@(() => _editingRuleCode = null)" />
+                                </div>
+                            }
+                            else
+                            {
+                                <span class="cc-num">
+                                    @(context.Threshold is null ? "—" : FormatThreshold(context.Threshold.Value))
+                                </span>
+                                @if (Access.CanUpd(CostForms.Settings))
+                                {
+                                    <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small"
+                                                   OnClick="@(() => StartEditThreshold(context))" />
+                                }
+                            }
                         </MudTd>
 
                         <MudTd>
@@ -325,6 +346,9 @@
     private List<CostAnbarHesDto>  _anbarHes = new();
     private bool _busy;
     private string? _loadError;
+
+    private string? _editingRuleCode;
+    private double? _editingThreshold;
 
     protected override async Task OnInitializedAsync()
     {
@@ -526,4 +550,27 @@
 
     private static string FormatThreshold(double v)
         => v < 1 ? $"{v * 100:N1}٪" : v.ToString("N0");
+
+    // ───────── آستانه‌ی قاعده (مثلاً CHK-01) ─────────
+
+    private void StartEditThreshold(CostCheckRuleDto rule)
+    {
+        _editingRuleCode = rule.RuleCode;
+        _editingThreshold = rule.Threshold;
+    }
+
+    private async Task SaveThreshold(string ruleCode)
+    {
+        var (ok, err) = await Api.UpdateRuleThresholdAsync(ruleCode, _editingThreshold);
+        if (ok)
+        {
+            Snackbar.Add("آستانه به‌روزرسانی شد.", Severity.Success);
+            _editingRuleCode = null;
+            _rules = await Api.GetRulesAsync();
+        }
+        else
+        {
+            Snackbar.Add(err ?? "به‌روزرسانی آستانه ناموفق بود.", Severity.Error);
+        }
+    }
 }

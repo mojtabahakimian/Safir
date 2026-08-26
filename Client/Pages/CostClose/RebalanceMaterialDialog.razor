@@ -1,0 +1,242 @@
+@using Safir.Shared.Models.CostClose
+@using Safir.Client.Services
+@inject CostCloseApiService Api
+@inject ISnackbar Snackbar
+
+<MudDialog>
+    <DialogContent>
+        <div dir="rtl" style="min-width:520px">
+            <MudText Typo="Typo.body2" Class="mb-3">
+                مقدار مصرف یک ماده را بین دو فرمولِ همین ماه جابه‌جا می‌کند — نه نرخ جذب دستمزد.
+                جمع کل مصرف فیزیکی آن ماده ثابت می‌ماند، پس انحراف مصرف ایجاد نمی‌شود.
+            </MudText>
+
+            <MudAutocomplete T="FormulaMaterialDto" Label="ماده" Dense Variant="Variant.Outlined"
+                              Class="mb-3" Value="_material" ValueChanged="OnMaterialChanged"
+                              SearchFuncWithCancel="SearchMaterial" ToStringFunc="MaterialText"
+                              Placeholder="نام یا کد ماده" />
+
+            @if (_material is not null)
+            {
+                @if (_loadingConsumers)
+                {
+                    <MudProgressLinear Indeterminate Color="Color.Primary" Class="mb-3" />
+                }
+                else if (_consumers.Count < 2)
+                {
+                    <MudAlert Severity="Severity.Warning" Dense Class="mb-3">
+                        این ماده در کمتر از دو فرمولِ این ماه مصرف شده — چیزی برای جابه‌جایی نیست.
+                    </MudAlert>
+                }
+                else
+                {
+                    <MudSelect T="long?" Label="از فرمول (کم می‌شود)" Dense Variant="Variant.Outlined"
+                               Class="mb-3" Value="_fromCode" ValueChanged="OnFromChanged">
+                        @foreach (var c in _consumers)
+                        {
+                            <MudSelectItem Value="@((long?)c.ParentCode)" Disabled="@(c.ProdQty is null or 0)">
+                                @c.ParentName (@c.ParentCode) — مصرف @c.MEGHk.ToString("N3")
+                                @(c.ProdQty is null or 0 ? " — بدون سند تولید" : "")
+                            </MudSelectItem>
+                        }
+                    </MudSelect>
+
+                    <MudSelect T="long?" Label="به فرمول (اضافه می‌شود)" Dense Variant="Variant.Outlined"
+                               Class="mb-3" Value="_toCode" ValueChanged="OnToChanged">
+                        @foreach (var c in _consumers)
+                        {
+                            <MudSelectItem Value="@((long?)c.ParentCode)" Disabled="@(c.ProdQty is null or 0)">
+                                @c.ParentName (@c.ParentCode) — مصرف @c.MEGHk.ToString("N3")
+                                @(c.ProdQty is null or 0 ? " — بدون سند تولید" : "")
+                            </MudSelectItem>
+                        }
+                    </MudSelect>
+
+                    <div class="mb-3">
+                        <MudNumericField T="double?" @bind-Value="_qty" Label="مقدار جابه‌جایی (واحد کاردکس ماده)"
+                                          Dense Variant="Variant.Outlined" Min="0" />
+
+                        @if (_suggestedQty is not null)
+                        {
+                            <MudText Typo="Typo.caption" Class="mud-text-secondary" style="display:block">
+                                پیشنهاد برای جبران کامل زیان (@FormatAmount(PrefillLossAmount!.Value) ریال ÷
+                                نرخ ماده @FormatAmount(_fromRate)): @_suggestedQty.Value.ToString("N3")
+                                — قابل ویرایش است؛ برای جبران جزئی عدد کوچک‌تری بزن.
+                            </MudText>
+                        }
+                    </div>
+
+                    <MudButton Variant="Variant.Outlined" Color="Color.Primary"
+                               Disabled="@(!CanPreview || _busy)" OnClick="LoadPreview" Class="mb-3">
+                        پیش‌نمایش
+                    </MudButton>
+
+                    @if (_previewError is not null)
+                    {
+                        <MudAlert Severity="Severity.Error" Dense Class="mb-3">@_previewError</MudAlert>
+                    }
+
+                    @if (_preview is not null)
+                    {
+                        <MudSimpleTable Dense>
+                            <thead>
+                                <tr>
+                                    <th>فرمول</th>
+                                    <th style="text-align:left">مصرف قبل</th>
+                                    <th style="text-align:left">مصرف بعد</th>
+                                    <th style="text-align:left">بها قبل</th>
+                                    <th style="text-align:left">بها بعد</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var p in _preview)
+                                {
+                                    <tr>
+                                        <td>@p.ParentName (@p.ParentCode)</td>
+                                        <td style="text-align:left">@p.MEGHkBefore.ToString("N3")</td>
+                                        <td style="text-align:left">@p.MEGHkAfter.ToString("N3")</td>
+                                        <td style="text-align:left">@p.CostPerUnitBefore.ToString("N0")</td>
+                                        <td style="text-align:left">@p.CostPerUnitAfter.ToString("N0")</td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </MudSimpleTable>
+                    }
+                }
+            }
+        </div>
+    </DialogContent>
+
+    <DialogActions>
+        <MudButton OnClick="Cancel">انصراف</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled"
+                   Disabled="@(_preview is null || _busy)" OnClick="Apply">
+            اعمال
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private MudDialogInstance MudDialog { get; set; } = default!;
+    [Parameter] public int RunId { get; set; }
+
+    /// <summary>کد کالایی که این دیالوگ از ردیفش باز شده — پیش‌فرض «از فرمول»</summary>
+    [Parameter] public long? PrefillFromCode { get; set; }
+
+    /// <summary>مبلغ زیان همین کالا (ریال) — برای پیشنهاد خودکار مقدار جابه‌جایی</summary>
+    [Parameter] public double? PrefillLossAmount { get; set; }
+
+    private FormulaMaterialDto? _material;
+    private List<MaterialConsumerDto> _consumers = new();
+    private bool _loadingConsumers;
+
+    private long? _fromCode;
+    private long? _toCode;
+    private double? _qty;
+    private double? _suggestedQty;
+    private double  _fromRate;
+
+    private List<RebalancePreviewDto>? _preview;
+    private string? _previewError;
+    private bool _busy;
+
+    private static string MaterialText(FormulaMaterialDto? m)
+        => m is null ? "" : $"{m.Name} ({m.Code})";
+
+    private async Task<IEnumerable<FormulaMaterialDto>> SearchMaterial(string s, CancellationToken ct)
+        => await Api.GetFormulaMaterialsAsync(RunId, s);
+
+    private async Task OnMaterialChanged(FormulaMaterialDto? m)
+    {
+        _material = m;
+        _consumers = new();
+        _fromCode = null;
+        _toCode = null;
+        _preview = null;
+        _previewError = null;
+
+        if (m is null) return;
+
+        _loadingConsumers = true;
+        try
+        {
+            _consumers = await Api.GetMaterialConsumersAsync(RunId, m.Code);
+
+            if (PrefillFromCode is not null && _consumers.Any(c => c.ParentCode == PrefillFromCode))
+                _fromCode = PrefillFromCode;
+
+            TrySuggestQty();
+        }
+        finally { _loadingConsumers = false; }
+    }
+
+    private void OnFromChanged(long? v) { _fromCode = v; _preview = null; TrySuggestQty(); }
+    private void OnToChanged(long? v) { _toCode = v; _preview = null; }
+
+    /// <summary>
+    /// وقتی فرمول مبدأ همان کالای زیان‌ده‌ای است که دیالوگ از رویش باز شده،
+    /// مقدار جابه‌جایی را از روی زیان ÷ نرخ ماده پیشنهاد می‌دهد — کاربر مجبور
+    /// نیست خودش این تقسیم را دستی انجام دهد؛ همچنان قابل ویرایش می‌ماند.
+    /// </summary>
+    private void TrySuggestQty()
+    {
+        _suggestedQty = null;
+
+        if (PrefillLossAmount is not > 0 || _fromCode != PrefillFromCode) return;
+
+        var fromConsumer = _consumers.FirstOrDefault(c => c.ParentCode == _fromCode);
+        if (fromConsumer is null || fromConsumer.Rate <= 0) return;
+
+        _fromRate = fromConsumer.Rate;
+        _suggestedQty = Math.Round(PrefillLossAmount.Value / fromConsumer.Rate, 3);
+        _qty = _suggestedQty;
+    }
+
+    private static string FormatAmount(double v) => v.ToString("N0");
+
+    private bool CanPreview =>
+        _fromCode is not null && _toCode is not null && _fromCode != _toCode &&
+        _qty is > 0;
+
+    private RebalanceMaterialRequest BuildRequest() => new()
+    {
+        MaterialCode   = _material!.Code,
+        FromParentCode = _fromCode!.Value,
+        ToParentCode   = _toCode!.Value,
+        Qty            = _qty!.Value
+    };
+
+    private async Task LoadPreview()
+    {
+        _busy = true;
+        _previewError = null;
+        try
+        {
+            var (ok, preview, err) = await Api.RebalanceMaterialAsync(RunId, BuildRequest(), whatIf: true);
+            if (!ok) { _previewError = err; _preview = null; return; }
+
+            _preview = preview;
+        }
+        finally { _busy = false; }
+    }
+
+    private async Task Apply()
+    {
+        _busy = true;
+        try
+        {
+            var (ok, _, err) = await Api.RebalanceMaterialAsync(RunId, BuildRequest(), whatIf: false);
+            if (!ok)
+            {
+                Snackbar.Add(err ?? "اعمال ناموفق بود", Severity.Error);
+                return;
+            }
+
+            Snackbar.Add("مصرف ماده جابه‌جا شد — نرخ‌ها باید دوباره منتشر شوند", Severity.Success);
+            MudDialog.Close(DialogResult.Ok(true));
+        }
+        finally { _busy = false; }
+    }
+
+    private void Cancel() => MudDialog.Cancel();
+}
