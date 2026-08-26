@@ -15,7 +15,7 @@
 
 MERGE dbo.CC_CheckRule AS t
 USING (VALUES
- ('CHK-01', N'کاردکس منفی', 'S05', 1, 2, NULL,
+ ('CHK-01', N'کاردکس منفی', 'S05', 1, 2, -0.001,
   N'تاریخ رسید یا حواله را جابه‌جا کنید تا موجودی در هیچ لحظه‌ای منفی نشود.', 10),
 
  ('CHK-02', N'مغایرت کارت انبار و حسابداری', 'S05', 2, 2, NULL,
@@ -55,12 +55,19 @@ USING (VALUES
   N'ماده در فرمول مقدار دارد ولی حواله‌اش با مقدار صفر صادر شده؛ یعنی فرمول پس از صدور حواله ویرایش شده است. خروج مواد باید بازسازی شود.', 130),
 
  ('CHK-15', N'فرمول با مقدار منفی', 'S00', 17, 2, NULL,
-  N'مقدار منفی در یک سطر فرمول قابل قبول نیست و باعث می‌شود مانده حساب کالای در جریان ساخت (۷۵۱) هرگز متوازن نشود. با دکمه اصلاح، آن سطر را صفر یا حذف کنید.', 75)
+  N'مقدار منفی در یک سطر فرمول قابل قبول نیست و باعث می‌شود مانده حساب کالای در جریان ساخت (۷۵۱) هرگز متوازن نشود. با دکمه اصلاح، آن سطر را صفر یا حذف کنید.', 75),
+
+ ('CHK-16', N'برگه تولید به انبار بدون واحد تعریف‌شده', 'S00', 18, 1, NULL,
+  N'این انبار را در تنظیمات، به تعریف واحدهای تولیدی (نقش «محصول») اضافه کنید — وگرنه هزینه تبدیل این برگه‌ها در هیچ واحدی جذب نمی‌شود و مانده حساب ۷۵۱ کاذب می‌شود.', 45)
 ) AS s (RuleCode, RuleName, StepCode, ExType, DefaultSeverity, Threshold, RemedyText, SortOrder)
 ON t.RuleCode = s.RuleCode
+-- ⚠️ Threshold عمداً از WHEN MATCHED بیرون است: کاربر می‌تواند از تنظیمات
+-- برنامه آستانه‌ی هر قاعده را عوض کند (مثلاً CHK-01)؛ اگر این Seed دوباره
+-- اجرا شود، نباید آن تنظیم دستی را با مقدار پیش‌فرض پاک کند. Threshold
+-- فقط در INSERT اولیه (ردیف جدید) از مقدار پیش‌فرض بالا پر می‌شود.
 WHEN MATCHED THEN UPDATE SET
     t.RuleName = s.RuleName, t.StepCode = s.StepCode, t.ExType = s.ExType,
-    t.DefaultSeverity = s.DefaultSeverity, t.Threshold = s.Threshold,
+    t.DefaultSeverity = s.DefaultSeverity,
     t.RemedyText = s.RemedyText, t.SortOrder = s.SortOrder
 WHEN NOT MATCHED THEN INSERT
     (RuleCode, RuleName, StepCode, ExType, DefaultSeverity, Threshold, RemedyText, SortOrder)
@@ -201,6 +208,10 @@ IF NOT EXISTS (SELECT 1 FROM dbo.TFORMS WHERE FORMNAME = N'COST_ACT_EXPORT')
 IF NOT EXISTS (SELECT 1 FROM dbo.TFORMS WHERE FORMNAME = N'COST_ACT_REBUILD_DOCS')
     INSERT INTO dbo.TFORMS (FORMNAME, CAPTION, kind, GRP, IDH, CRT)
     VALUES (N'COST_ACT_REBUILD_DOCS', N'بازسازی سند حواله خروج مواد', 3, 10, (SELECT ISNULL(MAX(IDH),0)+1 FROM dbo.TFORMS), GETDATE());
+
+IF NOT EXISTS (SELECT 1 FROM dbo.TFORMS WHERE FORMNAME = N'COST_ACT_POST_CORRECTION')
+    INSERT INTO dbo.TFORMS (FORMNAME, CAPTION, kind, GRP, IDH, CRT)
+    VALUES (N'COST_ACT_POST_CORRECTION', N'سند اصلاحی مغایرت کارت انبار/حسابداری', 3, 10, (SELECT ISNULL(MAX(IDH),0)+1 FROM dbo.TFORMS), GETDATE());
 
 PRINT N'فرم‌های ماژول بستن ماه بهای تمام‌شده در TFORMS ثبت شدند.';
 GO

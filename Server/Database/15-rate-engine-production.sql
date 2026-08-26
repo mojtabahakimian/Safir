@@ -43,36 +43,48 @@ BEGIN
     SET NOCOUNT ON;
     SET XACT_ABORT ON;
 
-    DECLARE @TafDastmozd BIGINT = 99999999;
-    DECLARE @UnitId INT, @Dep INT, @SplitMode TINYINT;
+    DECLARE @TafDastmozd BIGINT = 99999999;   -- دستمزد (و روي اين پايگاه‌داده: سربار هم همين‌جا)
+    DECLARE @TafSarbar   BIGINT = 99999998;   -- سربار، فقط وقتي نصب از دستمزد جدايش کرده باشد
+    DECLARE @UnitId INT, @SplitMode TINYINT;
 
-    -- Depatman = NULL يعني «همهٔ دپارتمان‌ها» — اگر بيش از يک واحد فعال اين
-    -- حالت را داشته باشند، هر دو دقيقاً همان برگه‌هاي توليد را پردازش
-    -- مي‌کنند. چون اين حلقه IMBIBE_MANF/IMBIBE_SAR را در HEAD_MANF مستقيماً
-    -- ويرايش مي‌کند، واحد دومي که در همان اجرا پردازش مي‌شود ديگر مقدار
-    -- اصلي فرمول را نمي‌بيند بلکه مقدارِ از قبل تعديل‌شدهٔ واحد اول را
-    -- مي‌خواند و رويش دوباره ضريب مي‌زند — نتيجه فرمول را خراب مي‌کند، نه
-    -- فقط عدد کنترلي را. مقدار پيش‌فرض داده اوليه (11-seed-data.sql) دقيقاً
-    -- همين ترکيب را دارد؛ تا وقتي نصب‌کننده Depatman هر واحد را با دپارتمان
-    -- واقعي‌اش عوض نکند، اجراي واقعي همين‌جا فرمول‌ها را خراب مي‌کرد.
-    IF (SELECT COUNT(*) FROM dbo.CC_Unit WHERE IsActive = 1 AND Depatman IS NULL) > 1
+    -- تشخيص واحد از روي دپارتمان کنار گذاشته شد: دپارتمان را اپراتور دستي
+    -- روي برگه مي‌زند و اشتباه تايپي رايج است. ملاک مطمئن، انباري است که
+    -- محصول توليدشده وارد آن مي‌شود (CC_UnitAnbar.AnbarRole = 3، «محصول»)
+    -- — همان چيزي که در تنظيمات واحدها از قبل تعريف شده و کاربر تأييد
+    -- کرد بايد ملاک باشد (نه Depatman). CHK-16 (S00) از قبل هر انباري که
+    -- برگه توليد دارد ولي به هيچ واحدي وصل نيست را هشدار مي‌دهد.
+    --
+    -- ريسک مشابهِ حالت قبلي (Depatman=NULL تکراري) اينجا اين است: اگر يک
+    -- انبارِ «محصول» به بيش از يک واحد فعال وصل باشد، هر دو دقيقاً همان
+    -- برگه‌ها را پردازش مي‌کنند و چون اين حلقه IMBIBE_MANF/IMBIBE_SAR را
+    -- مستقيماً در HEAD_MANF ويرايش مي‌کند، واحد دوم رويِ مقدارِ از‌قبل‌
+    -- تعديل‌شده‌ي واحد اول دوباره ضريب مي‌زند — فرمول‌ها خراب مي‌شوند.
+    IF EXISTS (
+        SELECT ua.Anbar
+        FROM   dbo.CC_UnitAnbar ua
+        JOIN   dbo.CC_Unit      u  ON u.UnitId = ua.UnitId AND u.IsActive = 1
+        WHERE  ua.AnbarRole = 3
+        GROUP  BY ua.Anbar
+        HAVING COUNT(DISTINCT ua.UnitId) > 1
+    )
     BEGIN
-        RAISERROR(N'بيش از يک واحد توليدي فعال بدون دپارتمان مشخص (همه‌شمول) وجود دارد؛ اين باعث پردازش دوباره‌ي همان برگه‌ها و خراب شدن فرمول‌ها مي‌شود. دپارتمان هر واحد را در تنظیمات مشخص کنيد.', 16, 1);
+        RAISERROR(N'يک انبار محصول (نقش «محصول») به بيش از يک واحد توليدي فعال وصل است؛ اين باعث پردازش دوباره‌ي همان برگه‌ها و خراب شدن فرمول‌ها مي‌شود. نگاشت انبار⇄واحد را در تنظیمات اصلاح کنيد.', 16, 1);
         RETURN;
     END
 
     DELETE dbo.CC_ConversionCost WHERE RunId = @RunId;
+    DELETE dbo.CC_Exception WHERE RunId = @RunId AND StepCode = 'S10' AND RuleCode = 'CHK-08';
 
     DECLARE cUnit CURSOR LOCAL FAST_FORWARD FOR
-        SELECT UnitId, Depatman, SplitMode
+        SELECT UnitId, SplitMode
         FROM   dbo.CC_Unit WHERE IsActive = 1 ORDER BY SeqNo;
 
     OPEN cUnit;
-    FETCH NEXT FROM cUnit INTO @UnitId, @Dep, @SplitMode;
+    FETCH NEXT FROM cUnit INTO @UnitId, @SplitMode;
 
     WHILE @@FETCH_STATUS = 0
     BEGIN
-        ---- ۱) جذب‌شده از برگه‌هاي توليد اين واحد
+        ---- ۱) جذب‌شده از برگه‌هاي توليد اين واحد (بر اساس انبار محصول)
         DECLARE @absWage FLOAT, @absOh FLOAT;
 
         SELECT  @absWage = ISNULL(SUM(pl.MEGHK * ISNULL(hm.IMBIBE_MANF,0)), 0),
@@ -82,18 +94,44 @@ BEGIN
         JOIN    dbo.HEAD_MANF hm ON hm.FNUMB  = TRY_CAST(pl.N_KOL AS INT)
                                 AND hm.GHEYMAT = @Month
         WHERE   h.TAG = 9 AND h.DATE_N BETWEEN @DT1 AND @DT2
-          AND  (@Dep IS NULL OR h.DEPATMAN = @Dep);
+          AND   pl.ANBAR IN (SELECT Anbar FROM dbo.CC_UnitAnbar
+                              WHERE UnitId = @UnitId AND AnbarRole = 3);
 
         DECLARE @absTotal FLOAT = @absWage + @absOh;
 
-        ---- ۲) کنترل متقابل با حساب ۷۵۱ (فقط تفصيلي دستمزد)
-        DECLARE @absWip FLOAT;
+        ---- ۲) کنترل متقابل با حساب ۷۵۱، به تفکيک واحد و به تفکيک دستمزد/سربار
+        -- HES_M روي اين رديف‌ها کدِ خودِ کالاي توليدشده است (نه يک معينِ
+        -- عمومي) — کاربر تأييد کرد و مستقيماً تست شد: تمام HES_M هاي اين
+        -- تفصيلي دقيقاً با STUF_DEF.CODE مطابقت دارند. پس مي‌شود دقيقاً
+        -- همان مجموعه کدهايي را که اين واحد در همين بازه توليد کرده
+        -- (زيرکوئري پايين، عيناً منطق جذب‌شده در بالا) فيلتر کرد و مانده
+        -- ۷۵۱ را per-واحد گرفت، نه فقط جمع کل شرکت.
+        --
+        -- ⚠️ @TafSarbar (سربار، ۹۹۹۹۹۹۹۸) روي اين پايگاه‌داده استفاده
+        -- نمي‌شود — همه‌ي دستمزد و سربار زير همان @TafDastmozd (۹۹۹۹۹۹۹۹)
+        -- ثبت مي‌شوند (کاربر تأييد کرد). ولي روي نصب‌هاي ديگر ممکن است
+        -- اين دو را جدا کنند؛ اگر اينجا فقط @TafDastmozd را چک مي‌کرديم،
+        -- روي چنان پايگاه‌داده‌اي سهمِ سربار از مانده ۷۵۱ اصلاً ديده
+        -- نمي‌شد و کنترل CHK-08 دقيقاً به‌اندازه‌ي سربار غلط مي‌شد. پس هر
+        -- دو تفصيلي را جدا جمع مي‌زنيم؛ هر کدام که در اين پايگاه‌داده
+        -- خالي باشد صفر مي‌ماند و به کنترل کل آسيبي نمي‌زند.
+        DECLARE @absWipWage FLOAT, @absWipOh FLOAT, @absWip FLOAT;
 
-        SELECT  @absWip = ISNULL(SUM(d.BES) - SUM(d.BED), 0)
+        SELECT  @absWipWage = ISNULL(SUM(CASE WHEN d.HES_T = @TafDastmozd THEN d.BES - d.BED ELSE 0 END), 0),
+                @absWipOh   = ISNULL(SUM(CASE WHEN d.HES_T = @TafSarbar   THEN d.BES - d.BED ELSE 0 END), 0)
         FROM    dbo.DEED_DTL d
         JOIN    dbo.DEED_HED hd ON hd.N_S = d.N_S
-        WHERE   d.HES_K = 751 AND d.HES_T = @TafDastmozd
-          AND   hd.DATE_S BETWEEN @DT1 AND @DT2;
+        WHERE   d.HES_K = 751 AND d.HES_T IN (@TafDastmozd, @TafSarbar)
+          AND   hd.DATE_S BETWEEN @DT1 AND @DT2
+          AND   TRY_CAST(d.HES_M AS BIGINT) IN (
+                    SELECT DISTINCT TRY_CAST(pl.CODE AS BIGINT)
+                    FROM   dbo.HEAD_LST h
+                    JOIN   dbo.INVO_LST pl ON pl.NUMBER = h.NUMBER AND pl.TAG = 9
+                    WHERE  h.TAG = 9 AND h.DATE_N BETWEEN @DT1 AND @DT2
+                      AND  pl.ANBAR IN (SELECT Anbar FROM dbo.CC_UnitAnbar
+                                        WHERE UnitId = @UnitId AND AnbarRole = 3));
+
+        SET @absWip = @absWipWage + @absWipOh;
 
         ---- ۳) واقعي از تراز، طبق نگاشت قابل ويرايش کاربر
         DECLARE @actWage FLOAT, @actOh FLOAT;
@@ -148,8 +186,8 @@ BEGIN
               FROM   dbo.CC_UnitAcc m
               WHERE  m.UnitId = @UnitId AND m.IsActive = 1
               FOR JSON PATH)),
-            (@RunId, @UnitId, 1, @absWage, NULL, @actWage, @kWage, NULL),
-            (@RunId, @UnitId, 2, @absOh,   NULL, @actOh,   @kOh,   NULL);
+            (@RunId, @UnitId, 1, @absWage, @absWipWage, @actWage, @kWage, NULL),
+            (@RunId, @UnitId, 2, @absOh,   @absWipOh,   @actOh,   @kOh,   NULL);
 
         ---- ۶) هشدار اختلاف کنترلي
         IF ABS(@absWip - @absTotal) > 10000000
@@ -182,7 +220,8 @@ BEGIN
                         JOIN   dbo.INVO_LST pl ON pl.NUMBER = h.NUMBER AND pl.TAG = 9
                         WHERE  h.TAG = 9 AND h.DATE_N BETWEEN @DT1 AND @DT2
                           AND  TRY_CAST(pl.N_KOL AS INT) = hm.FNUMB
-                          AND (@Dep IS NULL OR h.DEPATMAN = @Dep));
+                          AND  pl.ANBAR IN (SELECT Anbar FROM dbo.CC_UnitAnbar
+                                            WHERE UnitId = @UnitId AND AnbarRole = 3));
 
             INSERT dbo.CC_RunLog (RunId, StepCode, Severity, Message)
             VALUES (@RunId, 'S10', 1,
@@ -192,7 +231,7 @@ BEGIN
             COMMIT;
         END
 
-        FETCH NEXT FROM cUnit INTO @UnitId, @Dep, @SplitMode;
+        FETCH NEXT FROM cUnit INTO @UnitId, @SplitMode;
     END
 
     CLOSE cUnit;
@@ -222,10 +261,21 @@ GO
    نتیجه در DTL_MANF نوشته و در CC_FormulaChange ثبت می‌شود.
 
    یک پاس، قطعی، بدون تکرار.
+   ⚠️ يک کالا مي‌تواند در همان ماه بيش از يک فرمول فعال داشته باشد (مثلاً
+   روزهاي مختلف با ترکيب مواد متفاوت توليد شده باشد) — طبق تأييد صاحب
+   پروژه اين طبيعي است، نه خطاي داده. نسخه‌ي قبلي فقط يک فرمول را با
+   TOP 1 (آخرين DATE_ACTIV/FNUMB) براي محاسبه و انتشار انتخاب مي‌کرد؛
+   بهاي «خودِ» کالا حالا ميانگين موزونِ بهاي همه‌ي فرمول‌هاي فعالش است،
+   وزن‌دهي‌شده با مقدار واقعيِ توليدشده زيرِ هرکدام در بازه‌ي @DT1..@DT2
+   (از HEAD_LST/INVO_LST TAG=9، N_KOL=FNUMB). اگر هيچ‌کدام توليد واقعي
+   نداشتند (فرمول تعريف شده ولي هنوز مصرف نشده)، ميانگين ساده جايگزين
+   وزن مي‌شود — دقيقاً همان قاعده‌اي که CHK-09 در S00 هم استفاده مي‌کند.
    ═══════════════════════════════════════════════════════════════════ */
 CREATE OR ALTER PROCEDURE dbo.CC_sp_S11_PropagateRates
     @RunId  INT,
     @Month  TINYINT,
+    @DT1    BIGINT,
+    @DT2    BIGINT,
     @WhatIf BIT = 0
 AS
 BEGIN
@@ -282,13 +332,13 @@ BEGIN
     IF OBJECT_ID('tempdb..#C') IS NOT NULL DROP TABLE #C;
 
     CREATE TABLE #C (
-        Code  BIGINT PRIMARY KEY,
-        Llc   SMALLINT NOT NULL DEFAULT 0,
-        FNUMB INT      NULL,
-        Src   TINYINT  NOT NULL DEFAULT 1,
-        Mat   FLOAT    NOT NULL DEFAULT 0,
-        Wage  FLOAT    NOT NULL DEFAULT 0,
-        Oh    FLOAT    NOT NULL DEFAULT 0
+        Code       BIGINT PRIMARY KEY,
+        Llc        SMALLINT NOT NULL DEFAULT 0,
+        HasFormula BIT      NOT NULL DEFAULT 0,
+        Src        TINYINT  NOT NULL DEFAULT 1,
+        Mat        FLOAT    NOT NULL DEFAULT 0,
+        Wage       FLOAT    NOT NULL DEFAULT 0,
+        Oh         FLOAT    NOT NULL DEFAULT 0
     );
 
     INSERT #C (Code)
@@ -312,17 +362,52 @@ BEGIN
 
     CREATE INDEX IX_C_Llc ON #C(Llc);
 
-    ---- فرمول هر کالا
-    UPDATE  c
-       SET  c.FNUMB = f.FNUMB,
-            c.Src   = 2
-    FROM    #C c
-    CROSS   APPLY (SELECT TOP 1 hm.FNUMB
-                   FROM   dbo.HEAD_MANF hm
-                   WHERE  CAST(hm.CODE AS BIGINT) = c.Code AND hm.GHEYMAT = @Month
-                   ORDER BY hm.DATE_ACTIV DESC, hm.FNUMB DESC) f;
+    /* ─── ۳ب) فرمول‌هاي هر کالا در اين ماه — ممکن است بيش از يکي باشد ───
+       #F جايگزينِ ستون تکيِ #C.FNUMB قبلي است: هر رديف يک فرمول فعال است،
+       با مقدار واقعيِ توليدشده زيرش (Qty) که وزنِ ميانگين‌گيري مي‌شود. */
+    IF OBJECT_ID('tempdb..#F') IS NOT NULL DROP TABLE #F;
 
-    /* ─── ۴) نرخ مواد خريدني: ميانگين وزني خروج از انبار ─── */
+    CREATE TABLE #F (
+        FNUMB INT    PRIMARY KEY,
+        Code  BIGINT NOT NULL,
+        Qty   FLOAT  NOT NULL DEFAULT 0,
+        Wage  FLOAT  NOT NULL DEFAULT 0,
+        Oh    FLOAT  NOT NULL DEFAULT 0,
+        Mat   FLOAT  NOT NULL DEFAULT 0
+    );
+    CREATE INDEX IX_F_Code ON #F(Code);
+
+    INSERT #F (FNUMB, Code, Qty, Wage, Oh)
+    SELECT  hm.FNUMB, CAST(hm.CODE AS BIGINT),
+            ISNULL(p.Qty, 0), ISNULL(hm.IMBIBE_MANF, 0), ISNULL(hm.IMBIBE_SAR, 0)
+    FROM    dbo.HEAD_MANF hm
+    CROSS   APPLY (
+                SELECT SUM(pl.MEGHk) AS Qty
+                FROM   dbo.HEAD_LST h
+                JOIN   dbo.INVO_LST pl ON pl.NUMBER = h.NUMBER AND pl.TAG = 9
+                WHERE  h.TAG = 9 AND h.DATE_N BETWEEN @DT1 AND @DT2
+                  AND  TRY_CAST(pl.N_KOL AS INT) = hm.FNUMB
+            ) p
+    WHERE   hm.GHEYMAT = @Month AND hm.CODE IS NOT NULL
+      AND   EXISTS (SELECT 1 FROM #C c WHERE c.Code = CAST(hm.CODE AS BIGINT));
+
+    UPDATE  c SET c.HasFormula = 1, c.Src = 2
+    FROM    #C c
+    WHERE   EXISTS (SELECT 1 FROM #F f WHERE f.Code = c.Code);
+
+    /* ─── ۴) نرخ مواد خريدني: ميانگين وزني خروج از انبار ───
+       عمداً روي کالاهاي بدون فرمول محدود نيست: نيمه‌ساخته‌اي که خودش هم
+       اين ماه از انبار حواله خورده (مثل هر ماده‌ي اوليه‌ي ديگر) بايد
+       دقيقاً همان ميانگين واقعيِ انبارش را به‌عنوان نرخِ «خودش وقتي در
+       فرمولِ کالاي ديگري مصرف مي‌شود» بگيرد — نه نرخِ تازه‌محاسبه‌شده‌ي
+       زنجيره‌ي BOM. کاربر تأييد کرد اين دقيقاً همان چيزي است که مغايرت
+       حساب ۷۷۱ را ايجاد مي‌کرد: MaterialIssueRebuildService مبلغ واقعيِ
+       حواله (بر مبناي AVRAGE واقعيِ انبار در لحظه‌ي هر تراکنش) را با
+       SMABL مقايسه مي‌کند؛ اگر SMABL از ميانگين همان انبار بيايد، دو طرف
+       از يک منبع مشتق مي‌شوند و طبيعتاً هم‌خوان مي‌مانند — برخلاف نرخِ
+       لحظه‌ايِ بازسازي‌شده‌ي BOM که فقط آخرين قيمتِ اجزا را منعکس مي‌کند،
+       نه ميانگينِ واقعيِ کل ماه. نتيجه در ۵-ج پايين‌تر override نمي‌شود
+       (شرط Src<>1 آنجا). */
     UPDATE  c
        SET  c.Mat = z.fi, c.Src = 1
     FROM    #C c
@@ -330,7 +415,7 @@ BEGIN
             FROM   dbo.KALAS k
             WHERE  k.TAG = 10 AND k.MM = @Month AND k.MEGHk <> 0
             GROUP BY k.code) z ON z.code = c.Code
-    WHERE   c.FNUMB IS NULL AND z.fi IS NOT NULL;
+    WHERE   z.fi IS NOT NULL;
 
     ---- بدون گردش در ماه: آخرين نرخ ميانگين ثبت‌شده
     UPDATE  c
@@ -341,9 +426,9 @@ BEGIN
                    JOIN   dbo.HEAD_LST h ON h.NUMBER = i.NUMBER AND h.TAG = i.TAG
                    WHERE  CAST(i.CODE AS BIGINT) = c.Code AND i.AVRAGE > 0
                    ORDER BY h.DATE_N DESC, i.NUMBER DESC) lp
-    WHERE   c.FNUMB IS NULL AND c.Mat = 0;
+    WHERE   c.HasFormula = 0 AND c.Mat = 0;
 
-    UPDATE #C SET Src = 3 WHERE FNUMB IS NULL AND Mat = 0;
+    UPDATE #C SET Src = 3 WHERE HasFormula = 0 AND Mat = 0;
 
     /* ─── ۵) محاسبه از عميق‌ترين سطح به سطح صفر ───
        چون فرزندها هميشه سطح عميق‌تري از والد دارند، وقتي به والد
@@ -380,30 +465,58 @@ BEGIN
             COMMIT;
         END
 
-        ---- ۵-ب) بهاي والد = مجموع اجزا + جذب دستمزد + جذب سربار
-        UPDATE  c
-           SET  c.Mat  = ISNULL(a.MatCost, 0),
-                c.Wage = ISNULL(hm.IMBIBE_MANF, 0),
-                c.Oh   = ISNULL(hm.IMBIBE_SAR , 0)
-        FROM    #C c
-        JOIN    dbo.HEAD_MANF hm ON hm.FNUMB = c.FNUMB
+        ---- ۵-ب) بهاي هر فرمولِ اين سطح = مجموع اجزاي همان فرمول
+        UPDATE  f
+           SET  f.Mat = ISNULL(a.MatCost, 0)
+        FROM    #F f
+        JOIN    #C p ON p.Code = f.Code AND p.Llc = @lvl
         CROSS   APPLY (SELECT SUM(d.MEGHk * (ch.Mat + ch.Wage + ch.Oh)) AS MatCost
                        FROM   dbo.DTL_MANF d
                        JOIN   #C ch ON ch.Code = CAST(d.CODE AS BIGINT)
-                       WHERE  d.FNUMB = c.FNUMB) a
-        WHERE   c.Llc = @lvl AND c.FNUMB IS NOT NULL;
+                       WHERE  d.FNUMB = f.FNUMB) a;
+
+        ---- ۵-ج) بهاي «خودِ» کالا = ميانگين موزونِ همه‌ي فرمول‌هايش با
+        ---- مقدار واقعيِ توليدشده (Qty)؛ بدون هيچ توليدي، ميانگين ساده.
+        ---- وقتي Mat از گام ۴ (ميانگين واقعيِ انبار) تعيين شده، Wage/Oh
+        ---- را هم از BOM نمي‌گيرد و صفر مي‌ماند — نه فقط Mat را دست
+        ---- نمي‌زند: نرخ انباري از MABL_K واقعيِ ثبت‌شده مي‌آيد که همان
+        ---- لحظه‌ي توليد (TAG=9) از قبل دستمزد/سربار را داخلش دارد (نگاه
+        ---- کنید AverageRateRebuildService, case 9: produced = IMBIBE_MANF
+        ---- + IMBIBE_SAR + SumOfMABLK). اگر اينجا دوباره w.Wage/w.Oh را
+        ---- روي همان کد جمع بزنيم، دستمزد/سربار دوبار حساب مي‌شود — دقيقاً
+        ---- همان چيزي که مغايرت ۷۷۱ را نصفه رفع کرده بود (Mat درست شد ولي
+        ---- Wage هنوز از BOM اضافه مي‌آمد).
+        UPDATE  c
+           SET  c.Wage = CASE WHEN c.Mat <> 0 THEN 0 ELSE w.Wage END,
+                c.Oh   = CASE WHEN c.Mat <> 0 THEN 0 ELSE w.Oh   END,
+                c.Mat  = CASE WHEN c.Mat <> 0 THEN c.Mat ELSE w.Mat END
+        FROM    #C c
+        CROSS   APPLY (
+                    SELECT
+                        CASE WHEN SUM(f.Qty) > 0 THEN SUM(f.Mat  * f.Qty) / SUM(f.Qty) ELSE AVG(f.Mat)  END AS Mat,
+                        CASE WHEN SUM(f.Qty) > 0 THEN SUM(f.Wage * f.Qty) / SUM(f.Qty) ELSE AVG(f.Wage) END AS Wage,
+                        CASE WHEN SUM(f.Qty) > 0 THEN SUM(f.Oh   * f.Qty) / SUM(f.Qty) ELSE AVG(f.Oh)   END AS Oh
+                    FROM #F f WHERE f.Code = c.Code
+                ) w
+        WHERE   c.Llc = @lvl AND c.HasFormula = 1;
 
         SET @lvl -= 1;
     END
 
-    /* ─── ۶) ثبت نتيجه در CC_ItemCost ─── */
+    /* ─── ۶) ثبت نتيجه در CC_ItemCost ───
+       FNUMB اينجا فقط براي نمايش در گزارش است؛ وقتي کالا چند فرمول همان
+       ماه دارد، فرمولي که بيشترين مقدار واقعي زيرش توليد شده به‌عنوان
+       نماينده انتخاب مي‌شود (بهاي واقعي همچنان ميانگين موزونِ همه است،
+       نه فقط همين يکي). */
     DELETE dbo.CC_ItemCost WHERE RunId = @RunId;
 
     INSERT dbo.CC_ItemCost
         (RunId, PeriodMonth, Code, LowLevelCode, SourceKind, FNUMB,
          MaterialCost, WageCost, OverheadCost)
-    SELECT  @RunId, @Month, Code, Llc, Src, FNUMB, Mat, Wage, Oh
-    FROM    #C;
+    SELECT  @RunId, @Month, c.Code, c.Llc, c.Src, rep.FNUMB, c.Mat, c.Wage, c.Oh
+    FROM    #C c
+    OUTER   APPLY (SELECT TOP 1 f.FNUMB FROM #F f WHERE f.Code = c.Code
+                    ORDER BY f.Qty DESC, f.FNUMB DESC) rep;
 
     INSERT dbo.CC_RunLog (RunId, StepCode, Severity, Message, ContextJson)
     VALUES (@RunId, 'S11', 1,
@@ -412,18 +525,13 @@ BEGIN
                     SUM(CASE WHEN Src = 3 THEN 1 ELSE 0 END) AS noSource
              FROM #C FOR JSON PATH));
 
-    /* ─── ۷) آزمون سلامت: CHK-09 بايد صفر شود ─── */
+    /* ─── ۷) آزمون سلامت: CHK-09 بايد صفر شود ───
+       Khod اينجا از خودِ #C خوانده مي‌شود (يعني همان بهاي موزوني که تازه
+       محاسبه و منتشر شد)، نه دوباره از HEAD_MANF/DTL_MANF به تفکيک FNUMB —
+       وگرنه هر فرمولِ «غيرمنتخب» يک کالاي چندفرمولي هميشه کاذب فلگ مي‌شد. */
     DELETE dbo.CC_Exception WHERE RunId = @RunId AND RuleCode = 'CHK-09';
 
-    ;WITH Khod AS (
-        SELECT CAST(hm.CODE AS BIGINT) AS Code,
-               SUM(ISNULL(d.MABLK,0)) + MAX(ISNULL(hm.IMBIBE_MANF,0))
-                                      + MAX(ISNULL(hm.IMBIBE_SAR,0)) AS Baha
-        FROM   dbo.HEAD_MANF hm JOIN dbo.DTL_MANF d ON d.FNUMB = hm.FNUMB
-        WHERE  hm.GHEYMAT = @Month
-        GROUP BY CAST(hm.CODE AS BIGINT), hm.FNUMB
-    ),
-    DarValed AS (
+    ;WITH DarValed AS (
         SELECT CAST(d.CODE AS BIGINT) AS Code, AVG(d.SMABL) AS Nerkh
         FROM   dbo.DTL_MANF d
         JOIN   dbo.HEAD_MANF hm ON hm.FNUMB = d.FNUMB AND hm.GHEYMAT = @Month
@@ -431,10 +539,12 @@ BEGIN
     )
     INSERT dbo.CC_Exception
         (RunId, StepCode, RuleCode, ExType, Severity, Code, Amount, Description)
-    SELECT  @RunId, 'S11', 'CHK-09', 14, 2, k.Code, k.Baha - v.Nerkh,
+    SELECT  @RunId, 'S11', 'CHK-09', 14, 2, c.Code, (c.Mat + c.Wage + c.Oh) - v.Nerkh,
             N'نرخ پس از اجراي موتور هنوز منتشر نشده — نياز به بررسي'
-    FROM    Khod k JOIN DarValed v ON v.Code = k.Code
-    WHERE   ABS(k.Baha - v.Nerkh) / NULLIF(k.Baha, 0) > 0.001;
+    FROM    #C c
+    JOIN    DarValed v ON v.Code = c.Code
+    WHERE   c.HasFormula = 1
+      AND   ABS((c.Mat + c.Wage + c.Oh) - v.Nerkh) / NULLIF((c.Mat + c.Wage + c.Oh), 0) > 0.001;
 
     /* ─── خلاصه ─── */
     SELECT  Llc                                          AS سطح,
@@ -456,6 +566,7 @@ PRINT N'موتور نرخ توليدي (S10 و S11) ايجاد شد.';
 /* نمونه:
    EXEC dbo.CC_sp_S10_BalanceConversion @RunId=1, @Month=5,
                                         @DT1=14050501, @DT2=14050531, @WhatIf=1;
-   EXEC dbo.CC_sp_S11_PropagateRates    @RunId=1, @Month=5, @WhatIf=1;
+   EXEC dbo.CC_sp_S11_PropagateRates    @RunId=1, @Month=5,
+                                        @DT1=14050501, @DT2=14050531, @WhatIf=1;
 */
 GO

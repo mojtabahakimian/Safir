@@ -307,6 +307,14 @@ GO
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name='IX_CC_VarDecision_Code')
     CREATE INDEX IX_CC_VarDecision_Code ON dbo.CC_VarianceDecision(Code, RunId);
 GO
+-- محافظ ساختاری: یک تصمیم به ازای هر (اجرا،کالا). بدون این، اگر جایی
+-- (کلاینت/SaveDecisions/S09a) به‌اشتباه دوباره INSERT کند بدون DELETE
+-- قبلی، ردیف‌های تکراری بی‌صدا وارد می‌شوند و CC_sp_S09_ApplyDecisions
+-- سهم انحراف را غیرقطعی/چندبار اعمال می‌کند — دقیقاً همان چیزی که در
+-- اجرای ۱۶ باعث شد «باقیمانده» با هر بار «اعمال و محاسبه مجدد» بدتر شود.
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name='UQ_CC_VarianceDecision')
+    CREATE UNIQUE INDEX UQ_CC_VarianceDecision ON dbo.CC_VarianceDecision(RunId, Code);
+GO
 
 /* ───────────────────────── هزینه تبدیل و حاشیه سود ───────────────────────── */
 
@@ -330,7 +338,7 @@ IF OBJECT_ID('dbo.CC_MarginTarget','U') IS NULL
 CREATE TABLE dbo.CC_MarginTarget (
     Id             INT IDENTITY(1,1) PRIMARY KEY,
     Code           BIGINT       NOT NULL,
-    TargetKind     TINYINT      NOT NULL,   -- 1=سود صفر 2=درصد مشخص 3=آزاد
+    TargetKind     TINYINT      NOT NULL,   -- 1=سود صفر 2=درصد مشخص 3=آزاد 4=سود صفر با پخش خودکار
     TargetPct      DECIMAL(9,4) NULL,
     BalancingCode  BIGINT       NULL,
     BalancingFNUMB INT          NULL,

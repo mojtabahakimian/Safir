@@ -278,6 +278,25 @@ BEGIN
     JOIN    dbo.HEAD_MANF h ON h.FNUMB = d.FNUMB AND h.GHEYMAT = @Month
     WHERE   d.MEGH < 0 OR d.MEGHk < 0;
 
+    ---- CHK-16 : برگه تولید به انباري که به هيچ واحد توليدي (نقش «محصول»)
+    -- وصل نيست — بدون اين تشخيص، S10 اين برگه‌ها را در محاسبه جذب هيچ
+    -- واحدي نمي‌بيند و مانده حساب ۷۵۱ کاذب مي‌شود (دقيقاً همان چيزي که
+    -- روي انبار ۱۵ رخ داد و کاربر تأييد کرد بايد به‌صورت خودکار
+    -- روي هر پايگاه‌داده‌ي جديد هم چک شود).
+    INSERT dbo.CC_Exception
+        (RunId, StepCode, RuleCode, ExType, Severity, Code, DocNumber, DocDate, Description)
+    SELECT DISTINCT @RunId, 'S00', 'CHK-16', 18, 1,
+           TRY_CAST(pl.CODE AS BIGINT), h.NUMBER, h.DATE_N,
+           CONCAT(N'برگه تولید شماره ', h.NUMBER, N' به انبار ', pl.ANBAR,
+                  N' وارد شده که به هیچ واحد تولیدی (نقش «محصول») وصل نیست')
+    FROM   dbo.HEAD_LST h
+    JOIN   dbo.INVO_LST pl ON pl.NUMBER = h.NUMBER AND pl.TAG = 9
+    WHERE  h.TAG = 9 AND h.DATE_N BETWEEN @DT1 AND @DT2
+      AND  pl.ANBAR IS NOT NULL
+      AND  NOT EXISTS (SELECT 1 FROM dbo.CC_UnitAnbar ua
+                        JOIN dbo.CC_Unit u ON u.UnitId = ua.UnitId
+                        WHERE ua.Anbar = pl.ANBAR AND ua.AnbarRole = 3 AND u.IsActive = 1);
+
     ---- CHK-06 : حلقه در ساختار فرمول
     IF OBJECT_ID('tempdb..#E') IS NOT NULL DROP TABLE #E;
     SELECT DISTINCT CAST(h.CODE AS BIGINT) AS P, CAST(d.CODE AS BIGINT) AS C
@@ -337,16 +356,44 @@ BEGIN
              / NULLIF((SUM(d.BED) + SUM(d.BES)) / 2.0, 0) > @th);
 
     ---- CHK-09 : نرخ منتشرنشده نيمه‌ساخته
+    --
+    -- ⚠️ يک کالا مي‌تواند در همان ماه بيش از يک فرمول فعال داشته باشد
+    -- (مثلاً روزهاي مختلف با ترکيب مواد متفاوت توليد شده باشد) — طبق تأييد
+    -- صاحب پروژه، اين حالت طبيعي است، نه خطاي داده. نسخه‌ي قبلي اين چک هر
+    -- (Code,FNUMB) را جدا با نرخ منتشرشده مقايسه مي‌کرد، در حالي‌که موتور
+    -- نرخ (S11) فقط يک بهاي واحد به بالادست منتشر مي‌کند — نتيجه: فرمول‌هاي
+    -- «غيرمنتخب» هميشه به‌عنوان مغايرت کاذب باقي مي‌ماندند، حتي بعد از
+    -- بازسازي نرخ. حالا بهاي «خودِ» کالا ميانگين موزونِ بهاي همه‌ي
+    -- فرمول‌هاي فعالش است، وزن‌دهي‌شده با مقدار واقعيِ توليدشده زيرِ هرکدام
+    -- (از TAG=9 در همين بازه) — دقيقاً همان معياري که S11 هم استفاده مي‌کند.
     DECLARE @th9 FLOAT =
         ISNULL((SELECT Threshold FROM dbo.CC_CheckRule WHERE RuleCode='CHK-09'), 0.001);
 
-    ;WITH Khod AS (
-        SELECT CAST(hm.CODE AS BIGINT) AS Code,
-               SUM(ISNULL(d.MABLK,0)) + MAX(ISNULL(hm.IMBIBE_MANF,0))
-                                      + MAX(ISNULL(hm.IMBIBE_SAR,0)) AS Baha
-        FROM   dbo.HEAD_MANF hm JOIN dbo.DTL_MANF d ON d.FNUMB = hm.FNUMB
-        WHERE  hm.GHEYMAT = @Month
-        GROUP BY CAST(hm.CODE AS BIGINT), hm.FNUMB
+    ;WITH FormulaCost AS (
+        SELECT  hm.FNUMB, CAST(hm.CODE AS BIGINT) AS Code,
+                SUM(ISNULL(d.MABLK,0)) + MAX(ISNULL(hm.IMBIBE_MANF,0))
+                                       + MAX(ISNULL(hm.IMBIBE_SAR,0)) AS Baha,
+                ISNULL(p.Qty, 0) AS Qty
+        FROM    dbo.HEAD_MANF hm
+        JOIN    dbo.DTL_MANF  d ON d.FNUMB = hm.FNUMB
+        CROSS   APPLY (
+                    SELECT SUM(pl.MEGHk) AS Qty
+                    FROM   dbo.HEAD_LST h
+                    JOIN   dbo.INVO_LST pl ON pl.NUMBER = h.NUMBER AND pl.TAG = 9
+                    WHERE  h.TAG = 9 AND h.DATE_N BETWEEN @DT1 AND @DT2
+                      AND  TRY_CAST(pl.N_KOL AS INT) = hm.FNUMB
+                ) p
+        WHERE   hm.GHEYMAT = @Month
+        GROUP BY hm.FNUMB, CAST(hm.CODE AS BIGINT), p.Qty
+    ),
+    Khod AS (
+        -- اگر هيچ‌کدام از فرمول‌هاي اين کالا در بازه توليد واقعي نداشتند
+        -- (تعريف شده ولي هنوز مصرف نشده)، ميانگين ساده جايگزين وزن مي‌شود.
+        SELECT  Code,
+                CASE WHEN SUM(Qty) > 0 THEN SUM(Baha * Qty) / SUM(Qty)
+                     ELSE AVG(Baha) END AS Baha
+        FROM    FormulaCost
+        GROUP BY Code
     ),
     DarValed AS (
         SELECT CAST(d.CODE AS BIGINT) AS Code,
