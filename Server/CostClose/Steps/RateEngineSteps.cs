@@ -101,7 +101,8 @@ namespace Safir.Server.CostClose.Steps
 
             await ctx.Db.DoGetStoreProcedureSQLAsync<dynamic>(
                 "dbo.CC_sp_S11_PropagateRates",
-                new { RunId = ctx.RunId, Month = ctx.Month, WhatIf = false },
+                new { RunId = ctx.RunId, Month = ctx.Month,
+                      DT1 = ctx.DateFrom, DT2 = ctx.DateTo, WhatIf = false },
                 commandTimeout: 3600);
 
             await ctx.ReportProgress(StepCode, 85, "بررسی سلامت نرخ‌ها…");

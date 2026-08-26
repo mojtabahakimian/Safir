@@ -294,15 +294,27 @@ namespace Safir.Server.Controllers
         {
             const string sql = @"
                 SELECT  e.ExceptionId, e.RunId, e.StepCode, e.RuleCode,
-                        r.RuleName, e.ExType, e.Severity, e.Anbar, e.Code,
+                        r.RuleName, e.ExType, e.Severity, e.Anbar, a.NAMES AS AnbarName, e.Code,
                         s.NAME AS ItemName,
                         e.DocNumber, e.DocTag, e.DocDate, e.Amount,
                         e.RefList, e.CanAutoFix, e.Description,
                         r.RemedyText, r.FixButtonText,
-                        e.IsResolved, e.ResolvedBy, e.ResolvedAtUtc, e.ResolutionNote
+                        e.IsResolved, e.ResolvedBy, e.ResolvedAtUtc, e.ResolutionNote,
+                        CASE WHEN e.RuleCode = 'CHK-02' AND EXISTS (
+                            SELECT 1
+                            FROM   dbo.CC_AnbarHes ah
+                            JOIN   dbo.DEED_DTL d ON d.HES_K = ah.HesKol AND d.HES_M = ah.HesMoin
+                                                  AND TRY_CAST(d.HES_T AS BIGINT) = e.Code
+                            JOIN   dbo.DEED_HED h ON h.N_S = d.N_S
+                            WHERE  ah.Anbar = e.Anbar AND (run.DateTo IS NULL OR h.DATE_S <= run.DateTo)
+                            GROUP  BY ah.Anbar
+                            HAVING COUNT(*) = 1 AND MAX(d.SHARH) LIKE N'%افتتاح%'
+                        ) THEN CAST(1 AS BIT) ELSE CAST(0 AS BIT) END AS IsOpeningOnly
                 FROM    dbo.CC_Exception e
-                LEFT    JOIN dbo.CC_CheckRule r ON r.RuleCode = e.RuleCode
-                LEFT    JOIN dbo.STUF_DEF    s ON TRY_CAST(s.CODE AS BIGINT) = e.Code
+                LEFT    JOIN dbo.CC_CheckRule r   ON r.RuleCode = e.RuleCode
+                LEFT    JOIN dbo.STUF_DEF    s    ON TRY_CAST(s.CODE AS BIGINT) = e.Code
+                LEFT    JOIN dbo.CC_Run      run  ON run.RunId = e.RunId
+                LEFT    JOIN dbo.TCOD_ANBAR  a    ON a.CODE = e.Anbar
                 WHERE  (@runId IS NULL AND e.RunId IS NULL OR e.RunId = @runId)
                   AND  (@ruleCode IS NULL OR e.RuleCode = @ruleCode)
                   AND  (@includeResolved = 1 OR e.IsResolved = 0)
@@ -355,6 +367,63 @@ namespace Safir.Server.Controllers
 
             await _db.DoExecuteSQLAsync(sql, new { id, user = CurrentUser, note = req.Note });
             return Ok();
+        }
+
+        /// <summary>رفع دسته‌جمعیِ چند استثنا («نادیده گرفتن») — بدون سند اصلاحی.</summary>
+        [HttpPost("exceptions/bulk-resolve")]
+        [Pay2Authorize(CostForms.ActResolve, Pay2Perm.Run)]
+        public async Task<IActionResult> BulkResolve([FromBody] BulkResolveRequest req)
+        {
+            if (req.ExceptionIds.Count == 0) return Ok(new { count = 0 });
+
+            const string sql = @"
+                UPDATE dbo.CC_Exception
+                   SET IsResolved     = 1,
+                       ResolvedBy     = @user,
+                       ResolvedAtUtc  = SYSUTCDATETIME(),
+                       ResolutionNote = @note
+                 WHERE ExceptionId IN @ids AND IsResolved = 0";
+
+            var n = await _db.DoExecuteSQLAsync(sql, new { ids = req.ExceptionIds, user = CurrentUser, note = req.Note });
+            return Ok(new { count = n });
+        }
+
+        /// <summary>
+        /// رفع مغایرت(های) CHK-02 با یک سند اصلاحی — اختلاف کارت‌انبار/حسابداری
+        /// بین حساب موجودیِ همان انبار (CC_AnbarHes) و یک حساب مقصدِ دلخواه
+        /// (کل/معین/تفصیلی، مثلاً سود و زیان) جابه‌جا می‌شود. این روی حساب‌های
+        /// واقعی می‌نویسد؛ به همین دلیل مجوز جداگانه (نه ActResolve) دارد.
+        /// WhatIf=true فقط پیش‌نمایش می‌دهد.
+        /// </summary>
+        [HttpPost("exceptions/post-correction")]
+        [Pay2Authorize(CostForms.ActPostCorrection, Pay2Perm.Run)]
+        public async Task<ActionResult<PostCorrectionResultDto>> PostCorrection([FromBody] PostCorrectionRequest req)
+        {
+            if (req.TargetKol <= 0 || req.TargetMoin <= 0 || req.TargetTaf <= 0)
+                return BadRequest("حساب مقصد (کل/معین/تفصیلی) باید مشخص باشد.");
+
+            var svc = new Safir.Server.CostClose.GroupDocuments.CorrectionEntryService(_db);
+            var res = await svc.PostAsync(
+                req.ExceptionIds, req.TargetKol, req.TargetMoin, req.TargetTaf,
+                req.Note, CurrentUser, req.WhatIf, req.DateS);
+
+            return Ok(new PostCorrectionResultDto
+            {
+                Success     = res.Success,
+                Count       = res.Count,
+                TotalAbs    = res.TotalAbs,
+                SanadNumber = res.SanadNumber,
+                FirstError  = res.FirstError,
+                Lines = res.Lines.Select(l => new CorrectionPreviewLineDto
+                {
+                    ExceptionId = l.ExceptionId, Anbar = l.Anbar, Code = l.Code, ItemName = l.ItemName,
+                    Amount = l.Amount, AdjustAbs = l.AdjustAbs, DebitIsInventory = l.DebitIsInventory
+                }).ToList(),
+                Skipped = res.Skipped.Select(s => new CorrectionSkippedDto
+                {
+                    ExceptionId = s.ExceptionId, Reason = s.Reason
+                }).ToList()
+            });
         }
 
         // ═══════════════════════ اصلاح خودکار ═══════════════════════
@@ -461,7 +530,8 @@ namespace Safir.Server.Controllers
 
                 await _db.DoGetStoreProcedureSQLAsync<dynamic>(
                     "dbo.CC_sp_S11_PropagateRates",
-                    new { RunId = runId, Month = run.PeriodMonth, WhatIf = false },
+                    new { RunId = runId, Month = run.PeriodMonth,
+                          DT1 = run.DateFrom, DT2 = run.DateTo, WhatIf = false },
                     commandTimeout: 3600);
 
                 var remaining = await _db.DoGetDataSQLAsyncSingle<int>(
@@ -546,6 +616,425 @@ namespace Safir.Server.Controllers
         }
 
         /// <summary>
+        /// بازسازی سند انتقالی مواد بین انبارها (DEED_HED/DEED_DTL برای
+        /// HEAD_LST.TAG=5، NO_S=10). بدون این، CHK-02 برای هر کالایی که
+        /// در همین ماه جابه‌جا شده اما سند حسابداری‌اش قدیمی مانده،
+        /// مغایرت کاذب نشان می‌دهد. عمداً فقط برگه‌های همان ماه اجرا.
+        /// </summary>
+        [HttpPost("runs/{runId:int}/rebuild-transfer-docs")]
+        [Pay2Authorize(CostForms.ActRebuildDocs, Pay2Perm.Run)]
+        public async Task<ActionResult<GroupDocumentRebuildResultDto>> RebuildTransferDocs(int runId)
+        {
+            if (_queue.IsRunning(runId))
+                return Conflict("این اجرا در حال انجام است؛ ابتدا آن را متوقف کنید.");
+
+            if (!_rebuildInProgress.TryAdd(runId, 1))
+                return Conflict("بازسازی سند انتقالی برای این اجرا از قبل در حال انجام است.");
+
+            try
+            {
+                var run = await _db.DoGetDataSQLAsyncSingle<CostRunDto>(
+                    "SELECT * FROM dbo.CC_Run WHERE RunId = @runId", new { runId });
+
+                if (run is null) return NotFound();
+
+                var range = await _db.DoGetDataSQLAsyncSingle<MaterialIssueRange>(
+                    @"SELECT MIN(NUMBER) AS MinNum, MAX(NUMBER) AS MaxNum
+                      FROM   dbo.HEAD_LST
+                      WHERE  TAG = 5 AND DATE_N BETWEEN @dt1 AND @dt2",
+                    new { dt1 = run.DateFrom, dt2 = run.DateTo });
+
+                if (range?.MinNum is null || range.MaxNum is null)
+                {
+                    return Ok(new GroupDocumentRebuildResultDto
+                    {
+                        Success = true, SheetCount = 0,
+                        Log = new() { "برگه انتقالی‌ای برای این ماه یافت نشد." }
+                    });
+                }
+
+                var svc = new Safir.Server.CostClose.GroupDocuments.TransferRebuildService(_db);
+                var res = await svc.RebuildAsync(range.MinNum.Value, range.MaxNum.Value, run.DateFrom, run.DateTo);
+
+                return Ok(new GroupDocumentRebuildResultDto
+                {
+                    Success = res.Success,
+                    SheetCount = res.SheetCount,
+                    SkippedCount = res.SkippedCount,
+                    LastSanadNumber = res.LastSanadNumber,
+                    FirstError = res.FirstError,
+                    Log = res.Log
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "RebuildTransferDocs failed for run {RunId}", runId);
+                return BadRequest(ex.Message);
+            }
+            finally
+            {
+                _rebuildInProgress.TryRemove(runId, out _);
+            }
+        }
+
+        /// <summary>
+        /// بازسازی سند فروش (DEED_HED/DEED_DTL برای HEAD_LST.TAG=13، NO_S=2).
+        /// بدون این، CHK-02 برای هر کالایی که در همین ماه فروخته شده اما سند
+        /// حسابداری‌اش قدیمی مانده، مغایرت کاذب نشان می‌دهد. عمداً فقط
+        /// برگه‌های همان ماه اجرا.
+        /// </summary>
+        [HttpPost("runs/{runId:int}/rebuild-sale-docs")]
+        [Pay2Authorize(CostForms.ActRebuildDocs, Pay2Perm.Run)]
+        public async Task<ActionResult<GroupDocumentRebuildResultDto>> RebuildSaleDocs(int runId)
+        {
+            if (_queue.IsRunning(runId))
+                return Conflict("این اجرا در حال انجام است؛ ابتدا آن را متوقف کنید.");
+
+            if (!_rebuildInProgress.TryAdd(runId, 1))
+                return Conflict("بازسازی سند فروش برای این اجرا از قبل در حال انجام است.");
+
+            try
+            {
+                var run = await _db.DoGetDataSQLAsyncSingle<CostRunDto>(
+                    "SELECT * FROM dbo.CC_Run WHERE RunId = @runId", new { runId });
+
+                if (run is null) return NotFound();
+
+                var range = await _db.DoGetDataSQLAsyncSingle<MaterialIssueRange>(
+                    @"SELECT MIN(NUMBER) AS MinNum, MAX(NUMBER) AS MaxNum
+                      FROM   dbo.HEAD_LST
+                      WHERE  TAG = 13 AND DATE_N BETWEEN @dt1 AND @dt2",
+                    new { dt1 = run.DateFrom, dt2 = run.DateTo });
+
+                if (range?.MinNum is null || range.MaxNum is null)
+                {
+                    return Ok(new GroupDocumentRebuildResultDto
+                    {
+                        Success = true, SheetCount = 0,
+                        Log = new() { "فاکتور فروشی برای این ماه یافت نشد." }
+                    });
+                }
+
+                var svc = new Safir.Server.CostClose.GroupDocuments.SaleRebuildService(_db);
+                var res = await svc.RebuildAsync((long)range.MinNum.Value, (long)range.MaxNum.Value, run.DateFrom, run.DateTo);
+
+                return Ok(new GroupDocumentRebuildResultDto
+                {
+                    Success = res.Success,
+                    SheetCount = res.SheetCount,
+                    LastSanadNumber = res.LastSanadNumber,
+                    FirstError = res.FirstError,
+                    Log = res.Log
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "RebuildSaleDocs failed for run {RunId}", runId);
+                return BadRequest(ex.Message);
+            }
+            finally
+            {
+                _rebuildInProgress.TryRemove(runId, out _);
+            }
+        }
+
+        /// <summary>
+        /// بازسازی سند برگشت فروش (DEED_HED/DEED_DTL برای HEAD_LST.TAG=4 و
+        /// TAG=25، هر دو NO_S=4). هر دو Pass روی همان بازه‌ی شماره/تاریخ اجرا
+        /// می‌شوند؛ TAG=25 (از INVO_LST.TAG=24) روی این دیتابیس مسیر غالب است.
+        /// </summary>
+        [HttpPost("runs/{runId:int}/rebuild-sale-return-docs")]
+        [Pay2Authorize(CostForms.ActRebuildDocs, Pay2Perm.Run)]
+        public async Task<ActionResult<GroupDocumentRebuildResultDto>> RebuildSaleReturnDocs(int runId)
+        {
+            if (_queue.IsRunning(runId))
+                return Conflict("این اجرا در حال انجام است؛ ابتدا آن را متوقف کنید.");
+
+            if (!_rebuildInProgress.TryAdd(runId, 1))
+                return Conflict("بازسازی سند برگشت فروش برای این اجرا از قبل در حال انجام است.");
+
+            try
+            {
+                var run = await _db.DoGetDataSQLAsyncSingle<CostRunDto>(
+                    "SELECT * FROM dbo.CC_Run WHERE RunId = @runId", new { runId });
+
+                if (run is null) return NotFound();
+
+                var range = await _db.DoGetDataSQLAsyncSingle<MaterialIssueRange>(
+                    @"SELECT MIN(NUMBER) AS MinNum, MAX(NUMBER) AS MaxNum
+                      FROM   dbo.HEAD_LST
+                      WHERE  TAG IN (4, 25) AND DATE_N BETWEEN @dt1 AND @dt2",
+                    new { dt1 = run.DateFrom, dt2 = run.DateTo });
+
+                if (range?.MinNum is null || range.MaxNum is null)
+                {
+                    return Ok(new GroupDocumentRebuildResultDto
+                    {
+                        Success = true, SheetCount = 0,
+                        Log = new() { "فاکتور برگشت فروشی برای این ماه یافت نشد." }
+                    });
+                }
+
+                var svc = new Safir.Server.CostClose.GroupDocuments.SaleReturnRebuildService(_db);
+                var res = await svc.RebuildAsync((long)range.MinNum.Value, (long)range.MaxNum.Value, run.DateFrom, run.DateTo);
+
+                return Ok(new GroupDocumentRebuildResultDto
+                {
+                    Success = res.Success,
+                    SheetCount = res.SheetCount,
+                    LastSanadNumber = res.LastSanadNumber,
+                    FirstError = res.FirstError,
+                    Log = res.Log
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "RebuildSaleReturnDocs failed for run {RunId}", runId);
+                return BadRequest(ex.Message);
+            }
+            finally
+            {
+                _rebuildInProgress.TryRemove(runId, out _);
+            }
+        }
+
+        /// <summary>
+        /// بازسازی سند حواله خروج سایر مواد (DEED_HED/DEED_DTL برای
+        /// HEAD_LST.TAG=11، NO_S=12).
+        /// </summary>
+        [HttpPost("runs/{runId:int}/rebuild-other-issue-docs")]
+        [Pay2Authorize(CostForms.ActRebuildDocs, Pay2Perm.Run)]
+        public async Task<ActionResult<GroupDocumentRebuildResultDto>> RebuildOtherIssueDocs(int runId)
+        {
+            if (_queue.IsRunning(runId))
+                return Conflict("این اجرا در حال انجام است؛ ابتدا آن را متوقف کنید.");
+
+            if (!_rebuildInProgress.TryAdd(runId, 1))
+                return Conflict("بازسازی سند حواله خروج سایر مواد برای این اجرا از قبل در حال انجام است.");
+
+            try
+            {
+                var run = await _db.DoGetDataSQLAsyncSingle<CostRunDto>(
+                    "SELECT * FROM dbo.CC_Run WHERE RunId = @runId", new { runId });
+
+                if (run is null) return NotFound();
+
+                var range = await _db.DoGetDataSQLAsyncSingle<MaterialIssueRange>(
+                    @"SELECT MIN(NUMBER) AS MinNum, MAX(NUMBER) AS MaxNum
+                      FROM   dbo.HEAD_LST
+                      WHERE  TAG = 11 AND DATE_N BETWEEN @dt1 AND @dt2",
+                    new { dt1 = run.DateFrom, dt2 = run.DateTo });
+
+                if (range?.MinNum is null || range.MaxNum is null)
+                {
+                    return Ok(new GroupDocumentRebuildResultDto
+                    {
+                        Success = true, SheetCount = 0,
+                        Log = new() { "برگه حواله خروج سایر موادی برای این ماه یافت نشد." }
+                    });
+                }
+
+                var svc = new Safir.Server.CostClose.GroupDocuments.OtherIssueRebuildService(_db);
+                var res = await svc.RebuildAsync((long)range.MinNum.Value, (long)range.MaxNum.Value, run.DateFrom, run.DateTo);
+
+                return Ok(new GroupDocumentRebuildResultDto
+                {
+                    Success = res.Success,
+                    SheetCount = res.SheetCount,
+                    LastSanadNumber = res.LastSanadNumber,
+                    FirstError = res.FirstError,
+                    Log = res.Log
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "RebuildOtherIssueDocs failed for run {RunId}", runId);
+                return BadRequest(ex.Message);
+            }
+            finally
+            {
+                _rebuildInProgress.TryRemove(runId, out _);
+            }
+        }
+
+        /// <summary>
+        /// بازسازی سند برگشت خرید آزاد (DEED_HED/DEED_DTL برای HEAD_LST.TAG=26، NO_S=3).
+        /// </summary>
+        [HttpPost("runs/{runId:int}/rebuild-purchase-return-free-docs")]
+        [Pay2Authorize(CostForms.ActRebuildDocs, Pay2Perm.Run)]
+        public async Task<ActionResult<GroupDocumentRebuildResultDto>> RebuildPurchaseReturnFreeDocs(int runId)
+        {
+            if (_queue.IsRunning(runId))
+                return Conflict("این اجرا در حال انجام است؛ ابتدا آن را متوقف کنید.");
+
+            if (!_rebuildInProgress.TryAdd(runId, 1))
+                return Conflict("بازسازی سند برگشت خرید آزاد برای این اجرا از قبل در حال انجام است.");
+
+            try
+            {
+                var run = await _db.DoGetDataSQLAsyncSingle<CostRunDto>(
+                    "SELECT * FROM dbo.CC_Run WHERE RunId = @runId", new { runId });
+
+                if (run is null) return NotFound();
+
+                var range = await _db.DoGetDataSQLAsyncSingle<MaterialIssueRange>(
+                    @"SELECT MIN(NUMBER) AS MinNum, MAX(NUMBER) AS MaxNum
+                      FROM   dbo.HEAD_LST
+                      WHERE  TAG = 26 AND DATE_N BETWEEN @dt1 AND @dt2",
+                    new { dt1 = run.DateFrom, dt2 = run.DateTo });
+
+                if (range?.MinNum is null || range.MaxNum is null)
+                {
+                    return Ok(new GroupDocumentRebuildResultDto
+                    {
+                        Success = true, SheetCount = 0,
+                        Log = new() { "برگه برگشت خرید آزادی برای این ماه یافت نشد." }
+                    });
+                }
+
+                var svc = new Safir.Server.CostClose.GroupDocuments.PurchaseReturnFreeRebuildService(_db);
+                var res = await svc.RebuildAsync((long)range.MinNum.Value, (long)range.MaxNum.Value, run.DateFrom, run.DateTo);
+
+                return Ok(new GroupDocumentRebuildResultDto
+                {
+                    Success = res.Success,
+                    SheetCount = res.SheetCount,
+                    LastSanadNumber = res.LastSanadNumber,
+                    FirstError = res.FirstError,
+                    Log = res.Log
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "RebuildPurchaseReturnFreeDocs failed for run {RunId}", runId);
+                return BadRequest(ex.Message);
+            }
+            finally
+            {
+                _rebuildInProgress.TryRemove(runId, out _);
+            }
+        }
+
+        /// <summary>
+        /// بازسازی سند ورود کالای ساخته‌شده به انبار (DEED_HED/DEED_DTL برای
+        /// HEAD_LST.TAG=9، NO_S=9).
+        /// </summary>
+        [HttpPost("runs/{runId:int}/rebuild-production-receipt-docs")]
+        [Pay2Authorize(CostForms.ActRebuildDocs, Pay2Perm.Run)]
+        public async Task<ActionResult<GroupDocumentRebuildResultDto>> RebuildProductionReceiptDocs(int runId)
+        {
+            if (_queue.IsRunning(runId))
+                return Conflict("این اجرا در حال انجام است؛ ابتدا آن را متوقف کنید.");
+
+            if (!_rebuildInProgress.TryAdd(runId, 1))
+                return Conflict("بازسازی سند ورود کالای ساخته‌شده برای این اجرا از قبل در حال انجام است.");
+
+            try
+            {
+                var run = await _db.DoGetDataSQLAsyncSingle<CostRunDto>(
+                    "SELECT * FROM dbo.CC_Run WHERE RunId = @runId", new { runId });
+
+                if (run is null) return NotFound();
+
+                var range = await _db.DoGetDataSQLAsyncSingle<MaterialIssueRange>(
+                    @"SELECT MIN(NUMBER) AS MinNum, MAX(NUMBER) AS MaxNum
+                      FROM   dbo.HEAD_LST
+                      WHERE  TAG = 9 AND DATE_N BETWEEN @dt1 AND @dt2",
+                    new { dt1 = run.DateFrom, dt2 = run.DateTo });
+
+                if (range?.MinNum is null || range.MaxNum is null)
+                {
+                    return Ok(new GroupDocumentRebuildResultDto
+                    {
+                        Success = true, SheetCount = 0,
+                        Log = new() { "برگه ورود کالای ساخته‌شده‌ای برای این ماه یافت نشد." }
+                    });
+                }
+
+                var svc = new Safir.Server.CostClose.GroupDocuments.ProductionReceiptRebuildService(_db);
+                var res = await svc.RebuildAsync((long)range.MinNum.Value, (long)range.MaxNum.Value, run.DateFrom, run.DateTo);
+
+                return Ok(new GroupDocumentRebuildResultDto
+                {
+                    Success = res.Success,
+                    SheetCount = res.SheetCount,
+                    LastSanadNumber = res.LastSanadNumber,
+                    FirstError = res.FirstError,
+                    Log = res.Log
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "RebuildProductionReceiptDocs failed for run {RunId}", runId);
+                return BadRequest(ex.Message);
+            }
+            finally
+            {
+                _rebuildInProgress.TryRemove(runId, out _);
+            }
+        }
+
+        /// <summary>
+        /// بازسازی سند انبارگردانی (DEED_HED/DEED_DTL برای ANBGRD_HEAD، NO_S=17).
+        /// سرِ سند اینجا از HEAD_LST نمی‌آید، بنابراین بازه از ANBGRD_HEAD خودش
+        /// استخراج می‌شود (GRD_NUM/GRD_DATE به‌جای NUMBER/DATE_N).
+        /// </summary>
+        [HttpPost("runs/{runId:int}/rebuild-stock-count-docs")]
+        [Pay2Authorize(CostForms.ActRebuildDocs, Pay2Perm.Run)]
+        public async Task<ActionResult<GroupDocumentRebuildResultDto>> RebuildStockCountDocs(int runId)
+        {
+            if (_queue.IsRunning(runId))
+                return Conflict("این اجرا در حال انجام است؛ ابتدا آن را متوقف کنید.");
+
+            if (!_rebuildInProgress.TryAdd(runId, 1))
+                return Conflict("بازسازی سند انبارگردانی برای این اجرا از قبل در حال انجام است.");
+
+            try
+            {
+                var run = await _db.DoGetDataSQLAsyncSingle<CostRunDto>(
+                    "SELECT * FROM dbo.CC_Run WHERE RunId = @runId", new { runId });
+
+                if (run is null) return NotFound();
+
+                var range = await _db.DoGetDataSQLAsyncSingle<MaterialIssueRange>(
+                    @"SELECT MIN(GRD_NUM) AS MinNum, MAX(GRD_NUM) AS MaxNum
+                      FROM   dbo.ANBGRD_HEAD
+                      WHERE  GRD_DATE BETWEEN @dt1 AND @dt2",
+                    new { dt1 = run.DateFrom, dt2 = run.DateTo });
+
+                if (range?.MinNum is null || range.MaxNum is null)
+                {
+                    return Ok(new GroupDocumentRebuildResultDto
+                    {
+                        Success = true, SheetCount = 0,
+                        Log = new() { "برگه انبارگردانی‌ای برای این ماه یافت نشد." }
+                    });
+                }
+
+                var svc = new Safir.Server.CostClose.GroupDocuments.StockCountRebuildService(_db);
+                var res = await svc.RebuildAsync((long)range.MinNum.Value, (long)range.MaxNum.Value, run.DateFrom, run.DateTo);
+
+                return Ok(new GroupDocumentRebuildResultDto
+                {
+                    Success = res.Success,
+                    SheetCount = res.SheetCount,
+                    LastSanadNumber = res.LastSanadNumber,
+                    FirstError = res.FirstError,
+                    Log = res.Log
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "RebuildStockCountDocs failed for run {RunId}", runId);
+                return BadRequest(ex.Message);
+            }
+            finally
+            {
+                _rebuildInProgress.TryRemove(runId, out _);
+            }
+        }
+
+        /// <summary>
         /// اصلاح CHK-15 (فرمول با مقدار منفی). کاربر بین «صفر کن» و «حذف کن»
         /// انتخاب می‌کند؛ هر استثنا به یک سطر مشخص از DTL_MANF وصل است.
         /// </summary>
@@ -588,8 +1077,30 @@ namespace Safir.Server.Controllers
         [Pay2Authorize(CostForms.Variance, Pay2Perm.See)]
         public async Task<ActionResult<IEnumerable<VarianceRowDto>>> GetVariances(int runId)
         {
+            // یک کالا می‌تواند در چند انبار مانده داشته باشد (CC_Variance یک
+            // ردیف به ازای هر (RunId,Anbar,Code) دارد)، ولی این صفحه و
+            // CC_VarianceDecision هر دو در سطح کالا کار می‌کنند، نه انبار.
+            // اگر مستقیم به CC_Variance جوین بزنیم، کالاهای چندانباره چند
+            // بار تکرار می‌شوند — و چون «اعمال و محاسبه مجدد» همین لیست
+            // تکراری را عیناً به SaveDecisions برمی‌گرداند، هر بار کلیک
+            // تکرار را دوچندان می‌کند (دقیقاً همان چیزی که برای اجرای ۱۶
+            // دیده شد: کدهای چندانباره تا ۸ بار در CC_VarianceDecision
+            // تکرار شده بودند). اول به ازای هر کد جمع می‌زنیم تا دقیقاً
+            // یک ردیف به کاربر برگردد.
             const string sql = @"
-                SELECT  v.Code, s.NAME AS ItemName, v.Anbar,
+                ;WITH VarByCode AS (
+                    SELECT  Code,
+                            SUM(QtyVariance)    AS QtyVariance,
+                            SUM(AmountVariance) AS AmountVariance,
+                            SUM(ConsumedQty)    AS ConsumedQty,
+                            CAST(MAX(CAST(IsKeyItem AS TINYINT)) AS BIT) AS IsKeyItem,
+                            CASE WHEN SUM(ConsumedQty) = 0 THEN NULL
+                                 ELSE SUM(AmountVariance) / NULLIF(SUM(QtyVariance),0) END AS UnitRate
+                    FROM    dbo.CC_Variance
+                    WHERE   RunId = @runId
+                    GROUP BY Code
+                )
+                SELECT  v.Code, s.NAME AS ItemName,
                         v.QtyVariance, v.UnitRate, v.AmountVariance,
                         v.ConsumedQty,
                         CASE WHEN ISNULL(v.ConsumedQty,0) = 0 THEN NULL
@@ -600,12 +1111,11 @@ namespace Safir.Server.Controllers
                         st.NAME AS TargetName,
                         d.TargetFNUMB,
                         d.Note AS LastMonthHint
-                FROM    dbo.CC_Variance v
+                FROM    VarByCode v
                 LEFT    JOIN dbo.CC_VarianceDecision d
-                        ON d.Code = v.Code AND d.RunId = v.RunId
+                        ON d.Code = v.Code AND d.RunId = @runId
                 LEFT    JOIN dbo.STUF_DEF s  ON TRY_CAST(s.CODE  AS BIGINT) = v.Code
                 LEFT    JOIN dbo.STUF_DEF st ON TRY_CAST(st.CODE AS BIGINT) = d.TargetCode
-                WHERE   v.RunId = @runId
                 ORDER BY ABS(ISNULL(v.AmountVariance,0)) DESC";
 
             return Ok(await _db.DoGetDataSQLAsync<VarianceRowDto>(sql, new { runId }));
@@ -809,6 +1319,102 @@ namespace Safir.Server.Controllers
             }
         }
 
+        // ═══════════════ جابه‌جایی مصرف ماده بین فرمول‌ها ═══════════════
+
+        /// <summary>موادی که در فرمول‌های ماهِ این اجرا مصرف شده‌اند — برای انتخاب ماده</summary>
+        [HttpGet("runs/{runId:int}/formula-materials")]
+        [Pay2Authorize(CostForms.Margin, Pay2Perm.See)]
+        public async Task<ActionResult<IEnumerable<FormulaMaterialDto>>> GetFormulaMaterials(
+            int runId, [FromQuery] string? search = null)
+        {
+            var run = await _db.DoGetDataSQLAsyncSingle<CostRunDto>(
+                "SELECT * FROM dbo.CC_Run WHERE RunId = @runId", new { runId });
+            if (run is null) return NotFound();
+
+            const string sql = @"
+                SELECT DISTINCT TRY_CAST(d.CODE AS BIGINT) AS Code, s.NAME AS Name
+                FROM    dbo.DTL_MANF d
+                JOIN    dbo.HEAD_MANF hm ON hm.FNUMB = d.FNUMB AND hm.GHEYMAT = @month
+                LEFT    JOIN dbo.STUF_DEF s ON TRY_CAST(s.CODE AS BIGINT) = TRY_CAST(d.CODE AS BIGINT)
+                WHERE   TRY_CAST(d.CODE AS BIGINT) IS NOT NULL
+                  AND   (@search IS NULL OR s.NAME LIKE '%' + @search + '%'
+                                          OR d.CODE LIKE '%' + @search + '%')
+                ORDER BY s.NAME";
+
+            return Ok(await _db.DoGetDataSQLAsync<FormulaMaterialDto>(
+                sql, new { month = run.PeriodMonth, search }));
+        }
+
+        /// <summary>فرمول‌هایی که این ماده را در ماهِ این اجرا مصرف کرده‌اند — برای انتخاب فرمول مبدأ/مقصد</summary>
+        [HttpGet("runs/{runId:int}/material-consumers/{materialCode:long}")]
+        [Pay2Authorize(CostForms.Margin, Pay2Perm.See)]
+        public async Task<ActionResult<IEnumerable<MaterialConsumerDto>>> GetMaterialConsumers(
+            int runId, long materialCode)
+        {
+            var run = await _db.DoGetDataSQLAsyncSingle<CostRunDto>(
+                "SELECT * FROM dbo.CC_Run WHERE RunId = @runId", new { runId });
+            if (run is null) return NotFound();
+
+            const string sql = @"
+                ;WITH Prod AS (
+                    SELECT  TRY_CAST(pl.N_KOL AS INT) AS FNUMB, SUM(pl.MEGHK) AS ProdQty
+                    FROM    dbo.HEAD_LST h
+                    JOIN    dbo.INVO_LST pl ON pl.NUMBER = h.NUMBER AND pl.TAG = 9
+                    WHERE   h.TAG = 9 AND h.DATE_N BETWEEN @dt1 AND @dt2
+                      AND   TRY_CAST(pl.N_KOL AS INT) IS NOT NULL
+                    GROUP BY TRY_CAST(pl.N_KOL AS INT)
+                    HAVING  SUM(pl.MEGHK) > 0
+                )
+                SELECT  TRY_CAST(hm.CODE AS BIGINT) AS ParentCode,
+                        s.NAME                      AS ParentName,
+                        d.MEGHk                     AS MEGHk,
+                        ISNULL(d.SMABL, 0)          AS Rate,
+                        p.ProdQty                   AS ProdQty
+                FROM    dbo.DTL_MANF d
+                JOIN    dbo.HEAD_MANF hm ON hm.FNUMB = d.FNUMB AND hm.GHEYMAT = @month
+                LEFT    JOIN Prod p ON p.FNUMB = d.FNUMB
+                LEFT    JOIN dbo.STUF_DEF s ON TRY_CAST(s.CODE AS BIGINT) = TRY_CAST(hm.CODE AS BIGINT)
+                WHERE   TRY_CAST(d.CODE AS BIGINT) = @materialCode
+                ORDER BY s.NAME";
+
+            return Ok(await _db.DoGetDataSQLAsync<MaterialConsumerDto>(
+                sql, new { month = run.PeriodMonth, dt1 = run.DateFrom, dt2 = run.DateTo, materialCode }));
+        }
+
+        /// <summary>
+        /// جابه‌جایی مقدار مصرف یک ماده بین دو فرمول (اصلاح روی مواد، نه هزینه تبدیل).
+        /// با whatIf=true فقط پیش‌نمایش بها قبل/بعد برای هر دو طرف.
+        /// </summary>
+        [HttpPost("runs/{runId:int}/rebalance-material")]
+        [Pay2Authorize(CostForms.ActApplyRate, Pay2Perm.Run)]
+        public async Task<ActionResult<IEnumerable<RebalancePreviewDto>>> RebalanceMaterial(
+            int runId, [FromBody] RebalanceMaterialRequest req, [FromQuery] bool whatIf = true)
+        {
+            var run = await _db.DoGetDataSQLAsyncSingle<CostRunDto>(
+                "SELECT * FROM dbo.CC_Run WHERE RunId = @runId", new { runId });
+            if (run is null) return NotFound();
+
+            try
+            {
+                var res = await _db.DoGetDataSQLAsync<RebalancePreviewDto>(
+                    "EXEC dbo.CC_sp_RebalanceMaterialQty @RunId=@r, @Month=@m, @DT1=@a, @DT2=@b, " +
+                    "@MaterialCode=@mc, @FromParentCode=@fp, @ToParentCode=@tp, @Qty=@q, @WhatIf=@w",
+                    new
+                    {
+                        r = runId, m = run.PeriodMonth, a = run.DateFrom, b = run.DateTo,
+                        mc = req.MaterialCode, fp = req.FromParentCode, tp = req.ToParentCode,
+                        q = req.Qty, w = whatIf
+                    });
+
+                return Ok(res);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "RebalanceMaterial failed for run {RunId}", runId);
+                return BadRequest(ex.Message);
+            }
+        }
+
         // ═══════════════════════ گزارش و تأیید ═══════════════════════
 
         [HttpGet("runs/{runId:int}/report.xlsx")]
@@ -873,6 +1479,23 @@ namespace Safir.Server.Controllers
         {
             const string sql = "SELECT * FROM dbo.CC_CheckRule ORDER BY SortOrder";
             return Ok(await _db.DoGetDataSQLAsync<CostCheckRuleDto>(sql));
+        }
+
+        /// <summary>
+        /// آستانه‌ی یک قاعده رو کاربر تعیین می‌کند — مثلاً برای CHK-01
+        /// (کاردکس منفی) که چون مقدارها گاهی به‌خاطر باقیمانده‌ی واقعیِ
+        /// تبدیل واحد (نه خطای گرد کردن) دقیقاً صفر نمی‌شوند، آستانه‌ی
+        /// خیلی سخت‌گیرانه نویز داده را هم منفی نشان می‌دهد.
+        /// </summary>
+        [HttpPut("rules/{ruleCode}/threshold")]
+        [Pay2Authorize(CostForms.Settings, Pay2Perm.Upd)]
+        public async Task<IActionResult> UpdateRuleThreshold(string ruleCode, [FromBody] UpdateRuleThresholdRequest req)
+        {
+            var rows = await _db.DoExecuteSQLAsync(
+                "UPDATE dbo.CC_CheckRule SET Threshold = @Threshold WHERE RuleCode = @ruleCode",
+                new { ruleCode, req.Threshold });
+
+            return rows > 0 ? NoContent() : NotFound();
         }
 
         // ═══════════════════════ واحدهای تولیدی ═══════════════════════

@@ -114,14 +114,42 @@ namespace Safir.Server.CostClose
             // و تنها ردِ واقعی خطا در لاگ سمت سرور است.
             try
             {
+                // بازسازی نرخ میانگین (S07A) بدون انتشار نرخ (S11) بعدش،
+                // مفهوم «بازسازی» را نصفه می‌گذارد — نرخ‌های تازه‌محاسبه‌شده
+                // هرگز به فرمول‌ها نمی‌رسند و نتیجه با انتظار کاربر نمی‌خواند.
+                // پس در اجرای جزئی (OnlySteps)، اگر S07A خواسته شده ولی S11
+                // نه، S11 را خودمان اضافه می‌کنیم تا حلقه‌ی همگرایی زیر هم
+                // فرصت اجرا شدن پیدا کند.
+                var onlySteps = job.OnlySteps;
+                if (onlySteps is not null
+                    && onlySteps.Contains("S07A") && !onlySteps.Contains("S11"))
+                {
+                    onlySteps = onlySteps.Append("S11").ToArray();
+                }
+
                 var ordered = _steps
                     .OrderBy(s => s.SeqNo)
-                    .Where(s => job.OnlySteps is null || job.OnlySteps.Contains(s.StepCode))
+                    .Where(s => onlySteps is null || onlySteps.Contains(s.StepCode))
                     .ToList();
 
                 // اجرای گام‌ها؛ فهرست ممکن است حین اجرا گسترش یابد
                 // (وقتی فرمول‌ها عوض شده و بازتولید لازم است)
                 var pending = new Queue<ICostStep>(ordered);
+
+                // ── همگرایی نرخ S07A↔S11 ──
+                // S07A نرخ میانگین کاردکس را از رسیدهای تولید حساب می‌کند —
+                // که خودشان بهایشان را از فرمول (S11) می‌گیرند؛ S11 هم نرخ
+                // موادی که این ماه گردش دارند را از میانگین انبار (خروجی
+                // S07A) می‌گیرد، نه از کاسکید فرمول. یعنی این دو گام روی هم
+                // اثر می‌گذارند و یک پاس تضمین نمی‌کند نرخ نهایی باشد — باید
+                // آن‌قدر تکرار شوند تا نرخ‌ها بین دو دور پشت‌سرهم عوض نشوند.
+                // بدون این حلقه، اسناد گروهی (انتقال/فروش) که بعداً صادر
+                // می‌شوند، نرخِ یک نقطه‌ی میانی از این همگرایی را قفل
+                // می‌کنند — دقیقاً همان مغایرت ۹.۷ میلیاردی کد ۳۳۶۵/انبار۲
+                // که در بازبینی دستی پیدا شد.
+                long?  lastS11Fingerprint = null;
+                int    s11Cycles          = 0;
+                const int MaxS11Cycles    = 5;
 
                 while (pending.Count > 0)
                 {
@@ -225,7 +253,7 @@ namespace Safir.Server.CostClose
                             new { RunId = job.RunId, Dirty = true });
 
                         var rebuild = _steps
-                            .Where(s => s.StepCode is "S07" or "S08")
+                            .Where(s => s.StepCode is "S07" or "S07A" or "S08")
                             .OrderBy(s => s.SeqNo);
 
                         foreach (var rs in rebuild)
@@ -240,6 +268,42 @@ namespace Safir.Server.CostClose
                         await db.DoGetStoreProcedureSQLAsync<dynamic>(
                             "dbo.CC_sp_SetFormulasDirty",
                             new { RunId = job.RunId, Dirty = false });
+
+                    // ── همگرایی نرخ S07A↔S11 ──
+                    // فقط وقتی معنا دارد که خودِ S11 موفق اجرا شده باشد.
+                    if (step.StepCode == "S11" && result.Status != CostStepStatus.Failed)
+                    {
+                        var fingerprint = await GetRateFingerprintAsync(db, job.RunId);
+
+                        if (lastS11Fingerprint is not null && fingerprint == lastS11Fingerprint)
+                        {
+                            // نرخ‌ها بین این دور و دور قبل عوض نشد — همگرا شد
+                        }
+                        else if (s11Cycles < MaxS11Cycles)
+                        {
+                            s11Cycles++;
+                            lastS11Fingerprint = fingerprint;
+
+                            var repeat = _steps
+                                .Where(s => s.StepCode is "S07A" or "S11")
+                                .OrderBy(s => s.SeqNo)
+                                .ToList();
+
+                            // باید بلافاصله بعد از S11 اجرا شوند، نه بعد از
+                            // S12 و مراحل بعدی — پس به جلوی صف اضافه می‌شوند،
+                            // نه به انتهای آن (بر خلاف بازتولید WritesFormulas بالا).
+                            pending = new Queue<ICostStep>(repeat.Concat(pending));
+
+                            await LogAsync(db, job.RunId, "S11", 1,
+                                $"نرخ مواد بین این دور و دور قبل فرق دارد — S07A/S11 دوباره اجرا می‌شود (دور {s11Cycles + 1})");
+                        }
+                        else
+                        {
+                            lastS11Fingerprint = fingerprint;
+                            await LogAsync(db, job.RunId, "S11", 2,
+                                $"همگرایی نرخ پس از {MaxS11Cycles} دور تکرار کامل نشد — با آخرین مقدار ادامه داده می‌شود");
+                        }
+                    }
                 }
 
                 await SetRunStatusAsync(db, job.RunId, CostRunStatus.Completed);
@@ -282,5 +346,17 @@ namespace Safir.Server.CostClose
                 @"INSERT dbo.CC_RunLog (RunId, StepCode, Severity, Message)
                   VALUES (@runId, @step, @sev, @msg)",
                 new { runId, step, sev, msg });
+
+        /// <summary>
+        /// اثرانگشت نرخ‌های همین اجرا — برای تشخیص همگرایی S07A↔S11.
+        /// CC_ItemCost خروجی مستقیم S11 است (هر بار DELETE/INSERT کامل
+        /// می‌شود)، پس اگر بین دو دور پیاپی این اثرانگشت عوض نشود یعنی
+        /// نرخ‌ها دیگر تغییر نمی‌کنند.
+        /// </summary>
+        private static Task<long?> GetRateFingerprintAsync(IDatabaseService db, int runId)
+            => db.DoGetDataSQLAsyncSingle<long?>(
+                @"SELECT CAST(CHECKSUM_AGG(CHECKSUM(Code, TotalCost)) AS BIGINT)
+                  FROM   dbo.CC_ItemCost WHERE RunId = @runId",
+                new { runId });
     }
 }

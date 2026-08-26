@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "safir-server",
+      "runtimeExecutable": "dotnet",
+      "runtimeArgs": ["run", "--project", "Server", "--urls", "http://localhost:5170"],
+      "port": 5170
+    }
+  ]
+}
