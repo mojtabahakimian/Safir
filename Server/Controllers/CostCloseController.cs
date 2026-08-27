@@ -341,7 +341,13 @@ namespace Safir.Server.Controllers
             return n > 0 ? Ok() : NotFound();
         }
 
-        /// <summary>پذیرش دائمی یک استثنا — دیگر در ماه‌های بعد هشدار نمی‌دهد</summary>
+        /// <summary>
+        /// پذیرش دائمی یک استثنا — دیگر مسدود نمی‌کند، نه در همین اجرا نه در
+        /// ماه‌های بعد (چون CC_AcceptedException مقید به RunId نیست). برای
+        /// CHK-01/CHK-02 که روی جفت (انبار،کالا) کار می‌کنند، Anbar هم از
+        /// خودِ استثنا ثبت می‌شود تا فقط همین انبار خاموش شود، نه همه‌ی
+        /// انبارهای آن کالا.
+        /// </summary>
         [HttpPost("exceptions/{id:long}/accept-permanently")]
         [Pay2Authorize(CostForms.ActResolve, Pay2Perm.Upd)]
         public async Task<IActionResult> AcceptPermanently(
@@ -351,13 +357,14 @@ namespace Safir.Server.Controllers
                 return BadRequest("برای پذیرش دائمی، ثبت دلیل الزامی است.");
 
             const string sql = @"
-                INSERT dbo.CC_AcceptedException (RuleCode, Code, Reason, AcceptedBy)
-                SELECT e.RuleCode, e.Code, @note, @user
+                INSERT dbo.CC_AcceptedException (RuleCode, Code, Anbar, Reason, AcceptedBy)
+                SELECT e.RuleCode, e.Code, e.Anbar, @note, @user
                 FROM   dbo.CC_Exception e
                 WHERE  e.ExceptionId = @id
                   AND  NOT EXISTS (SELECT 1 FROM dbo.CC_AcceptedException a
-                                   WHERE a.RuleCode = e.RuleCode
-                                     AND ISNULL(a.Code,-1) = ISNULL(e.Code,-1));
+                                   WHERE a.RuleCode = e.RuleCode AND a.IsActive = 1
+                                     AND ISNULL(a.Code,-1)  = ISNULL(e.Code,-1)
+                                     AND ISNULL(a.Anbar,-1) = ISNULL(e.Anbar,-1));
 
                 UPDATE dbo.CC_Exception
                    SET IsResolved = 1, ResolvedBy = @user,
@@ -367,6 +374,39 @@ namespace Safir.Server.Controllers
 
             await _db.DoExecuteSQLAsync(sql, new { id, user = CurrentUser, note = req.Note });
             return Ok();
+        }
+
+        /// <summary>فهرست استثناهای پذیرفته‌شده‌ی فعال — برای صفحه‌ی مدیریت آن‌ها</summary>
+        [HttpGet("accepted-exceptions")]
+        [Pay2Authorize(CostForms.ActResolve, Pay2Perm.See)]
+        public async Task<ActionResult<IEnumerable<AcceptedExceptionDto>>> GetAcceptedExceptions()
+        {
+            const string sql = @"
+                SELECT  a.Id, a.RuleCode, a.Code, s.NAME AS CodeName, a.Anbar, an.NAMES AS AnbarName,
+                        a.Reason, a.AcceptedBy, a.AcceptedAtUtc
+                FROM    dbo.CC_AcceptedException a
+                LEFT    JOIN dbo.STUF_DEF   s  ON TRY_CAST(s.CODE AS BIGINT) = a.Code
+                LEFT    JOIN dbo.TCOD_ANBAR an ON an.CODE = a.Anbar
+                WHERE   a.IsActive = 1
+                ORDER BY a.AcceptedAtUtc DESC";
+
+            return Ok(await _db.DoGetDataSQLAsync<AcceptedExceptionDto>(sql));
+        }
+
+        /// <summary>
+        /// لغو پذیرش دائمی — این مورد از دور بعدیِ S05 دوباره به‌عنوان
+        /// مسدودکننده نشان داده می‌شود (خودِ ردیف حذف نمی‌شود، فقط IsActive
+        /// صفر می‌شود، برای ردیابی این‌که چه کسی/چرا قبلاً پذیرفته بود).
+        /// </summary>
+        [HttpPost("accepted-exceptions/{id:int}/revoke")]
+        [Pay2Authorize(CostForms.ActResolve, Pay2Perm.Upd)]
+        public async Task<IActionResult> RevokeAcceptedException(int id)
+        {
+            var n = await _db.DoExecuteSQLAsync(
+                "UPDATE dbo.CC_AcceptedException SET IsActive = 0 WHERE Id = @id AND IsActive = 1",
+                new { id });
+
+            return n > 0 ? Ok() : NotFound();
         }
 
         /// <summary>رفع دسته‌جمعیِ چند استثنا («نادیده گرفتن») — بدون سند اصلاحی.</summary>
@@ -1310,6 +1350,32 @@ namespace Safir.Server.Controllers
                     new { r = runId, m = run.PeriodMonth,
                           a = run.DateFrom, b = run.DateTo, w = whatIf });
 
+                if (!whatIf)
+                {
+                    // بدون این، فرمول (IMBIBE_MANF) عوض می‌شود ولی بهای
+                    // تمام‌شده‌ی همین صفحه (از CC_ItemMargin) رقم قدیمی را
+                    // نشان می‌دهد تا کاربر خودش برود مانیتور اجرا و S11+S12
+                    // را دستی بزند. عمداً S10 اینجا نیست: S10 خودش
+                    // IMBIBE_MANF را از روی برگه‌های تولید بازمحاسبه می‌کند
+                    // و همین تنظیم دستیِ S12b را فوراً خنثی می‌کرد.
+                    await _db.DoGetStoreProcedureSQLAsync<dynamic>(
+                        "dbo.CC_sp_S11_PropagateRates",
+                        new { RunId = runId, Month = run.PeriodMonth,
+                              DT1 = run.DateFrom, DT2 = run.DateTo, WhatIf = false },
+                        commandTimeout: 3600);
+
+                    await _db.DoGetStoreProcedureSQLAsync<dynamic>(
+                        "dbo.CC_sp_S12_CalcMargin",
+                        new { RunId = runId, Month = run.PeriodMonth,
+                              DT1 = run.DateFrom, DT2 = run.DateTo },
+                        commandTimeout: 900);
+
+                    await _db.DoExecuteSQLAsync(
+                        "INSERT dbo.CC_RunLog (RunId, StepCode, Severity, Message) " +
+                        "VALUES (@runId, 'S12b', 1, N'اعمال هدف حاشیه سود — نرخ‌ها دوباره منتشر و سود/زیان بازمحاسبه شد')",
+                        new { runId });
+                }
+
                 return Ok(res);
             }
             catch (Exception ex)
@@ -1317,6 +1383,42 @@ namespace Safir.Server.Controllers
                 _logger.LogWarning(ex, "ApplyMarginTargets failed for run {RunId}", runId);
                 return BadRequest(ex.Message);
             }
+        }
+
+        /// <summary>
+        /// همه‌ی هدف‌های حاشیه‌ی سود فعال — مستقل از فیلتر/صفحه‌بندیِ جدولِ
+        /// سود و زیان، چون CC_MarginTarget اصلاً به RunId مقید نیست و هدفی
+        /// که امروز روی یه کالای زیان‌ده گذاشته شده، بعداً که اون کالا سودده
+        /// بشه (مثلاً با بازسازی نرخ) از فیلتر «زیان‌ده» بیرون می‌ره ولی
+        /// خودِ هدف هنوز فعاله — دقیقاً همون چیزی که باعث شد ۱۵ هدفِ
+        /// «پخش خودکار» قدیمی نامرئی بمونن و اعمال هدف بعدی رو مسدود کنن.
+        /// </summary>
+        [HttpGet("margin-targets/active")]
+        [Pay2Authorize(CostForms.Margin, Pay2Perm.See)]
+        public async Task<ActionResult<IEnumerable<ActiveMarginTargetDto>>> GetActiveMarginTargets()
+        {
+            const string sql = @"
+                SELECT  t.Id, t.Code, s.NAME AS ItemName, t.TargetKind, t.TargetPct,
+                        t.BalancingCode, sb.NAME AS BalancingName
+                FROM    dbo.CC_MarginTarget t
+                LEFT    JOIN dbo.STUF_DEF s  ON TRY_CAST(s.CODE  AS BIGINT) = t.Code
+                LEFT    JOIN dbo.STUF_DEF sb ON TRY_CAST(sb.CODE AS BIGINT) = t.BalancingCode
+                WHERE   t.IsActive = 1
+                ORDER BY t.Code";
+
+            return Ok(await _db.DoGetDataSQLAsync<ActiveMarginTargetDto>(sql));
+        }
+
+        /// <summary>غیرفعال‌کردن یک هدف حاشیه سود — کالا به «آزاد» برمی‌گردد</summary>
+        [HttpPost("margin-targets/{id:int}/deactivate")]
+        [Pay2Authorize(CostForms.Margin, Pay2Perm.Upd)]
+        public async Task<IActionResult> DeactivateMarginTarget(int id)
+        {
+            var n = await _db.DoExecuteSQLAsync(
+                "UPDATE dbo.CC_MarginTarget SET IsActive = 0 WHERE Id = @id AND IsActive = 1",
+                new { id });
+
+            return n > 0 ? Ok() : NotFound();
         }
 
         // ═══════════════ جابه‌جایی مصرف ماده بین فرمول‌ها ═══════════════

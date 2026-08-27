@@ -1,0 +1,100 @@
+@using Safir.Shared.Models.CostClose
+@using Safir.Client.Services
+@inject CostCloseApiService Api
+@inject ISnackbar Snackbar
+@inject IDialogService Dialog
+
+<MudDialog>
+    <DialogContent>
+        <div dir="rtl" style="min-width:560px">
+            <MudText Typo="Typo.body2" Class="mb-3">
+                این موارد دیگر در هیچ اجرا یا ماهی مسدودکننده نشان داده نمی‌شوند —
+                نه فقط همین اجرا. «لغو پذیرش» دوباره در اجرای بعدی به‌عنوان
+                مسدودکننده ظاهرش می‌کند.
+            </MudText>
+
+            @if (_busy)
+            {
+                <MudProgressLinear Indeterminate Color="Color.Primary" Class="mb-3" />
+            }
+            else if (_items.Count == 0)
+            {
+                <MudAlert Severity="Severity.Info" Dense>فعلاً هیچ استثنایی پذیرفته نشده.</MudAlert>
+            }
+            else
+            {
+                <MudSimpleTable Dense Hover>
+                    <thead>
+                        <tr>
+                            <th>قاعده</th>
+                            <th>کالا</th>
+                            <th>انبار</th>
+                            <th>دلیل</th>
+                            <th>پذیرنده</th>
+                            <th style="width:70px"></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var it in _items)
+                        {
+                            <tr>
+                                <td>@it.RuleCode</td>
+                                <td>@(it.Code is null ? "همه" : $"{it.CodeName} ({it.Code})")</td>
+                                <td>@(it.Anbar is null ? "همه" : $"{it.AnbarName} ({it.Anbar})")</td>
+                                <td>@it.Reason</td>
+                                <td>@it.AcceptedBy</td>
+                                <td>
+                                    <MudIconButton Icon="@Icons.Material.Filled.Undo" Size="Size.Small"
+                                                   Title="لغو پذیرش" OnClick="@(() => Revoke(it))" />
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </MudSimpleTable>
+            }
+        </div>
+    </DialogContent>
+
+    <DialogActions>
+        <MudButton OnClick="Close">بستن</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private MudDialogInstance MudDialog { get; set; } = default!;
+
+    private List<AcceptedExceptionDto> _items = new();
+    private bool _busy;
+
+    protected override async Task OnInitializedAsync() => await Load();
+
+    private async Task Load()
+    {
+        _busy = true;
+        try { _items = await Api.GetAcceptedExceptionsAsync(); }
+        finally { _busy = false; }
+    }
+
+    private async Task Revoke(AcceptedExceptionDto it)
+    {
+        var confirm = await Dialog.ShowMessageBox(
+            "لغو پذیرش",
+            $"«{it.RuleCode}» برای {(it.Code is null ? "همه‌ی کالاها" : it.CodeName)} دوباره از اجرای بعدی مسدودکننده می‌شود. مطمئن‌اید؟",
+            yesText: "بله، لغو کن", cancelText: "انصراف");
+
+        if (confirm != true) return;
+
+        var (ok, err) = await Api.RevokeAcceptedExceptionAsync(it.Id);
+        if (ok)
+        {
+            Snackbar.Add("پذیرش لغو شد", Severity.Success);
+            await Load();
+        }
+        else
+        {
+            Snackbar.Add(err ?? "لغو ناموفق بود", Severity.Error);
+        }
+    }
+
+    private void Close() => MudDialog.Close(DialogResult.Ok(true));
+}

@@ -65,6 +65,11 @@ else
 
         <MudSpacer />
 
+        <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.FormatListBulleted"
+                   OnClick="OpenActiveTargets">
+            هدف‌های فعال
+        </MudButton>
+
         @if (Access.CanRun(CostForms.ActExport))
         {
             <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.Download"
@@ -353,6 +358,15 @@ else
     private static string BalancerLabel(ItemMarginDto? i)
         => i is null ? "" : $"{i.ItemName} — سود {i.Profit:N0}";
 
+    private async Task OpenActiveTargets()
+    {
+        var dlg = await Dialog.ShowAsync<ActiveMarginTargetsDialog>("هدف‌های حاشیه سودِ فعال");
+        var result = await dlg.Result;
+
+        if (result is { Canceled: false })
+            await Load();
+    }
+
     private async Task OpenRebalanceMaterial(ItemMarginDto row)
     {
         var p = new DialogParameters
@@ -418,7 +432,7 @@ else
             if (!ok2) { Snackbar.Add(err2 ?? "خطا", Severity.Error); return; }
 
             _dirty = false;
-            Snackbar.Add("اهداف اعمال شد — نرخ‌ها باید دوباره منتشر شوند", Severity.Success);
+            Snackbar.Add("اهداف اعمال شد، نرخ‌ها منتشر و سود/زیان بازمحاسبه شد", Severity.Success);
             await Load();
         }
         finally { _busy = false; }

@@ -105,6 +105,17 @@ namespace Safir.Client.Services
                  : (false, await res.Content.ReadAsStringAsync());
         }
 
+        public async Task<List<AcceptedExceptionDto>> GetAcceptedExceptionsAsync()
+            => await _http.GetFromJsonAsync<List<AcceptedExceptionDto>>($"{Base}/accepted-exceptions") ?? new();
+
+        public async Task<(bool Ok, string? Error)> RevokeAcceptedExceptionAsync(int id)
+        {
+            var res = await _http.PostAsync($"{Base}/accepted-exceptions/{id}/revoke", null);
+            return res.IsSuccessStatusCode
+                 ? (true, null)
+                 : (false, await res.Content.ReadAsStringAsync());
+        }
+
         public async Task<(bool Ok, int Count, string? Error)> BulkResolveAsync(List<long> ids, string? note)
         {
             var res = await _http.PostAsJsonAsync($"{Base}/exceptions/bulk-resolve",
@@ -266,6 +277,17 @@ namespace Safir.Client.Services
             var res = await _http.PostAsync(
                 $"{Base}/runs/{runId}/apply-margin-targets?whatIf={whatIf}", null);
 
+            return res.IsSuccessStatusCode
+                 ? (true, null)
+                 : (false, await res.Content.ReadAsStringAsync());
+        }
+
+        public async Task<List<ActiveMarginTargetDto>> GetActiveMarginTargetsAsync()
+            => await _http.GetFromJsonAsync<List<ActiveMarginTargetDto>>($"{Base}/margin-targets/active") ?? new();
+
+        public async Task<(bool Ok, string? Error)> DeactivateMarginTargetAsync(int id)
+        {
+            var res = await _http.PostAsync($"{Base}/margin-targets/{id}/deactivate", null);
             return res.IsSuccessStatusCode
                  ? (true, null)
                  : (false, await res.Content.ReadAsStringAsync());

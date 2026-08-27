@@ -53,6 +53,11 @@
             بازبینی مجدد
         </MudButton>
 
+        <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.VisibilityOff"
+                   OnClick="OpenAcceptedExceptions">
+            استثناهای پذیرفته‌شده
+        </MudButton>
+
         <MudSelect T="int?" Value="_anbarFilter" ValueChanged="OnAnbarFilterChanged"
                    Label="انبار" Dense Variant="Variant.Outlined" Clearable Style="min-width:170px">
             @foreach (var a in AnbarChoices)
@@ -709,6 +714,15 @@
             // تغییری در ردیف — کاربر نمی‌فهمید عملیات واقعاً انجام شد یا نه.
             Snackbar.Add(err ?? "رفع مورد ناموفق بود", Severity.Error);
         }
+    }
+
+    private async Task OpenAcceptedExceptions()
+    {
+        var dlg = await Dialog.ShowAsync<AcceptedExceptionsDialog>("استثناهای پذیرفته‌شده");
+        var result = await dlg.Result;
+
+        if (result is { Canceled: false })
+            await Load();
     }
 
     private async Task AcceptPermanently(CostExceptionDto ex)

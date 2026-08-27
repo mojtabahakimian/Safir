@@ -203,6 +203,20 @@ namespace Safir.Shared.Models.CostClose
         public string?     Note         { get; set; }
     }
 
+    /// <summary>یک استثنای پذیرفته‌شده‌ی دائمی — دیگر در هیچ اجرا/ماهی مسدود نمی‌کند تا لغو شود</summary>
+    public class AcceptedExceptionDto
+    {
+        public int      Id            { get; set; }
+        public string   RuleCode      { get; set; } = "";
+        public long?    Code          { get; set; }
+        public string?  CodeName      { get; set; }
+        public int?     Anbar         { get; set; }
+        public string?  AnbarName     { get; set; }
+        public string   Reason        { get; set; } = "";
+        public string   AcceptedBy    { get; set; } = "";
+        public DateTime AcceptedAtUtc { get; set; }
+    }
+
     /// <summary>
     /// درخواست «رفع مغایرت CHK-02 با سند اصلاحی» — اختلاف کارت‌انبار/حسابداری
     /// بین حساب موجودیِ همان انبار و یک حساب مقصدِ دلخواه (مثلاً سود و زیان)
@@ -485,6 +499,18 @@ namespace Safir.Shared.Models.CostClose
         public double  CostPerUnitBefore { get; set; }
         public double  CostPerUnitAfter  { get; set; }
         public double  ProdQty           { get; set; }
+    }
+
+    /// <summary>یک هدف حاشیه سود فعال — مستقل از فیلتر جدولِ سود و زیان (نگاه کنید GetActiveMarginTargets)</summary>
+    public class ActiveMarginTargetDto
+    {
+        public int      Id            { get; set; }
+        public long     Code          { get; set; }
+        public string?  ItemName      { get; set; }
+        public byte     TargetKind    { get; set; }
+        public decimal? TargetPct     { get; set; }
+        public long?    BalancingCode { get; set; }
+        public string?  BalancingName { get; set; }
     }
 
     public class RollbackRequest

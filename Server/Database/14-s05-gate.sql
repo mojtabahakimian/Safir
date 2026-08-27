@@ -320,7 +320,16 @@ BEGIN
     FROM    AvvalinManfi m
     LEFT    JOIN dbo.TCOD_ANBAR a ON a.CODE = m.Anbar
     WHERE   m.rn = 1
-      AND   m.DATE_N BETWEEN @DT1 AND @DT2;
+      AND   m.DATE_N BETWEEN @DT1 AND @DT2
+      -- پذیرش دائمی (CC_AcceptedException) — عيناً همان مکانیزم
+      -- CHK-03/CHK-04، به‌علاوه‌ی Anbar چون این کنترل روی جفت
+      -- (انبار،کالا) کار می‌کند نه فقط کالا. چون این جدول مقید به
+      -- RunId/ماه نیست، یک پذیرش هم دیگر در همین اجرا مسدود نمی‌کند
+      -- هم در ماه‌های بعد دوباره ظاهر نمی‌شود.
+      AND   NOT EXISTS (SELECT 1 FROM dbo.CC_AcceptedException ae
+                        WHERE ae.RuleCode = 'CHK-01' AND ae.IsActive = 1
+                          AND (ae.Anbar IS NULL OR ae.Anbar = m.Anbar)
+                          AND (ae.Code  IS NULL OR ae.Code  = m.code));
 
     DROP TABLE #PM;
 
@@ -545,6 +554,25 @@ BEGIN
             JOIN    dbo.CC_AnbarHes am ON am.HesKol = d.HES_K AND am.HesMoin = d.HES_M
             WHERE   h.DATE_S <= @DT2
             GROUP BY am.Anbar, TRY_CAST(d.HES_T AS BIGINT)
+        ),
+        -- تشخیص خودکارِ علتِ محتمل، تا اپراتور مجبور نباشد دستی SQL بزند:
+        -- کدهایی که STUF_FSK موجودی اول دوره‌ی غیرصفر دارند ولی هیچ سند
+        -- افتتاحیه‌ای زیر همان حساب (کل/معین/تفصیلی) در حسابداری ثبت
+        -- نشده — دقیقاً همان الگویی که روی کد ۳۱۰۰/انبار۴ پیدا شد.
+        -- این حالت را نمی‌شود خودکار اصلاح کرد (فقط تیم انبار/حسابداری
+        -- می‌داند آن موجودی واقعی بوده یا نه)، پس فقط توضیح داده می‌شود.
+        MissingOpening AS (
+            SELECT DISTINCT am.Anbar, TRY_CAST(f.CODE AS BIGINT) AS code
+            FROM    dbo.STUF_FSK f
+            JOIN    dbo.CC_AnbarHes am ON am.Anbar = f.ANBAR
+            WHERE   f.MOGODI_A <> 0
+              AND   NOT EXISTS (
+                        SELECT 1 FROM dbo.DEED_DTL d
+                        JOIN   dbo.DEED_HED h ON h.N_S = d.N_S
+                        WHERE  d.HES_K = am.HesKol AND d.HES_M = am.HesMoin
+                          AND  TRY_CAST(d.HES_T AS BIGINT) = TRY_CAST(f.CODE AS BIGINT)
+                          AND  d.SHARH LIKE N'%افتتاحيه%'
+                    )
         )
         INSERT dbo.CC_Exception
             (RunId, StepCode, RuleCode, ExType, Severity, Anbar, Code, Amount, Description)
@@ -554,11 +582,23 @@ BEGIN
                 CONCAT(N'انبار ', ISNULL(k.Anbar, hh.Anbar),
                        N' (', ISNULL(a.NAMES, N'نامشخص'), N'): کارت انبار ',
                        FORMAT(ISNULL(k.Mande, 0), 'N0'),
-                       N' در برابر حسابداری ', FORMAT(ISNULL(hh.Mande, 0), 'N0'))
+                       N' در برابر حسابداری ', FORMAT(ISNULL(hh.Mande, 0), 'N0'),
+                       CASE WHEN mo.code IS NOT NULL
+                            THEN N' — علت محتمل: موجودی اول دورهٔ این کالا در کاردکس ثبت شده (STUF_FSK) ولی سند افتتاحیهٔ آن هرگز در حسابداری صادر نشده؛ نیاز به بررسی و تصمیم دستیِ انبار/حسابداری دارد، نه بازسازی خودکار.'
+                            ELSE N'' END)
         FROM    KartAnbar k
         FULL    OUTER JOIN Hesabdari hh ON hh.Anbar = k.Anbar AND hh.code = k.code
         LEFT    JOIN dbo.TCOD_ANBAR a ON a.CODE = ISNULL(k.Anbar, hh.Anbar)
-        WHERE   ABS(ISNULL(k.Mande, 0) - ISNULL(hh.Mande, 0)) > 1;
+        LEFT    JOIN MissingOpening mo ON mo.Anbar = ISNULL(k.Anbar, hh.Anbar) AND mo.code = ISNULL(k.code, hh.code)
+        WHERE   ABS(ISNULL(k.Mande, 0) - ISNULL(hh.Mande, 0)) > 1
+          -- پذیرش دائمی — نگاه کنید توضیح بالای CHK-01. برای همین دلیل
+          -- این‌جا هم اضافه شد: مورد شناخته‌شده‌ی «موجودی اول دوره سند
+          -- افتتاحیه ندارد» (MissingOpening) دقیقاً همان چیزی است که
+          -- معمولاً با این دکمه پذیرفته می‌شود.
+          AND   NOT EXISTS (SELECT 1 FROM dbo.CC_AcceptedException ae
+                            WHERE ae.RuleCode = 'CHK-02' AND ae.IsActive = 1
+                              AND (ae.Anbar IS NULL OR ae.Anbar = ISNULL(k.Anbar, hh.Anbar))
+                              AND (ae.Code  IS NULL OR ae.Code  = ISNULL(k.code, hh.code)));
     END
 
     /* ─────────────────────────────────────────────────────────────

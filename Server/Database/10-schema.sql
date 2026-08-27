@@ -154,6 +154,13 @@ CREATE TABLE dbo.CC_AcceptedException (
     IsActive     BIT           NOT NULL DEFAULT 1
 );
 GO
+-- CHK-01/CHK-02 بر خلاف CHK-03/CHK-04 روی جفت (انبار، کالا) کار می‌کنند،
+-- نه فقط کالا — بدون این ستون، پذیرفتن یک مغایرت برای یک انبار خاص،
+-- همان کد را در همه‌ی انبارها هم بی‌صدا خاموش می‌کرد. NULL يعني همه‌ی
+-- انبارها (عيناً همان قرارداد Code/FNUMB بالا).
+IF COL_LENGTH('dbo.CC_AcceptedException','Anbar') IS NULL
+    ALTER TABLE dbo.CC_AcceptedException ADD Anbar INT NULL;
+GO
 
 /* ───────────────────────── واحدهای تولیدی ───────────────────────── */
 

@@ -11,6 +11,16 @@
     min-height: 100%;
 }
 
+/* MainLayout همه‌ی صفحات را در MudContainer MaxWidth.Large می‌گذارد —
+   برای صفحات معمولی درست است، ولی این ماژول جدول‌ها و کارت‌های
+   اطلاعاتیِ پرمحتوا دارد (مثل نوار سه‌تاییِ cc-balance که با فضای
+   خالیِ دو طرف، متن/عددهایش فشرده و ناقص به نظر می‌رسد). این قانون
+   فقط همان MudContainerِ دربرگیرنده‌ی یک cc-page را هدف می‌گیرد — نه
+   صفحه‌های دیگر برنامه را. */
+.mud-container:has(> .cc-page) {
+    max-width: 100% !important;
+}
+
 .cc-toolbar {
     display: flex;
     align-items: center;
