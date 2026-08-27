@@ -135,6 +135,33 @@ namespace Safir.Server.CostClose.MaterialIssueRebuild
         private static string PersianDate(long dateN)
             => $"{dateN / 10000:0000}/{dateN / 100 % 100:00}/{dateN % 100:00}";
 
+        // ───────── بازتلاش روی بن‌بست (Deadlock) ─────────
+        // مرحله ۳ پایین‌تر هر برگه را در تراکنش جدای خودش، موازی با بقیه‌ی
+        // برگه‌ها اجرا می‌کند (SET DEADLOCK_PRIORITY LOW هم همین را نشان
+        // می‌دهد — قبلاً هم پیش‌بینی شده بود). وقتی SQL Server بین دو
+        // تراکنشِ هم‌زمانِ همین اجرا (یا حتی یک فرایند دیگر روی همین پایگاه)
+        // بن‌بست تشخیص دهد، یکی را «قربانی» می‌کند و خطای ۱۲۰۵ می‌دهد — دقیقاً
+        // همان خطایی که SQL Server خودش می‌گوید «Rerun the transaction».
+        // چون کارِ هر برگه idempotent است (DELETE+INSERT مستقل روی همان
+        // NUMBER/TAG=10)، تلاش دوباره‌ی همان تراکنش کاملاً امن است؛ بدون این،
+        // کاربر باید کل بازسازی گروهی (همه‌ی برگه‌ها) را دستی دوباره بزند.
+        private static async Task ExecuteWithDeadlockRetryAsync(
+            Func<Task> action, int maxAttempts = 3)
+        {
+            for (var attempt = 1; ; attempt++)
+            {
+                try
+                {
+                    await action();
+                    return;
+                }
+                catch (Microsoft.Data.SqlClient.SqlException ex) when (ex.Number == 1205 && attempt < maxAttempts)
+                {
+                    await Task.Delay(Random.Shared.Next(150, 450) * attempt);
+                }
+            }
+        }
+
         // ───────── محدودیت موازی‌سازی — جایگزین Parallel.For همگام ─────────
 
         private static async Task ParallelForAsync(int count, int maxDegree, Func<int, Task> body)
@@ -482,7 +509,7 @@ END CATCH;";
                     }
                     batch.Append("COMMIT TRANSACTION;");
 
-                    await _db.DoExecuteSQLAsync(batch.ToString());
+                    await ExecuteWithDeadlockRetryAsync(() => _db.DoExecuteSQLAsync(batch.ToString()));
                 }
                 catch (Exception ex)
                 {
@@ -538,11 +565,13 @@ END CATCH;";
                             var chunk = string.Join(",", rows.Skip(off).Take(detailChunk));
                             var nsIn = string.Join(",", chunkItems.Select(x => SqlNum(x.N_S!.Value)));
 
-                            await _db.DoExecuteSQLAsync(
+                            var batchSql =
                                 "SET DEADLOCK_PRIORITY LOW; SET XACT_ABORT ON; BEGIN TRANSACTION;" +
                                 $"DELETE FROM dbo.DEED_DTL WHERE N_S IN ({nsIn}) AND TAG=10 " +
                                 $"AND HES_K={SqlNum(acc.AMALKARD)} AND HES_M=99999 AND HES_T=99999;" +
-                                detailPrefix + chunk + ";COMMIT TRANSACTION;");
+                                detailPrefix + chunk + ";COMMIT TRANSACTION;";
+
+                            await ExecuteWithDeadlockRetryAsync(() => _db.DoExecuteSQLAsync(batchSql));
                         }
                     }
                     catch (Exception ex)

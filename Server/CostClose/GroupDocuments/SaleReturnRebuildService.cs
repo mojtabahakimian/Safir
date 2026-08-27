@@ -164,6 +164,21 @@ namespace Safir.Server.CostClose.GroupDocuments
             return true;
         }
 
+        // بازتلاش روی بن‌بست (Deadlock) — هر برگه تراکنش جدای خودش را موازی
+        // با بقیه اجرا می‌کند (SET DEADLOCK_PRIORITY LOW)؛ چون کار هر برگه
+        // idempotent است، تلاش دوباره‌ی همان تراکنش پس از خطای ۱۲۰۵ امن است.
+        private static async Task ExecuteWithDeadlockRetryAsync(Func<Task> action, int maxAttempts = 3)
+        {
+            for (var attempt = 1; ; attempt++)
+            {
+                try { await action(); return; }
+                catch (Microsoft.Data.SqlClient.SqlException ex) when (ex.Number == 1205 && attempt < maxAttempts)
+                {
+                    await Task.Delay(Random.Shared.Next(150, 450) * attempt);
+                }
+            }
+        }
+
         private static async Task ParallelForAsync(int count, int maxDegree, Func<int, Task> body)
         {
             if (count == 0) return;
@@ -841,7 +856,7 @@ END CATCH;";
                         batch.Append(';');
                     }
                     batch.Append("COMMIT TRANSACTION;");
-                    await db.DoExecuteSQLAsync(batch.ToString());
+                    await ExecuteWithDeadlockRetryAsync(() => db.DoExecuteSQLAsync(batch.ToString()));
                 }
                 catch (Exception ex)
                 {
@@ -1264,7 +1279,7 @@ END CATCH;";
                         batch.Append(';');
                     }
                     batch.Append("COMMIT TRANSACTION;");
-                    await db.DoExecuteSQLAsync(batch.ToString());
+                    await ExecuteWithDeadlockRetryAsync(() => db.DoExecuteSQLAsync(batch.ToString()));
                 }
                 catch (Exception ex)
                 {
