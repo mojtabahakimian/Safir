@@ -147,9 +147,24 @@ namespace Safir.Server.CostClose
                 // می‌شوند، نرخِ یک نقطه‌ی میانی از این همگرایی را قفل
                 // می‌کنند — دقیقاً همان مغایرت ۹.۷ میلیاردی کد ۳۳۶۵/انبار۲
                 // که در بازبینی دستی پیدا شد.
-                long?  lastS11Fingerprint = null;
+                // ⚠️ اصلاح همگرایی (بعد از فیکس میرایی در CC_sp_S11_PropagateRates):
+                // آن فیکس، کالاهای چندسطحیِ خودمصرف (مثل ۳۷۳→۱۷۳۲→۳۳۶۵) را از
+                // واگرایی نجات داد، ولی به یک سری هندسیِ همگرا تبدیلشان کرد
+                // (تست عملی: هر دور ≈۰.۶۵ برابر دور قبل)، نه یک نقطه‌ی ثابتِ
+                // دقیق در یک دور. مقایسه‌ی چک‌سامِ دقیق (CHECKSUM_AGG) هرگز با
+                // این سری «برابر» نمی‌شود مگر تغییرِ هر دور از دقتِ FLOAT پایین‌تر
+                // برود — که ده‌ها دور طول می‌کشد، نه ۵ تا. راه‌حل درست، مقایسه‌ی
+                // «آستانه‌ای» (بیشترین تغییرِ TotalCost بین دو دورِ پیاپی، روی هر
+                // کالا) است، نه برابریِ دقیق — با همان آستانه‌ی یک‌ریالیِ CHK-02
+                // («این دو باید دقیقاً یکی باشند» تا سطح ریال، نه فراتر).
+                const double RateConvergeThreshold = 1.0;
+                Dictionary<long, double>? lastRates = null;
                 int    s11Cycles          = 0;
-                const int MaxS11Cycles    = 5;
+                // تست عملی روی ران واقعی (کدهای ۳۳۶۵ و ۳۱۰۰، هر دو زنجیره‌ی
+                // خودمصرفِ چندسطحی): با نسبتِ ثابتِ ≈۰.۷۵ در هر دور، از
+                // بیشترین‌تغییرِ ~۱۳۸ ریال تا زیر آستانه‌ی یک‌ریالی حدود
+                // ۱۹-۲۰ دور طول کشید، نه ۵ تا. ۲۵ برای حاشیه‌ی اطمینان.
+                const int MaxS11Cycles    = 25;
 
                 while (pending.Count > 0)
                 {
@@ -273,16 +288,18 @@ namespace Safir.Server.CostClose
                     // فقط وقتی معنا دارد که خودِ S11 موفق اجرا شده باشد.
                     if (step.StepCode == "S11" && result.Status != CostStepStatus.Failed)
                     {
-                        var fingerprint = await GetRateFingerprintAsync(db, job.RunId);
+                        var rates    = await GetItemCostSnapshotAsync(db, job.RunId);
+                        var maxDelta = lastRates is null ? (double?)null : MaxAbsDelta(lastRates, rates);
 
-                        if (lastS11Fingerprint is not null && fingerprint == lastS11Fingerprint)
+                        if (maxDelta is not null && maxDelta <= RateConvergeThreshold)
                         {
-                            // نرخ‌ها بین این دور و دور قبل عوض نشد — همگرا شد
+                            // بیشترین تغییرِ نرخِ همه‌ی کالاها بین این دور و دور
+                            // قبل زیر یک ریال است — همگرا شد
                         }
                         else if (s11Cycles < MaxS11Cycles)
                         {
                             s11Cycles++;
-                            lastS11Fingerprint = fingerprint;
+                            lastRates = rates;
 
                             var repeat = _steps
                                 .Where(s => s.StepCode is "S07A" or "S11")
@@ -294,14 +311,15 @@ namespace Safir.Server.CostClose
                             // نه به انتهای آن (بر خلاف بازتولید WritesFormulas بالا).
                             pending = new Queue<ICostStep>(repeat.Concat(pending));
 
+                            var deltaTxt = maxDelta is null ? "" : $" (بیشترین تغییر: {maxDelta:N0} ریال)";
                             await LogAsync(db, job.RunId, "S11", 1,
-                                $"نرخ مواد بین این دور و دور قبل فرق دارد — S07A/S11 دوباره اجرا می‌شود (دور {s11Cycles + 1})");
+                                $"نرخ مواد بین این دور و دور قبل فرق دارد{deltaTxt} — S07A/S11 دوباره اجرا می‌شود (دور {s11Cycles + 1})");
                         }
                         else
                         {
-                            lastS11Fingerprint = fingerprint;
+                            lastRates = rates;
                             await LogAsync(db, job.RunId, "S11", 2,
-                                $"همگرایی نرخ پس از {MaxS11Cycles} دور تکرار کامل نشد — با آخرین مقدار ادامه داده می‌شود");
+                                $"همگرایی نرخ پس از {MaxS11Cycles} دور تکرار کامل نشد (بیشترین تغییر هنوز {maxDelta:N0} ریال) — با آخرین مقدار ادامه داده می‌شود");
                         }
                     }
                 }
@@ -348,15 +366,46 @@ namespace Safir.Server.CostClose
                 new { runId, step, sev, msg });
 
         /// <summary>
-        /// اثرانگشت نرخ‌های همین اجرا — برای تشخیص همگرایی S07A↔S11.
+        /// عکسِ نرخ‌های همین اجرا — برای تشخیص همگراییِ آستانه‌ایِ S07A↔S11.
         /// CC_ItemCost خروجی مستقیم S11 است (هر بار DELETE/INSERT کامل
-        /// می‌شود)، پس اگر بین دو دور پیاپی این اثرانگشت عوض نشود یعنی
-        /// نرخ‌ها دیگر تغییر نمی‌کنند.
+        /// می‌شود). قبلاً یک چک‌سامِ کل جدول مقایسه می‌شد (برابریِ دقیق)؛
+        /// چون فیکس میراییِ S11 کالاهای خودمصرف را به یک سریِ هندسیِ
+        /// همگرا تبدیل می‌کند نه یک نقطه‌ی ثابتِ دقیق در یک دور، چک‌سام
+        /// دقیق تا ده‌ها دور «برابر» نمی‌شد. اینجا مقدار واقعیِ هر کالا
+        /// نگه داشته می‌شود تا بیشترین تغییر محاسبه و با یک آستانه
+        /// مقایسه شود (نگاه کنید MaxAbsDelta).
         /// </summary>
-        private static Task<long?> GetRateFingerprintAsync(IDatabaseService db, int runId)
-            => db.DoGetDataSQLAsyncSingle<long?>(
-                @"SELECT CAST(CHECKSUM_AGG(CHECKSUM(Code, TotalCost)) AS BIGINT)
-                  FROM   dbo.CC_ItemCost WHERE RunId = @runId",
+        private static async Task<Dictionary<long, double>> GetItemCostSnapshotAsync(
+            IDatabaseService db, int runId)
+        {
+            var rows = await db.DoGetDataSQLAsync<(long Code, double TotalCost)>(
+                "SELECT Code, TotalCost FROM dbo.CC_ItemCost WHERE RunId = @runId",
                 new { runId });
+
+            var map = new Dictionary<long, double>();
+            foreach (var r in rows) map[r.Code] = r.TotalCost;
+            return map;
+        }
+
+        /// <summary>
+        /// بیشترین قدرمطلقِ تغییرِ نرخ روی هر کالا بین دو عکسِ پیاپی. کالایی
+        /// که فقط در یکی از دو عکس هست (مثلاً بین این دور تازه به مجموعه
+        /// اضافه/حذف شده) هم به همان اندازه‌ی خودش تغییر حساب می‌شود، نه
+        /// نادیده گرفته می‌شود — یک کالای گم‌شده نباید بی‌صدا از چشمِ
+        /// آستانه‌ی همگرایی رد شود.
+        /// </summary>
+        private static double MaxAbsDelta(
+            Dictionary<long, double> prev, Dictionary<long, double> curr)
+        {
+            double max = 0;
+            foreach (var code in prev.Keys.Union(curr.Keys))
+            {
+                var p = prev.TryGetValue(code, out var pv) ? pv : 0;
+                var c = curr.TryGetValue(code, out var cv) ? cv : 0;
+                var d = Math.Abs(c - p);
+                if (d > max) max = d;
+            }
+            return max;
+        }
     }
 }
