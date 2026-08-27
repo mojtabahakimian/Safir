@@ -203,6 +203,12 @@ namespace Safir.Shared.Models.CostClose
         public string?     Note         { get; set; }
     }
 
+    /// <summary>رفع مغایرت CHK-18: کدام سند («الف» یا «ب») تاریخ درست را دارد</summary>
+    public class FixDateMismatchRequest
+    {
+        public bool UseA { get; set; }
+    }
+
     /// <summary>یک استثنای پذیرفته‌شده‌ی دائمی — دیگر در هیچ اجرا/ماهی مسدود نمی‌کند تا لغو شود</summary>
     public class AcceptedExceptionDto
     {

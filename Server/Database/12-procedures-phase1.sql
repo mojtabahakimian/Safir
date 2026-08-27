@@ -297,6 +297,118 @@ BEGIN
                         JOIN dbo.CC_Unit u ON u.UnitId = ua.UnitId
                         WHERE ua.Anbar = pl.ANBAR AND ua.AnbarRole = 3 AND u.IsActive = 1);
 
+    ---- CHK-17 : شمارش دوم/سوم انبارگردانی بدون مغایرت شمارش اول
+    -- طبق فرآیند واقعی انبارگردانی (تأیید کاربر): کالایی که شمارش اول
+    -- (NUM1) آن با موجودی سیستم (MOG) برابر است، اصلاً نباید وارد دور
+    -- دوم/سوم شمارش شود؛ NUM2/NUM3 فقط برای کالاهایی پر می‌شود که شمارش
+    -- اول‌شان مغایرت داشته. اگر با این حال NUM2 یا NUM3 مقدار داشته باشد،
+    -- یعنی عدد در ستون اشتباهی ثبت شده — دقیقاً همان چیزی که روی کد
+    -- ۳۷۴ (شیر خام)، برگه انبارگردانی ۱۰۴ پیدا شد: MOG=0، NUM1=0 (بدون
+    -- مغایرت)، ولی NUM3=29633 — این عدد از راه (MOG-NUM3) وارد موتور نرخ
+    -- می‌شود و مقدار پایان‌دوره‌ی کالا را در همان انبار به‌کلی غلط می‌کند.
+    INSERT dbo.CC_Exception
+        (RunId, StepCode, RuleCode, ExType, Severity, Code, Anbar, DocNumber, DocDate, Amount, Description)
+    SELECT  @RunId, 'S00', 'CHK-17', 19, 2,
+            TRY_CAST(al.CODE AS BIGINT), ah.GRD_ANBAR, ah.GRD_NUM, ah.GRD_DATE,
+            CASE WHEN ISNULL(al.NUM3,0) <> 0 THEN al.NUM3 ELSE al.NUM2 END,
+            CONCAT(N'برگه انبارگردانی ', ah.GRD_NUM, N' / انبار ', ah.GRD_ANBAR,
+                   N': شمارش اول (', al.NUM1, N') با موجودی سیستم (', al.MOG,
+                   N') برابر بوده ولی شمارش ', CASE WHEN ISNULL(al.NUM3,0) <> 0 THEN N'سوم' ELSE N'دوم' END,
+                   N' مقدار دارد (', CASE WHEN ISNULL(al.NUM3,0) <> 0 THEN al.NUM3 ELSE al.NUM2 END,
+                   N') — احتمالاً در ستون اشتباه ثبت شده.')
+    FROM    dbo.ANBGRD_LST  al
+    JOIN    dbo.ANBGRD_HEAD ah ON ah.GRD_NUM = al.GRD_NUM
+    WHERE   ah.GRD_DATE BETWEEN @DT1 AND @DT2
+      AND   ah.N_S IS NOT NULL
+      AND   al.NUM1 IS NOT NULL AND al.NUM1 = al.MOG
+      AND   (ISNULL(al.NUM2,0) <> 0 OR ISNULL(al.NUM3,0) <> 0)
+      AND   NOT EXISTS (SELECT 1 FROM dbo.CC_AcceptedException ae
+                        WHERE ae.RuleCode = 'CHK-17' AND ae.IsActive = 1
+                          AND (ae.Anbar IS NULL OR ae.Anbar = ah.GRD_ANBAR)
+                          AND (ae.Code  IS NULL OR ae.Code  = TRY_CAST(al.CODE AS BIGINT)));
+
+    /* ─── CHK-18 : فاکتور/برگشت در ماهی متفاوت از حواله/رسید یا سند اصلی ───
+       طبق دستور کاربر (پیدا شده از راه فاکتور فروش ۲۴۶۵/کد ۳۴۰۲: تاریخ
+       فاکتور ۲۸/۲ ولی حواله‌ی انبار ۲۰/۳): وقتی سند فاکتور (یا برگشت) و
+       سند فیزیکیِ متناظرش در دو ماهِ شمسیِ متفاوت ثبت شده‌اند، معلوم
+       نیست کدام درست است — باید اپراتور تصمیم بگیرد، نه بازسازی خودکار.
+
+       ⚠️ معیار ابتدا «بیش از ۳۰ روز فاصله» بود، ولی نمونه‌ی محرکِ همین
+       قاعده (فاکتور ۲۴۶۵) فقط ۲۳ روز واقعی فاصله دارد (۲۸ اردیبهشت تا
+       ۲۰ خرداد) — چون این دو تاریخ درست کنارِ مرز ماه افتاده‌اند، نه
+       چون فاصله‌ی زیادی دارند. معیار درست، طبق تأیید کاربر، «ماهِ شمسیِ
+       متفاوت» است، نه شمارشِ روز — دقیقاً همان چیزی که برای بستنِ ماه
+       اهمیت دارد (کدام ماهِ حسابداری صاحبِ این سند است). DATE_N به‌صورت
+       عدد فشرده‌ی YYYYMMDD ذخیره می‌شود، پس DATE_N/100 دقیقاً YYYYMM
+       (سال+ماه) را می‌دهد — تقسیم صحیح، بدون نیاز به تبدیل تقویم.
+
+       RefList حاوی یک JSON کوچک است («سند الف»/«سند ب» و جدول/شماره/برچسبِ
+       هرکدام) تا دکمه‌ی اصلاح بتواند دقیقاً بفهمد کدام ردیف از کدام جدول
+       را باید به تاریخ دیگری تغییر دهد — بدون این، برای هر نوع سند
+       (فاکتور فروش، برگشت فروش، برگشت خرید) باید منطق جدا نوشته می‌شد.
+       خرید (TAG=۱) عمداً اینجا نیست: بر خلاف فروش، اینجا فاکتور خرید و
+       رسید انبار یک سند واحدند (یک تاریخ)، نه دو سند جدا برای مقایسه. */
+    ;WITH DateDrift AS (
+        -- فاکتور فروش (TAG=13) در برابر حواله انبار فروش (TAG=2)
+        -- ⚠️ NUMBER در HEAD_LST/BACK_HEAD از نوع FLOAT است؛ بدون CAST به BIGINT،
+        -- FOR JSON PATH پایین‌تر آن را به نماد علمی (مثلاً «۲.۴۶۵e+۳») می‌نویسد
+        -- که در سمت C# به‌عنوان long قابل‌خواندن نیست.
+        SELECT  N'sale' AS Kind,
+                CAST(inv.NUMBER AS BIGINT) AS ANumber, 13 AS ATag, N'HEAD_LST' AS ATable, inv.DATE_N AS ADate,
+                CAST(vch.NUMBER AS BIGINT) AS BNumber, 2  AS BTag, N'HEAD_LST' AS BTable, vch.DATE_N AS BDate,
+                CONCAT(N'فاکتور فروش ', inv.NUMBER, N': تاریخ فاکتور ',
+                       FORMAT(inv.DATE_N,'0000/00/00'), N' با تاریخ حواله انبار ',
+                       FORMAT(vch.DATE_N,'0000/00/00'), N' در ماه متفاوتی ثبت شده‌اند')
+        AS Description,
+                CASE WHEN inv.DATE_N/100 <> vch.DATE_N/100 THEN 1 ELSE 0 END AS DifferentMonth
+        FROM    dbo.HEAD_LST inv
+        JOIN    dbo.HEAD_LST vch ON vch.NUMBER = inv.NUMBER AND vch.TAG = 2
+        WHERE   inv.TAG = 13
+          AND   (inv.DATE_N BETWEEN @DT1 AND @DT2 OR vch.DATE_N BETWEEN @DT1 AND @DT2)
+
+        UNION ALL
+        -- برگشت فروش (BACK_HEAD.ta=2) در برابر سند اصلیِ فروش (TAG=2)
+        SELECT  N'saleReturn',
+                CAST(bh.NUMBER AS BIGINT), 2, N'BACK_HEAD', bh.DATE_N,
+                CAST(orig.NUMBER AS BIGINT), 2, N'HEAD_LST', orig.DATE_N,
+                CONCAT(N'برگشت فروش ', bh.NUMBER, N': تاریخ برگشت ',
+                       FORMAT(bh.DATE_N,'0000/00/00'), N' با تاریخ سند اصلیِ فروش ',
+                       FORMAT(orig.DATE_N,'0000/00/00'), N' در ماه متفاوتی ثبت شده‌اند'),
+                CASE WHEN bh.DATE_N/100 <> orig.DATE_N/100 THEN 1 ELSE 0 END
+        FROM    dbo.BACK_HEAD bh
+        JOIN    dbo.HEAD_LST  orig ON orig.NUMBER = bh.NUMBER1 AND orig.TAG = 2
+        WHERE   bh.ta = 2
+          AND   (bh.DATE_N BETWEEN @DT1 AND @DT2 OR orig.DATE_N BETWEEN @DT1 AND @DT2)
+
+        UNION ALL
+        -- برگشت خرید (BACK_HEAD.ta=1) در برابر سند اصلیِ خرید (TAG=1)
+        SELECT  N'purchaseReturn',
+                CAST(bh.NUMBER AS BIGINT), 1, N'BACK_HEAD', bh.DATE_N,
+                CAST(orig.NUMBER AS BIGINT), 1, N'HEAD_LST', orig.DATE_N,
+                CONCAT(N'برگشت خرید ', bh.NUMBER, N': تاریخ برگشت ',
+                       FORMAT(bh.DATE_N,'0000/00/00'), N' با تاریخ سند اصلیِ خرید ',
+                       FORMAT(orig.DATE_N,'0000/00/00'), N' در ماه متفاوتی ثبت شده‌اند'),
+                CASE WHEN bh.DATE_N/100 <> orig.DATE_N/100 THEN 1 ELSE 0 END
+        FROM    dbo.BACK_HEAD bh
+        JOIN    dbo.HEAD_LST  orig ON orig.NUMBER = bh.NUMBER1 AND orig.TAG = 1
+        WHERE   bh.ta = 1
+          AND   (bh.DATE_N BETWEEN @DT1 AND @DT2 OR orig.DATE_N BETWEEN @DT1 AND @DT2)
+    )
+    INSERT dbo.CC_Exception
+        (RunId, StepCode, RuleCode, ExType, Severity, DocNumber, DocTag, DocDate, Amount, RefList, Description)
+    SELECT  @RunId, 'S00', 'CHK-18', 20, 1,
+            d.ANumber, d.ATag, d.ADate, d.BDate,
+            (SELECT d.Kind AS kind,
+                    d.ANumber AS aNumber, d.ATag AS aTag, d.ATable AS aTable, d.ADate AS aDate,
+                    d.BNumber AS bNumber, d.BTag AS bTag, d.BTable AS bTable, d.BDate AS bDate
+             FOR JSON PATH, WITHOUT_ARRAY_WRAPPER),
+            d.Description
+    FROM    DateDrift d
+    WHERE   d.DifferentMonth = 1
+      AND   NOT EXISTS (SELECT 1 FROM dbo.CC_AcceptedException ae
+                        WHERE ae.RuleCode = 'CHK-18' AND ae.IsActive = 1
+                          AND (ae.Anbar IS NULL) AND (ae.Code IS NULL));
+
     ---- CHK-06 : حلقه در ساختار فرمول
     IF OBJECT_ID('tempdb..#E') IS NOT NULL DROP TABLE #E;
     SELECT DISTINCT CAST(h.CODE AS BIGINT) AS P, CAST(d.CODE AS BIGINT) AS C

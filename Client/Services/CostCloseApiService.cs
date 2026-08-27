@@ -116,6 +116,26 @@ namespace Safir.Client.Services
                  : (false, await res.Content.ReadAsStringAsync());
         }
 
+        public async Task<(bool Ok, int Count, string? Error)> AcceptPermanentlyBulkAsync(List<long> ids, string note)
+        {
+            var res = await _http.PostAsJsonAsync($"{Base}/exceptions/bulk-accept-permanently",
+                new BulkResolveRequest { ExceptionIds = ids, Note = note });
+            if (!res.IsSuccessStatusCode) return (false, 0, await res.Content.ReadAsStringAsync());
+
+            var body = await res.Content.ReadFromJsonAsync<Dictionary<string, int>>();
+            return (true, body?.GetValueOrDefault("count") ?? 0, null);
+        }
+
+        public async Task<(bool Ok, string? Error)> FixDateMismatchAsync(long exceptionId, bool useA)
+        {
+            var res = await _http.PostAsJsonAsync(
+                $"{Base}/exceptions/{exceptionId}/fix-date-mismatch",
+                new FixDateMismatchRequest { UseA = useA });
+            return res.IsSuccessStatusCode
+                 ? (true, null)
+                 : (false, await res.Content.ReadAsStringAsync());
+        }
+
         public async Task<(bool Ok, int Count, string? Error)> BulkResolveAsync(List<long> ids, string? note)
         {
             var res = await _http.PostAsJsonAsync($"{Base}/exceptions/bulk-resolve",

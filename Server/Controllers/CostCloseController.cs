@@ -10,6 +10,8 @@ using Safir.Shared.Models.CostClose;
 using Safir.Shared.Utility;    // FixPersianChars
 using System.Collections.Concurrent;
 using System.Data;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace Safir.Server.Controllers
 {
@@ -426,6 +428,120 @@ namespace Safir.Server.Controllers
 
             var n = await _db.DoExecuteSQLAsync(sql, new { ids = req.ExceptionIds, user = CurrentUser, note = req.Note });
             return Ok(new { count = n });
+        }
+
+        /// <summary>
+        /// پذیرش دائمیِ دسته‌جمعیِ چند استثنا — نسخهٔ چندتاییِ همان اکشن
+        /// AcceptPermanently تک‌مورد (نه bulk-resolve؛ آن فقط IsResolved همین
+        /// اجرا را می‌زند و ماه بعد که اجرای تازه ساخته می‌شود دوباره برمی‌گردد).
+        /// روی هر ExceptionId به‌صورت مجزا INSERT/UPDATE می‌زند تا هر جفت
+        /// (RuleCode,Code,Anbar) خودش دوباره چک شود، نه یک شرط مشترک روی کل دسته.
+        /// </summary>
+        [HttpPost("exceptions/bulk-accept-permanently")]
+        [Pay2Authorize(CostForms.ActResolve, Pay2Perm.Upd)]
+        public async Task<IActionResult> BulkAcceptPermanently([FromBody] BulkResolveRequest req)
+        {
+            if (req.ExceptionIds.Count == 0) return Ok(new { count = 0 });
+            if (string.IsNullOrWhiteSpace(req.Note))
+                return BadRequest("برای پذیرش دائمی، ثبت دلیل الزامی است.");
+
+            const string sql = @"
+                INSERT dbo.CC_AcceptedException (RuleCode, Code, Anbar, Reason, AcceptedBy)
+                SELECT e.RuleCode, e.Code, e.Anbar, @note, @user
+                FROM   dbo.CC_Exception e
+                WHERE  e.ExceptionId IN @ids
+                  AND  NOT EXISTS (SELECT 1 FROM dbo.CC_AcceptedException a
+                                   WHERE a.RuleCode = e.RuleCode AND a.IsActive = 1
+                                     AND ISNULL(a.Code,-1)  = ISNULL(e.Code,-1)
+                                     AND ISNULL(a.Anbar,-1) = ISNULL(e.Anbar,-1));
+
+                UPDATE dbo.CC_Exception
+                   SET IsResolved = 1, ResolvedBy = @user,
+                       ResolvedAtUtc = SYSUTCDATETIME(),
+                       ResolutionNote = N'پذیرش دائمی: ' + @note
+                 WHERE ExceptionId IN @ids;";
+
+            await _db.DoExecuteSQLAsync(sql, new { ids = req.ExceptionIds, user = CurrentUser, note = req.Note });
+            return Ok(new { count = req.ExceptionIds.Count });
+        }
+
+        private sealed class DateDriftRef
+        {
+            [JsonPropertyName("kind")]     public string  Kind    { get; set; } = "";
+            [JsonPropertyName("aNumber")]  public long    ANumber { get; set; }
+            [JsonPropertyName("aTag")]     public int     ATag    { get; set; }
+            [JsonPropertyName("aTable")]   public string  ATable  { get; set; } = "";
+            [JsonPropertyName("aDate")]    public long    ADate   { get; set; }
+            [JsonPropertyName("bNumber")]  public long    BNumber { get; set; }
+            [JsonPropertyName("bTag")]     public int     BTag    { get; set; }
+            [JsonPropertyName("bTable")]   public string  BTable  { get; set; } = "";
+            [JsonPropertyName("bDate")]    public long    BDate   { get; set; }
+        }
+
+        /// <summary>
+        /// رفعِ مغایرت CHK-18 (فاصله‌ی بیش از یک ماه بین فاکتور و حواله/رسید یا
+        /// برگشت): اپراتور تصمیم می‌گیرد کدام تاریخ درست است — سند «الف» (مثلاً
+        /// فاکتور) یا سند «ب» (مثلاً حواله انبار) — و همان تاریخ روی سند دیگر
+        /// نوشته می‌شود. جدول هدف (HEAD_LST یا BACK_HEAD) و ستون تگ (TAG یا ta)
+        /// از RefList همان استثنا (در CC_sp_S00_Preflight ساخته شده) خوانده
+        /// می‌شود تا این یک اکشن عمومی برای هر سه نوع سند (فروش/برگشت فروش/
+        /// برگشت خرید) باشد، نه سه مسیر جدا.
+        /// </summary>
+        [HttpPost("exceptions/{id:long}/fix-date-mismatch")]
+        [Pay2Authorize(CostForms.ActResolve, Pay2Perm.Upd)]
+        public async Task<IActionResult> FixDateMismatch(long id, [FromBody] FixDateMismatchRequest req)
+        {
+            var ex = await _db.DoGetDataSQLAsyncSingle<CostExceptionRefRow>(
+                "SELECT ExceptionId, RefList FROM dbo.CC_Exception WHERE ExceptionId = @id", new { id });
+
+            if (ex is null) return NotFound();
+            if (string.IsNullOrWhiteSpace(ex.RefList)) return BadRequest("اطلاعات لازم برای اصلاح این مورد ثبت نشده.");
+
+            DateDriftRef refData;
+            try
+            {
+                refData = JsonSerializer.Deserialize<DateDriftRef>(ex.RefList)
+                          ?? throw new JsonException("null");
+            }
+            catch (JsonException)
+            {
+                return BadRequest("قالب اطلاعاتِ این استثنا برای اصلاح تاریخ مناسب نیست.");
+            }
+
+            // اگر UseA=true، سند «ب» با تاریخ «الف» یکی می‌شود؛ وگرنه برعکس.
+            var (table, number, tag, newDate) = req.UseA
+                ? (refData.BTable, refData.BNumber, refData.BTag, refData.ADate)
+                : (refData.ATable, refData.ANumber, refData.ATag, refData.BDate);
+
+            string sql = table switch
+            {
+                "HEAD_LST"  => "UPDATE dbo.HEAD_LST  SET DATE_N = @newDate WHERE NUMBER = @number AND TAG = @tag",
+                "BACK_HEAD" => "UPDATE dbo.BACK_HEAD SET DATE_N = @newDate WHERE NUMBER = @number AND ta  = @tag",
+                _ => throw new InvalidOperationException($"جدول ناشناخته: {table}")
+            };
+
+            var n = await _db.DoExecuteSQLAsync(sql, new { newDate, number, tag });
+            if (n == 0) return BadRequest("سند مقصد برای اصلاح پیدا نشد — شاید قبلاً تغییر کرده.");
+
+            await _db.DoExecuteSQLAsync(
+                @"UPDATE dbo.CC_Exception
+                     SET IsResolved = 1, ResolvedBy = @user, ResolvedAtUtc = SYSUTCDATETIME(),
+                         ResolutionNote = @note
+                   WHERE ExceptionId = @id",
+                new
+                {
+                    id,
+                    user = CurrentUser,
+                    note = $"اصلاح تاریخ: {table} شماره {number} (تگ {tag}) به {newDate} تغییر کرد."
+                });
+
+            return Ok();
+        }
+
+        private sealed class CostExceptionRefRow
+        {
+            public long    ExceptionId { get; set; }
+            public string? RefList     { get; set; }
         }
 
         /// <summary>

@@ -201,6 +201,20 @@
                         </MudButton>
                     }
 
+                    @* «نادیده گرفتن» فقط همین اجرا را رفع می‌کند (IsResolved، مقید به
+                       RunId)؛ ماه بعد که یک اجرای تازه ساخته می‌شود دوباره برمی‌گردد —
+                       دقیقاً همان چیزی که برای مغایرت‌های افتتاحیه در فروردین اتفاق
+                       افتاد. برای «دیگر هیچ‌وقت نشان نده» باید این دکمه (پذیرش دائمی،
+                       CC_AcceptedException بدون قید RunId) زده شود، نه آن یکی. *@
+                    @if (Access.CanUpd(CostForms.ActResolve))
+                    {
+                        <MudButton Size="Size.Small" Variant="Variant.Outlined" Color="Color.Warning"
+                                   StartIcon="@Icons.Material.Filled.DoNotDisturbOn"
+                                   OnClick="@(() => BulkAcceptPermanently(g))">
+                            پذیرش دائمی (این ماه و بعدها)
+                        </MudButton>
+                    }
+
                     @if (g.Key.RuleCode == "CHK-02" && Access.CanRun(CostForms.ActPostCorrection))
                     {
                         <MudButton Size="Size.Small" Variant="Variant.Filled" Color="Color.Primary"
@@ -316,6 +330,14 @@
                                        Size="Size.Small" Color="Color.Primary"
                                        Title="اصلاح سطر فرمول منفی"
                                        OnClick="@(() => OpenNegativeFormulaFix(context))" />
+                    }
+                    @if (context.RuleCode == "CHK-18" && !context.IsResolved
+                         && Access.CanUpd(CostForms.ActResolve))
+                    {
+                        <MudIconButton Icon="@Icons.Material.Filled.EditCalendar"
+                                       Size="Size.Small" Color="Color.Primary"
+                                       Title="اصلاح تاریخ"
+                                       OnClick="@(() => OpenDateMismatchFix(context))" />
                     }
                     @if (!context.IsResolved && Access.CanRun(CostForms.ActResolve))
                     {
@@ -634,6 +656,59 @@
         finally { _busy = false; }
     }
 
+    private sealed class DateDriftRef
+    {
+        public string Kind    { get; set; } = "";
+        public long   ADate   { get; set; }
+        public long   BDate   { get; set; }
+    }
+
+    private static (string A, string B) DateDriftLabels(string kind) => kind switch
+    {
+        "sale"           => ("فاکتور فروش", "حواله انبار"),
+        "saleReturn"     => ("سند برگشت فروش", "سند اصلیِ فروش"),
+        "purchaseReturn" => ("سند برگشت خرید", "سند اصلیِ خرید"),
+        _                => ("سند الف", "سند ب")
+    };
+
+    private async Task OpenDateMismatchFix(CostExceptionDto ex)
+    {
+        DateDriftRef refData;
+        try
+        {
+            refData = System.Text.Json.JsonSerializer.Deserialize<DateDriftRef>(
+                          ex.RefList ?? "", new System.Text.Json.JsonSerializerOptions
+                          { PropertyNameCaseInsensitive = true })
+                      ?? throw new Exception();
+        }
+        catch
+        {
+            Snackbar.Add("اطلاعات لازم برای اصلاح این مورد ثبت نشده.", Severity.Error);
+            return;
+        }
+
+        var (labelA, labelB) = DateDriftLabels(refData.Kind);
+
+        var choice = await Dialog.ShowMessageBox(
+            "اصلاح تاریخ",
+            $"{ex.Description}\n\nکدام تاریخ درست است؟",
+            yesText: $"{labelA} ({FormatDate(refData.ADate)}) درست است",
+            noText: $"{labelB} ({FormatDate(refData.BDate)}) درست است",
+            cancelText: "انصراف");
+
+        if (choice is null) return;
+
+        _busy = true;
+        try
+        {
+            var (ok, error) = await Api.FixDateMismatchAsync(ex.ExceptionId, useA: choice == true);
+            Snackbar.Add(ok ? "تاریخ اصلاح شد" : (error ?? "اصلاح ناموفق بود"),
+                         ok ? Severity.Success : Severity.Error);
+            if (ok) await Load();
+        }
+        finally { _busy = false; }
+    }
+
     // ───────── انتخاب دسته‌جمعی و رفع با سند اصلاحی ─────────
 
     private readonly HashSet<long> _selected = new();
@@ -681,6 +756,32 @@
         else
         {
             Snackbar.Add(err ?? "رفع دسته‌جمعی ناموفق بود", Severity.Error);
+        }
+    }
+
+    private async Task BulkAcceptPermanently(IEnumerable<CostExceptionDto> group)
+    {
+        var ids = group.Where(x => _selected.Contains(x.ExceptionId)).Select(x => x.ExceptionId).ToList();
+        if (ids.Count == 0) return;
+
+        var confirm = await Dialog.ShowMessageBox(
+            "پذیرش دائمی دسته‌جمعی",
+            $"{ids.Count} مورد دیگر نه در همین اجرا، نه در ماه‌های بعد هشدار نخواهد داد. مطمئن‌اید؟",
+            yesText: "بله، بپذیر", cancelText: "انصراف");
+
+        if (confirm != true) return;
+
+        var (ok, count, err) = await Api.AcceptPermanentlyBulkAsync(
+            ids, "پذیرش دائمی دسته‌جمعی از صفحه مغایرت‌ها");
+        if (ok)
+        {
+            foreach (var id in ids) _selected.Remove(id);
+            Snackbar.Add($"{count} مورد به فهرست استثناهای پذیرفته‌شده اضافه شد", Severity.Success);
+            await Load();
+        }
+        else
+        {
+            Snackbar.Add(err ?? "پذیرش دائمی دسته‌جمعی ناموفق بود", Severity.Error);
         }
     }
 
