@@ -11,6 +11,7 @@
 @inject NavigationManager Nav
 @inject ISnackbar Snackbar
 @inject IDialogService Dialog
+@inject IJSRuntime JS
 
 <PageTitle>اجرای بستن ماه</PageTitle>
 
@@ -256,7 +257,7 @@
                         <MudIconButton Icon="@Icons.Material.Filled.Refresh" Size="Size.Small"
                                        OnClick="LoadLogs" />
                     </div>
-                    <div class="cc-log">
+                    <div class="cc-log" @ref="_logDiv">
                         @foreach (var l in _logs)
                         {
                             <div class="cc-log-row">
@@ -314,6 +315,8 @@
 
     private readonly List<CostRunLogDto> _logs = new();
     private long _lastLogId;
+    private ElementReference _logDiv;
+    private bool _pendingLogScroll;
 
     private readonly Dictionary<string, (int Percent, string Message)> _progress = new();
 
@@ -464,6 +467,21 @@
 
         // فقط ۲۰۰ سطر آخر نگه داشته می‌شود
         if (_logs.Count > 200) _logs.RemoveRange(0, _logs.Count - 200);
+
+        // بعد از رندرِ همین سطرهای تازه (OnAfterRenderAsync)، پنل لاگ باید
+        // خودش را به آخرین سطر برساند — کاربر نباید برای دیدن تازه‌ترین
+        // پیام دستی اسکرول کند.
+        _pendingLogScroll = true;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_pendingLogScroll)
+        {
+            _pendingLogScroll = false;
+            try { await JS.InvokeVoidAsync("ccScrollToBottom", _logDiv); }
+            catch (JSDisconnectedException) { /* صفحه در حال بسته‌شدن است */ }
+        }
     }
 
     /// <summary>
