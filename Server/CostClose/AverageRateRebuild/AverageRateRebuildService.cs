@@ -754,28 +754,45 @@ namespace Safir.Server.CostClose.AverageRateRebuild
         private async Task<IEnumerable<KardexRow>> BuildKardexAsync(
             string code, int? anbar, long sinceDate, bool hasFbk, bool hasKbk)
         {
+            // ⚠️ ترتیب داخل یک روز: TAGCOD.BARGAH (متن) نیست — TAGCOD.tartib
+            // است، همان اصلاحی که با تأیید کاربر روی 14-s05-gate.sql زده شد
+            // (مقایسه‌ی متنیِ BARGAH به ترتیب الفبای فارسی وابسته است، نه
+            // ترتیب واقعیِ کسب‌وکار؛ فقط tartib عددی آن را می‌دهد). بدون «id»
+            // به‌عنوان تای‌برک نهایی هم، ترتیب ردیف‌های هم‌روز و هم‌tartib
+            // (مثلاً چند فاکتور فروش یا چند رسید خرید در یک روز — که برای کد
+            // ۳۳۶۵ در ده‌ها روز از سال پیش می‌آید) توسط SQL Server نامعین
+            // است؛ چون این پیمایش متوالی و حالت‌مند است (هر ردیف روی میانگین
+            // متحرکِ ردیف قبلی بنا می‌شود)، یک تای نامعین در همان ابتدای سال
+            // کل مسیر میانگین را تا انتهای ماه منحرف می‌کند — دقیقاً همان
+            // علتِ نوسان ۹۷۰۴۲۴۲۹۵۳ ریالیِ سود کد ۳۳۶۵ بین اجراهای پیاپی.
+            // id شناسه‌ی IDENTITY است، پس صعودی = ترتیب واقعیِ درج/رویداد.
             var parts = new List<string>
             {
                 @"SELECT h.DATE_N, i.TAG, i.NUMBER, i.ANBAR, i.CODE, i.MEGH, i.MEGHk, i.MEGH_MAR,
-                         i.MABL, i.MABL_K, i.N_KOL, i.ID AS id, t.BARGAH
+                         i.MABL, i.MABL_K, i.N_KOL, i.ID AS id, t.tartib
                   FROM dbo.INVO_LST i
                   INNER JOIN dbo.HEAD_LST h ON i.NUMBER = h.NUMBER AND i.TAG = h.TAG
                   INNER JOIN dbo.TAGCOD t ON h.TAG = t.CODE
                   WHERE i.CODE = @Code AND (@Anbar IS NULL OR i.ANBAR = @Anbar) AND h.DATE_N > @SinceDate",
 
                 @"SELECT h.DATE_N, 6 AS TAG, i.NUMBER, i.ANBARF AS ANBAR, i.CODE, i.MEGH, i.MEGHk, i.MEGH_MAR,
-                         i.MABL, i.MABL_K, i.N_KOL, i.ID AS id, t.BARGAH
+                         i.MABL, i.MABL_K, i.N_KOL, i.ID AS id, t.tartib
                   FROM dbo.INVO_LST i
                   INNER JOIN dbo.HEAD_LST h ON i.NUMBER = h.NUMBER AND i.TAG = h.TAG
                   INNER JOIN dbo.TAGCOD t ON h.TAG + 1 = t.CODE
                   WHERE i.CODE = @Code AND (@Anbar IS NULL OR i.ANBARF = @Anbar) AND h.DATE_N > @SinceDate AND i.TAG = 5",
 
+                // tartib هم اینجا هاردکد است، نه از TAGCOD خوانده می‌شود —
+                // چون TAG این شاخه (17 یا 18) واقعی نیست، خودِ همین کوئری با
+                // CASE می‌سازدش؛ پس معادل عددی همان دو ردیف TAGCOD (کد ۱۷
+                // tartib=5، کد ۱۸ tartib=13) را با همان شرط تکرار می‌کنیم.
                 @"SELECT ah.GRD_DATE AS DATE_N,
                          CASE WHEN (al.MOG - al.NUM3) > 0 THEN 18 ELSE 17 END AS TAG,
                          al.GRD_NUM AS NUMBER, ah.GRD_ANBAR AS ANBAR, al.CODE,
                          (al.MOG - al.NUM3) AS MEGH, ABS(al.MOG - al.NUM3) AS MEGHk, 0 AS MEGH_MAR,
                          al.MABL AS MABL, ABS(al.MOG - al.NUM3) * al.MABL AS MABL_K,
-                         CAST(NULL AS FLOAT) AS N_KOL, 0 AS id, '17' AS BARGAH
+                         CAST(NULL AS FLOAT) AS N_KOL, 0 AS id,
+                         CASE WHEN (al.MOG - al.NUM3) > 0 THEN 13 ELSE 5 END AS tartib
                   FROM dbo.ANBGRD_LST al
                   INNER JOIN dbo.ANBGRD_HEAD ah ON al.GRD_NUM = ah.GRD_NUM
                   INNER JOIN dbo.STUF_DEF s ON al.CODE = s.CODE
@@ -795,20 +812,20 @@ namespace Safir.Server.CostClose.AverageRateRebuild
                 //
                 // ⚠️ اصلاح ترتیب (بعد از تست واقعی روی کد ۳۳۶۰/انبار ۸۰۷ کشف
                 // شد): وقتی فروش اصلی (NUMBER1) هم‌روزِ خودِ برگشت باشد،
-                // BARGAH استاندارد TAGCOD (کد ۴، «برگشت فروش») به‌ترتیب حروف
-                // فارسی قبل از «حواله انبار فروش» (TAG=2) می‌آید، یعنی این
-                // شاخه قبل از خودِ فروش پردازش می‌شود — دقیقاً همان لحظه‌ای
-                // که کامنتِ بالا می‌گوید «line.AVRAGE همان MIANِ فروش خواهد
-                // بود»، هنوز صفر است (فروش هنوز پردازش نشده)، پس MBKM با صفر
-                // جمع می‌شود ولی MOGUDI بدون مقابل ارزشی رشد می‌کند — نرخ را
-                // مصنوعاً پایین می‌کشد (روی این داده: ۸۸۱K به ۵۷۷K سقوط کرد).
-                // راه‌حل: BARGAH این شاخه را با پیشوند «ی» (آخرین حروف الفبای
-                // فارسیِ به‌کاررفته در BARGAHهای واقعی) می‌سازیم تا همیشه، در
-                // هر تاریخی، بعد از هر رویداد دیگرِ همان روز (از جمله فروشِ
-                // خودش) مرتب شود.
+                // tartib واقعیِ TAGCOD برای کد ۴ («برگشت فروش») برابر ۶ است و
+                // برای کد ۲ («حواله انبار فروش») برابر ۱۸ — یعنی حتی با
+                // tartib عددی هم این شاخه قبل از خودِ فروش پردازش می‌شود،
+                // دقیقاً همان لحظه‌ای که کامنتِ بالا می‌گوید «line.AVRAGE همان
+                // MIANِ فروش خواهد بود»، هنوز صفر است (فروش هنوز پردازش
+                // نشده)، پس MBKM با صفر جمع می‌شود ولی MOGUDI بدون مقابل
+                // ارزشی رشد می‌کند — نرخ را مصنوعاً پایین می‌کشد (روی این
+                // داده: ۸۸۱K به ۵۷۷K سقوط کرد). راه‌حل: tartib این شاخه را با
+                // یک عدد سنتینلِ بزرگ‌تر از بزرگ‌ترین tartib واقعی (حداکثر ۲۳
+                // در TAGCOD) می‌سازیم تا همیشه، در هر تاریخی، بعد از هر
+                // رویداد دیگرِ همان روز (از جمله فروشِ خودش) مرتب شود.
                 @"SELECT bh.DATE_N, 4 AS TAG, il.NUMBER, il.ANBAR, il.CODE, il.MEGH, il.MEGHk, il.MEGH_MAR,
                          il.MABL, il.MABL_K, il.N_KOL, il.ID AS id,
-                         N'یبرگشت فروش نوع۱' AS BARGAH
+                         9999 AS tartib
                   FROM dbo.BACK_HEAD bh
                   INNER JOIN dbo.INVO_LST il ON il.TAG = bh.ta AND il.NUMBER = bh.NUMBER1
                   WHERE bh.ta = 2 AND il.MEGH_MAR <> 0
@@ -818,7 +835,7 @@ namespace Safir.Server.CostClose.AverageRateRebuild
             if (hasFbk)
             {
                 parts.Add(@"SELECT fb.DATE_N, 4 AS TAG, i.NUMBER, i.ANBAR, i.CODE, i.MEGH, i.MEGHk, i.MEGH_MAR,
-                                   i.MABL, i.MABL_K, i.N_KOL, i.ID AS id, t.BARGAH
+                                   i.MABL, i.MABL_K, i.N_KOL, i.ID AS id, t.tartib
                             FROM dbo.INVO_LST i
                             INNER JOIN dbo.HEAD_LST_FBK fb ON i.NUMBER = fb.NUMBER1 AND i.TAG = fb.dtag
                             INNER JOIN dbo.TAGCOD t ON fb.htag = t.CODE
@@ -828,14 +845,14 @@ namespace Safir.Server.CostClose.AverageRateRebuild
             if (hasKbk)
             {
                 parts.Add(@"SELECT kb.DATE_N, 3 AS TAG, i.NUMBER, i.ANBAR, i.CODE, i.MEGH, i.MEGHk, i.MEGH_MAR,
-                                   i.MABL, i.MABL_K, i.N_KOL, i.ID AS id, t.BARGAH
+                                   i.MABL, i.MABL_K, i.N_KOL, i.ID AS id, t.tartib
                             FROM dbo.INVO_LST i
                             INNER JOIN dbo.HEAD_LST_KBK kb ON i.NUMBER = kb.NUMBER1 AND i.TAG = kb.dtag
                             INNER JOIN dbo.TAGCOD t ON kb.htag = t.CODE
                             WHERE i.CODE = @Code AND (@Anbar IS NULL OR i.ANBAR = @Anbar) AND kb.DATE_N > @SinceDate");
             }
 
-            var sql = "SELECT * FROM (" + string.Join(" UNION ", parts) + ") AS AVGSRC ORDER BY DATE_N, BARGAH";
+            var sql = "SELECT * FROM (" + string.Join(" UNION ", parts) + ") AS AVGSRC ORDER BY DATE_N, tartib, id";
 
             return await _db.DoGetDataSQLAsync<KardexRow>(sql, new { Code = code, Anbar = anbar, SinceDate = sinceDate });
         }
