@@ -513,10 +513,13 @@ namespace Safir.Server.Controllers
                 ? (refData.BTable, refData.BNumber, refData.BTag, refData.ADate)
                 : (refData.ATable, refData.ANumber, refData.ATag, refData.BDate);
 
+            // DEED_HED کلیدش N_S است، نه (NUMBER,TAG) مثل HEAD_LST/BACK_HEAD —
+            // «number» همان N_S است و «tag» بی‌معناست (همیشه 0، نادیده گرفته می‌شود).
             string sql = table switch
             {
                 "HEAD_LST"  => "UPDATE dbo.HEAD_LST  SET DATE_N = @newDate WHERE NUMBER = @number AND TAG = @tag",
                 "BACK_HEAD" => "UPDATE dbo.BACK_HEAD SET DATE_N = @newDate WHERE NUMBER = @number AND ta  = @tag",
+                "DEED_HED"  => "UPDATE dbo.DEED_HED  SET DATE_S = @newDate WHERE N_S = @number",
                 _ => throw new InvalidOperationException($"جدول ناشناخته: {table}")
             };
 
@@ -542,6 +545,64 @@ namespace Safir.Server.Controllers
         {
             public long    ExceptionId { get; set; }
             public string? RefList     { get; set; }
+        }
+
+        private sealed class ExceptionDocNumberRow
+        {
+            public long ExceptionId { get; set; }
+            public int? DocNumber   { get; set; }
+        }
+
+        /// <summary>
+        /// رفع CHK-19 (فاکتور فروش با سند حسابداری‌اش یکی نیست): بر خلاف CHK-18،
+        /// اینجا نباید مستقیم تاریخ سند حسابداری را UPDATE کرد — یک سند
+        /// حسابداری (در حالت «سند روزانه») می‌تواند مشترکِ ده‌ها فاکتورِ دیگر
+        /// باشد (نمونه‌ی واقعی: سند ۶۴۱۴، ۴۲ فاکتور)، پس عوض‌کردن تاریخِ آن سند
+        /// همه‌ی فاکتورهای دیگرش را هم غلط می‌کرد. راه‌حلِ درست (طبق الگوریتم
+        /// اصلیِ GENSANADFROOSH که کاربر ارائه داد) این است که فقط بازسازیِ سند
+        /// فروش را برای همین یک فاکتور، با تاریخِ فعلیِ خودش، دوباره اجرا کنیم؛
+        /// SaleRebuildService از قبل دقیقاً همین منطق را دارد (سطر‌های داخلی
+        /// isDailyMode): اگر سندِ همان روز موجود باشد ردیف‌های این فاکتور را
+        /// به آن منتقل می‌کند، وگرنه سند تازه می‌سازد — بدون دست‌زدن به
+        /// فاکتورهای دیگرِ سند قدیم. تست شده روی فاکتور ۲۴۶۵: از سند ۶۴۱۴
+        /// (۴۲ فاکتوره) به سند تازه‌ی ۷۲۴۴ (فقط همین فاکتور، تاریخ درست)
+        /// منتقل شد، ۴۱ فاکتورِ دیگرِ ۶۴۱۴ دست‌نخورده ماندند.
+        /// </summary>
+        [HttpPost("exceptions/{id:long}/rebuild-sale-doc")]
+        [Pay2Authorize(CostForms.ActRebuildDocs, Pay2Perm.Run)]
+        public async Task<IActionResult> RebuildSaleDocForException(long id)
+        {
+            var ex = await _db.DoGetDataSQLAsyncSingle<ExceptionDocNumberRow>(
+                "SELECT ExceptionId, DocNumber FROM dbo.CC_Exception WHERE ExceptionId = @id", new { id });
+
+            if (ex is null) return NotFound();
+            if (ex.DocNumber is null) return BadRequest("شماره فاکتور برای این مورد ثبت نشده.");
+
+            var inv = await _db.DoGetDataSQLAsyncSingle<long?>(
+                "SELECT DATE_N FROM dbo.HEAD_LST WHERE NUMBER = @num AND TAG = 13",
+                new { num = ex.DocNumber.Value });
+
+            if (inv is null) return BadRequest("خودِ فاکتور پیدا نشد.");
+
+            var year  = inv.Value / 10000;
+            var month = inv.Value / 100 % 100;
+            var dt1 = year * 10000 + month * 100 + 1;
+            var dt2 = year * 10000 + month * 100 + 31; // کران بالا امن؛ نیازی به شمارش دقیق روزهای ماه نیست
+
+            var svc = new Safir.Server.CostClose.GroupDocuments.SaleRebuildService(_db);
+            var res = await svc.RebuildAsync(ex.DocNumber.Value, ex.DocNumber.Value, dt1, dt2);
+
+            if (!res.Success)
+                return Ok(new { success = false, error = res.FirstError, log = res.Log });
+
+            await _db.DoExecuteSQLAsync(
+                @"UPDATE dbo.CC_Exception
+                     SET IsResolved = 1, ResolvedBy = @user, ResolvedAtUtc = SYSUTCDATETIME(),
+                         ResolutionNote = N'سند فروش این فاکتور با تاریخ خودش بازسازی شد'
+                   WHERE ExceptionId = @id",
+                new { id, user = CurrentUser });
+
+            return Ok(new { success = true, error = (string?)null, log = res.Log });
         }
 
         /// <summary>
@@ -1988,6 +2049,110 @@ namespace Safir.Server.Controllers
                 "DELETE FROM dbo.CC_AnbarHes WHERE Anbar = @anbar", new { anbar });
 
             return rows > 0 ? NoContent() : NotFound();
+        }
+
+        // ───────── نرخ استاندارد دستمزد به تفکیک کالا (تغذیه‌ی
+        // HEAD_MANF.IMBIBE_MANF در گام S07B — نگاه کنید CC_sp_S07B_SyncLaborRate) ─────────
+
+        [HttpGet("labor-rates")]
+        [Pay2Authorize(CostForms.Settings, Pay2Perm.See)]
+        public async Task<ActionResult<IEnumerable<CostLaborRateDto>>> GetLaborRates()
+        {
+            const string sql = @"
+                SELECT   r.UnitId, u.UnitName, r.CODE AS Code, s.NAME AS ItemName, r.Coefficient, r.IsFixed, r.Note
+                FROM     dbo.CC_LaborAbsorptionRate r
+                LEFT     JOIN dbo.CC_Unit  u ON u.UnitId = r.UnitId
+                LEFT     JOIN dbo.STUF_DEF s ON s.CODE = r.CODE
+                ORDER BY u.SeqNo, r.CODE";
+
+            return Ok(await _db.DoGetDataSQLAsync<CostLaborRateDto>(sql));
+        }
+
+        [HttpPost("labor-rates")]
+        [Pay2Authorize(CostForms.Settings, Pay2Perm.Inp)]
+        public async Task<IActionResult> AddLaborRate([FromBody] UpsertLaborRateRequest req)
+        {
+            const string sql = @"
+                INSERT dbo.CC_LaborAbsorptionRate (UnitId, CODE, Coefficient, IsFixed, Note)
+                VALUES (@UnitId, @Code, @Coefficient, @IsFixed, @Note)";
+
+            try
+            {
+                await _db.DoExecuteSQLAsync(sql, new { req.UnitId, req.Code, req.Coefficient, req.IsFixed, req.Note });
+                return Ok();
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(ex.Message);
+            }
+        }
+
+        [HttpPut("labor-rates/{unitId:int}/{code}")]
+        [Pay2Authorize(CostForms.Settings, Pay2Perm.Upd)]
+        public async Task<IActionResult> UpdateLaborRate(int unitId, string code, [FromBody] UpsertLaborRateRequest req)
+        {
+            const string sql = @"
+                UPDATE dbo.CC_LaborAbsorptionRate
+                   SET Coefficient = @Coefficient, IsFixed = @IsFixed, Note = @Note
+                 WHERE UnitId = @unitId AND CODE = @code";
+
+            var rows = await _db.DoExecuteSQLAsync(sql,
+                new { unitId, code, req.Coefficient, req.IsFixed, req.Note });
+
+            return rows > 0 ? NoContent() : NotFound();
+        }
+
+        [HttpDelete("labor-rates/{unitId:int}/{code}")]
+        [Pay2Authorize(CostForms.Settings, Pay2Perm.Del)]
+        public async Task<IActionResult> DeleteLaborRate(int unitId, string code)
+        {
+            var rows = await _db.DoExecuteSQLAsync(
+                "DELETE FROM dbo.CC_LaborAbsorptionRate WHERE UnitId = @unitId AND CODE = @code",
+                new { unitId, code });
+
+            return rows > 0 ? NoContent() : NotFound();
+        }
+
+        // هر (واحد، کالا)یی که تا حالا در یک برگه‌ی تولید (TAG=9) ثبت شده
+        // (طبق انبار محصولِ آن واحد) ولی هنوز ردیفی در جدول ضریب ندارد،
+        // با Coefficient=NULL («هنوز بررسی نشده») ساخته می‌شود — کاربر فقط
+        // عدد ضریب هر ردیف را پر می‌کند، خودِ کالا/واحد را دستی اضافه نمی‌کند.
+        [HttpPost("labor-rates/sync-from-formulas")]
+        [Pay2Authorize(CostForms.Settings, Pay2Perm.Inp)]
+        public async Task<ActionResult<int>> SyncLaborRatesFromFormulas()
+        {
+            const string sql = @"
+                INSERT dbo.CC_LaborAbsorptionRate (UnitId, CODE, Coefficient, Note)
+                SELECT DISTINCT ua.UnitId, hm.CODE, NULL, NULL
+                FROM   dbo.HEAD_LST     h
+                JOIN   dbo.INVO_LST     pl ON pl.NUMBER = h.NUMBER AND pl.TAG = 9
+                JOIN   dbo.HEAD_MANF    hm ON hm.FNUMB  = TRY_CAST(pl.N_KOL AS INT)
+                JOIN   dbo.CC_UnitAnbar ua ON ua.Anbar  = pl.ANBAR AND ua.AnbarRole = 3
+                JOIN   dbo.CC_Unit      u  ON u.UnitId  = ua.UnitId AND u.IsActive = 1
+                WHERE  h.TAG = 9
+                  AND  NOT EXISTS (
+                            SELECT 1 FROM dbo.CC_LaborAbsorptionRate r
+                            WHERE r.UnitId = ua.UnitId AND r.CODE = hm.CODE
+                       )";
+
+            var rows = await _db.DoExecuteSQLAsync(sql);
+            return Ok(rows);
+        }
+
+        // برای انتخاب کالا از روی دیتابیس واقعی، نه تایپ دستی کد — تا
+        // احتمال خطای تایپی از بین برود (عیناً الگوی جستجوی حساب کل/معین بالا).
+        [HttpGet("items/search")]
+        [Pay2Authorize(CostForms.Settings, Pay2Perm.See)]
+        public async Task<ActionResult<IEnumerable<ItemLookupDto>>> SearchItems(
+            [FromQuery] string? q = null)
+        {
+            const string sql = @"
+                SELECT TOP 30 CODE AS Code, NAME AS Name
+                FROM   dbo.STUF_DEF
+                WHERE  @q IS NULL OR CODE LIKE @q + '%' OR NAME LIKE '%' + @q + '%'
+                ORDER BY CODE";
+
+            return Ok(await _db.DoGetDataSQLAsync<ItemLookupDto>(sql, new { q }));
         }
 
         // ───────── جستجوی زنجیره‌ای حساب (کل/معین/تفصیلی) ─────────

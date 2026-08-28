@@ -657,4 +657,34 @@ namespace Safir.Shared.Models.CostClose
         public int     HesMoin { get; set; }
         public string? Note    { get; set; }
     }
+
+    /// <summary>ضریب جذب دستمزد به تفکیک (واحد تولیدی، کالا) — مبنای تقسیم
+    /// دستمزد واقعیِ هر واحد بین کالاهایش در گام S07B.</summary>
+    public class CostLaborRateDto
+    {
+        public int     UnitId      { get; set; }
+        public string? UnitName    { get; set; }
+        public string  Code        { get; set; } = "";
+        public string? ItemName    { get; set; }
+        public double? Coefficient { get; set; }
+        /// <summary>کارمزدی — نرخ این کالا در این واحد ثابت است؛ نه S07B
+        /// (تقسیم بر اساس ضریب) و نه S10 (ضریب تعدیل) دست‌شان نمی‌زنند.</summary>
+        public bool     IsFixed     { get; set; }
+        public string? Note        { get; set; }
+    }
+
+    public class UpsertLaborRateRequest
+    {
+        public int     UnitId      { get; set; }
+        public string  Code        { get; set; } = "";
+        public double? Coefficient { get; set; }
+        public bool     IsFixed     { get; set; }
+        public string? Note        { get; set; }
+    }
+
+    public class ItemLookupDto
+    {
+        public string Code { get; set; } = "";
+        public string Name { get; set; } = "";
+    }
 }

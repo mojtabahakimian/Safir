@@ -235,6 +235,36 @@ CREATE TABLE dbo.CC_AnbarHes (
 );
 GO
 
+/* ضریب جذب دستمزد به تفکیک (واحد تولیدی، کالا) — مثلاً بر مبنای وزن،
+   حجم یا ارزش فروش، هرچه کاربر تعیین کند؛ یک کالا می‌تواند در واحدهای
+   مختلف (یزد، تهران، ...) ضریب متفاوت داشته باشد. ممکن است برای کل
+   سال یکسان بماند — بدون بُعد ماه/تاریخ عمداً. مبنای تقسیمِ دستمزد
+   واقعیِ هر واحد بین کالاهای همان واحد در گام S07B (نگاه کنید
+   CC_sp_S07B_SyncLaborRate). CODE هم‌نوع STUF_DEF.CODE/HEAD_MANF.CODE
+   است (هر دو nvarchar(30)) تا JOIN بدون CAST انجام شود.
+
+   Coefficient عمداً NULL می‌پذیرد: ردیف‌ها با
+   POST labor-rates/sync-from-formulas از روی HEAD_MANF خودکار ساخته
+   می‌شوند (Coefficient=NULL، یعنی «هنوز بررسی نشده»)؛ کاربر فقط عدد
+   ضریب را پر می‌کند. S07B ردیف‌های NULL/صفر را از تقسیم کنار می‌گذارد.
+
+   IsFixed: بعضی کالاها کارمزدی تولید می‌شوند و نرخشان (HEAD_MANF.
+   IMBIBE_MANF) باید همیشه ثابت بماند — نه S07B (تقسیم بر اساس ضریب) و
+   نه S10 (ضریب تعدیل یکنواخت) نباید دست‌شان بزنند. تأیید کاربر: این
+   ویژگی هم به (واحد، کالا) وابسته است، نه فقط کالا — یک کالا ممکن است
+   در یک واحد کارمزدی باشد و در واحد دیگر نه. */
+IF OBJECT_ID('dbo.CC_LaborAbsorptionRate','U') IS NULL
+CREATE TABLE dbo.CC_LaborAbsorptionRate (
+    UnitId      INT           NOT NULL,
+    CODE        NVARCHAR(30)  NOT NULL,
+    Coefficient FLOAT         NULL,
+    IsFixed     BIT           NOT NULL DEFAULT 0,
+    Note        NVARCHAR(200) NULL,
+    CONSTRAINT PK_CC_LaborAbsorptionRate PRIMARY KEY (UnitId, CODE),
+    CONSTRAINT FK_CC_LaborAbsorptionRate_Unit FOREIGN KEY (UnitId) REFERENCES dbo.CC_Unit(UnitId)
+);
+GO
+
 /* ───────────────────────── نتایج محاسبه ───────────────────────── */
 
 IF OBJECT_ID('dbo.CC_ItemCost','U') IS NULL

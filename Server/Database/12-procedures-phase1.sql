@@ -327,10 +327,10 @@ BEGIN
                           AND (ae.Anbar IS NULL OR ae.Anbar = ah.GRD_ANBAR)
                           AND (ae.Code  IS NULL OR ae.Code  = TRY_CAST(al.CODE AS BIGINT)));
 
-    /* ─── CHK-18 : فاکتور/برگشت در ماهی متفاوت از حواله/رسید یا سند اصلی ───
+    /* ─── CHK-18 : فاکتور فروش در ماهی متفاوت از حواله انبارش ───
        طبق دستور کاربر (پیدا شده از راه فاکتور فروش ۲۴۶۵/کد ۳۴۰۲: تاریخ
-       فاکتور ۲۸/۲ ولی حواله‌ی انبار ۲۰/۳): وقتی سند فاکتور (یا برگشت) و
-       سند فیزیکیِ متناظرش در دو ماهِ شمسیِ متفاوت ثبت شده‌اند، معلوم
+       فاکتور ۲۸/۲ ولی حواله‌ی انبار ۲۰/۳): وقتی فاکتور فروش و حواله‌ی
+       انبارِ همان فاکتور در دو ماهِ شمسیِ متفاوت ثبت شده‌اند، معلوم
        نیست کدام درست است — باید اپراتور تصمیم بگیرد، نه بازسازی خودکار.
 
        ⚠️ معیار ابتدا «بیش از ۳۰ روز فاصله» بود، ولی نمونه‌ی محرکِ همین
@@ -342,16 +342,24 @@ BEGIN
        عدد فشرده‌ی YYYYMMDD ذخیره می‌شود، پس DATE_N/100 دقیقاً YYYYMM
        (سال+ماه) را می‌دهد — تقسیم صحیح، بدون نیاز به تبدیل تقویم.
 
+       ⚠️ دومین اصلاح (بعد از تأیید کاربر): برگشت فروش/خرید عمداً حذف
+       شد. تصور اولیه این بود که تاریخ برگشت هم باید نزدیک تاریخ سند
+       اصلی باشد — غلط بود. کاربر توضیح داد: «برگشت فروش‌های مستقیم که
+       یعنی مستقیماً از حواله فروش استفاده می‌کنند تاریخشان ربطی به
+       تاریخ حواله ندارد» — مشتری هر وقت جنس را برگرداند برمی‌گرداند،
+       ماه‌ها بعد از خرید هم کاملاً طبیعی است؛ این قاعده برای سنجش‌شان
+       غلط بود و روی نمونه‌ی واقعی (برگشت ۵: برگشت ۱۶/۲ برای فروش ۳۱/۱)
+       مغایرت کاذب ساخت.
+
        RefList حاوی یک JSON کوچک است («سند الف»/«سند ب» و جدول/شماره/برچسبِ
        هرکدام) تا دکمه‌ی اصلاح بتواند دقیقاً بفهمد کدام ردیف از کدام جدول
-       را باید به تاریخ دیگری تغییر دهد — بدون این، برای هر نوع سند
-       (فاکتور فروش، برگشت فروش، برگشت خرید) باید منطق جدا نوشته می‌شد.
-       خرید (TAG=۱) عمداً اینجا نیست: بر خلاف فروش، اینجا فاکتور خرید و
-       رسید انبار یک سند واحدند (یک تاریخ)، نه دو سند جدا برای مقایسه. */
+       را باید به تاریخ دیگری تغییر دهد. خرید (TAG=۱) عمداً اینجا نیست:
+       بر خلاف فروش، اینجا فاکتور خرید و رسید انبار یک سند واحدند (یک
+       تاریخ)، نه دو سند جدا برای مقایسه. */
     ;WITH DateDrift AS (
         -- فاکتور فروش (TAG=13) در برابر حواله انبار فروش (TAG=2)
-        -- ⚠️ NUMBER در HEAD_LST/BACK_HEAD از نوع FLOAT است؛ بدون CAST به BIGINT،
-        -- FOR JSON PATH پایین‌تر آن را به نماد علمی (مثلاً «۲.۴۶۵e+۳») می‌نویسد
+        -- ⚠️ NUMBER در HEAD_LST از نوع FLOAT است؛ بدون CAST به BIGINT، FOR
+        -- JSON PATH پایین‌تر آن را به نماد علمی (مثلاً «۲.۴۶۵e+۳») می‌نویسد
         -- که در سمت C# به‌عنوان long قابل‌خواندن نیست.
         SELECT  N'sale' AS Kind,
                 CAST(inv.NUMBER AS BIGINT) AS ANumber, 13 AS ATag, N'HEAD_LST' AS ATable, inv.DATE_N AS ADate,
@@ -365,34 +373,6 @@ BEGIN
         JOIN    dbo.HEAD_LST vch ON vch.NUMBER = inv.NUMBER AND vch.TAG = 2
         WHERE   inv.TAG = 13
           AND   (inv.DATE_N BETWEEN @DT1 AND @DT2 OR vch.DATE_N BETWEEN @DT1 AND @DT2)
-
-        UNION ALL
-        -- برگشت فروش (BACK_HEAD.ta=2) در برابر سند اصلیِ فروش (TAG=2)
-        SELECT  N'saleReturn',
-                CAST(bh.NUMBER AS BIGINT), 2, N'BACK_HEAD', bh.DATE_N,
-                CAST(orig.NUMBER AS BIGINT), 2, N'HEAD_LST', orig.DATE_N,
-                CONCAT(N'برگشت فروش ', bh.NUMBER, N': تاریخ برگشت ',
-                       FORMAT(bh.DATE_N,'0000/00/00'), N' با تاریخ سند اصلیِ فروش ',
-                       FORMAT(orig.DATE_N,'0000/00/00'), N' در ماه متفاوتی ثبت شده‌اند'),
-                CASE WHEN bh.DATE_N/100 <> orig.DATE_N/100 THEN 1 ELSE 0 END
-        FROM    dbo.BACK_HEAD bh
-        JOIN    dbo.HEAD_LST  orig ON orig.NUMBER = bh.NUMBER1 AND orig.TAG = 2
-        WHERE   bh.ta = 2
-          AND   (bh.DATE_N BETWEEN @DT1 AND @DT2 OR orig.DATE_N BETWEEN @DT1 AND @DT2)
-
-        UNION ALL
-        -- برگشت خرید (BACK_HEAD.ta=1) در برابر سند اصلیِ خرید (TAG=1)
-        SELECT  N'purchaseReturn',
-                CAST(bh.NUMBER AS BIGINT), 1, N'BACK_HEAD', bh.DATE_N,
-                CAST(orig.NUMBER AS BIGINT), 1, N'HEAD_LST', orig.DATE_N,
-                CONCAT(N'برگشت خرید ', bh.NUMBER, N': تاریخ برگشت ',
-                       FORMAT(bh.DATE_N,'0000/00/00'), N' با تاریخ سند اصلیِ خرید ',
-                       FORMAT(orig.DATE_N,'0000/00/00'), N' در ماه متفاوتی ثبت شده‌اند'),
-                CASE WHEN bh.DATE_N/100 <> orig.DATE_N/100 THEN 1 ELSE 0 END
-        FROM    dbo.BACK_HEAD bh
-        JOIN    dbo.HEAD_LST  orig ON orig.NUMBER = bh.NUMBER1 AND orig.TAG = 1
-        WHERE   bh.ta = 1
-          AND   (bh.DATE_N BETWEEN @DT1 AND @DT2 OR orig.DATE_N BETWEEN @DT1 AND @DT2)
     )
     INSERT dbo.CC_Exception
         (RunId, StepCode, RuleCode, ExType, Severity, DocNumber, DocTag, DocDate, Amount, RefList, Description)
@@ -407,6 +387,42 @@ BEGIN
     WHERE   d.DifferentMonth = 1
       AND   NOT EXISTS (SELECT 1 FROM dbo.CC_AcceptedException ae
                         WHERE ae.RuleCode = 'CHK-18' AND ae.IsActive = 1
+                          AND (ae.Anbar IS NULL) AND (ae.Code IS NULL));
+
+    /* ─── CHK-19 : تاریخ فاکتور فروش با تاریخ سند حسابداری‌اش دقیقاً یکی نیست ───
+       پیدا شده وقتی CHK-18 (فاکتور ۲۴۶۵) با دکمه‌ی «اصلاح تاریخ» درست شد:
+       تاریخ فاکتور (HEAD_LST/TAG=13) و حواله انبار (TAG=2) با هم یکی
+       شدند (هر دو ۲۰/۳)، ولی خودِ سند حسابداریِ پست‌شده (DEED_HED،
+       از راه DEED_DTL.NUMBER=فاکتور و TAG=13) هنوز تاریخ قدیم را داشت
+       (۲۸/۲) — چون اصلاح CHK-18 فقط HEAD_LST/BACK_HEAD را می‌نویسد، نه
+       سند حسابداری را. طبق دستور کاربر این دو باید «دقیقاً یکی» باشند،
+       نه فقط هم‌ماه — همان آستانه‌ی یک‌ریالی/بدون‌اغماضِ CHK-02، اینجا
+       روی روز.
+
+       ⚠️ DISTINCT لازم است: یک فاکتور معمولاً چند ردیفِ DEED_DTL دارد
+       (بستانکار مشتری، بستانکار فروش، بدهکار/بستانکار بهای تمام‌شده،
+       …) که همه زیر همان یک N_S/TAG=13 هستند — بدون DISTINCT، همان یک
+       فاکتور به تعداد ردیف‌هایش (مثلاً ۴ بار) تکراری درج می‌شد. */
+    INSERT dbo.CC_Exception
+        (RunId, StepCode, RuleCode, ExType, Severity, DocNumber, DocTag, DocDate, Amount, RefList, Description)
+    SELECT  DISTINCT
+            @RunId, 'S00', 'CHK-19', 21, 1,
+            CAST(inv.NUMBER AS BIGINT), 13, inv.DATE_N, h.DATE_S,
+            (SELECT N'invoiceVsAccounting' AS kind,
+                    CAST(inv.NUMBER AS BIGINT) AS aNumber, 13 AS aTag, N'HEAD_LST' AS aTable, inv.DATE_N AS aDate,
+                    CAST(d.N_S AS BIGINT) AS bNumber, 0 AS bTag, N'DEED_HED' AS bTable, h.DATE_S AS bDate
+             FOR JSON PATH, WITHOUT_ARRAY_WRAPPER),
+            CONCAT(N'فاکتور فروش ', inv.NUMBER, N': تاریخ فاکتور ',
+                   FORMAT(inv.DATE_N,'0000/00/00'), N' با تاریخ سند حسابداری ',
+                   FORMAT(h.DATE_S,'0000/00/00'), N' (سند ', d.N_S, N') یکی نیست')
+    FROM    dbo.HEAD_LST inv
+    JOIN    dbo.DEED_DTL d ON d.NUMBER = inv.NUMBER AND d.TAG = 13
+    JOIN    dbo.DEED_HED h ON h.N_S = d.N_S
+    WHERE   inv.TAG = 13
+      AND   (inv.DATE_N BETWEEN @DT1 AND @DT2 OR h.DATE_S BETWEEN @DT1 AND @DT2)
+      AND   inv.DATE_N <> h.DATE_S
+      AND   NOT EXISTS (SELECT 1 FROM dbo.CC_AcceptedException ae
+                        WHERE ae.RuleCode = 'CHK-19' AND ae.IsActive = 1
                           AND (ae.Anbar IS NULL) AND (ae.Code IS NULL));
 
     ---- CHK-06 : حلقه در ساختار فرمول

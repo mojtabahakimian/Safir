@@ -339,6 +339,23 @@
                                        Title="اصلاح تاریخ"
                                        OnClick="@(() => OpenDateMismatchFix(context))" />
                     }
+                    @* CHK-19: بر خلاف CHK-18، اینجا مستقیم تاریخ سند حسابداری را
+                       UPDATE نمی‌کنیم — یک سند (حالت «سند روزانه») می‌تواند
+                       مشترکِ ده‌ها فاکتورِ دیگر باشد (نمونه‌ی واقعی: سند ۶۴۱۴،
+                       ۴۲ فاکتور)، پس عوض‌کردن تاریخِ خودِ سند همه‌ی فاکتورهای
+                       دیگرش را هم غلط می‌کرد. راه‌حل درست (طبق GENSANADFROOSH
+                       اصلی) این است که فقط بازسازیِ سند فروش را برای همین یک
+                       فاکتور دوباره اجرا کنیم؛ SaleRebuildService از قبل با
+                       تاریخِ فعلیِ فاکتور یا سندِ همان‌روز را پیدا می‌کند یا
+                       تازه می‌سازد، بدون دست‌زدن به فاکتورهای دیگرِ سند قدیم. *@
+                    @if (context.RuleCode == "CHK-19" && !context.IsResolved
+                         && Access.CanRun(CostForms.ActRebuildDocs))
+                    {
+                        <MudIconButton Icon="@Icons.Material.Filled.ReceiptLong"
+                                       Size="Size.Small" Color="Color.Primary"
+                                       Title="بازسازی سند فروش همین فاکتور"
+                                       OnClick="@(() => RebuildSaleDocForOne(context))" />
+                    }
                     @if (!context.IsResolved && Access.CanRun(CostForms.ActResolve))
                     {
                         <MudIconButton Icon="@Icons.Material.Filled.Check"
@@ -665,10 +682,9 @@
 
     private static (string A, string B) DateDriftLabels(string kind) => kind switch
     {
-        "sale"           => ("فاکتور فروش", "حواله انبار"),
-        "saleReturn"     => ("سند برگشت فروش", "سند اصلیِ فروش"),
-        "purchaseReturn" => ("سند برگشت خرید", "سند اصلیِ خرید"),
-        _                => ("سند الف", "سند ب")
+        "sale"                => ("فاکتور فروش", "حواله انبار"),
+        "invoiceVsAccounting" => ("فاکتور", "سند حسابداری"),
+        _                     => ("سند الف", "سند ب")
     };
 
     private async Task OpenDateMismatchFix(CostExceptionDto ex)
@@ -703,6 +719,26 @@
         {
             var (ok, error) = await Api.FixDateMismatchAsync(ex.ExceptionId, useA: choice == true);
             Snackbar.Add(ok ? "تاریخ اصلاح شد" : (error ?? "اصلاح ناموفق بود"),
+                         ok ? Severity.Success : Severity.Error);
+            if (ok) await Load();
+        }
+        finally { _busy = false; }
+    }
+
+    private async Task RebuildSaleDocForOne(CostExceptionDto ex)
+    {
+        var confirm = await Dialog.ShowMessageBox(
+            "بازسازی سند فروش",
+            $"{ex.Description}\n\nسند فروشِ همین فاکتور با تاریخ فعلیِ خودش دوباره ساخته می‌شود — فاکتورهای دیگرِ سند قدیم دست‌نخورده می‌مانند. ادامه می‌دهید؟",
+            yesText: "بله، بازسازی کن", cancelText: "انصراف");
+
+        if (confirm != true) return;
+
+        _busy = true;
+        try
+        {
+            var (ok, error, log) = await Api.RebuildSaleDocForExceptionAsync(ex.ExceptionId);
+            Snackbar.Add(ok ? "سند فروش بازسازی شد" : (error ?? log.LastOrDefault() ?? "بازسازی ناموفق بود"),
                          ok ? Severity.Success : Severity.Error);
             if (ok) await Load();
         }

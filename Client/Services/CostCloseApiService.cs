@@ -126,6 +126,23 @@ namespace Safir.Client.Services
             return (true, body?.GetValueOrDefault("count") ?? 0, null);
         }
 
+        public async Task<(bool Ok, string? Error, List<string> Log)> RebuildSaleDocForExceptionAsync(long exceptionId)
+        {
+            var res = await _http.PostAsync($"{Base}/exceptions/{exceptionId}/rebuild-sale-doc", null);
+            if (!res.IsSuccessStatusCode)
+                return (false, await res.Content.ReadAsStringAsync(), new());
+
+            var body = await res.Content.ReadFromJsonAsync<RebuildSaleDocResult>();
+            return (body?.Success ?? false, body?.Error, body?.Log ?? new());
+        }
+
+        private sealed class RebuildSaleDocResult
+        {
+            public bool Success { get; set; }
+            public string? Error { get; set; }
+            public List<string> Log { get; set; } = new();
+        }
+
         public async Task<(bool Ok, string? Error)> FixDateMismatchAsync(long exceptionId, bool useA)
         {
             var res = await _http.PostAsJsonAsync(
@@ -513,5 +530,47 @@ namespace Safir.Client.Services
             => await _http.GetFromJsonAsync<List<AccountLookupDto>>(
                    $"{Base}/accounts/tafsili?kol={kol}&moin={moin}"
                    + (string.IsNullOrEmpty(q) ? "" : $"&q={Uri.EscapeDataString(q)}")) ?? new();
+
+        // ───────── نرخ استاندارد دستمزد به تفکیک کالا ─────────
+
+        public async Task<List<CostLaborRateDto>> GetLaborRatesAsync()
+            => await _http.GetFromJsonAsync<List<CostLaborRateDto>>($"{Base}/labor-rates") ?? new();
+
+        public async Task<(bool Ok, string? Error)> AddLaborRateAsync(UpsertLaborRateRequest req)
+        {
+            var res = await _http.PostAsJsonAsync($"{Base}/labor-rates", req);
+            return res.IsSuccessStatusCode
+                 ? (true, null)
+                 : (false, await res.Content.ReadAsStringAsync());
+        }
+
+        public async Task<(bool Ok, string? Error)> UpdateLaborRateAsync(int unitId, string code, UpsertLaborRateRequest req)
+        {
+            var res = await _http.PutAsJsonAsync($"{Base}/labor-rates/{unitId}/{Uri.EscapeDataString(code)}", req);
+            return res.IsSuccessStatusCode
+                 ? (true, null)
+                 : (false, await res.Content.ReadAsStringAsync());
+        }
+
+        public async Task<(bool Ok, string? Error)> DeleteLaborRateAsync(int unitId, string code)
+        {
+            var res = await _http.DeleteAsync($"{Base}/labor-rates/{unitId}/{Uri.EscapeDataString(code)}");
+            return res.IsSuccessStatusCode
+                 ? (true, null)
+                 : (false, await res.Content.ReadAsStringAsync());
+        }
+
+        public async Task<List<ItemLookupDto>> SearchItemsAsync(string? q)
+            => await _http.GetFromJsonAsync<List<ItemLookupDto>>(
+                   $"{Base}/items/search" + (string.IsNullOrEmpty(q) ? "" : $"?q={Uri.EscapeDataString(q)}")) ?? new();
+
+        public async Task<(bool Ok, int Added, string? Error)> SyncLaborRatesFromFormulasAsync()
+        {
+            var res = await _http.PostAsync($"{Base}/labor-rates/sync-from-formulas", null);
+            if (!res.IsSuccessStatusCode)
+                return (false, 0, await res.Content.ReadAsStringAsync());
+            var added = await res.Content.ReadFromJsonAsync<int>();
+            return (true, added, null);
+        }
     }
 }

@@ -254,6 +254,87 @@
             </MudPaper>
         </MudTabPanel>
 
+        <!-- نرخ استاندارد دستمزد -->
+        <MudTabPanel Text="نرخ استاندارد دستمزد">
+            <MudAlert Severity="Severity.Info" Dense Class="mb-3">
+                این ضریب (مثلاً بر مبنای وزن، حجم یا ارزش فروش) در گام S07B،
+                دستمزد واقعیِ همان واحد تولیدی (از حساب ۷۵۱) را به نسبت
+                (مقدار تولید × ضریب) بین کالاهای همان واحد تقسیم می‌کند و
+                نتیجه را در IMBIBE_MANF فرمول همان کالا می‌نشاند؛ سربار
+                (IMBIBE_SAR) دست‌نخورده باقی می‌ماند. کالاهای «کارمزدی» را
+                به‌جای ضریب می‌توانید علامت بزنید — نرخشان همیشه ثابت
+                می‌ماند، نه S07B و نه ضریب تعدیل S10 دست‌شان می‌زنند.
+            </MudAlert>
+
+            <div class="d-flex ga-2 mb-3">
+                @if (Access.CanInp(CostForms.Settings))
+                {
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Small"
+                               StartIcon="@Icons.Material.Filled.Add"
+                               OnClick="OpenAddLaborRate">
+                        افزودن ضریب دستمزد
+                    </MudButton>
+                    <MudButton Variant="Variant.Outlined" Size="Size.Small"
+                               StartIcon="@Icons.Material.Filled.Sync"
+                               OnClick="SyncLaborRatesFromFormulas">
+                        همگام‌سازی از فرمول‌های تولید
+                    </MudButton>
+                }
+            </div>
+
+            <MudPaper Class="cc-rule-card" Elevation="0">
+                <MudTable Items="_laborRates" Dense Hover Elevation="0" T="CostLaborRateDto">
+                    <HeaderContent>
+                        <MudTh Style="width:130px">واحد تولیدی</MudTh>
+                        <MudTh Style="width:110px">کد کالا</MudTh>
+                        <MudTh>نام کالا</MudTh>
+                        <MudTh>ضریب</MudTh>
+                        <MudTh Style="width:100px"></MudTh>
+                        <MudTh>یادداشت</MudTh>
+                        <MudTh Style="width:90px"></MudTh>
+                    </HeaderContent>
+                    <RowTemplate>
+                        <MudTd>@(context.UnitName ?? context.UnitId.ToString())</MudTd>
+                        <MudTd><span class="cc-num">@context.Code</span></MudTd>
+                        <MudTd>@(context.ItemName ?? "")</MudTd>
+                        <MudTd>
+                            @if (context.IsFixed)
+                            {
+                                <span class="cc-num">—</span>
+                            }
+                            else if (context.Coefficient is null)
+                            {
+                                <MudChip T="string" Size="Size.Small" Color="Color.Warning">هنوز تعیین نشده</MudChip>
+                            }
+                            else
+                            {
+                                <span class="cc-num">@context.Coefficient.Value.ToString("N3")</span>
+                            }
+                        </MudTd>
+                        <MudTd>
+                            @if (context.IsFixed)
+                            {
+                                <MudChip T="string" Size="Size.Small" Color="Color.Info">کارمزدی — نرخ ثابت</MudChip>
+                            }
+                        </MudTd>
+                        <MudTd>@(context.Note ?? "—")</MudTd>
+                        <MudTd>
+                            @if (Access.CanUpd(CostForms.Settings))
+                            {
+                                <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small"
+                                               OnClick="@(() => OpenEditLaborRate(context))" />
+                            }
+                            @if (Access.CanDel(CostForms.Settings))
+                            {
+                                <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small"
+                                               Color="Color.Error" OnClick="@(() => DeleteLaborRate(context))" />
+                            }
+                        </MudTd>
+                    </RowTemplate>
+                </MudTable>
+            </MudPaper>
+        </MudTabPanel>
+
         <!-- قواعد تشخیص -->
         <MudTabPanel Text="قواعد تشخیص">
             <MudAlert Severity="Severity.Info" Dense Class="mb-3">
@@ -344,6 +425,7 @@
     private List<CostUnitDto>      _units = new();
     private List<CostCheckRuleDto> _rules = new();
     private List<CostAnbarHesDto>  _anbarHes = new();
+    private List<CostLaborRateDto> _laborRates = new();
     private bool _busy;
     private string? _loadError;
 
@@ -357,9 +439,10 @@
         _busy = true;
         try
         {
-            _units    = await Api.GetUnitsAsync();
-            _rules    = await Api.GetRulesAsync();
-            _anbarHes = await Api.GetAnbarHesAsync();
+            _units      = await Api.GetUnitsAsync();
+            _rules      = await Api.GetRulesAsync();
+            _anbarHes   = await Api.GetAnbarHesAsync();
+            _laborRates = await Api.GetLaborRatesAsync();
         }
         catch (Exception ex) { _loadError = FriendlyError(ex); }
         finally { _busy = false; }
@@ -406,6 +489,62 @@
         var (done, err) = await Api.DeleteAnbarHesAsync(row.Anbar);
         if (done) { Snackbar.Add("نگاشت حذف شد.", Severity.Success); await ReloadAnbarHes(); }
         else Snackbar.Add(err ?? "حذف نگاشت ناموفق بود.", Severity.Error);
+    }
+
+    // ───────── نرخ استاندارد دستمزد ─────────
+
+    private async Task ReloadLaborRates()
+    {
+        try { _laborRates = await Api.GetLaborRatesAsync(); }
+        catch (Exception ex) { Snackbar.Add(FriendlyError(ex), Severity.Error); }
+    }
+
+    private async Task SyncLaborRatesFromFormulas()
+    {
+        var (ok, added, err) = await Api.SyncLaborRatesFromFormulasAsync();
+        if (ok)
+        {
+            Snackbar.Add(added > 0 ? $"{added} ردیف جدید از فرمول‌های تولید اضافه شد." : "چیز جدیدی برای افزودن نبود.", Severity.Success);
+            await ReloadLaborRates();
+        }
+        else Snackbar.Add(err ?? "همگام‌سازی ناموفق بود.", Severity.Error);
+    }
+
+    private async Task OpenAddLaborRate()
+    {
+        var dlg = await Dialog.ShowAsync<LaborRateEditDialog>("افزودن ضریب دستمزد", new DialogParameters());
+        var res = await dlg.Result;
+        if (res is { Canceled: false, Data: UpsertLaborRateRequest req })
+        {
+            var (ok, err) = await Api.AddLaborRateAsync(req);
+            if (ok) { Snackbar.Add("ضریب افزوده شد.", Severity.Success); await ReloadLaborRates(); }
+            else Snackbar.Add(err ?? "افزودن ضریب ناموفق بود.", Severity.Error);
+        }
+    }
+
+    private async Task OpenEditLaborRate(CostLaborRateDto row)
+    {
+        var p = new DialogParameters { ["Existing"] = row };
+        var dlg = await Dialog.ShowAsync<LaborRateEditDialog>("ویرایش ضریب دستمزد", p);
+        var res = await dlg.Result;
+        if (res is { Canceled: false, Data: UpsertLaborRateRequest req })
+        {
+            var (ok, err) = await Api.UpdateLaborRateAsync(row.UnitId, row.Code, req);
+            if (ok) { Snackbar.Add("ضریب به‌روزرسانی شد.", Severity.Success); await ReloadLaborRates(); }
+            else Snackbar.Add(err ?? "به‌روزرسانی ضریب ناموفق بود.", Severity.Error);
+        }
+    }
+
+    private async Task DeleteLaborRate(CostLaborRateDto row)
+    {
+        var ok = await Dialog.ShowMessageBox(
+            "حذف ضریب", $"ضریب دستمزد کالای «{row.ItemName ?? row.Code}» در واحد «{row.UnitName}» حذف شود؟",
+            yesText: "حذف", cancelText: "انصراف");
+        if (ok != true) return;
+
+        var (done, err) = await Api.DeleteLaborRateAsync(row.UnitId, row.Code);
+        if (done) { Snackbar.Add("ضریب حذف شد.", Severity.Success); await ReloadLaborRates(); }
+        else Snackbar.Add(err ?? "حذف ضریب ناموفق بود.", Severity.Error);
     }
 
     private async Task ReloadUnits()

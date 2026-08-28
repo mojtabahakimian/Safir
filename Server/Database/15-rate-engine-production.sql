@@ -23,6 +23,108 @@ SET QUOTED_IDENTIFIER ON
 GO
 
 /* ═══════════════════════════════════════════════════════════════════
+   S07B — تخصیص دستمزد به تفکیک کالا، بر اساس ضریب جذب
+
+   کاربر برای هر کالا یک «ضریب جذب» دستی وارد می‌کند
+   (dbo.CC_LaborAbsorptionRate — مثلاً بر مبنای وزن: کالای ۱ کیلوگرمی
+   ضریب ۱، کالای ۲ کیلوگرمی ضریب ۲ و...، ولی مبنا هرچه کاربر بخواهد
+   می‌تواند باشد). دستمزد واقعیِ هر واحد تولیدی (مثلاً یزد) — از حساب
+   ۷۵۱ طبق CC_UnitAcc، عیناً همان محاسبه‌ی @actWage در S10 پایین‌تر —
+   بین کالاهایی که آن واحد همین ماه تولید کرده، به نسبت
+   (مقدار تولید × ضریب) تقسیم می‌شود؛ نتیجه، نرخ دستمزدِ هر واحدِ آن
+   کالا (HEAD_MANF.IMBIBE_MANF) است.
+
+   کالاهایی که ضریب ندارند از این تقسیم و از مخرج کسر کنار می‌مانند —
+   IMBIBE_MANF دستیِ آن‌ها دست‌نخورده می‌ماند.
+
+   عمداً قبل از S07A اجرا می‌شود (SeqNo=72، بین S07=70 و S07A=75) تا
+   محاسبه‌ی نرخ میانگین/تولید همان ماه از همین مقدار استفاده کند.
+   IMBIBE_SAR (سربار) دست‌نخورده می‌ماند — این تغییر فقط دستمزد است.
+
+   ⚠️ عمداً کنار پلاگ اصلاحی S10 (تأیید کاربر): چون همین دستمزدِ واقعیِ
+   ۷۵۱ مبنای تقسیم است، انتظار می‌رود ضریب k در S10 نزدیک ۱ در بیاید —
+   S10 همچنان به‌عنوان یک لایه‌ی تطبیق نهایی (گرد کردن/موارد خاص)
+   دست‌نخورده باقی می‌ماند، نه این‌که حذف شود.
+   ═══════════════════════════════════════════════════════════════════ */
+CREATE OR ALTER PROCEDURE dbo.CC_sp_S07B_SyncLaborRate
+    @RunId INT, @Month INT, @DT1 BIGINT, @DT2 BIGINT
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    DECLARE @UnitId INT, @Total INT = 0;
+
+    DECLARE cUnit CURSOR LOCAL FAST_FORWARD FOR
+        SELECT UnitId FROM dbo.CC_Unit WHERE IsActive = 1;
+
+    OPEN cUnit;
+    FETCH NEXT FROM cUnit INTO @UnitId;
+
+    WHILE @@FETCH_STATUS = 0
+    BEGIN
+        -- دستمزد واقعیِ این واحد از حساب ۷۵۱ — عیناً @actWage در S10
+        DECLARE @actWage FLOAT;
+        SELECT  @actWage = ISNULL(SUM(CASE WHEN m.CostKind = 1
+                                           THEN t.Amount * m.Ratio ELSE 0 END), 0)
+        FROM    dbo.CC_UnitAcc m
+        CROSS   APPLY (
+                    SELECT SUM(d.BED) - SUM(d.BES) AS Amount
+                    FROM   dbo.DEED_DTL d
+                    JOIN   dbo.DEED_HED hd ON hd.N_S = d.N_S
+                    WHERE  hd.DATE_S BETWEEN @DT1 AND @DT2
+                      AND  d.HES_K = m.HesKol
+                      AND  (m.HesMoin    IS NULL OR d.HES_M = m.HesMoin)
+                      AND  (m.HesTafsili IS NULL OR d.HES_T = m.HesTafsili)
+                ) t
+        WHERE   m.IsActive = 1 AND m.UnitId = @UnitId;
+
+        -- مجموع (مقدار تولید × ضریب) این واحد در همین ماه، فقط کالاهایی
+        -- که کاربر برایشان ضریب ثبت کرده (NULL/صفر یعنی «هنوز بررسی
+        -- نشده» و کنار می‌ماند) — عیناً منطق جذب‌شده در S10، با ANBAR
+        -- محصولِ همین واحد (CC_UnitAnbar.AnbarRole = 3)
+        DECLARE @totalWeight FLOAT;
+        SELECT  @totalWeight = ISNULL(SUM(pl.MEGHK * r.Coefficient), 0)
+        FROM    dbo.HEAD_LST  h
+        JOIN    dbo.INVO_LST  pl ON pl.NUMBER = h.NUMBER AND pl.TAG = 9
+        JOIN    dbo.HEAD_MANF hm ON hm.FNUMB  = TRY_CAST(pl.N_KOL AS INT) AND hm.GHEYMAT = @Month
+        JOIN    dbo.CC_LaborAbsorptionRate r ON r.CODE = hm.CODE AND r.UnitId = @UnitId
+        WHERE   h.TAG = 9 AND h.DATE_N BETWEEN @DT1 AND @DT2
+          AND   pl.ANBAR IN (SELECT Anbar FROM dbo.CC_UnitAnbar
+                              WHERE UnitId = @UnitId AND AnbarRole = 3)
+          AND   r.Coefficient IS NOT NULL AND r.Coefficient <> 0 AND r.IsFixed = 0;
+
+        IF @totalWeight <> 0
+        BEGIN
+            UPDATE hm
+               SET hm.IMBIBE_MANF = @actWage * r.Coefficient / @totalWeight
+            FROM   dbo.HEAD_MANF hm
+            JOIN   dbo.CC_LaborAbsorptionRate r ON r.CODE = hm.CODE AND r.UnitId = @UnitId
+                                                 AND r.Coefficient IS NOT NULL AND r.Coefficient <> 0
+                                                 AND r.IsFixed = 0
+            WHERE  hm.GHEYMAT = @Month
+              AND  hm.FNUMB IN (
+                        SELECT DISTINCT TRY_CAST(pl.N_KOL AS INT)
+                        FROM   dbo.HEAD_LST h
+                        JOIN   dbo.INVO_LST pl ON pl.NUMBER = h.NUMBER AND pl.TAG = 9
+                        WHERE  h.TAG = 9 AND h.DATE_N BETWEEN @DT1 AND @DT2
+                          AND  pl.ANBAR IN (SELECT Anbar FROM dbo.CC_UnitAnbar
+                                            WHERE UnitId = @UnitId AND AnbarRole = 3)
+                   );
+
+            SET @Total += @@ROWCOUNT;
+        END
+
+        FETCH NEXT FROM cUnit INTO @UnitId;
+    END
+
+    CLOSE cUnit;
+    DEALLOCATE cUnit;
+
+    SELECT @Total AS Value;
+END
+GO
+
+/* ═══════════════════════════════════════════════════════════════════
    S10 — تراز هزینه تبدیل به تفکیک واحد تولیدی
 
    جذب‌شده = Σ (مقدار تولید × نرخ جذب فرمول)
@@ -87,6 +189,10 @@ BEGIN
         ---- ۱) جذب‌شده از برگه‌هاي توليد اين واحد (بر اساس انبار محصول)
         DECLARE @absWage FLOAT, @absOh FLOAT;
 
+        -- ⚠️ کالاهای کارمزدی (CC_LaborAbsorptionRate.IsFixed=1 برای همین
+        -- واحد) از جذب‌شده کنار می‌مانند — نرخشان ثابت است، نباید نه
+        -- خودشان با ضریب k تعدیل شوند (پایین‌تر) و نه در محاسبه‌ی خودِ
+        -- ضریب k برای بقیه‌ی کالاها دخالت کنند.
         SELECT  @absWage = ISNULL(SUM(pl.MEGHK * ISNULL(hm.IMBIBE_MANF,0)), 0),
                 @absOh   = ISNULL(SUM(pl.MEGHK * ISNULL(hm.IMBIBE_SAR ,0)), 0)
         FROM    dbo.HEAD_LST  h
@@ -95,7 +201,11 @@ BEGIN
                                 AND hm.GHEYMAT = @Month
         WHERE   h.TAG = 9 AND h.DATE_N BETWEEN @DT1 AND @DT2
           AND   pl.ANBAR IN (SELECT Anbar FROM dbo.CC_UnitAnbar
-                              WHERE UnitId = @UnitId AND AnbarRole = 3);
+                              WHERE UnitId = @UnitId AND AnbarRole = 3)
+          AND   NOT EXISTS (
+                    SELECT 1 FROM dbo.CC_LaborAbsorptionRate fx
+                    WHERE fx.UnitId = @UnitId AND fx.CODE = hm.CODE AND fx.IsFixed = 1
+                );
 
         DECLARE @absTotal FLOAT = @absWage + @absOh;
 
@@ -221,7 +331,11 @@ BEGIN
                         WHERE  h.TAG = 9 AND h.DATE_N BETWEEN @DT1 AND @DT2
                           AND  TRY_CAST(pl.N_KOL AS INT) = hm.FNUMB
                           AND  pl.ANBAR IN (SELECT Anbar FROM dbo.CC_UnitAnbar
-                                            WHERE UnitId = @UnitId AND AnbarRole = 3));
+                                            WHERE UnitId = @UnitId AND AnbarRole = 3))
+              AND   NOT EXISTS (
+                        SELECT 1 FROM dbo.CC_LaborAbsorptionRate fx
+                        WHERE fx.UnitId = @UnitId AND fx.CODE = hm.CODE AND fx.IsFixed = 1
+                   );
 
             INSERT dbo.CC_RunLog (RunId, StepCode, Severity, Message)
             VALUES (@RunId, 'S10', 1,

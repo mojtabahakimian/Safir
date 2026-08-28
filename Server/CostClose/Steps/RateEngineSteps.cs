@@ -3,6 +3,40 @@ using Safir.Shared.Models.CostClose;
 namespace Safir.Server.CostClose.Steps
 {
     /// <summary>
+    /// S07B — همگام‌سازی نرخ استاندارد دستمزد از dbo.CC_LaborAbsorptionRate
+    /// به HEAD_MANF.IMBIBE_MANF (فقط دستمزد؛ سربار دست‌نخورده می‌ماند).
+    ///
+    /// عمداً قبل از S07A (SeqNo=72، بین S07=70 و S07A=75) تا محاسبه‌ی
+    /// نرخ تولید همان ماه از این مقدار استفاده کند؛ پلاگ اصلاحی S10
+    /// دقیقاً مثل قبل، بعد از این مرحله، روی نتیجه اعمال می‌شود.
+    /// </summary>
+    public sealed class S07B_SyncLaborRate : ICostStep
+    {
+        public string StepCode         => "S07B";
+        public string Title            => "همگام‌سازی نرخ استاندارد دستمزد";
+        public short  SeqNo            => 72;
+        public bool   RequiresSnapshot => false;
+        public bool   IsGate           => false;
+        public bool   WritesFormulas   => false;
+
+        public async Task<StepResult> ExecuteAsync(StepContext ctx)
+        {
+            await ctx.ReportProgress(StepCode, 30, "همگام‌سازی نرخ دستمزد با HEAD_MANF…");
+
+            var res = await ctx.Db.DoGetStoreProcedureSQLAsync<CountResult>(
+                "dbo.CC_sp_S07B_SyncLaborRate",
+                new { RunId = ctx.RunId, Month = ctx.Month,
+                      DT1 = ctx.DateFrom, DT2 = ctx.DateTo },
+                commandTimeout: 600);
+
+            var n = res.LastOrDefault()?.Value ?? 0;
+
+            await ctx.ReportProgress(StepCode, 100, $"{n} فرمول به‌روزرسانی شد");
+            return StepResult.Ok(n, new { updated = n });
+        }
+    }
+
+    /// <summary>
     /// S10 — تراز هزینه تبدیل.
     ///
     /// قبل از S11 اجرا می‌شود، نه بعدش. چون جذب‌شده حاصل
