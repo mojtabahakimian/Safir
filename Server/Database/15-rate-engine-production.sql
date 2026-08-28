@@ -23,28 +23,56 @@ SET QUOTED_IDENTIFIER ON
 GO
 
 /* ═══════════════════════════════════════════════════════════════════
-   S07B — تخصیص دستمزد به تفکیک کالا، بر اساس ضریب جذب
+   S07B — تخصیص دستمزد و سربار به تفکیک کالا، بر اساس ضریب جذب
 
-   کاربر برای هر کالا یک «ضریب جذب» دستی وارد می‌کند
+   کاربر برای هر کالا یک «ضریب جذب دستمزد» دستی وارد می‌کند
    (dbo.CC_LaborAbsorptionRate — مثلاً بر مبنای وزن: کالای ۱ کیلوگرمی
    ضریب ۱، کالای ۲ کیلوگرمی ضریب ۲ و...، ولی مبنا هرچه کاربر بخواهد
-   می‌تواند باشد). دستمزد واقعیِ هر واحد تولیدی (مثلاً یزد) — از حساب
-   ۷۵۱ طبق CC_UnitAcc، عیناً همان محاسبه‌ی @actWage در S10 پایین‌تر —
+   می‌تواند باشد) و اختیاراً یک «ضریب جذب سربار» مستقل (چون معیارِ
+   درستِ سربار می‌تواند با دستمزد فرق کند؛ تأیید کاربر: «فعلاً از
+   دستمزد براش مقدار بده» — یعنی وقتی ضریب سربار خالی است، همان ضریب
+   دستمزد جایگزینش می‌شود). دستمزد/سربارِ واقعیِ هر واحد تولیدی
+   (مثلاً یزد) — مستقیم از حساب ۷۵۱، فیلترشده با HES_M (کدِ کالای
+   تولیدشده) به کدهایی که همان واحد تولید کرده (نگاه کنید توضیح پایین‌تر) —
    بین کالاهایی که آن واحد همین ماه تولید کرده، به نسبت
-   (مقدار تولید × ضریب) تقسیم می‌شود؛ نتیجه، نرخ دستمزدِ هر واحدِ آن
-   کالا (HEAD_MANF.IMBIBE_MANF) است.
+   (مقدار تولید × ضریب مربوطه) تقسیم می‌شود؛ نتیجه، نرخ دستمزد/سربارِ
+   هر واحدِ آن کالا (HEAD_MANF.IMBIBE_MANF/IMBIBE_SAR) است.
 
-   کالاهایی که ضریب ندارند از این تقسیم و از مخرج کسر کنار می‌مانند —
-   IMBIBE_MANF دستیِ آن‌ها دست‌نخورده می‌ماند.
+   ⚠️ رفتار ضریب خالی/صفر (تأیید کاربر، کد ۳۷۳ خرداد ۱۴۰۵ کشف شد):
+   خالی (NULL) یعنی «هنوز بررسی نشده» — این کالا از تقسیم و از مخرج
+   کسر کنار می‌ماند و مقدار فعلیِ IMBIBE_MANF/IMBIBE_SAR دست‌نخورده
+   می‌ماند. صفرِ صریح (Coefficient=0) اما یعنی «کاربر عمداً این کالا
+   را از جذب دستمزد کنار گذاشته» — IMBIBE_MANF/IMBIBE_SAR همین کالا
+   صراحتاً صفر می‌شود (نه این‌که دست‌نخورده بماند)، وگرنه یک نرخِ
+   قدیمیِ باقی‌مانده از زمانی که ضریب هنوز صفر نشده بود، برای همیشه
+   به‌جا می‌ماند و کسی متوجه نمی‌شود.
 
    عمداً قبل از S07A اجرا می‌شود (SeqNo=72، بین S07=70 و S07A=75) تا
    محاسبه‌ی نرخ میانگین/تولید همان ماه از همین مقدار استفاده کند.
-   IMBIBE_SAR (سربار) دست‌نخورده می‌ماند — این تغییر فقط دستمزد است.
 
-   ⚠️ عمداً کنار پلاگ اصلاحی S10 (تأیید کاربر): چون همین دستمزدِ واقعیِ
-   ۷۵۱ مبنای تقسیم است، انتظار می‌رود ضریب k در S10 نزدیک ۱ در بیاید —
-   S10 همچنان به‌عنوان یک لایه‌ی تطبیق نهایی (گرد کردن/موارد خاص)
-   دست‌نخورده باقی می‌ماند، نه این‌که حذف شود.
+   ⚠️ عمداً کنار پلاگ اصلاحی S10 (تأیید کاربر): چون همین دستمزد/سربارِ
+   واقعیِ ۷۵۱ مبنای تقسیم است، انتظار می‌رود ضریب k در S10 نزدیک ۱ در
+   بیاید — S10 همچنان به‌عنوان یک لایه‌ی تطبیق نهایی (گرد کردن/موارد
+   خاص) دست‌نخورده باقی می‌ماند، نه این‌که حذف شود.
+
+   ⚠️ اصلاح (کد ۳۶۸/۲۰/... واحد یزد، خرداد ۱۴۰۵ کشف شد): اگر یک واحد
+   اصلاً نگاشت حساب دستمزد/سربار (CC_UnitAcc.CostKind) نداشته باشد،
+   @actWage/@actOh همیشه صفر می‌ماند — بدون گارد، فرمول کالاهای
+   ضریب‌دار همین واحد صفر می‌شدند (نابودیِ واقعیِ داده، نه خطای
+   بی‌ضرر). حالا وقتی واقعی صفر است ولی کالایی با ضریب هست، هیچ‌کاری
+   نمی‌کنیم و فقط هشدار می‌دهیم.
+
+   ⚠️ کالای هم‌زمان چندواحدی (تأیید کاربر، کد ۳۷۳ خرداد ۱۴۰۵ کشف شد):
+   HEAD_MANF فقط یک ردیف به‌ازای (CODE, GHEYMAT) دارد — نمی‌تواند
+   هم‌زمان نرخ دو واحد را نگه دارد. اگر یک کد در چند واحد تولید شود
+   (مثلاً کد ۳۷۳: عمدتاً انبار ۳/واحد اصلی، ولی کمی هم انبار ۸۰۸/یزد)
+   و دو واحد برای همان فرمول نرخ‌های متفاوت پیشنهاد بدهند، دیگر
+   به‌صورت کورسر (که هرکدام آخر اجرا شود بی‌سروصدا آن یکی را رونویسی
+   می‌کرد) پیش نمی‌رویم؛ به‌جایش همه‌ی واحدها یک‌جا (Set-based) پردازش
+   می‌شوند، پیشنهادِ هر واحد برای هر فرمول جمع‌آوری می‌شود، و فقط اگر
+   پیشنهادها برابر باشند (یا فقط یک واحد پیشنهاد داده باشد) اعمال
+   می‌شود؛ در صورت تعارض، هیچ‌کدام اعمال نمی‌شود و فقط هشدار ثبت
+   می‌شود.
    ═══════════════════════════════════════════════════════════════════ */
 CREATE OR ALTER PROCEDURE dbo.CC_sp_S07B_SyncLaborRate
     @RunId INT, @Month INT, @DT1 BIGINT, @DT2 BIGINT
@@ -52,73 +80,178 @@ AS
 BEGIN
     SET NOCOUNT ON;
 
-    DECLARE @UnitId INT, @Total INT = 0;
+    DECLARE @TafDastmozd BIGINT = 99999999, @TafSarbar BIGINT = 99999998;
+    DECLARE @Total INT = 0;
 
-    DECLARE cUnit CURSOR LOCAL FAST_FORWARD FOR
-        SELECT UnitId FROM dbo.CC_Unit WHERE IsActive = 1;
-
-    OPEN cUnit;
-    FETCH NEXT FROM cUnit INTO @UnitId;
-
-    WHILE @@FETCH_STATUS = 0
-    BEGIN
-        -- دستمزد واقعیِ این واحد از حساب ۷۵۱ — عیناً @actWage در S10
-        DECLARE @actWage FLOAT;
-        SELECT  @actWage = ISNULL(SUM(CASE WHEN m.CostKind = 1
-                                           THEN t.Amount * m.Ratio ELSE 0 END), 0)
-        FROM    dbo.CC_UnitAcc m
-        CROSS   APPLY (
-                    SELECT SUM(d.BED) - SUM(d.BES) AS Amount
-                    FROM   dbo.DEED_DTL d
-                    JOIN   dbo.DEED_HED hd ON hd.N_S = d.N_S
-                    WHERE  hd.DATE_S BETWEEN @DT1 AND @DT2
-                      AND  d.HES_K = m.HesKol
-                      AND  (m.HesMoin    IS NULL OR d.HES_M = m.HesMoin)
-                      AND  (m.HesTafsili IS NULL OR d.HES_T = m.HesTafsili)
-                ) t
-        WHERE   m.IsActive = 1 AND m.UnitId = @UnitId;
-
-        -- مجموع (مقدار تولید × ضریب) این واحد در همین ماه، فقط کالاهایی
-        -- که کاربر برایشان ضریب ثبت کرده (NULL/صفر یعنی «هنوز بررسی
-        -- نشده» و کنار می‌ماند) — عیناً منطق جذب‌شده در S10، با ANBAR
-        -- محصولِ همین واحد (CC_UnitAnbar.AnbarRole = 3)
-        DECLARE @totalWeight FLOAT;
-        SELECT  @totalWeight = ISNULL(SUM(pl.MEGHK * r.Coefficient), 0)
-        FROM    dbo.HEAD_LST  h
-        JOIN    dbo.INVO_LST  pl ON pl.NUMBER = h.NUMBER AND pl.TAG = 9
-        JOIN    dbo.HEAD_MANF hm ON hm.FNUMB  = TRY_CAST(pl.N_KOL AS INT) AND hm.GHEYMAT = @Month
-        JOIN    dbo.CC_LaborAbsorptionRate r ON r.CODE = hm.CODE AND r.UnitId = @UnitId
+    -- ۱) دستمزد/سربارِ واقعیِ هر واحد از حساب ۷۵۱، به‌نسبتِ سهمِ
+    --    مقداریِ (MEGHK) هر واحد از کل تولید همان کد در همین ماه —
+    --    رفعِ دوبارشماریِ کدهای مشترک بین واحدها (کد ۳۷۳).
+    ;WITH CodeAmt AS (
+        SELECT  TRY_CAST(d.HES_M AS BIGINT) AS CODE,
+                SUM(CASE WHEN d.HES_T = @TafDastmozd THEN d.BES - d.BED ELSE 0 END) AS WageAmt,
+                SUM(CASE WHEN d.HES_T = @TafSarbar   THEN d.BES - d.BED ELSE 0 END) AS OhAmt
+        FROM    dbo.DEED_DTL d
+        JOIN    dbo.DEED_HED hd ON hd.N_S = d.N_S
+        WHERE   d.HES_K = 751 AND d.HES_T IN (@TafDastmozd, @TafSarbar)
+          AND   hd.DATE_S BETWEEN @DT1 AND @DT2
+        GROUP BY TRY_CAST(d.HES_M AS BIGINT)
+    ),
+    CodeQty AS (
+        SELECT  TRY_CAST(pl.CODE AS BIGINT) AS CODE, cua.UnitId, SUM(pl.MEGHK) AS Qty
+        FROM    dbo.HEAD_LST h
+        JOIN    dbo.INVO_LST pl      ON pl.NUMBER = h.NUMBER AND pl.TAG = 9
+        JOIN    dbo.CC_UnitAnbar cua ON cua.Anbar  = pl.ANBAR AND cua.AnbarRole = 3
+        JOIN    dbo.CC_Unit u        ON u.UnitId   = cua.UnitId AND u.IsActive = 1
         WHERE   h.TAG = 9 AND h.DATE_N BETWEEN @DT1 AND @DT2
-          AND   pl.ANBAR IN (SELECT Anbar FROM dbo.CC_UnitAnbar
-                              WHERE UnitId = @UnitId AND AnbarRole = 3)
-          AND   r.Coefficient IS NOT NULL AND r.Coefficient <> 0 AND r.IsFixed = 0;
+        GROUP BY TRY_CAST(pl.CODE AS BIGINT), cua.UnitId
+    ),
+    CodeTotalQty AS (
+        SELECT CODE, SUM(Qty) AS TotalQty FROM CodeQty GROUP BY CODE
+    )
+    SELECT  cq.UnitId,
+            ISNULL(SUM(ca.WageAmt * cq.Qty / ctq.TotalQty), 0) AS ActWage,
+            ISNULL(SUM(ca.OhAmt   * cq.Qty / ctq.TotalQty), 0) AS ActOh
+    INTO    #UnitActual
+    FROM    CodeQty cq
+    JOIN    CodeTotalQty ctq ON ctq.CODE = cq.CODE
+    LEFT    JOIN CodeAmt ca ON ca.CODE = cq.CODE
+    WHERE   ctq.TotalQty <> 0
+    GROUP BY cq.UnitId;
 
-        IF @totalWeight <> 0
-        BEGIN
-            UPDATE hm
-               SET hm.IMBIBE_MANF = @actWage * r.Coefficient / @totalWeight
-            FROM   dbo.HEAD_MANF hm
-            JOIN   dbo.CC_LaborAbsorptionRate r ON r.CODE = hm.CODE AND r.UnitId = @UnitId
-                                                 AND r.Coefficient IS NOT NULL AND r.Coefficient <> 0
-                                                 AND r.IsFixed = 0
-            WHERE  hm.GHEYMAT = @Month
-              AND  hm.FNUMB IN (
-                        SELECT DISTINCT TRY_CAST(pl.N_KOL AS INT)
-                        FROM   dbo.HEAD_LST h
-                        JOIN   dbo.INVO_LST pl ON pl.NUMBER = h.NUMBER AND pl.TAG = 9
-                        WHERE  h.TAG = 9 AND h.DATE_N BETWEEN @DT1 AND @DT2
-                          AND  pl.ANBAR IN (SELECT Anbar FROM dbo.CC_UnitAnbar
-                                            WHERE UnitId = @UnitId AND AnbarRole = 3)
-                   );
+    -- ۲) مجموع (مقدار تولید × ضریب) هر واحد در همین ماه، فقط کالاهایی
+    --    که کاربر برایشان ضریب صریحِ غیرصفر ثبت کرده — عیناً منطق
+    --    جذب‌شده در S10، با ANBAR محصولِ همان واحد
+    --    (CC_UnitAnbar.AnbarRole = 3). ضریب سربارِ مؤثر =
+    --    ISNULL(OverheadCoefficient, Coefficient).
+    SELECT  cua.UnitId,
+            ISNULL(SUM(pl.MEGHK * r.Coefficient), 0) AS TotalWeight,
+            ISNULL(SUM(CASE WHEN ISNULL(r.OverheadCoefficient, r.Coefficient) <> 0
+                             THEN pl.MEGHK * ISNULL(r.OverheadCoefficient, r.Coefficient)
+                             ELSE 0 END), 0) AS TotalWeightOh
+    INTO    #UnitWeight
+    FROM    dbo.HEAD_LST  h
+    JOIN    dbo.INVO_LST  pl  ON pl.NUMBER = h.NUMBER AND pl.TAG = 9
+    JOIN    dbo.HEAD_MANF hm  ON hm.FNUMB  = TRY_CAST(pl.N_KOL AS INT) AND hm.GHEYMAT = @Month
+    JOIN    dbo.CC_UnitAnbar cua ON cua.Anbar = pl.ANBAR AND cua.AnbarRole = 3
+    JOIN    dbo.CC_Unit   u   ON u.UnitId  = cua.UnitId AND u.IsActive = 1
+    JOIN    dbo.CC_LaborAbsorptionRate r ON r.CODE = hm.CODE AND r.UnitId = cua.UnitId AND r.IsFixed = 0
+    WHERE   h.TAG = 9 AND h.DATE_N BETWEEN @DT1 AND @DT2
+      AND   r.Coefficient IS NOT NULL AND r.Coefficient <> 0
+    GROUP BY cua.UnitId;
 
-            SET @Total += @@ROWCOUNT;
-        END
+    -- هشدار صفر بودن واقعی وقتی وزنی هست — ماجرای یزد/خرداد که باعث
+    -- شد این گارد اضافه شود.
+    INSERT dbo.CC_RunLog (RunId, StepCode, Severity, Message)
+    SELECT @RunId, 'S07B', 2,
+           CONCAT(N'واحد ', w.UnitId, N': دستمزد واقعی این واحد از حساب ۷۵۱ صفر آمد (احتمالاً هیچ کدی توسط این واحد در این ماه تولید نشده یا حساب ۷۵۱ برای کدهای این واحد خالی است) — تقسیم دستمزد رد شد تا IMBIBE_MANF صفر نشود.')
+    FROM   #UnitWeight w
+    LEFT   JOIN #UnitActual a ON a.UnitId = w.UnitId
+    WHERE  w.TotalWeight <> 0 AND ISNULL(a.ActWage, 0) = 0;
 
-        FETCH NEXT FROM cUnit INTO @UnitId;
-    END
+    INSERT dbo.CC_RunLog (RunId, StepCode, Severity, Message)
+    SELECT @RunId, 'S07B', 2,
+           CONCAT(N'واحد ', w.UnitId, N': سربار واقعی این واحد از حساب ۷۵۱ صفر آمد (احتمالاً @TafSarbar روی این پایگاه‌داده استفاده نمی‌شود یا هیچ کدی توسط این واحد در این ماه تولید نشده) — تقسیم سربار رد شد تا IMBIBE_SAR صفر نشود.')
+    FROM   #UnitWeight w
+    LEFT   JOIN #UnitActual a ON a.UnitId = w.UnitId
+    WHERE  w.TotalWeightOh <> 0 AND ISNULL(a.ActOh, 0) = 0;
 
-    CLOSE cUnit;
-    DEALLOCATE cUnit;
+    -- ۳) پیشنهادِ نرخ هر (واحد، فرمول) این ماه:
+    --      IsFixed=1        → NULL (کارمزدی، هرگز دست نمی‌خورد)
+    --      Coefficient=0    → 0    (کاربر عمداً کنار گذاشته)
+    --      Coefficient=NULL → NULL (هنوز بررسی نشده، دست نمی‌خورد)
+    --      واقعی صفر        → NULL (نرخ ناقص می‌شد، دست نمی‌خورد — هشدار بالا)
+    --      وگرنه            → واقعی × ضریب ÷ مجموع‌وزن
+    ;WITH ThisMonthFormula AS (
+        SELECT DISTINCT hm.FNUMB, hm.CODE, cua.UnitId
+        FROM   dbo.HEAD_LST h
+        JOIN   dbo.INVO_LST pl ON pl.NUMBER = h.NUMBER AND pl.TAG = 9
+        JOIN   dbo.HEAD_MANF hm ON hm.FNUMB = TRY_CAST(pl.N_KOL AS INT) AND hm.GHEYMAT = @Month
+        JOIN   dbo.CC_UnitAnbar cua ON cua.Anbar = pl.ANBAR AND cua.AnbarRole = 3
+        JOIN   dbo.CC_Unit u ON u.UnitId = cua.UnitId AND u.IsActive = 1
+        WHERE  h.TAG = 9 AND h.DATE_N BETWEEN @DT1 AND @DT2
+    )
+    SELECT  f.FNUMB, f.CODE, f.UnitId,
+            CASE WHEN r.IsFixed = 1                                      THEN NULL
+                 WHEN r.Coefficient = 0                                  THEN 0
+                 WHEN r.Coefficient IS NULL                              THEN NULL
+                 WHEN ISNULL(a.ActWage, 0) = 0 OR ISNULL(w.TotalWeight, 0) = 0 THEN NULL
+                 ELSE a.ActWage * r.Coefficient / w.TotalWeight
+            END AS ProposedWage,
+            CASE WHEN r.IsFixed = 1                                      THEN NULL
+                 WHEN ISNULL(r.OverheadCoefficient, r.Coefficient) = 0    THEN 0
+                 WHEN ISNULL(r.OverheadCoefficient, r.Coefficient) IS NULL THEN NULL
+                 WHEN ISNULL(a.ActOh, 0) = 0 OR ISNULL(w.TotalWeightOh, 0) = 0 THEN NULL
+                 ELSE a.ActOh * ISNULL(r.OverheadCoefficient, r.Coefficient) / w.TotalWeightOh
+            END AS ProposedOh
+    INTO    #Proposals
+    FROM    ThisMonthFormula f
+    JOIN    dbo.CC_LaborAbsorptionRate r ON r.CODE = f.CODE AND r.UnitId = f.UnitId
+    LEFT    JOIN #UnitActual a ON a.UnitId = f.UnitId
+    LEFT    JOIN #UnitWeight w ON w.UnitId = f.UnitId;
+
+    DELETE FROM #Proposals WHERE ProposedWage IS NULL AND ProposedOh IS NULL;
+
+    -- ۴) تعارض بین واحدها روی یک فرمولِ مشترک (کد چندواحدی): اگر
+    --    پیشنهادهای واحدهای مختلف برای همین فرمول فرق کنند، هیچ‌کدام
+    --    اعمال نمی‌شود و فقط هشدار ثبت می‌شود — دستمزد/سربار جداگانه
+    --    بررسی می‌شوند چون ممکن است فقط یکی از این دو تعارض داشته باشد.
+    INSERT dbo.CC_RunLog (RunId, StepCode, Severity, Message)
+    SELECT @RunId, 'S07B', 2,
+           CONCAT(N'کالای ', CODE, N' هم‌زمان در چند واحد تولید می‌شود و ضریب دستمزدشان به نرخ‌های متفاوت می‌رسد (',
+                  FORMAT(MinW, 'N2'), N' در برابر ', FORMAT(MaxW, 'N2'),
+                  N') — چون فرمول این کالا فقط یک نرخ می‌تواند داشته باشد، دستمزدش دست‌نخورده ماند.')
+    FROM   (SELECT FNUMB, CODE, MIN(ProposedWage) AS MinW, MAX(ProposedWage) AS MaxW, COUNT(*) AS N
+            FROM   #Proposals WHERE ProposedWage IS NOT NULL GROUP BY FNUMB, CODE) wa
+    WHERE  wa.N > 1 AND ABS(wa.MaxW - wa.MinW) > 0.01;
+
+    INSERT dbo.CC_RunLog (RunId, StepCode, Severity, Message)
+    SELECT @RunId, 'S07B', 2,
+           CONCAT(N'کالای ', CODE, N' هم‌زمان در چند واحد تولید می‌شود و ضریب سربارشان به نرخ‌های متفاوت می‌رسد (',
+                  FORMAT(MinO, 'N2'), N' در برابر ', FORMAT(MaxO, 'N2'),
+                  N') — چون فرمول این کالا فقط یک نرخ می‌تواند داشته باشد، سربارش دست‌نخورده ماند.')
+    FROM   (SELECT FNUMB, CODE, MIN(ProposedOh) AS MinO, MAX(ProposedOh) AS MaxO, COUNT(*) AS N
+            FROM   #Proposals WHERE ProposedOh IS NOT NULL GROUP BY FNUMB, CODE) oa
+    WHERE  oa.N > 1 AND ABS(oa.MaxO - oa.MinO) > 0.01;
+
+    -- ۵) اعمال — فقط جایی که تعارضی نیست (تک‌واحدی، یا همه‌ی واحدها
+    --    یک نرخ پیشنهاد داده‌اند).
+    DECLARE @WageRows INT = 0, @OhRows INT = 0;
+
+    UPDATE hm
+       SET hm.IMBIBE_MANF = wa.MinW
+    FROM   dbo.HEAD_MANF hm
+    JOIN   (SELECT FNUMB, CODE, MIN(ProposedWage) AS MinW, MAX(ProposedWage) AS MaxW
+            FROM   #Proposals WHERE ProposedWage IS NOT NULL GROUP BY FNUMB, CODE) wa
+           ON wa.FNUMB = hm.FNUMB AND wa.CODE = hm.CODE
+    WHERE  hm.GHEYMAT = @Month
+      AND  ABS(wa.MaxW - wa.MinW) <= 0.01;
+
+    SET @WageRows = @@ROWCOUNT;
+    SET @Total   += @WageRows;
+
+    UPDATE hm
+       SET hm.IMBIBE_SAR = oa.MinO
+    FROM   dbo.HEAD_MANF hm
+    JOIN   (SELECT FNUMB, CODE, MIN(ProposedOh) AS MinO, MAX(ProposedOh) AS MaxO
+            FROM   #Proposals WHERE ProposedOh IS NOT NULL GROUP BY FNUMB, CODE) oa
+           ON oa.FNUMB = hm.FNUMB AND oa.CODE = hm.CODE
+    WHERE  hm.GHEYMAT = @Month
+      AND  ABS(oa.MaxO - oa.MinO) <= 0.01;
+
+    SET @OhRows = @@ROWCOUNT;
+    SET @Total += @OhRows;
+
+    -- ⚠️ قبلاً فقط در حالت هشدار/تعارض چیزی در CC_RunLog ثبت می‌شد —
+    -- یک اجرای موفقِ بی‌مشکل هیچ ردی در لاگ اجرا نمی‌گذاشت (تأیید
+    -- کاربر: «لاگ نمی‌زنه»). حالا همیشه یک خلاصه ثبت می‌شود، عیناً
+    -- سبکِ لاگِ S10.
+    INSERT dbo.CC_RunLog (RunId, StepCode, Severity, Message)
+    VALUES (@RunId, 'S07B', 1,
+            CONCAT(N'دستمزد ', @WageRows, N' فرمول و سربار ', @OhRows, N' فرمول به‌روزرسانی شد.'));
+
+    DROP TABLE #UnitActual;
+    DROP TABLE #UnitWeight;
+    DROP TABLE #Proposals;
 
     SELECT @Total AS Value;
 END
@@ -225,21 +358,43 @@ BEGIN
         -- نمي‌شد و کنترل CHK-08 دقيقاً به‌اندازه‌ي سربار غلط مي‌شد. پس هر
         -- دو تفصيلي را جدا جمع مي‌زنيم؛ هر کدام که در اين پايگاه‌داده
         -- خالي باشد صفر مي‌ماند و به کنترل کل آسيبي نمي‌زند.
+        --
+        -- ⚠️ اصلاح (تأیید کاربر، کد ۳۷۳ خرداد ۱۴۰۵ کشف شد، عیناً همان
+        -- تصحیح در S07B بالاتر): وقتی یک کد هم‌زمان در چند واحد تولید
+        -- می‌شود، IN ساده مبلغِ کامل ۷۵۱ آن کد را به هر واحدی که کد را
+        -- تولید کرده کامل می‌افزود (دوبارشماری در CHK-08). حالا مبلغ هر
+        -- کد به نسبتِ سهمِ مقداریِ (MEGHK) این واحد از کل تولید همان کد
+        -- در همین ماه تقسیم می‌شود.
         DECLARE @absWipWage FLOAT, @absWipOh FLOAT, @absWip FLOAT;
 
-        SELECT  @absWipWage = ISNULL(SUM(CASE WHEN d.HES_T = @TafDastmozd THEN d.BES - d.BED ELSE 0 END), 0),
-                @absWipOh   = ISNULL(SUM(CASE WHEN d.HES_T = @TafSarbar   THEN d.BES - d.BED ELSE 0 END), 0)
-        FROM    dbo.DEED_DTL d
-        JOIN    dbo.DEED_HED hd ON hd.N_S = d.N_S
-        WHERE   d.HES_K = 751 AND d.HES_T IN (@TafDastmozd, @TafSarbar)
-          AND   hd.DATE_S BETWEEN @DT1 AND @DT2
-          AND   TRY_CAST(d.HES_M AS BIGINT) IN (
-                    SELECT DISTINCT TRY_CAST(pl.CODE AS BIGINT)
-                    FROM   dbo.HEAD_LST h
-                    JOIN   dbo.INVO_LST pl ON pl.NUMBER = h.NUMBER AND pl.TAG = 9
-                    WHERE  h.TAG = 9 AND h.DATE_N BETWEEN @DT1 AND @DT2
-                      AND  pl.ANBAR IN (SELECT Anbar FROM dbo.CC_UnitAnbar
-                                        WHERE UnitId = @UnitId AND AnbarRole = 3));
+        ;WITH CodeAmt AS (
+            SELECT  TRY_CAST(d.HES_M AS BIGINT) AS CODE,
+                    SUM(CASE WHEN d.HES_T = @TafDastmozd THEN d.BES - d.BED ELSE 0 END) AS WageAmt,
+                    SUM(CASE WHEN d.HES_T = @TafSarbar   THEN d.BES - d.BED ELSE 0 END) AS OhAmt
+            FROM    dbo.DEED_DTL d
+            JOIN    dbo.DEED_HED hd ON hd.N_S = d.N_S
+            WHERE   d.HES_K = 751 AND d.HES_T IN (@TafDastmozd, @TafSarbar)
+              AND   hd.DATE_S BETWEEN @DT1 AND @DT2
+            GROUP BY TRY_CAST(d.HES_M AS BIGINT)
+        ),
+        CodeQty AS (
+            SELECT  TRY_CAST(pl.CODE AS BIGINT) AS CODE, cua.UnitId, SUM(pl.MEGHK) AS Qty
+            FROM    dbo.HEAD_LST h
+            JOIN    dbo.INVO_LST pl      ON pl.NUMBER = h.NUMBER AND pl.TAG = 9
+            JOIN    dbo.CC_UnitAnbar cua ON cua.Anbar  = pl.ANBAR AND cua.AnbarRole = 3
+            JOIN    dbo.CC_Unit u        ON u.UnitId   = cua.UnitId AND u.IsActive = 1
+            WHERE   h.TAG = 9 AND h.DATE_N BETWEEN @DT1 AND @DT2
+            GROUP BY TRY_CAST(pl.CODE AS BIGINT), cua.UnitId
+        ),
+        CodeTotalQty AS (
+            SELECT CODE, SUM(Qty) AS TotalQty FROM CodeQty GROUP BY CODE
+        )
+        SELECT  @absWipWage = ISNULL(SUM(ca.WageAmt * cq.Qty / ctq.TotalQty), 0),
+                @absWipOh   = ISNULL(SUM(ca.OhAmt   * cq.Qty / ctq.TotalQty), 0)
+        FROM    CodeAmt ca
+        JOIN    CodeQty cq       ON cq.CODE  = ca.CODE AND cq.UnitId = @UnitId
+        JOIN    CodeTotalQty ctq ON ctq.CODE = ca.CODE
+        WHERE   ctq.TotalQty <> 0;
 
         SET @absWip = @absWipWage + @absWipOh;
 

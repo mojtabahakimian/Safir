@@ -2059,7 +2059,8 @@ namespace Safir.Server.Controllers
         public async Task<ActionResult<IEnumerable<CostLaborRateDto>>> GetLaborRates()
         {
             const string sql = @"
-                SELECT   r.UnitId, u.UnitName, r.CODE AS Code, s.NAME AS ItemName, r.Coefficient, r.IsFixed, r.Note
+                SELECT   r.UnitId, u.UnitName, r.CODE AS Code, s.NAME AS ItemName,
+                         r.Coefficient, r.OverheadCoefficient, r.IsFixed, r.Note
                 FROM     dbo.CC_LaborAbsorptionRate r
                 LEFT     JOIN dbo.CC_Unit  u ON u.UnitId = r.UnitId
                 LEFT     JOIN dbo.STUF_DEF s ON s.CODE = r.CODE
@@ -2073,12 +2074,12 @@ namespace Safir.Server.Controllers
         public async Task<IActionResult> AddLaborRate([FromBody] UpsertLaborRateRequest req)
         {
             const string sql = @"
-                INSERT dbo.CC_LaborAbsorptionRate (UnitId, CODE, Coefficient, IsFixed, Note)
-                VALUES (@UnitId, @Code, @Coefficient, @IsFixed, @Note)";
+                INSERT dbo.CC_LaborAbsorptionRate (UnitId, CODE, Coefficient, OverheadCoefficient, IsFixed, Note)
+                VALUES (@UnitId, @Code, @Coefficient, @OverheadCoefficient, @IsFixed, @Note)";
 
             try
             {
-                await _db.DoExecuteSQLAsync(sql, new { req.UnitId, req.Code, req.Coefficient, req.IsFixed, req.Note });
+                await _db.DoExecuteSQLAsync(sql, new { req.UnitId, req.Code, req.Coefficient, req.OverheadCoefficient, req.IsFixed, req.Note });
                 return Ok();
             }
             catch (Exception ex)
@@ -2093,11 +2094,12 @@ namespace Safir.Server.Controllers
         {
             const string sql = @"
                 UPDATE dbo.CC_LaborAbsorptionRate
-                   SET Coefficient = @Coefficient, IsFixed = @IsFixed, Note = @Note
+                   SET Coefficient = @Coefficient, OverheadCoefficient = @OverheadCoefficient,
+                       IsFixed = @IsFixed, Note = @Note
                  WHERE UnitId = @unitId AND CODE = @code";
 
             var rows = await _db.DoExecuteSQLAsync(sql,
-                new { unitId, code, req.Coefficient, req.IsFixed, req.Note });
+                new { unitId, code, req.Coefficient, req.OverheadCoefficient, req.IsFixed, req.Note });
 
             return rows > 0 ? NoContent() : NotFound();
         }

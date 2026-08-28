@@ -59,6 +59,18 @@ namespace Safir.Server.CostClose
         /// <summary>در فرمول‌ها می‌نویسد؟ اگر بله، پرچم بازتولید بالا می‌رود.</summary>
         bool WritesFormulas { get; }
 
+        /// <summary>
+        /// اگر false، این گام هرگز به‌طور خودکار اجرا نمی‌شود — نه در
+        /// زنجیره‌ی کامل یک اجرای معمولی/ادامه (OnlySteps=null)، نه در
+        /// بازتولیدِ خودکارِ ناشی از WritesFormulas. فقط وقتی کاربر آن
+        /// را صریحاً در OnlySteps انتخاب کند (مثلاً از دیالوگ «اجرای
+        /// مجدد گام‌ها») اجرا می‌شود. برای S07B: تخصیص دستمزد روی داده‌ی
+        /// دستیِ کاربر (ضریب‌ها) کار می‌کند و اجرای خودکارِ بی‌اطلاعِ او
+        /// می‌تواند فرمول‌ها را با آخرین ضریب‌های هنوز کامل‌نشده به‌روز
+        /// کند — کاربر باید صراحتاً بخواهد.
+        /// </summary>
+        bool AutoRun => true;
+
         Task<StepResult> ExecuteAsync(StepContext ctx);
     }
 
@@ -129,7 +141,9 @@ namespace Safir.Server.CostClose
 
                 var ordered = _steps
                     .OrderBy(s => s.SeqNo)
-                    .Where(s => onlySteps is null || onlySteps.Contains(s.StepCode))
+                    .Where(s => onlySteps is not null
+                                    ? onlySteps.Contains(s.StepCode)
+                                    : s.AutoRun)
                     .ToList();
 
                 // اجرای گام‌ها؛ فهرست ممکن است حین اجرا گسترش یابد
@@ -267,6 +281,9 @@ namespace Safir.Server.CostClose
                             "dbo.CC_sp_SetFormulasDirty",
                             new { RunId = job.RunId, Dirty = true });
 
+                        // ⚠️ عمداً S07B اینجا نیست (تأیید کاربر): آن گام فقط با
+                        // درخواست صریح کاربر اجرا می‌شود، نه به‌صورت خودکار در
+                        // این بازتولید — نگاه کنید AutoRun روی ICostStep.
                         var rebuild = _steps
                             .Where(s => s.StepCode is "S07" or "S07A" or "S08")
                             .OrderBy(s => s.SeqNo);

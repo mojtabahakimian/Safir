@@ -252,14 +252,22 @@ GO
    IMBIBE_MANF) باید همیشه ثابت بماند — نه S07B (تقسیم بر اساس ضریب) و
    نه S10 (ضریب تعدیل یکنواخت) نباید دست‌شان بزنند. تأیید کاربر: این
    ویژگی هم به (واحد، کالا) وابسته است، نه فقط کالا — یک کالا ممکن است
-   در یک واحد کارمزدی باشد و در واحد دیگر نه. */
+   در یک واحد کارمزدی باشد و در واحد دیگر نه.
+
+   OverheadCoefficient: ضریب جذبِ سربار (IMBIBE_SAR)، مستقل از ضریب
+   دستمزد — چون معیارِ درستِ سربار می‌تواند با معیارِ دستمزد فرق کند.
+   عمداً NULL می‌پذیرد و در محاسبه به ضریب دستمزد بازمی‌گردد (تأیید
+   کاربر: «فعلاً از دستمزد براش مقدار بده») — یعنی تا وقتی کاربر
+   مقدار مستقلی برای یک ردیف وارد نکند، همان ضریب دستمزد برای سربارش
+   هم استفاده می‌شود. */
 IF OBJECT_ID('dbo.CC_LaborAbsorptionRate','U') IS NULL
 CREATE TABLE dbo.CC_LaborAbsorptionRate (
-    UnitId      INT           NOT NULL,
-    CODE        NVARCHAR(30)  NOT NULL,
-    Coefficient FLOAT         NULL,
-    IsFixed     BIT           NOT NULL DEFAULT 0,
-    Note        NVARCHAR(200) NULL,
+    UnitId              INT           NOT NULL,
+    CODE                NVARCHAR(30)  NOT NULL,
+    Coefficient         FLOAT         NULL,
+    OverheadCoefficient FLOAT         NULL,
+    IsFixed             BIT           NOT NULL DEFAULT 0,
+    Note                NVARCHAR(200) NULL,
     CONSTRAINT PK_CC_LaborAbsorptionRate PRIMARY KEY (UnitId, CODE),
     CONSTRAINT FK_CC_LaborAbsorptionRate_Unit FOREIGN KEY (UnitId) REFERENCES dbo.CC_Unit(UnitId)
 );

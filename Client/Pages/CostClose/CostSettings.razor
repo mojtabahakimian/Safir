@@ -288,7 +288,8 @@
                         <MudTh Style="width:130px">واحد تولیدی</MudTh>
                         <MudTh Style="width:110px">کد کالا</MudTh>
                         <MudTh>نام کالا</MudTh>
-                        <MudTh>ضریب</MudTh>
+                        <MudTh>ضریب دستمزد</MudTh>
+                        <MudTh>ضریب سربار</MudTh>
                         <MudTh Style="width:100px"></MudTh>
                         <MudTh>یادداشت</MudTh>
                         <MudTh Style="width:90px"></MudTh>
@@ -309,6 +310,24 @@
                             else
                             {
                                 <span class="cc-num">@context.Coefficient.Value.ToString("N3")</span>
+                            }
+                        </MudTd>
+                        <MudTd>
+                            @if (context.IsFixed)
+                            {
+                                <span class="cc-num">—</span>
+                            }
+                            else if (context.OverheadCoefficient is not null)
+                            {
+                                <span class="cc-num">@context.OverheadCoefficient.Value.ToString("N3")</span>
+                            }
+                            else if (context.Coefficient is not null)
+                            {
+                                <span class="cc-num" style="opacity:.6">@context.Coefficient.Value.ToString("N3") (از دستمزد)</span>
+                            }
+                            else
+                            {
+                                <MudChip T="string" Size="Size.Small" Color="Color.Warning">هنوز تعیین نشده</MudChip>
                             }
                         </MudTd>
                         <MudTd>

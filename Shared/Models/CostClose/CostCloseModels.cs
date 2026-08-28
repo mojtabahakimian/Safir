@@ -662,24 +662,28 @@ namespace Safir.Shared.Models.CostClose
     /// دستمزد واقعیِ هر واحد بین کالاهایش در گام S07B.</summary>
     public class CostLaborRateDto
     {
-        public int     UnitId      { get; set; }
-        public string? UnitName    { get; set; }
-        public string  Code        { get; set; } = "";
-        public string? ItemName    { get; set; }
-        public double? Coefficient { get; set; }
+        public int     UnitId              { get; set; }
+        public string? UnitName            { get; set; }
+        public string  Code                { get; set; } = "";
+        public string? ItemName            { get; set; }
+        public double? Coefficient         { get; set; }
+        /// <summary>ضریب جذب سربار — اگر خالی باشد، همان Coefficient (ضریب
+        /// دستمزد) برایش استفاده می‌شود.</summary>
+        public double? OverheadCoefficient { get; set; }
         /// <summary>کارمزدی — نرخ این کالا در این واحد ثابت است؛ نه S07B
         /// (تقسیم بر اساس ضریب) و نه S10 (ضریب تعدیل) دست‌شان نمی‌زنند.</summary>
-        public bool     IsFixed     { get; set; }
-        public string? Note        { get; set; }
+        public bool     IsFixed             { get; set; }
+        public string? Note                { get; set; }
     }
 
     public class UpsertLaborRateRequest
     {
-        public int     UnitId      { get; set; }
-        public string  Code        { get; set; } = "";
-        public double? Coefficient { get; set; }
-        public bool     IsFixed     { get; set; }
-        public string? Note        { get; set; }
+        public int     UnitId              { get; set; }
+        public string  Code                { get; set; } = "";
+        public double? Coefficient         { get; set; }
+        public double? OverheadCoefficient { get; set; }
+        public bool     IsFixed             { get; set; }
+        public string? Note                { get; set; }
     }
 
     public class ItemLookupDto
