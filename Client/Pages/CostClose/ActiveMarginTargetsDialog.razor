@@ -1,0 +1,109 @@
+@using Safir.Shared.Models.CostClose
+@using Safir.Client.Services
+@inject CostCloseApiService Api
+@inject ISnackbar Snackbar
+@inject IDialogService Dialog
+
+<MudDialog>
+    <DialogContent>
+        <div dir="rtl" style="min-width:600px">
+            <MudText Typo="Typo.body2" Class="mb-3">
+                همه‌ی هدف‌های حاشیه‌ی سودِ فعال — مستقل از فیلتر جدولِ سود و
+                زیان. چون این جدول به هیچ اجرای خاصی مقید نیست، کالایی که
+                امروز اینجا هدف داشته باشد، در اجراهای بعدی هم همین هدف را
+                نگه می‌دارد تا این‌جا حذفش کنید — حتی اگر دیگر در فهرست
+                «زیان‌ده» ظاهر نشود.
+            </MudText>
+
+            @if (_busy)
+            {
+                <MudProgressLinear Indeterminate Color="Color.Primary" Class="mb-3" />
+            }
+            else if (_items.Count == 0)
+            {
+                <MudAlert Severity="Severity.Info" Dense>فعلاً هیچ هدف فعالی ثبت نشده.</MudAlert>
+            }
+            else
+            {
+                <MudSimpleTable Dense Hover>
+                    <thead>
+                        <tr>
+                            <th>کالا</th>
+                            <th>هدف</th>
+                            <th>متعادل‌کننده</th>
+                            <th style="width:70px"></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var it in _items)
+                        {
+                            <tr>
+                                <td>@it.ItemName (@it.Code)</td>
+                                <td>@TargetLabel(it)</td>
+                                <td>@(it.BalancingCode is null ? "—" : $"{it.BalancingName} ({it.BalancingCode})")</td>
+                                <td>
+                                    <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small"
+                                                   Color="Color.Error" Title="حذف این هدف"
+                                                   OnClick="@(() => Remove(it))" />
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </MudSimpleTable>
+            }
+        </div>
+    </DialogContent>
+
+    <DialogActions>
+        <MudButton OnClick="Close">بستن</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private MudDialogInstance MudDialog { get; set; } = default!;
+
+    private List<ActiveMarginTargetDto> _items = new();
+    private bool _busy;
+    private bool _changed;
+
+    protected override async Task OnInitializedAsync() => await Load();
+
+    private async Task Load()
+    {
+        _busy = true;
+        try { _items = await Api.GetActiveMarginTargetsAsync(); }
+        finally { _busy = false; }
+    }
+
+    private static string TargetLabel(ActiveMarginTargetDto it) => it.TargetKind switch
+    {
+        1 => "سود صفر",
+        2 => $"درصد مشخص ({it.TargetPct}%)",
+        4 => "سود صفر — پخش خودکار",
+        _ => "—"
+    };
+
+    private async Task Remove(ActiveMarginTargetDto it)
+    {
+        var confirm = await Dialog.ShowMessageBox(
+            "حذف هدف",
+            $"هدف روی «{it.ItemName}» حذف می‌شود و این کالا «آزاد» می‌شود. مطمئن‌اید؟",
+            yesText: "بله، حذف کن", cancelText: "انصراف");
+
+        if (confirm != true) return;
+
+        var (ok, err) = await Api.DeactivateMarginTargetAsync(it.Id);
+        if (ok)
+        {
+            _changed = true;
+            Snackbar.Add("حذف شد", Severity.Success);
+            await Load();
+        }
+        else
+        {
+            Snackbar.Add(err ?? "حذف ناموفق بود", Severity.Error);
+        }
+    }
+
+    private void Close() => MudDialog.Close(DialogResult.Ok(_changed));
+}

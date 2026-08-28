@@ -80,3 +80,7 @@ window.createPdfBlobUrl = (byteArray) => {
 
 // آزادسازی Blob URL هنگام بسته شدن نمایشگر (جلوگیری از نشت حافظه)
 window.revokePdfBlobUrl = (url) => { if (url) URL.revokeObjectURL(url); };
+// همیشه آخرین سطرِ پنل لاگ (بستن ماه) را نشان بده — هر بار سطر تازه اضافه شد
+window.ccScrollToBottom = (el) => {
+    if (el) el.scrollTop = el.scrollHeight;
+};

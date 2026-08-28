@@ -115,8 +115,12 @@ GO
 /* ═══════════════════════════════════════════════════════════════════
    S12b — اعمال هدف حاشیه سود
 
-   وقتی زیان یک کالا صفر می‌شود، مبلغ آن از بهای تمام‌شده‌اش کم و
-   به کالای متعادل‌کننده اضافه می‌شود، تا جمع کل دست‌نخورده بماند.
+   وقتی زیان یک کالا صفر می‌شود، مبلغ آن از بهای تمام‌شده‌اش کم می‌شود.
+   این مبلغ یا (الف) به یک کالاي متعادل‌کننده‌ي دستيِ واحد اضافه مي‌شود
+   (TargetKind=1/2 با BalancingCode مشخص)، يا (ب) با «پخش خودکار»
+   (TargetKind=4) متناسب با سود، بين همه‌ي کالاهاي سودده و بدون هدفِ
+   موجود در آن اجرا پخش مي‌شود — چون يک کالاي زيان‌ده معمولاً از ظرفيتِ
+   يک کالاي سودده‌ي تنها بيشتر است.
 
    تغییر روی IMBIBE_MANF فرمول انجام می‌گیرد، چون تنها جزئی است
    که مستقل از مواد قابل تنظیم است.
@@ -134,7 +138,7 @@ BEGIN
 
     IF OBJECT_ID('tempdb..#Adj') IS NOT NULL DROP TABLE #Adj;
 
-    ---- مبلغ تعديل لازم براي هر کالاي هدف‌دار
+    ---- مبلغ تعديل لازم براي هر کالاي هدف‌دار (دستي يا خودکار)
     SELECT  m.Code,
             t.TargetKind,
             t.TargetPct,
@@ -145,29 +149,77 @@ BEGIN
             CASE t.TargetKind
                  WHEN 1 THEN m.CostAmount - m.SalesAmount                    -- سود صفر
                  WHEN 2 THEN m.CostAmount - m.SalesAmount * (1 - t.TargetPct/100.0)
+                 WHEN 4 THEN m.CostAmount - m.SalesAmount                    -- سود صفر + پخش خودکار
                  ELSE 0 END AS AdjustAmount
     INTO    #Adj
     FROM    dbo.CC_ItemMargin m
     JOIN    dbo.CC_MarginTarget t ON t.Code = m.Code AND t.IsActive = 1
     WHERE   m.RunId = @RunId
-      AND   t.TargetKind IN (1, 2)
+      AND   t.TargetKind IN (1, 2, 4)
       AND   m.QtySold <> 0;
 
     DELETE #Adj WHERE ABS(AdjustAmount) < 1;
 
+    ---- استخر پخش خودکار: کالاهاي سودده‌اي که خودشان هدف يا
+    -- متعادل‌کننده‌ي دستيِ کسي نيستند (تا تعارض با تخصيص دستي پيش نيايد)
+    IF OBJECT_ID('tempdb..#Pool') IS NOT NULL DROP TABLE #Pool;
+
+    SELECT  m.Code, m.Profit, m.QtySold
+    INTO    #Pool
+    FROM    dbo.CC_ItemMargin m
+    WHERE   m.RunId = @RunId
+      AND   m.Profit > 0
+      AND   m.QtySold <> 0
+      AND   m.Code NOT IN (SELECT Code FROM #Adj)
+      AND   m.Code NOT IN (SELECT BalancingCode FROM #Adj WHERE BalancingCode IS NOT NULL);
+
+    DECLARE @TotalAutoAdjust FLOAT = (SELECT ISNULL(SUM(AdjustAmount), 0) FROM #Adj WHERE TargetKind = 4);
+    DECLARE @TotalPoolProfit FLOAT = (SELECT ISNULL(SUM(Profit), 0) FROM #Pool);
+
+    IF @TotalAutoAdjust > @TotalPoolProfit
+    BEGIN
+        SELECT  @TotalAutoAdjust AS مجموع_زيان_پخش_خودکار,
+                @TotalPoolProfit AS مجموع_سود_استخر;
+
+        RAISERROR(N'مجموع زيان کالاهاي «پخش خودکار» از مجموع سود کالاهاي سودده‌ي موجود (استخر) بيشتر است؛ بدون منفي‌شدن نرخ جذب امکان پخش کامل نيست — يک يا چند کالا را از حالت «پخش خودکار» خارج کنيد يا اهداف دستي را کاهش دهيد.', 16, 1);
+        RETURN;
+    END
+
+    IF OBJECT_ID('tempdb..#AutoShare') IS NOT NULL DROP TABLE #AutoShare;
+
+    SELECT  p.Code,
+            p.QtySold AS Qty,
+            (p.Profit / NULLIF(@TotalPoolProfit, 0)) * @TotalAutoAdjust AS Amount
+    INTO    #AutoShare
+    FROM    #Pool p
+    WHERE   @TotalAutoAdjust <> 0;
+
+    ---- تجميع مبلغ افزايشيِ هر متعادل‌کننده — دستي و سهم پخش خودکار با هم
+    IF OBJECT_ID('tempdb..#BalancerAgg') IS NOT NULL DROP TABLE #BalancerAgg;
+
+    SELECT  Code, SUM(Amount) AS Amount, MAX(Qty) AS Qty
+    INTO    #BalancerAgg
+    FROM (
+        SELECT  a.BalancingCode AS Code, a.AdjustAmount AS Amount, bm.QtySold AS Qty
+        FROM    #Adj a
+        JOIN    dbo.CC_ItemMargin bm ON bm.Code = a.BalancingCode AND bm.RunId = @RunId
+        WHERE   a.BalancingCode IS NOT NULL AND bm.QtySold <> 0
+        UNION ALL
+        SELECT  Code, Amount, Qty FROM #AutoShare
+    ) u
+    GROUP BY Code;
+
     ---- هشدار: کالاي متعادل‌کننده زيان‌ده مي‌شود
     IF OBJECT_ID('tempdb..#Warn') IS NOT NULL DROP TABLE #Warn;
 
-    SELECT  a.Code                    AS SourceCode,
-            a.BalancingCode,
-            a.AdjustAmount,
-            bm.Profit                 AS BalancerProfitBefore,
-            bm.Profit - a.AdjustAmount AS BalancerProfitAfter
+    SELECT  ba.Code                    AS BalancingCode,
+            ba.Amount                  AS AdjustAmount,
+            bm.Profit                  AS BalancerProfitBefore,
+            bm.Profit - ba.Amount      AS BalancerProfitAfter
     INTO    #Warn
-    FROM    #Adj a
-    JOIN    dbo.CC_ItemMargin bm ON bm.Code = a.BalancingCode AND bm.RunId = @RunId
-    WHERE   a.BalancingCode IS NOT NULL
-      AND   bm.Profit - a.AdjustAmount < 0
+    FROM    #BalancerAgg ba
+    JOIN    dbo.CC_ItemMargin bm ON bm.Code = ba.Code AND bm.RunId = @RunId
+    WHERE   bm.Profit - ba.Amount < 0
       AND   bm.Profit >= 0;
 
     ---- نگهبان: نرخ جذب منفي
@@ -193,16 +245,9 @@ BEGIN
         SELECT  CAST(hm.CODE AS BIGINT),
                 N'متعادل‌کننده',
                 hm.IMBIBE_MANF,
-                hm.IMBIBE_MANF + (x.Amount / NULLIF(x.Qty, 0))
+                hm.IMBIBE_MANF + (ba.Amount / NULLIF(ba.Qty, 0))
         FROM    dbo.HEAD_MANF hm
-        JOIN   (SELECT a.BalancingCode AS Code,
-                       SUM(a.AdjustAmount) AS Amount,
-                       MAX(bm.QtySold) AS Qty
-                FROM   #Adj a
-                JOIN   dbo.CC_ItemMargin bm
-                       ON bm.Code = a.BalancingCode AND bm.RunId = @RunId
-                WHERE  a.BalancingCode IS NOT NULL AND bm.QtySold <> 0
-                GROUP BY a.BalancingCode) x ON CAST(hm.CODE AS BIGINT) = x.Code
+        JOIN    #BalancerAgg ba ON CAST(hm.CODE AS BIGINT) = ba.Code
         WHERE   hm.GHEYMAT = @Month
     ) q
     WHERE  q.NerkhAfter < 0;
@@ -215,6 +260,7 @@ BEGIN
                 a.CostAmount         AS بها,
                 a.SalesAmount - a.CostAmount AS سود_فعلي,
                 a.AdjustAmount       AS مبلغ_تعديل,
+                a.TargetKind         AS نوع_هدف,
                 a.BalancingCode      AS کالاي_متعادل_کننده,
                 sb.NAME              AS نام_متعادل_کننده
         FROM    #Adj a
@@ -222,8 +268,18 @@ BEGIN
         LEFT    JOIN dbo.STUF_DEF sb ON TRY_CAST(sb.CODE AS BIGINT) = a.BalancingCode
         ORDER BY ABS(a.AdjustAmount) DESC;
 
-        SELECT  w.SourceCode              AS کالاي_مبدا,
-                w.BalancingCode           AS متعادل_کننده,
+        ---- سهم هر کالا از پخش خودکار — براي پيش‌نمايش
+        SELECT  au.Code            AS کد_کالا,
+                s.NAME             AS نام_کالا,
+                au.Amount          AS سهم_از_پخش_خودکار,
+                pm.Profit          AS سود_قبل,
+                pm.Profit - au.Amount AS سود_بعد
+        FROM    #AutoShare au
+        JOIN    dbo.CC_ItemMargin pm ON pm.Code = au.Code AND pm.RunId = @RunId
+        LEFT    JOIN dbo.STUF_DEF s ON TRY_CAST(s.CODE AS BIGINT) = au.Code
+        ORDER BY au.Amount DESC;
+
+        SELECT  w.BalancingCode           AS متعادل_کننده,
                 w.BalancerProfitBefore    AS سود_قبل,
                 w.BalancerProfitAfter     AS سود_بعد,
                 N'کالاي متعادل‌کننده زيان‌ده مي‌شود' AS هشدار
@@ -269,9 +325,9 @@ BEGIN
 
     DECLARE @n1 INT = @@ROWCOUNT;
 
-    ---- افزايش بهاي کالاي متعادل‌کننده به همان مبلغ
+    ---- افزايش بهاي کالاي متعادل‌کننده (دستي يا خودکار) به همان مبلغ
     UPDATE  hm
-       SET  hm.IMBIBE_MANF = hm.IMBIBE_MANF + (x.Amount / NULLIF(x.Qty, 0))
+       SET  hm.IMBIBE_MANF = hm.IMBIBE_MANF + (ba.Amount / NULLIF(ba.Qty, 0))
     OUTPUT  @RunId, 'S12', inserted.FNUMB,
             TRY_CAST(inserted.CODE AS BIGINT), NULL, 'IMBIBE_MANF',
             deleted.IMBIBE_MANF, inserted.IMBIBE_MANF,
@@ -280,21 +336,14 @@ BEGIN
             (RunId, StepCode, FNUMB, ParentCode, ChildCode,
              FieldName, OldValue, NewValue, Reason)
     FROM    dbo.HEAD_MANF hm
-    JOIN   (SELECT a.BalancingCode AS Code,
-                   SUM(a.AdjustAmount) AS Amount,
-                   MAX(bm.QtySold) AS Qty
-            FROM   #Adj a
-            JOIN   dbo.CC_ItemMargin bm
-                   ON bm.Code = a.BalancingCode AND bm.RunId = @RunId
-            WHERE  a.BalancingCode IS NOT NULL AND bm.QtySold <> 0
-            GROUP BY a.BalancingCode) x ON CAST(hm.CODE AS BIGINT) = x.Code
+    JOIN    #BalancerAgg ba ON CAST(hm.CODE AS BIGINT) = ba.Code
     WHERE   hm.GHEYMAT = @Month;
 
     DECLARE @n2 INT = @@ROWCOUNT;
 
     INSERT dbo.CC_RunLog (RunId, StepCode, Severity, Message)
     VALUES (@RunId, 'S12', 1,
-            CONCAT(N'هدف حاشيه سود: ', @n1, N' کالاي هدف، ', @n2, N' متعادل‌کننده'));
+            CONCAT(N'هدف حاشيه سود: ', @n1, N' کالاي هدف، ', @n2, N' متعادل‌کننده (دستي+پخش خودکار)'));
 
     COMMIT;
 

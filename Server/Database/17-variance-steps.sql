@@ -93,6 +93,27 @@ BEGIN
     /* ─── بخش دو: انبارگرداني ─── */
     DECLARE @anb INT, @grdNum INT, @grdDate INT, @countRows INT = 0;
 
+    -- NUM3 مقدارِ شمارشِ فیزیکیِ واقعی است (برای انبارهایی که واقعاً
+    -- شمارش دستی دارند، نه اسنپ‌شاتِ خودکارِ روزانه) — این رویه نمی‌تواند
+    -- آن را بازتولید کند. DELETE پایین آن را همراه کل ردیف پاک می‌کرد و
+    -- INSERT بعدی هرگز NUM3 را دوباره نمی‌گذاشت، پس هر بار اجرای این گام
+    -- بی‌صدا پاکش می‌کرد — دقیقاً همان چیزی که برای سند ۷۲ (انبار ۳)
+    -- رخ داد و کاربر تأیید کرد باگ بوده. قبل از DELETE نگهش می‌داریم و
+    -- بعد از INSERT دوباره رویش می‌گذاریم.
+    IF OBJECT_ID('tempdb..#Num3') IS NOT NULL DROP TABLE #Num3;
+
+    SELECT  l.GRD_NUM, l.CODE, l.NUM3
+    INTO    #Num3
+    FROM    dbo.ANBGRD_LST  l
+    JOIN    dbo.ANBGRD_HEAD h ON h.GRD_NUM = l.GRD_NUM
+    WHERE   h.GRD_DATE BETWEEN @DT1 AND @DT2
+      AND   l.NUM3 IS NOT NULL AND l.NUM3 <> 0
+      AND   h.GRD_ANBAR IN (SELECT ua.Anbar FROM dbo.CC_UnitAnbar ua
+                             JOIN dbo.CC_Unit u ON u.UnitId = ua.UnitId AND u.IsActive = 1
+                             WHERE ua.DoStockCount = 1);
+
+    CREATE CLUSTERED INDEX IX_Num3 ON #Num3(GRD_NUM, CODE);
+
     DECLARE cAnb CURSOR LOCAL FAST_FORWARD FOR
         SELECT   ua.Anbar
         FROM     dbo.CC_UnitAnbar ua
@@ -137,6 +158,11 @@ BEGIN
 
     CLOSE cAnb;
     DEALLOCATE cAnb;
+
+    UPDATE  l
+       SET  l.NUM3 = n.NUM3
+    FROM    dbo.ANBGRD_LST l
+    JOIN    #Num3 n ON n.GRD_NUM = l.GRD_NUM AND n.CODE = l.CODE;
 
     INSERT dbo.CC_RunLog (RunId, StepCode, Severity, Message)
     VALUES (@RunId, 'S07', 1, CONCAT(N'انبارگرداني: ', @countRows, N' سطر'));
@@ -260,7 +286,17 @@ BEGIN
 
     DELETE dbo.CC_VarianceDecision WHERE RunId = @RunId;
 
-    ;WITH Prev AS (
+    -- CC_Variance يک رديف به ازای هر (RunId,Anbar,Code) دارد؛ اگر مستقيم
+    -- ازش INSERT کنيم، کالاهای چندانباره چند بار seed می‌شوند و همان
+    -- مشکلِ تکرارِ CC_VarianceDecision که در Client/GetVariances/S09 رفع
+    -- شد اينجا هم دوباره رخ می‌دهد. اول به ازای هر کد جمع می‌زنيم.
+    ;WITH VarByCode AS (
+        SELECT  Code, SUM(ConsumedQty) AS ConsumedQty
+        FROM    dbo.CC_Variance
+        WHERE   RunId = @RunId
+        GROUP BY Code
+    ),
+    Prev AS (
         SELECT  d.Code, d.Mode, d.TargetCode,
                 ROW_NUMBER() OVER (PARTITION BY d.Code
                                    ORDER BY d.DecisionId DESC) AS rn
@@ -290,14 +326,13 @@ BEGIN
                    THEN N'ماده در هيچ فرمولي مصرف نشده — بررسي شود'
               ELSE N'تصميم جديد'
             END
-    FROM    dbo.CC_Variance v
+    FROM    VarByCode v
     LEFT    JOIN Prev p ON p.Code = v.Code AND p.rn = 1
     OUTER   APPLY (SELECT TOP 1 h.FNUMB
                    FROM   dbo.HEAD_MANF h
                    WHERE  CAST(h.CODE AS BIGINT) = p.TargetCode
                      AND  h.GHEYMAT = @Month
-                   ORDER BY h.FNUMB DESC) hm
-    WHERE   v.RunId = @RunId;
+                   ORDER BY h.FNUMB DESC) hm;
 
     ---- CHK-12: تصميم ماه قبل قابل ادامه نيست
     DELETE dbo.CC_Exception WHERE RunId = @RunId AND RuleCode = 'CHK-12';
@@ -360,7 +395,19 @@ BEGIN
     ---- سهم هر فرمول از انحراف هر ماده
     IF OBJECT_ID('tempdb..#Share') IS NOT NULL DROP TABLE #Share;
 
-    ;WITH Usage AS (
+    -- CC_Variance يک رديف به ازای هر (RunId,Anbar,Code) دارد؛ تصميم‌ها
+    -- در سطح کالا هستند، نه انبار. جوين مستقيم به CC_Variance برای
+    -- کالاهای چندانباره چند رديف #Share توليد می‌کرد و UPDATE پايين
+    -- فقط يکی را (به‌صورت غيرقطعی) اعمال می‌کرد — انحراف انبارهای
+    -- ديگر آن کالا اصلاً به فرمول نمی‌رسيد و «باقيمانده» هرگز صفر
+    -- نمی‌شد. اول به ازای هر کد جمع می‌زنيم.
+    ;WITH VarByCode AS (
+        SELECT  Code, SUM(QtyVariance) AS QtyVariance
+        FROM    dbo.CC_Variance
+        WHERE   RunId = @RunId
+        GROUP BY Code
+    ),
+    Usage AS (
         SELECT  d.FNUMB,
                 CAST(d.CODE AS BIGINT) AS Code,
                 p.ProdQty * d.MEGHk    AS UsedQty
@@ -383,7 +430,7 @@ BEGIN
             END AS Ratio
     INTO    #Share
     FROM    Usage u
-    JOIN    dbo.CC_Variance          v  ON v.Code  = u.Code AND v.RunId  = @RunId
+    JOIN    VarByCode                v  ON v.Code  = u.Code
     JOIN    dbo.CC_VarianceDecision  dc ON dc.Code = u.Code AND dc.RunId = @RunId
     WHERE   dc.Mode IN (1, 2);
 

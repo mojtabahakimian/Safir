@@ -154,6 +154,13 @@ CREATE TABLE dbo.CC_AcceptedException (
     IsActive     BIT           NOT NULL DEFAULT 1
 );
 GO
+-- CHK-01/CHK-02 بر خلاف CHK-03/CHK-04 روی جفت (انبار، کالا) کار می‌کنند،
+-- نه فقط کالا — بدون این ستون، پذیرفتن یک مغایرت برای یک انبار خاص،
+-- همان کد را در همه‌ی انبارها هم بی‌صدا خاموش می‌کرد. NULL يعني همه‌ی
+-- انبارها (عيناً همان قرارداد Code/FNUMB بالا).
+IF COL_LENGTH('dbo.CC_AcceptedException','Anbar') IS NULL
+    ALTER TABLE dbo.CC_AcceptedException ADD Anbar INT NULL;
+GO
 
 /* ───────────────────────── واحدهای تولیدی ───────────────────────── */
 
@@ -225,6 +232,44 @@ CREATE TABLE dbo.CC_AnbarHes (
     HesKol   INT           NOT NULL,
     HesMoin  INT           NOT NULL,
     Note     NVARCHAR(200) NULL
+);
+GO
+
+/* ضریب جذب دستمزد به تفکیک (واحد تولیدی، کالا) — مثلاً بر مبنای وزن،
+   حجم یا ارزش فروش، هرچه کاربر تعیین کند؛ یک کالا می‌تواند در واحدهای
+   مختلف (یزد، تهران، ...) ضریب متفاوت داشته باشد. ممکن است برای کل
+   سال یکسان بماند — بدون بُعد ماه/تاریخ عمداً. مبنای تقسیمِ دستمزد
+   واقعیِ هر واحد بین کالاهای همان واحد در گام S07B (نگاه کنید
+   CC_sp_S07B_SyncLaborRate). CODE هم‌نوع STUF_DEF.CODE/HEAD_MANF.CODE
+   است (هر دو nvarchar(30)) تا JOIN بدون CAST انجام شود.
+
+   Coefficient عمداً NULL می‌پذیرد: ردیف‌ها با
+   POST labor-rates/sync-from-formulas از روی HEAD_MANF خودکار ساخته
+   می‌شوند (Coefficient=NULL، یعنی «هنوز بررسی نشده»)؛ کاربر فقط عدد
+   ضریب را پر می‌کند. S07B ردیف‌های NULL/صفر را از تقسیم کنار می‌گذارد.
+
+   IsFixed: بعضی کالاها کارمزدی تولید می‌شوند و نرخشان (HEAD_MANF.
+   IMBIBE_MANF) باید همیشه ثابت بماند — نه S07B (تقسیم بر اساس ضریب) و
+   نه S10 (ضریب تعدیل یکنواخت) نباید دست‌شان بزنند. تأیید کاربر: این
+   ویژگی هم به (واحد، کالا) وابسته است، نه فقط کالا — یک کالا ممکن است
+   در یک واحد کارمزدی باشد و در واحد دیگر نه.
+
+   OverheadCoefficient: ضریب جذبِ سربار (IMBIBE_SAR)، مستقل از ضریب
+   دستمزد — چون معیارِ درستِ سربار می‌تواند با معیارِ دستمزد فرق کند.
+   عمداً NULL می‌پذیرد و در محاسبه به ضریب دستمزد بازمی‌گردد (تأیید
+   کاربر: «فعلاً از دستمزد براش مقدار بده») — یعنی تا وقتی کاربر
+   مقدار مستقلی برای یک ردیف وارد نکند، همان ضریب دستمزد برای سربارش
+   هم استفاده می‌شود. */
+IF OBJECT_ID('dbo.CC_LaborAbsorptionRate','U') IS NULL
+CREATE TABLE dbo.CC_LaborAbsorptionRate (
+    UnitId              INT           NOT NULL,
+    CODE                NVARCHAR(30)  NOT NULL,
+    Coefficient         FLOAT         NULL,
+    OverheadCoefficient FLOAT         NULL,
+    IsFixed             BIT           NOT NULL DEFAULT 0,
+    Note                NVARCHAR(200) NULL,
+    CONSTRAINT PK_CC_LaborAbsorptionRate PRIMARY KEY (UnitId, CODE),
+    CONSTRAINT FK_CC_LaborAbsorptionRate_Unit FOREIGN KEY (UnitId) REFERENCES dbo.CC_Unit(UnitId)
 );
 GO
 
@@ -307,6 +352,14 @@ GO
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name='IX_CC_VarDecision_Code')
     CREATE INDEX IX_CC_VarDecision_Code ON dbo.CC_VarianceDecision(Code, RunId);
 GO
+-- محافظ ساختاری: یک تصمیم به ازای هر (اجرا،کالا). بدون این، اگر جایی
+-- (کلاینت/SaveDecisions/S09a) به‌اشتباه دوباره INSERT کند بدون DELETE
+-- قبلی، ردیف‌های تکراری بی‌صدا وارد می‌شوند و CC_sp_S09_ApplyDecisions
+-- سهم انحراف را غیرقطعی/چندبار اعمال می‌کند — دقیقاً همان چیزی که در
+-- اجرای ۱۶ باعث شد «باقیمانده» با هر بار «اعمال و محاسبه مجدد» بدتر شود.
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name='UQ_CC_VarianceDecision')
+    CREATE UNIQUE INDEX UQ_CC_VarianceDecision ON dbo.CC_VarianceDecision(RunId, Code);
+GO
 
 /* ───────────────────────── هزینه تبدیل و حاشیه سود ───────────────────────── */
 
@@ -330,7 +383,7 @@ IF OBJECT_ID('dbo.CC_MarginTarget','U') IS NULL
 CREATE TABLE dbo.CC_MarginTarget (
     Id             INT IDENTITY(1,1) PRIMARY KEY,
     Code           BIGINT       NOT NULL,
-    TargetKind     TINYINT      NOT NULL,   -- 1=سود صفر 2=درصد مشخص 3=آزاد
+    TargetKind     TINYINT      NOT NULL,   -- 1=سود صفر 2=درصد مشخص 3=آزاد 4=سود صفر با پخش خودکار
     TargetPct      DECIMAL(9,4) NULL,
     BalancingCode  BIGINT       NULL,
     BalancingFNUMB INT          NULL,

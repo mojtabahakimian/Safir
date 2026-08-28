@@ -1,0 +1,95 @@
+@using Safir.Client.Services
+@inject CostCloseApiService Api
+@inject ISnackbar Snackbar
+
+<MudDialog>
+    <DialogContent>
+        <div dir="rtl" style="min-width:380px">
+            <MudText Typo="Typo.body2" Class="mb-3">
+                رفع مغایرت‌های مسدودکننده گاهی خودش نیاز به اجرای دوباره‌ی یکی از
+                گام‌ها دارد (مثلاً بعد از تغییر تاریخ یک سند، «بازتولید خروج مواد»
+                و «بازسازی نرخ میانگین» باید دوباره اجرا شوند تا مغایرت واقعاً رفع
+                شود). گام(های) مورد نظر را انتخاب کنید — این کار روی همین اجرا
+                انجام می‌شود و هر چند بار که لازم باشد قابل تکرار است.
+            </MudText>
+
+            @foreach (var s in Steps)
+            {
+                <MudCheckBox T="bool" Dense
+                             Value="@_selected.Contains(s.Code)"
+                             ValueChanged="@(v => Toggle(s.Code, v))"
+                             Label="@($"{s.Code} — {s.Title}")" />
+                @if (s.Code == "S07A")
+                {
+                    <MudText Typo="Typo.caption" Class="mud-text-secondary" style="display:block;margin-inline-start:32px">
+                        بدون «انتشار نرخ» بعدش، نرخ تازه به فرمول‌ها نمی‌رسد — با انتخاب این، S11 هم خودکار انتخاب می‌شود و تا همگرا نشدن تکرار می‌شود.
+                    </MudText>
+                }
+            }
+        </div>
+    </DialogContent>
+
+    <DialogActions>
+        <MudButton OnClick="Cancel">انصراف</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled"
+                   OnClick="Run" Disabled="@(_selected.Count == 0 || _busy)">
+            اجرا
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private MudDialogInstance MudDialog { get; set; } = default!;
+    [Parameter] public int RunId { get; set; }
+
+    private bool _busy;
+    private readonly HashSet<string> _selected = new();
+
+    private static readonly (string Code, string Title)[] Steps =
+    {
+        ("S00", "بازبینی ابتدای ماه"),
+        ("S02", "اسنپ‌شات جداول"),
+        ("S03", "حذف اسناد خالی"),
+        ("S04", "مرتب‌سازی اسناد"),
+        ("S05", "دروازه اعتبارسنجی (بازبینی مجدد مغایرت‌ها)"),
+        ("S07", "بازتولید خروج مواد و انبارگردانی"),
+        ("S07B", "همگام‌سازی نرخ استاندارد دستمزد"),
+        ("S07A", "بازسازی نرخ میانگین"),
+        ("S08", "محاسبه انحراف مصرف"),
+        ("S09", "تخصیص انحراف"),
+        ("S10", "تراز هزینه تبدیل"),
+        ("S11", "انتشار نرخ"),
+        ("S12", "سود و زیان کالا")
+    };
+
+    /// <summary>
+    /// بازسازی نرخ میانگین (S07A) بدون انتشار نرخ (S11) بعدش نتیجه‌ی
+    /// نصفه می‌دهد — نرخ تازه هرگز به فرمول‌ها نمی‌رسد. سرور خودش S11 را
+    /// اضافه می‌کند، ولی این‌جا هم انتخابش می‌کنیم تا کاربر از قبل ببیند.
+    /// </summary>
+    private void Toggle(string code, bool on)
+    {
+        if (on)
+        {
+            _selected.Add(code);
+            if (code == "S07A") _selected.Add("S11");
+        }
+        else _selected.Remove(code);
+    }
+
+    private async Task Run()
+    {
+        _busy = true;
+        try
+        {
+            var (ok, err) = await Api.StartRunAsync(RunId, _selected.ToArray());
+            if (!ok) { Snackbar.Add(err ?? "خطا در اجرای گام‌ها", Severity.Error); return; }
+
+            Snackbar.Add("اجرای گام‌های انتخابی شروع شد", Severity.Success);
+            MudDialog.Close(DialogResult.Ok(true));
+        }
+        finally { _busy = false; }
+    }
+
+    private void Cancel() => MudDialog.Cancel();
+}

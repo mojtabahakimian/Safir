@@ -1,0 +1,102 @@
+@using Safir.Shared.Models.CostClose
+@using Safir.Client.Services
+@inject CostCloseApiService Api
+
+<MudDialog>
+    <DialogContent>
+        <div dir="rtl" style="min-width:400px">
+            <MudSelect T="int" @bind-Value="_unitId" Label="واحد تولیدی" Dense
+                       Variant="Variant.Outlined" Class="mb-3"
+                       Disabled="@(Existing is not null)">
+                @foreach (var u in _units)
+                {
+                    <MudSelectItem T="int" Value="@u.UnitId">@u.UnitName</MudSelectItem>
+                }
+            </MudSelect>
+
+            <MudAutocomplete T="ItemLookupDto" Label="کالا" Dense Variant="Variant.Outlined"
+                              Class="mb-3" Value="_item" ValueChanged="OnItemChanged"
+                              SearchFuncWithCancel="SearchItems" ToStringFunc="ItemText"
+                              Disabled="@(Existing is not null)" />
+
+            <MudCheckBox T="bool" @bind-Value="_isFixed" Label="کارمزدی — نرخ این کالا در این واحد ثابت بماند"
+                         Class="mb-3" />
+
+            <MudNumericField T="double?" @bind-Value="_coefficient" Label="ضریب دستمزد (مثلاً وزن، حجم یا ارزش فروش)"
+                              Dense Variant="Variant.Outlined" Class="mb-3" Min="0"
+                              Disabled="@_isFixed" />
+
+            <MudNumericField T="double?" @bind-Value="_overheadCoefficient"
+                              Label="ضریب سربار (خالی = همان ضریب دستمزد)"
+                              Dense Variant="Variant.Outlined" Class="mb-3" Min="0"
+                              Disabled="@_isFixed" />
+
+            <MudTextField @bind-Value="_note" Label="یادداشت (اختیاری)" Dense
+                          Variant="Variant.Outlined" Lines="2" />
+        </div>
+    </DialogContent>
+
+    <DialogActions>
+        <MudButton OnClick="Cancel">انصراف</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled"
+                   Disabled="@(_unitId <= 0 || _item is null)" OnClick="Save">
+            ذخیره
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private MudDialogInstance MudDialog { get; set; } = default!;
+    [Parameter] public CostLaborRateDto? Existing { get; set; }
+
+    private List<CostUnitDto> _units = new();
+    private int _unitId;
+    private ItemLookupDto? _item;
+    private double? _coefficient;
+    private double? _overheadCoefficient;
+    private bool _isFixed;
+    private string? _note;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _units = await Api.GetUnitsAsync();
+
+        if (Existing is not null)
+        {
+            _unitId              = Existing.UnitId;
+            _item                = new ItemLookupDto { Code = Existing.Code, Name = Existing.ItemName ?? "" };
+            _coefficient         = Existing.Coefficient;
+            _overheadCoefficient = Existing.OverheadCoefficient;
+            _isFixed             = Existing.IsFixed;
+            _note                = Existing.Note;
+        }
+        else if (_units.Count == 1)
+        {
+            _unitId = _units[0].UnitId;
+        }
+    }
+
+    private void OnItemChanged(ItemLookupDto? v) => _item = v;
+
+    private static string ItemText(ItemLookupDto? i)
+        => i is null ? "" : $"{i.Code} - {i.Name}";
+
+    private async Task<IEnumerable<ItemLookupDto>> SearchItems(string s, CancellationToken ct)
+        => await Api.SearchItemsAsync(s);
+
+    private void Cancel() => MudDialog.Cancel();
+
+    private void Save()
+    {
+        var req = new UpsertLaborRateRequest
+        {
+            UnitId              = _unitId,
+            Code                = _item!.Code,
+            Coefficient         = _isFixed ? null : _coefficient,
+            OverheadCoefficient = _isFixed ? null : _overheadCoefficient,
+            IsFixed             = _isFixed,
+            Note                = string.IsNullOrWhiteSpace(_note) ? null : _note.Trim()
+        };
+        MudDialog.Close(DialogResult.Ok(req));
+    }
+}

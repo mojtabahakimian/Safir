@@ -59,6 +59,18 @@ namespace Safir.Server.CostClose
         /// <summary>در فرمول‌ها می‌نویسد؟ اگر بله، پرچم بازتولید بالا می‌رود.</summary>
         bool WritesFormulas { get; }
 
+        /// <summary>
+        /// اگر false، این گام هرگز به‌طور خودکار اجرا نمی‌شود — نه در
+        /// زنجیره‌ی کامل یک اجرای معمولی/ادامه (OnlySteps=null)، نه در
+        /// بازتولیدِ خودکارِ ناشی از WritesFormulas. فقط وقتی کاربر آن
+        /// را صریحاً در OnlySteps انتخاب کند (مثلاً از دیالوگ «اجرای
+        /// مجدد گام‌ها») اجرا می‌شود. برای S07B: تخصیص دستمزد روی داده‌ی
+        /// دستیِ کاربر (ضریب‌ها) کار می‌کند و اجرای خودکارِ بی‌اطلاعِ او
+        /// می‌تواند فرمول‌ها را با آخرین ضریب‌های هنوز کامل‌نشده به‌روز
+        /// کند — کاربر باید صراحتاً بخواهد.
+        /// </summary>
+        bool AutoRun => true;
+
         Task<StepResult> ExecuteAsync(StepContext ctx);
     }
 
@@ -114,14 +126,59 @@ namespace Safir.Server.CostClose
             // و تنها ردِ واقعی خطا در لاگ سمت سرور است.
             try
             {
+                // بازسازی نرخ میانگین (S07A) بدون انتشار نرخ (S11) بعدش،
+                // مفهوم «بازسازی» را نصفه می‌گذارد — نرخ‌های تازه‌محاسبه‌شده
+                // هرگز به فرمول‌ها نمی‌رسند و نتیجه با انتظار کاربر نمی‌خواند.
+                // پس در اجرای جزئی (OnlySteps)، اگر S07A خواسته شده ولی S11
+                // نه، S11 را خودمان اضافه می‌کنیم تا حلقه‌ی همگرایی زیر هم
+                // فرصت اجرا شدن پیدا کند.
+                var onlySteps = job.OnlySteps;
+                if (onlySteps is not null
+                    && onlySteps.Contains("S07A") && !onlySteps.Contains("S11"))
+                {
+                    onlySteps = onlySteps.Append("S11").ToArray();
+                }
+
                 var ordered = _steps
                     .OrderBy(s => s.SeqNo)
-                    .Where(s => job.OnlySteps is null || job.OnlySteps.Contains(s.StepCode))
+                    .Where(s => onlySteps is not null
+                                    ? onlySteps.Contains(s.StepCode)
+                                    : s.AutoRun)
                     .ToList();
 
                 // اجرای گام‌ها؛ فهرست ممکن است حین اجرا گسترش یابد
                 // (وقتی فرمول‌ها عوض شده و بازتولید لازم است)
                 var pending = new Queue<ICostStep>(ordered);
+
+                // ── همگرایی نرخ S07A↔S11 ──
+                // S07A نرخ میانگین کاردکس را از رسیدهای تولید حساب می‌کند —
+                // که خودشان بهایشان را از فرمول (S11) می‌گیرند؛ S11 هم نرخ
+                // موادی که این ماه گردش دارند را از میانگین انبار (خروجی
+                // S07A) می‌گیرد، نه از کاسکید فرمول. یعنی این دو گام روی هم
+                // اثر می‌گذارند و یک پاس تضمین نمی‌کند نرخ نهایی باشد — باید
+                // آن‌قدر تکرار شوند تا نرخ‌ها بین دو دور پشت‌سرهم عوض نشوند.
+                // بدون این حلقه، اسناد گروهی (انتقال/فروش) که بعداً صادر
+                // می‌شوند، نرخِ یک نقطه‌ی میانی از این همگرایی را قفل
+                // می‌کنند — دقیقاً همان مغایرت ۹.۷ میلیاردی کد ۳۳۶۵/انبار۲
+                // که در بازبینی دستی پیدا شد.
+                // ⚠️ اصلاح همگرایی (بعد از فیکس میرایی در CC_sp_S11_PropagateRates):
+                // آن فیکس، کالاهای چندسطحیِ خودمصرف (مثل ۳۷۳→۱۷۳۲→۳۳۶۵) را از
+                // واگرایی نجات داد، ولی به یک سری هندسیِ همگرا تبدیلشان کرد
+                // (تست عملی: هر دور ≈۰.۶۵ برابر دور قبل)، نه یک نقطه‌ی ثابتِ
+                // دقیق در یک دور. مقایسه‌ی چک‌سامِ دقیق (CHECKSUM_AGG) هرگز با
+                // این سری «برابر» نمی‌شود مگر تغییرِ هر دور از دقتِ FLOAT پایین‌تر
+                // برود — که ده‌ها دور طول می‌کشد، نه ۵ تا. راه‌حل درست، مقایسه‌ی
+                // «آستانه‌ای» (بیشترین تغییرِ TotalCost بین دو دورِ پیاپی، روی هر
+                // کالا) است، نه برابریِ دقیق — با همان آستانه‌ی یک‌ریالیِ CHK-02
+                // («این دو باید دقیقاً یکی باشند» تا سطح ریال، نه فراتر).
+                const double RateConvergeThreshold = 1.0;
+                Dictionary<long, double>? lastRates = null;
+                int    s11Cycles          = 0;
+                // تست عملی روی ران واقعی (کدهای ۳۳۶۵ و ۳۱۰۰، هر دو زنجیره‌ی
+                // خودمصرفِ چندسطحی): با نسبتِ ثابتِ ≈۰.۷۵ در هر دور، از
+                // بیشترین‌تغییرِ ~۱۳۸ ریال تا زیر آستانه‌ی یک‌ریالی حدود
+                // ۱۹-۲۰ دور طول کشید، نه ۵ تا. ۲۵ برای حاشیه‌ی اطمینان.
+                const int MaxS11Cycles    = 25;
 
                 while (pending.Count > 0)
                 {
@@ -224,8 +281,11 @@ namespace Safir.Server.CostClose
                             "dbo.CC_sp_SetFormulasDirty",
                             new { RunId = job.RunId, Dirty = true });
 
+                        // ⚠️ عمداً S07B اینجا نیست (تأیید کاربر): آن گام فقط با
+                        // درخواست صریح کاربر اجرا می‌شود، نه به‌صورت خودکار در
+                        // این بازتولید — نگاه کنید AutoRun روی ICostStep.
                         var rebuild = _steps
-                            .Where(s => s.StepCode is "S07" or "S08")
+                            .Where(s => s.StepCode is "S07" or "S07A" or "S08")
                             .OrderBy(s => s.SeqNo);
 
                         foreach (var rs in rebuild)
@@ -240,6 +300,45 @@ namespace Safir.Server.CostClose
                         await db.DoGetStoreProcedureSQLAsync<dynamic>(
                             "dbo.CC_sp_SetFormulasDirty",
                             new { RunId = job.RunId, Dirty = false });
+
+                    // ── همگرایی نرخ S07A↔S11 ──
+                    // فقط وقتی معنا دارد که خودِ S11 موفق اجرا شده باشد.
+                    if (step.StepCode == "S11" && result.Status != CostStepStatus.Failed)
+                    {
+                        var rates    = await GetItemCostSnapshotAsync(db, job.RunId);
+                        var maxDelta = lastRates is null ? (double?)null : MaxAbsDelta(lastRates, rates);
+
+                        if (maxDelta is not null && maxDelta <= RateConvergeThreshold)
+                        {
+                            // بیشترین تغییرِ نرخِ همه‌ی کالاها بین این دور و دور
+                            // قبل زیر یک ریال است — همگرا شد
+                        }
+                        else if (s11Cycles < MaxS11Cycles)
+                        {
+                            s11Cycles++;
+                            lastRates = rates;
+
+                            var repeat = _steps
+                                .Where(s => s.StepCode is "S07A" or "S11")
+                                .OrderBy(s => s.SeqNo)
+                                .ToList();
+
+                            // باید بلافاصله بعد از S11 اجرا شوند، نه بعد از
+                            // S12 و مراحل بعدی — پس به جلوی صف اضافه می‌شوند،
+                            // نه به انتهای آن (بر خلاف بازتولید WritesFormulas بالا).
+                            pending = new Queue<ICostStep>(repeat.Concat(pending));
+
+                            var deltaTxt = maxDelta is null ? "" : $" (بیشترین تغییر: {maxDelta:N0} ریال)";
+                            await LogAsync(db, job.RunId, "S11", 1,
+                                $"نرخ مواد بین این دور و دور قبل فرق دارد{deltaTxt} — S07A/S11 دوباره اجرا می‌شود (دور {s11Cycles + 1})");
+                        }
+                        else
+                        {
+                            lastRates = rates;
+                            await LogAsync(db, job.RunId, "S11", 2,
+                                $"همگرایی نرخ پس از {MaxS11Cycles} دور تکرار کامل نشد (بیشترین تغییر هنوز {maxDelta:N0} ریال) — با آخرین مقدار ادامه داده می‌شود");
+                        }
+                    }
                 }
 
                 await SetRunStatusAsync(db, job.RunId, CostRunStatus.Completed);
@@ -282,5 +381,48 @@ namespace Safir.Server.CostClose
                 @"INSERT dbo.CC_RunLog (RunId, StepCode, Severity, Message)
                   VALUES (@runId, @step, @sev, @msg)",
                 new { runId, step, sev, msg });
+
+        /// <summary>
+        /// عکسِ نرخ‌های همین اجرا — برای تشخیص همگراییِ آستانه‌ایِ S07A↔S11.
+        /// CC_ItemCost خروجی مستقیم S11 است (هر بار DELETE/INSERT کامل
+        /// می‌شود). قبلاً یک چک‌سامِ کل جدول مقایسه می‌شد (برابریِ دقیق)؛
+        /// چون فیکس میراییِ S11 کالاهای خودمصرف را به یک سریِ هندسیِ
+        /// همگرا تبدیل می‌کند نه یک نقطه‌ی ثابتِ دقیق در یک دور، چک‌سام
+        /// دقیق تا ده‌ها دور «برابر» نمی‌شد. اینجا مقدار واقعیِ هر کالا
+        /// نگه داشته می‌شود تا بیشترین تغییر محاسبه و با یک آستانه
+        /// مقایسه شود (نگاه کنید MaxAbsDelta).
+        /// </summary>
+        private static async Task<Dictionary<long, double>> GetItemCostSnapshotAsync(
+            IDatabaseService db, int runId)
+        {
+            var rows = await db.DoGetDataSQLAsync<(long Code, double TotalCost)>(
+                "SELECT Code, TotalCost FROM dbo.CC_ItemCost WHERE RunId = @runId",
+                new { runId });
+
+            var map = new Dictionary<long, double>();
+            foreach (var r in rows) map[r.Code] = r.TotalCost;
+            return map;
+        }
+
+        /// <summary>
+        /// بیشترین قدرمطلقِ تغییرِ نرخ روی هر کالا بین دو عکسِ پیاپی. کالایی
+        /// که فقط در یکی از دو عکس هست (مثلاً بین این دور تازه به مجموعه
+        /// اضافه/حذف شده) هم به همان اندازه‌ی خودش تغییر حساب می‌شود، نه
+        /// نادیده گرفته می‌شود — یک کالای گم‌شده نباید بی‌صدا از چشمِ
+        /// آستانه‌ی همگرایی رد شود.
+        /// </summary>
+        private static double MaxAbsDelta(
+            Dictionary<long, double> prev, Dictionary<long, double> curr)
+        {
+            double max = 0;
+            foreach (var code in prev.Keys.Union(curr.Keys))
+            {
+                var p = prev.TryGetValue(code, out var pv) ? pv : 0;
+                var c = curr.TryGetValue(code, out var cv) ? cv : 0;
+                var d = Math.Abs(c - p);
+                if (d > max) max = d;
+            }
+            return max;
+        }
     }
 }

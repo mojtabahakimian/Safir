@@ -65,6 +65,11 @@ else
 
         <MudSpacer />
 
+        <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.FormatListBulleted"
+                   OnClick="OpenActiveTargets">
+            هدف‌های فعال
+        </MudButton>
+
         @if (Access.CanRun(CostForms.ActExport))
         {
             <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.Download"
@@ -87,7 +92,16 @@ else
     {
         <MudAlert Severity="Severity.Warning" Dense Class="mb-3">
             با انتخاب فعلی، یک کالای سودده به زیان می‌رود. کالای متعادل‌کننده
-            با حجم بیشتر انتخاب کنید یا اثر را بین چند کالا پخش کنید.
+            با حجم بیشتر انتخاب کنید یا هدف را روی «پخش خودکار» بگذارید.
+        </MudAlert>
+    }
+
+    @if (AutoPoolInsufficient)
+    {
+        <MudAlert Severity="Severity.Error" Dense Class="mb-3">
+            مجموع زیانِ کالاهای «پخش خودکار» (@FormatAmount(AutoAdjustTotal)) از مجموع سود
+            استخر کالاهای سودده (@FormatAmount(AutoPoolProfitSum)) بیشتر است — بدون منفی‌شدن
+            نرخ جذب، پخش کامل ممکن نیست.
         </MudAlert>
     }
 
@@ -106,6 +120,7 @@ else
                 <MudTh Style="width:130px">هدف</MudTh>
                 <MudTh Style="width:200px">کالای متعادل‌کننده</MudTh>
                 <MudTh Style="text-align:left;width:120px">سود پس از اعمال</MudTh>
+                <MudTh Style="width:40px"></MudTh>
             </HeaderContent>
 
             <RowTemplate>
@@ -152,12 +167,13 @@ else
                             <MudSelectItem Value="@((byte)3)">آزاد</MudSelectItem>
                             <MudSelectItem Value="@((byte)1)">سود صفر</MudSelectItem>
                             <MudSelectItem Value="@((byte)2)">درصد مشخص</MudSelectItem>
+                            <MudSelectItem Value="@((byte)4)">سود صفر — پخش خودکار</MudSelectItem>
                         </MudSelect>
                     }
                 </MudTd>
 
                 <MudTd>
-                    @if (context.TargetKind != 3 && !IsBalancer(context.Code))
+                    @if (context.TargetKind is 1 or 2 && !IsBalancer(context.Code))
                     {
                         <MudAutocomplete T="ItemMarginDto" Dense Variant="Variant.Outlined"
                                          Value="@FindItem(context.BalancingCode)"
@@ -166,9 +182,17 @@ else
                                          ToStringFunc="@BalancerLabel"
                                          Placeholder="کالای سودده" Clearable />
                     }
+                    else if (context.TargetKind == 4)
+                    {
+                        <span class="cc-hint">بین @AutoPool.Count() کالای سودده پخش می‌شود</span>
+                    }
                     else if (IsBalancer(context.Code))
                     {
                         <span class="cc-hint">جذب اثر @BalancerSourceName(context.Code)</span>
+                    }
+                    else if (IsInAutoPool(context))
+                    {
+                        <span class="cc-hint">در استخر پخش خودکار</span>
                     }
                     else
                     {
@@ -181,6 +205,16 @@ else
                     <span class="cc-num @(after < 0 ? "neg" : after > 0 ? "pos" : "")">
                         @FormatAmount(after)
                     </span>
+                </MudTd>
+
+                <MudTd>
+                    @if (context.IsLoss)
+                    {
+                        <MudTooltip Text="جابه‌جایی مصرف ماده بین فرمول‌ها">
+                            <MudIconButton Icon="@Icons.Material.Filled.SwapHoriz" Size="Size.Small"
+                                           OnClick="@(() => OpenRebalanceMaterial(context))" />
+                        </MudTooltip>
+                    }
                 </MudTd>
             </RowTemplate>
         </MudTable>
@@ -218,6 +252,16 @@ else
         .Select(r => FindItem(r.BalancingCode))
         .Where(b => b is not null)
         .Any(b => b!.Profit >= 0 && ProfitAfter(b) < 0);
+
+    /// <summary>کالاهای سودده و بی‌هدفی که خودشان متعادل‌کننده دستی کسی هم نیستند — استخر پخش خودکار</summary>
+    private IEnumerable<ItemMarginDto> AutoPool => _all.Where(IsInAutoPool);
+
+    private bool IsInAutoPool(ItemMarginDto r)
+        => r.Profit > 0 && r.QtySold != 0 && r.TargetKind == 3 && !IsBalancer(r.Code);
+
+    private double AutoAdjustTotal    => _all.Where(r => r.TargetKind == 4).Sum(r => r.AdjustAmount);
+    private double AutoPoolProfitSum  => AutoPool.Sum(r => r.Profit);
+    private bool   AutoPoolInsufficient => AutoAdjustTotal != 0 && AutoAdjustTotal > AutoPoolProfitSum;
 
     protected override async Task OnInitializedAsync()
     {
@@ -260,7 +304,7 @@ else
     private void SetTarget(ItemMarginDto row, byte kind)
     {
         row.TargetKind = kind;
-        if (kind == 3) row.BalancingCode = null;
+        if (kind is 3 or 4) row.BalancingCode = null;
         _dirty = true;
         ApplyFilter();
     }
@@ -287,13 +331,17 @@ else
     /// </summary>
     private double ProfitAfter(ItemMarginDto row)
     {
-        // اگر خودش هدف دارد
-        if (row.TargetKind == 1) return 0;
+        // اگر خودش هدف دارد (دستی یا پخش خودکار)
+        if (row.TargetKind is 1 or 4) return 0;
         if (row.TargetKind == 2) return row.SalesAmount * (double)(row.TargetPct ?? 0) / 100;
 
-        // اگر متعادل‌کننده دیگری است
+        // اگر متعادل‌کننده‌ی دستیِ کسی است
         var absorbed = _all.Where(r => r.BalancingCode == row.Code)
                            .Sum(r => r.AdjustAmount);
+
+        // اگر در استخر پخش خودکار است، سهم متناسب با سودش
+        if (AutoAdjustTotal != 0 && AutoPoolProfitSum > 0 && IsInAutoPool(row))
+            absorbed += row.Profit / AutoPoolProfitSum * AutoAdjustTotal;
 
         return row.Profit - absorbed;
     }
@@ -310,16 +358,48 @@ else
     private static string BalancerLabel(ItemMarginDto? i)
         => i is null ? "" : $"{i.ItemName} — سود {i.Profit:N0}";
 
+    private async Task OpenActiveTargets()
+    {
+        var dlg = await Dialog.ShowAsync<ActiveMarginTargetsDialog>("هدف‌های حاشیه سودِ فعال");
+        var result = await dlg.Result;
+
+        if (result is { Canceled: false })
+            await Load();
+    }
+
+    private async Task OpenRebalanceMaterial(ItemMarginDto row)
+    {
+        var p = new DialogParameters
+        {
+            ["RunId"] = RunId,
+            ["PrefillFromCode"] = row.Code,
+            ["PrefillLossAmount"] = row.IsLoss ? Math.Abs(row.Profit) : (double?)null
+        };
+        var dlg = await Dialog.ShowAsync<RebalanceMaterialDialog>("جابه‌جایی مصرف ماده بین فرمول‌ها", p);
+        var result = await dlg.Result;
+
+        if (result is { Canceled: false })
+            await Load();
+    }
+
     // ───────── عملیات ─────────
 
     private async Task ApplyTargets()
     {
-        var missing = _all.Where(r => r.TargetKind != 3 && r.BalancingCode is null).ToList();
+        var missing = _all.Where(r => r.TargetKind is 1 or 2 && r.BalancingCode is null).ToList();
         if (missing.Count > 0)
         {
             Snackbar.Add(
                 $"{missing.Count} کالا هدف دارد ولی کالای متعادل‌کننده‌اش تعیین نشده. " +
                 "بدون آن جمع کل بهای تمام‌شده به هم می‌خورد.", Severity.Warning);
+            return;
+        }
+
+        if (AutoPoolInsufficient)
+        {
+            Snackbar.Add(
+                "مجموع زیانِ «پخش خودکار» از مجموع سود استخر کالاهای سودده بیشتر است؛ " +
+                "یک یا چند کالا را از این حالت خارج کنید.", Severity.Error);
             return;
         }
 
@@ -352,7 +432,7 @@ else
             if (!ok2) { Snackbar.Add(err2 ?? "خطا", Severity.Error); return; }
 
             _dirty = false;
-            Snackbar.Add("اهداف اعمال شد — نرخ‌ها باید دوباره منتشر شوند", Severity.Success);
+            Snackbar.Add("اهداف اعمال شد، نرخ‌ها منتشر و سود/زیان بازمحاسبه شد", Severity.Success);
             await Load();
         }
         finally { _busy = false; }

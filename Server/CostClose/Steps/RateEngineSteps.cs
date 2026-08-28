@@ -3,6 +3,55 @@ using Safir.Shared.Models.CostClose;
 namespace Safir.Server.CostClose.Steps
 {
     /// <summary>
+    /// S07B — همگام‌سازی نرخ استاندارد دستمزد از dbo.CC_LaborAbsorptionRate
+    /// به HEAD_MANF.IMBIBE_MANF (فقط دستمزد؛ سربار دست‌نخورده می‌ماند).
+    ///
+    /// عمداً قبل از S07A (SeqNo=72، بین S07=70 و S07A=75) تا محاسبه‌ی
+    /// نرخ تولید همان ماه از این مقدار استفاده کند؛ پلاگ اصلاحی S10
+    /// دقیقاً مثل قبل، بعد از این مرحله، روی نتیجه اعمال می‌شود.
+    ///
+    /// RequiresSnapshot=true (تأیید کاربر، بعد از یک تست دستیِ من که
+    /// چند ضریبِ واقعیِ کاربر را سهواً بازنویسی کرد): بدون این، اگر
+    /// دوباره چنین اتفاقی بیفتد، IMBIBE_MANFِ قبل از این گام هیچ‌جا
+    /// ثبت نمی‌شود.
+    ///
+    /// ⚠️ AutoRun=false (تأیید کاربر): این گام هرگز خودکار اجرا
+    /// نمی‌شود — نه در زنجیره‌ی کامل یک اجرای معمولی/ادامه، نه در
+    /// بازتولیدِ خودکارِ ناشی از تغییر فرمول (که پیش‌تر S07B را هم
+    /// همراه S07/S07A/S08 دوباره اجرا می‌کرد). فقط وقتی کاربر آن را
+    /// صریحاً از دیالوگ «اجرای مجدد گام‌ها» انتخاب کند اجرا می‌شود —
+    /// چون این گام روی داده‌ی دستیِ کاربر (ضریب‌های CC_LaborAbsorptionRate)
+    /// کار می‌کند و اجرای بی‌اطلاعِ او می‌تواند فرمول‌ها را با ضریب‌های
+    /// هنوز کامل‌نشده به‌روز کند.
+    /// </summary>
+    public sealed class S07B_SyncLaborRate : ICostStep
+    {
+        public string StepCode         => "S07B";
+        public string Title            => "همگام‌سازی نرخ استاندارد دستمزد";
+        public short  SeqNo            => 72;
+        public bool   RequiresSnapshot => true;
+        public bool   IsGate           => false;
+        public bool   WritesFormulas   => false;
+        public bool   AutoRun          => false;
+
+        public async Task<StepResult> ExecuteAsync(StepContext ctx)
+        {
+            await ctx.ReportProgress(StepCode, 30, "همگام‌سازی نرخ دستمزد با HEAD_MANF…");
+
+            var res = await ctx.Db.DoGetStoreProcedureSQLAsync<CountResult>(
+                "dbo.CC_sp_S07B_SyncLaborRate",
+                new { RunId = ctx.RunId, Month = ctx.Month,
+                      DT1 = ctx.DateFrom, DT2 = ctx.DateTo },
+                commandTimeout: 600);
+
+            var n = res.LastOrDefault()?.Value ?? 0;
+
+            await ctx.ReportProgress(StepCode, 100, $"{n} فرمول به‌روزرسانی شد");
+            return StepResult.Ok(n, new { updated = n });
+        }
+    }
+
+    /// <summary>
     /// S10 — تراز هزینه تبدیل.
     ///
     /// قبل از S11 اجرا می‌شود، نه بعدش. چون جذب‌شده حاصل
@@ -101,7 +150,8 @@ namespace Safir.Server.CostClose.Steps
 
             await ctx.Db.DoGetStoreProcedureSQLAsync<dynamic>(
                 "dbo.CC_sp_S11_PropagateRates",
-                new { RunId = ctx.RunId, Month = ctx.Month, WhatIf = false },
+                new { RunId = ctx.RunId, Month = ctx.Month,
+                      DT1 = ctx.DateFrom, DT2 = ctx.DateTo, WhatIf = false },
                 commandTimeout: 3600);
 
             await ctx.ReportProgress(StepCode, 85, "بررسی سلامت نرخ‌ها…");

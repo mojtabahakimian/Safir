@@ -278,6 +278,206 @@ BEGIN
     JOIN    dbo.HEAD_MANF h ON h.FNUMB = d.FNUMB AND h.GHEYMAT = @Month
     WHERE   d.MEGH < 0 OR d.MEGHk < 0;
 
+    ---- CHK-16 : برگه تولید به انباري که به هيچ واحد توليدي (نقش «محصول»)
+    -- وصل نيست — بدون اين تشخيص، S10 اين برگه‌ها را در محاسبه جذب هيچ
+    -- واحدي نمي‌بيند و مانده حساب ۷۵۱ کاذب مي‌شود (دقيقاً همان چيزي که
+    -- روي انبار ۱۵ رخ داد و کاربر تأييد کرد بايد به‌صورت خودکار
+    -- روي هر پايگاه‌داده‌ي جديد هم چک شود).
+    INSERT dbo.CC_Exception
+        (RunId, StepCode, RuleCode, ExType, Severity, Code, DocNumber, DocDate, Description)
+    SELECT DISTINCT @RunId, 'S00', 'CHK-16', 18, 1,
+           TRY_CAST(pl.CODE AS BIGINT), h.NUMBER, h.DATE_N,
+           CONCAT(N'برگه تولید شماره ', h.NUMBER, N' به انبار ', pl.ANBAR,
+                  N' وارد شده که به هیچ واحد تولیدی (نقش «محصول») وصل نیست')
+    FROM   dbo.HEAD_LST h
+    JOIN   dbo.INVO_LST pl ON pl.NUMBER = h.NUMBER AND pl.TAG = 9
+    WHERE  h.TAG = 9 AND h.DATE_N BETWEEN @DT1 AND @DT2
+      AND  pl.ANBAR IS NOT NULL
+      AND  NOT EXISTS (SELECT 1 FROM dbo.CC_UnitAnbar ua
+                        JOIN dbo.CC_Unit u ON u.UnitId = ua.UnitId
+                        WHERE ua.Anbar = pl.ANBAR AND ua.AnbarRole = 3 AND u.IsActive = 1);
+
+    ---- CHK-17 : شمارش دوم/سوم انبارگردانی بدون مغایرت شمارش اول
+    -- طبق فرآیند واقعی انبارگردانی (تأیید کاربر): کالایی که شمارش اول
+    -- (NUM1) آن با موجودی سیستم (MOG) برابر است، اصلاً نباید وارد دور
+    -- دوم/سوم شمارش شود؛ NUM2/NUM3 فقط برای کالاهایی پر می‌شود که شمارش
+    -- اول‌شان مغایرت داشته. اگر با این حال NUM2 یا NUM3 مقدار داشته باشد،
+    -- یعنی عدد در ستون اشتباهی ثبت شده — دقیقاً همان چیزی که روی کد
+    -- ۳۷۴ (شیر خام)، برگه انبارگردانی ۱۰۴ پیدا شد: MOG=0، NUM1=0 (بدون
+    -- مغایرت)، ولی NUM3=29633 — این عدد از راه (MOG-NUM3) وارد موتور نرخ
+    -- می‌شود و مقدار پایان‌دوره‌ی کالا را در همان انبار به‌کلی غلط می‌کند.
+    INSERT dbo.CC_Exception
+        (RunId, StepCode, RuleCode, ExType, Severity, Code, Anbar, DocNumber, DocDate, Amount, Description)
+    SELECT  @RunId, 'S00', 'CHK-17', 19, 2,
+            TRY_CAST(al.CODE AS BIGINT), ah.GRD_ANBAR, ah.GRD_NUM, ah.GRD_DATE,
+            CASE WHEN ISNULL(al.NUM3,0) <> 0 THEN al.NUM3 ELSE al.NUM2 END,
+            CONCAT(N'برگه انبارگردانی ', ah.GRD_NUM, N' / انبار ', ah.GRD_ANBAR,
+                   N': شمارش اول (', al.NUM1, N') با موجودی سیستم (', al.MOG,
+                   N') برابر بوده ولی شمارش ', CASE WHEN ISNULL(al.NUM3,0) <> 0 THEN N'سوم' ELSE N'دوم' END,
+                   N' مقدار دارد (', CASE WHEN ISNULL(al.NUM3,0) <> 0 THEN al.NUM3 ELSE al.NUM2 END,
+                   N') — احتمالاً در ستون اشتباه ثبت شده.')
+    FROM    dbo.ANBGRD_LST  al
+    JOIN    dbo.ANBGRD_HEAD ah ON ah.GRD_NUM = al.GRD_NUM
+    WHERE   ah.GRD_DATE BETWEEN @DT1 AND @DT2
+      AND   ah.N_S IS NOT NULL
+      AND   al.NUM1 IS NOT NULL AND al.NUM1 = al.MOG
+      AND   (ISNULL(al.NUM2,0) <> 0 OR ISNULL(al.NUM3,0) <> 0)
+      AND   NOT EXISTS (SELECT 1 FROM dbo.CC_AcceptedException ae
+                        WHERE ae.RuleCode = 'CHK-17' AND ae.IsActive = 1
+                          AND (ae.Anbar IS NULL OR ae.Anbar = ah.GRD_ANBAR)
+                          AND (ae.Code  IS NULL OR ae.Code  = TRY_CAST(al.CODE AS BIGINT)));
+
+    /* ─── CHK-18 : فاکتور فروش در ماهی متفاوت از حواله انبارش ───
+       طبق دستور کاربر (پیدا شده از راه فاکتور فروش ۲۴۶۵/کد ۳۴۰۲: تاریخ
+       فاکتور ۲۸/۲ ولی حواله‌ی انبار ۲۰/۳): وقتی فاکتور فروش و حواله‌ی
+       انبارِ همان فاکتور در دو ماهِ شمسیِ متفاوت ثبت شده‌اند، معلوم
+       نیست کدام درست است — باید اپراتور تصمیم بگیرد، نه بازسازی خودکار.
+
+       ⚠️ معیار ابتدا «بیش از ۳۰ روز فاصله» بود، ولی نمونه‌ی محرکِ همین
+       قاعده (فاکتور ۲۴۶۵) فقط ۲۳ روز واقعی فاصله دارد (۲۸ اردیبهشت تا
+       ۲۰ خرداد) — چون این دو تاریخ درست کنارِ مرز ماه افتاده‌اند، نه
+       چون فاصله‌ی زیادی دارند. معیار درست، طبق تأیید کاربر، «ماهِ شمسیِ
+       متفاوت» است، نه شمارشِ روز — دقیقاً همان چیزی که برای بستنِ ماه
+       اهمیت دارد (کدام ماهِ حسابداری صاحبِ این سند است). DATE_N به‌صورت
+       عدد فشرده‌ی YYYYMMDD ذخیره می‌شود، پس DATE_N/100 دقیقاً YYYYMM
+       (سال+ماه) را می‌دهد — تقسیم صحیح، بدون نیاز به تبدیل تقویم.
+
+       ⚠️ دومین اصلاح (بعد از تأیید کاربر): برگشت فروش/خرید عمداً حذف
+       شد. تصور اولیه این بود که تاریخ برگشت هم باید نزدیک تاریخ سند
+       اصلی باشد — غلط بود. کاربر توضیح داد: «برگشت فروش‌های مستقیم که
+       یعنی مستقیماً از حواله فروش استفاده می‌کنند تاریخشان ربطی به
+       تاریخ حواله ندارد» — مشتری هر وقت جنس را برگرداند برمی‌گرداند،
+       ماه‌ها بعد از خرید هم کاملاً طبیعی است؛ این قاعده برای سنجش‌شان
+       غلط بود و روی نمونه‌ی واقعی (برگشت ۵: برگشت ۱۶/۲ برای فروش ۳۱/۱)
+       مغایرت کاذب ساخت.
+
+       RefList حاوی یک JSON کوچک است («سند الف»/«سند ب» و جدول/شماره/برچسبِ
+       هرکدام) تا دکمه‌ی اصلاح بتواند دقیقاً بفهمد کدام ردیف از کدام جدول
+       را باید به تاریخ دیگری تغییر دهد. خرید (TAG=۱) عمداً اینجا نیست:
+       بر خلاف فروش، اینجا فاکتور خرید و رسید انبار یک سند واحدند (یک
+       تاریخ)، نه دو سند جدا برای مقایسه. */
+    ;WITH DateDrift AS (
+        -- فاکتور فروش (TAG=13) در برابر حواله انبار فروش (TAG=2)
+        -- ⚠️ NUMBER در HEAD_LST از نوع FLOAT است؛ بدون CAST به BIGINT، FOR
+        -- JSON PATH پایین‌تر آن را به نماد علمی (مثلاً «۲.۴۶۵e+۳») می‌نویسد
+        -- که در سمت C# به‌عنوان long قابل‌خواندن نیست.
+        SELECT  N'sale' AS Kind,
+                CAST(inv.NUMBER AS BIGINT) AS ANumber, 13 AS ATag, N'HEAD_LST' AS ATable, inv.DATE_N AS ADate,
+                CAST(vch.NUMBER AS BIGINT) AS BNumber, 2  AS BTag, N'HEAD_LST' AS BTable, vch.DATE_N AS BDate,
+                CONCAT(N'فاکتور فروش ', inv.NUMBER, N': تاریخ فاکتور ',
+                       FORMAT(inv.DATE_N,'0000/00/00'), N' با تاریخ حواله انبار ',
+                       FORMAT(vch.DATE_N,'0000/00/00'), N' در ماه متفاوتی ثبت شده‌اند')
+        AS Description,
+                CASE WHEN inv.DATE_N/100 <> vch.DATE_N/100 THEN 1 ELSE 0 END AS DifferentMonth
+        FROM    dbo.HEAD_LST inv
+        JOIN    dbo.HEAD_LST vch ON vch.NUMBER = inv.NUMBER AND vch.TAG = 2
+        WHERE   inv.TAG = 13
+          AND   (inv.DATE_N BETWEEN @DT1 AND @DT2 OR vch.DATE_N BETWEEN @DT1 AND @DT2)
+    )
+    INSERT dbo.CC_Exception
+        (RunId, StepCode, RuleCode, ExType, Severity, DocNumber, DocTag, DocDate, Amount, RefList, Description)
+    SELECT  @RunId, 'S00', 'CHK-18', 20, 1,
+            d.ANumber, d.ATag, d.ADate, d.BDate,
+            (SELECT d.Kind AS kind,
+                    d.ANumber AS aNumber, d.ATag AS aTag, d.ATable AS aTable, d.ADate AS aDate,
+                    d.BNumber AS bNumber, d.BTag AS bTag, d.BTable AS bTable, d.BDate AS bDate
+             FOR JSON PATH, WITHOUT_ARRAY_WRAPPER),
+            d.Description
+    FROM    DateDrift d
+    WHERE   d.DifferentMonth = 1
+      AND   NOT EXISTS (SELECT 1 FROM dbo.CC_AcceptedException ae
+                        WHERE ae.RuleCode = 'CHK-18' AND ae.IsActive = 1
+                          AND (ae.Anbar IS NULL) AND (ae.Code IS NULL));
+
+    /* ─── CHK-19 : تاریخ فاکتور فروش با تاریخ سند حسابداری‌اش دقیقاً یکی نیست ───
+       پیدا شده وقتی CHK-18 (فاکتور ۲۴۶۵) با دکمه‌ی «اصلاح تاریخ» درست شد:
+       تاریخ فاکتور (HEAD_LST/TAG=13) و حواله انبار (TAG=2) با هم یکی
+       شدند (هر دو ۲۰/۳)، ولی خودِ سند حسابداریِ پست‌شده (DEED_HED،
+       از راه DEED_DTL.NUMBER=فاکتور و TAG=13) هنوز تاریخ قدیم را داشت
+       (۲۸/۲) — چون اصلاح CHK-18 فقط HEAD_LST/BACK_HEAD را می‌نویسد، نه
+       سند حسابداری را. طبق دستور کاربر این دو باید «دقیقاً یکی» باشند،
+       نه فقط هم‌ماه — همان آستانه‌ی یک‌ریالی/بدون‌اغماضِ CHK-02، اینجا
+       روی روز.
+
+       ⚠️ DISTINCT لازم است: یک فاکتور معمولاً چند ردیفِ DEED_DTL دارد
+       (بستانکار مشتری، بستانکار فروش، بدهکار/بستانکار بهای تمام‌شده،
+       …) که همه زیر همان یک N_S/TAG=13 هستند — بدون DISTINCT، همان یک
+       فاکتور به تعداد ردیف‌هایش (مثلاً ۴ بار) تکراری درج می‌شد. */
+    INSERT dbo.CC_Exception
+        (RunId, StepCode, RuleCode, ExType, Severity, DocNumber, DocTag, DocDate, Amount, RefList, Description)
+    SELECT  DISTINCT
+            @RunId, 'S00', 'CHK-19', 21, 1,
+            CAST(inv.NUMBER AS BIGINT), 13, inv.DATE_N, h.DATE_S,
+            (SELECT N'invoiceVsAccounting' AS kind,
+                    CAST(inv.NUMBER AS BIGINT) AS aNumber, 13 AS aTag, N'HEAD_LST' AS aTable, inv.DATE_N AS aDate,
+                    CAST(d.N_S AS BIGINT) AS bNumber, 0 AS bTag, N'DEED_HED' AS bTable, h.DATE_S AS bDate
+             FOR JSON PATH, WITHOUT_ARRAY_WRAPPER),
+            CONCAT(N'فاکتور فروش ', inv.NUMBER, N': تاریخ فاکتور ',
+                   FORMAT(inv.DATE_N,'0000/00/00'), N' با تاریخ سند حسابداری ',
+                   FORMAT(h.DATE_S,'0000/00/00'), N' (سند ', d.N_S, N') یکی نیست')
+    FROM    dbo.HEAD_LST inv
+    JOIN    dbo.DEED_DTL d ON d.NUMBER = inv.NUMBER AND d.TAG = 13
+    JOIN    dbo.DEED_HED h ON h.N_S = d.N_S
+    WHERE   inv.TAG = 13
+      AND   (inv.DATE_N BETWEEN @DT1 AND @DT2 OR h.DATE_S BETWEEN @DT1 AND @DT2)
+      AND   inv.DATE_N <> h.DATE_S
+      AND   NOT EXISTS (SELECT 1 FROM dbo.CC_AcceptedException ae
+                        WHERE ae.RuleCode = 'CHK-19' AND ae.IsActive = 1
+                          AND (ae.Anbar IS NULL) AND (ae.Code IS NULL));
+
+    /* ─── CHK-20 : نرخ میانگین منفی ───
+       پیدا شده روی کد ۳۴۶۱/انبار۱: فروش ۱۴۰۵/۰۲/۰۹ کاردکس را وقتی فقط
+       ۰٫۴ واحد موجودی بود منفی کرد (۹۹٫۶-، همان مغایرتی که CHK-01 با
+       DocDate=۱۴۰۵۰۲۰۹ گزارش می‌کند)؛ سطرِ اولِ انبارگردانیِ بعدی
+       (سند ۲۰۰، ۱۴۰۵/۰۳/۱۰) همان مانده‌ی منفی را تصحیح کرد ولی با
+       نرخ ۳,۶۷۰,۰۱۶- ثبت شد — یک «قیمت منفی»، بدون معنای اقتصادی،
+       که از کجا آمده روشن نبود تا این مسیر دنبال شد.
+
+       CHK-01 فقط خودِ مانده‌ی منفیِ ریشه را گزارش می‌کند؛ این‌جا
+       پیامدِ نرخیِ آن را نشان می‌دهیم — نرخ منفی در دو منبع ممکن
+       است ثبت شود: INVO_LST.AVRAGE/AVRAGE2 (سطرهای عادی کاردکس) یا
+       ANBGRD_LST.MABL (سند انبارگردانی/شمارش فیزیکی). تأیید کاربر:
+       فقط هشدار (Severity=1)، نه دروازه‌ی مسدودکننده — فعلاً فقط
+       دیده شود، اصلاح دستی جداگانه‌ای در کار نیست. */
+    INSERT dbo.CC_Exception
+        (RunId, StepCode, RuleCode, ExType, Severity, Anbar, Code, DocNumber, DocTag, DocDate, Amount, Description)
+    SELECT  @RunId, 'S00', 'CHK-20', 22, 1,
+            CASE WHEN il.TAG = 5 THEN CAST(il.ANBARF AS INT) ELSE il.ANBAR END,
+            TRY_CAST(il.CODE AS BIGINT), CAST(il.NUMBER AS BIGINT), il.TAG, hl.DATE_N,
+            CASE WHEN il.TAG = 5 THEN il.AVRAGE2 ELSE il.AVRAGE END,
+            CONCAT(N'نرخ میانگین منفی: کد ', il.CODE, N'/انبار ',
+                   CASE WHEN il.TAG = 5 THEN il.ANBARF ELSE il.ANBAR END,
+                   N' در سند شماره ', il.NUMBER, N' مورخ ', FORMAT(hl.DATE_N, '0000/00/00'),
+                   N' نرخ ', FORMAT(CASE WHEN il.TAG = 5 THEN il.AVRAGE2 ELSE il.AVRAGE END, 'N0'),
+                   N' ثبت شده — معمولاً پیامد یک کاردکس منفی (CHK-01) در تاریخی نزدیک همین سند است.')
+    FROM    dbo.INVO_LST il
+    JOIN    dbo.HEAD_LST hl ON hl.TAG = il.TAG AND hl.NUMBER = il.NUMBER
+    WHERE   hl.DATE_N BETWEEN @DT1 AND @DT2
+      AND   ((il.TAG IN (1, 7, 9, 24) AND il.AVRAGE < 0)
+          OR (il.TAG = 5 AND il.ANBARF IS NOT NULL AND il.AVRAGE2 < 0))
+      AND   NOT EXISTS (SELECT 1 FROM dbo.CC_AcceptedException ae
+                        WHERE ae.RuleCode = 'CHK-20' AND ae.IsActive = 1
+                          AND (ae.Anbar IS NULL OR ae.Anbar = CASE WHEN il.TAG = 5 THEN CAST(il.ANBARF AS INT) ELSE il.ANBAR END)
+                          AND (ae.Code  IS NULL OR ae.Code  = TRY_CAST(il.CODE AS BIGINT)));
+
+    INSERT dbo.CC_Exception
+        (RunId, StepCode, RuleCode, ExType, Severity, Anbar, Code, DocNumber, DocDate, Amount, Description)
+    SELECT  @RunId, 'S00', 'CHK-20', 22, 1,
+            ah.GRD_ANBAR, TRY_CAST(al.CODE AS BIGINT), ah.GRD_NUM, ah.GRD_DATE, al.MABL,
+            CONCAT(N'نرخ میانگین منفی: کد ', al.CODE, N'/انبار ', ah.GRD_ANBAR,
+                   N' در سند انبارگردانی شماره ', ah.GRD_NUM, N' مورخ ', FORMAT(ah.GRD_DATE, '0000/00/00'),
+                   N' نرخ ', FORMAT(al.MABL, 'N0'),
+                   N' ثبت شده — معمولاً پیامد یک کاردکس منفی (CHK-01) در تاریخی نزدیک همین سند است.')
+    FROM    dbo.ANBGRD_LST al
+    JOIN    dbo.ANBGRD_HEAD ah ON ah.GRD_NUM = al.GRD_NUM
+    WHERE   ah.N_S IS NOT NULL
+      AND   ah.GRD_DATE BETWEEN @DT1 AND @DT2
+      AND   al.MABL < 0
+      AND   NOT EXISTS (SELECT 1 FROM dbo.CC_AcceptedException ae
+                        WHERE ae.RuleCode = 'CHK-20' AND ae.IsActive = 1
+                          AND (ae.Anbar IS NULL OR ae.Anbar = ah.GRD_ANBAR)
+                          AND (ae.Code  IS NULL OR ae.Code  = TRY_CAST(al.CODE AS BIGINT)));
+
     ---- CHK-06 : حلقه در ساختار فرمول
     IF OBJECT_ID('tempdb..#E') IS NOT NULL DROP TABLE #E;
     SELECT DISTINCT CAST(h.CODE AS BIGINT) AS P, CAST(d.CODE AS BIGINT) AS C
@@ -337,16 +537,44 @@ BEGIN
              / NULLIF((SUM(d.BED) + SUM(d.BES)) / 2.0, 0) > @th);
 
     ---- CHK-09 : نرخ منتشرنشده نيمه‌ساخته
+    --
+    -- ⚠️ يک کالا مي‌تواند در همان ماه بيش از يک فرمول فعال داشته باشد
+    -- (مثلاً روزهاي مختلف با ترکيب مواد متفاوت توليد شده باشد) — طبق تأييد
+    -- صاحب پروژه، اين حالت طبيعي است، نه خطاي داده. نسخه‌ي قبلي اين چک هر
+    -- (Code,FNUMB) را جدا با نرخ منتشرشده مقايسه مي‌کرد، در حالي‌که موتور
+    -- نرخ (S11) فقط يک بهاي واحد به بالادست منتشر مي‌کند — نتيجه: فرمول‌هاي
+    -- «غيرمنتخب» هميشه به‌عنوان مغايرت کاذب باقي مي‌ماندند، حتي بعد از
+    -- بازسازي نرخ. حالا بهاي «خودِ» کالا ميانگين موزونِ بهاي همه‌ي
+    -- فرمول‌هاي فعالش است، وزن‌دهي‌شده با مقدار واقعيِ توليدشده زيرِ هرکدام
+    -- (از TAG=9 در همين بازه) — دقيقاً همان معياري که S11 هم استفاده مي‌کند.
     DECLARE @th9 FLOAT =
         ISNULL((SELECT Threshold FROM dbo.CC_CheckRule WHERE RuleCode='CHK-09'), 0.001);
 
-    ;WITH Khod AS (
-        SELECT CAST(hm.CODE AS BIGINT) AS Code,
-               SUM(ISNULL(d.MABLK,0)) + MAX(ISNULL(hm.IMBIBE_MANF,0))
-                                      + MAX(ISNULL(hm.IMBIBE_SAR,0)) AS Baha
-        FROM   dbo.HEAD_MANF hm JOIN dbo.DTL_MANF d ON d.FNUMB = hm.FNUMB
-        WHERE  hm.GHEYMAT = @Month
-        GROUP BY CAST(hm.CODE AS BIGINT), hm.FNUMB
+    ;WITH FormulaCost AS (
+        SELECT  hm.FNUMB, CAST(hm.CODE AS BIGINT) AS Code,
+                SUM(ISNULL(d.MABLK,0)) + MAX(ISNULL(hm.IMBIBE_MANF,0))
+                                       + MAX(ISNULL(hm.IMBIBE_SAR,0)) AS Baha,
+                ISNULL(p.Qty, 0) AS Qty
+        FROM    dbo.HEAD_MANF hm
+        JOIN    dbo.DTL_MANF  d ON d.FNUMB = hm.FNUMB
+        CROSS   APPLY (
+                    SELECT SUM(pl.MEGHk) AS Qty
+                    FROM   dbo.HEAD_LST h
+                    JOIN   dbo.INVO_LST pl ON pl.NUMBER = h.NUMBER AND pl.TAG = 9
+                    WHERE  h.TAG = 9 AND h.DATE_N BETWEEN @DT1 AND @DT2
+                      AND  TRY_CAST(pl.N_KOL AS INT) = hm.FNUMB
+                ) p
+        WHERE   hm.GHEYMAT = @Month
+        GROUP BY hm.FNUMB, CAST(hm.CODE AS BIGINT), p.Qty
+    ),
+    Khod AS (
+        -- اگر هيچ‌کدام از فرمول‌هاي اين کالا در بازه توليد واقعي نداشتند
+        -- (تعريف شده ولي هنوز مصرف نشده)، ميانگين ساده جايگزين وزن مي‌شود.
+        SELECT  Code,
+                CASE WHEN SUM(Qty) > 0 THEN SUM(Baha * Qty) / SUM(Qty)
+                     ELSE AVG(Baha) END AS Baha
+        FROM    FormulaCost
+        GROUP BY Code
     ),
     DarValed AS (
         SELECT CAST(d.CODE AS BIGINT) AS Code,

@@ -1,9 +1,14 @@
 @page "/cost-close/runs/{RunId:int}/variance"
+@using Microsoft.AspNetCore.SignalR.Client
 @using Safir.Shared.Models.CostClose
 @using Safir.Shared.Constants
 @using Safir.Client.Services
+@using Safir.Shared.Interfaces
+@implements IAsyncDisposable
 @inject CostCloseApiService Api
 @inject Pay2AccessApiService Access
+@inject IAuthService AuthService
+@inject NavigationManager Nav
 @inject ISnackbar Snackbar
 
 <PageTitle>انحراف مصرف</PageTitle>
@@ -212,6 +217,14 @@ else
     private double _remaining;
     private string? _loadError;
 
+    // «اعمال و محاسبه مجدد» فقط گام S09 را صف می‌کند (Accepted فوری،
+    // نه اجرای هم‌زمان) و ارکستریتور خودش S07/S08 را پشت‌سرش صف می‌کند؛
+    // بدون این اتصال زنده، این صفحه هرگز نمی‌فهمید محاسبه کِی واقعاً تمام
+    // شده، پس _remaining تا رفرش دستیِ مرورگر همیشه همان عدد کهنه‌ی قبل
+    // از کلیک را نشان می‌داد — دقیقاً همان چیزی که «چندبار اجرا کردم ولی
+    // صفر نمی‌شود» را توضیح می‌دهد. همان الگوی CostRunMonitor.razor.
+    private HubConnection? _hub;
+
     private int UndecidedCount  => _all.Count(r => r.Mode == 1 && r.TargetCode is null);
     private int InheritedCount  => _all.Count(r => r.LastMonthHint == "مثل ماه قبل");
     private int NeedsReviewCount => _all.Count(r =>
@@ -225,6 +238,51 @@ else
     {
         await Access.EnsureLoadedAsync();
         await Load();
+
+        _hub = new HubConnectionBuilder()
+            .WithUrl(Nav.ToAbsoluteUri("/hubs/cost-close"), options =>
+            {
+                options.AccessTokenProvider = () => AuthService.GetTokenAsync();
+            })
+            .WithAutomaticReconnect()
+            .Build();
+
+        _hub.On<object>("StepFinished", async _ => await SafeReloadAsync());
+        _hub.On<object>("RunPaused",    async _ => await SafeReloadAsync());
+        _hub.On<int>("RunCompleted",    async _ => await SafeReloadAsync());
+
+        try
+        {
+            await _hub.StartAsync();
+            await _hub.InvokeAsync("Subscribe", RunId);
+        }
+        catch (Exception ex)
+        {
+            // بدون اتصال زنده هم صفحه قابل استفاده می‌ماند — کاربر با
+            // رفرش دستیِ مرورگر بعد از «اعمال و محاسبه مجدد» ادامه می‌دهد.
+            Console.Error.WriteLine($"CostCloseHub connection failed: {ex.Message}");
+        }
+    }
+
+    /// <summary>پس از هر رویداد زنده، لیست انحراف را دوباره می‌خواند تا
+    /// «باقیمانده» واقعاً وضعیت تازه‌ی پس از S07/S08 را نشان دهد.</summary>
+    private async Task SafeReloadAsync()
+    {
+        try
+        {
+            await Load();
+            await InvokeAsync(StateHasChanged);
+        }
+        catch { /* یک خطای گذرا در callback هاب نباید کل صفحه را بشکند */ }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_hub is not null)
+        {
+            try { await _hub.InvokeAsync("Unsubscribe", RunId); } catch { }
+            await _hub.DisposeAsync();
+        }
     }
 
     protected override async Task OnAfterRenderAsync(bool first)
@@ -256,10 +314,17 @@ else
 
     /// <summary>
     /// باقیمانده = انحرافی که هنوز به هیچ فرمولی تخصیص نیافته.
-    /// «بدون تخصیص» و «اختصاص بدون مقصد» تخصیص‌نیافته حساب می‌شوند.
+    /// «بدون تخصیص» و «اختصاص بدون مقصد» تخصیص‌نیافته حساب می‌شوند —
+    /// و همین‌طور «تسهیم» روی کالایی که اصلاً در هیچ فرمولی مصرف نشده
+    /// (ConsumedQty صفر/NULL): تسهیم یعنی «به نسبت مصرف پخش کن»، بدون
+    /// مصرف هیچ مبنایی برای پخش نیست، پس CC_sp_S09_ApplyDecisions عملاً
+    /// هیچ‌کاری روی آن نمی‌کند و انحرافش برای همیشه جذب‌نشده می‌ماند —
+    /// با اینکه به‌ظاهر «تصمیم‌گیری‌شده» نشان داده می‌شود.
     /// </summary>
     private void Recalculate() => _remaining = _all
-        .Where(r => r.Mode == 3 || (r.Mode == 1 && r.TargetCode is null))
+        .Where(r => r.Mode == 3
+                 || (r.Mode == 1 && r.TargetCode is null)
+                 || (r.Mode == 2 && (r.ConsumedQty ?? 0) == 0))
         .Sum(r => r.AmountVariance ?? 0);
 
     private void OnFilter(string v) { _filter = v; ApplyFilter(); }
@@ -363,6 +428,17 @@ else
         {
             Snackbar.Add($"{missing.Count} کالا حالت «اختصاص» دارد ولی مقصدش تعیین نشده",
                          Severity.Warning);
+            return;
+        }
+
+        // «تسهیم» یعنی پخش به نسبت مصرف در فرمول‌ها؛ روی کالایی که اصلاً
+        // مصرف ندارد (ConsumedQty صفر/NULL) هیچ مبنایی برای پخش نیست، پس
+        // بی‌صدا هیچ‌کاری اعمال نمی‌شود و انحرافش برای همیشه معلق می‌ماند.
+        var noBasis = _all.Where(r => r.Mode == 2 && (r.ConsumedQty ?? 0) == 0).ToList();
+        if (noBasis.Count > 0)
+        {
+            Snackbar.Add($"{noBasis.Count} کالا حالت «تسهیم» دارد ولی هیچ مصرفی در فرمول‌ها ندارد — " +
+                         "برایشان «اختصاص» یا «بدون تخصیص» انتخاب کنید", Severity.Warning);
             return;
         }
 
