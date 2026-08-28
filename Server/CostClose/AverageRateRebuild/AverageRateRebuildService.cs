@@ -842,6 +842,28 @@ namespace Safir.Server.CostClose.AverageRateRebuild
                   INNER JOIN dbo.INVO_LST il ON il.TAG = bh.ta AND il.NUMBER = bh.NUMBER1
                   INNER JOIN dbo.HEAD_LST hs ON hs.NUMBER = il.NUMBER AND hs.TAG = il.TAG
                   WHERE bh.ta = 2 AND il.MEGH_MAR <> 0
+                    AND il.CODE = @Code AND (@Anbar IS NULL OR il.ANBAR = @Anbar) AND bh.DATE_N > @SinceDate",
+
+                // ⚠️ برگشت خرید («کد ۳۵۱۲/انبار ۸۰۷» کشف شد): برخلاف برگشت
+                // فروش (بالا)، اینجا هیچ شاخه‌ی معادلی برای BACK_HEAD.ta=1
+                // وجود نداشت — فقط به hasKbk (جدول HEAD_LST_KBK) وابسته بود
+                // که در این دیتابیس اصلاً وجود ندارد؛ یعنی Case 3 در
+                // ProcessRowAsync کد دارد ولی هرگز هیچ ردیفی به آن نمی‌رسید،
+                // پس هیچ برگشت خریدی تا به حال روی نرخ میانگین اثر نمی‌گذاشت.
+                // بررسی کل دیتابیس: فقط همین یک سند (۱۳۳ واحد) — نادر ولی واقعی.
+                //
+                // برخلاف Case 4، اینجا نیازی به سنتینل ۹۹۹۹/تای‌برک هم‌روز
+                // نیست: Case 3 از line?.AVRAGE (نرخ منجمد) استفاده نمی‌کند،
+                // فقط از st.MIAN جاری — که با هر ترتیبی که این ردیف در همان
+                // روز قرار بگیرد، معتبر است (به شرطی که خریدی قبل از آن رخ
+                // داده باشد، که همیشه همینطور است چون این یک برگشتِ همان
+                // خرید است). پس با tartib واقعیِ TAGCOD برای کد ۳ (=۱۵) کافی است.
+                @"SELECT bh.DATE_N, 3 AS TAG, il.NUMBER, il.ANBAR, il.CODE, il.MEGH, il.MEGHk, il.MEGH_MAR,
+                         il.MABL, il.MABL_K, il.N_KOL, il.ID AS id,
+                         15 AS tartib
+                  FROM dbo.BACK_HEAD bh
+                  INNER JOIN dbo.INVO_LST il ON il.TAG = bh.ta AND il.NUMBER = bh.NUMBER1
+                  WHERE bh.ta = 1 AND il.MEGH_MAR <> 0
                     AND il.CODE = @Code AND (@Anbar IS NULL OR il.ANBAR = @Anbar) AND bh.DATE_N > @SinceDate"
             };
 
