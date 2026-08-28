@@ -425,6 +425,59 @@ BEGIN
                         WHERE ae.RuleCode = 'CHK-19' AND ae.IsActive = 1
                           AND (ae.Anbar IS NULL) AND (ae.Code IS NULL));
 
+    /* ─── CHK-20 : نرخ میانگین منفی ───
+       پیدا شده روی کد ۳۴۶۱/انبار۱: فروش ۱۴۰۵/۰۲/۰۹ کاردکس را وقتی فقط
+       ۰٫۴ واحد موجودی بود منفی کرد (۹۹٫۶-، همان مغایرتی که CHK-01 با
+       DocDate=۱۴۰۵۰۲۰۹ گزارش می‌کند)؛ سطرِ اولِ انبارگردانیِ بعدی
+       (سند ۲۰۰، ۱۴۰۵/۰۳/۱۰) همان مانده‌ی منفی را تصحیح کرد ولی با
+       نرخ ۳,۶۷۰,۰۱۶- ثبت شد — یک «قیمت منفی»، بدون معنای اقتصادی،
+       که از کجا آمده روشن نبود تا این مسیر دنبال شد.
+
+       CHK-01 فقط خودِ مانده‌ی منفیِ ریشه را گزارش می‌کند؛ این‌جا
+       پیامدِ نرخیِ آن را نشان می‌دهیم — نرخ منفی در دو منبع ممکن
+       است ثبت شود: INVO_LST.AVRAGE/AVRAGE2 (سطرهای عادی کاردکس) یا
+       ANBGRD_LST.MABL (سند انبارگردانی/شمارش فیزیکی). تأیید کاربر:
+       فقط هشدار (Severity=1)، نه دروازه‌ی مسدودکننده — فعلاً فقط
+       دیده شود، اصلاح دستی جداگانه‌ای در کار نیست. */
+    INSERT dbo.CC_Exception
+        (RunId, StepCode, RuleCode, ExType, Severity, Anbar, Code, DocNumber, DocTag, DocDate, Amount, Description)
+    SELECT  @RunId, 'S00', 'CHK-20', 22, 1,
+            CASE WHEN il.TAG = 5 THEN CAST(il.ANBARF AS INT) ELSE il.ANBAR END,
+            TRY_CAST(il.CODE AS BIGINT), CAST(il.NUMBER AS BIGINT), il.TAG, hl.DATE_N,
+            CASE WHEN il.TAG = 5 THEN il.AVRAGE2 ELSE il.AVRAGE END,
+            CONCAT(N'نرخ میانگین منفی: کد ', il.CODE, N'/انبار ',
+                   CASE WHEN il.TAG = 5 THEN il.ANBARF ELSE il.ANBAR END,
+                   N' در سند شماره ', il.NUMBER, N' مورخ ', FORMAT(hl.DATE_N, '0000/00/00'),
+                   N' نرخ ', FORMAT(CASE WHEN il.TAG = 5 THEN il.AVRAGE2 ELSE il.AVRAGE END, 'N0'),
+                   N' ثبت شده — معمولاً پیامد یک کاردکس منفی (CHK-01) در تاریخی نزدیک همین سند است.')
+    FROM    dbo.INVO_LST il
+    JOIN    dbo.HEAD_LST hl ON hl.TAG = il.TAG AND hl.NUMBER = il.NUMBER
+    WHERE   hl.DATE_N BETWEEN @DT1 AND @DT2
+      AND   ((il.TAG IN (1, 7, 9, 24) AND il.AVRAGE < 0)
+          OR (il.TAG = 5 AND il.ANBARF IS NOT NULL AND il.AVRAGE2 < 0))
+      AND   NOT EXISTS (SELECT 1 FROM dbo.CC_AcceptedException ae
+                        WHERE ae.RuleCode = 'CHK-20' AND ae.IsActive = 1
+                          AND (ae.Anbar IS NULL OR ae.Anbar = CASE WHEN il.TAG = 5 THEN CAST(il.ANBARF AS INT) ELSE il.ANBAR END)
+                          AND (ae.Code  IS NULL OR ae.Code  = TRY_CAST(il.CODE AS BIGINT)));
+
+    INSERT dbo.CC_Exception
+        (RunId, StepCode, RuleCode, ExType, Severity, Anbar, Code, DocNumber, DocDate, Amount, Description)
+    SELECT  @RunId, 'S00', 'CHK-20', 22, 1,
+            ah.GRD_ANBAR, TRY_CAST(al.CODE AS BIGINT), ah.GRD_NUM, ah.GRD_DATE, al.MABL,
+            CONCAT(N'نرخ میانگین منفی: کد ', al.CODE, N'/انبار ', ah.GRD_ANBAR,
+                   N' در سند انبارگردانی شماره ', ah.GRD_NUM, N' مورخ ', FORMAT(ah.GRD_DATE, '0000/00/00'),
+                   N' نرخ ', FORMAT(al.MABL, 'N0'),
+                   N' ثبت شده — معمولاً پیامد یک کاردکس منفی (CHK-01) در تاریخی نزدیک همین سند است.')
+    FROM    dbo.ANBGRD_LST al
+    JOIN    dbo.ANBGRD_HEAD ah ON ah.GRD_NUM = al.GRD_NUM
+    WHERE   ah.N_S IS NOT NULL
+      AND   ah.GRD_DATE BETWEEN @DT1 AND @DT2
+      AND   al.MABL < 0
+      AND   NOT EXISTS (SELECT 1 FROM dbo.CC_AcceptedException ae
+                        WHERE ae.RuleCode = 'CHK-20' AND ae.IsActive = 1
+                          AND (ae.Anbar IS NULL OR ae.Anbar = ah.GRD_ANBAR)
+                          AND (ae.Code  IS NULL OR ae.Code  = TRY_CAST(al.CODE AS BIGINT)));
+
     ---- CHK-06 : حلقه در ساختار فرمول
     IF OBJECT_ID('tempdb..#E') IS NOT NULL DROP TABLE #E;
     SELECT DISTINCT CAST(h.CODE AS BIGINT) AS P, CAST(d.CODE AS BIGINT) AS C
