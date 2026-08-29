@@ -69,7 +69,7 @@ namespace Safir.Server.Controllers
                     UID = r.UID,
                     NAME = r.NAME,
                     CTDATE = CL_Tarikh.ConvertToDateTimeFromPersianLong(r.CTDATE_DB),
-                    CTTIME = null, // TODO: Implement conversion from DB CTTIME format if needed
+                    CTTIME = CL_Tarikh.ConvertToTimeSpanFromTimeInt(r.CTTIME_DB != null ? (int?)Convert.ToInt32(r.CTTIME_DB) : null),
                     STDATE = CL_Tarikh.ConvertToDateTimeFromPersianLong(r.STDATE_DB),
                     STTIME = CL_Tarikh.ConvertToTimeSpanFromTimeInt(r.STTIME_DB)
                 }).ToList();
