@@ -1,0 +1,42 @@
+@* دکمهٔ عمومیِ «خروجی اکسل» — روی هر گرید/لیستی در برنامه با چند خط قابل‌استفاده.
+   ستون‌ها را خودِ صفحه‌ی فراخوان با ExcelCol<T> مشخص می‌کند؛ این کامپوننت فقط
+   فایل واقعیِ XLSX را (از GenericExcelExporter) می‌سازد و دانلودش می‌کند. *@
+@typeparam T
+@inject IJSRuntime JS
+@inject ISnackbar Snackbar
+
+<MudTooltip Text="خروجی اکسل">
+    <MudIconButton Icon="@Icons.Material.Filled.GridOn" Size="Size.Small"
+                   Disabled="@(_busy || Items is null || !Items.Any())"
+                   OnClick="ExportAsync" />
+</MudTooltip>
+
+@code {
+    [Parameter, EditorRequired] public IEnumerable<T>? Items { get; set; }
+    [Parameter, EditorRequired] public IReadOnlyList<ExcelCol<T>> Columns { get; set; } = Array.Empty<ExcelCol<T>>();
+    [Parameter, EditorRequired] public string FileName { get; set; } = "خروجی.xlsx";
+    [Parameter] public string? FooterLabel { get; set; } = "جمع";
+    [Parameter] public int FooterLabelColumnIndex { get; set; } = 0;
+
+    private bool _busy;
+
+    private async Task ExportAsync()
+    {
+        if (Items is null || !Items.Any()) return;
+        _busy = true;
+        try
+        {
+            var bytes = GenericExcelExporter.Build(Items, Columns, FooterLabel, FooterLabelColumnIndex);
+            var name = FileName.EndsWith(".xlsx", StringComparison.OrdinalIgnoreCase) ? FileName : FileName + ".xlsx";
+            await JS.InvokeVoidAsync("downloadFileFromBytes", name, bytes);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add("خطا در تهیهٔ خروجی اکسل: " + ex.Message, Severity.Error);
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+}

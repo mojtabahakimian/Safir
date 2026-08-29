@@ -305,10 +305,12 @@ namespace Safir.Server.CostClose
                     // فقط وقتی معنا دارد که خودِ S11 موفق اجرا شده باشد.
                     if (step.StepCode == "S11" && result.Status != CostStepStatus.Failed)
                     {
-                        var rates    = await GetItemCostSnapshotAsync(db, job.RunId);
-                        var maxDelta = lastRates is null ? (double?)null : MaxAbsDelta(lastRates, rates);
+                        var rates = await GetItemCostSnapshotAsync(db, job.RunId);
+                        (double Max, long? Code)? delta = lastRates is null
+                            ? null
+                            : MaxAbsDelta(lastRates, rates);
 
-                        if (maxDelta is not null && maxDelta <= RateConvergeThreshold)
+                        if (delta is not null && delta.Value.Max <= RateConvergeThreshold)
                         {
                             // بیشترین تغییرِ نرخِ همه‌ی کالاها بین این دور و دور
                             // قبل زیر یک ریال است — همگرا شد
@@ -328,15 +330,18 @@ namespace Safir.Server.CostClose
                             // نه به انتهای آن (بر خلاف بازتولید WritesFormulas بالا).
                             pending = new Queue<ICostStep>(repeat.Concat(pending));
 
-                            var deltaTxt = maxDelta is null ? "" : $" (بیشترین تغییر: {maxDelta:N0} ریال)";
+                            var deltaTxt = delta is null
+                                ? ""
+                                : $" (بیشترین تغییر: {delta.Value.Max:N0} ریال روی کالای {await DescribeItemAsync(db, delta.Value.Code)})";
                             await LogAsync(db, job.RunId, "S11", 1,
                                 $"نرخ مواد بین این دور و دور قبل فرق دارد{deltaTxt} — S07A/S11 دوباره اجرا می‌شود (دور {s11Cycles + 1})");
                         }
                         else
                         {
                             lastRates = rates;
+                            var worstItem = delta is null ? "؟" : await DescribeItemAsync(db, delta.Value.Code);
                             await LogAsync(db, job.RunId, "S11", 2,
-                                $"همگرایی نرخ پس از {MaxS11Cycles} دور تکرار کامل نشد (بیشترین تغییر هنوز {maxDelta:N0} ریال) — با آخرین مقدار ادامه داده می‌شود");
+                                $"همگرایی نرخ پس از {MaxS11Cycles} دور تکرار کامل نشد (بیشترین تغییر هنوز {delta?.Max:N0} ریال روی کالای {worstItem}) — با آخرین مقدار ادامه داده می‌شود");
                         }
                     }
                 }
@@ -405,24 +410,51 @@ namespace Safir.Server.CostClose
         }
 
         /// <summary>
-        /// بیشترین قدرمطلقِ تغییرِ نرخ روی هر کالا بین دو عکسِ پیاپی. کالایی
-        /// که فقط در یکی از دو عکس هست (مثلاً بین این دور تازه به مجموعه
-        /// اضافه/حذف شده) هم به همان اندازه‌ی خودش تغییر حساب می‌شود، نه
-        /// نادیده گرفته می‌شود — یک کالای گم‌شده نباید بی‌صدا از چشمِ
-        /// آستانه‌ی همگرایی رد شود.
+        /// بیشترین قدرمطلقِ تغییرِ نرخ روی هر کالا بین دو عکسِ پیاپی، به‌همراه
+        /// کدِ همان کالای مقصر — تا وقتی همگرایی کند است یا به سقفِ دور
+        /// می‌خورد، مستقیم در CC_RunLog معلوم باشد کدام زنجیره مسئول است،
+        /// نه فقط عددِ خامِ بیشترین تغییر (که قبلاً هیچ ردی از این‌که کدام
+        /// کالا بود نمی‌گذاشت — برای تشخیصش باید دستی اسنپ‌شات‌های هر دور
+        /// را که اصلاً جایی ذخیره نمی‌شوند بازسازی می‌کردیم).
+        ///
+        /// کالایی که فقط در یکی از دو عکس هست (مثلاً بین این دور تازه به
+        /// مجموعه اضافه/حذف شده) هم به همان اندازه‌ی خودش تغییر حساب
+        /// می‌شود، نه نادیده گرفته می‌شود — یک کالای گم‌شده نباید بی‌صدا از
+        /// چشمِ آستانه‌ی همگرایی رد شود.
         /// </summary>
-        private static double MaxAbsDelta(
+        private static (double Max, long? Code) MaxAbsDelta(
             Dictionary<long, double> prev, Dictionary<long, double> curr)
         {
             double max = 0;
+            long? maxCode = null;
             foreach (var code in prev.Keys.Union(curr.Keys))
             {
                 var p = prev.TryGetValue(code, out var pv) ? pv : 0;
                 var c = curr.TryGetValue(code, out var cv) ? cv : 0;
                 var d = Math.Abs(c - p);
-                if (d > max) max = d;
+                if (d > max) { max = d; maxCode = code; }
             }
-            return max;
+            return (max, maxCode);
+        }
+
+        /// <summary>«کد — نام» برای پیام لاگ؛ فقط وقتی همگرایی کند/ناقص است
+        /// صدا زده می‌شود (نه هر دور)، پس هزینه‌ی یک کوئریِ اضافه ناچیز
+        /// است. نبودِ نام (کالای حذف‌شده/نامعتبر) را بی‌سروصدا به خودِ کد
+        /// برمی‌گرداند، چون این فقط برای خواناییِ لاگ است، نه منطق.</summary>
+        private static async Task<string> DescribeItemAsync(IDatabaseService db, long? code)
+        {
+            if (code is null) return "؟";
+            try
+            {
+                var name = await db.DoGetDataSQLAsyncSingle<string>(
+                    "SELECT NAME FROM dbo.STUF_DEF WHERE TRY_CAST(CODE AS BIGINT) = @code",
+                    new { code = code.Value });
+                return string.IsNullOrWhiteSpace(name) ? code.Value.ToString() : $"{code} ({name})";
+            }
+            catch
+            {
+                return code.Value.ToString();
+            }
         }
     }
 }

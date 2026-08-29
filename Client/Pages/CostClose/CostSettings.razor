@@ -214,14 +214,17 @@
                 حسابداری» (CHK-02) غیرفعال می‌ماند.
             </MudAlert>
 
-            @if (Access.CanInp(CostForms.Settings))
-            {
-                <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Small"
-                           StartIcon="@Icons.Material.Filled.Add" Class="mb-3"
-                           OnClick="OpenAddAnbarHes">
-                    افزودن نگاشت انبار
-                </MudButton>
-            }
+            <div class="d-flex ga-2 mb-3 align-center">
+                @if (Access.CanInp(CostForms.Settings))
+                {
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Small"
+                               StartIcon="@Icons.Material.Filled.Add"
+                               OnClick="OpenAddAnbarHes">
+                        افزودن نگاشت انبار
+                    </MudButton>
+                }
+                <ExcelExportButton T="CostAnbarHesDto" Items="_anbarHes" Columns="_anbarHesCols" FileName="نگاشت_انبار_حساب" />
+            </div>
 
             <MudPaper Class="cc-rule-card" Elevation="0">
                 <MudTable Items="_anbarHes" Dense Hover Elevation="0" T="CostAnbarHesDto">
@@ -280,6 +283,7 @@
                         همگام‌سازی از فرمول‌های تولید
                     </MudButton>
                 }
+                <ExcelExportButton T="CostLaborRateDto" Items="_laborRates" Columns="_laborRateCols" FileName="نرخ_استاندارد_دستمزد" />
             </div>
 
             <MudPaper Class="cc-rule-card" Elevation="0">
@@ -361,6 +365,10 @@
                 هنگام بروز مغایرت به کاربر نشان داده می‌شود.
             </MudAlert>
 
+            <div class="d-flex mb-3">
+                <ExcelExportButton T="CostCheckRuleDto" Items="_rules" Columns="_ruleCols" FileName="قواعد_تشخیص" />
+            </div>
+
             <MudPaper Class="cc-rule-card" Elevation="0">
                 <MudTable Items="_rules" Dense Hover Elevation="0" T="CostCheckRuleDto">
                     <HeaderContent>
@@ -441,6 +449,36 @@
 </div>
 
 @code {
+    private static readonly IReadOnlyList<ExcelCol<CostAnbarHesDto>> _anbarHesCols = new[]
+    {
+        new ExcelCol<CostAnbarHesDto> { Title = "انبار",   Text = r => $"{r.Anbar} {r.AnbarName}" },
+        new ExcelCol<CostAnbarHesDto> { Title = "کل",      Text = r => $"{r.HesKol} {r.KolName}" },
+        new ExcelCol<CostAnbarHesDto> { Title = "معین",    Text = r => $"{r.HesMoin} {r.MoinName}" },
+        new ExcelCol<CostAnbarHesDto> { Title = "یادداشت", Text = r => r.Note ?? "" },
+    };
+
+    private static readonly IReadOnlyList<ExcelCol<CostLaborRateDto>> _laborRateCols = new[]
+    {
+        new ExcelCol<CostLaborRateDto> { Title = "واحد تولیدی", Text = r => r.UnitName ?? r.UnitId.ToString() },
+        new ExcelCol<CostLaborRateDto> { Title = "کد کالا",     Text = r => r.Code },
+        new ExcelCol<CostLaborRateDto> { Title = "نام کالا",    Text = r => r.ItemName ?? "" },
+        new ExcelCol<CostLaborRateDto> { Title = "ضریب دستمزد", IsNumber = true, Number = r => r.IsFixed ? null : r.Coefficient },
+        new ExcelCol<CostLaborRateDto> { Title = "ضریب سربار",  IsNumber = true, Number = r => r.IsFixed ? null : (r.OverheadCoefficient ?? r.Coefficient) },
+        new ExcelCol<CostLaborRateDto> { Title = "کارمزدی",     Text = r => r.IsFixed ? "بله" : "" },
+        new ExcelCol<CostLaborRateDto> { Title = "یادداشت",     Text = r => r.Note ?? "" },
+    };
+
+    private static readonly IReadOnlyList<ExcelCol<CostCheckRuleDto>> _ruleCols = new[]
+    {
+        new ExcelCol<CostCheckRuleDto> { Title = "کد",     Text = r => r.RuleCode },
+        new ExcelCol<CostCheckRuleDto> { Title = "قاعده",  Text = r => r.RuleName },
+        new ExcelCol<CostCheckRuleDto> { Title = "گام",    Text = r => r.StepCode },
+        new ExcelCol<CostCheckRuleDto> { Title = "شدت",    Text = r => r.DefaultSeverity == 2 ? "مسدودکننده" : "هشدار" },
+        new ExcelCol<CostCheckRuleDto> { Title = "آستانه", IsNumber = true, Number = r => r.Threshold },
+        new ExcelCol<CostCheckRuleDto> { Title = "راه رفع", Text = r => r.RemedyText ?? "" },
+        new ExcelCol<CostCheckRuleDto> { Title = "فعال",   Text = r => r.IsActive ? "بله" : "خیر" },
+    };
+
     private List<CostUnitDto>      _units = new();
     private List<CostCheckRuleDto> _rules = new();
     private List<CostAnbarHesDto>  _anbarHes = new();

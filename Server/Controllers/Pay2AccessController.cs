@@ -60,6 +60,64 @@ namespace Safir.Server.Controllers
         }
 
         /// <summary>
+        /// همگام‌سازیِ فرم‌های ماژول بستن ماه با TFORMS — معادلِ زنده‌ی بخشِ
+        /// «ثبت فرم‌ها در TFORMS»یِ 11-seed-data.sql، بدون نیاز به SSMS.
+        ///
+        /// چرا لازم است: هربار یک عملیاتِ حساسِ تازه (یک ثابتِ جدید در
+        /// CostForms.cs) اضافه می‌شود، ردیفِ متناظرش در TFORMS فقط با اجرای
+        /// دستیِ اسکریپت ساخته می‌شود — چیزی که روی این پایگاه‌داده یک‌بار
+        /// فراموش شد و «بازسازی سند حواله خروج مواد» تا کشف‌شدن، برای هیچ
+        /// کاربری قابل‌دسترسی نبود، بدون هیچ خطای واضحی. این اندپوینت همان
+        /// فهرست را (منبعِ حقیقتِ CostForms.cs) با TFORMS مقایسه می‌کند و
+        /// هرچه جا افتاده را اضافه می‌کند — ایمن برای اجرای مکرر.
+        /// </summary>
+        [HttpPost("sync-cost-forms")]
+        [Pay2Authorize(Pay2Forms.AdminAcl, Pay2Perm.Run)]
+        public async Task<IActionResult> SyncCostForms()
+        {
+            var expected = new (string FormName, string Caption)[]
+            {
+                (CostForms.Dashboard,  "داشبورد بستن ماه بهای تمام‌شده"),
+                (CostForms.Run,        "پیشرفت اجرای بستن ماه"),
+                (CostForms.Exceptions, "مغایرت‌های بستن ماه"),
+                (CostForms.Variance,   "تصمیم انحراف"),
+                (CostForms.Conversion, "هزینه تبدیل"),
+                (CostForms.Margin,     "سود و زیان کالا"),
+                (CostForms.History,    "سوابق اجراها"),
+                (CostForms.Settings,   "تنظیمات بستن ماه"),
+                (CostForms.ActStart,           "شروع اجرای بستن ماه"),
+                (CostForms.ActAutoFix,         "اصلاح خودکار داده"),
+                (CostForms.ActResolve,         "بستن استثنا"),
+                (CostForms.ActDecide,          "ثبت تصمیم انحراف"),
+                (CostForms.ActApplyRate,       "اعمال ضریب تعدیل"),
+                (CostForms.ActRollup,          "اجرای موتور نرخ"),
+                (CostForms.ActRollback,        "بازگردانی از اسنپ‌شات"),
+                (CostForms.ActApprove,         "تأیید نهایی و قفل ماه"),
+                (CostForms.ActExport,          "خروجی اکسل"),
+                (CostForms.ActRebuildDocs,     "بازسازی سند حواله خروج مواد"),
+                (CostForms.ActPostCorrection,  "سند اصلاحی مغایرت کارت انبار/حسابداری"),
+            };
+
+            var existing = (await _db.DoGetDataSQLAsync<string>(
+                "SELECT FORMNAME FROM dbo.TFORMS WHERE FORMNAME LIKE N'COST!_%' ESCAPE N'!';"))
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+            var added = new List<string>();
+            foreach (var f in expected)
+            {
+                if (existing.Contains(f.FormName)) continue;
+
+                await _db.DoExecuteSQLAsync(
+                    @"INSERT INTO dbo.TFORMS (FORMNAME, CAPTION, kind, GRP, IDH, CRT)
+                      VALUES (@FormName, @Caption, 3, 10, (SELECT ISNULL(MAX(IDH),0)+1 FROM dbo.TFORMS), GETDATE());",
+                    new { f.FormName, f.Caption });
+                added.Add(f.FormName);
+            }
+
+            return Ok(new { added, addedCount = added.Count, alreadyPresent = expected.Length - added.Count });
+        }
+
+        /// <summary>
         /// همه‌ی کارگاه‌های فعال — بدون اعمال محدوده‌ی کارگاهیِ خودِ درخواست‌دهنده.
         ///
         /// چرا جدا از api/pay2/workshops: آن اندپوینت (درست) فقط کارگاه‌های مجازِ
