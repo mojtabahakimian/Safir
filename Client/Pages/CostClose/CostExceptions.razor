@@ -88,6 +88,8 @@
                  OnClick="@(() => SetFilter("resolved"))">
             رفع‌شده
         </MudChip>
+
+        <ExcelExportButton T="CostExceptionDto" Items="_rows" Columns="_exceptionCols" FileName="مغایرت‌ها" />
     </div>
 
     @if (_busy)
@@ -379,6 +381,18 @@
 </div>
 
 @code {
+    private static readonly IReadOnlyList<ExcelCol<CostExceptionDto>> _exceptionCols = new[]
+    {
+        new ExcelCol<CostExceptionDto> { Title = "قاعده",  Text = r => r.RuleName ?? r.RuleCode ?? "" },
+        new ExcelCol<CostExceptionDto> { Title = "انبار",  Text = r => r.AnbarName ?? (r.Anbar?.ToString() ?? "") },
+        new ExcelCol<CostExceptionDto> { Title = "کالا",   Text = r => r.ItemName ?? (r.Code?.ToString() ?? "") },
+        new ExcelCol<CostExceptionDto> { Title = "شرح",    Text = r => r.Description },
+        new ExcelCol<CostExceptionDto> { Title = "سند",    Text = r => r.DocNumber?.ToString() ?? "" },
+        new ExcelCol<CostExceptionDto> { Title = "تاریخ سند", Text = r => r.DocDate is long d ? FormatDate(d) : "" },
+        new ExcelCol<CostExceptionDto> { Title = "مبلغ/مقدار", IsNumber = true, Money = true, Sum = true, Number = r => r.Amount },
+        new ExcelCol<CostExceptionDto> { Title = "وضعیت",  Text = r => r.IsResolved ? "رفع‌شده" : (r.Severity == 2 ? "مسدودکننده" : "هشدار") },
+    };
+
     // اگر از صفحهٔ پایش یک اجرا آمده باشیم، RunId ست می‌شود — فقط آن‌وقت
     // دکمهٔ «بازسازی نرخ» (CHK-09) معنا دارد، چون S10/S11 نتیجه را به یک
     // اجرای مشخص وصل می‌کنند، نه به بازبینی سراسری بدون اجرا.

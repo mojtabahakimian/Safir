@@ -80,6 +80,8 @@ else
             <kbd>↑</kbd><kbd>↓</kbd> جابه‌جایی
         </span>
 
+        <ExcelExportButton T="VarianceRowDto" Items="_rows" Columns="_varianceCols" FileName="انحراف_مصرف" />
+
         @if (Access.CanRun(CostForms.ActDecide))
         {
             <MudButton Variant="Variant.Outlined" OnClick="AcceptAllSuggestions"
@@ -199,6 +201,18 @@ else
 </style>
 
 @code {
+    private static readonly IReadOnlyList<ExcelCol<VarianceRowDto>> _varianceCols = new[]
+    {
+        new ExcelCol<VarianceRowDto> { Title = "کد",         IsNumber = true, Number = r => r.Code },
+        new ExcelCol<VarianceRowDto> { Title = "کالا",       Text = r => r.ItemName ?? "" },
+        new ExcelCol<VarianceRowDto> { Title = "مقدار",      IsNumber = true, Sum = true, Number = r => r.QtyVariance },
+        new ExcelCol<VarianceRowDto> { Title = "مبلغ",       IsNumber = true, Money = true, Sum = true, Number = r => r.AmountVariance },
+        new ExcelCol<VarianceRowDto> { Title = "٪ مصرف",     IsNumber = true, Number = r => r.VariancePct },
+        new ExcelCol<VarianceRowDto> { Title = "تصمیم",      Text = r => r.Mode switch { 1 => "اختصاص به فرمول", 2 => "تسهیم به نسبت مصرف", _ => "بدون تخصیص" } },
+        new ExcelCol<VarianceRowDto> { Title = "کالای مقصد", Text = r => r.TargetName ?? "" },
+        new ExcelCol<VarianceRowDto> { Title = "ماه قبل",    Text = r => r.LastMonthHint ?? "" },
+    };
+
     [Parameter] public int RunId { get; set; }
 
     private List<VarianceRowDto> _all  = new();

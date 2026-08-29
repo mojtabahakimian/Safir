@@ -42,6 +42,8 @@
             <MudPaper Class="cc-rule-card" Elevation="0">
                 <div class="cc-rule-head">
                     <MudText Typo="Typo.subtitle2">وضعیت ماه‌ها</MudText>
+                    <MudSpacer />
+                    <ExcelExportButton T="MonthRow" Items="_months" Columns="_monthCols" FileName="وضعیت_ماه‌ها" />
                 </div>
 
                 <MudTable Items="_months" Dense Hover Elevation="0" T="MonthRow">
@@ -128,6 +130,7 @@
                     <MudText Typo="Typo.subtitle2">سوابق اجرا</MudText>
                     <MudSpacer />
                     <span class="cc-hint">@_runs.Count اجرا</span>
+                    <ExcelExportButton T="CostRunDto" Items="_runs" Columns="_runCols" FileName="سوابق_اجرا" />
                 </div>
 
                 <MudTable Items="_runs" Dense Hover Elevation="0" T="CostRunDto"
@@ -371,6 +374,25 @@
 
         return "خواندن فهرست اجراها ناموفق بود. اگر تکرار شد به پشتیبانی اطلاع دهید.";
     }
+
+    private static readonly IReadOnlyList<ExcelCol<MonthRow>> _monthCols = new[]
+    {
+        new ExcelCol<MonthRow> { Title = "ماه",           Text = r => PersianMonth(r.Month) },
+        new ExcelCol<MonthRow> { Title = "وضعیت",         Text = r => r.StatusText },
+        new ExcelCol<MonthRow> { Title = "انحراف نهایی",  IsNumber = true, Money = true, Sum = true, Number = r => r.Variance },
+        new ExcelCol<MonthRow> { Title = "تغییر فرمول",   IsNumber = true, Number = r => r.Changes },
+    };
+
+    private static readonly IReadOnlyList<ExcelCol<CostRunDto>> _runCols = new[]
+    {
+        new ExcelCol<CostRunDto> { Title = "#",       IsNumber = true, Number = r => r.RunId },
+        new ExcelCol<CostRunDto> { Title = "دوره",     Text = r => $"{r.FiscalYear}/{r.PeriodMonth}" },
+        new ExcelCol<CostRunDto> { Title = "نوبت",     IsNumber = true, Number = r => r.RunNo },
+        new ExcelCol<CostRunDto> { Title = "نوع",      Text = r => r.KindText },
+        new ExcelCol<CostRunDto> { Title = "وضعیت",    Text = r => r.StatusText },
+        new ExcelCol<CostRunDto> { Title = "کاربر",    Text = r => r.StartedByUser },
+        new ExcelCol<CostRunDto> { Title = "تأیید",    Text = r => r.ApprovedByUser ?? "—" },
+    };
 
     private sealed class MonthRow
     {

@@ -170,6 +170,23 @@
                                     <span>نمی‌توانید دسترسی «مدیریت دسترسی‌ها» را از حساب خودتان بردارید — این محافظ جلوی قفل‌شدن کل سیستم را می‌گیرد. برای تغییر مدیر، اول به نفر جدید این دسترسی را بدهید، بعد با حساب او دسترسی نفر قبلی را بردارید.</span>
                                 </div>
                             }
+                            <div class="p2-mt-16" style="display:flex; align-items:center; gap:8px;">
+                                <button class="btn-outline-pay2 p2-btn-sm" disabled="@_syncingForms" @onclick="SyncCostForms">
+                                    @if (_syncingForms)
+                                    {
+                                        <span class="spinner-border spinner-border-sm"></span>
+                                    }
+                                    else
+                                    {
+                                        <i class="bi bi-arrow-repeat"></i>
+                                    }
+                                    <span>همگام‌سازی فرم‌های بستن ماه</span>
+                                </button>
+                                <span style="font-size:11.5px;color:var(--p2-text-secondary)">
+                                    اگر بعد از یک به‌روزرسانیِ نرم‌افزار، فرمِ تازه‌ای در این فهرست نبود، این را بزنید.
+                                </span>
+                            </div>
+
                             <div class="p2-sub-card">
                                 <div class="p2-sub-card-title">اعمال سریع قالب آماده</div>
                                 <div style="display: flex; gap: 8px; flex-wrap: wrap;">
@@ -447,6 +464,48 @@
         {
             Snackbar.Add("خطا در بارگذاری اطلاعات اولیه.", Severity.Error);
         }
+    }
+
+    private bool _syncingForms;
+
+    private async Task SyncCostForms()
+    {
+        _syncingForms = true;
+        try
+        {
+            var res = await Http.PostAsync("api/pay2/access/sync-cost-forms", null);
+            if (!res.IsSuccessStatusCode)
+            {
+                Snackbar.Add("همگام‌سازی ناموفق بود.", Severity.Error);
+                return;
+            }
+
+            var body = await res.Content.ReadFromJsonAsync<SyncCostFormsResult>();
+            if (body is { addedCount: > 0 })
+            {
+                Snackbar.Add($"{body.addedCount} فرم جدید اضافه شد: {string.Join("، ", body.added)}", Severity.Success);
+                _forms = await Http.GetFromJsonAsync<List<Pay2FormSimpleDto>>("api/pay2/access/forms") ?? new();
+            }
+            else
+            {
+                Snackbar.Add("همه‌ی فرم‌ها از قبل ثبت بودند — چیزی اضافه نشد.", Severity.Info);
+            }
+        }
+        catch
+        {
+            Snackbar.Add("همگام‌سازی ناموفق بود.", Severity.Error);
+        }
+        finally
+        {
+            _syncingForms = false;
+        }
+    }
+
+    private sealed class SyncCostFormsResult
+    {
+        public List<string> added { get; set; } = new();
+        public int addedCount { get; set; }
+        public int alreadyPresent { get; set; }
     }
 
     private async Task SelectUserAsync(Pay2UserDto user)
