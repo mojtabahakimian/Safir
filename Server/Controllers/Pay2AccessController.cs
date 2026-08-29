@@ -168,29 +168,35 @@ WHERE USERCO = @userCo
                        OR FORMNAME LIKE N'COST!_%' ESCAPE N'!')",
                 new { userCo }, tran);
 
-                // Insert new form perms
-                foreach(var f in req.Forms)
+                // Insert new form perms in bulk
+                var validForms = req.Forms.Where(f => f.Run || f.See || f.Inp || f.Upd || f.Del).ToList();
+                if (validForms.Count > 0)
                 {
-                    if (f.Run || f.See || f.Inp || f.Upd || f.Del)
-                    {
-                        string ins = @"
+                    string ins = @"
 INSERT INTO dbo.SAL_CHEK (USERCO, [OBJECT], [RUN], [SEE], [INP], [UPD], [DEL], CRT)
 SELECT @userCo, IDH, @run, @see, @inp, @upd, @del, GETDATE()
 FROM dbo.TFORMS WHERE FORMNAME = @formName";
-                        await Dapper.SqlMapper.ExecuteAsync(conn, ins, new {
-                            userCo, formName = f.FormName,
-                            run = f.Run ? 1 : 0, see = f.See ? 1 : 0, inp = f.Inp ? 1 : 0, upd = f.Upd ? 1 : 0, del = f.Del ? 1 : 0
-                        }, tran);
-                    }
+                    var formParams = validForms.Select(f => new
+                    {
+                        userCo,
+                        formName = f.FormName,
+                        run = f.Run ? 1 : 0,
+                        see = f.See ? 1 : 0,
+                        inp = f.Inp ? 1 : 0,
+                        upd = f.Upd ? 1 : 0,
+                        del = f.Del ? 1 : 0
+                    });
+                    await Dapper.SqlMapper.ExecuteAsync(conn, ins, formParams, tran);
                 }
 
                 // Delete existing WS scope
                 await Dapper.SqlMapper.ExecuteAsync(conn, "DELETE FROM dbo.PAY2_USER_WS WHERE USERCO = @userCo", new { userCo }, tran);
 
-                // Insert new WS scope
-                foreach(var ws in req.AllowedWorkshopIds)
+                // Insert new WS scope in bulk
+                if (req.AllowedWorkshopIds.Count > 0)
                 {
-                    await Dapper.SqlMapper.ExecuteAsync(conn, "INSERT INTO dbo.PAY2_USER_WS (USERCO, WS_ID, CRT) VALUES (@userCo, @ws, GETDATE())", new { userCo, ws }, tran);
+                    var wsParams = req.AllowedWorkshopIds.Select(ws => new { userCo, ws });
+                    await Dapper.SqlMapper.ExecuteAsync(conn, "INSERT INTO dbo.PAY2_USER_WS (USERCO, WS_ID, CRT) VALUES (@userCo, @ws, GETDATE())", wsParams, tran);
                 }
 
                 // Audit
@@ -275,11 +281,21 @@ VALUES (@currentUserCo, 'PAY2_ADMIN_ACL', 'Run', 1, 'Updated ACL for user ' + CA
                 await _db.ExecuteInTransactionAsync(async (conn, tran) =>
                 {
                     await Dapper.SqlMapper.ExecuteAsync(conn, "DELETE FROM dbo.SAL_CHEK WHERE USERCO = @userCo AND [OBJECT] IN (SELECT IDH FROM dbo.TFORMS WHERE FORMNAME LIKE N'PAY2!_%' ESCAPE N'!')", new { userCo }, tran);
-                    foreach(var f in newForms)
+                    if (newForms.Count > 0)
                     {
                         string ins = @"INSERT INTO dbo.SAL_CHEK (USERCO, [OBJECT], [RUN], [SEE], [INP], [UPD], [DEL], CRT)
                                        SELECT @userCo, IDH, @run, @see, @inp, @upd, @del, GETDATE() FROM dbo.TFORMS WHERE FORMNAME = @formName";
-                        await Dapper.SqlMapper.ExecuteAsync(conn, ins, new { userCo, formName = f.FormName, run=f.Run?1:0, see=f.See?1:0, inp=f.Inp?1:0, upd=f.Upd?1:0, del=f.Del?1:0 }, tran);
+                        var formParams = newForms.Select(f => new
+                        {
+                            userCo,
+                            formName = f.FormName,
+                            run = f.Run ? 1 : 0,
+                            see = f.See ? 1 : 0,
+                            inp = f.Inp ? 1 : 0,
+                            upd = f.Upd ? 1 : 0,
+                            del = f.Del ? 1 : 0
+                        });
+                        await Dapper.SqlMapper.ExecuteAsync(conn, ins, formParams, tran);
                     }
                 });
             }
