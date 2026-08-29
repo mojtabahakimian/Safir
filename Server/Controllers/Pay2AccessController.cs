@@ -188,9 +188,10 @@ FROM dbo.TFORMS WHERE FORMNAME = @formName";
                 await Dapper.SqlMapper.ExecuteAsync(conn, "DELETE FROM dbo.PAY2_USER_WS WHERE USERCO = @userCo", new { userCo }, tran);
 
                 // Insert new WS scope
-                foreach(var ws in req.AllowedWorkshopIds)
+                if (req.AllowedWorkshopIds is { Count: > 0 })
                 {
-                    await Dapper.SqlMapper.ExecuteAsync(conn, "INSERT INTO dbo.PAY2_USER_WS (USERCO, WS_ID, CRT) VALUES (@userCo, @ws, GETDATE())", new { userCo, ws }, tran);
+                    var wsParams = req.AllowedWorkshopIds.Select(ws => new { userCo, ws });
+                    await Dapper.SqlMapper.ExecuteAsync(conn, "INSERT INTO dbo.PAY2_USER_WS (USERCO, WS_ID, CRT) VALUES (@userCo, @ws, GETDATE())", wsParams, tran);
                 }
 
                 // Audit
