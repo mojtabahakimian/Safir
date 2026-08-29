@@ -20,7 +20,7 @@ namespace Safir.Shared.Models.Automation
         // SMSOK حذف شد
         public string? USERNAME { get; set; } // ثبت کننده
         public DateTime? CTDATE { get; set; } // تاریخ ثبت سیستم
-        public DateTime? CTTIME { get; set; } // زمان ثبت سیستم
+        public TimeSpan? CTTIME { get; set; } // زمان ثبت سیستم
         public DateTime? CRT { get; set; } // زمان ایجاد رکورد
         public int? UID { get; set; } // کد کاربر ایجاد کننده
     }

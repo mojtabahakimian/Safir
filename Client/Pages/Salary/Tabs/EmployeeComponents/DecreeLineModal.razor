@@ -175,8 +175,16 @@
                             </div>
                             <div class="form-field">
                                 <label>مشمولیت مالیات (Override)</label>
-                                <Pay2Select TItem="LookupDto<int>" TValue="int" Items="OverrideOptions"
-                                            @bind-Value="CurrentLine.TaxCombo" TextSelector="x => x.Name" ValueSelector="x => x.Id" Clearable="false" Disabled="@IsDecreeConfirmed" />
+                                @if (IsTaxRuleLocked)
+                                {
+                                    <div class="pay2-input" style="background:#f1f5f9;">معاف ـ قاعده اجباری مشتری</div>
+                                    <div class="hint-text mt-1">از تاریخ اثر قاعده مشتری، این آیتم الزاماً غیرمشمول مالیات است.</div>
+                                }
+                                else
+                                {
+                                    <Pay2Select TItem="LookupDto<int>" TValue="int" Items="OverrideOptions"
+                                                @bind-Value="CurrentLine.TaxCombo" TextSelector="x => x.Name" ValueSelector="x => x.Id" Clearable="false" Disabled="@IsDecreeConfirmed" />
+                                }
                             </div>
                             <div class="form-field">
                                 <label>مبنای محاسبه (Override)</label>
@@ -297,6 +305,7 @@
     bool IsSaving = false;
     bool IsEditing = false;
     long _insuranceRuleEffectiveFrom;
+    long _taxRuleEffectiveFrom;
 
     Pay2ItemDefDto? SelectedDef => FullItemDefs.FirstOrDefault(d => d.ITEM_ID == CurrentLine.ITEM_ID);
 
@@ -304,8 +313,11 @@
     bool IsShiftPctItem => IsShiftPctLine(CurrentLine);
 
     bool IsShiftFixedItem => SelectedDef?.ITEM_CODE == "SHIFT" && EffectiveShiftMode(CurrentLine.SHIFT_MODE_OV) == "FIXED";
-    bool IsInsuranceRuleLocked => _insuranceRuleEffectiveFrom > 0 &&
-        (!DecreeEffectiveTo.HasValue || DecreeEffectiveTo.Value / 100 >= _insuranceRuleEffectiveFrom / 100) &&
+    bool IsInsuranceRuleLocked => IsRuleLocked(_insuranceRuleEffectiveFrom);
+    bool IsTaxRuleLocked => IsRuleLocked(_taxRuleEffectiveFrom);
+
+    bool IsRuleLocked(long effectiveFrom) => effectiveFrom > 0 &&
+        (!DecreeEffectiveTo.HasValue || DecreeEffectiveTo.Value / 100 >= effectiveFrom / 100) &&
         (SelectedDef?.ITEM_CODE is "SHIFT" or "OT_NORMAL" or "OT_HOLIDAY" or "OT_ADMIN");
 
     // کمک‌محاسبه درصد فقط برای آیتم‌هایی که مبنای مؤثرشان ماهیانه است (مبلغ = ریالِ کامل ماه)
@@ -359,6 +371,7 @@
             FullItemDefs = fullDefsTask.Result;
             _shiftMode = shiftModeTask.Result;
             long.TryParse(configsTask.Result.FirstOrDefault(x => x.CFG_KEY == "INS_NON_SUBJECT_EFFECTIVE_FROM")?.CFG_VALUE, out _insuranceRuleEffectiveFrom);
+            long.TryParse(configsTask.Result.FirstOrDefault(x => x.CFG_KEY == "TAX_NON_SUBJECT_EFFECTIVE_FROM")?.CFG_VALUE, out _taxRuleEffectiveFrom);
             ItemDefs = Pay2SettingsApiService.FilterEditableItemDefs(FullItemDefs);
         }
         catch (Exception ex)

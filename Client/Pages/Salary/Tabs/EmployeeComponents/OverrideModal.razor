@@ -66,8 +66,16 @@
                         </div>
                         <div class="form-field">
                             <label>وضعیت مالیات (Override)</label>
-                            <Pay2Select TItem="LookupDto<int>" TValue="int" Items="OverrideOptions"
-                                        @bind-Value="CurrentOverride.TaxCombo" TextSelector="x => x.Name" ValueSelector="x => x.Id" Clearable="false" />
+                            @if (IsTaxRuleLocked)
+                            {
+                                <div class="pay2-input" style="background:#f1f5f9;">معاف ـ قاعده اجباری مشتری</div>
+                                <div class="hint-text mt-1">در بازه انتخاب‌شده، این آیتم الزاماً غیرمشمول مالیات است.</div>
+                            }
+                            else
+                            {
+                                <Pay2Select TItem="LookupDto<int>" TValue="int" Items="OverrideOptions"
+                                            @bind-Value="CurrentOverride.TaxCombo" TextSelector="x => x.Name" ValueSelector="x => x.Id" Clearable="false" />
+                            }
                         </div>
                         <div class="form-field">
                             <label>مبنای محاسبه (Override)</label>
@@ -172,15 +180,16 @@
     private bool _lastOpenState = false;
     private bool _isDataLoaded = false;
     long _insuranceRuleEffectiveFrom;
+    long _taxRuleEffectiveFrom;
     Pay2ItemDefDto? SelectedDef => FullItemDefs.FirstOrDefault(x => x.ITEM_ID == CurrentOverride.ITEM_ID);
-    bool IsInsuranceRuleLocked
+    bool IsInsuranceRuleLocked => IsRuleLocked(_insuranceRuleEffectiveFrom);
+    bool IsTaxRuleLocked => IsRuleLocked(_taxRuleEffectiveFrom);
+
+    bool IsRuleLocked(long effectiveFrom)
     {
-        get
-        {
-            if (_insuranceRuleEffectiveFrom <= 0 || SelectedDef?.ITEM_CODE is not ("SHIFT" or "OT_NORMAL" or "OT_HOLIDAY" or "OT_ADMIN")) return false;
-            long.TryParse(ValidToStr?.Replace("/", ""), out var validTo);
-            return validTo == 0 || validTo / 100 >= _insuranceRuleEffectiveFrom / 100;
-        }
+        if (effectiveFrom <= 0 || SelectedDef?.ITEM_CODE is not ("SHIFT" or "OT_NORMAL" or "OT_HOLIDAY" or "OT_ADMIN")) return false;
+        long.TryParse(ValidToStr?.Replace("/", ""), out var validTo);
+        return validTo == 0 || validTo / 100 >= effectiveFrom / 100;
     }
 
     // شناسه 3 برای "بدون تغییر" است (چون نوعِ کامپوننت int است)
@@ -226,6 +235,7 @@
             Overrides = ovrTask.Result;
             FullItemDefs = fullDefsTask.Result;
             long.TryParse(configsTask.Result.FirstOrDefault(x => x.CFG_KEY == "INS_NON_SUBJECT_EFFECTIVE_FROM")?.CFG_VALUE, out _insuranceRuleEffectiveFrom);
+            long.TryParse(configsTask.Result.FirstOrDefault(x => x.CFG_KEY == "TAX_NON_SUBJECT_EFFECTIVE_FROM")?.CFG_VALUE, out _taxRuleEffectiveFrom);
         }
         catch (Exception ex) { Console.WriteLine(ex.Message); }
         finally

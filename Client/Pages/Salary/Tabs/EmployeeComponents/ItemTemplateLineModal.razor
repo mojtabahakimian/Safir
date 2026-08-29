@@ -69,8 +69,16 @@
                         </div>
                         <div class="form-field">
                             <label>وضعیت مالیات (Override)</label>
-                            <Safir.Client.Pages.Salary.Tabs.Pay2Select TItem="LookupDto<int>" TValue="int" Items="OverrideOptions"
-                                                                       @bind-Value="CurrentLine.TaxCombo" TextSelector="x => x.Name" ValueSelector="x => x.Id" Clearable="false" />
+                            @if (IsTaxRuleLocked)
+                            {
+                                <div class="pay2-input" style="background:#f1f5f9;">معاف ـ قاعده اجباری مشتری</div>
+                                <div class="hint-text mt-1">این آیتم در قالب‌های آینده الزاماً غیرمشمول مالیات است.</div>
+                            }
+                            else
+                            {
+                                <Safir.Client.Pages.Salary.Tabs.Pay2Select TItem="LookupDto<int>" TValue="int" Items="OverrideOptions"
+                                                                           @bind-Value="CurrentLine.TaxCombo" TextSelector="x => x.Name" ValueSelector="x => x.Id" Clearable="false" />
+                            }
                         </div>
                         <div class="form-field">
                             <label>مبنای محاسبه (Override)</label>
@@ -171,8 +179,14 @@
     bool _isDataLoaded = false;
     bool _lastOpenState = false;
     long _insuranceRuleEffectiveFrom;
+    long _taxRuleEffectiveFrom;
     Pay2ItemDefDto? SelectedDef => FullItemDefs.FirstOrDefault(x => x.ITEM_ID == CurrentLine.ITEM_ID);
-    bool IsInsuranceRuleLocked => _insuranceRuleEffectiveFrom > 0 &&
+    bool IsInsuranceRuleLocked => IsRuleLocked(_insuranceRuleEffectiveFrom);
+    bool IsTaxRuleLocked => IsRuleLocked(_taxRuleEffectiveFrom);
+
+    // قالب تاریخ ندارد؛ هر حکمی که از رویش ساخته شود می‌تواند در ماه‌های
+    // آینده بیفتد، پس به‌محض فعال بودن قاعده قفل می‌شود.
+    bool IsRuleLocked(long effectiveFrom) => effectiveFrom > 0 &&
         (SelectedDef?.ITEM_CODE is "SHIFT" or "OT_NORMAL" or "OT_HOLIDAY" or "OT_ADMIN");
 
     bool IsShiftPctItem => IsShiftPctLine(CurrentLine);
@@ -216,6 +230,7 @@
             FullItemDefs = fullDefsTask.Result;
             _shiftMode = shiftModeTask.Result;
             long.TryParse(configsTask.Result.FirstOrDefault(x => x.CFG_KEY == "INS_NON_SUBJECT_EFFECTIVE_FROM")?.CFG_VALUE, out _insuranceRuleEffectiveFrom);
+            long.TryParse(configsTask.Result.FirstOrDefault(x => x.CFG_KEY == "TAX_NON_SUBJECT_EFFECTIVE_FROM")?.CFG_VALUE, out _taxRuleEffectiveFrom);
             ItemDefs = Pay2SettingsApiService.FilterEditableItemDefs(FullItemDefs);
         }
         catch (Exception ex) { Console.WriteLine(ex.Message); }
