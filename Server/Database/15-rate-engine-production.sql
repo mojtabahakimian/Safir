@@ -33,10 +33,25 @@ GO
    دستمزد براش مقدار بده» — یعنی وقتی ضریب سربار خالی است، همان ضریب
    دستمزد جایگزینش می‌شود). دستمزد/سربارِ واقعیِ هر واحد تولیدی
    (مثلاً یزد) — مستقیم از حساب ۷۵۱، فیلترشده با HES_M (کدِ کالای
-   تولیدشده) به کدهایی که همان واحد تولید کرده (نگاه کنید توضیح پایین‌تر) —
-   بین کالاهایی که آن واحد همین ماه تولید کرده، به نسبت
-   (مقدار تولید × ضریب مربوطه) تقسیم می‌شود؛ نتیجه، نرخ دستمزد/سربارِ
-   هر واحدِ آن کالا (HEAD_MANF.IMBIBE_MANF/IMBIBE_SAR) است.
+   تولیدشده) به کدهایی که همان واحد تولید کرده (نگاه کنید توضیح پایین‌تر).
+
+   ⚠️ فرمولِ نرخِ واحدِ هر کالا (تأیید صریحِ کاربر، منطقِ حسابداریِ
+   صنعتی): نرخِ دستمزدِ هر واحدِ کالا باید با افزایشِ حجمِ تولیدِ
+   همان کالا کاهش یابد — یعنی هرچه یک کالا بیشتر تولید شود، هزینه‌ی
+   دستمزدِ همان مقدارِ ثابت روی تعدادِ بیشتری واحد جذب می‌شود، پس نرخِ
+   هر واحدش کمتر می‌شود؛ نه این‌که نرخِ واحد ثابت بماند و فقط جمعِ کل
+   با حجم بالا برود. فرمول دقیق:
+
+       نرخِ واحدِ کالا = ضریبِ کالا ÷ (مجموعِ سادهٔ ضرایبِ همه‌ی
+                          کالاهای تولیدشده‌ی همین واحد این ماه ×
+                          مقدارِ تولیدِ خودِ همین کالا این ماه)
+                          × دستمزدِ واقعیِ واحد
+
+   نکته‌ی مهم: «مجموعِ ضرایب» اینجا سادهٔ (بدون وزن‌دهی به مقدار) است —
+   هر کد فقط یک‌بار با ضریبِ خودش جمع می‌شود، نه ضریب×مقدارش (که نسخه‌ی
+   قبلی این فایل بود و باعث می‌شد نرخِ واحد اصلاً به مقدارِ تولیدِ خودِ
+   همان کالا وابسته نباشد — با تستِ واقعی روی کد ۱۷۸۶/آب‌پنیر کشف و
+   تصحیح شد).
 
    ⚠️ رفتار ضریب خالی/صفر (تأیید کاربر، کد ۳۷۳ خرداد ۱۴۰۵ کشف شد):
    خالی (NULL) یعنی «هنوز بررسی نشده» — این کالا از تقسیم و از مخرج
@@ -118,26 +133,53 @@ BEGIN
     WHERE   ctq.TotalQty <> 0
     GROUP BY cq.UnitId;
 
-    -- ۲) مجموع (مقدار تولید × ضریب) هر واحد در همین ماه، فقط کالاهایی
-    --    که کاربر برایشان ضریب صریحِ غیرصفر ثبت کرده — عیناً منطق
-    --    جذب‌شده در S10، با ANBAR محصولِ همان واحد
-    --    (CC_UnitAnbar.AnbarRole = 3). ضریب سربارِ مؤثر =
-    --    ISNULL(OverheadCoefficient, Coefficient).
-    SELECT  cua.UnitId,
-            ISNULL(SUM(pl.MEGHK * r.Coefficient), 0) AS TotalWeight,
-            ISNULL(SUM(CASE WHEN ISNULL(r.OverheadCoefficient, r.Coefficient) <> 0
-                             THEN pl.MEGHK * ISNULL(r.OverheadCoefficient, r.Coefficient)
-                             ELSE 0 END), 0) AS TotalWeightOh
-    INTO    #UnitWeight
+    -- ۲) مقدارِ کلِ تولیدِ همین ماه به‌تفکیکِ (واحد، کد) — لازم هم برای
+    --    مجموعِ سادهٔ ضرایب (هر کد یک‌بار)، هم برای تقسیمِ نهاییِ نرخِ
+    --    واحد بر مقدارِ خودِ همان کالا (نگاه کنید توضیحِ فرمول بالا).
+    SELECT  cua.UnitId, hm.CODE, SUM(pl.MEGHK) AS Qty
+    INTO    #CodeQty
     FROM    dbo.HEAD_LST  h
     JOIN    dbo.INVO_LST  pl  ON pl.NUMBER = h.NUMBER AND pl.TAG = 9
     JOIN    dbo.HEAD_MANF hm  ON hm.FNUMB  = TRY_CAST(pl.N_KOL AS INT) AND hm.GHEYMAT = @Month
     JOIN    dbo.CC_UnitAnbar cua ON cua.Anbar = pl.ANBAR AND cua.AnbarRole = 3
     JOIN    dbo.CC_Unit   u   ON u.UnitId  = cua.UnitId AND u.IsActive = 1
-    JOIN    dbo.CC_LaborAbsorptionRate r ON r.CODE = hm.CODE AND r.UnitId = cua.UnitId AND r.IsFixed = 0
     WHERE   h.TAG = 9 AND h.DATE_N BETWEEN @DT1 AND @DT2
-      AND   r.Coefficient IS NOT NULL AND r.Coefficient <> 0
-    GROUP BY cua.UnitId;
+    GROUP BY cua.UnitId, hm.CODE;
+
+    -- مجموعِ سادهٔ ضرایب (بدون وزن‌دهی به مقدار) هر واحد در همین ماه،
+    -- فقط کالاهایی که کاربر برایشان ضریب صریحِ غیرصفر ثبت کرده — هر کد
+    -- دقیقاً یک‌بار جمع می‌شود (از #CodeQty که خودش هر کد را یک‌بار
+    -- دارد)، نه به‌ازای هر سطرِ تولیدش. ضریب سربارِ مؤثر =
+    -- ISNULL(OverheadCoefficient, Coefficient).
+    SELECT  cq.UnitId,
+            ISNULL(SUM(r.Coefficient), 0) AS TotalWeight,
+            ISNULL(SUM(CASE WHEN ISNULL(r.OverheadCoefficient, r.Coefficient) <> 0
+                             THEN ISNULL(r.OverheadCoefficient, r.Coefficient)
+                             ELSE 0 END), 0) AS TotalWeightOh
+    INTO    #UnitWeight
+    FROM    #CodeQty cq
+    JOIN    dbo.CC_LaborAbsorptionRate r ON r.CODE = cq.CODE AND r.UnitId = cq.UnitId AND r.IsFixed = 0
+    WHERE   r.Coefficient IS NOT NULL AND r.Coefficient <> 0
+    GROUP BY cq.UnitId;
+
+    -- ⚠️ کالاهای «کارمزدی» (IsFixed=1) از استخرِ تقسیم‌شونده کسر می‌شوند
+    -- (تأیید صریحِ کاربر): نرخِ این کالاها ثابت می‌ماند و دست نمی‌خورد،
+    -- ولی خودشان هم بخشی از دستمزدِ واقعیِ حسابِ ۷۵۱ را مصرف کرده‌اند —
+    -- اگر همین سهم از دستمزدِ واقعی کسر نشود، بقیه‌ی کالاها (که ضریب
+    -- دارند) کلِ دستمزدِ واقعی را بینِ خودشان تقسیم می‌کنند، درحالی‌که
+    -- کالاهای کارمزدی هم جداگانه دستمزدِ ثابتِ خودشان را نگه داشته‌اند —
+    -- یعنی جمعِ کلِ دستمزدِ همه‌ی کالاها بیشتر از دستمزدِ واقعی می‌شود.
+    -- پس دستمزد/سربارِ باقی‌مانده برای تقسیم = دستمزدِ واقعی − Σ(مقدار
+    -- تولیدِ هر کالای کارمزدی × نرخِ ثابتِ فعلی‌اش).
+    SELECT  r.UnitId,
+            ISNULL(SUM(q.Qty * hm.IMBIBE_MANF), 0) AS FixedWage,
+            ISNULL(SUM(q.Qty * hm.IMBIBE_SAR),  0) AS FixedOh
+    INTO    #FixedTotals
+    FROM    dbo.CC_LaborAbsorptionRate r
+    JOIN    #CodeQty q  ON q.UnitId = r.UnitId AND q.CODE = TRY_CAST(r.CODE AS BIGINT)
+    JOIN    dbo.HEAD_MANF hm ON hm.CODE = r.CODE AND hm.GHEYMAT = @Month
+    WHERE   r.IsFixed = 1
+    GROUP BY r.UnitId;
 
     -- هشدار صفر بودن واقعی وقتی وزنی هست — ماجرای یزد/خرداد که باعث
     -- شد این گارد اضافه شود.
@@ -155,12 +197,28 @@ BEGIN
     LEFT   JOIN #UnitActual a ON a.UnitId = w.UnitId
     WHERE  w.TotalWeightOh <> 0 AND ISNULL(a.ActOh, 0) = 0;
 
+    -- هشدار وقتی سهمِ کالاهای کارمزدی از دستمزدِ واقعی بیشتر است —
+    -- یعنی چیزی در نرخِ ثابتِ آن‌ها یا در خودِ دستمزدِ واقعی مشکوک
+    -- است؛ باقی‌مانده منفی می‌شد، پس تقسیم برای بقیه‌ی کالاها هم رد
+    -- شد (نه فقط صفر شدنِ کارمزدی‌ها، که اصلاً دست‌نخورده‌اند).
+    INSERT dbo.CC_RunLog (RunId, StepCode, Severity, Message)
+    SELECT @RunId, 'S07B', 2,
+           CONCAT(N'واحد ', a.UnitId, N': مجموعِ دستمزدِ کالاهای کارمزدی (', FORMAT(ft.FixedWage, 'N0'),
+                  N') از دستمزدِ واقعیِ کلِ واحد (', FORMAT(a.ActWage, 'N0'),
+                  N') بیشتر است — تقسیمِ دستمزد برای بقیه‌ی کالاها رد شد.')
+    FROM   #UnitActual a
+    JOIN   #FixedTotals ft ON ft.UnitId = a.UnitId
+    WHERE  a.ActWage - ft.FixedWage <= 0 AND ft.FixedWage <> 0;
+
     -- ۳) پیشنهادِ نرخ هر (واحد، فرمول) این ماه:
     --      IsFixed=1        → NULL (کارمزدی، هرگز دست نمی‌خورد)
     --      Coefficient=0    → 0    (کاربر عمداً کنار گذاشته)
     --      Coefficient=NULL → NULL (هنوز بررسی نشده، دست نمی‌خورد)
-    --      واقعی صفر        → NULL (نرخ ناقص می‌شد، دست نمی‌خورد — هشدار بالا)
-    --      وگرنه            → واقعی × ضریب ÷ مجموع‌وزن
+    --      باقی‌ماندهٔ واقعی (پس از کسرِ سهمِ کارمزدی‌ها) صفر/منفی، یا
+    --      مقدارِ خودِ کالا صفر → NULL (نرخ ناقص می‌شد، دست نمی‌خورد —
+    --                                  هشدار بالا)
+    --      وگرنه            → باقی‌ماندهٔ واقعی × ضریب ÷ (مجموعِ سادهٔ
+    --                          ضرایب × مقدارِ تولیدِ خودِ همین کالا)
     ;WITH ThisMonthFormula AS (
         SELECT DISTINCT hm.FNUMB, hm.CODE, cua.UnitId
         FROM   dbo.HEAD_LST h
@@ -174,20 +232,24 @@ BEGIN
             CASE WHEN r.IsFixed = 1                                      THEN NULL
                  WHEN r.Coefficient = 0                                  THEN 0
                  WHEN r.Coefficient IS NULL                              THEN NULL
-                 WHEN ISNULL(a.ActWage, 0) = 0 OR ISNULL(w.TotalWeight, 0) = 0 THEN NULL
-                 ELSE a.ActWage * r.Coefficient / w.TotalWeight
+                 WHEN ISNULL(a.ActWage, 0) - ISNULL(ft.FixedWage, 0) <= 0
+                      OR ISNULL(w.TotalWeight, 0) = 0 OR ISNULL(q.Qty, 0) = 0 THEN NULL
+                 ELSE (a.ActWage - ISNULL(ft.FixedWage, 0)) * r.Coefficient / (w.TotalWeight * q.Qty)
             END AS ProposedWage,
             CASE WHEN r.IsFixed = 1                                      THEN NULL
                  WHEN ISNULL(r.OverheadCoefficient, r.Coefficient) = 0    THEN 0
                  WHEN ISNULL(r.OverheadCoefficient, r.Coefficient) IS NULL THEN NULL
-                 WHEN ISNULL(a.ActOh, 0) = 0 OR ISNULL(w.TotalWeightOh, 0) = 0 THEN NULL
-                 ELSE a.ActOh * ISNULL(r.OverheadCoefficient, r.Coefficient) / w.TotalWeightOh
+                 WHEN ISNULL(a.ActOh, 0) - ISNULL(ft.FixedOh, 0) <= 0
+                      OR ISNULL(w.TotalWeightOh, 0) = 0 OR ISNULL(q.Qty, 0) = 0 THEN NULL
+                 ELSE (a.ActOh - ISNULL(ft.FixedOh, 0)) * ISNULL(r.OverheadCoefficient, r.Coefficient) / (w.TotalWeightOh * q.Qty)
             END AS ProposedOh
     INTO    #Proposals
     FROM    ThisMonthFormula f
     JOIN    dbo.CC_LaborAbsorptionRate r ON r.CODE = f.CODE AND r.UnitId = f.UnitId
     LEFT    JOIN #UnitActual a ON a.UnitId = f.UnitId
-    LEFT    JOIN #UnitWeight w ON w.UnitId = f.UnitId;
+    LEFT    JOIN #UnitWeight w ON w.UnitId = f.UnitId
+    LEFT    JOIN #CodeQty   q ON q.UnitId = f.UnitId AND q.CODE = f.CODE
+    LEFT    JOIN #FixedTotals ft ON ft.UnitId = f.UnitId;
 
     DELETE FROM #Proposals WHERE ProposedWage IS NULL AND ProposedOh IS NULL;
 
@@ -239,7 +301,26 @@ BEGIN
       AND  ABS(oa.MaxO - oa.MinO) <= 0.01;
 
     SET @OhRows = @@ROWCOUNT;
-    SET @Total += @OhRows;
+
+    -- ⚠️ قبلاً @Total = @WageRows + @OhRows بود — چون تقریباً هر فرمول
+    -- هم‌زمان هم دستمزدش هم سربارش آپدیت می‌شود، این عدد هر فرمول را
+    -- دوبار می‌شمرد (مثلاً ۹۴+۹۴=۱۸۸ برای ۹۴ فرمولِ واقعی) و در پیام
+    -- «X فرمول به‌روزرسانی شد» (RateEngineSteps.cs) گمراه‌کننده بود.
+    -- حالا @Total = تعدادِ فرمولِ یکتایی که حداقل یکی از دو مقدارش
+    -- عوض شده، مطابق همان (FNUMB, CODE)ای که در دو UPDATE بالا هدف
+    -- قرار گرفت.
+    SELECT @Total = COUNT(*)
+    FROM (
+        SELECT FNUMB, CODE
+        FROM   (SELECT FNUMB, CODE, MIN(ProposedWage) AS MinW, MAX(ProposedWage) AS MaxW
+                FROM   #Proposals WHERE ProposedWage IS NOT NULL GROUP BY FNUMB, CODE) wa
+        WHERE  ABS(wa.MaxW - wa.MinW) <= 0.01
+        UNION
+        SELECT FNUMB, CODE
+        FROM   (SELECT FNUMB, CODE, MIN(ProposedOh) AS MinO, MAX(ProposedOh) AS MaxO
+                FROM   #Proposals WHERE ProposedOh IS NOT NULL GROUP BY FNUMB, CODE) oa
+        WHERE  ABS(oa.MaxO - oa.MinO) <= 0.01
+    ) touched;
 
     -- ⚠️ قبلاً فقط در حالت هشدار/تعارض چیزی در CC_RunLog ثبت می‌شد —
     -- یک اجرای موفقِ بی‌مشکل هیچ ردی در لاگ اجرا نمی‌گذاشت (تأیید
@@ -247,10 +328,12 @@ BEGIN
     -- سبکِ لاگِ S10.
     INSERT dbo.CC_RunLog (RunId, StepCode, Severity, Message)
     VALUES (@RunId, 'S07B', 1,
-            CONCAT(N'دستمزد ', @WageRows, N' فرمول و سربار ', @OhRows, N' فرمول به‌روزرسانی شد.'));
+            CONCAT(N'دستمزد ', @WageRows, N' فرمول و سربار ', @OhRows, N' فرمول به‌روزرسانی شد (', @Total, N' فرمولِ یکتا).'));
 
     DROP TABLE #UnitActual;
+    DROP TABLE #CodeQty;
     DROP TABLE #UnitWeight;
+    DROP TABLE #FixedTotals;
     DROP TABLE #Proposals;
 
     SELECT @Total AS Value;
