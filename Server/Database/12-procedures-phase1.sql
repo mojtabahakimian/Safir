@@ -425,6 +425,42 @@ BEGIN
                         WHERE ae.RuleCode = 'CHK-19' AND ae.IsActive = 1
                           AND (ae.Anbar IS NULL) AND (ae.Code IS NULL));
 
+    /* ─── CHK-21 : تاریخ برگشت فروش با تاریخ سند حسابداری‌اش یکی نیست ───
+       پیدا شده روی کد ۳۵۱۰ / انبار ۸۱۳: حواله‌ی برگشت فروش شماره ۳۲۱
+       (HEAD_LST.TAG=24) تاریخِ ۱۴۰۵/۰۱/۲۳ دارد، ولی سندِ حسابداریِ همان
+       برگشت با تاریخِ ۱۴۰۵/۰۲/۲۳ پست شده — یک ماه دیرتر. نتیجه: کاردکس
+       این حواله را جزوِ فروردین حساب کرد (چون تاریخِ خودِ حواله را
+       می‌بیند) ولی حسابداری اصلاً در فروردین دیده نمی‌شد — CHK-02 یک
+       مغایرتِ ۳۳,۸۱۰,۰۰۰ ریالی نشان داد.
+
+       دقیقاً همان الگوی CHK-19 (فاکتور فروش TAG=13 در برابر سندش)، ولی
+       CHK-19 برگشتِ فروش را پوشش نمی‌دهد. تفاوتِ مهم: برخلافِ فاکتورِ
+       فروش که زیرِ همان TAG=13 در DEED_DTL هم پست می‌شود، سندِ
+       حسابداریِ برگشتِ فروش زیرِ TAG=25 پست می‌شود، نه TAG=24 — تأییدشده
+       با دادهٔ واقعی (SaleReturnRebuildService.RunPass2Async، همان
+       تفکیکِ TAG=24/25 که در §2.3 مستندِ هم‌ترازیِ AUTO_BAZ آمده). */
+    INSERT dbo.CC_Exception
+        (RunId, StepCode, RuleCode, ExType, Severity, DocNumber, DocTag, DocDate, Amount, RefList, Description)
+    SELECT  DISTINCT
+            @RunId, 'S00', 'CHK-21', 23, 1,
+            CAST(inv.NUMBER AS BIGINT), 24, inv.DATE_N, h.DATE_S,
+            (SELECT N'saleReturnVsAccounting' AS kind,
+                    CAST(inv.NUMBER AS BIGINT) AS aNumber, 24 AS aTag, N'HEAD_LST' AS aTable, inv.DATE_N AS aDate,
+                    CAST(d.N_S AS BIGINT) AS bNumber, 0 AS bTag, N'DEED_HED' AS bTable, h.DATE_S AS bDate
+             FOR JSON PATH, WITHOUT_ARRAY_WRAPPER),
+            CONCAT(N'برگشت فروش ', inv.NUMBER, N': تاریخ حواله ',
+                   FORMAT(inv.DATE_N,'0000/00/00'), N' با تاریخ سند حسابداری ',
+                   FORMAT(h.DATE_S,'0000/00/00'), N' (سند ', d.N_S, N') یکی نیست')
+    FROM    dbo.HEAD_LST inv
+    JOIN    dbo.DEED_DTL d ON d.NUMBER = inv.NUMBER AND d.TAG = 25
+    JOIN    dbo.DEED_HED h ON h.N_S = d.N_S
+    WHERE   inv.TAG = 24
+      AND   (inv.DATE_N BETWEEN @DT1 AND @DT2 OR h.DATE_S BETWEEN @DT1 AND @DT2)
+      AND   inv.DATE_N <> h.DATE_S
+      AND   NOT EXISTS (SELECT 1 FROM dbo.CC_AcceptedException ae
+                        WHERE ae.RuleCode = 'CHK-21' AND ae.IsActive = 1
+                          AND (ae.Anbar IS NULL) AND (ae.Code IS NULL));
+
     /* ─── CHK-20 : نرخ میانگین منفی ───
        پیدا شده روی کد ۳۴۶۱/انبار۱: فروش ۱۴۰۵/۰۲/۰۹ کاردکس را وقتی فقط
        ۰٫۴ واحد موجودی بود منفی کرد (۹۹٫۶-، همان مغایرتی که CHK-01 با

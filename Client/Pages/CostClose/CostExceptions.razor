@@ -207,8 +207,10 @@
                        RunId)؛ ماه بعد که یک اجرای تازه ساخته می‌شود دوباره برمی‌گردد —
                        دقیقاً همان چیزی که برای مغایرت‌های افتتاحیه در فروردین اتفاق
                        افتاد. برای «دیگر هیچ‌وقت نشان نده» باید این دکمه (پذیرش دائمی،
-                       CC_AcceptedException بدون قید RunId) زده شود، نه آن یکی. *@
-                    @if (Access.CanUpd(CostForms.ActResolve))
+                       CC_AcceptedException بدون قید RunId) زده شود، نه آن یکی.
+                       ⚠️ فرمِ جداگانه (ActResolvePermanent)، نه Upd روی ActResolve —
+                       نگاه کنید توضیح CostForms.cs. *@
+                    @if (Access.CanRun(CostForms.ActResolvePermanent))
                     {
                         <MudButton Size="Size.Small" Variant="Variant.Outlined" Color="Color.Warning"
                                    StartIcon="@Icons.Material.Filled.DoNotDisturbOn"
@@ -333,8 +335,8 @@
                                        Title="اصلاح سطر فرمول منفی"
                                        OnClick="@(() => OpenNegativeFormulaFix(context))" />
                     }
-                    @if (context.RuleCode == "CHK-18" && !context.IsResolved
-                         && Access.CanUpd(CostForms.ActResolve))
+                    @if (context.RuleCode is "CHK-18" or "CHK-21" && !context.IsResolved
+                         && Access.CanRun(CostForms.ActFixDateMismatch))
                     {
                         <MudIconButton Icon="@Icons.Material.Filled.EditCalendar"
                                        Size="Size.Small" Color="Color.Primary"
@@ -364,11 +366,12 @@
                                        Size="Size.Small" Title="رفع شد"
                                        OnClick="@(() => Resolve(context))" />
                     }
-                    @* پذیرش دائمی سرورسمت به مجوز Upd نیاز دارد (چون یک قاعدهٔ دائمی در
-                       CC_AcceptedException می‌سازد)، نه فقط Run مثل «رفع شد» — قبلاً هر دو
-                       دکمه زیر یک شرط بودند، پس کاربری با فقط Run دکمه را می‌دید ولی با ۴۰۳
-                       رد می‌شد. *@
-                    @if (!context.IsResolved && Access.CanUpd(CostForms.ActResolve))
+                    @* پذیرش دائمی یک فرمِ دسترسیِ جداگانه دارد (ActResolvePermanent)،
+                       نه Upd روی همان فرمِ «رفع شد» — چون «بستن استثنا» در صفحه‌ی
+                       «عملیات حساس» فقط یک تیکِ Run دارد و هرگز به ستونِ Upد دسترسی
+                       نمی‌دهد؛ کاربری که همه‌چیز را در آن صفحه تیک بزند هم بدونِ این
+                       فرمِ جدا هرگز این دکمه را نمی‌دید. *@
+                    @if (!context.IsResolved && Access.CanRun(CostForms.ActResolvePermanent))
                     {
                         <MudIconButton Icon="@Icons.Material.Filled.DoNotDisturbOn"
                                        Size="Size.Small" Title="پذیرش دائمی"

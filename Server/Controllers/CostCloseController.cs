@@ -351,7 +351,7 @@ namespace Safir.Server.Controllers
         /// انبارهای آن کالا.
         /// </summary>
         [HttpPost("exceptions/{id:long}/accept-permanently")]
-        [Pay2Authorize(CostForms.ActResolve, Pay2Perm.Upd)]
+        [Pay2Authorize(CostForms.ActResolvePermanent, Pay2Perm.Run)]
         public async Task<IActionResult> AcceptPermanently(
             long id, [FromBody] ResolveExceptionRequest req)
         {
@@ -401,7 +401,7 @@ namespace Safir.Server.Controllers
         /// صفر می‌شود، برای ردیابی این‌که چه کسی/چرا قبلاً پذیرفته بود).
         /// </summary>
         [HttpPost("accepted-exceptions/{id:int}/revoke")]
-        [Pay2Authorize(CostForms.ActResolve, Pay2Perm.Upd)]
+        [Pay2Authorize(CostForms.ActResolvePermanent, Pay2Perm.Run)]
         public async Task<IActionResult> RevokeAcceptedException(int id)
         {
             var n = await _db.DoExecuteSQLAsync(
@@ -438,7 +438,7 @@ namespace Safir.Server.Controllers
         /// (RuleCode,Code,Anbar) خودش دوباره چک شود، نه یک شرط مشترک روی کل دسته.
         /// </summary>
         [HttpPost("exceptions/bulk-accept-permanently")]
-        [Pay2Authorize(CostForms.ActResolve, Pay2Perm.Upd)]
+        [Pay2Authorize(CostForms.ActResolvePermanent, Pay2Perm.Run)]
         public async Task<IActionResult> BulkAcceptPermanently([FromBody] BulkResolveRequest req)
         {
             if (req.ExceptionIds.Count == 0) return Ok(new { count = 0 });
@@ -488,7 +488,7 @@ namespace Safir.Server.Controllers
         /// برگشت خرید) باشد، نه سه مسیر جدا.
         /// </summary>
         [HttpPost("exceptions/{id:long}/fix-date-mismatch")]
-        [Pay2Authorize(CostForms.ActResolve, Pay2Perm.Upd)]
+        [Pay2Authorize(CostForms.ActFixDateMismatch, Pay2Perm.Run)]
         public async Task<IActionResult> FixDateMismatch(long id, [FromBody] FixDateMismatchRequest req)
         {
             var ex = await _db.DoGetDataSQLAsyncSingle<CostExceptionRefRow>(

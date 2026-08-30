@@ -70,7 +70,10 @@ USING (VALUES
   N'از دکمه‌ی «اصلاح تاریخ» کنار همین ردیف استفاده کنید و تاریخ درست را انتخاب کنید — معمولاً بعد از اصلاح تاریخ یک فاکتور (CHK-18) پیش می‌آید، چون آن اصلاح فقط فاکتور/حواله را عوض می‌کند، نه سند حسابداریِ از قبل صادرشده را.', 48),
 
  ('CHK-20', N'نرخ میانگین منفی', 'S00', 22, 1, NULL,
-  N'این نرخ منفی معمولاً پیامد یک کاردکس منفی (CHK-01) در تاریخی نزدیک همین سند است. آن مغایرت را بررسی و در صورت لزوم فیِ این سند را دستی به نرخ واقعیِ همان لحظه اصلاح کنید.', 49)
+  N'این نرخ منفی معمولاً پیامد یک کاردکس منفی (CHK-01) در تاریخی نزدیک همین سند است. آن مغایرت را بررسی و در صورت لزوم فیِ این سند را دستی به نرخ واقعیِ همان لحظه اصلاح کنید.', 49),
+
+ ('CHK-21', N'تاریخ برگشت فروش با تاریخ سند حسابداری‌اش یکی نیست', 'S00', 23, 1, NULL,
+  N'از دکمه‌ی «اصلاح تاریخ» کنار همین ردیف استفاده کنید و تاریخ درست را انتخاب کنید — تا وقتی این دو یکی نشوند، کاردکس این حواله را در ماهِ خودش می‌بیند ولی حسابداری در ماهِ دیگر، و CHK-02 مغایرتِ کاذب نشان می‌دهد.', 50)
 ) AS s (RuleCode, RuleName, StepCode, ExType, DefaultSeverity, Threshold, RemedyText, SortOrder)
 ON t.RuleCode = s.RuleCode
 -- ⚠️ Threshold عمداً از WHEN MATCHED بیرون است: کاربر می‌تواند از تنظیمات
@@ -224,6 +227,17 @@ IF NOT EXISTS (SELECT 1 FROM dbo.TFORMS WHERE FORMNAME = N'COST_ACT_REBUILD_DOCS
 IF NOT EXISTS (SELECT 1 FROM dbo.TFORMS WHERE FORMNAME = N'COST_ACT_POST_CORRECTION')
     INSERT INTO dbo.TFORMS (FORMNAME, CAPTION, kind, GRP, IDH, CRT)
     VALUES (N'COST_ACT_POST_CORRECTION', N'سند اصلاحی مغایرت کارت انبار/حسابداری', 3, 10, (SELECT ISNULL(MAX(IDH),0)+1 FROM dbo.TFORMS), GETDATE());
+
+-- ⚠️ اصلاح (تأیید کاربر): این دو قبلاً زیرِ Pay2Perm.Upd روی ACT_RESOLVE
+-- بودند و هرگز از صفحه‌ی «عملیات حساس» (که فقط یک تیکِ Run دارد) قابل‌اعطا
+-- نبودند. حالا فرمِ مستقلِ خودشان را دارند — نگاه کنید CostForms.cs.
+IF NOT EXISTS (SELECT 1 FROM dbo.TFORMS WHERE FORMNAME = N'COST_ACT_RESOLVE_PERMANENT')
+    INSERT INTO dbo.TFORMS (FORMNAME, CAPTION, kind, GRP, IDH, CRT)
+    VALUES (N'COST_ACT_RESOLVE_PERMANENT', N'پذیرش دائمی مغایرت', 3, 10, (SELECT ISNULL(MAX(IDH),0)+1 FROM dbo.TFORMS), GETDATE());
+
+IF NOT EXISTS (SELECT 1 FROM dbo.TFORMS WHERE FORMNAME = N'COST_ACT_FIX_DATE')
+    INSERT INTO dbo.TFORMS (FORMNAME, CAPTION, kind, GRP, IDH, CRT)
+    VALUES (N'COST_ACT_FIX_DATE', N'اصلاح تاریخ مغایرِ سند', 3, 10, (SELECT ISNULL(MAX(IDH),0)+1 FROM dbo.TFORMS), GETDATE());
 
 PRINT N'فرم‌های ماژول بستن ماه بهای تمام‌شده در TFORMS ثبت شدند.';
 GO

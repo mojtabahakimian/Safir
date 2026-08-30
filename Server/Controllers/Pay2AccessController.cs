@@ -96,6 +96,8 @@ namespace Safir.Server.Controllers
                 (CostForms.ActExport,          "خروجی اکسل"),
                 (CostForms.ActRebuildDocs,     "بازسازی سند حواله خروج مواد"),
                 (CostForms.ActPostCorrection,  "سند اصلاحی مغایرت کارت انبار/حسابداری"),
+                (CostForms.ActResolvePermanent, "پذیرش دائمی مغایرت"),
+                (CostForms.ActFixDateMismatch,  "اصلاح تاریخ مغایرِ سند"),
             };
 
             var existing = (await _db.DoGetDataSQLAsync<string>(
