@@ -246,9 +246,46 @@ namespace Safir.Server.Controllers
 
         [HttpPost("runs/{runId:int}/cancel")]
         [Pay2Authorize(CostForms.ActStart, Pay2Perm.Run)]
-        public IActionResult CancelRun(int runId)
+        public async Task<IActionResult> CancelRun(int runId)
         {
-            _queue.RequestCancel(runId);
+            if (_queue.IsRunning(runId))
+            {
+                // پردازش واقعاً روی همین پروسِس در حال اجراست — فقط پرچمِ
+                // لغو را بالا می‌بریم، ارکستریتور بینِ گام‌ها آن را می‌بیند
+                // و متوقف می‌شود (نگاه کنید CloseOrchestrator.RunAsync).
+                _queue.RequestCancel(runId);
+                return Ok();
+            }
+
+            // ⚠️ اصلاح (تأیید کاربر: «کلید توقف روشنه خاموشش نمی‌شه»):
+            // صفِ کارها کاملاً در حافظه‌ی همین پروسِس است (CostCloseQueue)
+            // — با هر ری‌استارتِ سرور (کرش، ری‌سایکلِ IIS، دیباگِ ویژوال
+            // استودیو) خالی می‌شود. اگر یک اجرا دقیقاً وسطِ کار بمانَد،
+            // CC_Run.Status در دیتابیس همچنان «۱=درحالِ‌اجرا» می‌ماند ولی
+            // هیچ پردازشی دیگر آن را دنبال نمی‌کند — دکمه‌ی توقف تا ابد
+            // یک پرچمِ لغو در _cancels ثبت می‌کند که هیچ‌وقت کسی نمی‌خواندش.
+            // اینجا وقتی صف می‌گوید «این RunId را نمی‌شناسم»، یعنی دقیقاً
+            // همین حالت رخ داده — پس مستقیماً در دیتابیس آن را ناتمام
+            // علامت می‌زنیم تا واقعاً خاموش شود.
+            var run = await _db.DoGetDataSQLAsyncSingle<CostRunDto>(
+                "SELECT * FROM dbo.CC_Run WHERE RunId = @runId", new { runId });
+
+            if (run is null)
+                return NotFound();
+
+            if (run.Status is (byte)CostRunStatus.Running or (byte)CostRunStatus.Paused)
+            {
+                await _db.DoExecuteSQLAsync(
+                    @"UPDATE dbo.CC_Run SET Status = @failed, FinishedAtUtc = SYSUTCDATETIME()
+                      WHERE RunId = @runId",
+                    new { runId, failed = (byte)CostRunStatus.Failed });
+
+                await _db.DoExecuteSQLAsync(
+                    @"INSERT dbo.CC_RunLog (RunId, StepCode, Severity, Message)
+                      VALUES (@runId, NULL, 2, N'اجرا توسط کاربر متوقف شد — پردازشِ پیشین دیگر فعال نبود (احتمالاً پس از ری‌استارتِ سرور)، وضعیت مستقیماً به «ناتمام» اصلاح شد.')",
+                    new { runId });
+            }
+
             return Ok();
         }
 
