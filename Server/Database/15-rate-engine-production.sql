@@ -472,12 +472,23 @@ BEGIN
         CodeTotalQty AS (
             SELECT CODE, SUM(Qty) AS TotalQty FROM CodeQty GROUP BY CODE
         )
+        -- ⚠️ اصلاح (تأیید کاربر: «کنترل از ۷۵۱» نباید بیشتر از جذب‌شده و
+        -- واقعی باشد): این کنترلِ متقابل داشت کاملِ ۷۵۱ را می‌گرفت، بدون
+        -- کنار گذاشتنِ سهمِ کالاهای کارمزدی — درحالی‌که @absWage/@absOh
+        -- بالا (جذب‌شده) از قبل این سهم را کنار می‌گذارد. نتیجه این بود
+        -- که «کنترل از ۷۵۱» همیشه دقیقاً به‌اندازه‌ی مجموعِ دستمزدِ
+        -- کالاهای کارمزدی از «جذب‌شده»/«واقعی» بیشتر نشان داده می‌شد —
+        -- نه یک مغایرتِ واقعی، فقط دو طرفِ مقایسه هم‌محدوده نبودند.
         SELECT  @absWipWage = ISNULL(SUM(ca.WageAmt * cq.Qty / ctq.TotalQty), 0),
                 @absWipOh   = ISNULL(SUM(ca.OhAmt   * cq.Qty / ctq.TotalQty), 0)
         FROM    CodeAmt ca
         JOIN    CodeQty cq       ON cq.CODE  = ca.CODE AND cq.UnitId = @UnitId
         JOIN    CodeTotalQty ctq ON ctq.CODE = ca.CODE
-        WHERE   ctq.TotalQty <> 0;
+        WHERE   ctq.TotalQty <> 0
+          AND   NOT EXISTS (
+                    SELECT 1 FROM dbo.CC_LaborAbsorptionRate fx
+                    WHERE fx.UnitId = @UnitId AND TRY_CAST(fx.CODE AS BIGINT) = ca.CODE AND fx.IsFixed = 1
+                );
 
         SET @absWip = @absWipWage + @absWipOh;
 
