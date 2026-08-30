@@ -310,7 +310,20 @@ namespace Safir.Server.CostClose
                             ? null
                             : MaxAbsDelta(lastRates, rates);
 
-                        if (delta is not null && delta.Value.Max <= RateConvergeThreshold)
+                        // ⚠️ اصلاح (تأیید کاربر، کد ۳۵۱۴/whey پودر کشف شد): مقایسه
+                        // باید روی مقدارِ گردشده به نزدیک‌ترین ریال باشد، نه رقمِ
+                        // دقیقِ اعشاری — چون ریال کوچک‌ترین واحدِ پول است، کسرِ آن
+                        // بی‌معناست. بدون این گرد‌کردن، لاگ می‌گفت «بیشترین تغییر: ۱
+                        // ریال» (که با آستانه‌ی نمایشیِ ۱ ریال «همگرا» به‌نظر می‌رسید)
+                        // ولی چون رقمِ دقیقش چیزی مثل ۱٫۰۰۰۰۰۰X بود (باقیماندهٔ
+                        // اعشاریِ طبیعیِ محاسبه روی زنجیره‌های چندسطحی)، شرطِ
+                        // `<= 1.0` رد می‌شد و بی‌دلیل تا سقفِ ۲۵ دور ادامه پیدا
+                        // می‌کرد — درحالی‌که از نظرِ مالی از قبل همگرا بود.
+                        var maxDeltaRounded = delta is null
+                            ? (double?)null
+                            : Math.Round(delta.Value.Max, MidpointRounding.AwayFromZero);
+
+                        if (maxDeltaRounded is not null && maxDeltaRounded <= RateConvergeThreshold)
                         {
                             // بیشترین تغییرِ نرخِ همه‌ی کالاها بین این دور و دور
                             // قبل زیر یک ریال است — همگرا شد
