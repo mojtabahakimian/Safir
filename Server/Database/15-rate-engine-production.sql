@@ -95,66 +95,68 @@ AS
 BEGIN
     SET NOCOUNT ON;
 
-    DECLARE @TafDastmozd BIGINT = 99999999, @TafSarbar BIGINT = 99999998;
     DECLARE @Total INT = 0;
 
-    -- ۱) دستمزد/سربارِ واقعیِ هر واحد از حساب ۷۵۱، به‌نسبتِ سهمِ
-    --    مقداریِ (MEGHK) هر واحد از کل تولید همان کد در همین ماه —
-    --    رفعِ دوبارشماریِ کدهای مشترک بین واحدها (کد ۳۷۳).
-    ;WITH CodeAmt AS (
-        SELECT  TRY_CAST(d.HES_M AS BIGINT) AS CODE,
-                SUM(CASE WHEN d.HES_T = @TafDastmozd THEN d.BES - d.BED ELSE 0 END) AS WageAmt,
-                SUM(CASE WHEN d.HES_T = @TafSarbar   THEN d.BES - d.BED ELSE 0 END) AS OhAmt
-        FROM    dbo.DEED_DTL d
-        JOIN    dbo.DEED_HED hd ON hd.N_S = d.N_S
-        WHERE   d.HES_K = 751 AND d.HES_T IN (@TafDastmozd, @TafSarbar)
-          AND   hd.DATE_S BETWEEN @DT1 AND @DT2
-        GROUP BY TRY_CAST(d.HES_M AS BIGINT)
-    ),
-    CodeQty AS (
-        SELECT  TRY_CAST(pl.CODE AS BIGINT) AS CODE, cua.UnitId, SUM(pl.MEGHK) AS Qty
-        FROM    dbo.HEAD_LST h
-        JOIN    dbo.INVO_LST pl      ON pl.NUMBER = h.NUMBER AND pl.TAG = 9
-        JOIN    dbo.CC_UnitAnbar cua ON cua.Anbar  = pl.ANBAR AND cua.AnbarRole = 3
-        JOIN    dbo.CC_Unit u        ON u.UnitId   = cua.UnitId AND u.IsActive = 1
-        WHERE   h.TAG = 9 AND h.DATE_N BETWEEN @DT1 AND @DT2
-        GROUP BY TRY_CAST(pl.CODE AS BIGINT), cua.UnitId
-    ),
-    CodeTotalQty AS (
-        SELECT CODE, SUM(Qty) AS TotalQty FROM CodeQty GROUP BY CODE
-    )
-    SELECT  cq.UnitId,
-            ISNULL(SUM(ca.WageAmt * cq.Qty / ctq.TotalQty), 0) AS ActWage,
-            ISNULL(SUM(ca.OhAmt   * cq.Qty / ctq.TotalQty), 0) AS ActOh
+    -- ۱) دستمزد/سربارِ واقعیِ هر واحد.
+    --
+    -- ⚠️ اصلاح (تأیید کاربر: «تو داری دستمزد کارخونه را زیاد میزنی که
+    -- در ۷۵۱ خودشو نشون میده»): قبلاً این عدد از خودِ حساب ۷۵۱ (تفصیلی
+    -- ۹۹۹۹۹۹۹۹) می‌آمد — ولی ۷۵۱ خودش نتیجه‌ی همین فرمول‌هاست (هر برگه‌ی
+    -- ورود کالا به انبار، با نرخِ IMBIBE_MANFِ همان لحظه، به ۷۵۱ می‌زند)؛
+    -- یعنی اگر نرخِ قبلی زیاد بوده، ۷۵۱ هم زیاد شده و دوباره از رویِ آن
+    -- نرخِ بعدی ساختن یعنی تکرارِ همان خطا (حلقه‌ی خودتغذیه). منبعِ
+    -- مستقل و واقعی همان چیزی است که S10 هم زیرِ عنوانِ «واقعی» استفاده
+    -- می‌کند: CC_UnitAcc (حساب‌های ۷۱۱-۷۴۵ و مشابه، طبقِ تنظیماتِ کاربر)،
+    -- نه ۷۵۱.
+    SELECT  m.UnitId,
+            ISNULL(SUM(CASE WHEN m.CostKind = 1 THEN t.Amount * m.Ratio ELSE 0 END), 0) AS ActWage,
+            ISNULL(SUM(CASE WHEN m.CostKind = 2 THEN t.Amount * m.Ratio ELSE 0 END), 0) AS ActOh
     INTO    #UnitActual
-    FROM    CodeQty cq
-    JOIN    CodeTotalQty ctq ON ctq.CODE = cq.CODE
-    LEFT    JOIN CodeAmt ca ON ca.CODE = cq.CODE
-    WHERE   ctq.TotalQty <> 0
-    GROUP BY cq.UnitId;
+    FROM    dbo.CC_UnitAcc m
+    CROSS   APPLY (
+                SELECT SUM(d.BED) - SUM(d.BES) AS Amount
+                FROM   dbo.DEED_DTL d
+                JOIN   dbo.DEED_HED hd ON hd.N_S = d.N_S
+                WHERE  hd.DATE_S BETWEEN @DT1 AND @DT2
+                  AND  d.HES_K = m.HesKol
+                  AND  (m.HesMoin    IS NULL OR d.HES_M = m.HesMoin)
+                  AND  (m.HesTafsili IS NULL OR d.HES_T = m.HesTafsili)
+            ) t
+    WHERE   m.IsActive = 1
+    GROUP BY m.UnitId;
 
-    -- ۲) مقدارِ کلِ تولیدِ همین ماه به‌تفکیکِ (واحد، کد) — لازم هم برای
-    --    مجموعِ سادهٔ ضرایب (هر کد یک‌بار)، هم برای تقسیمِ نهاییِ نرخِ
-    --    واحد بر مقدارِ خودِ همان کالا (نگاه کنید توضیحِ فرمول بالا).
-    SELECT  cua.UnitId, hm.CODE, SUM(pl.MEGHK) AS Qty
+    -- ۲) مقدارِ کلِ تولیدِ همین ماه به‌تفکیکِ (واحد، کد)، به‌همراه ضریبِ
+    --    وزنِ هر واحدِ MEGHk (کاربر: «مقدار ممکنه وزن نباشه مثلا ۱۸۰
+    --    گرم باشه و تعداد زیاد» — یعنی MEGHk خام برای کالاهایی که با
+    --    «عدد/بسته» شمرده می‌شوند با کالاهایی که با «کیلوگرم» شمرده
+    --    می‌شوند قابلِ‌جمع نیست). WeightFactor از dbo.stuf_def_nfani.
+    --    COLN6 می‌آید — همان ستونی که در گزارشِ KALAS خودِ کاربر با
+    --    `SUM(CAST(COLN6 AS FLOAT)*MEGHk)` به‌عنوان «وزن» جمع می‌زند
+    --    (مثلاً پنیر ۱۸۰گرمی → COLN6=۰.۱۸). وقتی این ستون خالی/غیرِعددی
+    --    است یا صفر/منفی، ۱ فرض می‌شود (یعنی MEGHk خودش از قبل واحدِ
+    --    وزنی است، مثلِ کالاهای کیلوگرمی که COLN6=۱ دارند).
+    SELECT  cua.UnitId, hm.CODE, SUM(pl.MEGHK) AS Qty,
+            MAX(ISNULL(NULLIF(TRY_CAST(nf.COLN6 AS FLOAT), 0), 1)) AS WeightFactor
     INTO    #CodeQty
     FROM    dbo.HEAD_LST  h
     JOIN    dbo.INVO_LST  pl  ON pl.NUMBER = h.NUMBER AND pl.TAG = 9
     JOIN    dbo.HEAD_MANF hm  ON hm.FNUMB  = TRY_CAST(pl.N_KOL AS INT) AND hm.GHEYMAT = @Month
     JOIN    dbo.CC_UnitAnbar cua ON cua.Anbar = pl.ANBAR AND cua.AnbarRole = 3
     JOIN    dbo.CC_Unit   u   ON u.UnitId  = cua.UnitId AND u.IsActive = 1
+    LEFT    JOIN dbo.stuf_def_nfani nf ON nf.CODE = hm.CODE
     WHERE   h.TAG = 9 AND h.DATE_N BETWEEN @DT1 AND @DT2
     GROUP BY cua.UnitId, hm.CODE;
 
-    -- مجموعِ سادهٔ ضرایب (بدون وزن‌دهی به مقدار) هر واحد در همین ماه،
-    -- فقط کالاهایی که کاربر برایشان ضریب صریحِ غیرصفر ثبت کرده — هر کد
-    -- دقیقاً یک‌بار جمع می‌شود (از #CodeQty که خودش هر کد را یک‌بار
-    -- دارد)، نه به‌ازای هر سطرِ تولیدش. ضریب سربارِ مؤثر =
-    -- ISNULL(OverheadCoefficient, Coefficient).
+    -- مجموعِ وزنیِ ضرایب هر واحد در همین ماه — Σ(ضریب × مقدار ×
+    -- ضریبِ‌وزن)، فقط کالاهایی که کاربر برایشان ضریب صریحِ غیرصفر ثبت
+    -- کرده. این «مخرجِ مشترک» است: باعث می‌شود نرخِ هر کالا فقط تابعِ
+    -- ضریبِ خودش باشد (نه مقدارِ تولیدش)، ولی جمعِ دستمزدِ همه‌ی
+    -- کالاها با دستمزدِ واقعی برابر بماند (نگاه کنید توضیحِ فرمولِ
+    -- پایین‌تر). ضریب سربارِ مؤثر = ISNULL(OverheadCoefficient, Coefficient).
     SELECT  cq.UnitId,
-            ISNULL(SUM(r.Coefficient), 0) AS TotalWeight,
+            ISNULL(SUM(r.Coefficient * cq.Qty * cq.WeightFactor), 0) AS TotalWeight,
             ISNULL(SUM(CASE WHEN ISNULL(r.OverheadCoefficient, r.Coefficient) <> 0
-                             THEN ISNULL(r.OverheadCoefficient, r.Coefficient)
+                             THEN ISNULL(r.OverheadCoefficient, r.Coefficient) * cq.Qty * cq.WeightFactor
                              ELSE 0 END), 0) AS TotalWeightOh
     INTO    #UnitWeight
     FROM    #CodeQty cq
@@ -185,14 +187,14 @@ BEGIN
     -- شد این گارد اضافه شود.
     INSERT dbo.CC_RunLog (RunId, StepCode, Severity, Message)
     SELECT @RunId, 'S07B', 2,
-           CONCAT(N'واحد ', w.UnitId, N': دستمزد واقعی این واحد از حساب ۷۵۱ صفر آمد (احتمالاً هیچ کدی توسط این واحد در این ماه تولید نشده یا حساب ۷۵۱ برای کدهای این واحد خالی است) — تقسیم دستمزد رد شد تا IMBIBE_MANF صفر نشود.')
+           CONCAT(N'واحد ', w.UnitId, N': دستمزد واقعی این واحد (طبق CC_UnitAcc) صفر آمد (احتمالاً نگاشتِ حساب‌ها برای این واحد ناقص است یا هیچ کدی توسط این واحد در این ماه تولید نشده) — تقسیم دستمزد رد شد تا IMBIBE_MANF صفر نشود.')
     FROM   #UnitWeight w
     LEFT   JOIN #UnitActual a ON a.UnitId = w.UnitId
     WHERE  w.TotalWeight <> 0 AND ISNULL(a.ActWage, 0) = 0;
 
     INSERT dbo.CC_RunLog (RunId, StepCode, Severity, Message)
     SELECT @RunId, 'S07B', 2,
-           CONCAT(N'واحد ', w.UnitId, N': سربار واقعی این واحد از حساب ۷۵۱ صفر آمد (احتمالاً @TafSarbar روی این پایگاه‌داده استفاده نمی‌شود یا هیچ کدی توسط این واحد در این ماه تولید نشده) — تقسیم سربار رد شد تا IMBIBE_SAR صفر نشود.')
+           CONCAT(N'واحد ', w.UnitId, N': سربار واقعی این واحد (طبق CC_UnitAcc، CostKind=2) صفر آمد (احتمالاً برای این واحد نگاشتِ سربار تعریف نشده یا هیچ کدی توسط این واحد در این ماه تولید نشده) — تقسیم سربار رد شد تا IMBIBE_SAR صفر نشود.')
     FROM   #UnitWeight w
     LEFT   JOIN #UnitActual a ON a.UnitId = w.UnitId
     WHERE  w.TotalWeightOh <> 0 AND ISNULL(a.ActOh, 0) = 0;
@@ -210,15 +212,19 @@ BEGIN
     JOIN   #FixedTotals ft ON ft.UnitId = a.UnitId
     WHERE  a.ActWage - ft.FixedWage <= 0 AND ft.FixedWage <> 0;
 
-    -- ۳) پیشنهادِ نرخ هر (واحد، فرمول) این ماه:
+    -- ۳) پیشنهادِ نرخ هر (واحد، فرمول) این ماه (تأیید کاربر: نرخِ پایه
+    --    = دستمزدِ واقعی ÷ مجموعِ وزنی، بعد در ضریب و وزنِ خودِ کالا
+    --    ضرب می‌شود — نه تقسیم بر مقدارِ تولیدِ خودِ کالا. نتیجه: دو
+    --    کالای هم‌ضریب/هم‌وزن نرخِ واحدِ یکسان می‌گیرند، ولی چون نرخ در
+    --    مقدار ضرب می‌شود، جمعِ دستمزدشان به‌نسبتِ تولید فرق می‌کند):
     --      IsFixed=1        → NULL (کارمزدی، هرگز دست نمی‌خورد)
     --      Coefficient=0    → 0    (کاربر عمداً کنار گذاشته)
     --      Coefficient=NULL → NULL (هنوز بررسی نشده، دست نمی‌خورد)
     --      باقی‌ماندهٔ واقعی (پس از کسرِ سهمِ کارمزدی‌ها) صفر/منفی، یا
     --      مقدارِ خودِ کالا صفر → NULL (نرخ ناقص می‌شد، دست نمی‌خورد —
     --                                  هشدار بالا)
-    --      وگرنه            → باقی‌ماندهٔ واقعی × ضریب ÷ (مجموعِ سادهٔ
-    --                          ضرایب × مقدارِ تولیدِ خودِ همین کالا)
+    --      وگرنه            → باقی‌ماندهٔ واقعی × ضریب × ضریبِ‌وزنِ خودِ
+    --                          کالا ÷ مجموعِ وزنی
     ;WITH ThisMonthFormula AS (
         SELECT DISTINCT hm.FNUMB, hm.CODE, cua.UnitId
         FROM   dbo.HEAD_LST h
@@ -234,14 +240,14 @@ BEGIN
                  WHEN r.Coefficient IS NULL                              THEN NULL
                  WHEN ISNULL(a.ActWage, 0) - ISNULL(ft.FixedWage, 0) <= 0
                       OR ISNULL(w.TotalWeight, 0) = 0 OR ISNULL(q.Qty, 0) = 0 THEN NULL
-                 ELSE (a.ActWage - ISNULL(ft.FixedWage, 0)) * r.Coefficient / (w.TotalWeight * q.Qty)
+                 ELSE (a.ActWage - ISNULL(ft.FixedWage, 0)) * r.Coefficient * q.WeightFactor / w.TotalWeight
             END AS ProposedWage,
             CASE WHEN r.IsFixed = 1                                      THEN NULL
                  WHEN ISNULL(r.OverheadCoefficient, r.Coefficient) = 0    THEN 0
                  WHEN ISNULL(r.OverheadCoefficient, r.Coefficient) IS NULL THEN NULL
                  WHEN ISNULL(a.ActOh, 0) - ISNULL(ft.FixedOh, 0) <= 0
                       OR ISNULL(w.TotalWeightOh, 0) = 0 OR ISNULL(q.Qty, 0) = 0 THEN NULL
-                 ELSE (a.ActOh - ISNULL(ft.FixedOh, 0)) * ISNULL(r.OverheadCoefficient, r.Coefficient) / (w.TotalWeightOh * q.Qty)
+                 ELSE (a.ActOh - ISNULL(ft.FixedOh, 0)) * ISNULL(r.OverheadCoefficient, r.Coefficient) * q.WeightFactor / w.TotalWeightOh
             END AS ProposedOh
     INTO    #Proposals
     FROM    ThisMonthFormula f
@@ -405,10 +411,12 @@ BEGIN
         ---- ۱) جذب‌شده از برگه‌هاي توليد اين واحد (بر اساس انبار محصول)
         DECLARE @absWage FLOAT, @absOh FLOAT;
 
-        -- ⚠️ کالاهای کارمزدی (CC_LaborAbsorptionRate.IsFixed=1 برای همین
-        -- واحد) از جذب‌شده کنار می‌مانند — نرخشان ثابت است، نباید نه
-        -- خودشان با ضریب k تعدیل شوند (پایین‌تر) و نه در محاسبه‌ی خودِ
-        -- ضریب k برای بقیه‌ی کالاها دخالت کنند.
+        -- کالاهای کارمزدی از این جمع کنار می‌مانند (تأیید کاربر): نرخِ
+        -- S07B هم دقیقاً همین کار را می‌کند — دستمزدِ واقعیِ CC_UnitAcc
+        -- را منهایِ سهمِ کارمزدی‌ها بین بقیه تقسیم می‌کند؛ پس «جذب‌شده»
+        -- باید همان محدوده (فقط غیرکارمزدی) را داشته باشد تا با «واقعی»
+        -- (که حالا S07B هم از همین CC_UnitAcc می‌گیرد، نه از ۷۵۱) در یک
+        -- پاس دقیقاً جفت شود، بدون نیاز به همگراییِ چندمرحله‌ای.
         SELECT  @absWage = ISNULL(SUM(pl.MEGHK * ISNULL(hm.IMBIBE_MANF,0)), 0),
                 @absOh   = ISNULL(SUM(pl.MEGHK * ISNULL(hm.IMBIBE_SAR ,0)), 0)
         FROM    dbo.HEAD_LST  h
@@ -472,23 +480,20 @@ BEGIN
         CodeTotalQty AS (
             SELECT CODE, SUM(Qty) AS TotalQty FROM CodeQty GROUP BY CODE
         )
-        -- ⚠️ اصلاح (تأیید کاربر: «کنترل از ۷۵۱» نباید بیشتر از جذب‌شده و
-        -- واقعی باشد): این کنترلِ متقابل داشت کاملِ ۷۵۱ را می‌گرفت، بدون
-        -- کنار گذاشتنِ سهمِ کالاهای کارمزدی — درحالی‌که @absWage/@absOh
-        -- بالا (جذب‌شده) از قبل این سهم را کنار می‌گذارد. نتیجه این بود
-        -- که «کنترل از ۷۵۱» همیشه دقیقاً به‌اندازه‌ی مجموعِ دستمزدِ
-        -- کالاهای کارمزدی از «جذب‌شده»/«واقعی» بیشتر نشان داده می‌شد —
-        -- نه یک مغایرتِ واقعی، فقط دو طرفِ مقایسه هم‌محدوده نبودند.
+        -- ⚠️ اصلاح (تأیید کاربر: «کنترلِ از ۷۵۱ باید کاملِ تفصیلی ۹۹۹۹۹۹۹۹
+        -- را جمع بزند، کارمزدی‌ها هم توش باشد»): یک نسخه‌ی قبلی این‌جا
+        -- سهمِ کالاهای کارمزدی را هم کنار می‌گذاشت تا با «جذب‌شده» (که
+        -- عمداً کارمزدی‌ها را کنار می‌گذارد) هم‌محدوده شود — ولی این خودِ
+        -- «کنترل از ۷۵۱» را اشتباه می‌کرد: این ستون قرار است یک کنترلِ
+        -- مستقل و کاملِ گردشِ واقعیِ حساب باشد، نه مقیدشده به همان
+        -- محدوده‌ای که روشِ جذب فعلاً استفاده می‌کند. پس هیچ کدی
+        -- (کارمزدی یا نه) از این جمع کنار گذاشته نمی‌شود.
         SELECT  @absWipWage = ISNULL(SUM(ca.WageAmt * cq.Qty / ctq.TotalQty), 0),
                 @absWipOh   = ISNULL(SUM(ca.OhAmt   * cq.Qty / ctq.TotalQty), 0)
         FROM    CodeAmt ca
         JOIN    CodeQty cq       ON cq.CODE  = ca.CODE AND cq.UnitId = @UnitId
         JOIN    CodeTotalQty ctq ON ctq.CODE = ca.CODE
-        WHERE   ctq.TotalQty <> 0
-          AND   NOT EXISTS (
-                    SELECT 1 FROM dbo.CC_LaborAbsorptionRate fx
-                    WHERE fx.UnitId = @UnitId AND TRY_CAST(fx.CODE AS BIGINT) = ca.CODE AND fx.IsFixed = 1
-                );
+        WHERE   ctq.TotalQty <> 0;
 
         SET @absWip = @absWipWage + @absWipOh;
 
@@ -513,6 +518,27 @@ BEGIN
                       AND  (m.HesTafsili IS NULL OR d.HES_T = m.HesTafsili)
                 ) t
         WHERE   m.IsActive = 1 AND m.UnitId = @UnitId;
+
+        -- ⚠️ اصلاح (تأیید کاربر: نرخِ S07B هم دستمزدِ واقعی را منهایِ
+        -- سهمِ کارمزدی‌ها می‌کند قبل از تقسیم): «جذب‌شده» بالا عمداً
+        -- کارمزدی‌ها را ندارد، پس «واقعی» هم باید همین سهم کم شود، وگرنه
+        -- ضریب k یک تفاوتِ کاذب (دقیقاً به‌اندازه‌ی دستمزدِ کارمزدی‌ها)
+        -- نشان می‌دهد و همه‌ی نرخ‌های غیرکارمزدی را غلط تعدیل می‌کند.
+        DECLARE @fixedWage FLOAT, @fixedOh FLOAT;
+
+        SELECT  @fixedWage = ISNULL(SUM(pl.MEGHK * ISNULL(hm.IMBIBE_MANF,0)), 0),
+                @fixedOh   = ISNULL(SUM(pl.MEGHK * ISNULL(hm.IMBIBE_SAR ,0)), 0)
+        FROM    dbo.HEAD_LST  h
+        JOIN    dbo.INVO_LST  pl ON pl.NUMBER = h.NUMBER AND pl.TAG = 9
+        JOIN    dbo.HEAD_MANF hm ON hm.FNUMB  = TRY_CAST(pl.N_KOL AS INT)
+                                AND hm.GHEYMAT = @Month
+        JOIN    dbo.CC_LaborAbsorptionRate fx ON fx.UnitId = @UnitId AND fx.CODE = hm.CODE AND fx.IsFixed = 1
+        WHERE   h.TAG = 9 AND h.DATE_N BETWEEN @DT1 AND @DT2
+          AND   pl.ANBAR IN (SELECT Anbar FROM dbo.CC_UnitAnbar
+                              WHERE UnitId = @UnitId AND AnbarRole = 3);
+
+        SET @actWage = @actWage - @fixedWage;
+        SET @actOh   = @actOh   - @fixedOh;
 
         DECLARE @actTotal FLOAT = @actWage + @actOh;
 
