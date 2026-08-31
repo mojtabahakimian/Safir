@@ -575,12 +575,55 @@ BEGIN
             (@RunId, @UnitId, 2, @absOh,   @absWipOh,   @actOh,   @kOh,   NULL);
 
         ---- ۶) هشدار اختلاف کنترلي
-        IF ABS(@absWip - @absTotal) > 10000000
+        --
+        -- ⚠️ اصلاح (همان باگِ CHK-09، اینجا هم پیدا شد): @absWip بالا عمداً
+        -- کاملِ ۷۵۱ است (تأیید کاربر، برای ستونِ نمایشیِ «کنترل از ۷۵۱»)،
+        -- ولی @absTotal («جذب‌شده») عمداً کارمزدی‌ها را ندارد — این دو
+        -- همیشه به‌اندازه‌ی دستمزدِ کارمزدی‌ها فرق دارند و مقایسه‌ی مستقیم‌شان
+        -- همیشه یک هشدارِ کاذب می‌سازد. اینجا برای خودِ این چک یک نسخه‌ی
+        -- کارمزدی‌نتّشده از ۷۵۱ می‌سازیم — دقیقاً همان استثنایی که @absWage
+        -- بالا هم دارد.
+        DECLARE @absWipFixed FLOAT;
+
+        ;WITH CodeAmt2 AS (
+            SELECT  TRY_CAST(d.HES_M AS BIGINT) AS CODE,
+                    SUM(CASE WHEN d.HES_T = @TafDastmozd THEN d.BES - d.BED ELSE 0 END) AS WageAmt,
+                    SUM(CASE WHEN d.HES_T = @TafSarbar   THEN d.BES - d.BED ELSE 0 END) AS OhAmt
+            FROM    dbo.DEED_DTL d
+            JOIN    dbo.DEED_HED hd ON hd.N_S = d.N_S
+            WHERE   d.HES_K = 751 AND d.HES_T IN (@TafDastmozd, @TafSarbar)
+              AND   hd.DATE_S BETWEEN @DT1 AND @DT2
+            GROUP BY TRY_CAST(d.HES_M AS BIGINT)
+        ),
+        CodeQty2 AS (
+            SELECT  TRY_CAST(pl.CODE AS BIGINT) AS CODE, cua.UnitId, SUM(pl.MEGHK) AS Qty
+            FROM    dbo.HEAD_LST h
+            JOIN    dbo.INVO_LST pl      ON pl.NUMBER = h.NUMBER AND pl.TAG = 9
+            JOIN    dbo.CC_UnitAnbar cua ON cua.Anbar  = pl.ANBAR AND cua.AnbarRole = 3
+            JOIN    dbo.CC_Unit u        ON u.UnitId   = cua.UnitId AND u.IsActive = 1
+            WHERE   h.TAG = 9 AND h.DATE_N BETWEEN @DT1 AND @DT2
+            GROUP BY TRY_CAST(pl.CODE AS BIGINT), cua.UnitId
+        ),
+        CodeTotalQty2 AS (
+            SELECT CODE, SUM(Qty) AS TotalQty FROM CodeQty2 GROUP BY CODE
+        )
+        SELECT  @absWipFixed = ISNULL(SUM(ca.WageAmt * cq.Qty / ctq.TotalQty), 0)
+                              + ISNULL(SUM(ca.OhAmt   * cq.Qty / ctq.TotalQty), 0)
+        FROM    CodeAmt2 ca
+        JOIN    CodeQty2 cq       ON cq.CODE  = ca.CODE AND cq.UnitId = @UnitId
+        JOIN    CodeTotalQty2 ctq ON ctq.CODE = ca.CODE
+        WHERE   ctq.TotalQty <> 0
+          AND   NOT EXISTS (
+                    SELECT 1 FROM dbo.CC_LaborAbsorptionRate fx
+                    WHERE fx.UnitId = @UnitId AND TRY_CAST(fx.CODE AS BIGINT) = ca.CODE AND fx.IsFixed = 1
+                );
+
+        IF ABS(@absWipFixed - @absTotal) > 10000000
             INSERT dbo.CC_Exception
                 (RunId, StepCode, RuleCode, ExType, Severity, Amount, Description)
-            VALUES (@RunId, 'S10', 'CHK-08', 10, 1, @absWip - @absTotal,
+            VALUES (@RunId, 'S10', 'CHK-08', 10, 1, @absWipFixed - @absTotal,
                     CONCAT(N'اختلاف جذب: برگه‌هاي توليد ', FORMAT(@absTotal, 'N0'),
-                           N' در برابر حساب ۷۵۱ ', FORMAT(@absWip, 'N0')));
+                           N' در برابر حساب ۷۵۱ (بدونِ کارمزدی‌ها) ', FORMAT(@absWipFixed, 'N0')));
 
         ---- ۷) اعمال ضريب روي فرمول‌هاي کالاهاي توليدشده در اين واحد
         IF @WhatIf = 0 AND (@kWage <> 1 OR @kOh <> 1)

@@ -302,7 +302,20 @@
                 </MudTd>
 
                 <MudTd Style="text-align:left">
-                    @if (!string.IsNullOrEmpty(context.RefList))
+                    @* RefList دو کاربردِ متفاوت دارد: برای CHK-04 فهرستِ خوانای
+                       شماره‌برگه‌هاست، ولی برای CHK-18/CHK-19/CHK-21 یک JSONِ
+                       داخلی است که فقط دیالوگِ «اصلاح تاریخ» می‌خواند (نگاه کنید
+                       OpenDateMismatchFix/DateDriftRef) — نباید خامش اینجا نشان
+                       داده شود. *@
+                    @if (context.RuleCode is "CHK-18" or "CHK-19" or "CHK-21")
+                    {
+                        @if (context.DocNumber is not null)
+                        {
+                            <span class="cc-num">@context.DocNumber</span>
+                        }
+                        else { <span class="mud-text-secondary">—</span> }
+                    }
+                    else if (!string.IsNullOrEmpty(context.RefList))
                     {
                         <MudTooltip Text="@context.RefList">
                             <span class="cc-num cc-reflist">@Shorten(context.RefList)</span>

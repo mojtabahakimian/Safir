@@ -603,14 +603,33 @@ BEGIN
         WHERE   hm.GHEYMAT = @Month
         GROUP BY hm.FNUMB, CAST(hm.CODE AS BIGINT), p.Qty
     ),
+    -- ⚠️ اصلاح (کشف‌شده روی کدهای ۲۷۳۵/۲۸۸۹ و ۲۲ کد نیمه‌ساخته‌ی دیگر):
+    -- برای کالای نیمه‌ساخته‌ای که هم فرمول دارد هم همین ماه به‌عنوان
+    -- ماده‌ی اولیه‌ی کالای دیگری از انبار حواله خورده (TAG=10)، S11
+    -- عمداً میانگینِ واقعیِ انبار را جایگزینِ جمعِ فرمول می‌کند (نگاه کنید
+    -- CC_sp_S11_PropagateRates, بخشِ «نرخ مواد خریدنی» — تأیید کاربر،
+    -- دقیقاً همان چیزی که مغایرت حساب ۷۷۱ را رفع کرد). این چک قبلاً این
+    -- override را نمی‌دانست، پس «بهای خودِ کالا» را همیشه از جمعِ فرمول
+    -- حساب می‌کرد — درحالی‌که S11 مقدارِ دیگری (میانگینِ انبار) را منتشر
+    -- کرده بود؛ نتیجه یک مغایرتِ کاذبِ دائمی بود که هیچ تعداد اجرای S11
+    -- رفعش نمی‌کرد، چون خودِ معیارِ مقایسه اشتباه بود، نه همگرایی.
+    KalasAvg AS (
+        SELECT  CAST(k.CODE AS BIGINT) AS Code,
+                SUM(k.MABL_K) / NULLIF(SUM(k.MEGHk), 0) AS Nerkh
+        FROM    dbo.KALAS k
+        WHERE   k.TAG = 10 AND k.MM = @Month AND k.MEGHk <> 0
+        GROUP BY CAST(k.CODE AS BIGINT)
+    ),
     Khod AS (
         -- اگر هيچ‌کدام از فرمول‌هاي اين کالا در بازه توليد واقعي نداشتند
         -- (تعريف شده ولي هنوز مصرف نشده)، ميانگين ساده جايگزين وزن مي‌شود.
-        SELECT  Code,
-                CASE WHEN SUM(Qty) > 0 THEN SUM(Baha * Qty) / SUM(Qty)
-                     ELSE AVG(Baha) END AS Baha
-        FROM    FormulaCost
-        GROUP BY Code
+        SELECT  f.Code,
+                COALESCE(ka.Nerkh,
+                         CASE WHEN SUM(f.Qty) > 0 THEN SUM(f.Baha * f.Qty) / SUM(f.Qty)
+                              ELSE AVG(f.Baha) END) AS Baha
+        FROM    FormulaCost f
+        LEFT    JOIN KalasAvg ka ON ka.Code = f.Code
+        GROUP BY f.Code, ka.Nerkh
     ),
     DarValed AS (
         SELECT CAST(d.CODE AS BIGINT) AS Code,
