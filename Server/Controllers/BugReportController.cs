@@ -8,6 +8,9 @@ using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using System.Security.Claims;
 using Safir.Shared.Constants;
+using Safir.Server.Services;
+using System.Net;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace Safir.Server.Controllers
 {
@@ -17,11 +20,15 @@ namespace Safir.Server.Controllers
     {
         private readonly IDatabaseService _dbService;
         private readonly ILogger<BugReportController> _logger;
+        private readonly IEmailService _emailService;
+        private readonly IServiceScopeFactory _scopeFactory;
 
-        public BugReportController(IDatabaseService dbService, ILogger<BugReportController> logger)
+        public BugReportController(IDatabaseService dbService, ILogger<BugReportController> logger, IEmailService emailService, IServiceScopeFactory scopeFactory)
         {
             _dbService = dbService;
             _logger = logger;
+            _emailService = emailService;
+            _scopeFactory = scopeFactory;
         }
 
         [HttpPost("submit")]
@@ -68,6 +75,44 @@ namespace Safir.Server.Controllers
                 if (result > 0)
                 {
                     _logger.LogInformation("New bug report submitted successfully.");
+
+                    // ارسال ایمیل اطلاع‌رسانی — خطای ایمیل باعث fail شدن ثبت نمی‌شود
+                    _ = Task.Run(async () =>
+                    {
+                        try
+                        {
+                            // مقادیر را قبل از ورود به thread pool کپی می‌کنیم
+                            var severity = WebUtility.HtmlEncode(bugReport.Severity ?? "-");
+                            var customer = WebUtility.HtmlEncode(bugReport.CustomerName ?? "-");
+                            var description = WebUtility.HtmlEncode(bugReport.UserDescription ?? "-");
+                            var category = WebUtility.HtmlEncode(bugReport.Category ?? "-");
+                            var isBlocking = bugReport.IsBlocking ? "⚠️ بله" : "خیر";
+                            var createdAt = DateTime.Now.ToString("yyyy/MM/dd HH:mm");
+
+                            var html = $@"
+<div dir='rtl' style='font-family:Tahoma,sans-serif;font-size:14px;line-height:2'>
+  <h2 style='color:#c0392b'>🐛 گزارش خطای جدید ثبت شد</h2>
+  <table style='border-collapse:collapse;width:100%'>
+    <tr><td style='padding:4px 8px;font-weight:bold;width:140px'>مشتری</td><td>{customer}</td></tr>
+    <tr><td style='padding:4px 8px;font-weight:bold'>دسته‌بندی</td><td>{category}</td></tr>
+    <tr><td style='padding:4px 8px;font-weight:bold'>شدت</td><td>{severity}</td></tr>
+    <tr><td style='padding:4px 8px;font-weight:bold'>متوقف‌کننده</td><td>{isBlocking}</td></tr>
+    <tr><td style='padding:4px 8px;font-weight:bold'>تاریخ ثبت</td><td>{createdAt}</td></tr>
+    <tr><td style='padding:4px 8px;font-weight:bold;vertical-align:top'>شرح مشکل</td><td>{description}</td></tr>
+  </table>
+</div>";
+
+                            // scope جدید ایجاد می‌کنیم تا از DI scope درخواست مستقل باشیم
+                            using var scope = _scopeFactory.CreateScope();
+                            var emailService = scope.ServiceProvider.GetRequiredService<IEmailService>();
+                            await emailService.SendAsync("🐛 گزارش خطای جدید: " + customer, html);
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.LogWarning(ex, "Failed to send bug report notification email.");
+                        }
+                    });
+
                     return Ok(new { Message = "گزارش خطای شما با موفقیت ثبت شد." });
                 }
                 else

@@ -31,6 +31,12 @@ builder.Services.AddScoped<IUserStateService, UserStateService>();
 
 // --- End Custom Services ---
 builder.Services.AddScoped<IAppSettingsService, AppSettingsService>();
+builder.Services.AddScoped<IEmailService, EmailService>();
+builder.Services
+    .AddOptions<SmtpSettings>()
+    .BindConfiguration("EmailSettings")
+    .ValidateDataAnnotations()
+    .ValidateOnStart();
 
 
 // --- Add JWT Authentication ---
