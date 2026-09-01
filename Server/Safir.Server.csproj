@@ -48,6 +48,7 @@
 		<PackageReference Include="Stimulsoft.Reports.Web.NetCore" Version="2023.1.1" />
 		<PackageReference Include="Syncfusion.Blazor.Grid" Version="29.1.33" />
 		<PackageReference Include="System.Data.SqlClient" Version="4.9.0" />
+		<PackageReference Include="MailKit" Version="4.17.0" />
 	</ItemGroup>
 
 	<ItemGroup>
