@@ -15,7 +15,8 @@ namespace Safir.Server.Tests;
 /// </summary>
 internal static class TestJwt
 {
-    private const string Key =
+    public static string Key =>
+        Environment.GetEnvironmentVariable("Jwt__Key") ??
         "hsgmvbpZbXTbxfHk7x+03c6Zq/K5j0NpVgdJIMYYXanQAnstSOpMoFSHExygq1LKYG2+XYLCfAmmr50UKBTclg==";
     private const string Issuer = "SafirAppIssuer";
     private const string Audience = "SafirAppAudience";
@@ -26,20 +27,30 @@ internal static class TestJwt
             new SymmetricSecurityKey(Encoding.UTF8.GetBytes(Key)),
             SecurityAlgorithms.HmacSha256);
 
-        var token = new JwtSecurityToken(
-            issuer: Issuer,
-            audience: Audience,
-            claims: new[]
-            {
-                new Claim(ClaimTypes.NameIdentifier, userCo.ToString()),
-                new Claim(ClaimTypes.Name, userName),
-                new Claim(BaseknowClaimTypes.IDD, userCo.ToString()),
-                new Claim(BaseknowClaimTypes.UUSER, userName),
-                new Claim(BaseknowClaimTypes.GRSAL, "1"),
-            },
-            expires: DateTime.UtcNow.AddHours(1),
-            signingCredentials: creds);
+        var claims = new[]
+        {
+            new Claim(JwtRegisteredClaimNames.Sub, userCo.ToString()),
+            new Claim(JwtRegisteredClaimNames.UniqueName, userName),
+            new Claim(ClaimTypes.NameIdentifier, userCo.ToString()),
+            new Claim(ClaimTypes.Name, userName),
+            new Claim(ClaimTypes.Role, "1"),
+            new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString()),
+            new Claim(BaseknowClaimTypes.UUSER, userName),
+            new Claim(BaseknowClaimTypes.IDD, userCo.ToString()),
+            new Claim(BaseknowClaimTypes.GRSAL, "1"),
+        };
 
-        return new JwtSecurityTokenHandler().WriteToken(token);
+        var tokenDescriptor = new SecurityTokenDescriptor
+        {
+            Subject = new ClaimsIdentity(claims),
+            Expires = DateTime.UtcNow.AddHours(1),
+            Issuer = Issuer,
+            Audience = Audience,
+            SigningCredentials = creds
+        };
+
+        var tokenHandler = new JwtSecurityTokenHandler();
+        var token = tokenHandler.CreateToken(tokenDescriptor);
+        return tokenHandler.WriteToken(token);
     }
 }
