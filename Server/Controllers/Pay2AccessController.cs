@@ -276,21 +276,27 @@ VALUES (@currentUserCo, 'PAY2_ADMIN_ACL', 'Run', 1, 'Updated ACL for user ' + CA
             if (userCo == currentUserCo && presetKey == "NONE")
                 return BadRequest("شما نمی‌توانید دسترسی «مدیریت دسترسی‌ها» را از حساب کاربری خودتان حذف کنید.");
 
-
             if (presetKey == "NONE")
             {
                 await _db.ExecuteInTransactionAsync(async (conn, tran) =>
                 {
-                    await Dapper.SqlMapper.ExecuteAsync(conn, "DELETE FROM dbo.SAL_CHEK WHERE USERCO = @userCo AND [OBJECT] IN (SELECT IDH FROM dbo.TFORMS WHERE FORMNAME LIKE N'PAY2!_%' ESCAPE N'!')", new { userCo }, tran);
+                    await Dapper.SqlMapper.ExecuteAsync(conn, @"
+DELETE FROM dbo.SAL_CHEK
+WHERE USERCO = @userCo
+  AND [OBJECT] IN (SELECT IDH FROM dbo.TFORMS
+                    WHERE FORMNAME LIKE N'PAY2!_%' ESCAPE N'!'
+                       OR FORMNAME LIKE N'COST!_%' ESCAPE N'!')", new { userCo }, tran);
                     await Dapper.SqlMapper.ExecuteAsync(conn, "DELETE FROM dbo.PAY2_USER_WS WHERE USERCO = @userCo", new { userCo }, tran);
                 });
             }
             else
             {
-                // To keep it simple, we construct the request and pass it to SaveUserAccess equivalent logic
-                // But we don't clear Workshops here for presets.
-
-                string formSql = "SELECT FORMNAME, CAPTION, CASE WHEN FORMNAME LIKE 'PAY2_ACT_%' THEN 1 ELSE 0 END as IsAction FROM dbo.TFORMS WHERE FORMNAME LIKE N'PAY2!_%' ESCAPE N'!'";
+                string formSql = @"
+SELECT FORMNAME, CAPTION,
+       CASE WHEN FORMNAME LIKE 'PAY2_ACT_%' OR FORMNAME LIKE 'COST_ACT_%' THEN 1 ELSE 0 END as IsAction
+FROM dbo.TFORMS
+WHERE FORMNAME LIKE N'PAY2!_%' ESCAPE N'!'
+   OR FORMNAME LIKE N'COST!_%' ESCAPE N'!';";
                 var forms = await _db.DoGetDataSQLAsync<dynamic>(formSql);
 
                 var newForms = new List<Pay2FormPermDto>();
@@ -322,7 +328,7 @@ VALUES (@currentUserCo, 'PAY2_ADMIN_ACL', 'Run', 1, 'Updated ACL for user ' + CA
                     }
                     else if (presetKey == "ACCOUNTANT")
                     {
-                        if (formName == Pay2Forms.Run || formName == Pay2Forms.Reports || formName == Pay2Forms.Dashboard) { r=true; s=true; }
+                        if (formName == Pay2Forms.Run || formName == Pay2Forms.Reports || formName == Pay2Forms.Dashboard || formName.StartsWith("COST_")) { r=true; s=true; i=true; u=true; }
                         else if (formName == Pay2Forms.ActDeed || formName == Pay2Forms.ActDeedUndo || formName == Pay2Forms.ActViewAmounts || formName == Pay2Forms.ActExport) { r=true; }
                     }
                     else if (presetKey == "VIEWER")
@@ -338,7 +344,13 @@ VALUES (@currentUserCo, 'PAY2_ADMIN_ACL', 'Run', 1, 'Updated ACL for user ' + CA
 
                 await _db.ExecuteInTransactionAsync(async (conn, tran) =>
                 {
-                    await Dapper.SqlMapper.ExecuteAsync(conn, "DELETE FROM dbo.SAL_CHEK WHERE USERCO = @userCo AND [OBJECT] IN (SELECT IDH FROM dbo.TFORMS WHERE FORMNAME LIKE N'PAY2!_%' ESCAPE N'!')", new { userCo }, tran);
+                    await Dapper.SqlMapper.ExecuteAsync(conn, @"
+DELETE FROM dbo.SAL_CHEK
+WHERE USERCO = @userCo
+  AND [OBJECT] IN (SELECT IDH FROM dbo.TFORMS
+                    WHERE FORMNAME LIKE N'PAY2!_%' ESCAPE N'!'
+                       OR FORMNAME LIKE N'COST!_%' ESCAPE N'!')", new { userCo }, tran);
+
                     if (newForms.Count > 0)
                     {
                         string ins = @"INSERT INTO dbo.SAL_CHEK (USERCO, [OBJECT], [RUN], [SEE], [INP], [UPD], [DEL], CRT)
@@ -354,6 +366,20 @@ VALUES (@currentUserCo, 'PAY2_ADMIN_ACL', 'Run', 1, 'Updated ACL for user ' + CA
                             del = f.Del ? 1 : 0
                         });
                         await Dapper.SqlMapper.ExecuteAsync(conn, ins, formParams, tran);
+                    }
+
+                    // اگر کاربر هیچ کارگاهی اختصاص داده نشده دارد یا پریست PAYROLL_MANAGER اعمال شده، همه کارگاه‌های فعال را اختصاص می‌دهیم
+                    // تا کاربر قفل نشود و لیست کارگاه‌هایش خالی نماند.
+                    string checkWsSql = "SELECT COUNT(*) FROM dbo.PAY2_USER_WS WHERE USERCO = @userCo";
+                    int currentWsCount = await Dapper.SqlMapper.ExecuteScalarAsync<int>(conn, checkWsSql, new { userCo }, tran);
+
+                    if (currentWsCount == 0 || presetKey == "PAYROLL_MANAGER")
+                    {
+                        await Dapper.SqlMapper.ExecuteAsync(conn, "DELETE FROM dbo.PAY2_USER_WS WHERE USERCO = @userCo", new { userCo }, tran);
+                        string insWs = @"
+INSERT INTO dbo.PAY2_USER_WS (USERCO, WS_ID, CRT)
+SELECT @userCo, WS_ID, GETDATE() FROM dbo.PAY2_WORKSHOP WHERE IS_ACTIVE = 1";
+                        await Dapper.SqlMapper.ExecuteAsync(conn, insWs, new { userCo }, tran);
                     }
                 });
             }
