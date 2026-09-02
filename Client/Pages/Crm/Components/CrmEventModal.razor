@@ -35,14 +35,22 @@
                 </MudItem>
 
                 <MudItem xs="12" sm="6">
-                    <MudTextField @bind-Value="Event.SALER"
-                                  Label="مسئول / فروشنده"
-                                  Variant="Variant.Outlined" />
+                    <MudAutocomplete T="string"
+                                     @bind-Value="Event.SALER"
+                                     Label="مسئول / تماس‌گیرنده"
+                                     SearchFunc="SearchSalers"
+                                     CoerceValue="true"
+                                     ResetValueOnEmptyText="false"
+                                     Variant="Variant.Outlined" />
                 </MudItem>
                 <MudItem xs="12" sm="6">
-                    <MudTextField @bind-Value="Event.BUYER"
-                                  Label="شخص مقابل / خریدار"
-                                  Variant="Variant.Outlined" />
+                    <MudAutocomplete T="string"
+                                     @bind-Value="Event.BUYER"
+                                     Label="شخص مقابل / طرف مذاکره"
+                                     SearchFunc="SearchBuyers"
+                                     CoerceValue="true"
+                                     ResetValueOnEmptyText="false"
+                                     Variant="Variant.Outlined" />
                 </MudItem>
 
                 <MudItem xs="12">
@@ -105,8 +113,10 @@
     private bool _isMeeting;
     private string _nextDateText = string.Empty;
     private string _nextTimeText = string.Empty;
+    private List<string> _salers = new();
+    private List<string> _buyers = new();
 
-    protected override void OnInitialized()
+    protected override async Task OnInitializedAsync()
     {
         _isMeeting = Event.MITING == -1 || Event.MITING == 1;
         if (Event.NEXT_DATE.HasValue && Event.NEXT_DATE.Value > 0)
@@ -122,6 +132,25 @@
         {
             _nextTimeText = Event.NEXT_TIME.Value.ToString("D4");
         }
+
+        try
+        {
+            _salers = await CrmApi.GetDistinctSalersAsync();
+            _buyers = await CrmApi.GetDistinctBuyersAsync();
+        }
+        catch { }
+    }
+
+    private async Task<IEnumerable<string>> SearchSalers(string value)
+    {
+        if (string.IsNullOrEmpty(value)) return _salers;
+        return _salers.Where(x => x.Contains(value, StringComparison.InvariantCultureIgnoreCase));
+    }
+
+    private async Task<IEnumerable<string>> SearchBuyers(string value)
+    {
+        if (string.IsNullOrEmpty(value)) return _buyers;
+        return _buyers.Where(x => x.Contains(value, StringComparison.InvariantCultureIgnoreCase));
     }
 
     private async Task Submit()

@@ -119,4 +119,24 @@ namespace Safir.Shared.Models.Crm
         public string? Description { get; set; }
         public string SourceType { get; set; } = "مشتری"; // مشتری یا شرکت CRM
     }
+
+    public class CrmNoteDto
+    {
+        public int? idd { get; set; }
+        public string? Note { get; set; }
+        public int? Ndate { get; set; }
+        public string? Ntime { get; set; }
+        public int? userid { get; set; }
+        public bool Ndone { get; set; }
+        public string? NoteDateFormatted => Ndate.HasValue && Ndate.Value > 0 ?
+            (Ndate.Value.ToString().Length == 8 ? $"{Ndate.Value.ToString().Substring(0, 4)}/{Ndate.Value.ToString().Substring(4, 2)}/{Ndate.Value.ToString().Substring(6, 2)}" : Ndate.Value.ToString())
+            : "--";
+    }
+
+    public class CrmSendSmsRequestDto
+    {
+        public string Mobile { get; set; } = string.Empty;
+        public string Message { get; set; } = string.Empty;
+        public string? CompanyName { get; set; }
+    }
 }

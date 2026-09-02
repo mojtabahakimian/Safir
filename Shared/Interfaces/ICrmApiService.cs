@@ -22,5 +22,14 @@ namespace Safir.Shared.Interfaces
         Task<List<string>> GetDistinctSalersAsync();
         Task<List<string>> GetDistinctBuyersAsync();
         Task<List<string>> GetDistinctStatusFactsAsync();
+
+        // یادداشت‌ها (Notes)
+        Task<List<CrmNoteDto>> GetNotesAsync(bool onlyPending = true);
+        Task<int> SaveNoteAsync(CrmNoteDto note);
+        Task<bool> ToggleNoteDoneAsync(int noteId, bool done);
+        Task<bool> DeleteNoteAsync(int noteId);
+
+        // ارسال پیامک مستقیم (SMS)
+        Task<bool> SendSmsAsync(CrmSendSmsRequestDto request);
     }
 }

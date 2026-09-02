@@ -4,282 +4,793 @@
 @using Safir.Shared.Models.Crm
 @using Safir.Client.Services
 @using Safir.Client.Pages.Crm.Components
+@using Safir.Shared.Utility
 @inject CrmApiService CrmApi
 @inject IDialogService DialogService
 @inject ISnackbar Snackbar
 @inject NavigationManager Navigation
 
-<MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="mt-4 mb-8">
-    <!-- هدر صفحه و دکمه‌های عملیاتی -->
-    <MudPaper Elevation="3" Class="pa-4 mb-4 rounded-lg">
+<MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="mt-3 mb-8">
+    <!-- هدر شکیل و نوار خلاصه وضعیت KPI -->
+    <MudPaper Elevation="0" Class="pa-4 mb-4 rounded-xl border-solid border-1" Style="border-color: var(--mud-palette-lines-default); background: var(--mud-palette-surface);">
         <div class="d-flex flex-wrap justify-space-between align-center gap-3">
-            <div class="d-flex align-center gap-2">
-                <MudIcon Icon="@Icons.Material.Filled.SupportAgent" Size="Size.Large" Color="Color.Primary" />
+            <div class="d-flex align-center gap-3">
+                <MudAvatar Color="Color.Primary" Size="Size.Large" Variant="Variant.Filled">
+                    <MudIcon Icon="@Icons.Material.Filled.SupportAgent" Size="Size.Large" />
+                </MudAvatar>
                 <div>
-                    <MudText Typo="Typo.h5" Class="font-weight-bold">مدیریت ارتباط با مشتریان (CRM)</MudText>
-                    <MudText Typo="Typo.caption" Color="Color.Secondary">پیگیری هوشمند مشتریان، مذاکرات و جلسات</MudText>
+                    <MudText Typo="Typo.h5" Class="font-weight-bold" Color="Color.Primary">میز کار هوشمند CRM</MudText>
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">مدیریت ارتباط با مشتریان، پیگیری هوشمند مذاکرات و مدیریت فرصت‌های فروش</MudText>
                 </div>
             </div>
-            <div class="d-flex gap-2">
-                <MudButton Variant="Variant.Outlined" Color="Color.Info" StartIcon="@Icons.Material.Filled.Dashboard" OnClick="@(() => Navigation.NavigateTo("/crm/dashboard"))">
-                    داشبورد آمار
-                </MudButton>
-                <MudButton Variant="Variant.Outlined" Color="Color.Secondary" StartIcon="@Icons.Material.Filled.Contacts" OnClick="@(() => Navigation.NavigateTo("/crm/phonebook"))">
-                    دفترچه تلفن
-                </MudButton>
-                <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.AddBusiness" OnClick="AddNewCompany">
+
+            <div class="d-flex flex-wrap align-center gap-2">
+                <!-- دکمه‌های خلاصه KPI بالا -->
+                <MudChip T="string" Color="Color.Error" Variant="Variant.Filled" Size="Size.Medium" Icon="@Icons.Material.Filled.Alarm" OnClick="@(() => SwitchToTab(1))">
+                    معوق: @_summary.OverdueFollowUps
+                </MudChip>
+                <MudChip T="string" Color="Color.Warning" Variant="Variant.Filled" Size="Size.Medium" Icon="@Icons.Material.Filled.Today" OnClick="@(() => SwitchToTab(1))">
+                    امروز: @_summary.TodayFollowUps
+                </MudChip>
+                <MudChip T="string" Color="Color.Success" Variant="Variant.Filled" Size="Size.Medium" Icon="@Icons.Material.Filled.MeetingRoom">
+                    جلسات: @_summary.TodayMeetings
+                </MudChip>
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.PersonAdd" Class="rounded-lg px-4" OnClick="AddNewCompany">
                     مشتری جدید
                 </MudButton>
             </div>
         </div>
     </MudPaper>
 
-    <!-- نوار وضعیت‌ها و فیلترهای سریع -->
-    <MudPaper Elevation="2" Class="pa-3 mb-4 rounded-lg">
+    <!-- نوار ناوبری تب‌های مدرن میز کار (بدون باگ اسکرول RTL) -->
+    <MudPaper Elevation="0" Class="pa-2 mb-4 rounded-xl border-solid border-1" Style="border-color: var(--mud-palette-lines-default); background-color: var(--mud-palette-surface);">
         <div class="d-flex flex-wrap align-center gap-2">
-            <MudChip T="string" Color="@(_selectedStatus == null ? Color.Primary : Color.Default)"
-                     Variant="@(_selectedStatus == null ? Variant.Filled : Variant.Outlined)"
-                     OnClick="@(() => SetStatusFilter(null))">
-                همه وضعیت‌ها (@_companies.Count)
-            </MudChip>
-            @foreach (var st in _statusList)
-            {
-                <MudChip T="string" Color="@(_selectedStatus == st.Code ? Color.Primary : Color.Default)"
-                         Variant="@(_selectedStatus == st.Code ? Variant.Filled : Variant.Outlined)"
-                         OnClick="@(() => SetStatusFilter(st.Code))">
-                    @st.Name (@st.Count)
-                </MudChip>
-            }
+            <MudButton Variant="@(_activeTabIndex == 0 ? Variant.Filled : Variant.Text)"
+                       Color="@(_activeTabIndex == 0 ? Color.Primary : Color.Default)"
+                       StartIcon="@Icons.Material.Filled.Contacts"
+                       Class="rounded-lg px-4 py-2 font-weight-bold"
+                       OnClick="@(() => SwitchToTab(0))">
+                مشتریان و پیگیری‌ها
+            </MudButton>
+
+            <MudButton Variant="@(_activeTabIndex == 1 ? Variant.Filled : Variant.Text)"
+                       Color="@(_activeTabIndex == 1 ? Color.Primary : Color.Default)"
+                       StartIcon="@Icons.Material.Filled.Today"
+                       Class="rounded-lg px-4 py-2 font-weight-bold"
+                       OnClick="@(() => SwitchToTab(1))">
+                کارتابل پیگیری‌های من
+            </MudButton>
+
+            <MudButton Variant="@(_activeTabIndex == 2 ? Variant.Filled : Variant.Text)"
+                       Color="@(_activeTabIndex == 2 ? Color.Primary : Color.Default)"
+                       StartIcon="@Icons.Material.Filled.Analytics"
+                       Class="rounded-lg px-4 py-2 font-weight-bold"
+                       OnClick="@(() => SwitchToTab(2))">
+                داشبورد تحلیلی
+            </MudButton>
+
+            <MudButton Variant="@(_activeTabIndex == 3 ? Variant.Filled : Variant.Text)"
+                       Color="@(_activeTabIndex == 3 ? Color.Primary : Color.Default)"
+                       StartIcon="@Icons.Material.Filled.ContactPhone"
+                       Class="rounded-lg px-4 py-2 font-weight-bold"
+                       OnClick="@(() => SwitchToTab(3))">
+                دفترچه تلفن مخاطبین
+            </MudButton>
+
+            <MudButton Variant="@(_activeTabIndex == 4 ? Variant.Filled : Variant.Text)"
+                       Color="@(_activeTabIndex == 4 ? Color.Primary : Color.Default)"
+                       StartIcon="@Icons.Material.Filled.NoteAlt"
+                       Class="rounded-lg px-4 py-2 font-weight-bold"
+                       OnClick="@(() => SwitchToTab(4))">
+                یادداشت‌های من (Notes)
+            </MudButton>
         </div>
     </MudPaper>
 
-    <!-- نوار جستجو و فیلترهای پیشرفته -->
-    <MudPaper Elevation="1" Class="pa-3 mb-4 rounded-lg">
-        <MudGrid Spacing="2" AlignItems="Center">
-            <MudItem xs="12" sm="4" md="3">
-                <MudTextField @bind-Value="_filter.SearchTerm"
-                              Label="جستجو در نام، تلفن، آدرس، مدیر..."
+    <!-- محتوای پنل‌ها بر اساس تب فعال -->
+    @if (_activeTabIndex == 0)
+    {
+        <!-- تب ۱: پیگیری‌ها و مشتریان (Workspace اصلی) -->
+        <div>
+            <!-- نوار فیلتر و جستجوی مدرن -->
+            <MudPaper Elevation="0" Class="pa-3 mb-3 rounded-lg border-solid border-1" Style="border-color: var(--mud-palette-lines-default);">
+                <MudGrid Spacing="2" AlignItems="Center">
+                    <MudItem xs="12" sm="6" md="5">
+                        <MudTextField @bind-Value="_filter.SearchTerm"
+                                      Placeholder="جستجو در نام، مدیر، تلفن، شهر، توضیحات..."
+                                      Variant="Variant.Outlined"
+                                      Margin="Margin.Dense"
+                                      Adornment="Adornment.Start"
+                                      AdornmentIcon="@Icons.Material.Filled.Search"
+                                      Immediate="true"
+                                      DebounceInterval="250"
+                                      OnDebounceIntervalElapsed="LoadCompanies"
+                                      Clearable="true" />
+                    </MudItem>
+
+                    <MudItem xs="6" sm="3" md="3">
+                        <MudCheckBox @bind-Value="_filter.OnlyMyCompanies"
+                                     Label="مشتریان من"
+                                     Color="Color.Primary"
+                                     Dense="true"
+                                     T="bool"
+                                     CheckedChanged="OnOnlyMyCompaniesChanged" />
+                    </MudItem>
+
+                    <MudItem xs="6" sm="3" md="3">
+                        <MudCheckBox @bind-Value="_filter.OnlyWithUpcomingFollowUps"
+                                     Label="دارای پیگیری آتی"
+                                     Color="Color.Secondary"
+                                     Dense="true"
+                                     T="bool"
+                                     CheckedChanged="OnOnlyUpcomingChanged" />
+                    </MudItem>
+
+                    <MudItem xs="12" sm="12" md="1" Class="d-flex justify-end">
+                        <MudIconButton Icon="@Icons.Material.Filled.Refresh" Color="Color.Primary" OnClick="RefreshData" />
+                    </MudItem>
+                </MudGrid>
+
+                <!-- نوار چیپ‌های افقی وضعیت با شمارنده -->
+                <div class="d-flex flex-wrap align-center gap-1 mt-2 pt-2 border-t-1" style="border-color: var(--mud-palette-lines-default);">
+                    <MudChip T="string"
+                             Size="Size.Small"
+                             Color="@(_selectedStatus == null ? Color.Primary : Color.Default)"
+                             Variant="@(_selectedStatus == null ? Variant.Filled : Variant.Outlined)"
+                             OnClick="@(() => SelectStatusFilter(null))">
+                        همه وضعیت‌ها (@_companies.Count)
+                    </MudChip>
+                    @foreach (var st in _statusList)
+                    {
+                        <MudChip T="string"
+                                 Size="Size.Small"
+                                 Color="@(_selectedStatus == st.Code ? Color.Primary : Color.Default)"
+                                 Variant="@(_selectedStatus == st.Code ? Variant.Filled : Variant.Outlined)"
+                                 OnClick="@(() => SelectStatusFilter(st.Code))">
+                            @st.Name (@st.Count)
+                        </MudChip>
+                    }
+                </div>
+            </MudPaper>
+
+            <!-- ساختار ۲ ستونه تعاملی (مشتریان + پنل پروفایل و ثبت سریع) -->
+            <MudGrid Spacing="3">
+                <!-- لیست مشتریان (ستون راست در RTL) -->
+                <MudItem xs="12" md="6" lg="6">
+                    <MudPaper Elevation="0" Class="pa-2 rounded-xl border-solid border-1" Style="border-color: var(--mud-palette-lines-default); max-height: 720px; overflow-y: auto;">
+                        <div class="d-flex justify-space-between align-center px-2 py-1 mb-2">
+                            <MudText Typo="Typo.subtitle2" Class="font-weight-bold" Color="Color.Primary">
+                                لیست مخاطبان (@_filteredCompanies.Count)
+                            </MudText>
+                        </div>
+
+                        @if (_loadingCompanies)
+                        {
+                            <div class="d-flex justify-center pa-8">
+                                <MudProgressCircular Indeterminate="true" Color="Color.Primary" />
+                            </div>
+                        }
+                        else if (_filteredCompanies.Count == 0)
+                        {
+                            <MudAlert Severity="Severity.Info" Variant="Variant.Outlined" Class="ma-2">
+                                هیچ مشتری‌ای مطابق با فیلترهای جاری یافت نشد.
+                            </MudAlert>
+                        }
+                        else
+                        {
+                            <MudList T="CrmCompanyDto" Clickable="true" Dense="true" Class="pa-0">
+                                @foreach (var company in _filteredCompanies)
+                                {
+                                    bool isSelected = _selectedCompany?.ID == company.ID;
+                                    <MudCard Elevation="@(isSelected ? 3 : 0)"
+                                             Class="@($"mb-2 rounded-lg cursor-pointer border-solid border-1 transition-all {(isSelected ? "mud-theme-primary-hover border-primary" : "")}")"
+                                             Style="@(isSelected ? "border-color: var(--mud-palette-primary); background-color: var(--mud-palette-action-default-hover);" : "border-color: var(--mud-palette-lines-default);")"
+                                             @onclick="@(() => SelectCompany(company))">
+                                        <MudCardContent Class="pa-3">
+                                            <div class="d-flex justify-space-between align-start">
+                                                <div class="d-flex align-center gap-2">
+                                                    <MudAvatar Color="@GetStatusColor(company.STATUS)" Size="Size.Medium" Variant="Variant.Filled">
+                                                        @(string.IsNullOrWhiteSpace(company.COMPANY_NAME) ? "؟" : company.COMPANY_NAME.Substring(0, 1))
+                                                    </MudAvatar>
+                                                    <div>
+                                                        <MudText Typo="Typo.subtitle1" Class="font-weight-bold">
+                                                            @company.COMPANY_NAME
+                                                        </MudText>
+                                                        <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                                            @(string.IsNullOrWhiteSpace(company.MANAGER) ? "مدیر نامشخص" : $"مدیر: {company.MANAGER}")
+                                                            @(!string.IsNullOrWhiteSpace(company.CITY) ? $" | {company.CITY}" : "")
+                                                        </MudText>
+                                                    </div>
+                                                </div>
+
+                                                <div class="d-flex flex-column align-end gap-1">
+                                                    <MudChip T="string" Size="Size.Small" Color="@GetStatusColor(company.STATUS)" Variant="Variant.Filled">
+                                                        @(company.StatusTitle ?? $"وضعیت {company.STATUS}")
+                                                    </MudChip>
+                                                    @if (company.IDCN.HasValue && company.IDCN.Value > 0)
+                                                    {
+                                                        <MudText Typo="Typo.caption" Color="Color.Info">
+                                                            <MudIcon Icon="@Icons.Material.Filled.History" Size="Size.Small" Class="vertical-align-middle" />
+                                                            @company.IDCN پیگیری
+                                                        </MudText>
+                                                    }
+                                                </div>
+                                            </div>
+
+                                            @if (!string.IsNullOrWhiteSpace(company.FACT_TEL) || !string.IsNullOrWhiteSpace(company.MOBILE))
+                                            {
+                                                <div class="d-flex justify-space-between align-center mt-2 pt-2 border-t-1" style="border-color: var(--mud-palette-lines-default);">
+                                                    <div class="d-flex gap-3 text-muted small">
+                                                        @if (!string.IsNullOrWhiteSpace(company.FACT_TEL))
+                                                        {
+                                                            <span><MudIcon Icon="@Icons.Material.Filled.Phone" Size="Size.Small" Class="vertical-align-middle me-1" />@company.FACT_TEL</span>
+                                                        }
+                                                        @if (!string.IsNullOrWhiteSpace(company.MOBILE))
+                                                        {
+                                                            <span><MudIcon Icon="@Icons.Material.Filled.Smartphone" Size="Size.Small" Class="vertical-align-middle me-1" />@company.MOBILE</span>
+                                                        }
+                                                    </div>
+                                                    <div class="d-flex gap-1" @onclick:stopPropagation="true">
+                                                        <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small" Color="Color.Default" OnClick="@(() => EditCompany(company))" />
+                                                        <MudIconButton Icon="@Icons.Material.Filled.DeleteOutline" Size="Size.Small" Color="Color.Error" OnClick="@(() => DeleteCompany(company))" />
+                                                    </div>
+                                                </div>
+                                            }
+                                        </MudCardContent>
+                                    </MudCard>
+                                }
+                            </MudList>
+                        }
+                    </MudPaper>
+                </MudItem>
+
+                <!-- پنل جزئیات مشتری، ثبت سریع و تاریخچه مذاکرات (ستون چپ در RTL) -->
+                <MudItem xs="12" md="6" lg="6">
+                    @if (_selectedCompany == null)
+                    {
+                        <MudPaper Elevation="0" Class="pa-8 text-center rounded-xl border-dashed border-2 d-flex flex-column align-center justify-center" Style="min-height: 400px; border-color: var(--mud-palette-lines-default);">
+                            <MudIcon Icon="@Icons.Material.Filled.TouchApp" Size="Size.Large" Color="Color.Secondary" Class="mb-3" />
+                            <MudText Typo="Typo.h6" Color="Color.Secondary">یک مشتری را از لیست انتخاب کنید</MudText>
+                            <MudText Typo="Typo.body2" Color="Color.Default" Class="mt-1">
+                                با انتخاب هر مشتری، سوابق مذاکره، اطلاعات تماس و فرم ثبت سریع پیگیری در این بخش نمایش داده می‌شود.
+                            </MudText>
+                        </MudPaper>
+                    }
+                    else
+                    {
+                        <!-- کارت پروفایل خلاصه مشتری منتخب -->
+                        <MudPaper Elevation="0" Class="pa-4 mb-3 rounded-xl border-solid border-1" Style="border-color: var(--mud-palette-primary); background-color: var(--mud-palette-surface);">
+                            <div class="d-flex justify-space-between align-start flex-wrap gap-2">
+                                <div>
+                                    <MudText Typo="Typo.h6" Class="font-weight-bold" Color="Color.Primary">
+                                        @_selectedCompany.COMPANY_NAME
+                                    </MudText>
+                                    <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mt-1">
+                                        مسئول: <b>@(_selectedCompany.MANAGER ?? "نامشخص")</b> | شهر: <b>@(_selectedCompany.CITY ?? "نامشخص")</b>
+                                    </MudText>
+                                    @if (!string.IsNullOrWhiteSpace(_selectedCompany.ADDR))
+                                    {
+                                        <MudText Typo="Typo.caption" Color="Color.Default" Class="d-block mt-1">
+                                            <MudIcon Icon="@Icons.Material.Filled.LocationOn" Size="Size.Small" Class="vertical-align-middle" /> @_selectedCompany.ADDR
+                                        </MudText>
+                                    }
+                                </div>
+
+                                <div class="d-flex align-center gap-2">
+                                    @if (!string.IsNullOrWhiteSpace(_selectedCompany.MOBILE))
+                                    {
+                                        <MudButton Variant="Variant.Outlined" Color="Color.Success" Size="Size.Small" StartIcon="@Icons.Material.Filled.Call" Href="@($"tel:{_selectedCompany.MOBILE}")">
+                                            تماس
+                                        </MudButton>
+                                        <MudButton Variant="Variant.Outlined" Color="Color.Info" Size="Size.Small" StartIcon="@Icons.Material.Filled.Sms" OnClick="OpenSendSmsDialog">
+                                            پیامک
+                                        </MudButton>
+                                    }
+                                    <MudButton Variant="Variant.Outlined" Color="Color.Primary" Size="Size.Small" StartIcon="@Icons.Material.Filled.Edit" OnClick="@(() => EditCompany(_selectedCompany))">
+                                        ویرایش
+                                    </MudButton>
+                                </div>
+                            </div>
+                        </MudPaper>
+
+                        <!-- باکس ثبت سریع مذاکره و پیگیری (Quick Logger) -->
+                        <MudPaper Elevation="0" Class="pa-4 mb-3 rounded-xl border-solid border-1" Style="border-color: var(--mud-palette-lines-default); background-color: var(--mud-palette-background-grey);">
+                            <MudText Typo="Typo.subtitle2" Class="font-weight-bold mb-2" Color="Color.Primary">
+                                <MudIcon Icon="@Icons.Material.Filled.FlashOn" Size="Size.Small" Class="vertical-align-middle me-1" />
+                                ثبت سریع پیگیری / مذاکره جدید
+                            </MudText>
+
+                            <MudGrid Spacing="2">
+                                <MudItem xs="12">
+                                    <MudTextField @bind-Value="_quickComment"
+                                                  Placeholder="نتیجه مذاکره، شرح تماس یا اقدامات لازم را بنویسید..."
+                                                  Lines="2"
+                                                  Variant="Variant.Outlined"
+                                                  Margin="Margin.Dense" />
+                                </MudItem>
+
+                                <MudItem xs="12" sm="4">
+                                    <MudSelect T="int?" @bind-Value="_quickStatus" Label="وضعیت جدید" Margin="Margin.Dense" Variant="Variant.Outlined">
+                                        @foreach (var st in _statusList)
+                                        {
+                                            <MudSelectItem T="int?" Value="@st.Code">@st.Name</MudSelectItem>
+                                        }
+                                    </MudSelect>
+                                </MudItem>
+
+                                <MudItem xs="6" sm="4">
+                                    <MudTextField @bind-Value="_quickNextDate"
+                                                  Label="تاریخ پیگیری بعدی"
+                                                  Placeholder="مثال: 14050620"
+                                                  Margin="Margin.Dense"
+                                                  Variant="Variant.Outlined" />
+                                </MudItem>
+
+                                <MudItem xs="6" sm="4">
+                                    <MudTextField @bind-Value="_quickNextTime"
+                                                  Label="ساعت تماس"
+                                                  Placeholder="مثال: 1100"
+                                                  Margin="Margin.Dense"
+                                                  Variant="Variant.Outlined" />
+                                </MudItem>
+
+                                <MudItem xs="12" sm="6">
+                                    <MudCheckBox @bind-Value="_quickIsMeeting" Label="جلسه حضوری" Color="Color.Warning" Dense="true" />
+                                </MudItem>
+
+                                <MudItem xs="12" sm="6" Class="d-flex justify-end">
+                                    <MudButton Variant="Variant.Filled"
+                                               Color="Color.Primary"
+                                               Size="Size.Medium"
+                                               StartIcon="@Icons.Material.Filled.Send"
+                                               OnClick="SubmitQuickEvent"
+                                               Disabled="_savingQuickEvent">
+                                        @if (_savingQuickEvent)
+                                        {
+                                            <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="me-2" />
+                                        }
+                                        ثبت پیگیری
+                                    </MudButton>
+                                </MudItem>
+                            </MudGrid>
+                        </MudPaper>
+
+                        <!-- تایم‌لاین سوابق و مذاکرات -->
+                        <MudPaper Elevation="0" Class="pa-3 rounded-xl border-solid border-1" Style="border-color: var(--mud-palette-lines-default); max-height: 400px; overflow-y: auto;">
+                            <MudText Typo="Typo.subtitle2" Class="font-weight-bold mb-2" Color="Color.Secondary">
+                                <MudIcon Icon="@Icons.Material.Filled.HistoryEdu" Size="Size.Small" Class="vertical-align-middle me-1" />
+                                تاریخچه پیگیری‌ها و مذاکرات (@_events.Count)
+                            </MudText>
+
+                            @if (_loadingEvents)
+                            {
+                                <div class="d-flex justify-center pa-4">
+                                    <MudProgressCircular Indeterminate="true" Color="Color.Secondary" Size="Size.Small" />
+                                </div>
+                            }
+                            else if (_events.Count == 0)
+                            {
+                                <MudAlert Severity="Severity.Normal" Variant="Variant.Text" Dense="true">
+                                    هنوز پیگیری‌ای برای این مشتری ثبت نشده است. از کادر بالا اولین پیگیری را ثبت کنید.
+                                </MudAlert>
+                            }
+                            else
+                            {
+                                <MudTimeline TimelineOrientation="TimelineOrientation.Vertical" TimelinePosition="TimelinePosition.Start">
+                                    @foreach (var ev in _events)
+                                    {
+                                        bool isMeeting = ev.MITING == -1 || ev.MITING == 1;
+                                        <MudTimelineItem Color="@(isMeeting ? Color.Warning : Color.Info)" Size="Size.Small">
+                                            <ItemContent>
+                                                <MudCard Elevation="0" Class="mb-2 rounded-lg border-solid border-1" Style="border-color: var(--mud-palette-lines-default);">
+                                                    <MudCardHeader Class="pa-2 pb-1">
+                                                        <CardHeaderContent>
+                                                            <div class="d-flex justify-space-between align-center">
+                                                                <div>
+                                                                    @if (isMeeting)
+                                                                    {
+                                                                        <MudChip T="string" Color="Color.Warning" Size="Size.Small" Class="me-1">جلسه</MudChip>
+                                                                    }
+                                                                    <MudText Typo="Typo.subtitle2" Class="font-weight-bold d-inline">
+                                                                        @(ev.StatusTitle ?? $"وضعیت {ev.STATUS}")
+                                                                    </MudText>
+                                                                </div>
+                                                                <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                                                    @FormatDate(ev.INFO_DATE) | @FormatTime(ev.INFO_TIME)
+                                                                </MudText>
+                                                            </div>
+                                                        </CardHeaderContent>
+                                                        <CardHeaderActions>
+                                                            <MudIconButton Icon="@Icons.Material.Filled.DeleteOutline" Size="Size.Small" Color="Color.Error" OnClick="@(() => DeleteEvent(ev))" />
+                                                        </CardHeaderActions>
+                                                    </MudCardHeader>
+                                                    <MudCardContent Class="pa-2 pt-0">
+                                                        <MudText Typo="Typo.body2" Style="line-height: 1.6;">@ev.COMMENT</MudText>
+                                                        @if (ev.NEXT_DATE.HasValue && ev.NEXT_DATE.Value > 0)
+                                                        {
+                                                            <div class="mt-2 pa-1 px-2 rounded d-inline-flex align-center gap-1" style="background-color: var(--mud-palette-action-default-hover);">
+                                                                <MudIcon Icon="@Icons.Material.Filled.Alarm" Size="Size.Small" Color="Color.Primary" />
+                                                                <MudText Typo="Typo.caption" Color="Color.Primary" Class="font-weight-bold">
+                                                                    تماس بعدی: @FormatDate(ev.NEXT_DATE) @(ev.NEXT_TIME.HasValue ? $"ساعت {FormatTime(ev.NEXT_TIME)}" : "")
+                                                                </MudText>
+                                                            </div>
+                                                        }
+                                                    </MudCardContent>
+                                                </MudCard>
+                                            </ItemContent>
+                                        </MudTimelineItem>
+                                    }
+                                </MudTimeline>
+                            }
+                        </MudPaper>
+                    }
+                </MudItem>
+            </MudGrid>
+        </div>
+    }
+    else if (_activeTabIndex == 1)
+    {
+        <!-- تب ۲: کارتابل روزانه من (Today's Agenda) -->
+        <div>
+            <MudGrid Spacing="3">
+                <MudItem xs="12" md="6">
+                    <MudPaper Elevation="0" Class="pa-4 rounded-xl border-solid border-1" Style="border-color: var(--mud-palette-warning); background-color: var(--mud-palette-surface);">
+                        <MudText Typo="Typo.h6" Class="font-weight-bold mb-3" Color="Color.Warning">
+                            <MudIcon Icon="@Icons.Material.Filled.AlarmOn" Class="vertical-align-middle me-1" />
+                            پیگیری‌های امروز (@_summary.UpcomingEvents.Count(e => e.NEXT_DATE == _todayInt))
+                        </MudText>
+
+                        @if (!_summary.UpcomingEvents.Any(e => e.NEXT_DATE == _todayInt))
+                        {
+                            <MudAlert Severity="Severity.Success" Variant="Variant.Text">
+                                عالی است! هیچ پیگیری معوق یا برنامه‌ریزی‌شده‌ای برای امروز باقی نمانده است.
+                            </MudAlert>
+                        }
+                        else
+                        {
+                            <MudList T="CrmEventDto" Dense="true">
+                                @foreach (var ev in _summary.UpcomingEvents.Where(e => e.NEXT_DATE == _todayInt))
+                                {
+                                    <MudListItem Icon="@Icons.Material.Filled.PhoneInTalk" IconColor="Color.Warning">
+                                        <div class="d-flex justify-space-between align-center w-100">
+                                            <div>
+                                                <MudText Typo="Typo.subtitle2" Class="font-weight-bold">@ev.COMPANY_NAME</MudText>
+                                                <MudText Typo="Typo.caption">@ev.COMMENT</MudText>
+                                            </div>
+                                            <MudChip T="string" Size="Size.Small" Color="Color.Warning">
+                                                ساعت @FormatTime(ev.NEXT_TIME)
+                                            </MudChip>
+                                        </div>
+                                    </MudListItem>
+                                    <MudDivider />
+                                }
+                            </MudList>
+                        }
+                    </MudPaper>
+                </MudItem>
+
+                <MudItem xs="12" md="6">
+                    <MudPaper Elevation="0" Class="pa-4 rounded-xl border-solid border-1" Style="border-color: var(--mud-palette-info); background-color: var(--mud-palette-surface);">
+                        <MudText Typo="Typo.h6" Class="font-weight-bold mb-3" Color="Color.Info">
+                            <MudIcon Icon="@Icons.Material.Filled.Upcoming" Class="vertical-align-middle me-1" />
+                            پیگیری‌های روزهای آینده
+                        </MudText>
+
+                        @if (!_summary.UpcomingEvents.Any(e => e.NEXT_DATE > _todayInt))
+                        {
+                            <MudAlert Severity="Severity.Normal" Variant="Variant.Text">
+                                برنامه‌ای برای روزهای آتی ثبت نشده است.
+                            </MudAlert>
+                        }
+                        else
+                        {
+                            <MudList T="CrmEventDto" Dense="true">
+                                @foreach (var ev in _summary.UpcomingEvents.Where(e => e.NEXT_DATE > _todayInt))
+                                {
+                                    <MudListItem Icon="@Icons.Material.Filled.CalendarMonth" IconColor="Color.Info">
+                                        <div class="d-flex justify-space-between align-center w-100">
+                                            <div>
+                                                <MudText Typo="Typo.subtitle2" Class="font-weight-bold">@ev.COMPANY_NAME</MudText>
+                                                <MudText Typo="Typo.caption">@ev.COMMENT</MudText>
+                                            </div>
+                                            <div class="text-left">
+                                                <MudText Typo="Typo.caption" Class="font-weight-bold d-block">@FormatDate(ev.NEXT_DATE)</MudText>
+                                                <MudText Typo="Typo.caption" Color="Color.Secondary">ساعت @FormatTime(ev.NEXT_TIME)</MudText>
+                                            </div>
+                                        </div>
+                                    </MudListItem>
+                                    <MudDivider />
+                                }
+                            </MudList>
+                        }
+                    </MudPaper>
+                </MudItem>
+            </MudGrid>
+        </div>
+    }
+    else if (_activeTabIndex == 2)
+    {
+        <!-- تب ۳: داشبورد و آمار تحلیلی (Analytics) -->
+        <div>
+            <MudGrid Spacing="3" Class="mb-4">
+                <MudItem xs="12" sm="6" md="3">
+                    <MudPaper Elevation="0" Class="pa-4 rounded-xl border-solid border-1 d-flex justify-space-between align-center" Style="border-color: var(--mud-palette-lines-default);">
+                        <div>
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">کل مشتریان</MudText>
+                            <MudText Typo="Typo.h4" Class="font-weight-bold" Color="Color.Primary">@_summary.TotalCompanies</MudText>
+                        </div>
+                        <MudAvatar Color="Color.Primary" Size="Size.Large"><MudIcon Icon="@Icons.Material.Filled.Business" /></MudAvatar>
+                    </MudPaper>
+                </MudItem>
+                <MudItem xs="12" sm="6" md="3">
+                    <MudPaper Elevation="0" Class="pa-4 rounded-xl border-solid border-1 d-flex justify-space-between align-center" Style="border-color: var(--mud-palette-lines-default);">
+                        <div>
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">کل رویدادها</MudText>
+                            <MudText Typo="Typo.h4" Class="font-weight-bold" Color="Color.Info">@_summary.TotalEvents</MudText>
+                        </div>
+                        <MudAvatar Color="Color.Info" Size="Size.Large"><MudIcon Icon="@Icons.Material.Filled.Forum" /></MudAvatar>
+                    </MudPaper>
+                </MudItem>
+                <MudItem xs="12" sm="6" md="3">
+                    <MudPaper Elevation="0" Class="pa-4 rounded-xl border-solid border-1 d-flex justify-space-between align-center" Style="border-color: var(--mud-palette-lines-default);">
+                        <div>
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">پیگیری‌های امروز</MudText>
+                            <MudText Typo="Typo.h4" Class="font-weight-bold" Color="Color.Warning">@_summary.TodayFollowUps</MudText>
+                        </div>
+                        <MudAvatar Color="Color.Warning" Size="Size.Large"><MudIcon Icon="@Icons.Material.Filled.Today" /></MudAvatar>
+                    </MudPaper>
+                </MudItem>
+                <MudItem xs="12" sm="6" md="3">
+                    <MudPaper Elevation="0" Class="pa-4 rounded-xl border-solid border-1 d-flex justify-space-between align-center" Style="border-color: var(--mud-palette-lines-default);">
+                        <div>
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">جلسات حضوری</MudText>
+                            <MudText Typo="Typo.h4" Class="font-weight-bold" Color="Color.Success">@_summary.TodayMeetings</MudText>
+                        </div>
+                        <MudAvatar Color="Color.Success" Size="Size.Large"><MudIcon Icon="@Icons.Material.Filled.MeetingRoom" /></MudAvatar>
+                    </MudPaper>
+                </MudItem>
+            </MudGrid>
+
+            <!-- تفکیک بر اساس وضعیت‌ها -->
+            <MudPaper Elevation="0" Class="pa-4 rounded-xl border-solid border-1" Style="border-color: var(--mud-palette-lines-default);">
+                <MudText Typo="Typo.h6" Class="font-weight-bold mb-3" Color="Color.Primary">
+                    تفکیک وضعیت‌های مشتریان (قیف پیگیری)
+                </MudText>
+                <MudGrid Spacing="2">
+                    @foreach (var st in _summary.StatusSummary)
+                    {
+                        <MudItem xs="12" sm="6" md="4">
+                            <MudPaper Elevation="0" Class="pa-3 rounded-lg border-solid border-1 d-flex justify-space-between align-center" Style="border-color: var(--mud-palette-lines-default);">
+                                <div class="d-flex align-center gap-2">
+                                    <MudAvatar Color="@GetStatusColor(st.Code)" Size="Size.Small" Variant="Variant.Filled"> </MudAvatar>
+                                    <MudText Typo="Typo.body2" Class="font-weight-bold">@st.Name</MudText>
+                                </div>
+                                <MudChip T="string" Color="@GetStatusColor(st.Code)" Size="Size.Small" Variant="Variant.Filled">
+                                    @st.Count شرکت
+                                </MudChip>
+                            </MudPaper>
+                        </MudItem>
+                    }
+                </MudGrid>
+            </MudPaper>
+        </div>
+    }
+    else if (_activeTabIndex == 3)
+    {
+        <!-- تب ۴: دفترچه تلفن و جستجوی سریع -->
+        <div>
+            <MudPaper Elevation="0" Class="pa-3 mb-3 rounded-lg border-solid border-1" Style="border-color: var(--mud-palette-lines-default);">
+                <MudTextField @bind-Value="_phoneSearchQuery"
+                              Placeholder="جستجوی سریع در کل مخاطبان (نام، تلفن، آدرس، کد)..."
                               Variant="Variant.Outlined"
+                              Margin="Margin.Dense"
                               Adornment="Adornment.Start"
                               AdornmentIcon="@Icons.Material.Filled.Search"
                               Immediate="true"
-                              DebounceInterval="300"
-                              OnDebounceIntervalElapsed="LoadCompanies"
+                              DebounceInterval="250"
+                              OnDebounceIntervalElapsed="SearchPhoneBook"
                               Clearable="true" />
-            </MudItem>
-            <MudItem xs="12" sm="3" md="2">
-                <MudTextField @bind-Value="_filter.City"
-                              Label="فیلتر شهر"
-                              Variant="Variant.Outlined"
-                              Immediate="true"
-                              DebounceInterval="300"
-                              OnDebounceIntervalElapsed="LoadCompanies"
-                              Clearable="true" />
-            </MudItem>
-            <MudItem xs="12" sm="3" md="2">
-                <MudCheckBox @bind-Value="_filter.OnlyMyCompanies"
-                             Label="فقط شرکت‌های من"
-                             Color="Color.Primary"
-                             T="bool"
-                             CheckedChanged="OnOnlyMyCompaniesChanged" />
-            </MudItem>
-            <MudItem xs="12" sm="3" md="3">
-                <MudCheckBox @bind-Value="_filter.OnlyWithUpcomingFollowUps"
-                             Label="فقط دارای پیگیری‌های آتی"
-                             Color="Color.Secondary"
-                             T="bool"
-                             CheckedChanged="OnOnlyUpcomingChanged" />
-            </MudItem>
-            <MudItem xs="12" sm="2" md="2" Class="d-flex justify-end">
-                <MudIconButton Icon="@Icons.Material.Filled.Refresh" Color="Color.Primary" OnClick="RefreshData" />
-            </MudItem>
-        </MudGrid>
-    </MudPaper>
+            </MudPaper>
 
-    <!-- بخش اصلی Master-Detail -->
-    <MudGrid Spacing="3">
-        <!-- لیست شرکت‌ها (Master) -->
-        <MudItem xs="12" lg="7">
-            <MudPaper Elevation="2" Class="pa-3 rounded-lg">
-                <MudText Typo="Typo.subtitle1" Class="font-weight-bold mb-2" Color="Color.Primary">
-                    <MudIcon Icon="@Icons.Material.Filled.ListAlt" Class="me-1" />
-                    لیست شرکت‌ها (@_filteredCompanies.Count)
-                </MudText>
-
-                @if (_loadingCompanies)
+            <MudPaper Elevation="0" Class="rounded-xl border-solid border-1" Style="border-color: var(--mud-palette-lines-default);">
+                @if (_loadingPhonebook)
                 {
-                    <div class="d-flex justify-center pa-6">
-                        <MudProgressCircular Indeterminate="true" Color="Color.Primary" />
+                    <div class="d-flex justify-center pa-8">
+                        <MudProgressCircular Indeterminate="true" Color="Color.Secondary" />
                     </div>
                 }
                 else
                 {
-                    <MudTable T="CrmCompanyDto"
-                              Items="_filteredCompanies"
-                              Dense="true"
-                              Hover="true"
-                              Bordered="true"
-                              Striped="true"
-                              SelectedItem="_selectedCompany"
-                              SelectedItemChanged="OnCompanySelected"
-                              RowClassFunc="GetRowClass"
-                              Elevation="0">
+                    <MudTable Items="_phoneItems" Dense="true" Hover="true" Striped="true" Elevation="0">
                         <HeaderContent>
+                            <MudTh>منبع</MudTh>
                             <MudTh>کد</MudTh>
-                            <MudTh>نام شرکت / فروشگاه</MudTh>
-                            <MudTh>مدیر</MudTh>
-                            <MudTh>تلفن / همراه</MudTh>
-                            <MudTh>شهر</MudTh>
-                            <MudTh>وضعیت</MudTh>
-                            <MudTh>پیگیری‌ها</MudTh>
-                            <MudTh>عملیات</MudTh>
+                            <MudTh>نام مخاطب / شرکت</MudTh>
+                            <MudTh>تلفن</MudTh>
+                            <MudTh>موبایل</MudTh>
+                            <MudTh>آدرس</MudTh>
                         </HeaderContent>
                         <RowTemplate>
-                            <MudTd DataLabel="کد">@context.ID</MudTd>
-                            <MudTd DataLabel="نام شرکت">
-                                <b>@context.COMPANY_NAME</b>
-                            </MudTd>
-                            <MudTd DataLabel="مدیر">@context.MANAGER</MudTd>
-                            <MudTd DataLabel="تلفن">
-                                <div>@context.FACT_TEL</div>
-                                <div class="text-muted small">@context.MOBILE</div>
-                            </MudTd>
-                            <MudTd DataLabel="شهر">@context.CITY</MudTd>
-                            <MudTd DataLabel="وضعیت">
-                                <MudChip T="string" Size="Size.Small" Color="GetStatusColor(context.STATUS)">
-                                    @(context.StatusTitle ?? $"وضعیت {context.STATUS}")
+                            <MudTd>
+                                <MudChip T="string" Size="Size.Small" Color="@(context.SourceType == "طرف‌حساب" ? Color.Primary : Color.Secondary)">
+                                    @context.SourceType
                                 </MudChip>
                             </MudTd>
-                            <MudTd DataLabel="پیگیری‌ها">
-                                <MudBadge Content="@(context.IDCN ?? 0)" Color="Color.Info" Overlap="true" Class="mx-2">
-                                    <MudIcon Icon="@Icons.Material.Filled.History" Size="Size.Small" />
-                                </MudBadge>
+                            <MudTd>@context.HesCode</MudTd>
+                            <MudTd><b>@context.Name</b></MudTd>
+                            <MudTd>
+                                @if (!string.IsNullOrWhiteSpace(context.Tel))
+                                {
+                                    <a href="tel:@context.Tel" class="text-decoration-none"><MudIcon Icon="@Icons.Material.Filled.Phone" Size="Size.Small" Class="vertical-align-middle" /> @context.Tel</a>
+                                }
                             </MudTd>
-                            <MudTd DataLabel="عملیات">
-                                <div class="d-flex">
-                                    <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small" Color="Color.Primary" OnClick="@(() => EditCompany(context))" />
-                                    <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error" OnClick="@(() => DeleteCompany(context))" />
-                                </div>
+                            <MudTd>
+                                @if (!string.IsNullOrWhiteSpace(context.Mobile))
+                                {
+                                    <a href="tel:@context.Mobile" class="text-decoration-none"><MudIcon Icon="@Icons.Material.Filled.Smartphone" Size="Size.Small" Class="vertical-align-middle" /> @context.Mobile</a>
+                                }
                             </MudTd>
+                            <MudTd>@context.Address</MudTd>
                         </RowTemplate>
                         <PagerContent>
-                            <MudTablePager PageSizeOptions="new int[] { 10, 25, 50, 100 }" />
+                            <MudTablePager PageSizeOptions="new int[] { 15, 30, 50, 100 }" />
                         </PagerContent>
                     </MudTable>
                 }
             </MudPaper>
-        </MudItem>
+        </div>
+    }
+    else if (_activeTabIndex == 4)
+    {
+        <!-- تب ۵: یادداشت‌های سریع من (Notes / Todo) -->
+        <div>
+            <MudGrid Spacing="3">
+                <MudItem xs="12" md="5">
+                    <MudPaper Elevation="0" Class="pa-4 rounded-xl border-solid border-1" Style="border-color: var(--mud-palette-lines-default); background-color: var(--mud-palette-surface);">
+                        <MudText Typo="Typo.subtitle1" Class="font-weight-bold mb-3" Color="Color.Primary">
+                            <MudIcon Icon="@Icons.Material.Filled.PostAdd" Class="vertical-align-middle me-1" />
+                            ثبت یادداشت جدید
+                        </MudText>
+                        <MudTextField @bind-Value="_newNoteText"
+                                      Label="متن یادداشت / کار پیگیری *"
+                                      Placeholder="مثال: تماس با شرکت برای هماهنگی قرارداد..."
+                                      Lines="4"
+                                      Variant="Variant.Outlined"
+                                      Margin="Margin.Dense"
+                                      Class="mb-3" />
+                        <div class="d-flex justify-end">
+                            <MudButton Variant="Variant.Filled"
+                                       Color="Color.Primary"
+                                       StartIcon="@Icons.Material.Filled.Save"
+                                       OnClick="SaveNewNote"
+                                       Disabled="_savingNote">
+                                @if (_savingNote)
+                                {
+                                    <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="me-2" />
+                                }
+                                ثبت یادداشت
+                            </MudButton>
+                        </div>
+                    </MudPaper>
+                </MudItem>
 
-        <!-- لیست رویدادها و پیگیری‌ها (Detail) -->
-        <MudItem xs="12" lg="5">
-            <MudPaper Elevation="2" Class="pa-3 rounded-lg">
-                <div class="d-flex justify-space-between align-center mb-3">
-                    <MudText Typo="Typo.subtitle1" Class="font-weight-bold" Color="Color.Secondary">
-                        <MudIcon Icon="@Icons.Material.Filled.HistoryEdu" Class="me-1" />
-                        سوابق و مذاکرات @(_selectedCompany != null ? $"({_selectedCompany.COMPANY_NAME})" : "")
-                    </MudText>
-                    @if (_selectedCompany != null)
-                    {
-                        <MudButton Variant="Variant.Filled" Color="Color.Secondary" Size="Size.Small" StartIcon="@Icons.Material.Filled.AddComment" OnClick="AddNewEvent">
-                            ثبت پیگیری
-                        </MudButton>
-                    }
-                </div>
+                <MudItem xs="12" md="7">
+                    <MudPaper Elevation="0" Class="pa-4 rounded-xl border-solid border-1" Style="border-color: var(--mud-palette-lines-default);">
+                        <div class="d-flex justify-space-between align-center mb-3">
+                            <MudText Typo="Typo.subtitle1" Class="font-weight-bold" Color="Color.Secondary">
+                                <MudIcon Icon="@Icons.Material.Filled.Checklist" Class="vertical-align-middle me-1" />
+                                لیست کارهای من (@_notes.Count)
+                            </MudText>
+                            <MudCheckBox @bind-Value="_onlyPendingNotes"
+                                         Label="فقط انجام‌نشده‌ها"
+                                         Color="Color.Primary"
+                                         Dense="true"
+                                         T="bool"
+                                         CheckedChanged="OnNotesFilterChanged" />
+                        </div>
 
-                @if (_selectedCompany == null)
-                {
-                    <MudAlert Severity="Severity.Info" Variant="Variant.Outlined">
-                        برای مشاهده تاریخچه و ثبت پیگیری، لطفاً یک شرکت را از جدول انتخاب کنید.
-                    </MudAlert>
-                }
-                else if (_loadingEvents)
-                {
-                    <div class="d-flex justify-center pa-6">
-                        <MudProgressCircular Indeterminate="true" Color="Color.Secondary" />
-                    </div>
-                }
-                else if (_events.Count == 0)
-                {
-                    <MudAlert Severity="Severity.Normal" Variant="Variant.Outlined">
-                        تاکنون هیچ پیگیری یا مذاکره‌ای برای این مشتری ثبت نشده است.
-                    </MudAlert>
-                }
-                else
-                {
-                    <div style="max-height: 600px; overflow-y: auto;">
-                        <MudTimeline TimelineOrientation="TimelineOrientation.Vertical" TimelinePosition="TimelinePosition.Start">
-                            @foreach (var ev in _events)
-                            {
-                                <MudTimelineItem Color="@(ev.MITING == -1 || ev.MITING == 1 ? Color.Warning : Color.Info)" Size="Size.Small">
-                                    <ItemContent>
-                                        <MudCard Elevation="1" Class="mb-2">
-                                            <MudCardHeader>
-                                                <CardHeaderContent>
-                                                    <div class="d-flex justify-space-between align-center">
-                                                        <MudText Typo="Typo.subtitle2" Class="font-weight-bold">
-                                                            @if (ev.MITING == -1 || ev.MITING == 1)
-                                                            {
-                                                                <MudChip T="string" Color="Color.Warning" Size="Size.Small" Class="me-1">جلسه حضوری</MudChip>
-                                                            }
-                                                            وضعیت: @(ev.StatusTitle ?? $"وضعیت {ev.STATUS}")
-                                                        </MudText>
-                                                        <MudText Typo="Typo.caption" Color="Color.Secondary">
-                                                            تاریخ: @ev.INFO_DATE | ساعت: @FormatTime(ev.INFO_TIME)
-                                                        </MudText>
-                                                    </div>
-                                                </CardHeaderContent>
-                                                <CardHeaderActions>
-                                                    <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error" OnClick="@(() => DeleteEvent(ev))" />
-                                                </CardHeaderActions>
-                                            </MudCardHeader>
-                                            <MudCardContent Class="pt-0">
-                                                <MudText Typo="Typo.body2">@ev.COMMENT</MudText>
-                                                @if (ev.NEXT_DATE.HasValue && ev.NEXT_DATE.Value > 0)
-                                                {
-                                                    <div class="mt-2 pa-2 rounded" style="background-color: var(--mud-palette-background-grey);">
-                                                        <MudText Typo="Typo.caption" Color="Color.Primary" Class="font-weight-bold">
-                                                            <MudIcon Icon="@Icons.Material.Filled.Alarm" Size="Size.Small" Class="vertical-align-middle me-1" />
-                                                            پیگیری بعدی: @ev.NEXT_DATE @(ev.NEXT_TIME.HasValue ? $"ساعت {FormatTime(ev.NEXT_TIME)}" : "")
-                                                        </MudText>
-                                                    </div>
-                                                }
-                                                @if (!string.IsNullOrWhiteSpace(ev.SALER) || !string.IsNullOrWhiteSpace(ev.BUYER))
-                                                {
-                                                    <div class="d-flex gap-4 mt-1 text-muted small">
-                                                        @if (!string.IsNullOrWhiteSpace(ev.SALER)) { <span>فروشنده: @ev.SALER</span> }
-                                                        @if (!string.IsNullOrWhiteSpace(ev.BUYER)) { <span>خریدار: @ev.BUYER</span> }
-                                                    </div>
-                                                }
-                                            </MudCardContent>
-                                        </MudCard>
-                                    </ItemContent>
-                                </MudTimelineItem>
-                            }
-                        </MudTimeline>
-                    </div>
-                }
-            </MudPaper>
-        </MudItem>
-    </MudGrid>
+                        @if (_loadingNotes)
+                        {
+                            <div class="d-flex justify-center pa-6">
+                                <MudProgressCircular Indeterminate="true" Color="Color.Secondary" Size="Size.Small" />
+                            </div>
+                        }
+                        else if (_notes.Count == 0)
+                        {
+                            <MudAlert Severity="Severity.Normal" Variant="Variant.Text">
+                                هیچ یادداشتی یافت نشد. از کادر روبرو یادداشت جدید ثبت کنید.
+                            </MudAlert>
+                        }
+                        else
+                        {
+                            <MudList T="CrmNoteDto" Dense="true">
+                                @foreach (var note in _notes)
+                                {
+                                    <MudListItem>
+                                        <div class="d-flex justify-space-between align-center w-100">
+                                            <div class="d-flex align-center gap-2">
+                                                <MudCheckBox T="bool"
+                                                             Value="@note.Ndone"
+                                                             Color="Color.Success"
+                                                             ValueChanged="@((bool val) => ToggleNoteDone(note, val))" />
+                                                <div>
+                                                    <MudText Typo="Typo.body2" Style="@(note.Ndone ? "text-decoration: line-through; opacity: 0.6;" : "font-weight: 500;")">
+                                                        @note.Note
+                                                    </MudText>
+                                                    <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                                        تاریخ: @note.NoteDateFormatted @(string.IsNullOrWhiteSpace(note.Ntime) ? "" : $"| ساعت: {note.Ntime}")
+                                                    </MudText>
+                                                </div>
+                                            </div>
+                                            <MudIconButton Icon="@Icons.Material.Filled.DeleteOutline" Size="Size.Small" Color="Color.Error" OnClick="@(() => DeleteNote(note))" />
+                                        </div>
+                                    </MudListItem>
+                                    <MudDivider />
+                                }
+                            </MudList>
+                        }
+                    </MudPaper>
+                </MudItem>
+            </MudGrid>
+        </div>
+    }
 </MudContainer>
 
 @code {
+    private int _activeTabIndex = 0;
+    private int _todayInt;
+
     private List<CrmCompanyDto> _companies = new();
     private List<CrmCompanyDto> _filteredCompanies = new();
     private List<CrmEventDto> _events = new();
     private List<CrmStatusDto> _statusList = new();
+    private CrmDashboardSummaryDto _summary = new();
 
     private CrmCompanyDto? _selectedCompany;
     private CrmFilterDto _filter = new() { OnlyMyCompanies = true };
     private int? _selectedStatus;
+
+    // متغیرهای باکس ثبت سریع پیگیری
+    private string _quickComment = string.Empty;
+    private int? _quickStatus;
+    private string _quickNextDate = string.Empty;
+    private string _quickNextTime = string.Empty;
+    private bool _quickIsMeeting;
+    private bool _savingQuickEvent;
+
+    // متغیرهای دفترچه تلفن
+    private string _phoneSearchQuery = string.Empty;
+    private List<CrmPhoneBookItemDto> _phoneItems = new();
+    private bool _loadingPhonebook;
+
+    // متغیرهای یادداشت‌ها (Notes)
+    private List<CrmNoteDto> _notes = new();
+    private string _newNoteText = string.Empty;
+    private bool _onlyPendingNotes = true;
+    private bool _loadingNotes;
+    private bool _savingNote;
 
     private bool _loadingCompanies = true;
     private bool _loadingEvents;
 
     protected override async Task OnInitializedAsync()
     {
+        _todayInt = int.TryParse(CL_Tarikh.Current_FullDate, out var td) ? td : 0;
+        await RefreshData();
+    }
+
+    private void SwitchToTab(int index)
+    {
+        _activeTabIndex = index;
+    }
+
+    private async Task RefreshData()
+    {
         await LoadStatusList();
         await LoadCompanies();
+        await LoadDashboardSummary();
+        await SearchPhoneBook();
+        await LoadNotes();
     }
 
     private async Task LoadStatusList()
@@ -290,8 +801,17 @@
         }
         catch (Exception ex)
         {
-            Snackbar.Add($"خطا در دریافت وضعیت‌ها: {ex.Message}", Severity.Error);
+            Snackbar.Add($"خطا در بارگذاری وضعیت‌ها: {ex.Message}", Severity.Error);
         }
+    }
+
+    private async Task LoadDashboardSummary()
+    {
+        try
+        {
+            _summary = await CrmApi.GetDashboardSummaryAsync();
+        }
+        catch { }
     }
 
     private async Task LoadCompanies()
@@ -304,7 +824,7 @@
         }
         catch (Exception ex)
         {
-            Snackbar.Add($"خطا در دریافت شرکت‌ها: {ex.Message}", Severity.Error);
+            Snackbar.Add($"خطا در بارگذاری شرکت‌ها: {ex.Message}", Severity.Error);
         }
         finally
         {
@@ -314,7 +834,7 @@
 
     private void ApplyLocalFilter()
     {
-        if (_selectedStatus.HasValue)
+        if (_selectedStatus.HasValue && _selectedStatus.Value > 0)
         {
             _filteredCompanies = _companies.Where(c => c.STATUS == _selectedStatus.Value).ToList();
         }
@@ -323,17 +843,154 @@
             _filteredCompanies = _companies.ToList();
         }
 
-        if (_selectedCompany != null && !_filteredCompanies.Any(c => c.ID == _selectedCompany.ID))
+        // حفظ یا به‌روزرسانی مشتری منتخب
+        if (_selectedCompany != null)
         {
-            _selectedCompany = null;
-            _events.Clear();
+            _selectedCompany = _filteredCompanies.FirstOrDefault(c => c.ID == _selectedCompany.ID);
+            if (_selectedCompany == null && _filteredCompanies.Count > 0)
+            {
+                SelectCompany(_filteredCompanies[0]);
+            }
+        }
+        else if (_filteredCompanies.Count > 0)
+        {
+            SelectCompany(_filteredCompanies[0]);
         }
     }
 
-    private void SetStatusFilter(int? status)
+    private async void SelectCompany(CrmCompanyDto company)
     {
-        _selectedStatus = status;
+        _selectedCompany = company;
+        _quickStatus = company.STATUS;
+        _quickComment = string.Empty;
+        _quickNextDate = string.Empty;
+        _quickNextTime = string.Empty;
+        _quickIsMeeting = false;
+
+        if (company.ID.HasValue)
+        {
+            _loadingEvents = true;
+            StateHasChanged();
+            try
+            {
+                _events = await CrmApi.GetEventsByCompanyIdAsync(company.ID.Value);
+            }
+            finally
+            {
+                _loadingEvents = false;
+                StateHasChanged();
+            }
+        }
+        else
+        {
+            _events.Clear();
+            StateHasChanged();
+        }
+    }
+
+    private async Task SubmitQuickEvent()
+    {
+        if (_selectedCompany?.ID == null)
+        {
+            Snackbar.Add("لطفاً ابتدا یک مشتری را انتخاب کنید.", Severity.Warning);
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(_quickComment))
+        {
+            Snackbar.Add("لطفاً شرح پیگیری یا نتیجه مذاکره را وارد کنید.", Severity.Warning);
+            return;
+        }
+
+        _savingQuickEvent = true;
+        try
+        {
+            var newEv = new CrmEventDto
+            {
+                IDC = _selectedCompany.ID.Value,
+                COMPANY_NAME = _selectedCompany.COMPANY_NAME,
+                COMMENT = _quickComment.Trim(),
+                STATUS = _quickStatus ?? _selectedCompany.STATUS,
+                MITING = _quickIsMeeting ? -1 : 0
+            };
+
+            if (int.TryParse(_quickNextDate, out var nd)) newEv.NEXT_DATE = nd;
+            if (int.TryParse(_quickNextTime, out var nt)) newEv.NEXT_TIME = nt;
+
+            var id = await CrmApi.SaveEventAsync(newEv);
+            if (id > 0)
+            {
+                Snackbar.Add("پیگیری با موفقیت ثبت شد.", Severity.Success);
+                _quickComment = string.Empty;
+                _quickNextDate = string.Empty;
+                _quickNextTime = string.Empty;
+                _quickIsMeeting = false;
+
+                // بارگذاری مجدد سوابق و آمار
+                _events = await CrmApi.GetEventsByCompanyIdAsync(_selectedCompany.ID.Value);
+                await LoadCompanies();
+                await LoadDashboardSummary();
+            }
+            else
+            {
+                Snackbar.Add("خطا در ثبت پیگیری.", Severity.Error);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"خطا: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _savingQuickEvent = false;
+        }
+    }
+
+    private async Task OnStatusFilterChanged()
+    {
         ApplyLocalFilter();
+    }
+
+    private void SelectStatusFilter(int? statusCode)
+    {
+        _selectedStatus = statusCode;
+        ApplyLocalFilter();
+    }
+
+    private async Task OpenSendSmsDialog()
+    {
+        if (_selectedCompany == null || string.IsNullOrWhiteSpace(_selectedCompany.MOBILE))
+        {
+            Snackbar.Add("شماره موبایل برای این مشتری ثبت نشده است.", Severity.Warning);
+            return;
+        }
+
+        string smsText = string.Empty;
+        var parameters = new DialogParameters();
+
+        bool? confirm = await DialogService.ShowMessageBox(
+            "ارسال پیامک به مشتری",
+            $"آیا مایل به ارسال پیامک به شماره {_selectedCompany.MOBILE} ({_selectedCompany.COMPANY_NAME}) هستید؟",
+            yesText: "ارسال پیامک", cancelText: "انصراف");
+
+        if (confirm == true)
+        {
+            var req = new CrmSendSmsRequestDto
+            {
+                Mobile = _selectedCompany.MOBILE,
+                Message = $"سلام {_selectedCompany.MANAGER ?? _selectedCompany.COMPANY_NAME} عزیز، جهت پیگیری درخواست شما تماس گرفته شد.",
+                CompanyName = _selectedCompany.COMPANY_NAME
+            };
+            var sent = await CrmApi.SendSmsAsync(req);
+            if (sent)
+            {
+                Snackbar.Add("پیامک با موفقیت ارسال شد.", Severity.Success);
+            }
+            else
+            {
+                Snackbar.Add("ارسال پیامک با خطا مواجه شد. لطفاً تنظیمات درگاه پیامک را بررسی کنید.", Severity.Error);
+            }
+        }
     }
 
     private async Task OnOnlyMyCompaniesChanged(bool val)
@@ -348,27 +1005,6 @@
         await LoadCompanies();
     }
 
-    private async Task OnCompanySelected(CrmCompanyDto company)
-    {
-        _selectedCompany = company;
-        if (company?.ID != null)
-        {
-            _loadingEvents = true;
-            try
-            {
-                _events = await CrmApi.GetEventsByCompanyIdAsync(company.ID.Value);
-            }
-            finally
-            {
-                _loadingEvents = false;
-            }
-        }
-        else
-        {
-            _events.Clear();
-        }
-    }
-
     private async Task AddNewCompany()
     {
         var parameters = new DialogParameters
@@ -377,13 +1013,13 @@
             ["StatusList"] = _statusList
         };
 
-        var dialog = await DialogService.ShowAsync<CrmCompanyModal>("افزودن شرکت جدید", parameters);
+        var dialog = await DialogService.ShowAsync<CrmCompanyModal>("افزودن شرکت / مشتری جدید", parameters);
         var result = await dialog.Result;
         if (result != null && !result.Canceled && result.Data is CrmCompanyDto newComp)
         {
             await RefreshData();
-            _selectedCompany = _companies.FirstOrDefault(c => c.ID == newComp.ID);
-            if (_selectedCompany != null) await OnCompanySelected(_selectedCompany);
+            var match = _companies.FirstOrDefault(c => c.ID == newComp.ID);
+            if (match != null) SelectCompany(match);
         }
     }
 
@@ -395,7 +1031,7 @@
             ["StatusList"] = _statusList
         };
 
-        var dialog = await DialogService.ShowAsync<CrmCompanyModal>("ویرایش شرکت", parameters);
+        var dialog = await DialogService.ShowAsync<CrmCompanyModal>("ویرایش اطلاعات مشتری", parameters);
         var result = await dialog.Result;
         if (result != null && !result.Canceled)
         {
@@ -407,7 +1043,7 @@
     {
         if (company.ID == null) return;
         bool? confirm = await DialogService.ShowMessageBox(
-            "حذف شرکت",
+            "حذف مشتری",
             $"آیا از حذف شرکت «{company.COMPANY_NAME}» و کلیه سوابق پیگیری آن اطمینان دارید؟",
             yesText: "بله، حذف شود", cancelText: "انصراف");
 
@@ -416,34 +1052,9 @@
             var ok = await CrmApi.DeleteCompanyAsync(company.ID.Value);
             if (ok)
             {
-                Snackbar.Add("شرکت با موفقیت حذف شد.", Severity.Success);
+                Snackbar.Add("مشتری با موفقیت حذف شد.", Severity.Success);
                 await RefreshData();
             }
-            else
-            {
-                Snackbar.Add("خطا در حذف شرکت.", Severity.Error);
-            }
-        }
-    }
-
-    private async Task AddNewEvent()
-    {
-        if (_selectedCompany?.ID == null) return;
-
-        var parameters = new DialogParameters
-        {
-            ["Event"] = new CrmEventDto { STATUS = _selectedCompany.STATUS },
-            ["CompanyName"] = _selectedCompany.COMPANY_NAME ?? string.Empty,
-            ["CompanyId"] = _selectedCompany.ID.Value,
-            ["StatusList"] = _statusList
-        };
-
-        var dialog = await DialogService.ShowAsync<CrmEventModal>("ثبت پیگیری جدید", parameters);
-        var result = await dialog.Result;
-        if (result != null && !result.Canceled && result.Data is CrmEventDto newEv)
-        {
-            await OnCompanySelected(_selectedCompany);
-            await RefreshData();
         }
     }
 
@@ -452,7 +1063,7 @@
         if (ev.IDDE == null) return;
         bool? confirm = await DialogService.ShowMessageBox(
             "حذف پیگیری",
-            "آیا از حذف این رکورد پیگیری اطمینان دارید؟",
+            "آیا از حذف این پیگیری اطمینان دارید؟",
             yesText: "بله، حذف شود", cancelText: "انصراف");
 
         if (confirm == true)
@@ -461,22 +1072,109 @@
             if (ok)
             {
                 Snackbar.Add("پیگیری حذف شد.", Severity.Success);
-                if (_selectedCompany != null) await OnCompanySelected(_selectedCompany);
-                await RefreshData();
+                if (_selectedCompany?.ID != null)
+                {
+                    _events = await CrmApi.GetEventsByCompanyIdAsync(_selectedCompany.ID.Value);
+                }
+                await LoadCompanies();
+                await LoadDashboardSummary();
             }
         }
     }
 
-    private async Task RefreshData()
+    private async Task SearchPhoneBook()
     {
-        await LoadStatusList();
-        await LoadCompanies();
+        _loadingPhonebook = true;
+        try
+        {
+            _phoneItems = await CrmApi.SearchPhoneBookAsync(_phoneSearchQuery);
+        }
+        catch { }
+        finally
+        {
+            _loadingPhonebook = false;
+        }
     }
 
-    private string GetRowClass(CrmCompanyDto item, int rowNumber)
+    private async Task LoadNotes()
     {
-        if (_selectedCompany?.ID == item.ID) return "selected-row";
-        return string.Empty;
+        _loadingNotes = true;
+        try
+        {
+            _notes = await CrmApi.GetNotesAsync(_onlyPendingNotes);
+        }
+        catch { }
+        finally
+        {
+            _loadingNotes = false;
+        }
+    }
+
+    private async Task OnNotesFilterChanged(bool val)
+    {
+        _onlyPendingNotes = val;
+        await LoadNotes();
+    }
+
+    private async Task SaveNewNote()
+    {
+        if (string.IsNullOrWhiteSpace(_newNoteText))
+        {
+            Snackbar.Add("متن یادداشت را وارد کنید.", Severity.Warning);
+            return;
+        }
+
+        _savingNote = true;
+        try
+        {
+            var note = new CrmNoteDto
+            {
+                Note = _newNoteText.Trim(),
+                Ndone = false
+            };
+            var id = await CrmApi.SaveNoteAsync(note);
+            if (id > 0)
+            {
+                Snackbar.Add("یادداشت با موفقیت ثبت شد.", Severity.Success);
+                _newNoteText = string.Empty;
+                await LoadNotes();
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"خطا: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _savingNote = false;
+        }
+    }
+
+    private async Task ToggleNoteDone(CrmNoteDto note, bool done)
+    {
+        if (note.idd == null) return;
+        note.Ndone = done;
+        var ok = await CrmApi.ToggleNoteDoneAsync(note.idd.Value, done);
+        if (ok)
+        {
+            if (_onlyPendingNotes && done)
+            {
+                _notes.Remove(note);
+            }
+            StateHasChanged();
+        }
+    }
+
+    private async Task DeleteNote(CrmNoteDto note)
+    {
+        if (note.idd == null) return;
+        var ok = await CrmApi.DeleteNoteAsync(note.idd.Value);
+        if (ok)
+        {
+            Snackbar.Add("یادداشت حذف شد.", Severity.Success);
+            _notes.Remove(note);
+            StateHasChanged();
+        }
     }
 
     private Color GetStatusColor(int? status) => (status ?? 0) switch
@@ -491,6 +1189,17 @@
         8 => Color.Error,
         _ => Color.Default
     };
+
+    private string FormatDate(int? date)
+    {
+        if (!date.HasValue || date.Value <= 0) return "--";
+        var dStr = date.Value.ToString();
+        if (dStr.Length == 8)
+        {
+            return $"{dStr.Substring(0, 4)}/{dStr.Substring(4, 2)}/{dStr.Substring(6, 2)}";
+        }
+        return dStr;
+    }
 
     private string FormatTime(int? time)
     {

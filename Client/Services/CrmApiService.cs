@@ -236,5 +236,90 @@ namespace Safir.Client.Services
                 return new List<string>();
             }
         }
+
+        public async Task<List<CrmNoteDto>> GetNotesAsync(bool onlyPending = true)
+        {
+            try
+            {
+                return await _httpClient.GetFromJsonAsync<List<CrmNoteDto>>($"api/crm/notes?onlyPending={onlyPending}") ?? new List<CrmNoteDto>();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting CRM notes");
+                return new List<CrmNoteDto>();
+            }
+        }
+
+        public async Task<int> SaveNoteAsync(CrmNoteDto note)
+        {
+            try
+            {
+                var response = await _httpClient.PostAsJsonAsync("api/crm/save-note", note);
+                if (response.IsSuccessStatusCode)
+                {
+                    return await response.Content.ReadFromJsonAsync<int>();
+                }
+                return 0;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error saving CRM note");
+                return 0;
+            }
+        }
+
+        public async Task<bool> ToggleNoteDoneAsync(int noteId, bool done)
+        {
+            try
+            {
+                var response = await _httpClient.PostAsync($"api/crm/toggle-note?noteId={noteId}&done={done}", null);
+                if (response.IsSuccessStatusCode)
+                {
+                    return await response.Content.ReadFromJsonAsync<bool>();
+                }
+                return false;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error toggling CRM note {NoteId}", noteId);
+                return false;
+            }
+        }
+
+        public async Task<bool> DeleteNoteAsync(int noteId)
+        {
+            try
+            {
+                var response = await _httpClient.DeleteAsync($"api/crm/notes/{noteId}");
+                if (response.IsSuccessStatusCode)
+                {
+                    return await response.Content.ReadFromJsonAsync<bool>();
+                }
+                return false;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error deleting CRM note {NoteId}", noteId);
+                return false;
+            }
+        }
+
+        public async Task<bool> SendSmsAsync(CrmSendSmsRequestDto request)
+        {
+            try
+            {
+                var response = await _httpClient.PostAsJsonAsync("api/crm/send-sms", request);
+                if (response.IsSuccessStatusCode)
+                {
+                    return await response.Content.ReadFromJsonAsync<bool>();
+                }
+                return false;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error sending SMS in CRM");
+                return false;
+            }
+        }
     }
 }

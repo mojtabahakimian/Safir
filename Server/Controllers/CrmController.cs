@@ -709,6 +709,115 @@ namespace Safir.Server.Controllers
             }
         }
 
+        [HttpGet("notes")]
+        public async Task<ActionResult<List<CrmNoteDto>>> GetNotes([FromQuery] bool onlyPending = true)
+        {
+            try
+            {
+                int currentUserId = GetCurrentUserId();
+                var whereSql = onlyPending ? "WHERE Ndone = 0 AND (userid = @UserId OR userid IS NULL)" : "WHERE (userid = @UserId OR userid IS NULL)";
+                var sql = $"SELECT TOP 100 idd, Note, Ndate, Ntime, userid, Ndone FROM Notes {whereSql} ORDER BY idd DESC";
+
+                var notes = (await _dbService.DoGetDataSQLAsync<CrmNoteDto>(sql, new { UserId = currentUserId })).ToList();
+                return Ok(notes);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting CRM notes");
+                return StatusCode(500, "خطا در دریافت یادداشت‌ها");
+            }
+        }
+
+        [HttpPost("save-note")]
+        public async Task<ActionResult<int>> SaveNote([FromBody] CrmNoteDto note)
+        {
+            try
+            {
+                int currentUserId = GetCurrentUserId();
+                note.userid = note.userid ?? currentUserId;
+                if (note.Ndate == null || note.Ndate <= 0)
+                {
+                    note.Ndate = int.TryParse(CL_Tarikh.Current_FullDate, out var nd) ? nd : null;
+                }
+                if (string.IsNullOrWhiteSpace(note.Ntime))
+                {
+                    note.Ntime = DateTime.Now.ToString("HH:mm");
+                }
+
+                if (note.idd == null || note.idd <= 0)
+                {
+                    var sql = @"
+                        INSERT INTO Notes (Note, Ndate, Ntime, userid, Ndone)
+                        VALUES (@Note, @Ndate, @Ntime, @userid, @Ndone);
+                        SELECT CAST(SCOPE_IDENTITY() AS INT);";
+                    var newId = (await _dbService.DoGetDataSQLAsync<int>(sql, note)).FirstOrDefault();
+                    return Ok(newId);
+                }
+                else
+                {
+                    var sql = "UPDATE Notes SET Note = @Note, Ndate = @Ndate, Ntime = @Ntime, Ndone = @Ndone WHERE idd = @idd";
+                    await _dbService.DoExecuteSQLAsync(sql, note);
+                    return Ok(note.idd.Value);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error saving CRM note");
+                return StatusCode(500, "خطا در ذخیره‌سازی یادداشت");
+            }
+        }
+
+        [HttpPost("toggle-note")]
+        public async Task<ActionResult<bool>> ToggleNote([FromQuery] int noteId, [FromQuery] bool done)
+        {
+            try
+            {
+                var sql = "UPDATE Notes SET Ndone = @Done WHERE idd = @Id";
+                var rows = await _dbService.DoExecuteSQLAsync(sql, new { Done = done ? 1 : 0, Id = noteId });
+                return Ok(rows > 0);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error toggling note status {NoteId}", noteId);
+                return StatusCode(500, "خطا در تغییر وضعیت یادداشت");
+            }
+        }
+
+        [HttpDelete("notes/{id}")]
+        public async Task<ActionResult<bool>> DeleteNote(int id)
+        {
+            try
+            {
+                var rows = await _dbService.DoExecuteSQLAsync("DELETE FROM Notes WHERE idd = @Id", new { Id = id });
+                return Ok(rows > 0);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error deleting CRM note {Id}", id);
+                return StatusCode(500, "خطا در حذف یادداشت");
+            }
+        }
+
+        [HttpPost("send-sms")]
+        public async Task<ActionResult<bool>> SendSms([FromBody] CrmSendSmsRequestDto request, [FromServices] ISmsService smsService)
+        {
+            try
+            {
+                if (string.IsNullOrWhiteSpace(request.Mobile) || string.IsNullOrWhiteSpace(request.Message))
+                {
+                    return BadRequest("شماره موبایل و متن پیامک الزامی است.");
+                }
+
+                var res = await smsService.SendSmsAsync(request.Mobile.Trim(), request.Message.Trim());
+                return Ok(res.IsSuccess);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error sending SMS in CRM");
+                return StatusCode(500, "خطا در ارسال پیامک");
+            }
+        }
+
         private async Task<Dictionary<int, string>> GetStatusListInternal()
         {
             var dict = new Dictionary<int, string>();

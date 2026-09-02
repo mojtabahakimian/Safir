@@ -63,19 +63,35 @@
                 </MudItem>
 
                 <MudItem xs="12" sm="6">
+                    <MudTextField @bind-Value="Company.PERNUM"
+                                  Label="تعداد پرسنل"
+                                  Variant="Variant.Outlined" />
+                </MudItem>
+                <MudItem xs="12" sm="6">
+                    <MudTextField @bind-Value="Company.STATUS_FACT"
+                                  Label="وضعیت کارخانه / نوع مشتری"
+                                  Variant="Variant.Outlined" />
+                </MudItem>
+
+                <MudItem xs="12" sm="6">
                     <MudTextField @bind-Value="Company.PRODUCTS"
                                   Label="محصولات / زمینه فعالیت"
                                   Variant="Variant.Outlined" />
                 </MudItem>
                 <MudItem xs="12" sm="6">
                     <MudTextField @bind-Value="Company.SOFTWARE"
-                                  Label="نرم‌افزار فعلی"
+                                  Label="سابقه کار / نرم‌افزار فعلی"
                                   Variant="Variant.Outlined" />
                 </MudItem>
 
                 <MudItem xs="12" sm="6">
                     <MudTextField @bind-Value="Company.ACCOUNTANT"
                                   Label="نام حسابدار"
+                                  Variant="Variant.Outlined" />
+                </MudItem>
+                <MudItem xs="12" sm="6">
+                    <MudTextField @bind-Value="Company.ESP_PERSON"
+                                  Label="اشخاص ذی‌نفوذ / رابط کلیدی"
                                   Variant="Variant.Outlined" />
                 </MudItem>
                 <MudItem xs="12" sm="6">
