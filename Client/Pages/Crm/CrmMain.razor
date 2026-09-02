@@ -1,0 +1,501 @@
+@page "/crm"
+@page "/crm/main"
+@using MudBlazor
+@using Safir.Shared.Models.Crm
+@using Safir.Client.Services
+@using Safir.Client.Pages.Crm.Components
+@inject CrmApiService CrmApi
+@inject IDialogService DialogService
+@inject ISnackbar Snackbar
+@inject NavigationManager Navigation
+
+<MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="mt-4 mb-8">
+    <!-- هدر صفحه و دکمه‌های عملیاتی -->
+    <MudPaper Elevation="3" Class="pa-4 mb-4 rounded-lg">
+        <div class="d-flex flex-wrap justify-space-between align-center gap-3">
+            <div class="d-flex align-center gap-2">
+                <MudIcon Icon="@Icons.Material.Filled.SupportAgent" Size="Size.Large" Color="Color.Primary" />
+                <div>
+                    <MudText Typo="Typo.h5" Class="font-weight-bold">مدیریت ارتباط با مشتریان (CRM)</MudText>
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">پیگیری هوشمند مشتریان، مذاکرات و جلسات</MudText>
+                </div>
+            </div>
+            <div class="d-flex gap-2">
+                <MudButton Variant="Variant.Outlined" Color="Color.Info" StartIcon="@Icons.Material.Filled.Dashboard" OnClick="@(() => Navigation.NavigateTo("/crm/dashboard"))">
+                    داشبورد آمار
+                </MudButton>
+                <MudButton Variant="Variant.Outlined" Color="Color.Secondary" StartIcon="@Icons.Material.Filled.Contacts" OnClick="@(() => Navigation.NavigateTo("/crm/phonebook"))">
+                    دفترچه تلفن
+                </MudButton>
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.AddBusiness" OnClick="AddNewCompany">
+                    مشتری جدید
+                </MudButton>
+            </div>
+        </div>
+    </MudPaper>
+
+    <!-- نوار وضعیت‌ها و فیلترهای سریع -->
+    <MudPaper Elevation="2" Class="pa-3 mb-4 rounded-lg">
+        <div class="d-flex flex-wrap align-center gap-2">
+            <MudChip T="string" Color="@(_selectedStatus == null ? Color.Primary : Color.Default)"
+                     Variant="@(_selectedStatus == null ? Variant.Filled : Variant.Outlined)"
+                     OnClick="@(() => SetStatusFilter(null))">
+                همه وضعیت‌ها (@_companies.Count)
+            </MudChip>
+            @foreach (var st in _statusList)
+            {
+                <MudChip T="string" Color="@(_selectedStatus == st.Code ? Color.Primary : Color.Default)"
+                         Variant="@(_selectedStatus == st.Code ? Variant.Filled : Variant.Outlined)"
+                         OnClick="@(() => SetStatusFilter(st.Code))">
+                    @st.Name (@st.Count)
+                </MudChip>
+            }
+        </div>
+    </MudPaper>
+
+    <!-- نوار جستجو و فیلترهای پیشرفته -->
+    <MudPaper Elevation="1" Class="pa-3 mb-4 rounded-lg">
+        <MudGrid Spacing="2" AlignItems="Center">
+            <MudItem xs="12" sm="4" md="3">
+                <MudTextField @bind-Value="_filter.SearchTerm"
+                              Label="جستجو در نام، تلفن، آدرس، مدیر..."
+                              Variant="Variant.Outlined"
+                              Adornment="Adornment.Start"
+                              AdornmentIcon="@Icons.Material.Filled.Search"
+                              Immediate="true"
+                              DebounceInterval="300"
+                              OnDebounceIntervalElapsed="LoadCompanies"
+                              Clearable="true" />
+            </MudItem>
+            <MudItem xs="12" sm="3" md="2">
+                <MudTextField @bind-Value="_filter.City"
+                              Label="فیلتر شهر"
+                              Variant="Variant.Outlined"
+                              Immediate="true"
+                              DebounceInterval="300"
+                              OnDebounceIntervalElapsed="LoadCompanies"
+                              Clearable="true" />
+            </MudItem>
+            <MudItem xs="12" sm="3" md="2">
+                <MudCheckBox @bind-Value="_filter.OnlyMyCompanies"
+                             Label="فقط شرکت‌های من"
+                             Color="Color.Primary"
+                             T="bool"
+                             CheckedChanged="OnOnlyMyCompaniesChanged" />
+            </MudItem>
+            <MudItem xs="12" sm="3" md="3">
+                <MudCheckBox @bind-Value="_filter.OnlyWithUpcomingFollowUps"
+                             Label="فقط دارای پیگیری‌های آتی"
+                             Color="Color.Secondary"
+                             T="bool"
+                             CheckedChanged="OnOnlyUpcomingChanged" />
+            </MudItem>
+            <MudItem xs="12" sm="2" md="2" Class="d-flex justify-end">
+                <MudIconButton Icon="@Icons.Material.Filled.Refresh" Color="Color.Primary" OnClick="RefreshData" />
+            </MudItem>
+        </MudGrid>
+    </MudPaper>
+
+    <!-- بخش اصلی Master-Detail -->
+    <MudGrid Spacing="3">
+        <!-- لیست شرکت‌ها (Master) -->
+        <MudItem xs="12" lg="7">
+            <MudPaper Elevation="2" Class="pa-3 rounded-lg">
+                <MudText Typo="Typo.subtitle1" Class="font-weight-bold mb-2" Color="Color.Primary">
+                    <MudIcon Icon="@Icons.Material.Filled.ListAlt" Class="me-1" />
+                    لیست شرکت‌ها (@_filteredCompanies.Count)
+                </MudText>
+
+                @if (_loadingCompanies)
+                {
+                    <div class="d-flex justify-center pa-6">
+                        <MudProgressCircular Indeterminate="true" Color="Color.Primary" />
+                    </div>
+                }
+                else
+                {
+                    <MudTable T="CrmCompanyDto"
+                              Items="_filteredCompanies"
+                              Dense="true"
+                              Hover="true"
+                              Bordered="true"
+                              Striped="true"
+                              SelectedItem="_selectedCompany"
+                              SelectedItemChanged="OnCompanySelected"
+                              RowClassFunc="GetRowClass"
+                              Elevation="0">
+                        <HeaderContent>
+                            <MudTh>کد</MudTh>
+                            <MudTh>نام شرکت / فروشگاه</MudTh>
+                            <MudTh>مدیر</MudTh>
+                            <MudTh>تلفن / همراه</MudTh>
+                            <MudTh>شهر</MudTh>
+                            <MudTh>وضعیت</MudTh>
+                            <MudTh>پیگیری‌ها</MudTh>
+                            <MudTh>عملیات</MudTh>
+                        </HeaderContent>
+                        <RowTemplate>
+                            <MudTd DataLabel="کد">@context.ID</MudTd>
+                            <MudTd DataLabel="نام شرکت">
+                                <b>@context.COMPANY_NAME</b>
+                            </MudTd>
+                            <MudTd DataLabel="مدیر">@context.MANAGER</MudTd>
+                            <MudTd DataLabel="تلفن">
+                                <div>@context.FACT_TEL</div>
+                                <div class="text-muted small">@context.MOBILE</div>
+                            </MudTd>
+                            <MudTd DataLabel="شهر">@context.CITY</MudTd>
+                            <MudTd DataLabel="وضعیت">
+                                <MudChip T="string" Size="Size.Small" Color="GetStatusColor(context.STATUS)">
+                                    @(context.StatusTitle ?? $"وضعیت {context.STATUS}")
+                                </MudChip>
+                            </MudTd>
+                            <MudTd DataLabel="پیگیری‌ها">
+                                <MudBadge Content="@(context.IDCN ?? 0)" Color="Color.Info" Overlap="true" Class="mx-2">
+                                    <MudIcon Icon="@Icons.Material.Filled.History" Size="Size.Small" />
+                                </MudBadge>
+                            </MudTd>
+                            <MudTd DataLabel="عملیات">
+                                <div class="d-flex">
+                                    <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small" Color="Color.Primary" OnClick="@(() => EditCompany(context))" />
+                                    <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error" OnClick="@(() => DeleteCompany(context))" />
+                                </div>
+                            </MudTd>
+                        </RowTemplate>
+                        <PagerContent>
+                            <MudTablePager PageSizeOptions="new int[] { 10, 25, 50, 100 }" />
+                        </PagerContent>
+                    </MudTable>
+                }
+            </MudPaper>
+        </MudItem>
+
+        <!-- لیست رویدادها و پیگیری‌ها (Detail) -->
+        <MudItem xs="12" lg="5">
+            <MudPaper Elevation="2" Class="pa-3 rounded-lg">
+                <div class="d-flex justify-space-between align-center mb-3">
+                    <MudText Typo="Typo.subtitle1" Class="font-weight-bold" Color="Color.Secondary">
+                        <MudIcon Icon="@Icons.Material.Filled.HistoryEdu" Class="me-1" />
+                        سوابق و مذاکرات @(_selectedCompany != null ? $"({_selectedCompany.COMPANY_NAME})" : "")
+                    </MudText>
+                    @if (_selectedCompany != null)
+                    {
+                        <MudButton Variant="Variant.Filled" Color="Color.Secondary" Size="Size.Small" StartIcon="@Icons.Material.Filled.AddComment" OnClick="AddNewEvent">
+                            ثبت پیگیری
+                        </MudButton>
+                    }
+                </div>
+
+                @if (_selectedCompany == null)
+                {
+                    <MudAlert Severity="Severity.Info" Variant="Variant.Outlined">
+                        برای مشاهده تاریخچه و ثبت پیگیری، لطفاً یک شرکت را از جدول انتخاب کنید.
+                    </MudAlert>
+                }
+                else if (_loadingEvents)
+                {
+                    <div class="d-flex justify-center pa-6">
+                        <MudProgressCircular Indeterminate="true" Color="Color.Secondary" />
+                    </div>
+                }
+                else if (_events.Count == 0)
+                {
+                    <MudAlert Severity="Severity.Normal" Variant="Variant.Outlined">
+                        تاکنون هیچ پیگیری یا مذاکره‌ای برای این مشتری ثبت نشده است.
+                    </MudAlert>
+                }
+                else
+                {
+                    <div style="max-height: 600px; overflow-y: auto;">
+                        <MudTimeline TimelineOrientation="TimelineOrientation.Vertical" TimelinePosition="TimelinePosition.Start">
+                            @foreach (var ev in _events)
+                            {
+                                <MudTimelineItem Color="@(ev.MITING == -1 || ev.MITING == 1 ? Color.Warning : Color.Info)" Size="Size.Small">
+                                    <ItemContent>
+                                        <MudCard Elevation="1" Class="mb-2">
+                                            <MudCardHeader>
+                                                <CardHeaderContent>
+                                                    <div class="d-flex justify-space-between align-center">
+                                                        <MudText Typo="Typo.subtitle2" Class="font-weight-bold">
+                                                            @if (ev.MITING == -1 || ev.MITING == 1)
+                                                            {
+                                                                <MudChip T="string" Color="Color.Warning" Size="Size.Small" Class="me-1">جلسه حضوری</MudChip>
+                                                            }
+                                                            وضعیت: @(ev.StatusTitle ?? $"وضعیت {ev.STATUS}")
+                                                        </MudText>
+                                                        <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                                            تاریخ: @ev.INFO_DATE | ساعت: @FormatTime(ev.INFO_TIME)
+                                                        </MudText>
+                                                    </div>
+                                                </CardHeaderContent>
+                                                <CardHeaderActions>
+                                                    <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error" OnClick="@(() => DeleteEvent(ev))" />
+                                                </CardHeaderActions>
+                                            </MudCardHeader>
+                                            <MudCardContent Class="pt-0">
+                                                <MudText Typo="Typo.body2">@ev.COMMENT</MudText>
+                                                @if (ev.NEXT_DATE.HasValue && ev.NEXT_DATE.Value > 0)
+                                                {
+                                                    <div class="mt-2 pa-2 rounded" style="background-color: var(--mud-palette-background-grey);">
+                                                        <MudText Typo="Typo.caption" Color="Color.Primary" Class="font-weight-bold">
+                                                            <MudIcon Icon="@Icons.Material.Filled.Alarm" Size="Size.Small" Class="vertical-align-middle me-1" />
+                                                            پیگیری بعدی: @ev.NEXT_DATE @(ev.NEXT_TIME.HasValue ? $"ساعت {FormatTime(ev.NEXT_TIME)}" : "")
+                                                        </MudText>
+                                                    </div>
+                                                }
+                                                @if (!string.IsNullOrWhiteSpace(ev.SALER) || !string.IsNullOrWhiteSpace(ev.BUYER))
+                                                {
+                                                    <div class="d-flex gap-4 mt-1 text-muted small">
+                                                        @if (!string.IsNullOrWhiteSpace(ev.SALER)) { <span>فروشنده: @ev.SALER</span> }
+                                                        @if (!string.IsNullOrWhiteSpace(ev.BUYER)) { <span>خریدار: @ev.BUYER</span> }
+                                                    </div>
+                                                }
+                                            </MudCardContent>
+                                        </MudCard>
+                                    </ItemContent>
+                                </MudTimelineItem>
+                            }
+                        </MudTimeline>
+                    </div>
+                }
+            </MudPaper>
+        </MudItem>
+    </MudGrid>
+</MudContainer>
+
+@code {
+    private List<CrmCompanyDto> _companies = new();
+    private List<CrmCompanyDto> _filteredCompanies = new();
+    private List<CrmEventDto> _events = new();
+    private List<CrmStatusDto> _statusList = new();
+
+    private CrmCompanyDto? _selectedCompany;
+    private CrmFilterDto _filter = new() { OnlyMyCompanies = true };
+    private int? _selectedStatus;
+
+    private bool _loadingCompanies = true;
+    private bool _loadingEvents;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadStatusList();
+        await LoadCompanies();
+    }
+
+    private async Task LoadStatusList()
+    {
+        try
+        {
+            _statusList = await CrmApi.GetStatusListAsync();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"خطا در دریافت وضعیت‌ها: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task LoadCompanies()
+    {
+        _loadingCompanies = true;
+        try
+        {
+            _companies = await CrmApi.GetCompaniesAsync(_filter);
+            ApplyLocalFilter();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"خطا در دریافت شرکت‌ها: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _loadingCompanies = false;
+        }
+    }
+
+    private void ApplyLocalFilter()
+    {
+        if (_selectedStatus.HasValue)
+        {
+            _filteredCompanies = _companies.Where(c => c.STATUS == _selectedStatus.Value).ToList();
+        }
+        else
+        {
+            _filteredCompanies = _companies.ToList();
+        }
+
+        if (_selectedCompany != null && !_filteredCompanies.Any(c => c.ID == _selectedCompany.ID))
+        {
+            _selectedCompany = null;
+            _events.Clear();
+        }
+    }
+
+    private void SetStatusFilter(int? status)
+    {
+        _selectedStatus = status;
+        ApplyLocalFilter();
+    }
+
+    private async Task OnOnlyMyCompaniesChanged(bool val)
+    {
+        _filter.OnlyMyCompanies = val;
+        await LoadCompanies();
+    }
+
+    private async Task OnOnlyUpcomingChanged(bool val)
+    {
+        _filter.OnlyWithUpcomingFollowUps = val;
+        await LoadCompanies();
+    }
+
+    private async Task OnCompanySelected(CrmCompanyDto company)
+    {
+        _selectedCompany = company;
+        if (company?.ID != null)
+        {
+            _loadingEvents = true;
+            try
+            {
+                _events = await CrmApi.GetEventsByCompanyIdAsync(company.ID.Value);
+            }
+            finally
+            {
+                _loadingEvents = false;
+            }
+        }
+        else
+        {
+            _events.Clear();
+        }
+    }
+
+    private async Task AddNewCompany()
+    {
+        var parameters = new DialogParameters
+        {
+            ["Company"] = new CrmCompanyDto(),
+            ["StatusList"] = _statusList
+        };
+
+        var dialog = await DialogService.ShowAsync<CrmCompanyModal>("افزودن شرکت جدید", parameters);
+        var result = await dialog.Result;
+        if (result != null && !result.Canceled && result.Data is CrmCompanyDto newComp)
+        {
+            await RefreshData();
+            _selectedCompany = _companies.FirstOrDefault(c => c.ID == newComp.ID);
+            if (_selectedCompany != null) await OnCompanySelected(_selectedCompany);
+        }
+    }
+
+    private async Task EditCompany(CrmCompanyDto company)
+    {
+        var parameters = new DialogParameters
+        {
+            ["Company"] = company,
+            ["StatusList"] = _statusList
+        };
+
+        var dialog = await DialogService.ShowAsync<CrmCompanyModal>("ویرایش شرکت", parameters);
+        var result = await dialog.Result;
+        if (result != null && !result.Canceled)
+        {
+            await RefreshData();
+        }
+    }
+
+    private async Task DeleteCompany(CrmCompanyDto company)
+    {
+        if (company.ID == null) return;
+        bool? confirm = await DialogService.ShowMessageBox(
+            "حذف شرکت",
+            $"آیا از حذف شرکت «{company.COMPANY_NAME}» و کلیه سوابق پیگیری آن اطمینان دارید؟",
+            yesText: "بله، حذف شود", cancelText: "انصراف");
+
+        if (confirm == true)
+        {
+            var ok = await CrmApi.DeleteCompanyAsync(company.ID.Value);
+            if (ok)
+            {
+                Snackbar.Add("شرکت با موفقیت حذف شد.", Severity.Success);
+                await RefreshData();
+            }
+            else
+            {
+                Snackbar.Add("خطا در حذف شرکت.", Severity.Error);
+            }
+        }
+    }
+
+    private async Task AddNewEvent()
+    {
+        if (_selectedCompany?.ID == null) return;
+
+        var parameters = new DialogParameters
+        {
+            ["Event"] = new CrmEventDto { STATUS = _selectedCompany.STATUS },
+            ["CompanyName"] = _selectedCompany.COMPANY_NAME ?? string.Empty,
+            ["CompanyId"] = _selectedCompany.ID.Value,
+            ["StatusList"] = _statusList
+        };
+
+        var dialog = await DialogService.ShowAsync<CrmEventModal>("ثبت پیگیری جدید", parameters);
+        var result = await dialog.Result;
+        if (result != null && !result.Canceled && result.Data is CrmEventDto newEv)
+        {
+            await OnCompanySelected(_selectedCompany);
+            await RefreshData();
+        }
+    }
+
+    private async Task DeleteEvent(CrmEventDto ev)
+    {
+        if (ev.IDDE == null) return;
+        bool? confirm = await DialogService.ShowMessageBox(
+            "حذف پیگیری",
+            "آیا از حذف این رکورد پیگیری اطمینان دارید؟",
+            yesText: "بله، حذف شود", cancelText: "انصراف");
+
+        if (confirm == true)
+        {
+            var ok = await CrmApi.DeleteEventAsync(ev.IDDE.Value);
+            if (ok)
+            {
+                Snackbar.Add("پیگیری حذف شد.", Severity.Success);
+                if (_selectedCompany != null) await OnCompanySelected(_selectedCompany);
+                await RefreshData();
+            }
+        }
+    }
+
+    private async Task RefreshData()
+    {
+        await LoadStatusList();
+        await LoadCompanies();
+    }
+
+    private string GetRowClass(CrmCompanyDto item, int rowNumber)
+    {
+        if (_selectedCompany?.ID == item.ID) return "selected-row";
+        return string.Empty;
+    }
+
+    private Color GetStatusColor(int? status) => (status ?? 0) switch
+    {
+        1 => Color.Info,
+        2 => Color.Primary,
+        3 => Color.Success,
+        4 => Color.Warning,
+        5 => Color.Secondary,
+        6 => Color.Tertiary,
+        7 => Color.Dark,
+        8 => Color.Error,
+        _ => Color.Default
+    };
+
+    private string FormatTime(int? time)
+    {
+        if (!time.HasValue || time.Value <= 0) return "--:--";
+        var tStr = time.Value.ToString("D4");
+        return $"{tStr.Substring(0, 2)}:{tStr.Substring(2, 2)}";
+    }
+}

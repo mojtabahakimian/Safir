@@ -1,0 +1,196 @@
+@page "/crm/dashboard"
+@using MudBlazor
+@using Safir.Shared.Models.Crm
+@using Safir.Client.Services
+@inject CrmApiService CrmApi
+@inject ISnackbar Snackbar
+@inject NavigationManager Navigation
+
+<MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="mt-4 mb-8">
+    <!-- هدر صفحه -->
+    <MudPaper Elevation="3" Class="pa-4 mb-4 rounded-lg">
+        <div class="d-flex justify-space-between align-center">
+            <div class="d-flex align-center gap-2">
+                <MudIcon Icon="@Icons.Material.Filled.Analytics" Size="Size.Large" Color="Color.Primary" />
+                <div>
+                    <MudText Typo="Typo.h5" Class="font-weight-bold">داشبورد هوشمند CRM</MudText>
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">نمای کلی وضعیت مشتریان، پیگیری‌های امروز و جلسات</MudText>
+                </div>
+            </div>
+            <MudButton Variant="Variant.Outlined" Color="Color.Primary" StartIcon="@Icons.Material.Filled.ArrowBack" OnClick="@(() => Navigation.NavigateTo("/crm"))">
+                بازگشت به CRM
+            </MudButton>
+        </div>
+    </MudPaper>
+
+    @if (_loading)
+    {
+        <div class="d-flex justify-center pa-12">
+            <MudProgressCircular Indeterminate="true" Color="Color.Primary" Size="Size.Large" />
+        </div>
+    }
+    else
+    {
+        <!-- کارت‌های آمار کلیدی -->
+        <MudGrid Spacing="3" Class="mb-4">
+            <MudItem xs="12" sm="6" md="3">
+                <MudPaper Elevation="2" Class="pa-4 rounded-lg d-flex justify-space-between align-center">
+                    <div>
+                        <MudText Typo="Typo.subtitle2" Color="Color.Secondary">کل مشتریان ثبت‌شده</MudText>
+                        <MudText Typo="Typo.h4" Class="font-weight-bold" Color="Color.Primary">@_summary.TotalCompanies</MudText>
+                    </div>
+                    <MudAvatar Color="Color.Primary" Size="Size.Large">
+                        <MudIcon Icon="@Icons.Material.Filled.Business" Size="Size.Medium" />
+                    </MudAvatar>
+                </MudPaper>
+            </MudItem>
+
+            <MudItem xs="12" sm="6" md="3">
+                <MudPaper Elevation="2" Class="pa-4 rounded-lg d-flex justify-space-between align-center">
+                    <div>
+                        <MudText Typo="Typo.subtitle2" Color="Color.Secondary">پیگیری‌های امروز</MudText>
+                        <MudText Typo="Typo.h4" Class="font-weight-bold" Color="Color.Warning">@_summary.TodayFollowUps</MudText>
+                    </div>
+                    <MudAvatar Color="Color.Warning" Size="Size.Large">
+                        <MudIcon Icon="@Icons.Material.Filled.Today" Size="Size.Medium" />
+                    </MudAvatar>
+                </MudPaper>
+            </MudItem>
+
+            <MudItem xs="12" sm="6" md="3">
+                <MudPaper Elevation="2" Class="pa-4 rounded-lg d-flex justify-space-between align-center">
+                    <div>
+                        <MudText Typo="Typo.subtitle2" Color="Color.Secondary">پیگیری‌های معوق</MudText>
+                        <MudText Typo="Typo.h4" Class="font-weight-bold" Color="Color.Error">@_summary.OverdueFollowUps</MudText>
+                    </div>
+                    <MudAvatar Color="Color.Error" Size="Size.Large">
+                        <MudIcon Icon="@Icons.Material.Filled.WarningAmber" Size="Size.Medium" />
+                    </MudAvatar>
+                </MudPaper>
+            </MudItem>
+
+            <MudItem xs="12" sm="6" md="3">
+                <MudPaper Elevation="2" Class="pa-4 rounded-lg d-flex justify-space-between align-center">
+                    <div>
+                        <MudText Typo="Typo.subtitle2" Color="Color.Secondary">جلسات حضوری امروز</MudText>
+                        <MudText Typo="Typo.h4" Class="font-weight-bold" Color="Color.Success">@_summary.TodayMeetings</MudText>
+                    </div>
+                    <MudAvatar Color="Color.Success" Size="Size.Large">
+                        <MudIcon Icon="@Icons.Material.Filled.MeetingRoom" Size="Size.Medium" />
+                    </MudAvatar>
+                </MudPaper>
+            </MudItem>
+        </MudGrid>
+
+        <!-- تفکیک بر اساس وضعیت‌ها و پیگیری‌های آینده -->
+        <MudGrid Spacing="3">
+            <!-- تفکیک بر اساس وضعیت‌ها -->
+            <MudItem xs="12" md="6">
+                <MudPaper Elevation="2" Class="pa-4 rounded-lg">
+                    <MudText Typo="Typo.h6" Class="font-weight-bold mb-3" Color="Color.Primary">
+                        <MudIcon Icon="@Icons.Material.Filled.PieChart" Class="me-1" />
+                        تفکیک شرکت‌ها بر اساس وضعیت‌ها
+                    </MudText>
+
+                    <MudList T="string" Dense="true">
+                        @foreach (var st in _summary.StatusSummary)
+                        {
+                            <MudListItem Icon="@Icons.Material.Filled.Label" IconColor="Color.Primary">
+                                <div class="d-flex justify-space-between align-center w-100">
+                                    <MudText Typo="Typo.body2">@st.Name</MudText>
+                                    <div>
+                                        <MudChip T="string" Size="Size.Small" Color="Color.Primary" Variant="Variant.Filled">
+                                            @st.Count شرکت
+                                        </MudChip>
+                                    </div>
+                                </div>
+                            </MudListItem>
+                            <MudDivider />
+                        }
+                    </MudList>
+                </MudPaper>
+            </MudItem>
+
+            <!-- پیگیری‌ها و جلسات پیش‌رو -->
+            <MudItem xs="12" md="6">
+                <MudPaper Elevation="2" Class="pa-4 rounded-lg">
+                    <MudText Typo="Typo.h6" Class="font-weight-bold mb-3" Color="Color.Secondary">
+                        <MudIcon Icon="@Icons.Material.Filled.Upcoming" Class="me-1" />
+                        نزدیک‌ترین پیگیری‌ها و جلسات
+                    </MudText>
+
+                    @if (_summary.UpcomingEvents.Count == 0)
+                    {
+                        <MudAlert Severity="Severity.Normal" Variant="Variant.Outlined">
+                            هیچ پیگیری برای روزهای آینده ثبت نشده است.
+                        </MudAlert>
+                    }
+                    else
+                    {
+                        <MudTable Items="_summary.UpcomingEvents" Dense="true" Hover="true" Elevation="0">
+                            <HeaderContent>
+                                <MudTh>شرکت</MudTh>
+                                <MudTh>تاریخ تماس</MudTh>
+                                <MudTh>ساعت</MudTh>
+                                <MudTh>نوع</MudTh>
+                                <MudTh>توضیحات</MudTh>
+                            </HeaderContent>
+                            <RowTemplate>
+                                <MudTd DataLabel="شرکت"><b>@context.COMPANY_NAME</b></MudTd>
+                                <MudTd DataLabel="تاریخ">@context.NEXT_DATE</MudTd>
+                                <MudTd DataLabel="ساعت">@FormatTime(context.NEXT_TIME)</MudTd>
+                                <MudTd DataLabel="نوع">
+                                    @if (context.MITING == -1 || context.MITING == 1)
+                                    {
+                                        <MudChip T="string" Color="Color.Warning" Size="Size.Small">جلسه</MudChip>
+                                    }
+                                    else
+                                    {
+                                        <MudChip T="string" Color="Color.Info" Size="Size.Small">پیگیری</MudChip>
+                                    }
+                                </MudTd>
+                                <MudTd DataLabel="توضیحات">
+                                    <MudText Typo="Typo.caption">@context.COMMENT</MudText>
+                                </MudTd>
+                            </RowTemplate>
+                        </MudTable>
+                    }
+                </MudPaper>
+            </MudItem>
+        </MudGrid>
+    }
+</MudContainer>
+
+@code {
+    private CrmDashboardSummaryDto _summary = new();
+    private bool _loading = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadData();
+    }
+
+    private async Task LoadData()
+    {
+        _loading = true;
+        try
+        {
+            _summary = await CrmApi.GetDashboardSummaryAsync();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"خطا در بارگذاری آمار داشبورد: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private string FormatTime(int? time)
+    {
+        if (!time.HasValue || time.Value <= 0) return "--:--";
+        var tStr = time.Value.ToString("D4");
+        return $"{tStr.Substring(0, 2)}:{tStr.Substring(2, 2)}";
+    }
+}
