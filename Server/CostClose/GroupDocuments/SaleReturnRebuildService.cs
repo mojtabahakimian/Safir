@@ -448,20 +448,17 @@ END CATCH;";
         /// اجرا شود، این برگه‌ها را در محدوده‌ی خودشان می‌بیند و با تاریخ و
         /// نرخ درست دوباره ثبت می‌کند — نه فقط برای فروردین، برای هر ماهی.
         /// </summary>
+        /// <remarks>
+        /// خودِ منطق به <see cref="DriftedAccountingCleanup"/> منتقل شد تا
+        /// سرویس‌های دیگر هم بتوانند صدایش بزنند — نبودنش در بازسازیِ
+        /// «فروش» باعث شده بود مغایرتِ کد ۳۱۳۵/انبار۸۰۷ با هیچ بازسازی‌ای
+        /// رفع نشود.
+        /// </remarks>
         private static async Task CleanupDriftedAccountingAsync(
             IDatabaseService db, double tag, long dateFrom, long dateTo, SharedCtx c)
         {
-            var rows = await db.DoExecuteSQLAsync(
-                "DELETE d FROM dbo.DEED_DTL d " +
-                "JOIN dbo.DEED_HED h ON h.N_S = d.N_S " +
-                "JOIN dbo.HEAD_LST hl ON hl.NUMBER = d.NUMBER AND hl.TAG = @Tag " +
-                "WHERE d.TAG = @Tag " +
-                "  AND h.DATE_S BETWEEN @DateFrom AND @DateTo " +
-                "  AND hl.DATE_N NOT BETWEEN @DateFrom AND @DateTo",
-                new { Tag = tag, DateFrom = dateFrom, DateTo = dateTo });
-
-            if (rows > 0)
-                c.AddLog($"پاک‌سازی حسابداریِ قدیمی (TAG={tag}): {rows} ردیف که تاریخ برگه‌ی مبدأشان دیگر با تاریخ سند حسابداری نمی‌خواند حذف شد — با اجرای بازسازیِ ماهِ درست دوباره ثبت می‌شوند.");
+            var rows = await DriftedAccountingCleanup.RunAsync(db, tag, dateFrom, dateTo);
+            if (rows > 0) c.AddLog(DriftedAccountingCleanup.LogMessage(tag, rows));
         }
 
         // ═══════════════════════════════════════════════════════════════
@@ -856,7 +853,7 @@ END CATCH;";
                         batch.Append(';');
                     }
                     batch.Append("COMMIT TRANSACTION;");
-                    await ExecuteWithDeadlockRetryAsync(() => db.DoExecuteSQLAsync(batch.ToString()));
+                    await ExecuteWithDeadlockRetryAsync(() => db.DoExecuteSQLAsync(batch.ToString(), commandTimeout: CostCloseTuning.BatchTimeoutSeconds));
                 }
                 catch (Exception ex)
                 {
@@ -1279,7 +1276,7 @@ END CATCH;";
                         batch.Append(';');
                     }
                     batch.Append("COMMIT TRANSACTION;");
-                    await ExecuteWithDeadlockRetryAsync(() => db.DoExecuteSQLAsync(batch.ToString()));
+                    await ExecuteWithDeadlockRetryAsync(() => db.DoExecuteSQLAsync(batch.ToString(), commandTimeout: CostCloseTuning.BatchTimeoutSeconds));
                 }
                 catch (Exception ex)
                 {

@@ -340,6 +340,19 @@
                                        Title="@context.FixButtonText"
                                        OnClick="@(() => OpenAutoFix(context.ExceptionId))" />
                     }
+                    @* CHK-04 وقتی اصلاح خودکار ممکن نیست: کالا برای این ماه
+                       هیچ فرمولی ندارد، پس چیزی نیست که نسبت داده شود. راهِ
+                       باقی‌مانده کپیِ فرمول از ماهِ دیگر است — پیش‌فرض ماهِ
+                       قبل، با انتخاب کاربر. *@
+                    @if (context.RuleCode == "CHK-04" && !context.CanAutoFix
+                         && !context.IsResolved && context.Code is not null
+                         && Access.CanRun(CostForms.ActAutoFix))
+                    {
+                        <MudIconButton Icon="@Icons.Material.Filled.ContentCopy"
+                                       Size="Size.Small" Color="Color.Primary"
+                                       Title="کپی فرمول از ماه دیگر"
+                                       OnClick="@(() => OpenFormulaCopy(context))" />
+                    }
                     @if (context.RuleCode == "CHK-15" && !context.IsResolved
                          && Access.CanRun(CostForms.ActAutoFix))
                     {
@@ -565,10 +578,20 @@
     private async Task OpenAutoFix(long? exceptionId)
     {
         // گام ۱ — پیش‌نمایش
+        //
+        // ⚠️ RunId باید فرستاده شود: رویه با شرطِ
+        //     ISNULL(e.RunId,-1) = ISNULL(@RunId,-1)
+        // استثناها را انتخاب می‌کند، پس با RunIdِ تهی فقط استثناهایی پیدا
+        // می‌شوند که خودشان RunId ندارند. وقتی کاربر از داخل یک اجرا وارد
+        // شده (?runId=…)، استثنا RunId دارد و بدون این، هیچ سطری پیدا
+        // نمی‌شد و دکمه بی‌صدا «موردی برای اصلاح یافت نشد» می‌گفت.
+        // نمونه‌ی واقعی: تیر ۱۴۰۵، کد ۳۵۵۹، استثنا ۱۸۶۳۰ در اجرای ۹ —
+        // درحالی‌که خودِ رویه با پارامتر درست، برگه ۲۲۹ را بی‌مشکل اصلاح
+        // می‌کرد.
         var preview = await Api.FixMissingFormulaAsync(new AutoFixRequest
         {
             PeriodMonth = _month, DateFrom = DateFrom, DateTo = DateTo,
-            ExceptionId = exceptionId, WhatIf = true
+            RunId = RunId, ExceptionId = exceptionId, WhatIf = true
         });
 
         if (preview is null || preview.RowCount == 0)
@@ -597,7 +620,7 @@
             var res = await Api.FixMissingFormulaAsync(new AutoFixRequest
             {
                 PeriodMonth = _month, DateFrom = DateFrom, DateTo = DateTo,
-                ExceptionId = exceptionId, WhatIf = false
+                RunId = RunId, ExceptionId = exceptionId, WhatIf = false
             });
 
             Snackbar.Add(res?.Message ?? "انجام شد", Severity.Success);
@@ -605,6 +628,29 @@
         }
         catch (Exception ex) { Snackbar.Add(ex.Message, Severity.Error); }
         finally { _busy = false; }
+    }
+
+    // ───────── کپی فرمول از ماه دیگر (CHK-04 بدون فرمول ماه) ─────────
+
+    private async Task OpenFormulaCopy(CostExceptionDto ex)
+    {
+        var parameters = new DialogParameters
+        {
+            [nameof(FormulaCopyDialog.Code)]        = ex.Code!.Value,
+            [nameof(FormulaCopyDialog.ItemName)]    = ex.ItemName,
+            [nameof(FormulaCopyDialog.Month)]       = _month,
+            [nameof(FormulaCopyDialog.DateFrom)]    = DateFrom,
+            [nameof(FormulaCopyDialog.DateTo)]      = DateTo,
+            [nameof(FormulaCopyDialog.RunId)]       = RunId,
+            [nameof(FormulaCopyDialog.ExceptionId)] = (long?)ex.ExceptionId
+        };
+
+        var dlg = await Dialog.ShowAsync<FormulaCopyDialog>(
+            "کپی فرمول از ماه دیگر", parameters,
+            new DialogOptions { MaxWidth = MaxWidth.Medium, FullWidth = true });
+
+        var res = await dlg.Result;
+        if (res is { Canceled: false }) await Load();
     }
 
     // ───────── بازسازی نرخ (CHK-09) ─────────
@@ -885,7 +931,13 @@
 
     private async Task OpenAcceptedExceptions()
     {
-        var dlg = await Dialog.ShowAsync<AcceptedExceptionsDialog>("استثناهای پذیرفته‌شده");
+        // بدون DialogOptions، MudBlazor پیش‌فرضِ Small (۶۰۰px) می‌گیرد — برای
+        // جدولِ شش‌ستونیِ این دیالوگ کم است و هر سلول به سه‌چهار خط می‌شکند
+        // («پذیرش دائمی دسته‌جمعی از صفحه مغایرت‌ها» در چهار خط، حتی
+        // «CHK-17» در دو خط).
+        var dlg = await Dialog.ShowAsync<AcceptedExceptionsDialog>(
+            "استثناهای پذیرفته‌شده",
+            new DialogOptions { MaxWidth = MaxWidth.Large, FullWidth = true });
         var result = await dlg.Result;
 
         if (result is { Canceled: false })

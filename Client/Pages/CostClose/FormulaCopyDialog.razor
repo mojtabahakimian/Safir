@@ -1,0 +1,195 @@
+@using Safir.Shared.Models.CostClose
+@inject CostCloseApiService Api
+@inject ISnackbar Snackbar
+
+@* انتخاب فرمول برای کالایی که در ماهِ جاری هیچ فرمولی ندارد (CHK-04).
+
+   قاعده‌ی صاحب پروژه: فرمولِ ماه قبل پیشنهاد شود؛ اگر ماه قبل نداشت،
+   همه‌ی فرمول‌های آن کالا بدون توجه به ماه فهرست شوند و کاربر انتخاب کند.
+
+   چرا «کپی» و نه فقط «نسبت دادن»: خودِ شرطِ CHK-04 این است که برگه به
+   فرمولی با ماهِ برابرِ ماهِ جاری وصل باشد. وصل‌کردن به فرمولِ ماه دیگر
+   مغایرت را رفع نمی‌کند و S11 هم نرخِ ماه را رویش منتشر نمی‌کند. *@
+
+<MudDialog>
+    <DialogContent>
+        @if (_busy && _options is null)
+        {
+            <MudProgressLinear Indeterminate Color="Color.Primary" Class="mb-3" />
+            <MudText Typo="Typo.body2">خواندن فرمول‌های این کالا…</MudText>
+        }
+        else if (_options is { Count: 0 })
+        {
+            <MudAlert Severity="Severity.Warning" Dense>
+                این کالا در هیچ ماهی فرمول ندارد — چیزی برای کپی وجود ندارد.
+                فرمولش باید از ابتدا تعریف شود.
+            </MudAlert>
+        }
+        else if (_options is not null)
+        {
+            <MudText Typo="Typo.body2" Class="mb-1">
+                <b>@ItemName</b> (@Code) برای ماه @PersianMonth(Month) فرمولی ندارد.
+            </MudText>
+            <MudText Typo="Typo.caption" Class="mud-text-secondary mb-3">
+                یکی از فرمول‌های زیر به ماه @PersianMonth(Month) کپی می‌شود و برگه‌های
+                تولید به نسخه‌ی تازه وصل می‌شوند. فرمول اصلی دست نمی‌خورد.
+            </MudText>
+
+            <MudSimpleTable Dense Style="overflow-x:auto">
+                <thead>
+                    <tr>
+                        <th style="width:36px"></th>
+                        <th>ماه</th>
+                        <th>شماره فرمول</th>
+                        <th>تاریخ فعال‌سازی</th>
+                        <th style="text-align:left">ردیف</th>
+                        <th style="text-align:left">دستمزد</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var o in _options)
+                    {
+                        <tr class="@(o.Fnumb == _picked ? "cc-row-sel" : "")">
+                            <td>
+                                <MudIconButton Size="Size.Small"
+                                               Color="@(o.Fnumb == _picked ? Color.Primary : Color.Default)"
+                                               Icon="@(o.Fnumb == _picked
+                                                       ? Icons.Material.Filled.CheckCircle
+                                                       : Icons.Material.Filled.RadioButtonUnchecked)"
+                                               OnClick="@(() => _picked = o.Fnumb)" />
+                            </td>
+                            <td>
+                                @PersianMonth((byte)o.Mah)
+                                @if (o.IsPrevMonth)
+                                {
+                                    <MudChip Size="Size.Small" Color="Color.Success" Variant="Variant.Text">
+                                        ماه قبل
+                                    </MudChip>
+                                }
+                                @if (!o.EverUsed)
+                                {
+                                    <MudChip Size="Size.Small" Color="Color.Warning" Variant="Variant.Text"
+                                             Title="هیچ برگه‌ی تولیدی تا حالا به این فرمول وصل نشده">
+                                        بی‌استفاده
+                                    </MudChip>
+                                }
+                            </td>
+                            <td><span class="cc-num">@o.Fnumb</span></td>
+                            <td><span class="cc-num">@FormatDate(o.DateActiv)</span></td>
+                            <td style="text-align:left"><span class="cc-num">@o.LineCount</span></td>
+                            <td style="text-align:left"><span class="cc-num">@o.Wage.ToString("N0")</span></td>
+                        </tr>
+                    }
+                </tbody>
+            </MudSimpleTable>
+
+            @if (_preview is not null)
+            {
+                <MudAlert Severity="Severity.Info" Dense Class="mt-3">
+                    @_preview.RowCount برگه‌ی تولید به فرمول تازه وصل می‌شود.
+                    پس از اصلاح، خروج مواد باید بازسازی شود.
+                </MudAlert>
+            }
+
+            @* ⚠️ دستمزدِ فرمولِ مبدأ عیناً کپی می‌شود و دست‌کاری نمی‌شود؛
+               S07B بعداً نرخِ واقعیِ ماه را رویش می‌نشاند. این را می‌گوییم
+               چون عددِ ستون «دستمزد» ممکن است قدیمی به نظر برسد. *@
+            <MudText Typo="Typo.caption" Class="mud-text-secondary mt-2">
+                دستمزد و سربار عیناً از فرمول مبدأ کپی می‌شوند و در گام
+                همگام‌سازی نرخ دستمزد (S07B) با نرخ واقعی همین ماه جایگزین می‌گردند.
+            </MudText>
+        }
+    </DialogContent>
+
+    <DialogActions>
+        <MudButton OnClick="Cancel">انصراف</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary"
+                   Disabled="@(_busy || _picked is null)"
+                   OnClick="Apply">
+            کپی و اتصال
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private MudDialogInstance MudDialog { get; set; } = default!;
+
+    [Parameter] public long    Code        { get; set; }
+    [Parameter] public string? ItemName    { get; set; }
+    [Parameter] public byte    Month       { get; set; }
+    [Parameter] public long    DateFrom    { get; set; }
+    [Parameter] public long    DateTo      { get; set; }
+    [Parameter] public int?    RunId       { get; set; }
+    [Parameter] public long?   ExceptionId { get; set; }
+
+    private List<FormulaOptionDto>? _options;
+    private CopyFormulaResultDto?   _preview;
+    private int?  _picked;
+    private bool  _busy;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _busy = true;
+        try
+        {
+            _options = await Api.GetFormulaOptionsAsync(Code, Month);
+
+            // پیش‌فرض همان اولین سطر است — رویه از قبل ماهِ قبل را اول
+            // چیده (نگاه کنید CC_sp_FormulaOptions)، پس اینجا دوباره
+            // مرتب‌سازی نمی‌کنیم تا یک منطقِ رتبه‌بندی بیشتر نداشته باشیم.
+            _picked = _options.FirstOrDefault()?.Fnumb;
+
+            if (_picked is not null) await LoadPreviewAsync();
+        }
+        finally { _busy = false; }
+    }
+
+    private async Task LoadPreviewAsync()
+    {
+        _preview = await Api.CopyFormulaAsync(BuildRequest(whatIf: true));
+    }
+
+    private CopyFormulaRequest BuildRequest(bool whatIf) => new()
+    {
+        Code        = Code,
+        PeriodMonth = Month,
+        SourceFnumb = _picked!.Value,
+        DateFrom    = DateFrom,
+        DateTo      = DateTo,
+        RunId       = RunId,
+        ExceptionId = ExceptionId,
+        WhatIf      = whatIf
+    };
+
+    private async Task Apply()
+    {
+        _busy = true;
+        try
+        {
+            var res = await Api.CopyFormulaAsync(BuildRequest(whatIf: false));
+
+            if (res is null || res.RowCount == 0)
+            {
+                Snackbar.Add(res?.Message ?? "کپی انجام نشد.", Severity.Error);
+                return;
+            }
+
+            Snackbar.Add(res.Message, Severity.Success);
+            MudDialog.Close(DialogResult.Ok(true));
+        }
+        finally { _busy = false; }
+    }
+
+    private void Cancel() => MudDialog.Cancel();
+
+    private static string FormatDate(long? d)
+        => d is null or 0 ? "—" : $"{d / 10000}/{d / 100 % 100:00}/{d % 100:00}";
+
+    private static string PersianMonth(byte m) => m switch
+    {
+        1 => "فروردین", 2 => "اردیبهشت", 3 => "خرداد",  4 => "تیر",
+        5 => "مرداد",   6 => "شهریور",   7 => "مهر",    8 => "آبان",
+        9 => "آذر",     10 => "دی",      11 => "بهمن",  12 => "اسفند",
+        _ => $"ماه {m}"
+    };
+}

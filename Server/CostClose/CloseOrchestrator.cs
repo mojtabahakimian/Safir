@@ -23,6 +23,25 @@ namespace Safir.Server.CostClose
 
         public required Func<string, int, string, Task> ReportProgress { get; init; }
         public required CancellationToken Ct { get; init; }
+
+        /// <summary>
+        /// این اجرا فقط باید کالاهایی را بازسازی کند که نرخشان می‌تواند از
+        /// دور قبل عوض شده باشد (کالاهای فرمول‌دار)، نه کل کاردکس.
+        ///
+        /// چرا درست است: بین دورهای حلقه‌ی همگرایی S07A↔S11، گام S07 دیگر
+        /// اجرا نمی‌شود، پس هیچ ردیف خروجی تازه‌ای با نرخ موقتِ ۱ ساخته
+        /// نمی‌شود. تنها چیزی که بین دو دور تکان می‌خورد بهای رسیدهای تولید
+        /// است، و آن فقط برای کالایی معنا دارد که فرمول دارد. میانگین یک
+        /// مادهٔ خریدنی بعد از پاس اول ثابت است.
+        ///
+        /// اندازه‌گیریِ اجرای ۷: S07A هر ۱۸۳ بار کل ۸۱۹ کالا و ۸۷٬۷۲۶ ردیف
+        /// را از نو ساخت، درحالی‌که فقط ~۱۰۷ کالا فرمول دارند — یعنی حدود
+        /// ۸۷٪ کار هر پاس روی کالاهایی بود که اصلاً نمی‌توانستند عوض شوند.
+        ///
+        /// فقط گام‌هایی که خودشان دامنه‌ی کار را از کالا می‌گیرند به این نگاه
+        /// می‌کنند؛ بقیه بی‌تفاوت‌اند. نگاه کنید S07A_RebuildAverageRate.
+        /// </summary>
+        public bool NarrowToFormulaItems { get; init; }
     }
 
     public sealed record StepResult(
@@ -101,8 +120,15 @@ namespace Safir.Server.CostClose
             _logger    = logger;
         }
 
-        public async Task RunAsync(CostCloseJob job, CancellationToken ct)
+        public async Task RunAsync(CostCloseJob job, CancellationToken appToken)
         {
+            // توکنِ ورودی، توکنِ خاموش شدنِ برنامه است. گام‌ها باید توکنی
+            // بگیرند که کلیدِ توقفِ کاربر هم آن را لغو کند — وگرنه گامی مثل
+            // S07A که خودش ct را چک می‌کند (و تا ۷۳ ثانیه طول می‌کشد) لغو را
+            // نمی‌بیند و دکمه‌ی توقف بی‌اثر به‌نظر می‌رسد.
+            using var runCts = _queue.RegisterRun(job.RunId, appToken);
+            var ct = runCts.Token;
+
             var db = _dbFactory.Create(job.ConnectionString);
 
             var run = await db.DoGetDataSQLAsyncSingle<CostRunDto>(
@@ -189,6 +215,28 @@ namespace Safir.Server.CostClose
                 // دورهای بیشتری نیاز دارد؛ ۴۰ حاشیه‌ی اطمینانِ بیشتری می‌دهد.
                 const int MaxS11Cycles    = 40;
 
+                // ── دامنه‌ی S07A ──
+                // پاس اول (و هر پاس بعد از یک بازتولیدِ تازه‌ی S07) باید کل
+                // کاردکس را بسازد، چون S07 ردیف‌های خروج مواد را با نرخ موقتِ
+                // ۱ می‌گذارد و آن ردیف‌ها روی کدِ *ماده* هستند، نه کالای
+                // فرمول‌دار. پاس‌های بعدیِ داخلِ حلقه فقط کالاهای فرمول‌دار را
+                // لازم دارند — نگاه کنید StepContext.NarrowToFormulaItems.
+                bool s07aNeedsFullPass = true;
+
+                // بعد از همگرایی یک پاس کاملِ دیگر اجرا می‌شود تا ثابت کند
+                // باریک کردنِ دامنه چیزی را جا نینداخته: اگر آن پاس نرخی را
+                // بیش از آستانه تکان دهد، حلقه خودش ادامه پیدا می‌کند و پیام
+                // هشدار ثبت می‌شود.
+                bool s07aVerifyPassDone = false;
+
+                // اگر پاس تأییدی ثابت کند دامنه‌ی باریک ناقص بوده، از آن به بعد
+                // همه‌ی پاس‌ها کامل اجرا می‌شوند — درستیِ بها بر سرعت مقدم است.
+                bool s07aScopeUntrusted = false;
+
+                // آیا اصلاً پاسی با دامنه‌ی باریک اجرا شد؟ اگر نه، پاس تأییدی
+                // چیزی برای تأیید ندارد و بی‌جهت ۱۵ ثانیه به اجرا اضافه می‌کند.
+                bool s07aNarrowUsed = false;
+
                 while (pending.Count > 0)
                 {
                     if (ct.IsCancellationRequested || _queue.IsCancelRequested(job.RunId))
@@ -212,6 +260,7 @@ namespace Safir.Server.CostClose
                         RunKind    = run.RunKind,
                         Db         = db,
                         Ct         = ct,
+                        NarrowToFormulaItems = !s07aNeedsFullPass && !s07aScopeUntrusted,
                         ReportProgress = (code, pct, msg) =>
                             _notify.StepProgressAsync(job.RunId, code, pct, msg)
                     };
@@ -265,6 +314,14 @@ namespace Safir.Server.CostClose
 
                     await _notify.StepFinishedAsync(job.RunId, step.StepCode, (byte)result.Status);
 
+                    // یک پاس کاملِ S07A انجام شد؛ تا وقتی S07 دوباره اجرا نشود
+                    // پاس‌های بعدی می‌توانند باریک باشند.
+                    if (step.StepCode == "S07A" && result.Status != CostStepStatus.Failed)
+                    {
+                        if (ctx.NarrowToFormulaItems) s07aNarrowUsed = true;
+                        s07aNeedsFullPass = false;
+                    }
+
                     // ── خطا: توقف کامل ──
                     if (result.Status == CostStepStatus.Failed)
                     {
@@ -293,6 +350,11 @@ namespace Safir.Server.CostClose
                         // ⚠️ عمداً S07B اینجا نیست (تأیید کاربر): آن گام فقط با
                         // درخواست صریح کاربر اجرا می‌شود، نه به‌صورت خودکار در
                         // این بازتولید — نگاه کنید AutoRun روی ICostStep.
+                        // S07 دوباره خواهد آمد و ردیف‌های خروج مواد را با نرخ
+                        // موقتِ ۱ بازمی‌سازد — آن ردیف‌ها روی کدِ مواد هستند،
+                        // پس S07A بعدش باید دوباره کل کاردکس را بسازد.
+                        s07aNeedsFullPass = true;
+
                         var rebuild = _steps
                             .Where(s => s.StepCode is "S07" or "S07A" or "S08")
                             .OrderBy(s => s.SeqNo);
@@ -332,13 +394,45 @@ namespace Safir.Server.CostClose
                             ? (double?)null
                             : Math.Round(delta.Value.Max, MidpointRounding.AwayFromZero);
 
-                        if (maxDeltaRounded is not null && maxDeltaRounded <= RateConvergeThreshold)
+                        if (maxDeltaRounded is not null && maxDeltaRounded <= RateConvergeThreshold
+                            && (s07aVerifyPassDone || !s07aNarrowUsed))
                         {
                             // بیشترین تغییرِ نرخِ همه‌ی کالاها بین این دور و دور
                             // قبل زیر یک ریال است — همگرا شد
                         }
+                        else if (maxDeltaRounded is not null && maxDeltaRounded <= RateConvergeThreshold)
+                        {
+                            // ── پاس تأییدیِ کامل ──
+                            // دورهای حلقه با دامنه‌ی باریک (فقط کالاهای فرمول‌دار)
+                            // اجرا شدند. یک بار دیگر با دامنه‌ی کامل تکرار می‌شود:
+                            // اگر باریک‌سازی چیزی را جا انداخته باشد، نرخ عوض
+                            // می‌شود و همین شرط دفعه‌ی بعد رد می‌شود و حلقه ادامه
+                            // پیدا می‌کند — یعنی خطا خودش را نشان می‌دهد، نه اینکه
+                            // بی‌صدا در بها بنشیند.
+                            s07aVerifyPassDone = true;
+                            s07aNeedsFullPass  = true;
+                            lastRates          = rates;
+
+                            pending = new Queue<ICostStep>(
+                                _steps.Where(s => s.StepCode is "S07A" or "S11")
+                                      .OrderBy(s => s.SeqNo)
+                                      .Concat(pending));
+
+                            await LogAsync(db, job.RunId, "S11", 1,
+                                $"همگرایی در دور {s11Cycles + 1} — یک پاس کاملِ S07A برای تأیید اجرا می‌شود");
+                        }
                         else if (s11Cycles < MaxS11Cycles)
                         {
+                            // نرخ بعد از پاس تأییدیِ کامل تکان خورد: یعنی
+                            // کالایی بیرون از «فرمول‌دارها» هم عوض می‌شده و
+                            // دامنه‌ی باریک آن را جا انداخته بود.
+                            if (s07aVerifyPassDone && !s07aScopeUntrusted)
+                            {
+                                s07aScopeUntrusted = true;
+                                await LogAsync(db, job.RunId, "S07A", 2,
+                                    $"پاس تأییدیِ کامل نرخ‌ها را {delta?.Max:N0} ریال تکان داد — از این پس S07A با دامنه‌ی کامل اجرا می‌شود");
+                            }
+
                             s11Cycles++;
                             lastRates = rates;
 
@@ -366,6 +460,19 @@ namespace Safir.Server.CostClose
                                 $"همگرایی نرخ پس از {MaxS11Cycles} دور تکرار کامل نشد (بیشترین تغییر هنوز {delta?.Max:N0} ریال روی کالای {worstItem}) — با آخرین مقدار ادامه داده می‌شود");
                         }
                     }
+                }
+
+                // لغو فقط در ابتدای حلقه چک می‌شود، پس اگر کاربر وسطِ *آخرین*
+                // گام دکمه‌ی توقف را بزند، حلقه عادی تمام می‌شود و اجرا
+                // «تکمیل» علامت می‌خورد — یعنی درخواست او بی‌صدا نادیده
+                // گرفته می‌شود و وضعیتِ گزارش‌شده هم غلط است. اینجا یک بار
+                // دیگر چک می‌کنیم تا «توقف» همیشه «توقف» بماند.
+                if (ct.IsCancellationRequested || _queue.IsCancelRequested(job.RunId))
+                {
+                    await LogAsync(db, job.RunId, null, 2, "اجرا توسط کاربر متوقف شد");
+                    await SetRunStatusAsync(db, job.RunId, CostRunStatus.Paused);
+                    await _notify.RunPausedAsync(job.RunId, "cancelled");
+                    return;
                 }
 
                 await SetRunStatusAsync(db, job.RunId, CostRunStatus.Completed);

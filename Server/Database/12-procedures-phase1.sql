@@ -85,7 +85,10 @@ AS
 BEGIN
     SET NOCOUNT ON;
 
-    DECLARE @try TINYINT =
+    -- INT و نه TINYINT — نگاه کنید توضیح ستون Attempt در 10-schema.sql.
+    -- با TINYINT، رسیدن شمارنده به ۲۵۵ باعث می‌شد این عبارت سرریز کند و
+    -- کل اجرا با خطای «Arithmetic overflow ... value = 256» متوقف شود.
+    DECLARE @try INT =
         ISNULL((SELECT MAX(Attempt) FROM dbo.CC_RunStep
                 WHERE RunId = @RunId AND StepCode = @StepCode), 0) + 1;
 
@@ -457,6 +460,50 @@ BEGIN
     WHERE   inv.TAG = 24
       AND   (inv.DATE_N BETWEEN @DT1 AND @DT2 OR h.DATE_S BETWEEN @DT1 AND @DT2)
       AND   inv.DATE_N <> h.DATE_S
+      AND   NOT EXISTS (SELECT 1 FROM dbo.CC_AcceptedException ae
+                        WHERE ae.RuleCode = 'CHK-21' AND ae.IsActive = 1
+                          AND (ae.Anbar IS NULL) AND (ae.Code IS NULL));
+
+    /* ─── CHK-21 (بخش دوم) : تاریخ حواله برگشت با تاریخ سربرگ خودش یکی نیست ───
+       بخش اول بالا حواله (TAG=24) را با *سند حسابداری* مقایسه می‌کند و برای
+       آن به DEED_DTL جوین می‌زند. ولی وقتی سند حسابداری اصلاً صادر نشده،
+       آن جوین هیچ سطری نمی‌دهد و کنترل بی‌صدا رد می‌شود — دقیقاً همان
+       حالتی که مغایرت را می‌سازد.
+
+       نمونه‌ی واقعی (کد ۳۵۱۰ / انبار ۸۱۳ / فروردین ۱۴۰۵): سند ۳۲۱ در
+       HEAD_LST دو تاریخ دارد — قلم کالا (TAG=24) به تاریخ ۱۴۰۵/۰۱/۲۳ و
+       سربرگ (TAG=25) به تاریخ ۱۴۰۵/۰۲/۲۳. کاردکس تاریخِ TAG=24 را می‌بیند
+       پس حرکت را در فروردین می‌شمارد، ولی SaleReturnRebuildService سند را
+       از سربرگ TAG=25 می‌سازد که خارج از دوره است — پس هیچ سندی صادر
+       نشد (DEED_DTL برای این شماره صفر ردیف دارد) و CHK-02 مغایرت
+       ۳۳,۸۱۰,۰۰۰ ریالی نشان داد.
+
+       این بخش ناسازگاری را یک مرحله زودتر می‌گیرد: مقایسه‌ی دو تاریخِ
+       خودِ HEAD_LST، بدون هیچ وابستگی به اینکه سند صادر شده باشد یا نه. */
+    INSERT dbo.CC_Exception
+        (RunId, StepCode, RuleCode, ExType, Severity, DocNumber, DocTag, DocDate, Amount, RefList, Description)
+    SELECT  DISTINCT
+            @RunId, 'S00', 'CHK-21', 23, 1,
+            CAST(h24.NUMBER AS BIGINT), 24, h24.DATE_N,
+            (SELECT SUM(L.MABL_K) FROM dbo.INVO_LST L
+             WHERE L.NUMBER = h24.NUMBER AND L.TAG = 24),
+            (SELECT N'saleReturnHeaderDates' AS kind,
+                    CAST(h24.NUMBER AS BIGINT) AS aNumber, 24 AS aTag, N'HEAD_LST' AS aTable, h24.DATE_N AS aDate,
+                    CAST(h25.NUMBER AS BIGINT) AS bNumber, 25 AS bTag, N'HEAD_LST' AS bTable, h25.DATE_N AS bDate
+             FOR JSON PATH, WITHOUT_ARRAY_WRAPPER),
+            CONCAT(N'برگشت فروش ', h24.NUMBER, N': تاریخ قلم کالا ',
+                   FORMAT(h24.DATE_N,'0000/00/00'), N' با تاریخ سربرگ ',
+                   FORMAT(h25.DATE_N,'0000/00/00'),
+                   N' یکی نیست — کاردکس از تاریخ قلم و سند حسابداری از تاریخ سربرگ ساخته می‌شود',
+                   CASE WHEN NOT EXISTS (SELECT 1 FROM dbo.DEED_DTL dd
+                                         WHERE dd.NUMBER = h24.NUMBER AND dd.TAG = 25)
+                        THEN N' (تا این لحظه هیچ سند حسابداری برای آن صادر نشده)'
+                        ELSE N'' END)
+    FROM    dbo.HEAD_LST h24
+    JOIN    dbo.HEAD_LST h25 ON h25.NUMBER = h24.NUMBER AND h25.TAG = 25
+    WHERE   h24.TAG = 24
+      AND   (h24.DATE_N BETWEEN @DT1 AND @DT2 OR h25.DATE_N BETWEEN @DT1 AND @DT2)
+      AND   h24.DATE_N <> h25.DATE_N
       AND   NOT EXISTS (SELECT 1 FROM dbo.CC_AcceptedException ae
                         WHERE ae.RuleCode = 'CHK-21' AND ae.IsActive = 1
                           AND (ae.Anbar IS NULL) AND (ae.Code IS NULL));

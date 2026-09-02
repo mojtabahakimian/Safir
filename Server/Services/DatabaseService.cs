@@ -103,13 +103,13 @@ namespace Safir.Server.Services
             }
         }
 
-        public async Task<int> DoExecuteSQLAsync(string sql, object? parameters = null)
+        public async Task<int> DoExecuteSQLAsync(string sql, object? parameters = null, int? commandTimeout = null)
         {
             try
             {
                 using IDbConnection db = new SqlConnection(_connectionString);
                 // No need to manually open Dapper does it
-                int rowsAffected = await db.ExecuteAsync(sql, parameters);
+                int rowsAffected = await db.ExecuteAsync(sql, parameters, commandTimeout: commandTimeout);
                 return rowsAffected;
             }
             catch (Exception ex)

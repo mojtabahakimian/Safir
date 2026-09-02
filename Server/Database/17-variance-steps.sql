@@ -457,10 +457,23 @@ BEGIN
 
     BEGIN TRAN;
 
+    -- ⚠ هر سه ستون با هم، طبق قراردادی که فرم فرمولِ نرم‌افزار قدیمی دارد:
+    --     MEGHk = MEGH * VAHEDS.NESBAT
+    --     MABLK = (PERT + MEGHk) * SMABL
+    --
+    -- نسخه‌ی قبلی فقط MEGHk را می‌نوشت (چون S11 برای بها همان را می‌خواند) و
+    -- «مقدار» را دست‌نخورده می‌گذاشت. ولی MEGH مرده نیست: خودِ S07 در همین
+    -- فایل، مقدارِ فیزیکیِ حواله‌ی خروج را از روی (dm.MEGH + dm.PERT)
+    -- می‌سازد. نتیجه این بود که هر بار اجرای S09 دو ستون را از هم دورتر
+    -- می‌کرد و انحراف بین اجراها انباشته می‌شد — پس از یک پاکسازیِ کامل،
+    -- تنها چند بار اجرای دوباره‌ی گام‌ها ۳۱ ردیف تازه ناهماهنگ ساخت.
+    -- MABLK هم PERT را جا انداخته بود.
     UPDATE  d
-       SET  d.MEGHk = d.MEGHk + (s.QtyVariance * s.Ratio / p.ProdQty),
+       SET  d.MEGH  = d.MEGH  + (s.QtyVariance * s.Ratio / p.ProdQty) / vv.NESBAT,
+            d.MEGHk = d.MEGHk + (s.QtyVariance * s.Ratio / p.ProdQty),
             d.MABLK = ROUND(ISNULL(d.SMABL, 0) *
-                            (d.MEGHk + (s.QtyVariance * s.Ratio / p.ProdQty)), 0)
+                            (ISNULL(d.PERT, 0) + d.MEGHk
+                             + (s.QtyVariance * s.Ratio / p.ProdQty)), 0)
     OUTPUT  @RunId, 'S09', inserted.FNUMB,
             NULL, TRY_CAST(inserted.CODE AS BIGINT), 'MEGHk',
             deleted.MEGHk, inserted.MEGHk,
@@ -471,7 +484,13 @@ BEGIN
     FROM    dbo.DTL_MANF d
     JOIN    #Share s ON s.FNUMB = d.FNUMB
                     AND s.Code  = CAST(d.CODE AS BIGINT)
-    JOIN    #Prod  p ON p.FNUMB = d.FNUMB;
+    JOIN    #Prod  p ON p.FNUMB = d.FNUMB
+    -- JOIN و نه LEFT JOIN: بدون نسبتِ واحد نمی‌شود «مقدار» را حساب کرد و
+    -- نوشتنِ عدد حدسی بدتر از رد کردنِ آن ردیف است. همان کالاها در CHK
+    -- به‌عنوان «واحد ناقص» دیده می‌شوند.
+    JOIN    dbo.VAHEDS vv ON TRY_CAST(vv.CODE AS BIGINT) = TRY_CAST(d.CODE AS BIGINT)
+                         AND vv.VAHED = d.VAHED_K
+                         AND vv.NESBAT <> 0;
 
     DECLARE @n INT = @@ROWCOUNT;
 

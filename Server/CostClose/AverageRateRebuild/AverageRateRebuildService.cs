@@ -204,7 +204,20 @@ namespace Safir.Server.CostClose.AverageRateRebuild
         /// در کد اصلی؛ چون مقایسه عددی است، هر مقدار کوچک‌تر از کوچک‌ترین
         /// DATE_N واقعی همان اثر را دارد).
         /// </summary>
-        public async Task<AverageRateRebuildResult> RebuildAsync(long sinceDate = 10101, CancellationToken ct = default)
+        /// <param name="onlyCodes">
+        /// اگر داده شود، فقط همین کدها بازسازی می‌شوند. برای دورهای دومِ به‌بعدِ
+        /// حلقه‌ی همگرایی S07A↔S11 استفاده می‌شود، جایی که تنها نرخِ کالاهای
+        /// فرمول‌دار می‌تواند عوض شده باشد — نگاه کنید
+        /// StepContext.NarrowToFormulaItems. null یعنی همه (رفتار پیش‌فرض).
+        ///
+        /// ⚠️ صرفاً یک بهینه‌سازیِ دامنه است، نه تغییر در محاسبه: هر کالایی که
+        /// پردازش شود دقیقاً همان نتیجه‌ی قبل را می‌گیرد، چون میانگین متحرکِ هر
+        /// کالا مستقل از کالاهای دیگر و فقط از تراکنش‌های خودش ساخته می‌شود.
+        /// </param>
+        public async Task<AverageRateRebuildResult> RebuildAsync(
+            long sinceDate = 10101,
+            IReadOnlyCollection<string>? onlyCodes = null,
+            CancellationToken ct = default)
         {
             var log = new List<string>();
             var result = new AverageRateRebuildResult { Log = log };
@@ -275,7 +288,26 @@ namespace Safir.Server.CostClose.AverageRateRebuild
                 .GroupBy(x => x.CODE)
                 .ToList();
 
-            AddLog($"{groupedByCode.Count} کالا برای بازسازی یافت شد.");
+            var totalCodes = groupedByCode.Count;
+
+            // فیلترِ دامنه — بعد از گروه‌بندی و در حافظه، نه در SQL: کوئری‌های
+            // بالا یک‌بار و به‌صورت انبوه خوانده می‌شوند، ولی کارِ سنگین (ساختِ
+            // کاردکس و UPDATEهای هر کالا) به‌ازای هر کالاست و همان است که با
+            // این فیلتر حذف می‌شود.
+            if (onlyCodes is { Count: > 0 })
+            {
+                var wanted = new HashSet<string>(
+                    onlyCodes.Where(c => !string.IsNullOrWhiteSpace(c)).Select(c => c.Trim()),
+                    StringComparer.OrdinalIgnoreCase);
+
+                groupedByCode = groupedByCode
+                    .Where(g => g.Key is not null && wanted.Contains(g.Key.Trim()))
+                    .ToList();
+            }
+
+            AddLog(onlyCodes is null
+                ? $"{groupedByCode.Count} کالا برای بازسازی یافت شد."
+                : $"{groupedByCode.Count} کالا از {totalCodes} کالا برای بازسازی انتخاب شد (دامنه‌ی محدود به کالاهای فرمول‌دار).");
 
             var maxDegree = Math.Clamp(Environment.ProcessorCount * 2, 4, 16);
 
@@ -517,7 +549,7 @@ namespace Safir.Server.CostClose.AverageRateRebuild
                     for (int k = off; k < endAt; k++) batch.Append(pending[k]).Append(';').Append('\n');
                     try
                     {
-                        await _db.DoExecuteSQLAsync(batch.ToString());
+                        await _db.DoExecuteSQLAsync(batch.ToString(), commandTimeout: CostCloseTuning.BatchTimeoutSeconds);
                         Interlocked.Add(ref rowsUpdated, endAt - off);
                     }
                     catch (Exception ex)

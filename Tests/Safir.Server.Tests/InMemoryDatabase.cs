@@ -126,7 +126,7 @@ public sealed class InMemoryDatabase : IDatabaseService
         return row;
     }
 
-    public Task<int> DoExecuteSQLAsync(string sql, object? parameters = null)
+    public Task<int> DoExecuteSQLAsync(string sql, object? parameters = null, int? commandTimeout = null)
     {
         if (sql.Contains("PAY2_SEC_AUDIT")) AuditWrites.Add(parameters);
         return Task.FromResult(1);

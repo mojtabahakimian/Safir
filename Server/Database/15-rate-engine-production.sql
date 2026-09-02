@@ -212,6 +212,31 @@ BEGIN
     JOIN   #FixedTotals ft ON ft.UnitId = a.UnitId
     WHERE  a.ActWage - ft.FixedWage <= 0 AND ft.FixedWage <> 0;
 
+    -- هشدار: کالایی که این ماه تولید شده ولی هیچ سطری در
+    -- CC_LaborAbsorptionRate ندارد.
+    --
+    -- ⚠️ چرا لازم است: JOIN به CC_LaborAbsorptionRate در ساخت #Proposals
+    -- (پایین) از نوع INNER است، پس چنین کالایی اصلاً وارد محاسبه نمی‌شود و
+    -- IMBIBE_MANF/IMBIBE_SAR فرمولش روی مقدار قبلی — معمولاً صفر — می‌ماند.
+    -- تا امروز این حالت هیچ خطا و هیچ هشداری نمی‌داد، پس فقط وقتی کشف
+    -- می‌شد که کسی دستی سراغ خودِ فرمول برود.
+    --
+    -- نمونه‌ی واقعی: کد ۳۱۷۰ «پنیر پیتزا موزارلا ۱ کیلویی نازلی»، فرمول
+    -- ۸۲۶۰۳۱۶۸۸ مرداد ۱۴۰۵ — هر دو نرخ صفر، بدون هیچ نشانه‌ای.
+    --
+    -- عمداً فقط هشدار است نه خطا: نبودِ ضریب برای کالای تازه طبیعی است و
+    -- نباید جلوی بستنِ ماه را بگیرد؛ فقط باید دیده شود.
+    INSERT dbo.CC_RunLog (RunId, StepCode, Severity, Message)
+    SELECT @RunId, 'S07B', 2,
+           CONCAT(N'کالای ', cq.CODE, N' «', ISNULL(sd.NAME, N'؟'), N'» در واحد ', cq.UnitId,
+                  N' این ماه تولید شده ولی ضریب جذب دستمزد/سربار برایش تعریف نشده — ',
+                  N'دستمزد و سربار فرمولش دست‌نخورده ماند. ',
+                  N'از بخش «نرخ جذب دستمزد» ضریبش را ثبت کنید.')
+    FROM   #CodeQty cq
+    LEFT   JOIN dbo.STUF_DEF sd ON sd.CODE = cq.CODE
+    WHERE  NOT EXISTS (SELECT 1 FROM dbo.CC_LaborAbsorptionRate r
+                       WHERE r.CODE = cq.CODE AND r.UnitId = cq.UnitId);
+
     -- ۳) پیشنهادِ نرخ هر (واحد، فرمول) این ماه (تأیید کاربر: نرخِ پایه
     --    = دستمزدِ واقعی ÷ مجموعِ وزنی، بعد در ضریب و وزنِ خودِ کالا
     --    ضرب می‌شود — نه تقسیم بر مقدارِ تولیدِ خودِ کالا. نتیجه: دو

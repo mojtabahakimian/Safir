@@ -103,6 +103,22 @@ else
         <MudTable Items="_rows" Dense Hover Breakpoint="Breakpoint.Sm" Elevation="0"
                   RowClassFunc="@RowClass" T="VarianceRowDto"
                   OnRowClick="@(e => _selected = e.Item)">
+            @* جدولِ خالی به‌تنهایی نمی‌گوید داده نیست یا فیلتر همه را کنار
+               گذاشته — همان سردرگمی‌ای که در تیر ۱۴۰۵ پیش آمد. *@
+            <NoRecordsContent>
+                @if (_all.Count == 0)
+                {
+                    <MudText Typo="Typo.body2" Class="mud-text-secondary pa-4">
+                        برای این اجرا انحراف مصرفی ثبت نشده است.
+                    </MudText>
+                }
+                else
+                {
+                    <MudText Typo="Typo.body2" Class="mud-text-secondary pa-4">
+                        با فیلتر فعلی موردی نیست — @_all.Count کالا در «همه» وجود دارد.
+                    </MudText>
+                }
+            </NoRecordsContent>
             <HeaderContent>
                 <MudTh Style="width:60px">کد</MudTh>
                 <MudTh>کالا</MudTh>
@@ -313,6 +329,14 @@ else
             _items = await Api.GetItemCostsAsync(RunId);
 
             _initialTotal = _all.Sum(r => Math.Abs(r.AmountVariance ?? 0));
+
+            // فیلتر پیش‌فرض «کالای کلیدی» است، ولی ماهی که هیچ کالای کلیدی
+            // ندارد (وقتی انحراف بین چند انبار سرشکن شده و هیچ کدی از یک
+            // درصدِ کل رد نمی‌کند) جدول را کاملاً خالی نشان می‌داد — بدون
+            // اینکه معلوم باشد داده نیست یا فیلتر. تیر ۱۴۰۵ همین‌طور دیده شد.
+            if (_filter == "key" && !_all.Any(r => r.IsKeyItem))
+                _filter = "all";
+
             Recalculate();
             ApplyFilter();
         }

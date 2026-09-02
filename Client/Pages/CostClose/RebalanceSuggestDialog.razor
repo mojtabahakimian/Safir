@@ -1,0 +1,332 @@
+@using Safir.Shared.Models.CostClose
+@inject CostCloseApiService Api
+@inject ISnackbar Snackbar
+
+@* پیشنهاد خودکار جابه‌جایی مواد برای صفر کردن زیان یک کالا.
+
+   قاعده‌ی حاکم: دستمزد و سربار هرگز اهرم نیستند — تنها «مقدار مواد»، و هر
+   مقدار که از فرمولی کم شود به فرمول کالای سوددهی می‌رود که همان ماده را
+   مصرف می‌کند، تا جمع مصرف فیزیکی ماه ثابت بماند و انحراف مصرف ایجاد نشود.
+
+   برنامه پیشنهاد می‌دهد، تصمیم با کاربر است. *@
+
+<MudDialog>
+    <DialogContent>
+        @if (_busy && _data is null)
+        {
+            <MudProgressLinear Indeterminate Color="Color.Primary" Class="mb-3" />
+            <MudText Typo="Typo.body2">بررسی زنجیره‌ی مواد…</MudText>
+        }
+        else if (_error is not null)
+        {
+            <MudAlert Severity="Severity.Error" Dense>@_error</MudAlert>
+        }
+        else if (_data is not null)
+        {
+            <MudText Typo="Typo.body2" Class="mb-2">
+                زیان <b>@ItemName</b> (@SourceCode): <b>@FormatAmount(_data.Deficit) ریال</b>
+            </MudText>
+
+            <div class="d-flex align-center gap-3 mb-3">
+                <MudSelect T="byte" Label="عمق زنجیره" Value="_depth" Dense
+                           Variant="Variant.Outlined" Style="max-width:180px"
+                           ValueChanged="OnDepthChanged">
+                    <MudSelectItem Value="@((byte)1)">۱ — فقط مواد مستقیم</MudSelectItem>
+                    <MudSelectItem Value="@((byte)2)">۲ — یک سطح نیمه‌ساخته</MudSelectItem>
+                    <MudSelectItem Value="@((byte)3)">۳ سطح</MudSelectItem>
+                    <MudSelectItem Value="@((byte)4)">۴ سطح</MudSelectItem>
+                    <MudSelectItem Value="@((byte)5)">۵ سطح</MudSelectItem>
+                    <MudSelectItem Value="@((byte)6)">۶ سطح</MudSelectItem>
+                </MudSelect>
+
+                @if (_busy) { <MudProgressCircular Indeterminate Size="Size.Small" /> }
+            </div>
+
+            @if (_data.Materials.Count == 0)
+            {
+                <MudAlert Severity="Severity.Warning" Dense>
+                    هیچ ماده‌ای در فرمول این کالا برای جابه‌جایی پیدا نشد.
+                </MudAlert>
+            }
+            else
+            {
+                <MudSimpleTable Dense Style="overflow-x:auto">
+                    <thead>
+                        <tr>
+                            <th style="width:36px"></th>
+                            <th>ماده</th>
+                            <th style="text-align:left">قابل‌برداشت</th>
+                            <th style="text-align:left">مقصد</th>
+                            <th style="text-align:left">ظرفیت مقصدها</th>
+                            <th style="text-align:left">پوشش کسری</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var m in _data.Materials)
+                        {
+                            <tr class="@(m.MaterialCode == _pickedMaterial ? "cc-row-sel" : "")">
+                                @* عمداً MudRadio نیست: در MudBlazor 6.21 رادیو باید
+                                   داخل MudRadioGroup باشد و Value/ValueChanged روی
+                                   گروه بنشیند، نه روی خود رادیو. پیچاندن یک گروه دور
+                                   سطرهای جدول ناجور است، و پارامترِ ناشناخته روی
+                                   MudRadio بی‌سروصدا به‌صورت attribute خام رندر می‌شود. *@
+                                <td>
+                                    <MudIconButton Size="Size.Small"
+                                                   Disabled="@m.NoDestination"
+                                                   Color="@(m.MaterialCode == _pickedMaterial ? Color.Primary : Color.Default)"
+                                                   Icon="@(m.MaterialCode == _pickedMaterial
+                                                           ? Icons.Material.Filled.CheckCircle
+                                                           : Icons.Material.Filled.RadioButtonUnchecked)"
+                                                   OnClick="@(() => PickMaterial(m.MaterialCode))" />
+                                </td>
+                                <td>
+                                    @m.MaterialName (@m.MaterialCode)
+                                    @if (m.Depth > 1)
+                                    {
+                                        <div class="cc-hint">
+                                            از داخل @m.ViaName
+                                            @* وقتی رقتی در کار نیست، «فقط ۱۰۰٪» نوشتن
+                                               گیج‌کننده است. رقت سقفِ ۱۰۰ دارد (نگاه کنید
+                                               25-rebalance-suggest.sql)، پس فقط زیر آن
+                                               معنا دارد. *@
+                                            @if (m.DilutionPct < 99.5)
+                                            {
+                                                <span> — فقط @m.DilutionPct.ToString("N0")٪ اثر به این کالا می‌رسد</span>
+                                            }
+                                        </div>
+                                    }
+                                    @if (m.IsRemembered)
+                                    {
+                                        <MudChip Size="Size.Small" Color="Color.Info" Variant="Variant.Text">
+                                            انتخاب قبلی
+                                        </MudChip>
+                                    }
+                                </td>
+                                <td style="text-align:left">@FormatAmount(m.EffectiveValue)</td>
+                                <td style="text-align:left">@m.DestCount</td>
+                                <td style="text-align:left">@FormatAmount(m.DestCapacity)</td>
+                                <td style="text-align:left">
+                                    @if (m.NoDestination)
+                                    {
+                                        <span class="cc-num neg">هیچ کالای سوددهی مصرفش نمی‌کند</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="@(m.CoversFully ? "cc-num pos" : "")">
+                                            @FormatAmount(m.Coverage)
+                                            @(m.CoversFully ? " (کامل)" : "")
+                                        </span>
+                                    }
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </MudSimpleTable>
+
+                @if (_pickedMaterial is not null)
+                {
+                    <MudText Typo="Typo.subtitle2" Class="mt-4 mb-1">
+                        کالاهای مقصد — تیک‌نخورده‌ها کنار گذاشته می‌شوند
+                    </MudText>
+
+                    <div style="max-height:260px;overflow:auto">
+                        @foreach (var d in PickedDestinations)
+                        {
+                            <div class="d-flex align-center">
+                                <MudCheckBox T="bool" Dense
+                                             Value="@IsDestPicked(d.TargetCode)"
+                                             ValueChanged="@(v => ToggleDest(d.TargetCode, v))"
+                                             Label="@($"{d.TargetName} ({d.TargetCode}) — ظرفیت {FormatAmount(d.Capacity)}")" />
+
+                                @* نیمه‌ساخته فروش ندارد، پس «سود» ندارد؛ ظرفیتش از
+                                   سود کالاهای پایین‌دستش می‌آید. همان مقصدی که روش
+                                   دستیِ کاربر همیشه استفاده می‌کرد و نسخه‌ی قبلی
+                                   اصلاً نشانش نمی‌داد. *@
+                                @if (d.IsSemi)
+                                {
+                                    <MudChip Size="Size.Small" Color="Color.Secondary" Variant="Variant.Text">
+                                        نیمه‌ساخته
+                                    </MudChip>
+                                }
+                                @if (d.BouncePct >= 1)
+                                {
+                                    <MudChip Size="Size.Small" Color="Color.Warning" Variant="Variant.Text"
+                                             Title="بخشی از بار از راه فرمول‌ها به همین کالای زیان‌ده برمی‌گردد">
+                                        @d.BouncePct.ToString("N0")٪ برگشتی
+                                    </MudChip>
+                                }
+                                @if (d.LoserCount > 0)
+                                {
+                                    <MudChip Size="Size.Small" Color="Color.Error" Variant="Variant.Text"
+                                             Title="کالاهای زیان‌دهی که پایین‌دست این مقصدند و زیانشان بیشتر می‌شود">
+                                        @d.LoserCount کالای زیان‌ده پایین‌دست
+                                    </MudChip>
+                                }
+                            </div>
+                        }
+                    </div>
+
+                    @if (SelectedCapacity < CurrentDeficit)
+                    {
+                        <MudAlert Severity="Severity.Warning" Dense Class="mt-2">
+                            ظرفیت مقصدهای انتخاب‌شده (@FormatAmount(SelectedCapacity)) از کسری
+                            (@FormatAmount(CurrentDeficit)) کمتر است — تا همین اندازه منتقل می‌شود
+                            و باقی‌اش گزارش خواهد شد.
+                        </MudAlert>
+                    }
+
+                    <MudCheckBox T="bool" @bind-Value="_remember" Dense Class="mt-2"
+                                 Label="این انتخاب برای دفعات بعد به خاطر سپرده شود" />
+                }
+            }
+        }
+    </DialogContent>
+
+    <DialogActions>
+        <MudButton OnClick="Cancel">انصراف</MudButton>
+
+        @* افزودن به سبد به‌جای اعمال فوری: وقتی چند کالا قرار است اصلاح
+           شوند، اجرای تک‌تک ظرفیت مقصدها را دوباره‌شماری می‌کند و برای هر
+           کدام یک بازمحاسبه‌ی جدا می‌خواهد که صف قبولش نمی‌کند. *@
+        <MudButton Variant="Variant.Outlined" Color="Color.Primary"
+                   StartIcon="@Icons.Material.Filled.AddShoppingCart"
+                   Disabled="@(_busy || !CanSubmit)"
+                   OnClick="AddToBasket">
+            افزودن به سبد
+        </MudButton>
+
+        <MudButton Variant="Variant.Filled" Color="Color.Primary"
+                   Disabled="@(_busy || !CanSubmit)"
+                   OnClick="Apply">
+            اعمال فوری
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private MudDialogInstance MudDialog { get; set; } = default!;
+
+    [Parameter] public int     RunId      { get; set; }
+    [Parameter] public long    SourceCode { get; set; }
+    [Parameter] public string? ItemName   { get; set; }
+
+    private RebalanceSuggestResultDto? _data;
+    private string? _error;
+    private bool    _busy;
+    private byte    _depth = 2;
+
+    private long? _pickedMaterial;
+    private readonly HashSet<long> _picked = new();
+    private bool _remember;
+
+    protected override async Task OnInitializedAsync() => await Load();
+
+    private async Task Load()
+    {
+        _busy = true;
+        _error = null;
+        try
+        {
+            var (ok, data, err) = await Api.RebalanceSuggestAsync(RunId, SourceCode, _depth);
+            if (!ok) { _error = err; return; }
+
+            _data = data;
+
+            // انتخاب قبلیِ کاربر مقدم است؛ وگرنه بهترین پیشنهاد برنامه
+            var best = _data!.Materials.FirstOrDefault(m => m.IsRemembered)
+                    ?? _data.Materials.FirstOrDefault(m => !m.NoDestination);
+
+            if (best is not null) PickMaterial(best.MaterialCode);
+        }
+        finally { _busy = false; }
+    }
+
+    private async Task OnDepthChanged(byte d)
+    {
+        _depth = d;
+        _pickedMaterial = null;
+        _picked.Clear();
+        await Load();
+    }
+
+    private void PickMaterial(long code)
+    {
+        _pickedMaterial = code;
+        _picked.Clear();
+
+        // پیش‌فرض: مقصدهای به‌خاطرسپرده، وگرنه به‌ترتیب ظرفیت تا پوشش کسری
+        var dests = PickedDestinations.ToList();
+        var remembered = dests.Where(d => d.IsRemembered).ToList();
+
+        if (remembered.Count > 0)
+        {
+            foreach (var d in remembered) _picked.Add(d.TargetCode);
+            return;
+        }
+
+        double acc = 0;
+        foreach (var d in dests)
+        {
+            if (acc >= CurrentDeficit) break;
+            _picked.Add(d.TargetCode);
+            acc += d.Capacity;
+        }
+    }
+
+    private IEnumerable<RebalanceDestinationDto> PickedDestinations
+        => _data is null || _pickedMaterial is null
+            ? Enumerable.Empty<RebalanceDestinationDto>()
+            : _data.Destinations.Where(d => d.MaterialCode == _pickedMaterial)
+                                .OrderByDescending(d => d.Capacity);
+
+    private bool IsDestPicked(long code) => _picked.Contains(code);
+
+    private void ToggleDest(long code, bool on)
+    {
+        if (on) _picked.Add(code); else _picked.Remove(code);
+    }
+
+    private double CurrentDeficit => _data?.Deficit ?? 0;
+
+    private double SelectedCapacity
+        => PickedDestinations.Where(d => _picked.Contains(d.TargetCode)).Sum(d => d.Capacity);
+
+    private static string FormatAmount(double v) => v.ToString("N0");
+
+    private bool CanSubmit => _pickedMaterial is not null && _picked.Count > 0;
+
+    private RebalanceApplyRequest BuildRequest() => new()
+    {
+        SourceCode   = SourceCode,
+        MaterialCode = _pickedMaterial!.Value,
+        TargetCodes  = _picked.ToList(),
+        Remember     = _remember
+    };
+
+    /// <summary>بدون اجرا، انتخاب را به صفحه برمی‌گرداند تا در سبد بنشیند.</summary>
+    private void AddToBasket() => MudDialog.Close(DialogResult.Ok(BuildRequest()));
+
+    private async Task Apply()
+    {
+        _busy = true;
+        try
+        {
+            var (ok, res, err) = await Api.RebalanceApplyAsync(RunId, BuildRequest());
+
+            if (!ok) { Snackbar.Add(err ?? "اعمال ناموفق بود.", Severity.Error); return; }
+
+            // اگر بازمحاسبه در صف نرفته، این مهم‌تر از باقیمانده‌ی کسری است:
+            // تغییر فرمول ثبت شده ولی در سود و زیان دیده نمی‌شود.
+            var severity = !res!.Recomputing ? Severity.Warning
+                         : res.Remaining > 1 ? Severity.Warning
+                         : Severity.Success;
+
+            Snackbar.Add(res.Message, severity);
+
+            MudDialog.Close(DialogResult.Ok(true));
+        }
+        finally { _busy = false; }
+    }
+
+    private void Cancel() => MudDialog.Cancel();
+}
