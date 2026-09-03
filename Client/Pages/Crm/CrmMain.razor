@@ -95,14 +95,17 @@
                                       Clearable="true" />
                     </MudItem>
 
-                    <MudItem xs="6" sm="3" md="2">
-                        <MudCheckBox @bind-Value="_filter.OnlyMyCompanies"
-                                     Label="مشتریان من"
-                                     Color="Color.Primary"
-                                     Dense="true"
-                                     T="bool"
-                                     CheckedChanged="OnOnlyMyCompaniesChanged" />
-                    </MudItem>
+                    @if (!_access.RestrictToOwn)
+                    {
+                        <MudItem xs="6" sm="3" md="2">
+                            <MudCheckBox @bind-Value="_filter.OnlyMyCompanies"
+                                         Label="مشتریان من"
+                                         Color="Color.Primary"
+                                         Dense="true"
+                                         T="bool"
+                                         CheckedChanged="OnOnlyMyCompaniesChanged" />
+                        </MudItem>
+                    }
 
                     <MudItem xs="6" sm="4" md="3">
                         <MudCheckBox @bind-Value="_filter.OnlyWithUpcomingFollowUps"
@@ -850,6 +853,11 @@
 
     private CrmCompanyDto? _selectedCompany;
     private CrmFilterDto _filter = new() { OnlyMyCompanies = true };
+
+    // وضعیت دسترسی کاربر. وقتی محدودیت فعال باشد و کاربر مجوز «مشاهده همه»
+    // نداشته باشد، چک‌باکس «مشتریان من» پنهان می‌شود چون دیگر کاری نمی‌کند —
+    // فیلتر مالکیت سمت سرور اجباری است.
+    private CrmAccessDto _access = new();
     private int? _selectedStatus;
 
     // متغیرهای باکس ثبت سریع پیگیری
@@ -878,6 +886,16 @@
     protected override async Task OnInitializedAsync()
     {
         _todayInt = int.TryParse(CL_Tarikh.Current_FullDate, out var td) ? td : 0;
+
+        _access = await CrmApi.GetAccessAsync();
+        if (_access.RestrictToOwn)
+        {
+            // در این حالت سرور همیشه فقط داده‌ی خود کاربر را برمی‌گرداند،
+            // پس مقدار این فیلتر بی‌اثر است. true نگه داشته می‌شود تا اگر
+            // محدودیت بعداً خاموش شد، رفتار پیش‌فرض عوض نشود.
+            _filter.OnlyMyCompanies = true;
+        }
+
         await RefreshData();
     }
 

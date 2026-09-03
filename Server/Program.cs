@@ -1,4 +1,4 @@
-﻿using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
 using QuestPDF.Drawing;
 using QuestPDF.Infrastructure;
@@ -88,6 +88,7 @@ Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
 
 builder.Services.AddScoped<IPermissionService, PermissionService>();
 builder.Services.AddScoped<IPay2AccessService, Pay2AccessService>();
+builder.Services.AddScoped<ICrmAccessService, CrmAccessService>();
 builder.Services.AddScoped<Safir.Server.Security.Pay2ScopeResolver>();
 builder.Services.AddScoped<Safir.Server.Services.Pay2DisketteService>();
 

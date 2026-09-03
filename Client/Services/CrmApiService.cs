@@ -21,6 +21,24 @@ namespace Safir.Client.Services
             _logger = logger;
         }
 
+        public async Task<CrmAccessDto> GetAccessAsync()
+        {
+            try
+            {
+                var result = await _httpClient.GetFromJsonAsync<CrmAccessDto>("api/crm/access");
+                if (result != null) return result;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error calling api/crm/access");
+            }
+
+            // اگر وضعیت دسترسی خوانده نشد، حالت «بدون محدودیت» برگردانده می‌شود.
+            // این فقط روی ظاهرِ کلاینت اثر دارد؛ فیلتر واقعی سمت سرور اعمال
+            // می‌شود و کلاینت نمی‌تواند دورش بزند.
+            return new CrmAccessDto();
+        }
+
         public async Task<List<CrmCompanyDto>> GetCompaniesAsync(CrmFilterDto filter)
         {
             try
