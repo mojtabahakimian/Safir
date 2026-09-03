@@ -97,6 +97,38 @@ namespace Safir.Shared.Models.Crm
         public string? Message { get; set; }
     }
 
+    /// <summary>
+    /// وضعیت دسترسی کاربر جاری به CRM.
+    ///
+    /// دو حالت بیشتر ندارد و عمداً همین‌قدر ساده نگه داشته شده:
+    ///   • <see cref="RestrictToOwn"/> = true  → فقط رکوردهای خودش
+    ///   • <see cref="RestrictToOwn"/> = false → همه‌ی رکوردها
+    ///
+    /// وقتی کلید <c>CRM_ACL_ENFORCE</c> در PAY2_CONFIG خاموش باشد (پیش‌فرض)،
+    /// هیچ محدودیتی اعمال نمی‌شود و رفتار دقیقاً مثل قبل از این تغییر است.
+    /// </summary>
+    public class CrmAccessDto
+    {
+        /// <summary>کد کاربر جاری (SALA_DTL.IDD) — مبنای مالکیت رکوردها</summary>
+        public int UserId { get; set; }
+
+        /// <summary>
+        /// نام کاربری رمزگشایی‌شده. فقط برای رکوردهایی به کار می‌رود که
+        /// <c>userid</c> ندارند ولی <c>USER_NAME</c> دارند (رکوردهای ساخته‌شده
+        /// توسط نرم‌افزار WPF).
+        /// </summary>
+        public string UserName { get; set; } = string.Empty;
+
+        /// <summary>آیا کلید CRM_ACL_ENFORCE روشن است؟</summary>
+        public bool Enforced { get; set; }
+
+        /// <summary>آیا کاربر مجوز فرم CRMALL را دارد؟ (یعنی همه را می‌بیند)</summary>
+        public bool CanSeeAllUsers { get; set; }
+
+        /// <summary>نتیجه‌ی نهایی: آیا باید به رکوردهای خودِ کاربر محدود شود؟</summary>
+        public bool RestrictToOwn => Enforced && !CanSeeAllUsers;
+    }
+
     public class CrmFilterDto
     {
         public string? SearchTerm { get; set; }

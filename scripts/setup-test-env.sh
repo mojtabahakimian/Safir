@@ -74,6 +74,19 @@ dotnet --version
 # ═══════════════════════════════════════════════════════════════════════════
 step "۲) SQL Server و sqlcmd"
 # ═══════════════════════════════════════════════════════════════════════════
+# اگر SQL Server از قبل در دسترس است، نصب و بالا آوردنش رد می‌شود.
+# این همان «مسیر ۲» در AGENTS.md است: موتور داخل Docker است و فقط
+# sqlcmd روی هاست لازم است. در محیط‌هایی که packages.microsoft.com بسته
+# است، بدون این گارد اسکریپت در همین مرحله می‌شکند در حالی که دیتابیس
+# سالم و در دسترس است.
+SQL_ALREADY_UP=0
+if [[ -x /opt/mssql-tools18/bin/sqlcmd ]] \
+   && sqlcmd_local -d master -Q "SELECT 1" >/dev/null 2>&1; then
+  SQL_ALREADY_UP=1
+  echo "✔ SQL Server روی $SQL_HOST در دسترس است — مراحل نصب و راه‌اندازی رد شد."
+fi
+
+if [[ "$SQL_ALREADY_UP" -eq 0 ]]; then
 sudo apt-get update -qq
 sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq curl ca-certificates gnupg debconf-utils
 
@@ -113,6 +126,8 @@ if [[ ! -x /opt/mssql-tools18/bin/sqlcmd ]]; then
     apt-get install -y msodbcsql18 mssql-tools18 unixodbc-dev
 fi
 
+fi  # پایان بلوک نصب SQL Server
+
 # ═══════════════════════════════════════════════════════════════════════════
 step "۳) ابزارهای Excel و PDF"
 # ═══════════════════════════════════════════════════════════════════════════
@@ -130,7 +145,7 @@ libreoffice --headless --version
 # ═══════════════════════════════════════════════════════════════════════════
 step "۴) بالا آوردن SQL Server"
 # ═══════════════════════════════════════════════════════════════════════════
-if ! pgrep -x sqlservr >/dev/null 2>&1; then
+if [[ "$SQL_ALREADY_UP" -eq 0 ]] && ! pgrep -x sqlservr >/dev/null 2>&1; then
   if ! sudo systemctl start mssql-server 2>/dev/null; then
     sudo -u mssql env ACCEPT_EULA=Y MSSQL_PID=Developer \
       nohup /opt/mssql/bin/sqlservr >/tmp/sqlservr.log 2>&1 &
@@ -161,8 +176,8 @@ step "۶) وابستگی‌های قدیمی (بدون تداخل با schema.sq
 # ═══════════════════════════════════════════════════════════════════════════
 for f in legacy_dependencies.sql schema.sql test_auth_tables.sql \
          pay2_schema_catchup.sql pay2_runtime_procedures.sql \
-         pay2_acl_migration.sql pay2_seed.sql \
-         test_auth_and_acl_users.sql test_chart_of_accounts.sql; do
+         pay2_acl_migration.sql pay2_seed.sql crm_acl_migration.sql \
+         test_auth_and_acl_users.sql test_crm_tables.sql test_chart_of_accounts.sql; do
   [[ -f "$DB_DIR/$f" ]] || { echo "❌ فایل پیدا نشد: $DB_DIR/$f" >&2; exit 1; }
 done
 
@@ -253,7 +268,16 @@ sqlcmd_local -d "$DB_NAME" -i "$DB_DIR/pay2_seed.sql"
 # این ترتیب با دنیای واقعی هم می‌خواند: مشتری دیتابیس دارد، مهاجرت رویش
 # اعمال می‌شود.
 sqlcmd_local -d "$DB_NAME" -i "$DB_DIR/pay2_acl_migration.sql"
+
+# مهاجرت CRM هم به همان دلیل باید بعد از seed باشد: کلید CRM_ACL_ENFORCE در
+# همان PAY2_CONFIG می‌نشیند که pay2_seed.sql خالی‌اش می‌کند.
+sqlcmd_local -d "$DB_NAME" -i "$DB_DIR/crm_acl_migration.sql"
+
 sqlcmd_local -d "$DB_NAME" -i "$DB_DIR/test_auth_and_acl_users.sql"
+
+# جدول‌های CRM در schema.sql نیستند (مثل SALA_DTL) و باید جدا ساخته شوند.
+# بعد از crm_acl_migration.sql، چون به فرم CRMALL ارجاع می‌دهد.
+sqlcmd_local -d "$DB_NAME" -i "$DB_DIR/test_crm_tables.sql"
 
 # ═══════════════════════════════════════════════════════════════════════════
 step "۱۰) بررسی ساختار PAY2"

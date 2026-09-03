@@ -19,28 +19,115 @@ namespace Safir.Server.Controllers
     public class CrmController : ControllerBase
     {
         private readonly IDatabaseService _dbService;
+        private readonly ICrmAccessService _access;
         private readonly ILogger<CrmController> _logger;
 
-        public CrmController(IDatabaseService dbService, ILogger<CrmController> logger)
+        public CrmController(IDatabaseService dbService, ICrmAccessService access, ILogger<CrmController> logger)
         {
             _dbService = dbService;
+            _access = access;
             _logger = logger;
-        }
-
-        private int GetCurrentUserId()
-        {
-            var userIdString = User.FindFirstValue(ClaimTypes.NameIdentifier);
-            return int.TryParse(userIdString, out int userCod) ? userCod : 78;
         }
 
         private string GetCurrentUserName()
         {
-            return User.FindFirstValue(ClaimTypes.Name) ?? "Controller";
+            return User.FindFirstValue(ClaimTypes.Name) ?? string.Empty;
+        }
+
+        /// <summary>
+        /// دسترسی کاربر جاری. اگر کِلِیم هویت نبود یا عدد نبود، null برمی‌گرداند
+        /// و فراخواننده باید 401 بدهد.
+        ///
+        /// اینجا عمداً هیچ مقدار پیش‌فرضی جایگزین نمی‌شود. نسخه‌ی قبلی در چنین
+        /// حالتی بی‌صدا کاربر را «۷۸» فرض می‌کرد، یعنی هر خطای احراز هویت به
+        /// داده‌ی یک شخص واقعی دسترسی می‌داد.
+        /// </summary>
+        private async Task<CrmAccessDto?> TryGetAccessAsync()
+        {
+            var userIdString = User.FindFirstValue(ClaimTypes.NameIdentifier);
+            if (!int.TryParse(userIdString, out int userId) || userId <= 0)
+            {
+                _logger.LogWarning("CRM: درخواست بدون کِلِیم هویت معتبر رد شد.");
+                return null;
+            }
+
+            return await _access.GetAccessAsync(userId, GetCurrentUserName());
+        }
+
+        private ActionResult Unauthenticated() =>
+            Unauthorized("هویت کاربر قابل تشخیص نیست. لطفاً دوباره وارد شوید.");
+
+        /// <summary>
+        /// شرط مالکیت روی COPMANES.
+        ///
+        /// حالت دوم (userid تهی + تطبیق USER_NAME) برای رکوردهایی است که
+        /// نرم‌افزار WPF می‌سازد و <c>userid</c> نمی‌گذارد ولی <c>USER_NAME</c>
+        /// را پر می‌کند. بررسی داده‌ی مشتری نشان داد این نگاشت یک‌به‌یک است،
+        /// پس تطبیق با نام امن است و رکوردهای آینده‌ی WPF را هم پوشش می‌دهد.
+        /// </summary>
+        private static string OwnCompanyPredicate(string alias) =>
+            $" AND ({alias}.userid = @AclUserId OR ({alias}.userid IS NULL AND {alias}.USER_NAME = @AclUserName)) ";
+
+        /// <summary>
+        /// شرط مالکیت روی CRMEVENTS. رویدادها USER_NAME ندارند؛ معادلش SALER است
+        /// که در داده‌ی موجود دقیقاً همان نام کاربری است.
+        /// </summary>
+        private static string OwnEventPredicate(string alias) =>
+            $" AND ({alias}.USERID = @AclUserId OR ({alias}.USERID IS NULL AND {alias}.SALER = @AclUserName)) ";
+
+        private static void AddAclParameters(DynamicParameters parameters, CrmAccessDto acl)
+        {
+            parameters.Add("AclUserId", acl.UserId);
+            parameters.Add("AclUserName", acl.UserName);
+        }
+
+        private async Task<bool> CanAccessCompanyAsync(CrmAccessDto acl, int companyId)
+        {
+            if (!acl.RestrictToOwn) return true;
+
+            var sql = "SELECT COUNT(1) FROM dbo.COPMANES C WITH (NOLOCK) WHERE C.ID = @Id"
+                      + OwnCompanyPredicate("C");
+
+            var count = (await _dbService.DoGetDataSQLAsync<int>(
+                sql, new { Id = companyId, AclUserId = acl.UserId, AclUserName = acl.UserName })).FirstOrDefault();
+
+            return count > 0;
+        }
+
+        private async Task<bool> CanAccessEventAsync(CrmAccessDto acl, int eventId)
+        {
+            if (!acl.RestrictToOwn) return true;
+
+            var sql = "SELECT COUNT(1) FROM dbo.CRMEVENTS E WITH (NOLOCK) WHERE E.idde = @Id"
+                      + OwnEventPredicate("E");
+
+            var count = (await _dbService.DoGetDataSQLAsync<int>(
+                sql, new { Id = eventId, AclUserId = acl.UserId, AclUserName = acl.UserName })).FirstOrDefault();
+
+            return count > 0;
+        }
+
+        private ActionResult Denied() =>
+            StatusCode(403, "این رکورد متعلق به کاربر دیگری است و به آن دسترسی ندارید.");
+
+        /// <summary>
+        /// وضعیت دسترسی کاربر جاری — کلاینت با این تصمیم می‌گیرد چک‌باکس
+        /// «مشتریان من» را نشان بدهد یا نه.
+        /// </summary>
+        [HttpGet("access")]
+        public async Task<ActionResult<CrmAccessDto>> GetAccess()
+        {
+            var acl = await TryGetAccessAsync();
+            if (acl == null) return Unauthenticated();
+            return Ok(acl);
         }
 
         [HttpGet("status-list")]
         public async Task<ActionResult<List<CrmStatusDto>>> GetStatusList()
         {
+            var acl = await TryGetAccessAsync();
+            if (acl == null) return Unauthenticated();
+
             try
             {
                 var sazman = (await _dbService.DoGetDataSQLAsync<dynamic>("SELECT IT1, IT2, IT3, IT4, IT5, IT6, IT7, IT8, IT9 FROM SAZMAN")).FirstOrDefault();
@@ -65,7 +152,18 @@ namespace Safir.Server.Controllers
                 }
 
                 // گرفتن تعداد از COPMANES برای هر وضعیت
-                var counts = (await _dbService.DoGetDataSQLAsync<dynamic>("SELECT STATUS, COUNT(1) AS CNT FROM COPMANES GROUP BY STATUS")).ToList();
+                // بدون شرط مالکیت، این شمارنده‌ها جمع کل کار همه‌ی کاربران را
+                // لو می‌دهند — حتی وقتی خود لیست شرکت‌ها محدود شده است.
+                var countSql = "SELECT C.STATUS, COUNT(1) AS CNT FROM COPMANES C WITH (NOLOCK) WHERE 1=1 ";
+                var countParams = new DynamicParameters();
+                if (acl.RestrictToOwn)
+                {
+                    countSql += OwnCompanyPredicate("C");
+                    AddAclParameters(countParams, acl);
+                }
+                countSql += " GROUP BY C.STATUS";
+
+                var counts = (await _dbService.DoGetDataSQLAsync<dynamic>(countSql, countParams)).ToList();
                 foreach (var st in result)
                 {
                     var match = counts.FirstOrDefault(c => (int?)c.STATUS == st.Code);
@@ -87,9 +185,11 @@ namespace Safir.Server.Controllers
         [HttpPost("companies")]
         public async Task<ActionResult<List<CrmCompanyDto>>> GetCompanies([FromBody] CrmFilterDto filter)
         {
+            var acl = await TryGetAccessAsync();
+            if (acl == null) return Unauthenticated();
+
             try
             {
-                int currentUserId = GetCurrentUserId();
                 var statusList = await GetStatusListInternal();
 
                 var sql = @"
@@ -106,10 +206,18 @@ namespace Safir.Server.Controllers
 
                 var parameters = new DynamicParameters();
 
-                if (filter.OnlyMyCompanies)
+                // وقتی محدودیت فعال است، فیلتر مالکیت اجباری است و
+                // OnlyMyCompanies دیگر نقشی ندارد — کلاینت نمی‌تواند با
+                // برداشتن تیک، داده‌ی بقیه را ببیند.
+                if (acl.RestrictToOwn)
+                {
+                    sql += OwnCompanyPredicate("C");
+                    AddAclParameters(parameters, acl);
+                }
+                else if (filter.OnlyMyCompanies)
                 {
                     sql += " AND (C.userid = @UserId OR C.userid IS NULL) ";
-                    parameters.Add("UserId", currentUserId);
+                    parameters.Add("UserId", acl.UserId);
                 }
 
                 if (filter.Status.HasValue && filter.Status.Value > 0)
@@ -179,11 +287,18 @@ namespace Safir.Server.Controllers
         [HttpGet("companies/{id}")]
         public async Task<ActionResult<CrmCompanyDto>> GetCompanyById(int id)
         {
+            var acl = await TryGetAccessAsync();
+            if (acl == null) return Unauthenticated();
+
             try
             {
                 var sql = "SELECT * FROM COPMANES WHERE ID = @Id";
                 var company = await _dbService.DoGetDataSQLAsyncSingle<CrmCompanyDto>(sql, new { Id = id });
                 if (company == null) return NotFound("شرکت مورد نظر یافت نشد.");
+
+                // بدون این چک، فیلترِ لیست فقط آرایشی است: کافی است کسی
+                // شماره‌ی رکورد را حدس بزند.
+                if (!await CanAccessCompanyAsync(acl, id)) return Denied();
 
                 var statusList = await GetStatusListInternal();
                 if (company.STATUS.HasValue && statusList.TryGetValue(company.STATUS.Value, out var stName))
@@ -203,10 +318,15 @@ namespace Safir.Server.Controllers
         [HttpPost("save-company")]
         public async Task<ActionResult<int>> SaveCompany([FromBody] CrmCompanyDto company)
         {
+            var acl = await TryGetAccessAsync();
+            if (acl == null) return Unauthenticated();
+
             try
             {
-                int currentUserId = GetCurrentUserId();
-                string currentUserName = GetCurrentUserName();
+                bool isUpdate = company.ID != null && company.ID > 0;
+
+                if (isUpdate && !await CanAccessCompanyAsync(acl, company.ID!.Value))
+                    return Denied();
 
                 if (company.DATE_SABT == null || company.DT == null)
                 {
@@ -215,8 +335,38 @@ namespace Safir.Server.Controllers
                     company.DATE_SABT = company.DATE_SABT ?? DateTime.Now;
                 }
 
-                company.USERID = company.USERID ?? currentUserId;
-                company.USER_NAME = string.IsNullOrWhiteSpace(company.USER_NAME) ? currentUserName : company.USER_NAME;
+                // مالکیت را سرور تعیین می‌کند، نه بدنه‌ی درخواست. نسخه‌ی قبلی
+                // USERID را از کلاینت می‌پذیرفت، یعنی می‌شد رکورد را به نام
+                // شخص دیگری ثبت کرد یا رکورد دیگری را به نام خود برداشت.
+                if (!isUpdate)
+                {
+                    company.USERID = acl.UserId;
+                    company.USER_NAME = acl.UserName;
+                }
+                else
+                {
+                    // در ویرایش، مالک اصلی حفظ می‌شود تا کاربری که مجوز
+                    // «مشاهده همه» دارد با یک ذخیره‌ی ساده رکورد را به نام
+                    // خودش نکند.
+                    var owner = await _dbService.DoGetDataSQLAsyncSingle<CrmCompanyOwner>(
+                        "SELECT userid AS USERID, USER_NAME FROM dbo.COPMANES WHERE ID = @Id",
+                        new { Id = company.ID!.Value });
+
+                    company.USERID = owner?.USERID;
+                    company.USER_NAME = owner?.USER_NAME;
+
+                    // رکوردهای ساخته‌شده با WPF فقط USER_NAME دارند و userid
+                    // ندارند. آن حالت عمداً دست‌نخورده می‌ماند، وگرنه ویرایشِ
+                    // یک مدیر، رکورد را بی‌صدا از مالک واقعی‌اش می‌گرفت.
+                    // فقط رکوردی که هیچ نشانی از مالک ندارد به کاربر جاری
+                    // نسبت داده می‌شود.
+                    if (company.USERID == null && string.IsNullOrWhiteSpace(company.USER_NAME))
+                    {
+                        company.USERID = acl.UserId;
+                        company.USER_NAME = acl.UserName;
+                    }
+                }
+
                 company.STATUS = company.STATUS ?? 1;
 
                 var baseParams = new
@@ -247,7 +397,7 @@ namespace Safir.Server.Controllers
                     company.SHAHRID
                 };
 
-                if (company.ID == null || company.ID <= 0)
+                if (!isUpdate)
                 {
                     var sql = @"
                         INSERT INTO COPMANES (
@@ -294,9 +444,15 @@ namespace Safir.Server.Controllers
         [HttpDelete("companies/{id}")]
         public async Task<ActionResult<bool>> DeleteCompany(int id)
         {
+            var acl = await TryGetAccessAsync();
+            if (acl == null) return Unauthenticated();
+
             try
             {
+                if (!await CanAccessCompanyAsync(acl, id)) return Denied();
+
                 // حذف تمام رخدادهای مرتبط ابتدا
+                // (FK_CRMEVENTS_COPMANES فقط ON UPDATE CASCADE دارد، نه ON DELETE)
                 await _dbService.DoExecuteSQLAsync("DELETE FROM CRMEVENTS WHERE idc = @Id", new { Id = id });
                 var rows = await _dbService.DoExecuteSQLAsync("DELETE FROM COPMANES WHERE ID = @Id", new { Id = id });
                 return Ok(rows > 0);
@@ -311,8 +467,13 @@ namespace Safir.Server.Controllers
         [HttpGet("events/{companyId}")]
         public async Task<ActionResult<List<CrmEventDto>>> GetEventsByCompanyId(int companyId)
         {
+            var acl = await TryGetAccessAsync();
+            if (acl == null) return Unauthenticated();
+
             try
             {
+                if (!await CanAccessCompanyAsync(acl, companyId)) return Denied();
+
                 var sql = "SELECT * FROM CRMEVENTS WHERE idc = @CompanyId ORDER BY idde DESC";
                 var events = (await _dbService.DoGetDataSQLAsync<CrmEventDto>(sql, new { CompanyId = companyId })).ToList();
 
@@ -337,9 +498,19 @@ namespace Safir.Server.Controllers
         [HttpPost("save-event")]
         public async Task<ActionResult<int>> SaveEvent([FromBody] CrmEventDto crmEvent)
         {
+            var acl = await TryGetAccessAsync();
+            if (acl == null) return Unauthenticated();
+
             try
             {
-                int currentUserId = GetCurrentUserId();
+                bool isUpdate = crmEvent.IDDE != null && crmEvent.IDDE > 0;
+
+                if (isUpdate && !await CanAccessEventAsync(acl, crmEvent.IDDE!.Value))
+                    return Denied();
+
+                if (crmEvent.IDC.HasValue && crmEvent.IDC.Value > 0 &&
+                    !await CanAccessCompanyAsync(acl, crmEvent.IDC.Value))
+                    return Denied();
 
                 if (crmEvent.INFO_DATE == null || crmEvent.INFO_DATE <= 0)
                 {
@@ -352,7 +523,25 @@ namespace Safir.Server.Controllers
                     crmEvent.INFO_TIME = (now.Hour * 100) + now.Minute;
                 }
 
-                crmEvent.USERID = crmEvent.USERID ?? currentUserId;
+                // مثل شرکت‌ها، مالکِ رویداد را سرور تعیین می‌کند نه کلاینت.
+                if (!isUpdate)
+                {
+                    crmEvent.USERID = acl.UserId;
+                }
+                else
+                {
+                    var owner = await _dbService.DoGetDataSQLAsyncSingle<CrmEventOwner>(
+                        "SELECT USERID, SALER FROM dbo.CRMEVENTS WHERE idde = @Id",
+                        new { Id = crmEvent.IDDE!.Value });
+
+                    crmEvent.USERID = owner?.USERID;
+
+                    // مثل شرکت‌ها: رویدادی که USERID ندارد ولی SALER دارد،
+                    // مالکش همان SALER است و نباید جابه‌جا شود.
+                    if (crmEvent.USERID == null && string.IsNullOrWhiteSpace(owner?.SALER))
+                        crmEvent.USERID = acl.UserId;
+                }
+
                 crmEvent.CDATETI = crmEvent.CDATETI ?? DateTime.Now;
 
                 var baseParams = new
@@ -374,7 +563,7 @@ namespace Safir.Server.Controllers
                     crmEvent.CDATETI
                 };
 
-                if (crmEvent.IDDE == null || crmEvent.IDDE <= 0)
+                if (!isUpdate)
                 {
                     var sql = @"
                         INSERT INTO CRMEVENTS (
@@ -434,8 +623,13 @@ namespace Safir.Server.Controllers
         [HttpDelete("events/{id}")]
         public async Task<ActionResult<bool>> DeleteEvent(int id)
         {
+            var acl = await TryGetAccessAsync();
+            if (acl == null) return Unauthenticated();
+
             try
             {
+                if (!await CanAccessEventAsync(acl, id)) return Denied();
+
                 var rows = await _dbService.DoExecuteSQLAsync("DELETE FROM CRMEVENTS WHERE idde = @Id", new { Id = id });
                 return Ok(rows > 0);
             }
@@ -449,22 +643,33 @@ namespace Safir.Server.Controllers
         [HttpGet("dashboard-summary")]
         public async Task<ActionResult<CrmDashboardSummaryDto>> GetDashboardSummary()
         {
+            var acl = await TryGetAccessAsync();
+            if (acl == null) return Unauthenticated();
+
             try
             {
-                int currentUserId = GetCurrentUserId();
                 int todayInt = int.TryParse(CL_Tarikh.Current_FullDate, out var td) ? td : 0;
 
-                // واکشی همزمان تمام شمارنده‌ها در یک تک‌کوئری برای حداکثر سرعت
-                var statsSql = @"
+                // داشبورد از قبل به کاربر جاری محدود بود. حالا وقتی کاربر مجوز
+                // «مشاهده همه» دارد، این محدودیت برداشته می‌شود تا آمارش با
+                // چیزی که در لیست می‌بیند بخواند.
+                string compScope = acl.RestrictToOwn ? OwnCompanyPredicate("C") : string.Empty;
+                string evScope = acl.RestrictToOwn ? OwnEventPredicate("E") : string.Empty;
+
+                var statsSql = $@"
                     SELECT
-                        (SELECT COUNT(1) FROM COPMANES WITH(NOLOCK) WHERE userid = @UserId OR userid IS NULL) AS TotalCompanies,
-                        (SELECT COUNT(1) FROM CRMEVENTS WITH(NOLOCK) WHERE USERID = @UserId OR USERID IS NULL) AS TotalEvents,
-                        (SELECT COUNT(1) FROM CRMEVENTS WITH(NOLOCK) WHERE NEXT_DATE = @Today AND (USERID = @UserId OR USERID IS NULL)) AS TodayFollowUps,
-                        (SELECT COUNT(1) FROM CRMEVENTS WITH(NOLOCK) WHERE NEXT_DATE < @Today AND NEXT_DATE > 0 AND (USERID = @UserId OR USERID IS NULL)) AS OverdueFollowUps,
-                        (SELECT COUNT(1) FROM CRMEVENTS WITH(NOLOCK) WHERE (miting = -1 OR miting = 1) AND NEXT_DATE = @Today AND (USERID = @UserId OR USERID IS NULL)) AS TodayMeetings;";
+                        (SELECT COUNT(1) FROM COPMANES C WITH(NOLOCK) WHERE 1=1 {compScope}) AS TotalCompanies,
+                        (SELECT COUNT(1) FROM CRMEVENTS E WITH(NOLOCK) WHERE 1=1 {evScope}) AS TotalEvents,
+                        (SELECT COUNT(1) FROM CRMEVENTS E WITH(NOLOCK) WHERE E.NEXT_DATE = @Today {evScope}) AS TodayFollowUps,
+                        (SELECT COUNT(1) FROM CRMEVENTS E WITH(NOLOCK) WHERE E.NEXT_DATE < @Today AND E.NEXT_DATE > 0 {evScope}) AS OverdueFollowUps,
+                        (SELECT COUNT(1) FROM CRMEVENTS E WITH(NOLOCK) WHERE (E.miting = -1 OR E.miting = 1) AND E.NEXT_DATE = @Today {evScope}) AS TodayMeetings;";
+
+                var statsParams = new DynamicParameters();
+                statsParams.Add("Today", todayInt);
+                if (acl.RestrictToOwn) AddAclParameters(statsParams, acl);
 
                 var summary = (await _dbService.DoGetDataSQLAsync<CrmDashboardSummaryDto>(
-                    statsSql, new { Today = todayInt, UserId = currentUserId })).FirstOrDefault() ?? new CrmDashboardSummaryDto();
+                    statsSql, statsParams)).FirstOrDefault() ?? new CrmDashboardSummaryDto();
 
                 // لیست وضعیت‌ها و رویدادهای آینده به صورت همزمان
                 var statusDict = await GetStatusListInternal();
@@ -475,17 +680,17 @@ namespace Safir.Server.Controllers
                 }
 
                 // رویدادهای آینده
-                var upcomingSql = @"
+                var upcomingSql = $@"
                     SELECT TOP 10
                         E.*,
                         C.COMPANY_NAME
                     FROM CRMEVENTS E WITH(NOLOCK)
                     LEFT JOIN COPMANES C WITH(NOLOCK) ON E.idc = C.id
-                    WHERE E.NEXT_DATE >= @Today AND (E.USERID = @UserId OR E.USERID IS NULL)
+                    WHERE E.NEXT_DATE >= @Today {evScope}
                     ORDER BY E.NEXT_DATE ASC, E.NEXT_TIME ASC";
 
                 summary.UpcomingEvents = (await _dbService.DoGetDataSQLAsync<CrmEventDto>(
-                    upcomingSql, new { Today = todayInt, UserId = currentUserId })).ToList();
+                    upcomingSql, statsParams)).ToList();
 
                 foreach (var ev in summary.UpcomingEvents)
                 {
@@ -598,6 +803,9 @@ namespace Safir.Server.Controllers
         [HttpGet("phonebook")]
         public async Task<ActionResult<List<CrmPhoneBookItemDto>>> SearchPhoneBook([FromQuery] string? query)
         {
+            var acl = await TryGetAccessAsync();
+            if (acl == null) return Unauthenticated();
+
             try
             {
                 var result = new List<CrmPhoneBookItemDto>();
@@ -638,34 +846,44 @@ namespace Safir.Server.Controllers
                 result.AddRange(custResults);
 
                 // جستجو در شرکت‌های CRM با حذف رکوردهای بدون نام
+                // نیمه‌ی «طرف‌حساب» بالا عمداً فیلتر نمی‌شود: CUST_HESAB داده‌ی
+                // مشترک حسابداری است و اصلاً ستون مالکیت ندارد. ولی نیمه‌ی CRM
+                // همان داده‌ی COPMANES است و باید مثل بقیه محدود شود، وگرنه
+                // دفترچه تلفن راه دور زدن محدودیت می‌شود.
                 string crmWhere;
                 if (string.IsNullOrWhiteSpace(term))
                 {
-                    crmWhere = "WHERE COMPANY_NAME IS NOT NULL AND RTRIM(COMPANY_NAME) <> ''";
+                    crmWhere = "WHERE C.COMPANY_NAME IS NOT NULL AND RTRIM(C.COMPANY_NAME) <> ''";
                 }
                 else
                 {
-                    crmWhere = @"WHERE COMPANY_NAME IS NOT NULL AND RTRIM(COMPANY_NAME) <> ''
-                                 AND (COMPANY_NAME LIKE @LikeTerm OR COMPANY_NAME LIKE @LikeFixTerm
-                                      OR FACT_TEL LIKE @LikeTerm OR MOBILE LIKE @LikeTerm
-                                      OR MANAGER LIKE @LikeTerm OR ADDR LIKE @LikeTerm)";
+                    crmWhere = @"WHERE C.COMPANY_NAME IS NOT NULL AND RTRIM(C.COMPANY_NAME) <> ''
+                                 AND (C.COMPANY_NAME LIKE @LikeTerm OR C.COMPANY_NAME LIKE @LikeFixTerm
+                                      OR C.FACT_TEL LIKE @LikeTerm OR C.MOBILE LIKE @LikeTerm
+                                      OR C.MANAGER LIKE @LikeTerm OR C.ADDR LIKE @LikeTerm)";
                 }
+
+                if (acl.RestrictToOwn) crmWhere += OwnCompanyPredicate("C");
 
                 var crmSql = $@"
                     SELECT TOP 100
-                        CAST(ID AS VARCHAR(50)) AS HesCode,
-                        COMPANY_NAME AS Name,
-                        FACT_TEL AS Tel,
-                        MOBILE AS Mobile,
-                        ADDR AS Address,
-                        COMMENT AS Description,
+                        CAST(C.ID AS VARCHAR(50)) AS HesCode,
+                        C.COMPANY_NAME AS Name,
+                        C.FACT_TEL AS Tel,
+                        C.MOBILE AS Mobile,
+                        C.ADDR AS Address,
+                        C.COMMENT AS Description,
                         N'شرکت CRM' AS SourceType
-                    FROM COPMANES
+                    FROM COPMANES C
                     {crmWhere}
-                    ORDER BY COMPANY_NAME";
+                    ORDER BY C.COMPANY_NAME";
 
-                var crmResults = await _dbService.DoGetDataSQLAsync<CrmPhoneBookItemDto>(
-                    crmSql, new { LikeTerm = likeTerm, LikeFixTerm = likeFixTerm });
+                var crmParams = new DynamicParameters();
+                crmParams.Add("LikeTerm", likeTerm);
+                crmParams.Add("LikeFixTerm", likeFixTerm);
+                if (acl.RestrictToOwn) AddAclParameters(crmParams, acl);
+
+                var crmResults = await _dbService.DoGetDataSQLAsync<CrmPhoneBookItemDto>(crmSql, crmParams);
                 result.AddRange(crmResults);
 
                 return Ok(result.OrderBy(x => x.Name).ToList());
@@ -728,13 +946,20 @@ namespace Safir.Server.Controllers
         [HttpGet("notes")]
         public async Task<ActionResult<List<CrmNoteDto>>> GetNotes([FromQuery] bool onlyPending = true)
         {
+            var acl = await TryGetAccessAsync();
+            if (acl == null) return Unauthenticated();
+
             try
             {
-                int currentUserId = GetCurrentUserId();
-                var whereSql = onlyPending ? "WHERE Ndone = 0 AND (userid = @UserId OR userid IS NULL)" : "WHERE (userid = @UserId OR userid IS NULL)";
+                // Notes.userid ستون NOT NULL است، پس شرط USER_NAME لازم ندارد.
+                var conditions = new List<string>();
+                if (onlyPending) conditions.Add("Ndone = 0");
+                if (acl.RestrictToOwn) conditions.Add("userid = @UserId");
+
+                var whereSql = conditions.Count > 0 ? "WHERE " + string.Join(" AND ", conditions) : string.Empty;
                 var sql = $"SELECT TOP 100 idd, Note, Ndate, Ntime, userid, Ndone FROM Notes {whereSql} ORDER BY idd DESC";
 
-                var notes = (await _dbService.DoGetDataSQLAsync<CrmNoteDto>(sql, new { UserId = currentUserId })).ToList();
+                var notes = (await _dbService.DoGetDataSQLAsync<CrmNoteDto>(sql, new { UserId = acl.UserId })).ToList();
                 return Ok(notes);
             }
             catch (Exception ex)
@@ -747,10 +972,19 @@ namespace Safir.Server.Controllers
         [HttpPost("save-note")]
         public async Task<ActionResult<int>> SaveNote([FromBody] CrmNoteDto note)
         {
+            var acl = await TryGetAccessAsync();
+            if (acl == null) return Unauthenticated();
+
             try
             {
-                int currentUserId = GetCurrentUserId();
-                note.userid = note.userid ?? currentUserId;
+                bool isUpdate = note.idd != null && note.idd > 0;
+
+                if (isUpdate && !await CanAccessNoteAsync(acl, note.idd!.Value))
+                    return Denied();
+
+                // مالکیت یادداشت را سرور تعیین می‌کند، نه بدنه‌ی درخواست.
+                note.userid = acl.UserId;
+
                 if (note.Ndate == null || note.Ndate <= 0)
                 {
                     note.Ndate = int.TryParse(CL_Tarikh.Current_FullDate, out var nd) ? nd : null;
@@ -760,7 +994,7 @@ namespace Safir.Server.Controllers
                     note.Ntime = DateTime.Now.ToString("HH:mm");
                 }
 
-                if (note.idd == null || note.idd <= 0)
+                if (!isUpdate)
                 {
                     var sql = @"
                         INSERT INTO Notes (Note, Ndate, Ntime, userid, Ndone)
@@ -786,8 +1020,13 @@ namespace Safir.Server.Controllers
         [HttpPost("toggle-note")]
         public async Task<ActionResult<bool>> ToggleNote([FromQuery] int noteId, [FromQuery] bool done)
         {
+            var acl = await TryGetAccessAsync();
+            if (acl == null) return Unauthenticated();
+
             try
             {
+                if (!await CanAccessNoteAsync(acl, noteId)) return Denied();
+
                 var sql = "UPDATE Notes SET Ndone = @Done WHERE idd = @Id";
                 var rows = await _dbService.DoExecuteSQLAsync(sql, new { Done = done ? 1 : 0, Id = noteId });
                 return Ok(rows > 0);
@@ -802,8 +1041,13 @@ namespace Safir.Server.Controllers
         [HttpDelete("notes/{id}")]
         public async Task<ActionResult<bool>> DeleteNote(int id)
         {
+            var acl = await TryGetAccessAsync();
+            if (acl == null) return Unauthenticated();
+
             try
             {
+                if (!await CanAccessNoteAsync(acl, id)) return Denied();
+
                 var rows = await _dbService.DoExecuteSQLAsync("DELETE FROM Notes WHERE idd = @Id", new { Id = id });
                 return Ok(rows > 0);
             }
@@ -832,6 +1076,31 @@ namespace Safir.Server.Controllers
                 _logger.LogError(ex, "Error sending SMS in CRM");
                 return StatusCode(500, "خطا در ارسال پیامک");
             }
+        }
+
+        private async Task<bool> CanAccessNoteAsync(CrmAccessDto acl, int noteId)
+        {
+            if (!acl.RestrictToOwn) return true;
+
+            var count = (await _dbService.DoGetDataSQLAsync<int>(
+                "SELECT COUNT(1) FROM dbo.Notes WITH (NOLOCK) WHERE idd = @Id AND userid = @AclUserId",
+                new { Id = noteId, AclUserId = acl.UserId })).FirstOrDefault();
+
+            return count > 0;
+        }
+
+        /// <summary>فقط برای خواندن مالک فعلی یک شرکت هنگام ویرایش</summary>
+        private sealed class CrmCompanyOwner
+        {
+            public int? USERID { get; set; }
+            public string? USER_NAME { get; set; }
+        }
+
+        /// <summary>فقط برای خواندن مالک فعلی یک رویداد هنگام ویرایش</summary>
+        private sealed class CrmEventOwner
+        {
+            public int? USERID { get; set; }
+            public string? SALER { get; set; }
         }
 
         private async Task<Dictionary<int, string>> GetStatusListInternal()

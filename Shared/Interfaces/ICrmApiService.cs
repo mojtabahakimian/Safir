@@ -6,6 +6,9 @@ namespace Safir.Shared.Interfaces
 {
     public interface ICrmApiService
     {
+        /// <summary>وضعیت دسترسی کاربر جاری — «همه را می‌بیند» یا «فقط مال خودش»</summary>
+        Task<CrmAccessDto> GetAccessAsync();
+
         Task<List<CrmCompanyDto>> GetCompaniesAsync(CrmFilterDto filter);
         Task<CrmCompanyDto?> GetCompanyByIdAsync(int id);
         Task<int> SaveCompanyAsync(CrmCompanyDto company);

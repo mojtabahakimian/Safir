@@ -1,4 +1,4 @@
-﻿using Dapper;
+using Dapper;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Safir.Shared.Interfaces;
@@ -150,6 +150,10 @@ WHERE CFG_KEY = @Key;",
                 // تنظیماتِ ACL کش می‌شوند؛ بدون این خط، روشن کردن ACL_ENFORCE تا
                 // سر رسیدن TTL بی‌اثر می‌ماند و کاربر فکر می‌کند ذخیره نشده است.
                 await accessService.InvalidateConfigAsync();
+
+                // CRM_ACL_ENFORCE هم در همین جدول است و از همین صفحه ذخیره
+                // می‌شود، پس کش آن هم باید دور ریخته شود.
+                HttpContext.RequestServices.GetRequiredService<ICrmAccessService>().InvalidateConfig();
 
                 return Ok();
             }
