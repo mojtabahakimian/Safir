@@ -6,6 +6,7 @@
 @inject Pay2AccessApiService Access
 @inject ISnackbar Snackbar
 @inject IDialogService Dialog
+@inject IJSRuntime JS
 
 <PageTitle>تنظیمات بهای تمام‌شده</PageTitle>
 
@@ -445,6 +446,47 @@
             </MudPaper>
         </MudTabPanel>
 
+        @* جلوه‌های بصری ماژول.
+           چرا اینجا و نه فقط در کنسول: ویندوزهای اداری معمولاً «جلوه‌های
+           انیمیشن» را برای سرعت خاموش دارند، و آن‌وقت کروم
+           prefers-reduced-motion: reduce گزارش می‌کند و کلِ افکت‌ها
+           خاموش می‌مانند. تا امروز تنها راهِ روشن کردنش یک دستور در
+           کنسول بود، که عملاً یعنی هیچ کاربری روشنش نمی‌کند. *@
+        <MudTabPanel Text="جلوه‌های بصری">
+            <MudPaper Class="cc-rule-card pa-4" Elevation="0">
+                <MudText Typo="Typo.subtitle2" Class="mb-1">جلوه‌های بصری بهای تمام‌شده</MudText>
+                <MudText Typo="Typo.body2" Class="mud-text-secondary mb-3">
+                    پس‌زمینه‌ی متحرک، واکنش کلیک و انیمیشن‌های صفحه. فقط روی همین
+                    ماژول اثر دارد و روی بقیه‌ی برنامه نمی‌نشیند.
+                </MudText>
+
+                <MudRadioGroup T="string" Value="_motionPref" ValueChanged="OnMotionChanged">
+                    <MudRadio T="string" Option="@("auto")" Dense>
+                        خودکار — پیروی از تنظیم انیمیشن ویندوز
+                    </MudRadio>
+                    <MudRadio T="string" Option="@("on")" Dense>
+                        همیشه روشن
+                    </MudRadio>
+                    <MudRadio T="string" Option="@("off")" Dense>
+                        همیشه خاموش
+                    </MudRadio>
+                </MudRadioGroup>
+
+                @if (_motionPref == "auto" && _systemReduced)
+                {
+                    <MudAlert Severity="Severity.Info" Dense Class="mt-3">
+                        ویندوز شما انیمیشن‌ها را خاموش کرده، پس در حالت «خودکار»
+                        جلوه‌ها نمایش داده نمی‌شوند. برای دیدنشان «همیشه روشن» را
+                        انتخاب کنید.
+                    </MudAlert>
+                }
+
+                <MudText Typo="Typo.caption" Class="mud-text-secondary mt-3">
+                    این تنظیم روی همین مرورگر ذخیره می‌شود، نه روی سرور.
+                </MudText>
+            </MudPaper>
+        </MudTabPanel>
+
     </MudTabs>
 </div>
 
@@ -489,9 +531,44 @@
     private string? _editingRuleCode;
     private double? _editingThreshold;
 
+    // ───────── جلوه‌های بصری ─────────
+    // مقدارها عیناً همان چیزی است که cost-close-fx.js از localStorage
+    // می‌خواند (کلید 'cc-motion'): on / off / نبودنِ کلید = خودکار.
+    private string _motionPref  = "auto";
+    private bool   _systemReduced;
+
+    private async Task LoadMotionPrefAsync()
+    {
+        // عمداً توابع نام‌دار و نه eval: هم CSP جلوی eval را می‌گیرد، هم
+        // منطقِ خواندن باید یک‌جا (کنار خودِ اسکریپت) بماند.
+        try
+        {
+            _motionPref    = await JS.InvokeAsync<string>("ccMotionGet");
+            _systemReduced = await JS.InvokeAsync<bool>("ccSystemReduced");
+        }
+        catch
+        {
+            // اسکریپت هنوز لود نشده یا localStorage بسته است. خواندنش
+            // تزئینی است، پس بی‌سروصدا روی پیش‌فرض می‌ماند.
+            _motionPref = "auto";
+        }
+    }
+
+    private async Task OnMotionChanged(string value)
+    {
+        _motionPref = value;
+
+        // ccMotion خودش صفحه را ری‌لود می‌کند — لازم است، چون هر دو
+        // اسکریپت ترجیح را هنگام بارگذاری می‌خوانند و بوم باید از نو
+        // ساخته شود.
+        try { await JS.InvokeVoidAsync("ccMotion", value); }
+        catch { Snackbar.Add("تغییر جلوه‌ها انجام نشد.", Severity.Warning); }
+    }
+
     protected override async Task OnInitializedAsync()
     {
         await Access.EnsureLoadedAsync();
+        await LoadMotionPrefAsync();
 
         _busy = true;
         try

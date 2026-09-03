@@ -23,6 +23,12 @@
     <!-- بعد از pay2-salary.css بیاید — توکن‌های --p2-* را از آن به ارث می‌برد -->
     <link href="css/cost-close.css?v=14050502-1" rel="stylesheet" />
 
+    <!-- تم نئونِ ماژول بهای تمام‌شده. باید *بعد از* cost-close.css بیاید
+         چون رویش می‌نشیند. هر انتخابگرش زیر .cc-fx/.cc-page است، پس تا
+         وقتی cost-close-fx.js کلاس .cc-fx را روی body نگذارد هیچ اثری
+         روی بقیه‌ی برنامه ندارد. -->
+    <link href="css/cost-close-neon.css?v=14050603-9" rel="stylesheet" />
+
     <link href="css/bootstrap-icons/bootstrap-icons.css" rel="stylesheet" />
 
     <link href="manifest.json" rel="manifest" />
@@ -672,6 +678,8 @@
     <script src="js/interop.js?v=3"></script>
     <script src="js/diagnostics.js?v=2"></script>
     <script src="js/pay2-enter-nav.js?v=14050323-1"></script>
+    <script src="js/cost-close-fx.js?v=14050603-6"></script>
+    <script src="js/cost-close-fun.js?v=14050603-8"></script>
 
     <!--فعلا کامنت شده برای جلوگیری از کش شده-->
     <!--<script>navigator.serviceWorker.register('service-worker.js');</script>-->
