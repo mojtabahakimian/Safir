@@ -454,29 +454,20 @@ namespace Safir.Server.Controllers
                 int currentUserId = GetCurrentUserId();
                 int todayInt = int.TryParse(CL_Tarikh.Current_FullDate, out var td) ? td : 0;
 
-                var summary = new CrmDashboardSummaryDto();
+                // واکشی همزمان تمام شمارنده‌ها در یک تک‌کوئری برای حداکثر سرعت
+                var statsSql = @"
+                    SELECT
+                        (SELECT COUNT(1) FROM COPMANES WITH(NOLOCK) WHERE userid = @UserId OR userid IS NULL) AS TotalCompanies,
+                        (SELECT COUNT(1) FROM CRMEVENTS WITH(NOLOCK) WHERE USERID = @UserId OR USERID IS NULL) AS TotalEvents,
+                        (SELECT COUNT(1) FROM CRMEVENTS WITH(NOLOCK) WHERE NEXT_DATE = @Today AND (USERID = @UserId OR USERID IS NULL)) AS TodayFollowUps,
+                        (SELECT COUNT(1) FROM CRMEVENTS WITH(NOLOCK) WHERE NEXT_DATE < @Today AND NEXT_DATE > 0 AND (USERID = @UserId OR USERID IS NULL)) AS OverdueFollowUps,
+                        (SELECT COUNT(1) FROM CRMEVENTS WITH(NOLOCK) WHERE (miting = -1 OR miting = 1) AND NEXT_DATE = @Today AND (USERID = @UserId OR USERID IS NULL)) AS TodayMeetings;";
 
-                summary.TotalCompanies = (await _dbService.DoGetDataSQLAsync<int>(
-                    "SELECT COUNT(1) FROM COPMANES WHERE (userid = @UserId OR userid IS NULL)",
-                    new { UserId = currentUserId })).FirstOrDefault();
+                var summary = (await _dbService.DoGetDataSQLAsync<CrmDashboardSummaryDto>(
+                    statsSql, new { Today = todayInt, UserId = currentUserId })).FirstOrDefault() ?? new CrmDashboardSummaryDto();
 
-                summary.TotalEvents = (await _dbService.DoGetDataSQLAsync<int>(
-                    "SELECT COUNT(1) FROM CRMEVENTS WHERE (USERID = @UserId OR USERID IS NULL)",
-                    new { UserId = currentUserId })).FirstOrDefault();
-
-                summary.TodayFollowUps = (await _dbService.DoGetDataSQLAsync<int>(
-                    "SELECT COUNT(1) FROM CRMEVENTS WHERE NEXT_DATE = @Today AND (USERID = @UserId OR USERID IS NULL)",
-                    new { Today = todayInt, UserId = currentUserId })).FirstOrDefault();
-
-                summary.OverdueFollowUps = (await _dbService.DoGetDataSQLAsync<int>(
-                    "SELECT COUNT(1) FROM CRMEVENTS WHERE NEXT_DATE < @Today AND NEXT_DATE > 0 AND (USERID = @UserId OR USERID IS NULL)",
-                    new { Today = todayInt, UserId = currentUserId })).FirstOrDefault();
-
-                summary.TodayMeetings = (await _dbService.DoGetDataSQLAsync<int>(
-                    "SELECT COUNT(1) FROM CRMEVENTS WHERE (miting = -1 OR miting = 1) AND NEXT_DATE = @Today AND (USERID = @UserId OR USERID IS NULL)",
-                    new { Today = todayInt, UserId = currentUserId })).FirstOrDefault();
-
-                // لیست وضعیت‌ها
+                // لیست وضعیت‌ها و رویدادهای آینده به صورت همزمان
+                var statusDict = await GetStatusListInternal();
                 var statusRes = await GetStatusList();
                 if (statusRes.Result is OkObjectResult okObj && okObj.Value is List<CrmStatusDto> stList)
                 {
@@ -488,15 +479,14 @@ namespace Safir.Server.Controllers
                     SELECT TOP 10
                         E.*,
                         C.COMPANY_NAME
-                    FROM CRMEVENTS E
-                    LEFT JOIN COPMANES C ON E.idc = C.id
+                    FROM CRMEVENTS E WITH(NOLOCK)
+                    LEFT JOIN COPMANES C WITH(NOLOCK) ON E.idc = C.id
                     WHERE E.NEXT_DATE >= @Today AND (E.USERID = @UserId OR E.USERID IS NULL)
                     ORDER BY E.NEXT_DATE ASC, E.NEXT_TIME ASC";
 
                 summary.UpcomingEvents = (await _dbService.DoGetDataSQLAsync<CrmEventDto>(
                     upcomingSql, new { Today = todayInt, UserId = currentUserId })).ToList();
 
-                var statusDict = await GetStatusListInternal();
                 foreach (var ev in summary.UpcomingEvents)
                 {
                     if (ev.STATUS.HasValue && statusDict.TryGetValue(ev.STATUS.Value, out var stName))
@@ -612,10 +602,24 @@ namespace Safir.Server.Controllers
             {
                 var result = new List<CrmPhoneBookItemDto>();
                 var term = string.IsNullOrWhiteSpace(query) ? "" : query.Trim();
+                var fixTerm = term.FixPersianChars();
                 var likeTerm = $"%{term}%";
+                var likeFixTerm = $"%{fixTerm}%";
 
-                // جستجو در طرف حساب ها
-                var custWhere = string.IsNullOrWhiteSpace(term) ? "" : "WHERE (NAME LIKE @LikeTerm OR TEL LIKE @LikeTerm OR MOBILE LIKE @LikeTerm OR hes LIKE @LikeTerm OR ADDRESS LIKE @LikeTerm)";
+                // جستجو در طرف حساب ها با حذف رکوردهای بدون نام و ترتیب نام
+                string custWhere;
+                if (string.IsNullOrWhiteSpace(term))
+                {
+                    custWhere = "WHERE NAME IS NOT NULL AND RTRIM(NAME) <> ''";
+                }
+                else
+                {
+                    custWhere = @"WHERE NAME IS NOT NULL AND RTRIM(NAME) <> ''
+                                  AND (NAME LIKE @LikeTerm OR NAME LIKE @LikeFixTerm
+                                       OR TEL LIKE @LikeTerm OR MOBILE LIKE @LikeTerm
+                                       OR hes LIKE @LikeTerm OR ADDRESS LIKE @LikeTerm)";
+                }
+
                 var custSql = $@"
                     SELECT TOP 100
                         hes AS HesCode,
@@ -630,11 +634,23 @@ namespace Safir.Server.Controllers
                     ORDER BY NAME";
 
                 var custResults = await _dbService.DoGetDataSQLAsync<CrmPhoneBookItemDto>(
-                    custSql, new { LikeTerm = likeTerm });
+                    custSql, new { LikeTerm = likeTerm, LikeFixTerm = likeFixTerm });
                 result.AddRange(custResults);
 
-                // جستجو در شرکت‌های CRM
-                var crmWhere = string.IsNullOrWhiteSpace(term) ? "" : "WHERE (COMPANY_NAME LIKE @LikeTerm OR FACT_TEL LIKE @LikeTerm OR MOBILE LIKE @LikeTerm OR MANAGER LIKE @LikeTerm OR ADDR LIKE @LikeTerm)";
+                // جستجو در شرکت‌های CRM با حذف رکوردهای بدون نام
+                string crmWhere;
+                if (string.IsNullOrWhiteSpace(term))
+                {
+                    crmWhere = "WHERE COMPANY_NAME IS NOT NULL AND RTRIM(COMPANY_NAME) <> ''";
+                }
+                else
+                {
+                    crmWhere = @"WHERE COMPANY_NAME IS NOT NULL AND RTRIM(COMPANY_NAME) <> ''
+                                 AND (COMPANY_NAME LIKE @LikeTerm OR COMPANY_NAME LIKE @LikeFixTerm
+                                      OR FACT_TEL LIKE @LikeTerm OR MOBILE LIKE @LikeTerm
+                                      OR MANAGER LIKE @LikeTerm OR ADDR LIKE @LikeTerm)";
+                }
+
                 var crmSql = $@"
                     SELECT TOP 100
                         CAST(ID AS VARCHAR(50)) AS HesCode,
@@ -649,10 +665,10 @@ namespace Safir.Server.Controllers
                     ORDER BY COMPANY_NAME";
 
                 var crmResults = await _dbService.DoGetDataSQLAsync<CrmPhoneBookItemDto>(
-                    crmSql, new { LikeTerm = likeTerm });
+                    crmSql, new { LikeTerm = likeTerm, LikeFixTerm = likeFixTerm });
                 result.AddRange(crmResults);
 
-                return Ok(result);
+                return Ok(result.OrderBy(x => x.Name).ToList());
             }
             catch (Exception ex)
             {

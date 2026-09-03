@@ -888,11 +888,16 @@
 
     private async Task RefreshData()
     {
-        await LoadStatusList();
-        await LoadCompanies();
-        await LoadDashboardSummary();
-        await SearchPhoneBook();
-        await LoadNotes();
+        // اجرای همزمان و موازی واکشی‌های ضروری صفحه اول برای حداکثر سرعت
+        await Task.WhenAll(
+            LoadStatusList(),
+            LoadCompanies(),
+            LoadDashboardSummary()
+        );
+
+        // واکشی‌های تکمیلی برای سایر تب‌ها در پس‌زمینه
+        _ = SearchPhoneBook();
+        _ = LoadNotes();
     }
 
     private async Task LoadStatusList()
