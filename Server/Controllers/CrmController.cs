@@ -106,11 +106,9 @@ namespace Safir.Server.Controllers
 
                 var parameters = new DynamicParameters();
 
-                if (filter.OnlyMyCompanies)
-                {
-                    sql += " AND (C.userid = @UserId OR C.userid IS NULL) ";
-                    parameters.Add("UserId", currentUserId);
-                }
+                // Force user isolation
+                sql += " AND (C.userid = @UserId OR C.userid IS NULL) ";
+                parameters.Add("UserId", currentUserId);
 
                 if (filter.Status.HasValue && filter.Status.Value > 0)
                 {
@@ -181,9 +179,10 @@ namespace Safir.Server.Controllers
         {
             try
             {
-                var sql = "SELECT * FROM COPMANES WHERE ID = @Id";
-                var company = await _dbService.DoGetDataSQLAsyncSingle<CrmCompanyDto>(sql, new { Id = id });
-                if (company == null) return NotFound("شرکت مورد نظر یافت نشد.");
+                int currentUserId = GetCurrentUserId();
+                var sql = "SELECT * FROM COPMANES WHERE ID = @Id AND (userid = @UserId OR userid IS NULL)";
+                var company = await _dbService.DoGetDataSQLAsyncSingle<CrmCompanyDto>(sql, new { Id = id, UserId = currentUserId });
+                if (company == null) return NotFound("شرکت مورد نظر یافت نشد یا شما دسترسی به آن ندارید.");
 
                 var statusList = await GetStatusListInternal();
                 if (company.STATUS.HasValue && statusList.TryGetValue(company.STATUS.Value, out var stName))
@@ -267,6 +266,14 @@ namespace Safir.Server.Controllers
                 }
                 else
                 {
+                    var checkCompanySql = "SELECT COUNT(1) FROM COPMANES WHERE ID = @Id AND (userid = @UserId OR userid IS NULL)";
+                    var hasAccess = (await _dbService.DoGetDataSQLAsync<int>(checkCompanySql, new { Id = company.ID.Value, UserId = currentUserId })).FirstOrDefault();
+
+                    if (hasAccess == 0)
+                    {
+                        return StatusCode(StatusCodes.Status403Forbidden, "شما مجاز به ویرایش این شرکت نیستید.");
+                    }
+
                     var sql = @"
                         UPDATE COPMANES SET
                             COMPANY_NAME=@COMPANY_NAME, CITY=@CITY, MANAGER=@MANAGER, FACT_TEL=@FACT_TEL,
@@ -296,6 +303,15 @@ namespace Safir.Server.Controllers
         {
             try
             {
+                int currentUserId = GetCurrentUserId();
+                var checkCompanySql = "SELECT COUNT(1) FROM COPMANES WHERE ID = @Id AND (userid = @UserId OR userid IS NULL)";
+                var hasAccess = (await _dbService.DoGetDataSQLAsync<int>(checkCompanySql, new { Id = id, UserId = currentUserId })).FirstOrDefault();
+
+                if (hasAccess == 0)
+                {
+                    return StatusCode(StatusCodes.Status403Forbidden, "شما مجاز به حذف این شرکت نیستید.");
+                }
+
                 // حذف تمام رخدادهای مرتبط ابتدا
                 await _dbService.DoExecuteSQLAsync("DELETE FROM CRMEVENTS WHERE idc = @Id", new { Id = id });
                 var rows = await _dbService.DoExecuteSQLAsync("DELETE FROM COPMANES WHERE ID = @Id", new { Id = id });
@@ -313,8 +329,19 @@ namespace Safir.Server.Controllers
         {
             try
             {
-                var sql = "SELECT * FROM CRMEVENTS WHERE idc = @CompanyId ORDER BY idde DESC";
-                var events = (await _dbService.DoGetDataSQLAsync<CrmEventDto>(sql, new { CompanyId = companyId })).ToList();
+                int currentUserId = GetCurrentUserId();
+
+                // ابتدا چک می‌کنیم که شرکت متعلق به کاربر فعلی باشد
+                var checkCompanySql = "SELECT COUNT(1) FROM COPMANES WHERE ID = @CompanyId AND (userid = @UserId OR userid IS NULL)";
+                var hasAccess = (await _dbService.DoGetDataSQLAsync<int>(checkCompanySql, new { CompanyId = companyId, UserId = currentUserId })).FirstOrDefault();
+
+                if (hasAccess == 0)
+                {
+                    return NotFound("شرکت مورد نظر یافت نشد یا شما دسترسی به آن ندارید.");
+                }
+
+                var sql = "SELECT * FROM CRMEVENTS WHERE idc = @CompanyId AND (USERID = @UserId OR USERID IS NULL) ORDER BY idde DESC";
+                var events = (await _dbService.DoGetDataSQLAsync<CrmEventDto>(sql, new { CompanyId = companyId, UserId = currentUserId })).ToList();
 
                 var statusList = await GetStatusListInternal();
                 foreach (var ev in events)
@@ -376,6 +403,14 @@ namespace Safir.Server.Controllers
 
                 if (crmEvent.IDDE == null || crmEvent.IDDE <= 0)
                 {
+                    // بررسی دسترسی کاربر به شرکتی که قرار است رویداد برایش ثبت شود
+                    if (crmEvent.IDC.HasValue)
+                    {
+                        var checkCompanySql = "SELECT COUNT(1) FROM COPMANES WHERE ID = @Id AND (userid = @UserId OR userid IS NULL)";
+                        var hasAccess = (await _dbService.DoGetDataSQLAsync<int>(checkCompanySql, new { Id = crmEvent.IDC.Value, UserId = currentUserId })).FirstOrDefault();
+                        if (hasAccess == 0) return StatusCode(StatusCodes.Status403Forbidden, "شما مجاز به ثبت رویداد برای این شرکت نیستید.");
+                    }
+
                     var sql = @"
                         INSERT INTO CRMEVENTS (
                             COMPANY_NAME, INFO_DATE, INFO_TIME, SALER, BUYER, COMMENT, NEXT_DATE,
@@ -401,6 +436,11 @@ namespace Safir.Server.Controllers
                 }
                 else
                 {
+                    // بررسی دسترسی به خود رویداد
+                    var checkEventSql = "SELECT COUNT(1) FROM CRMEVENTS WHERE idde = @Id AND (USERID = @UserId OR USERID IS NULL)";
+                    var hasEventAccess = (await _dbService.DoGetDataSQLAsync<int>(checkEventSql, new { Id = crmEvent.IDDE.Value, UserId = currentUserId })).FirstOrDefault();
+                    if (hasEventAccess == 0) return StatusCode(StatusCodes.Status403Forbidden, "شما مجاز به ویرایش این پیگیری نیستید.");
+
                     var sql = @"
                         UPDATE CRMEVENTS SET
                             COMPANY_NAME=@COMPANY_NAME, INFO_DATE=@INFO_DATE, INFO_TIME=@INFO_TIME,
@@ -436,6 +476,15 @@ namespace Safir.Server.Controllers
         {
             try
             {
+                int currentUserId = GetCurrentUserId();
+                var checkEventSql = "SELECT COUNT(1) FROM CRMEVENTS WHERE idde = @Id AND (USERID = @UserId OR USERID IS NULL)";
+                var hasEventAccess = (await _dbService.DoGetDataSQLAsync<int>(checkEventSql, new { Id = id, UserId = currentUserId })).FirstOrDefault();
+
+                if (hasEventAccess == 0)
+                {
+                    return StatusCode(StatusCodes.Status403Forbidden, "شما مجاز به حذف این پیگیری نیستید.");
+                }
+
                 var rows = await _dbService.DoExecuteSQLAsync("DELETE FROM CRMEVENTS WHERE idde = @Id", new { Id = id });
                 return Ok(rows > 0);
             }
@@ -771,6 +820,10 @@ namespace Safir.Server.Controllers
                 }
                 else
                 {
+                    var checkNoteSql = "SELECT COUNT(1) FROM Notes WHERE idd = @Id AND (userid = @UserId OR userid IS NULL)";
+                    var hasNoteAccess = (await _dbService.DoGetDataSQLAsync<int>(checkNoteSql, new { Id = note.idd.Value, UserId = currentUserId })).FirstOrDefault();
+                    if (hasNoteAccess == 0) return StatusCode(StatusCodes.Status403Forbidden, "شما مجاز به ویرایش این یادداشت نیستید.");
+
                     var sql = "UPDATE Notes SET Note = @Note, Ndate = @Ndate, Ntime = @Ntime, Ndone = @Ndone WHERE idd = @idd";
                     await _dbService.DoExecuteSQLAsync(sql, note);
                     return Ok(note.idd.Value);
@@ -788,6 +841,15 @@ namespace Safir.Server.Controllers
         {
             try
             {
+                int currentUserId = GetCurrentUserId();
+                var checkNoteSql = "SELECT COUNT(1) FROM Notes WHERE idd = @Id AND (userid = @UserId OR userid IS NULL)";
+                var hasNoteAccess = (await _dbService.DoGetDataSQLAsync<int>(checkNoteSql, new { Id = noteId, UserId = currentUserId })).FirstOrDefault();
+
+                if (hasNoteAccess == 0)
+                {
+                    return StatusCode(StatusCodes.Status403Forbidden, "شما مجاز به تغییر وضعیت این یادداشت نیستید.");
+                }
+
                 var sql = "UPDATE Notes SET Ndone = @Done WHERE idd = @Id";
                 var rows = await _dbService.DoExecuteSQLAsync(sql, new { Done = done ? 1 : 0, Id = noteId });
                 return Ok(rows > 0);
@@ -804,6 +866,15 @@ namespace Safir.Server.Controllers
         {
             try
             {
+                int currentUserId = GetCurrentUserId();
+                var checkNoteSql = "SELECT COUNT(1) FROM Notes WHERE idd = @Id AND (userid = @UserId OR userid IS NULL)";
+                var hasNoteAccess = (await _dbService.DoGetDataSQLAsync<int>(checkNoteSql, new { Id = id, UserId = currentUserId })).FirstOrDefault();
+
+                if (hasNoteAccess == 0)
+                {
+                    return StatusCode(StatusCodes.Status403Forbidden, "شما مجاز به حذف این یادداشت نیستید.");
+                }
+
                 var rows = await _dbService.DoExecuteSQLAsync("DELETE FROM Notes WHERE idd = @Id", new { Id = id });
                 return Ok(rows > 0);
             }
