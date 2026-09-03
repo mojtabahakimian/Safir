@@ -923,3 +923,147 @@ body.cc-thinking .cc-buddy { opacity: 0; transform: translateY(20px); pointer-ev
 @media (prefers-reduced-motion: reduce) {
     body:not(.cc-motion-ok) .cc-think-mini { display: none; }
 }
+
+/* ══════════════════════════════════════════════════════════════════════
+   همان پالت، داخل پنجره‌ها
+
+   دیالوگ‌های MudBlazor بیرون از .cc-page و ته <body> رندر می‌شوند، پس
+   قانون‌های بالا که همه زیر .cc-page بودند به آن‌ها نمی‌رسید و «بازسازی
+   اسناد گروهی» و بقیه با رنگ پیش‌فرض MudBlazor باز می‌شدند — یک پنجره‌ی
+   روشن وسط یک ماژول بنفش.
+
+   دامنه اینجا .cc-fx .mud-dialog است: فقط وقتی داخل این ماژول باشی. هیچ
+   دیالوگی در بقیه‌ی برنامه رنگ نمی‌گیرد.
+   ══════════════════════════════════════════════════════════════════════ */
+
+.cc-fx .mud-dialog {
+    background: linear-gradient(160deg,
+                rgba(58, 34, 118, .96), rgba(38, 22, 84, .97));
+    border: 1px solid var(--ccn-border-hi);
+    border-radius: 18px;
+    color: var(--ccn-text);
+    box-shadow: 0 24px 70px rgba(0, 0, 0, .55),
+                0 0 0 1px rgba(190, 160, 255, .12),
+                inset 0 1px 0 rgba(255, 255, 255, .08);
+}
+
+/* سرتیتر و نوار دکمه‌ها با خطِ جداکننده‌ی هم‌خانواده */
+.cc-fx .mud-dialog .mud-dialog-title {
+    color: var(--ccn-text);
+    border-bottom: 1px solid var(--ccn-border);
+    background: linear-gradient(180deg, rgba(255, 255, 255, .06), transparent);
+}
+
+.cc-fx .mud-dialog .mud-dialog-actions {
+    border-top: 1px solid var(--ccn-border);
+    background: rgba(0, 0, 0, .14);
+}
+
+.cc-fx .mud-dialog,
+.cc-fx .mud-dialog .mud-typography,
+.cc-fx .mud-dialog label {
+    color: var(--ccn-text);
+}
+
+.cc-fx .mud-dialog .mud-text-secondary,
+.cc-fx .mud-dialog .mud-typography-caption {
+    color: var(--ccn-text-dim);
+}
+
+/* کارت/کاغذِ تودرتو داخل دیالوگ — مثلاً جدول‌های پیش‌نمایش */
+.cc-fx .mud-dialog .mud-paper {
+    background: rgba(70, 44, 138, .55);
+    border: 1px solid var(--ccn-border);
+    border-radius: 14px;
+    color: var(--ccn-text);
+}
+
+/* ── جدول‌های داخل دیالوگ ── */
+
+.cc-fx .mud-dialog .mud-table,
+.cc-fx .mud-dialog .mud-simple-table { background: transparent; color: var(--ccn-text); }
+
+.cc-fx .mud-dialog .mud-table-head th,
+.cc-fx .mud-dialog .mud-simple-table thead th {
+    background: rgba(45, 24, 96, .92);
+    color: var(--ccn-text-dim);
+    border-bottom: 1px solid var(--ccn-border-hi);
+    font-weight: 700;
+}
+
+.cc-fx .mud-dialog .mud-table-row td,
+.cc-fx .mud-dialog .mud-simple-table tbody td {
+    border-bottom: 1px solid rgba(200, 170, 255, .12);
+    color: var(--ccn-text);
+}
+
+.cc-fx .mud-dialog .mud-table-row:hover td,
+.cc-fx .mud-dialog .mud-simple-table tbody tr:hover td {
+    background: rgba(200, 170, 255, .10);
+}
+
+/* ── کنترل‌ها داخل دیالوگ ── */
+
+.cc-fx .mud-dialog .mud-button-filled.mud-button-filled-primary {
+    background: linear-gradient(135deg, #22d3ee, #6366f1 55%, #a78bfa);
+    border: 0;
+    color: #120a2e;
+    font-weight: 700;
+    box-shadow: 0 6px 22px rgba(99, 102, 241, .45);
+}
+
+.cc-fx .mud-dialog .mud-button-outlined,
+.cc-fx .mud-dialog .mud-button-text {
+    border-color: var(--ccn-border-hi) !important;
+    color: var(--ccn-text);
+}
+
+.cc-fx .mud-dialog .mud-icon-button { color: var(--ccn-text-dim); }
+.cc-fx .mud-dialog .mud-icon-button:hover { color: var(--ccn-cyan); }
+
+.cc-fx .mud-dialog .mud-chip {
+    border: 1px solid var(--ccn-border) !important;
+    background: rgba(255, 255, 255, .05);
+    color: var(--ccn-text-dim);
+}
+
+.cc-fx .mud-dialog .mud-input > input,
+.cc-fx .mud-dialog .mud-input-slot,
+.cc-fx .mud-dialog .mud-select-input { color: var(--ccn-text); }
+
+.cc-fx .mud-dialog .mud-input-outlined-border { border-color: var(--ccn-border); }
+
+.cc-fx .mud-dialog .mud-input-control:focus-within .mud-input-outlined-border {
+    border-color: var(--ccn-cyan);
+    box-shadow: var(--ccn-glow-cyan);
+}
+
+.cc-fx .mud-dialog .mud-input-label { color: var(--ccn-text-dim); }
+
+/* چک‌باکس و رادیو: پیش‌فرضشان روی بنفش تیره دیده نمی‌شود */
+.cc-fx .mud-dialog .mud-checkbox .mud-icon-root,
+.cc-fx .mud-dialog .mud-radio .mud-icon-root { color: var(--ccn-text-dim); }
+
+.cc-fx .mud-dialog .mud-checkbox-true .mud-icon-root,
+.cc-fx .mud-dialog .mud-radio.mud-checked .mud-icon-root { color: var(--ccn-cyan); }
+
+.cc-fx .mud-dialog .mud-alert {
+    background: rgba(70, 44, 138, .7);
+    border: 1px solid var(--ccn-border);
+    color: var(--ccn-text);
+    backdrop-filter: blur(8px);
+}
+
+.cc-fx .mud-dialog .mud-divider { border-color: var(--ccn-border); }
+
+/* ── مخصوص «بازسازی اسناد گروهی» ──
+   آن دیالوگ رنگ نتیجه را از --mud-palette-success/error می‌گیرد که روی
+   بنفش تیره کم‌کنتراست است؛ اینجا با رنگ‌های خودِ تم جایگزین می‌شود. */
+.cc-fx .rgd-result.ok  { color: var(--ccn-lime) !important; }
+.cc-fx .rgd-result.err { color: var(--ccn-red)  !important; }
+
+.cc-fx .rgd-progress {
+    background: rgba(255, 255, 255, .10);
+    border-radius: 4px;
+    overflow: hidden;
+}
