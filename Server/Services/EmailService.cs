@@ -12,13 +12,13 @@ namespace Safir.Server.Services
 {
     public class SmtpSettings
     {
-        [Required] public string SmtpHost { get; set; } = "";
+        public string SmtpHost { get; set; } = "";
         [Range(1, 65535)] public int SmtpPort { get; set; } = 587;
-        [Required] public string Username { get; set; } = "";
-        [Required] public string Password { get; set; } = "";
-        [Required] public string SenderEmail { get; set; } = "";
+        public string Username { get; set; } = "";
+        public string Password { get; set; } = "";
+        public string SenderEmail { get; set; } = "";
         public string SenderName { get; set; } = "Safir";
-        [Required] public string ReceiverEmail { get; set; } = "";
+        public string ReceiverEmail { get; set; } = "";
     }
 
     public interface IEmailService
