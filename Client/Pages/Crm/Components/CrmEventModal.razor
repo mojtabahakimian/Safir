@@ -1,0 +1,212 @@
+@using MudBlazor
+@using Safir.Shared.Models.Crm
+@using Safir.Client.Services
+@using Safir.Shared.Utility
+@inject CrmApiService CrmApi
+@inject ISnackbar Snackbar
+
+<MudDialog MaxWidth="MaxWidth.Small" FullWidth="true">
+    <TitleContent>
+        <MudText Typo="Typo.h6" Color="Color.Secondary">
+            <MudIcon Icon="@(Event.IDDE.HasValue && Event.IDDE.Value > 0 ? Icons.Material.Filled.EditNote : Icons.Material.Filled.AddComment)" Class="mr-2" />
+            @(Event.IDDE.HasValue && Event.IDDE.Value > 0 ? "ویرایش رویداد / پیگیری" : "ثبت پیگیری جدید")
+        </MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudForm @ref="_form">
+            <MudGrid Spacing="2">
+                <MudItem xs="12">
+                    <MudText Typo="Typo.subtitle2" Color="Color.Primary">
+                        شرکت: <b>@CompanyName</b>
+                    </MudText>
+                </MudItem>
+
+                <MudItem xs="12" sm="6">
+                    <MudSelect T="int?" @bind-Value="Event.STATUS" Label="وضعیت جدید *" Required="true" Variant="Variant.Outlined">
+                        @foreach (var st in StatusList)
+                        {
+                            <MudSelectItem T="int?" Value="@st.Code">@st.Name</MudSelectItem>
+                        }
+                    </MudSelect>
+                </MudItem>
+
+                <MudItem xs="12" sm="6">
+                    <MudCheckBox @bind-Value="_isMeeting" Label="جلسه / قرار ملاقات حضوری" Color="Color.Primary" />
+                </MudItem>
+
+                <MudItem xs="12" sm="6">
+                    <MudAutocomplete T="string"
+                                     @bind-Value="Event.SALER"
+                                     Label="مسئول / تماس‌گیرنده"
+                                     SearchFunc="SearchSalers"
+                                     CoerceValue="true"
+                                     ResetValueOnEmptyText="false"
+                                     Variant="Variant.Outlined" />
+                </MudItem>
+                <MudItem xs="12" sm="6">
+                    <MudAutocomplete T="string"
+                                     @bind-Value="Event.BUYER"
+                                     Label="شخص مقابل / طرف مذاکره"
+                                     SearchFunc="SearchBuyers"
+                                     CoerceValue="true"
+                                     ResetValueOnEmptyText="false"
+                                     Variant="Variant.Outlined" />
+                </MudItem>
+
+                <MudItem xs="12">
+                    <MudTextField @bind-Value="Event.COMMENT"
+                                  Label="شرح مذاکره و اقدامات انجام‌شده *"
+                                  Lines="3"
+                                  Required="true"
+                                  RequiredError="شرح اقدامات الزامی است"
+                                  Variant="Variant.Outlined" />
+                </MudItem>
+
+                <MudItem xs="12" sm="6">
+                    <MudTextField @bind-Value="_nextDateText"
+                                  Label="تاریخ تماس بعدی (مثال: 14050615)"
+                                  Variant="Variant.Outlined"
+                                  HelperText="تاریخ بدون ممیز" />
+                </MudItem>
+                <MudItem xs="12" sm="6">
+                    <MudTextField @bind-Value="_nextTimeText"
+                                  Label="ساعت تماس بعدی (مثال: 1030)"
+                                  Variant="Variant.Outlined"
+                                  HelperText="ساعت بدون دونقطه" />
+                </MudItem>
+
+                <MudItem xs="12">
+                    <MudTextField @bind-Value="Event.PAYAM"
+                                  Label="متن پیامک / یادداشت فوری"
+                                  Lines="2"
+                                  Variant="Variant.Outlined" />
+                </MudItem>
+            </MudGrid>
+        </MudForm>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel" Variant="Variant.Text">انصراف</MudButton>
+        <MudButton Color="Color.Secondary" Variant="Variant.Filled" OnClick="Submit" Disabled="_saving">
+            @if (_saving)
+            {
+                <MudProgressCircular Class="ms-n1" Size="Size.Small" Indeterminate="true" />
+                <MudText Class="ms-2">در حال ذخیره...</MudText>
+            }
+            else
+            {
+                <MudText>ثبت پیگیری</MudText>
+            }
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] MudDialogInstance MudDialog { get; set; } = default!;
+
+    [Parameter] public CrmEventDto Event { get; set; } = new();
+    [Parameter] public string CompanyName { get; set; } = string.Empty;
+    [Parameter] public int CompanyId { get; set; }
+    [Parameter] public List<CrmStatusDto> StatusList { get; set; } = new();
+
+    private MudForm? _form;
+    private bool _saving;
+    private bool _isMeeting;
+    private string _nextDateText = string.Empty;
+    private string _nextTimeText = string.Empty;
+    private List<string> _salers = new();
+    private List<string> _buyers = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        _isMeeting = Event.MITING == -1 || Event.MITING == 1;
+        if (Event.NEXT_DATE.HasValue && Event.NEXT_DATE.Value > 0)
+        {
+            _nextDateText = Event.NEXT_DATE.Value.ToString();
+        }
+        else
+        {
+            _nextDateText = CL_Tarikh.Current_FullDate;
+        }
+
+        if (Event.NEXT_TIME.HasValue && Event.NEXT_TIME.Value > 0)
+        {
+            _nextTimeText = Event.NEXT_TIME.Value.ToString("D4");
+        }
+
+        try
+        {
+            _salers = await CrmApi.GetDistinctSalersAsync();
+            _buyers = await CrmApi.GetDistinctBuyersAsync();
+        }
+        catch { }
+    }
+
+    private async Task<IEnumerable<string>> SearchSalers(string value)
+    {
+        if (string.IsNullOrEmpty(value)) return _salers;
+        return _salers.Where(x => x.Contains(value, StringComparison.InvariantCultureIgnoreCase));
+    }
+
+    private async Task<IEnumerable<string>> SearchBuyers(string value)
+    {
+        if (string.IsNullOrEmpty(value)) return _buyers;
+        return _buyers.Where(x => x.Contains(value, StringComparison.InvariantCultureIgnoreCase));
+    }
+
+    private async Task Submit()
+    {
+        if (_form != null)
+        {
+            await _form.Validate();
+            if (!_form.IsValid) return;
+        }
+
+        _saving = true;
+        try
+        {
+            Event.IDC = CompanyId;
+            Event.COMPANY_NAME = CompanyName;
+            Event.MITING = _isMeeting ? -1 : 0;
+
+            if (int.TryParse(_nextDateText, out var nd))
+            {
+                Event.NEXT_DATE = nd;
+            }
+            else
+            {
+                Event.NEXT_DATE = null;
+            }
+
+            if (int.TryParse(_nextTimeText, out var nt))
+            {
+                Event.NEXT_TIME = nt;
+            }
+            else
+            {
+                Event.NEXT_TIME = null;
+            }
+
+            var id = await CrmApi.SaveEventAsync(Event);
+            if (id > 0)
+            {
+                Event.IDDE = id;
+                Snackbar.Add("پیگیری با موفقیت ثبت شد.", Severity.Success);
+                MudDialog.Close(DialogResult.Ok(Event));
+            }
+            else
+            {
+                Snackbar.Add("خطا در ثبت پیگیری.", Severity.Error);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"خطا: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+
+    private void Cancel() => MudDialog.Cancel();
+}

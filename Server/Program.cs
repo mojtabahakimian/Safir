@@ -28,6 +28,8 @@ builder.Services.AddScoped<IDatabaseService, DatabaseService>();
 // Use Scoped lifetime: a new instance per HTTP request
 builder.Services.AddScoped<IUserService, UserService>();
 builder.Services.AddScoped<IUserStateService, UserStateService>();
+builder.Services.AddScoped<ISmsService, Safir.Server.Services.SmsService>();
+builder.Services.AddHttpClient();
 
 // --- End Custom Services ---
 builder.Services.AddScoped<IAppSettingsService, AppSettingsService>();

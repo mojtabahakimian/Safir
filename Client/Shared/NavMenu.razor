@@ -48,6 +48,19 @@
             <!-- اتوماسیون -->
             <MudNavLink Href="/automation/tasks" Icon="@Icons.Material.Filled.Assignment">کارتابل اتوماسیون</MudNavLink>
 
+            <!-- مدیریت ارتباط با مشتریان (CRM) -->
+            <MudNavGroup Title="مدیریت مشتریان (CRM)" Icon="@Icons.Material.Filled.SupportAgent" Expanded="false">
+                <MudNavLink Href="/crm" Match="NavLinkMatch.All" Icon="@Icons.Material.Filled.PeopleAlt">
+                    مدیریت و پیگیری‌ها
+                </MudNavLink>
+                <MudNavLink Href="/crm/dashboard" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.Analytics">
+                    داشبورد آماری
+                </MudNavLink>
+                <MudNavLink Href="/crm/phonebook" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.ContactPhone">
+                    دفترچه تلفن
+                </MudNavLink>
+            </MudNavGroup>
+
             <MudNavLink Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.PersonAdd" Href="customer-define">
                 تعریف مشتری جدید
             </MudNavLink>

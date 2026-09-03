@@ -6,6 +6,8 @@ namespace Safir.Shared.Utility
 {
     public static class CL_Tarikh
     {
+        public static string Current_FullDate => GetCurrentPersianDateAsLong().ToString();
+
         // --- توابع موجود ---
         public static long GetCurrentPersianDateAsLong()
         {
