@@ -1,0 +1,138 @@
+@page "/crm/phonebook"
+@using MudBlazor
+@using Safir.Shared.Models.Crm
+@using Safir.Client.Services
+@inject CrmApiService CrmApi
+@inject ISnackbar Snackbar
+@inject NavigationManager Navigation
+
+<MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="mt-3 mb-8 px-3">
+    <!-- هدر صفحه -->
+    <MudPaper Elevation="0" Class="pa-3 mb-4 rounded-lg border-solid border-1 d-flex justify-space-between align-center" Style="border-color: var(--mud-palette-lines-default); background-color: var(--mud-palette-surface);">
+        <div class="d-flex align-center gap-2">
+            <MudIcon Icon="@Icons.Material.Filled.ContactPhone" Size="Size.Medium" Color="Color.Primary" />
+            <div>
+                <MudText Typo="Typo.h6" Class="font-weight-bold" Style="color: var(--mud-palette-text-primary);">دفترچه تلفن هوشمند</MudText>
+                <MudText Typo="Typo.caption" Color="Color.Secondary">جستجوی جامع در طرف‌حساب‌های حسابداری و شرکت‌های CRM</MudText>
+            </div>
+        </div>
+        <MudButton Variant="Variant.Outlined" Color="Color.Primary" Size="Size.Small" StartIcon="@Icons.Material.Filled.ArrowBack" OnClick="@(() => Navigation.NavigateTo("/crm"))">
+            بازگشت به CRM
+        </MudButton>
+    </MudPaper>
+
+    <!-- کادر جستجو -->
+    <MudPaper Elevation="0" Class="pa-3 mb-3 rounded-lg border-solid border-1" Style="border-color: var(--mud-palette-lines-default); background-color: var(--mud-palette-surface);">
+        <MudTextField @bind-Value="_searchQuery"
+                      Placeholder="جستجو در نام مخاطب، شماره تلفن، آدرس یا کد حسابی..."
+                      Variant="Variant.Outlined"
+                      Margin="Margin.Dense"
+                      Adornment="Adornment.Start"
+                      AdornmentIcon="@Icons.Material.Filled.Search"
+                      Immediate="true"
+                      DebounceInterval="250"
+                      OnDebounceIntervalElapsed="PerformSearch"
+                      Clearable="true" />
+    </MudPaper>
+
+    <!-- جدول نتایج -->
+    <MudPaper Elevation="0" Class="rounded-xl border-solid border-1 overflow-hidden" Style="border-color: var(--mud-palette-lines-default); background-color: var(--mud-palette-surface);">
+        @if (_loading)
+        {
+            <div class="d-flex justify-center pa-12">
+                <MudProgressCircular Indeterminate="true" Color="Color.Primary" />
+            </div>
+        }
+        else if (_items.Count == 0)
+        {
+            <MudAlert Severity="Severity.Info" Variant="Variant.Outlined" Class="ma-4">
+                هیچ مخاطبی مطابق با عبارت جستجو یافت نشد.
+            </MudAlert>
+        }
+        else
+        {
+            <MudTable Items="_items" Dense="true" Hover="true" Striped="true" Elevation="0">
+                <HeaderContent>
+                    <MudTh>منبع</MudTh>
+                    <MudTh>کد / شناسه</MudTh>
+                    <MudTh>نام و نام‌خانوادگی / شرکت</MudTh>
+                    <MudTh>تلفن ثابت</MudTh>
+                    <MudTh>تلفن همراه</MudTh>
+                    <MudTh>آدرس</MudTh>
+                    <MudTh>توضیحات</MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd DataLabel="منبع">
+                        <span class="crm-source-tag">
+                            @context.SourceType
+                        </span>
+                    </MudTd>
+                    <MudTd DataLabel="کد">@context.HesCode</MudTd>
+                    <MudTd DataLabel="نام"><span style="color: var(--mud-palette-text-primary); font-weight: 600;">@context.Name</span></MudTd>
+                    <MudTd DataLabel="تلفن">
+                        @if (!string.IsNullOrWhiteSpace(context.Tel))
+                        {
+                            <a href="tel:@context.Tel" class="text-decoration-none" style="color: var(--mud-palette-text-secondary);">
+                                <MudIcon Icon="@Icons.Material.Filled.Phone" Size="Size.Small" Class="vertical-align-middle" />
+                                @context.Tel
+                            </a>
+                        }
+                    </MudTd>
+                    <MudTd DataLabel="موبایل">
+                        @if (!string.IsNullOrWhiteSpace(context.Mobile))
+                        {
+                            <a href="tel:@context.Mobile" class="text-decoration-none" style="color: var(--mud-palette-text-secondary);">
+                                <MudIcon Icon="@Icons.Material.Filled.Smartphone" Size="Size.Small" Class="vertical-align-middle" />
+                                @context.Mobile
+                            </a>
+                        }
+                    </MudTd>
+                    <MudTd DataLabel="آدرس">@context.Address</MudTd>
+                    <MudTd DataLabel="توضیحات">@context.Description</MudTd>
+                </RowTemplate>
+                <PagerContent>
+                    <MudTablePager PageSizeOptions="new int[] { 15, 30, 50, 100 }" />
+                </PagerContent>
+            </MudTable>
+        }
+    </MudPaper>
+</MudContainer>
+
+<style>
+    .crm-source-tag {
+        font-size: 0.75rem;
+        color: var(--mud-palette-text-secondary);
+        background-color: var(--mud-palette-action-default-hover);
+        padding: 2px 6px;
+        border-radius: 4px;
+        border: 1px solid var(--mud-palette-lines-default);
+    }
+</style>
+
+@code {
+    private string _searchQuery = string.Empty;
+    private List<CrmPhoneBookItemDto> _items = new();
+    private bool _loading;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await PerformSearch();
+    }
+
+    private async Task PerformSearch()
+    {
+        _loading = true;
+        try
+        {
+            _items = await CrmApi.SearchPhoneBookAsync(_searchQuery);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"خطا در جستجو: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+}

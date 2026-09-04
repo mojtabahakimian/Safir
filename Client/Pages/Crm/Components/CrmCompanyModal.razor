@@ -1,0 +1,205 @@
+@using MudBlazor
+@using Safir.Shared.Models.Crm
+@using Safir.Client.Services
+@inject CrmApiService CrmApi
+@inject ISnackbar Snackbar
+
+<MudDialog MaxWidth="MaxWidth.Medium" FullWidth="true">
+    <TitleContent>
+        <MudText Typo="Typo.h6" Color="Color.Primary">
+            <MudIcon Icon="@(Company.ID.HasValue && Company.ID.Value > 0 ? Icons.Material.Filled.Edit : Icons.Material.Filled.AddBusiness)" Class="mr-2" />
+            @(Company.ID.HasValue && Company.ID.Value > 0 ? "ویرایش شرکت / مشتری" : "ثبت شرکت / مشتری جدید")
+        </MudText>
+    </TitleContent>
+    <DialogContent>
+        @if (DuplicateResult?.HasAnyDuplicate == true)
+        {
+            <MudAlert Severity="Severity.Warning" Class="mb-3" Variant="Variant.Filled">
+                @DuplicateResult.Message
+            </MudAlert>
+        }
+
+        <MudForm @ref="_form">
+            <MudGrid Spacing="2">
+                <MudItem xs="12" sm="6">
+                    <MudTextField @bind-Value="Company.COMPANY_NAME"
+                                  Label="نام شرکت / فروشگاه *"
+                                  Required="true"
+                                  RequiredError="نام شرکت الزامی است"
+                                  Variant="Variant.Outlined"
+                                  OnBlur="OnNameBlur" />
+                </MudItem>
+                <MudItem xs="12" sm="6">
+                    <MudTextField @bind-Value="Company.MANAGER"
+                                  Label="نام مدیر / مسئول"
+                                  Variant="Variant.Outlined" />
+                </MudItem>
+
+                <MudItem xs="12" sm="6">
+                    <MudTextField @bind-Value="Company.FACT_TEL"
+                                  Label="تلفن ثابت"
+                                  Variant="Variant.Outlined"
+                                  OnBlur="OnTelBlur" />
+                </MudItem>
+                <MudItem xs="12" sm="6">
+                    <MudTextField @bind-Value="Company.MOBILE"
+                                  Label="شماره همراه"
+                                  Variant="Variant.Outlined"
+                                  OnBlur="OnMobileBlur" />
+                </MudItem>
+
+                <MudItem xs="12" sm="6">
+                    <MudTextField @bind-Value="Company.CITY"
+                                  Label="شهر"
+                                  Variant="Variant.Outlined" />
+                </MudItem>
+                <MudItem xs="12" sm="6">
+                    <MudSelect T="int?" @bind-Value="Company.STATUS" Label="وضعیت پیگیری" Variant="Variant.Outlined">
+                        @foreach (var st in StatusList)
+                        {
+                            <MudSelectItem T="int?" Value="@st.Code">@st.Name</MudSelectItem>
+                        }
+                    </MudSelect>
+                </MudItem>
+
+                <MudItem xs="12" sm="6">
+                    <MudTextField @bind-Value="Company.PERNUM"
+                                  Label="تعداد پرسنل"
+                                  Variant="Variant.Outlined" />
+                </MudItem>
+                <MudItem xs="12" sm="6">
+                    <MudTextField @bind-Value="Company.STATUS_FACT"
+                                  Label="وضعیت کارخانه / نوع مشتری"
+                                  Variant="Variant.Outlined" />
+                </MudItem>
+
+                <MudItem xs="12" sm="6">
+                    <MudTextField @bind-Value="Company.PRODUCTS"
+                                  Label="محصولات / زمینه فعالیت"
+                                  Variant="Variant.Outlined" />
+                </MudItem>
+                <MudItem xs="12" sm="6">
+                    <MudTextField @bind-Value="Company.SOFTWARE"
+                                  Label="سابقه کار / نرم‌افزار فعلی"
+                                  Variant="Variant.Outlined" />
+                </MudItem>
+
+                <MudItem xs="12" sm="6">
+                    <MudTextField @bind-Value="Company.ACCOUNTANT"
+                                  Label="نام حسابدار"
+                                  Variant="Variant.Outlined" />
+                </MudItem>
+                <MudItem xs="12" sm="6">
+                    <MudTextField @bind-Value="Company.ESP_PERSON"
+                                  Label="اشخاص ذی‌نفوذ / رابط کلیدی"
+                                  Variant="Variant.Outlined" />
+                </MudItem>
+                <MudItem xs="12" sm="6">
+                    <MudTextField @bind-Value="Company.REAGENT"
+                                  Label="معرف / نحوه آشنایی"
+                                  Variant="Variant.Outlined" />
+                </MudItem>
+
+                <MudItem xs="12">
+                    <MudTextField @bind-Value="Company.ADDR"
+                                  Label="آدرس"
+                                  Lines="2"
+                                  Variant="Variant.Outlined" />
+                </MudItem>
+
+                <MudItem xs="12">
+                    <MudTextField @bind-Value="Company.COMMENT"
+                                  Label="توضیحات تکمیلی"
+                                  Lines="3"
+                                  Variant="Variant.Outlined" />
+                </MudItem>
+            </MudGrid>
+        </MudForm>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel" Variant="Variant.Text">انصراف</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="Submit" Disabled="_saving">
+            @if (_saving)
+            {
+                <MudProgressCircular Class="ms-n1" Size="Size.Small" Indeterminate="true" />
+                <MudText Class="ms-2">در حال ذخیره...</MudText>
+            }
+            else
+            {
+                <MudText>ذخیره</MudText>
+            }
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] MudDialogInstance MudDialog { get; set; } = default!;
+
+    [Parameter] public CrmCompanyDto Company { get; set; } = new();
+    [Parameter] public List<CrmStatusDto> StatusList { get; set; } = new();
+
+    private MudForm? _form;
+    private bool _saving;
+    private CrmDuplicateCheckResultDto? DuplicateResult;
+
+    private async Task OnNameBlur()
+    {
+        if (string.IsNullOrWhiteSpace(Company.COMPANY_NAME)) return;
+        DuplicateResult = await CrmApi.CheckDuplicateAsync(Company.COMPANY_NAME, null, null, Company.ID);
+    }
+
+    private async Task OnTelBlur()
+    {
+        if (string.IsNullOrWhiteSpace(Company.FACT_TEL)) return;
+        var res = await CrmApi.CheckDuplicateAsync(null, Company.FACT_TEL, null, Company.ID);
+        if (res.HasAnyDuplicate)
+        {
+            Snackbar.Add(res.Message ?? "این شماره تلفن قبلاً ثبت شده است", Severity.Warning);
+        }
+    }
+
+    private async Task OnMobileBlur()
+    {
+        if (string.IsNullOrWhiteSpace(Company.MOBILE)) return;
+        var res = await CrmApi.CheckDuplicateAsync(null, null, Company.MOBILE, Company.ID);
+        if (res.HasAnyDuplicate)
+        {
+            Snackbar.Add(res.Message ?? "این شماره همراه قبلاً ثبت شده است", Severity.Warning);
+        }
+    }
+
+    private async Task Submit()
+    {
+        if (_form != null)
+        {
+            await _form.Validate();
+            if (!_form.IsValid) return;
+        }
+
+        _saving = true;
+        try
+        {
+            var id = await CrmApi.SaveCompanyAsync(Company);
+            if (id > 0)
+            {
+                Company.ID = id;
+                Snackbar.Add("اطلاعات شرکت با موفقیت ذخیره شد.", Severity.Success);
+                MudDialog.Close(DialogResult.Ok(Company));
+            }
+            else
+            {
+                Snackbar.Add("خطا در ذخیره‌سازی اطلاعات شرکت.", Severity.Error);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"خطا: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+
+    private void Cancel() => MudDialog.Cancel();
+}

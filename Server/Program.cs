@@ -1,4 +1,4 @@
-﻿using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
 using QuestPDF.Drawing;
 using QuestPDF.Infrastructure;
@@ -28,9 +28,17 @@ builder.Services.AddScoped<IDatabaseService, DatabaseService>();
 // Use Scoped lifetime: a new instance per HTTP request
 builder.Services.AddScoped<IUserService, UserService>();
 builder.Services.AddScoped<IUserStateService, UserStateService>();
+builder.Services.AddScoped<ISmsService, Safir.Server.Services.SmsService>();
+builder.Services.AddHttpClient();
 
 // --- End Custom Services ---
 builder.Services.AddScoped<IAppSettingsService, AppSettingsService>();
+builder.Services.AddScoped<IEmailService, EmailService>();
+builder.Services
+    .AddOptions<SmtpSettings>()
+    .BindConfiguration("EmailSettings")
+    .ValidateDataAnnotations()
+    .ValidateOnStart();
 
 
 // --- Add JWT Authentication ---
@@ -80,6 +88,7 @@ Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
 
 builder.Services.AddScoped<IPermissionService, PermissionService>();
 builder.Services.AddScoped<IPay2AccessService, Pay2AccessService>();
+builder.Services.AddScoped<ICrmAccessService, CrmAccessService>();
 builder.Services.AddScoped<Safir.Server.Security.Pay2ScopeResolver>();
 builder.Services.AddScoped<Safir.Server.Services.Pay2DisketteService>();
 

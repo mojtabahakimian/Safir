@@ -103,6 +103,8 @@ builder.Services.AddScoped<Pay2DashboardApiService>();
 builder.Services.AddScoped<IProductionReportApiService, ProductionReportApiService>();
 
 builder.Services.AddScoped<CostCloseApiService>();
+builder.Services.AddScoped<ICrmApiService, CrmApiService>();
+builder.Services.AddScoped<CrmApiService>();
 
 // سال مالی جاری برای ماژول بستن ماه — یک‌بار اینجا محاسبه می‌شود تا
 // صفحات مختلف هرکدام جداگانه حسابش نکنند و اول هر سال ناهماهنگ نشوند.
