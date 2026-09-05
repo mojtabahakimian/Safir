@@ -41,6 +41,45 @@
            localStorage.removeItem('cc-motion')      → پیروی از سیستم
 
        window.ccMotion() هم همین را از کنسول عوض می‌کند. */
+    function getThemeMode() {
+        try { return localStorage.getItem('cc-theme-mode') || 'neon'; }
+        catch { return 'neon'; }
+    }
+
+    function applyThemeClasses() {
+        const mode = getThemeMode();
+        document.body.classList.remove('cc-theme-classic', 'cc-theme-neon', 'cc-theme-party');
+        if (mode === 'classic') {
+            document.body.classList.add('cc-theme-classic');
+        } else if (mode === 'party') {
+            document.body.classList.add('cc-theme-party');
+        } else {
+            document.body.classList.add('cc-theme-neon');
+        }
+    }
+
+    window.ccSetTheme = (mode) => {
+        try {
+            localStorage.setItem('cc-theme-mode', mode);
+        } catch { }
+        applyThemeClasses();
+        if (mode === 'party') {
+            window.ccFx?.party(10000);
+            if (window.ccSpawnSparkles) window.ccSpawnSparkles();
+        }
+        if (mode === 'classic') {
+            stop();
+        } else if (isModuleOpen()) {
+            if (!running) start();
+            else {
+                seed();
+            }
+        }
+        window.dispatchEvent(new CustomEvent('cc-theme-changed', { detail: { theme: mode } }));
+    };
+
+    window.ccGetTheme = getThemeMode;
+
     function motionPref() {
         let v = null;
         try { v = localStorage.getItem('cc-motion'); } catch { }
@@ -115,11 +154,19 @@
            سرمه‌ای و بعد فیروزه‌ای عمیق. همان تیرگیِ لازم برای خواناییِ
            جدول‌ها را دارد ولی «رنگ» دارد، نه «سیاهی» — کاربر گفت
            «رنگ غالب شاد باشه الان مشکیه». */
+        const mode = getThemeMode();
         const base = ctx.createLinearGradient(0, 0, w, h);
-        base.addColorStop(0,    '#2a0f5e');   // بنفش سیر
-        base.addColorStop(0.42, '#1b2270');   // نیلی
-        base.addColorStop(0.72, '#0f3f6b');   // آبی عمیق
-        base.addColorStop(1,    '#10405c');   // فیروزه‌ای تیره
+        if (mode === 'party') {
+            base.addColorStop(0,    '#380036');   // سرخابی سیر
+            base.addColorStop(0.35, '#5c0649');   // بنفش ماژنتا
+            base.addColorStop(0.70, '#85005b');   // بنفش درخشان
+            base.addColorStop(1,    '#2c003e');   // ارغوانی تاریک
+        } else {
+            base.addColorStop(0,    '#2a0f5e');   // بنفش سیر
+            base.addColorStop(0.42, '#1b2270');   // نیلی
+            base.addColorStop(0.72, '#0f3f6b');   // آبی عمیق
+            base.addColorStop(1,    '#10405c');   // فیروزه‌ای تیره
+        }
         ctx.fillStyle = base;
         ctx.fillRect(0, 0, w, h);
 
@@ -334,6 +381,8 @@
         document.body.classList.toggle('cc-motion-ok', !reduceMotion);
 
         document.body.classList.add(BODY_CLASS);
+        applyThemeClasses();
+        if (getThemeMode() === 'classic') return;
         sizeCanvas();
         seed();
         running = true;
@@ -366,7 +415,7 @@
         waves = [];
         partyUntil = 0;
 
-        document.body.classList.remove(BODY_CLASS, 'cc-motion-ok');
+        document.body.classList.remove(BODY_CLASS, 'cc-motion-ok', 'cc-theme-classic', 'cc-theme-neon', 'cc-theme-party');
         canvas?.remove();
         canvas = null;
         ctx = null;

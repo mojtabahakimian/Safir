@@ -448,12 +448,205 @@
 
     let on = false;
 
-    function enable() {
+    
+    // ───────────────────── تم پارتی: کاراکترهای سه‌بعدی و فانتزی ─────────────────────
+    let partyContainer = null;
+    let sparkleInterval = null;
+
+    const AI_QUIPS = [
+        'سیستم‌های هوش مصنوعی با تمام انرژی فعال شدند! ✨',
+        'انحراف مصرف در حد نانو برآورد شد! 💖',
+        'امروز ریال‌ها خیلی قشنگ دارن بالانس میشن 🌸',
+        'هوش مصنوعی + انیشتین = معجزه بهای تمام‌شده 🤖⚡',
+        'شیر خام که هیچی، کوانتوم رو هم حل کردیم! 🦄',
+        'چه فرمول خوشگلی بستی امروز! 🎀'
+    ];
+
+    const EINSTEIN_QUIPS = [
+        'E = mc² ... و البته مواد + دستمزد + سربار! ⚡',
+        'نسبیت عام یعنی ریال‌ها هم نسبی‌اند! 🎩',
+        'مغایرت‌ها رو فوت کردم رفت هوا! 🚀',
+        'با سرعت نور داریم ماه رو می‌بندیم 💥',
+        'این تم پرانرژی مغز منم جوان کرد! 💖'
+    ];
+
+    function aiRobotSvg() {
+        return `<svg viewBox="0 0 100 120" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <radialGradient id="aiGlow" cx="50%" cy="50%" r="50%">
+              <stop offset="0%" stop-color="#00f0ff" stop-opacity="0.9"/>
+              <stop offset="100%" stop-color="#ff007f" stop-opacity="0"/>
+            </radialGradient>
+            <linearGradient id="aiBody" x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0%" stop-color="#ffffff"/>
+              <stop offset="50%" stop-color="#ffe3f1"/>
+              <stop offset="100%" stop-color="#ff66b2"/>
+            </linearGradient>
+            <linearGradient id="aiScreen" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stop-color="#18022a"/>
+              <stop offset="100%" stop-color="#3b004e"/>
+            </linearGradient>
+          </defs>
+          <g opacity="0.85">
+            <ellipse cx="20" cy="50" rx="16" ry="28" fill="url(#aiGlow)" transform="rotate(-25 20 50)"/>
+            <ellipse cx="80" cy="50" rx="16" ry="28" fill="url(#aiGlow)" transform="rotate(25 80 50)"/>
+          </g>
+          <circle cx="50" cy="14" r="5" fill="#ffe600" filter="drop-shadow(0 0 4px #ffe600)"/>
+          <line x1="50" y1="18" x2="50" y2="28" stroke="#ff007f" stroke-width="3" stroke-linecap="round"/>
+          <rect x="22" y="28" width="56" height="46" rx="23" fill="url(#aiBody)" stroke="#ff2a85" stroke-width="2.5"/>
+          <rect x="30" y="36" width="40" height="30" rx="14" fill="url(#aiScreen)"/>
+          <ellipse cx="42" cy="50" rx="4.5" ry="6" fill="#00f0ff"/>
+          <circle cx="44" cy="48" r="1.8" fill="#ffffff"/>
+          <ellipse cx="58" cy="50" rx="4.5" ry="6" fill="#00f0ff"/>
+          <circle cx="60" cy="48" r="1.8" fill="#ffffff"/>
+          <path d="M47 57 q3 3 6 0" stroke="#ff66b2" stroke-width="2" fill="none" stroke-linecap="round"/>
+          <path d="M35 76 q15 -4 30 0 l-4 26 q-11 5 -22 0 z" fill="url(#aiBody)" stroke="#ff2a85" stroke-width="2"/>
+          <path d="M50 86 C48 83, 43 83, 43 88 C43 92, 50 97, 50 97 C50 97, 57 92, 57 88 C57 83, 52 83, 50 86 Z" fill="#ff0055" filter="drop-shadow(0 0 3px #ff0055)"/>
+          <path d="M43 25 l-9 -5 l3 10 z M57 25 l9 -5 l-3 10 z" fill="#ff007f"/>
+          <circle cx="50" cy="25" r="3.5" fill="#ffe600"/>
+        </svg>`;
+    }
+
+    function einsteinPartySvg() {
+        return `<svg viewBox="0 0 120 140" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <radialGradient id="pSkin" cx="40%" cy="35%" r="70%">
+              <stop offset="0%" stop-color="#fff0f5"/>
+              <stop offset="60%" stop-color="#ffd1dc"/>
+              <stop offset="100%" stop-color="#f49ac2"/>
+            </radialGradient>
+            <linearGradient id="pHair" x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0%" stop-color="#ffffff"/>
+              <stop offset="40%" stop-color="#e0c3fc"/>
+              <stop offset="100%" stop-color="#8ec5fc"/>
+            </linearGradient>
+            <linearGradient id="pGlasses" x1="0" y1="0" x2="1" y2="0">
+              <stop offset="0%" stop-color="#00f0ff"/>
+              <stop offset="100%" stop-color="#ff007f"/>
+            </linearGradient>
+          </defs>
+          <g fill="url(#pHair)">
+            <path d="M20 58 q-12 -25 8 -36 q-4 18 10 24 z" filter="drop-shadow(0 0 5px #ff69b4)"/>
+            <path d="M100 58 q12 -25 -8 -36 q4 18 -10 24 z" filter="drop-shadow(0 0 5px #00f0ff)"/>
+            <ellipse cx="26" cy="42" rx="16" ry="20" transform="rotate(-24 26 42)"/>
+            <ellipse cx="94" cy="42" rx="16" ry="20" transform="rotate(24 94 42)"/>
+            <ellipse cx="60" cy="15" rx="22" ry="14"/>
+            <ellipse cx="38" cy="22" rx="18" ry="14" transform="rotate(-16 38 22)"/>
+            <ellipse cx="82" cy="22" rx="18" ry="14" transform="rotate(16 82 22)"/>
+          </g>
+          <ellipse cx="60" cy="66" rx="29" ry="34" fill="url(#pSkin)"/>
+          <g stroke="url(#pGlasses)" stroke-width="3.2" fill="rgba(0, 240, 255, 0.2)">
+            <circle cx="46" cy="60" r="12"/>
+            <circle cx="74" cy="60" r="12"/>
+            <line x1="58" y1="60" x2="62" y2="60" stroke="#ff007f" stroke-width="3"/>
+          </g>
+          <circle cx="46" cy="60" r="3.5" fill="#1e0826"/>
+          <circle cx="74" cy="60" r="3.5" fill="#1e0826"/>
+          <circle cx="47" cy="58" r="1.2" fill="#ffffff"/>
+          <circle cx="75" cy="58" r="1.2" fill="#ffffff"/>
+          <path d="M60 79 q-18 -4 -20 8 q0 7 11 4 q6 -2 9 -6 q3 4 9 6 q11 3 11 -4 q-2 -12 -20 -8 z" fill="#ffffff"/>
+          <path d="M56 86 q4 11 8 0 z" fill="#ff0055"/>
+          <path d="M48 106 l-12 -6 l4 14 z M72 106 l12 -6 l-4 14 z" fill="#ff007f"/>
+          <circle cx="60" cy="106" r="4" fill="#ffe600"/>
+        </svg>`;
+    }
+
+    function mountPartyCharacters() {
+        if (partyContainer) return;
+        if (window.ccGetTheme && window.ccGetTheme() !== 'party') return;
+
+        partyContainer = document.createElement('div');
+        partyContainer.className = 'cc-3d-floating-container';
+        partyContainer.innerHTML = `
+            <div class="cc-3d-character-ai" id="cc-char-ai" title="دستیار هوش مصنوعی">
+                <div class="cc-char-halo"></div>
+                <div class="cc-char-speech" id="cc-ai-speech"></div>
+                <div class="cc-3d-char-inner">${aiRobotSvg()}</div>
+            </div>
+            <div class="cc-3d-character-einstein" id="cc-char-einstein" title="انیشتین کوانتومی">
+                <div class="cc-char-halo"></div>
+                <div class="cc-char-speech" id="cc-einstein-speech"></div>
+                <div class="cc-3d-char-inner">${einsteinPartySvg()}</div>
+            </div>
+        `;
+        document.body.appendChild(partyContainer);
+
+        const aiEl = partyContainer.querySelector('#cc-char-ai');
+        const einEl = partyContainer.querySelector('#cc-char-einstein');
+        const aiSp = partyContainer.querySelector('#cc-ai-speech');
+        const einSp = partyContainer.querySelector('#cc-einstein-speech');
+
+        const say = (el, bubble, list) => {
+            bubble.textContent = pick(list);
+            bubble.classList.add('show');
+            const r = el.getBoundingClientRect();
+            window.ccFx?.shockwave(r.left + r.width / 2, r.top + r.height / 2, Math.floor(Math.random() * 360));
+            confetti(r.left + r.width / 2, r.top + r.height / 2, 50);
+            clearTimeout(bubble._t);
+            bubble._t = setTimeout(() => bubble.classList.remove('show'), 4000);
+        };
+
+        aiEl.addEventListener('click', (e) => {
+            say(aiEl, aiSp, AI_QUIPS);
+            e.stopPropagation();
+        });
+
+        einEl.addEventListener('click', (e) => {
+            say(einEl, einSp, EINSTEIN_QUIPS);
+            e.stopPropagation();
+        });
+
+        startSparkles();
+    }
+
+    function unmountPartyCharacters() {
+        if (sparkleInterval) { clearInterval(sparkleInterval); sparkleInterval = null; }
+        partyContainer?.remove();
+        partyContainer = null;
+        document.querySelectorAll('.cc-sparkle-float').forEach(s => s.remove());
+    }
+
+    function startSparkles() {
+        if (sparkleInterval) return;
+        const icons = ['💖', '✨', '🌸', '⭐', '🦄', '🎀', '⚡'];
+        sparkleInterval = setInterval(() => {
+            if (document.hidden) return;
+            if (window.ccGetTheme && window.ccGetTheme() !== 'party') return;
+            if (!document.querySelector('.cc-page')) return;
+
+            const el = document.createElement('div');
+            el.className = 'cc-sparkle-float';
+            el.textContent = pick(icons);
+            el.style.left = (Math.random() * 92 + 4) + 'vw';
+            el.style.animationDuration = (Math.random() * 2 + 3.5) + 's';
+            document.body.appendChild(el);
+            setTimeout(() => el.remove(), 6000);
+        }, 1200);
+    }
+
+    window.ccSpawnSparkles = () => {
+        unmountPartyCharacters();
+        mountPartyCharacters();
+    };
+
+    window.addEventListener('cc-theme-changed', (e) => {
+        if (e.detail?.theme === 'party') {
+            mountPartyCharacters();
+        } else {
+            unmountPartyCharacters();
+        }
+    });
+
+function enable() {
         if (on) return;
         on = true;
         reduceMotion = reduced();          // تغییرِ ترجیح بدون ری‌لود هم اثر کند
         document.body.classList.add('cc-fun');
-        mountBuddy();
+        if (window.ccGetTheme && window.ccGetTheme() === 'party') {
+            mountPartyCharacters();
+        } else {
+            mountBuddy();
+        }
         decorateEmpty(document);
         document.addEventListener('click', onTitleClick, true);
     }
@@ -464,6 +657,7 @@
         document.body.classList.remove('cc-fun');
         hideThinking();
         unmountBuddy();
+        unmountPartyCharacters();
         document.removeEventListener('click', onTitleClick, true);
         document.querySelectorAll('.cc-confetti').forEach(c => c.remove());
     }
