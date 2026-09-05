@@ -904,6 +904,130 @@ namespace Safir.Server.Controllers
             }
         }
 
+        // ───────── سرفصل‌های هزینه‌ی دوره (CC_ExpenseAcc) ─────────
+        // دستمزد/سربارِ جذب‌شده در CC_UnitAcc تعریف می‌شوند؛ این‌ها هزینه‌ی
+        // دوره‌اند و در تولید جذب نمی‌شوند. جدا نگه داشتنشان جلوی همان
+        // دوباره‌شماری را می‌گیرد که یک بار روی حساب‌های ۷۱۳/۷۲۳/۷۲۵ رخ داد:
+        // آن‌ها در CC_UnitAcc جذب می‌شوند، پس اگر اینجا هم بیایند دو بار
+        // از سود کم می‌شوند.
+
+        [HttpGet("expense-accs")]
+        [Pay2Authorize(CostForms.Settings, Pay2Perm.See)]
+        public async Task<ActionResult<IEnumerable<CostExpenseAccDto>>> GetExpenseAccs()
+        {
+            const string sql = @"
+                SELECT  m.Id, m.ExpenseKind, m.HesKol, m.HesMoin, m.HesTafsili,
+                        m.Ratio, m.IsActive, m.Note,
+                        k.NAME  AS KolName,
+                        mo.NAME AS MoinName,
+                        tf.NAME AS TafsiliName
+                FROM    dbo.CC_ExpenseAcc m
+                LEFT    JOIN dbo.TOTA_HES  k  ON k.NUMBER  = m.HesKol
+                LEFT    JOIN dbo.DETA_HES  mo ON mo.N_KOL  = m.HesKol AND mo.NUMBER = m.HesMoin
+                LEFT    JOIN dbo.TDETA_HES tf ON tf.N_KOL  = m.HesKol AND tf.NUMBER = m.HesMoin
+                                             AND tf.TNUMBER = m.HesTafsili
+                ORDER BY m.ExpenseKind, m.HesKol, m.HesMoin, m.HesTafsili";
+
+            return Ok(await _db.DoGetDataSQLAsync<CostExpenseAccDto>(sql));
+        }
+
+        [HttpPost("expense-accs")]
+        [Pay2Authorize(CostForms.Settings, Pay2Perm.Inp)]
+        public async Task<ActionResult<int>> AddExpenseAcc([FromBody] UpsertExpenseAccRequest req)
+        {
+            const string sql = @"
+                INSERT dbo.CC_ExpenseAcc
+                    (ExpenseKind, HesKol, HesMoin, HesTafsili, Ratio, IsActive, Note)
+                VALUES (@ExpenseKind, @HesKol, @HesMoin, @HesTafsili, @Ratio, @IsActive, @Note);
+                SELECT CAST(SCOPE_IDENTITY() AS INT);";
+
+            try
+            {
+                var id = (await _db.DoGetDataSQLAsync<int>(sql, req)).FirstOrDefault();
+                return Ok(id);
+            }
+            catch (Exception ex) when (ex.Message.Contains("UQ_CC_ExpenseAcc"))
+            {
+                return BadRequest("این سرفصل با همین طبقه از قبل ثبت شده است.");
+            }
+        }
+
+        [HttpPut("expense-accs/{id:int}")]
+        [Pay2Authorize(CostForms.Settings, Pay2Perm.Upd)]
+        public async Task<IActionResult> UpdateExpenseAcc(int id, [FromBody] UpsertExpenseAccRequest req)
+        {
+            const string sql = @"
+                UPDATE dbo.CC_ExpenseAcc
+                   SET ExpenseKind = @ExpenseKind, HesKol = @HesKol,
+                       HesMoin = @HesMoin, HesTafsili = @HesTafsili,
+                       Ratio = @Ratio, IsActive = @IsActive, Note = @Note
+                 WHERE Id = @id";
+
+            var n = await _db.DoExecuteSQLAsync(sql, new
+            {
+                id, req.ExpenseKind, req.HesKol, req.HesMoin,
+                req.HesTafsili, req.Ratio, req.IsActive, req.Note
+            });
+
+            return n > 0 ? NoContent() : NotFound();
+        }
+
+        [HttpDelete("expense-accs/{id:int}")]
+        [Pay2Authorize(CostForms.Settings, Pay2Perm.Del)]
+        public async Task<IActionResult> DeleteExpenseAcc(int id)
+        {
+            var n = await _db.DoExecuteSQLAsync(
+                "DELETE FROM dbo.CC_ExpenseAcc WHERE Id = @id", new { id });
+            return n > 0 ? NoContent() : NotFound();
+        }
+
+        /// <summary>
+        /// صورت‌های مالی این اجرا: بهای کالای ساخته‌شده، بهای کالای فروش‌رفته،
+        /// و سود و زیان — به‌علاوه تفکیک سرفصل‌های هزینه.
+        ///
+        /// ستون‌های رویه فارسی‌اند، پس با Col خوانده می‌شوند که «ی»/«ک»ِ
+        /// عربی و فارسی را یکسان می‌بیند (نگاه کنید FixPersianChars).
+        /// </summary>
+        [HttpGet("runs/{runId:int}/financial-statements")]
+        [Pay2Authorize(CostForms.Margin, Pay2Perm.See)]
+        public async Task<ActionResult<FinancialStatementsDto>> GetFinancialStatements(int runId)
+        {
+            var result = new FinancialStatementsDto();
+
+            using var grid = await _db.DoGetDataSQLAsyncMultiple(
+                "EXEC dbo.CC_sp_FinancialStatements @RunId=@r", new { r = runId });
+
+            List<FinLineDto> ReadLines(IEnumerable<dynamic> rows) =>
+                rows.Cast<IDictionary<string, object>>()
+                    .Select(r => new FinLineDto
+                    {
+                        Row    = Convert.ToInt32(Col(r, "ردیف")),
+                        Text   = Col(r, "شرح")?.ToString(),
+                        Amount = Col(r, "مبلغ") is { } a ? Convert.ToDouble(a) : null,
+                        Kind   = Convert.ToByte(Col(r, "نوع"))
+                    }).ToList();
+
+            result.Cogm   = ReadLines(await grid.ReadAsync());
+            result.Cogs   = ReadLines(await grid.ReadAsync());
+            result.Income = ReadLines(await grid.ReadAsync());
+
+            result.Expenses = (await grid.ReadAsync())
+                .Cast<IDictionary<string, object>>()
+                .Select(r => new FinExpenseDto
+                {
+                    Category = Col(r, "طبقه")?.ToString(),
+                    Kol      = Convert.ToInt32(Col(r, "کل")),
+                    Moin     = Col(r, "معین")    is { } m ? Convert.ToInt32(m) : null,
+                    Tafsili  = Col(r, "تفصیلی")  is { } t ? Convert.ToInt32(t) : null,
+                    Ratio    = Convert.ToDecimal(Col(r, "ضریب")),
+                    Balance  = Convert.ToDouble(Col(r, "مانده_حساب")),
+                    Share    = Convert.ToDouble(Col(r, "سهم_این_طبقه")),
+                    Note     = Col(r, "یادداشت")?.ToString()
+                }).ToList();
+
+            return Ok(result);
+        }
+
         /// <summary>
         /// فهرست فرمول‌های یک کالا در ماه‌های دیگر — برای وقتی که کالا برای
         /// ماهِ جاری هیچ فرمولی ندارد و «اصلاح خودکار» کاری از دستش برنمی‌آید.

@@ -3,6 +3,7 @@ using Dapper;
 using Safir.Shared.Interfaces;
 using System.Data;
 using System.Globalization;
+using Safir.Shared.Utility;
 
 namespace Safir.Server.CostClose
 {
@@ -214,6 +215,27 @@ namespace Safir.Server.CostClose
 
             AddSheet(wb, "سود به تفکیک واحد", unitSummary,
                      formulas: new() { ["درصد سود"] = ProfitPctFormula("سود", "فروش") });
+
+            // ── صورت‌های مالی ──
+            // سه صورت در یک شیت پشت سر هم، نه سه شیت جدا: کسی که صورت مالی
+            // می‌خواند هر سه را با هم می‌بیند و بین شیت‌ها بالا‌پایین نمی‌رود.
+            using (var fin = await _db.DoGetDataSQLAsyncMultiple(
+                       "EXEC dbo.CC_sp_FinancialStatements @RunId=@r", new { r = runId }))
+            {
+                var cogm = (await fin.ReadAsync()).ToList();
+                var cogs = (await fin.ReadAsync()).ToList();
+                var inc  = (await fin.ReadAsync()).ToList();
+                var exp  = (await fin.ReadAsync()).ToList();
+
+                AddStatementSheet(wb, "صورت‌های مالی", new[]
+                {
+                    ("صورت بهای تمام‌شده کالای ساخته‌شده", cogm),
+                    ("صورت بهای تمام‌شده کالای فروش‌رفته", cogs),
+                    ("صورت سود و زیان",                    inc)
+                });
+
+                AddSheet(wb, "سرفصل‌های هزینه", exp);
+            }
             AddSheet(wb, "هزینه تبدیل",      conv);
             AddSheet(wb, "بیشترین تغییر نرخ", changes, freezeTop: true);
             AddSheet(wb, "خلاصه اجرا",       summary);
@@ -260,6 +282,97 @@ namespace Safir.Server.CostClose
         /// </summary>
         private static string ProfitPctFormula(string profitCol, string salesCol)
             => $"=IFERROR(ROUND([{profitCol}]{{r}}/[{salesCol}]{{r}}*100,1),\"\")";
+
+        /// <summary>
+        /// خواندن یک ستون از سطرِ dynamic، با تحملِ «ی»/«ک»ِ عربی در برابر
+        /// فارسی. رویه‌های این ماژول ستون‌های فارسی برمی‌گردانند و کاراکترشان
+        /// همیشه یکسان نیست (SQL روی نصب‌های قدیمی «ي» عربی می‌نویسد)، پس
+        /// جستجوی خامِ کلید گاهی null می‌دهد بدون اینکه خطایی رخ دهد.
+        /// </summary>
+        private static object? Col(IDictionary<string, object> row, string name)
+        {
+            if (row.TryGetValue(name, out var direct)) return direct;
+
+            var target = name.FixPersianChars();
+            foreach (var kv in row)
+                if (kv.Key.FixPersianChars() == target) return kv.Value;
+
+            return null;
+        }
+
+        /// <summary>
+        /// چند صورت مالی پشت سر هم در یک شیت، با قرارداد بصریِ خودشان:
+        /// جمع جزء خط بالا، جمع نهایی خط دوتایی، و سطرِ اطلاعی/تطبیقی
+        /// کم‌رنگ و مورب چون جزو جمع نیست.
+        ///
+        /// ستون «نوع» که رویه برمی‌گرداند فقط شکلِ نمایش را تعیین می‌کند و
+        /// خودش در خروجی نوشته نمی‌شود — عددی است برای ماشین، نه برای خواننده.
+        /// </summary>
+        private static void AddStatementSheet(
+            XLWorkbook wb, string name,
+            IEnumerable<(string Title, List<dynamic> Lines)> statements)
+        {
+            var ws = wb.Worksheets.Add(name);
+            ws.RightToLeft = true;
+            ws.Style.Font.FontName = ReportFont;
+
+            var r = 1;
+            foreach (var (title, lines) in statements)
+            {
+                var head = ws.Cell(r, 1);
+                head.Value = title;
+                head.Style.Font.Bold = true;
+                head.Style.Font.FontSize = 12;
+                head.Style.Fill.BackgroundColor = XLColor.FromHtml("#E0E7FF");
+                ws.Range(r, 1, r, 2).Merge();
+                r++;
+
+                foreach (var raw in lines)
+                {
+                    var d = (IDictionary<string, object>)raw;
+                    var kind = Convert.ToByte(Col(d, "نوع") ?? (byte)0);
+
+                    var cText = ws.Cell(r, 1);
+                    var cVal  = ws.Cell(r, 2);
+
+                    cText.Value = Col(d, "شرح")?.ToString() ?? "";
+
+                    if (Col(d, "مبلغ") is { } amount)
+                    {
+                        cVal.Value = Convert.ToDecimal(amount);
+                        cVal.Style.NumberFormat.Format = "#,##0;#,##0-";
+                        if (Convert.ToDecimal(amount) < 0)
+                            cVal.Style.Font.FontColor = XLColor.FromHtml("#B4342F");
+                    }
+
+                    switch (kind)
+                    {
+                        case 1:                       // جمع جزء
+                            cText.Style.Font.Bold = true;
+                            cVal.Style.Font.Bold = true;
+                            ws.Range(r, 1, r, 2).Style.Border.TopBorder = XLBorderStyleValues.Thin;
+                            break;
+                        case 2:                       // جمع نهایی
+                            cText.Style.Font.Bold = true;
+                            cVal.Style.Font.Bold = true;
+                            ws.Range(r, 1, r, 2).Style.Border.TopBorder = XLBorderStyleValues.Thin;
+                            ws.Range(r, 1, r, 2).Style.Border.BottomBorder = XLBorderStyleValues.Double;
+                            break;
+                        case 3:                       // اطلاعی / تطبیق
+                            cText.Style.Font.Italic = true;
+                            cVal.Style.Font.Italic = true;
+                            cText.Style.Font.FontColor = XLColor.FromHtml("#64748B");
+                            cVal.Style.Font.FontColor = XLColor.FromHtml("#64748B");
+                            break;
+                    }
+                    r++;
+                }
+                r += 2;                                // فاصله تا صورت بعدی
+            }
+
+            ws.Column(1).Width = 45;
+            ws.Column(2).Width = 22;
+        }
 
         private static void AddSheet(
             XLWorkbook wb, string name, List<dynamic> rows, bool freezeTop = false,

@@ -115,6 +115,14 @@
                            Href="@($"/cost-close/runs/{RunId}/margin")">
                     سود و زیان کالا
                 </MudButton>
+
+                @* صورت‌های مالی زیر همان دسترسیِ سود و زیان می‌آید: هر دو
+                   یک داده را نشان می‌دهند، یکی کالا‌به‌کالا و یکی سرجمع. *@
+                <MudButton Variant="Variant.Outlined"
+                           StartIcon="@Icons.Material.Filled.AccountBalance"
+                           Href="@($"/cost-close/runs/{RunId}/statements")">
+                    صورت‌های مالی
+                </MudButton>
             }
 
             @if (Access.CanSee(CostForms.Conversion))

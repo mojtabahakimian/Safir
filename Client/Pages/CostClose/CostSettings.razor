@@ -446,6 +446,81 @@
             </MudPaper>
         </MudTabPanel>
 
+        @* سرفصل‌های هزینه‌ی دوره — ورودی صورت سود و زیان.
+           جدا از «حساب‌های واحد» است چون آن‌ها در تولید جذب می‌شوند و
+           این‌ها نمی‌شوند؛ قاطی شدنشان یعنی دوباره‌شماری. *@
+        <MudTabPanel Text="سرفصل‌های هزینه">
+            <MudAlert Severity="Severity.Info" Dense Class="mb-3">
+                این سرفصل‌ها فقط در <b>صورت سود و زیان</b> کسر می‌شوند و در بهای
+                تمام‌شده جذب نمی‌گردند. حسابی که در «حساب‌های واحد» به‌عنوان
+                دستمزد یا سربار تعریف شده نباید اینجا هم بیاید — وگرنه دو بار
+                از سود کم می‌شود.
+            </MudAlert>
+
+            @if (Access.CanInp(CostForms.Settings))
+            {
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Small"
+                           StartIcon="@Icons.Material.Filled.Add" Class="mb-3"
+                           OnClick="@(() => OpenExpenseAcc(null))">
+                    افزودن سرفصل
+                </MudButton>
+            }
+
+            <MudPaper Class="cc-rule-card" Elevation="0">
+                <MudTable Items="_expenseAccs" Dense Hover Elevation="0" T="CostExpenseAccDto">
+                    <HeaderContent>
+                        <MudTh Style="width:110px">طبقه</MudTh>
+                        <MudTh>کل</MudTh>
+                        <MudTh>معین</MudTh>
+                        <MudTh>تفصیلی</MudTh>
+                        <MudTh Style="width:70px;text-align:left">ضریب</MudTh>
+                        <MudTh Style="width:60px">فعال</MudTh>
+                        <MudTh>یادداشت</MudTh>
+                        <MudTh Style="width:90px"></MudTh>
+                    </HeaderContent>
+                    <RowTemplate>
+                        <MudTd>
+                            <MudChip T="string" Size="Size.Small" Variant="Variant.Text"
+                                     Color="@(context.ExpenseKind == 1 ? Color.Primary : Color.Default)">
+                                @context.KindName
+                            </MudChip>
+                        </MudTd>
+                        <MudTd><span class="cc-num">@context.HesKol</span> @(context.KolName ?? "")</MudTd>
+                        <MudTd>
+                            @if (context.HesMoin is null) { <span class="mud-text-secondary">همه</span> }
+                            else { <span class="cc-num">@context.HesMoin</span> @(context.MoinName ?? "") }
+                        </MudTd>
+                        <MudTd>
+                            @if (context.HesTafsili is null) { <span class="mud-text-secondary">همه</span> }
+                            else { <span class="cc-num">@context.HesTafsili</span> @(context.TafsiliName ?? "") }
+                        </MudTd>
+                        <MudTd Style="text-align:left"><span class="cc-num">@context.Ratio.ToString("0.###")</span></MudTd>
+                        <MudTd>@(context.IsActive ? "✓" : "—")</MudTd>
+                        <MudTd>@(context.Note ?? "")</MudTd>
+                        <MudTd>
+                            @if (Access.CanUpd(CostForms.Settings))
+                            {
+                                <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small"
+                                               OnClick="@(() => OpenExpenseAcc(context))" />
+                            }
+                            @if (Access.CanDel(CostForms.Settings))
+                            {
+                                <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small"
+                                               Color="Color.Error"
+                                               OnClick="@(() => DeleteExpenseAcc(context))" />
+                            }
+                        </MudTd>
+                    </RowTemplate>
+                    <NoRecordsContent>
+                        <MudText Typo="Typo.body2" Class="mud-text-secondary pa-4">
+                            هنوز سرفصلی ثبت نشده — تا آن موقع هزینه‌های دوره در صورت
+                            سود و زیان صفر می‌مانند.
+                        </MudText>
+                    </NoRecordsContent>
+                </MudTable>
+            </MudPaper>
+        </MudTabPanel>
+
         @* جلوه‌های بصری ماژول.
            چرا اینجا و نه فقط در کنسول: ویندوزهای اداری معمولاً «جلوه‌های
            انیمیشن» را برای سرعت خاموش دارند، و آن‌وقت کروم
@@ -531,6 +606,38 @@
     private string? _editingRuleCode;
     private double? _editingThreshold;
 
+    // ───────── سرفصل‌های هزینه‌ی دوره ─────────
+
+    private List<CostExpenseAccDto> _expenseAccs = new();
+
+    private async Task OpenExpenseAcc(CostExpenseAccDto? existing)
+    {
+        var p = new DialogParameters { [nameof(ExpenseAccEditDialog.Existing)] = existing };
+
+        var dlg = await Dialog.ShowAsync<ExpenseAccEditDialog>(
+            existing is null ? "افزودن سرفصل هزینه" : "ویرایش سرفصل هزینه", p,
+            new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true });
+
+        if ((await dlg.Result) is { Canceled: false })
+            _expenseAccs = await Api.GetExpenseAccsAsync();
+    }
+
+    private async Task DeleteExpenseAcc(CostExpenseAccDto row)
+    {
+        var ok = await Dialog.ShowMessageBox(
+            "حذف سرفصل",
+            $"سرفصل {row.HesKol} از طبقه «{row.KindName}» حذف شود؟ "
+          + "پس از حذف، مبلغ آن دیگر از سود کسر نمی‌شود.",
+            yesText: "حذف", cancelText: "انصراف");
+
+        if (ok != true) return;
+
+        var (done, err) = await Api.DeleteExpenseAccAsync(row.Id);
+        if (!done) { Snackbar.Add(err ?? "حذف نشد.", Severity.Error); return; }
+
+        _expenseAccs = await Api.GetExpenseAccsAsync();
+    }
+
     // ───────── جلوه‌های بصری ─────────
     // مقدارها عیناً همان چیزی است که cost-close-fx.js از localStorage
     // می‌خواند (کلید 'cc-motion'): on / off / نبودنِ کلید = خودکار.
@@ -577,6 +684,7 @@
             _rules      = await Api.GetRulesAsync();
             _anbarHes   = await Api.GetAnbarHesAsync();
             _laborRates = await Api.GetLaborRatesAsync();
+            _expenseAccs = await Api.GetExpenseAccsAsync();
         }
         catch (Exception ex) { _loadError = FriendlyError(ex); }
         finally { _busy = false; }

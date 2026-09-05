@@ -185,6 +185,53 @@ namespace Safir.Client.Services
             return await res.Content.ReadFromJsonAsync<AutoFixResultDto>();
         }
 
+        // ───────── سرفصل‌های هزینه‌ی دوره ─────────
+
+        public async Task<List<CostExpenseAccDto>> GetExpenseAccsAsync()
+        {
+            try
+            {
+                return await _http.GetFromJsonAsync<List<CostExpenseAccDto>>(
+                    $"{Base}/expense-accs") ?? new();
+            }
+            catch { return new(); }
+        }
+
+        public async Task<(bool Ok, string? Error)> AddExpenseAccAsync(UpsertExpenseAccRequest req)
+        {
+            var res = await _http.PostAsJsonAsync($"{Base}/expense-accs", req);
+            return res.IsSuccessStatusCode
+                ? (true, null)
+                : (false, await res.Content.ReadAsStringAsync());
+        }
+
+        public async Task<(bool Ok, string? Error)> UpdateExpenseAccAsync(int id, UpsertExpenseAccRequest req)
+        {
+            var res = await _http.PutAsJsonAsync($"{Base}/expense-accs/{id}", req);
+            return res.IsSuccessStatusCode
+                ? (true, null)
+                : (false, await res.Content.ReadAsStringAsync());
+        }
+
+        public async Task<(bool Ok, string? Error)> DeleteExpenseAccAsync(int id)
+        {
+            var res = await _http.DeleteAsync($"{Base}/expense-accs/{id}");
+            return res.IsSuccessStatusCode
+                ? (true, null)
+                : (false, await res.Content.ReadAsStringAsync());
+        }
+
+        /// <summary>صورت‌های مالی این اجرا (بهای ساخته‌شده، بهای فروش‌رفته، سود و زیان)</summary>
+        public async Task<FinancialStatementsDto?> GetFinancialStatementsAsync(int runId)
+        {
+            try
+            {
+                return await _http.GetFromJsonAsync<FinancialStatementsDto>(
+                    $"{Base}/runs/{runId}/financial-statements");
+            }
+            catch { return null; }
+        }
+
         /// <summary>
         /// فرمول‌های این کالا در ماه‌های دیگر — برای وقتی کالا برای ماهِ جاری
         /// فرمول ندارد و باید یکی کپی شود. ماهِ قبل اولِ فهرست است.

@@ -357,6 +357,79 @@ namespace Safir.Shared.Models.CostClose
         public List<AutoFixPreviewRow> Rows { get; set; } = new();
     }
 
+    /// <summary>
+    /// یک سطر از صورت‌های مالی. Kind شکلِ نمایش را تعیین می‌کند، نه معنا:
+    /// ۰=سطر عادی، ۱=جمع جزء، ۲=جمع نهایی، ۳=سطر اطلاعی/تطبیق.
+    /// </summary>
+    public class FinLineDto
+    {
+        public int     Row    { get; set; }
+        public string? Text   { get; set; }
+        public double? Amount { get; set; }
+        public byte    Kind   { get; set; }
+    }
+
+    /// <summary>یک سرفصل هزینه و سهمش — تا هر رقمِ صورت قابل ردیابی باشد</summary>
+    public class FinExpenseDto
+    {
+        public string? Category { get; set; }
+        public int     Kol      { get; set; }
+        public int?    Moin     { get; set; }
+        public int?    Tafsili  { get; set; }
+        public decimal Ratio    { get; set; }
+        public double  Balance  { get; set; }
+        public double  Share    { get; set; }
+        public string? Note     { get; set; }
+    }
+
+    /// <summary>
+    /// یک سرفصل هزینه‌ی دوره. برخلاف CC_UnitAcc که به واحد تولیدی می‌چسبد،
+    /// این‌ها هزینه‌ی کل شرکت‌اند و در تولید جذب نمی‌شوند.
+    /// </summary>
+    public class CostExpenseAccDto
+    {
+        public int     Id          { get; set; }
+        public byte    ExpenseKind { get; set; }   // ۱=فروش ۲=اداری ۳=مالی ۴=سایر
+        public int     HesKol      { get; set; }
+        public int?    HesMoin     { get; set; }
+        public int?    HesTafsili  { get; set; }
+        public decimal Ratio       { get; set; } = 1;
+        public bool    IsActive    { get; set; } = true;
+        public string? Note        { get; set; }
+
+        public string? KolName     { get; set; }
+        public string? MoinName    { get; set; }
+        public string? TafsiliName { get; set; }
+
+        public string KindName => ExpenseKind switch
+        {
+            1 => "فروش", 2 => "اداری", 3 => "مالی", _ => "سایر"
+        };
+    }
+
+    public class UpsertExpenseAccRequest
+    {
+        public byte    ExpenseKind { get; set; }
+        public int     HesKol      { get; set; }
+        public int?    HesMoin     { get; set; }
+        public int?    HesTafsili  { get; set; }
+        public decimal Ratio       { get; set; } = 1;
+        public bool    IsActive    { get; set; } = true;
+        public string? Note        { get; set; }
+    }
+
+    /// <summary>خروجی CC_sp_FinancialStatements — سه صورت به‌علاوه تفکیک هزینه</summary>
+    public class FinancialStatementsDto
+    {
+        /// <summary>صورت بهای تمام‌شده کالای ساخته‌شده</summary>
+        public List<FinLineDto> Cogm     { get; set; } = new();
+        /// <summary>صورت بهای تمام‌شده کالای فروش‌رفته</summary>
+        public List<FinLineDto> Cogs     { get; set; } = new();
+        /// <summary>صورت سود و زیان</summary>
+        public List<FinLineDto> Income   { get; set; } = new();
+        public List<FinExpenseDto> Expenses { get; set; } = new();
+    }
+
     public class RebuildRatesResultDto
     {
         public int Remaining { get; set; }
