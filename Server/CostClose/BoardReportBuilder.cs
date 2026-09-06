@@ -19,11 +19,15 @@ namespace Safir.Server.CostClose
     public interface IBoardReportBuilder
     {
         /// <param name="unitId">
-        /// اگر مشخص باشد، شیت «سود کالا به کالا» فقط همان واحد تولید را
-        /// می‌آورد — تا خروجی اکسل با چیزی که کاربر روی صفحه انتخاب کرده
-        /// یکی باشد. null یعنی گزارش کل، مثل قبل.
+        /// اگر مشخص باشد، شیت «سود کالا به کالا» فقط همان واحد را می‌آورد —
+        /// تا خروجی اکسل با چیزی که کاربر روی صفحه انتخاب کرده یکی باشد.
+        /// null یعنی گزارش کل، مثل قبل.
         /// </param>
-        Task<byte[]> BuildAsync(int runId, int? unitId = null);
+        /// <param name="prodBasis">
+        /// false = تفکیک بر اساس انبارِ فروش (CC_ItemMarginUnit، رفتار قبلی).
+        /// true  = تفکیک بر اساس واحدِ تولیدکننده (CC_ItemMarginProdUnit).
+        /// </param>
+        Task<byte[]> BuildAsync(int runId, int? unitId = null, bool prodBasis = false);
     }
 
     public sealed class BoardReportBuilder : IBoardReportBuilder
@@ -31,8 +35,16 @@ namespace Safir.Server.CostClose
         private readonly IDatabaseService _db;
         public BoardReportBuilder(IDatabaseService db) => _db = db;
 
-        public async Task<byte[]> BuildAsync(int runId, int? unitId = null)
+        public async Task<byte[]> BuildAsync(int runId, int? unitId = null, bool prodBasis = false)
         {
+            // نام جدول از یک bool ساخته می‌شود، نه از رشته‌ی ورودی.
+            var unitTable = prodBasis
+                          ? "dbo.CC_ItemMarginProdUnit"
+                          : "dbo.CC_ItemMarginUnit";
+
+            var basisLabel = prodBasis ? "واحد تولید" : "انبار فروش";
+            var nullLabel  = prodBasis ? "بدون تولید در این ماه" : "بدون واحد";
+
             using var grid = await _db.DoGetDataSQLAsyncMultiple(
                 "EXEC dbo.CC_sp_S13_ReportData @RunId=@r", new { r = runId });
 
@@ -43,8 +55,8 @@ namespace Safir.Server.CostClose
 
             // سرجمع هر واحد — همیشه می‌آید، حتی وقتی فیلتری در کار نیست،
             // چون خودِ همین تفکیک چیزی است که در گزارش کل دیده نمی‌شود.
-            var unitSummary = (await _db.DoGetDataSQLAsync<dynamic>(@"
-                SELECT  ISNULL(cu.UnitName, N'بدون واحد')             AS [واحد],
+            var unitSummary = (await _db.DoGetDataSQLAsync<dynamic>($@"
+                SELECT  ISNULL(cu.UnitName, N'{nullLabel}')           AS [واحد],
                         COUNT(*)                                      AS [تعداد کالا],
                         SUM(CASE WHEN u.Profit < 0 THEN 1 ELSE 0 END) AS [زیان‌ده],
                         SUM(u.SalesAmount)                            AS [فروش],
@@ -62,7 +74,7 @@ namespace Safir.Server.CostClose
                         -- موزارلا ۲۰۰۰ گرمی جم»: ۲ عدد فروش به مبلغ ۲ ریال
                         -- با بهای ۲۴٬۷۲۳٬۸۱۱ → −۱٬۲۳۶٬۱۹۰٬۴۵۰٪).
                         CAST(NULL AS FLOAT)                           AS [درصد سود]
-                FROM    dbo.CC_ItemMarginUnit u
+                FROM    {unitTable} u
                 LEFT    JOIN dbo.CC_Unit cu ON cu.UnitId = u.UnitId
                 WHERE   u.RunId = @runId
                 GROUP BY u.UnitId, cu.UnitName
@@ -179,7 +191,7 @@ namespace Safir.Server.CostClose
                 margins = (await _db.DoGetDataSQLAsync<dynamic>($@"
                     {formulaStdCte}
                     SELECT {marginCols}
-                    FROM    dbo.CC_ItemMarginUnit m
+                    FROM    {unitTable} m
                     LEFT    JOIN dbo.STUF_DEF s ON TRY_CAST(s.CODE AS BIGINT) = m.Code
                     LEFT    JOIN Std std        ON std.Code = m.Code
                     WHERE   m.RunId = @runId AND m.UnitId = @unitId
@@ -193,6 +205,11 @@ namespace Safir.Server.CostClose
                 // نام شیت اکسل حداکثر ۳۱ کاراکتر و بدون چند نویسه‌ی خاص است
                 marginSheetName = Trim31($"سود کالا — {name ?? $"واحد {unitId}"}");
             }
+
+            // نام شیتِ سرجمع مبنا را می‌گوید، وگرنه دو خروجی با اعداد
+            // متفاوت شیت هم‌نام داشتند و کسی که هر دو را باز می‌کند
+            // نمی‌فهمید کدام کدام است.
+            var unitSummarySheet = Trim31($"سود به تفکیک {basisLabel}");
 
             using var wb = new XLWorkbook();
 
@@ -213,7 +230,7 @@ namespace Safir.Server.CostClose
                      },
                      highlight: StandardCostColumns);
 
-            AddSheet(wb, "سود به تفکیک واحد", unitSummary,
+            AddSheet(wb, unitSummarySheet, unitSummary,
                      formulas: new() { ["درصد سود"] = ProfitPctFormula("سود", "فروش") });
 
             // ── صورت‌های مالی ──

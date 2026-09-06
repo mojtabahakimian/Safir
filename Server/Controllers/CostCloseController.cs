@@ -1869,15 +1869,29 @@ namespace Safir.Server.Controllers
         }
 
         /// <summary>
-        /// سود و زیان کالا به تفکیک واحد تولید — «علاوه بر» گزارش کل، نه
-        /// به‌جای آن. با unitId مشخص فقط همان واحد برمی‌گردد.
+        /// سود و زیان کالا به تفکیک واحد — «علاوه بر» گزارش کل، نه به‌جای
+        /// آن. با unitId مشخص فقط همان واحد برمی‌گردد.
         /// </summary>
+        /// <param name="basis">
+        /// «کدام واحد» یعنی چه. دو جواب متفاوت دارد و هر دو لازم‌اند:
+        ///   sale — انبارِ فروش (CC_ItemMarginUnit): هر واحد چقدر فروخت.
+        ///   prod — واحدِ تولیدکننده (CC_ItemMarginProdUnit): تولیدِ هر واحد
+        ///          چقدر سود داد، حتی اگر از انبار واحد دیگری فروخته شود.
+        /// خرداد ۱۴۰۵ اختلافشان ۳۶٫۶ میلیارد است (۱۶ کالای تولیدِ یزدسپار
+        /// که از انبار یزد فروش رفته‌اند).
+        /// </param>
         [HttpGet("runs/{runId:int}/margins-by-unit")]
         [Pay2Authorize(CostForms.Margin, Pay2Perm.See)]
         public async Task<ActionResult<IEnumerable<ItemMarginUnitDto>>> GetMarginsByUnit(
-            int runId, [FromQuery] int? unitId = null)
+            int runId, [FromQuery] int? unitId = null, [FromQuery] string? basis = null)
         {
-            const string sql = @"
+            // نام جدول از ورودی ساخته می‌شود، پس فقط از همین دو مقدارِ ثابت —
+            // هر رشته‌ی دیگری به sale برمی‌گردد و هیچ‌وقت داخل SQL نمی‌رود.
+            var table = IsProdBasis(basis)
+                      ? "dbo.CC_ItemMarginProdUnit"
+                      : "dbo.CC_ItemMarginUnit";
+
+            var sql = $@"
                 -- ⚠ Profit حتماً باید در SELECT باشد: در ItemMarginDto یک
                 -- خاصیت نگاشت‌شده است، نه محاسبه‌شده در C#. جا افتادنش باعث
                 -- می‌شود کل ستون سود صفر بیاید و IsLoss/ProfitPct هم غلط
@@ -1889,7 +1903,7 @@ namespace Safir.Server.Controllers
                         ISNULL(t.TargetKind, 3) AS TargetKind,
                         t.TargetPct, t.BalancingCode,
                         sb.NAME AS BalancingName
-                FROM    dbo.CC_ItemMarginUnit u
+                FROM    {table} u
                 LEFT    JOIN dbo.CC_Unit cu ON cu.UnitId = u.UnitId
                 LEFT    JOIN dbo.CC_MarginTarget t
                         ON t.Code = u.Code AND t.IsActive = 1
@@ -1903,20 +1917,31 @@ namespace Safir.Server.Controllers
                 sql, new { runId, unitId }));
         }
 
-        /// <summary>سرجمع هر واحد تولید — برای کارت‌های بالای گزارش</summary>
+        /// <summary>سرجمع هر واحد — برای کارت‌های بالای گزارش</summary>
+        /// <param name="basis">مثل GetMarginsByUnit: sale (انبار فروش) یا prod (واحد تولید).</param>
         [HttpGet("runs/{runId:int}/margin-unit-summary")]
         [Pay2Authorize(CostForms.Margin, Pay2Perm.See)]
-        public async Task<ActionResult<IEnumerable<UnitMarginSummaryDto>>> GetMarginUnitSummary(int runId)
+        public async Task<ActionResult<IEnumerable<UnitMarginSummaryDto>>> GetMarginUnitSummary(
+            int runId, [FromQuery] string? basis = null)
         {
-            const string sql = @"
+            var prod  = IsProdBasis(basis);
+            var table = prod ? "dbo.CC_ItemMarginProdUnit" : "dbo.CC_ItemMarginUnit";
+
+            // سطر UnitId = NULL در دو مبنا دو معنی کاملاً متفاوت دارد و
+            // یک نامِ مشترک گمراه‌کننده بود: در مبنای فروش یعنی انباری که
+            // به هیچ واحدی نگاشت ندارد، در مبنای تولید یعنی کالایی که این
+            // ماه اصلاً تولید نشده (بازرگانی یا فروش از موجودی قبل).
+            var nullName = prod ? "بدون تولید در این ماه" : "بدون واحد";
+
+            var sql = $@"
                 SELECT  u.UnitId,
-                        ISNULL(cu.UnitName, N'بدون واحد')            AS UnitName,
+                        ISNULL(cu.UnitName, N'{nullName}')           AS UnitName,
                         COUNT(*)                                     AS Items,
                         SUM(CASE WHEN u.Profit < 0 THEN 1 ELSE 0 END) AS LossItems,
                         SUM(u.SalesAmount)                           AS SalesAmount,
                         SUM(u.CostAmount)                            AS CostAmount,
                         SUM(u.Profit)                                AS Profit
-                FROM    dbo.CC_ItemMarginUnit u
+                FROM    {table} u
                 LEFT    JOIN dbo.CC_Unit cu ON cu.UnitId = u.UnitId
                 WHERE   u.RunId = @runId
                 GROUP BY u.UnitId, cu.UnitName
@@ -1924,6 +1949,14 @@ namespace Safir.Server.Controllers
 
             return Ok(await _db.DoGetDataSQLAsync<UnitMarginSummaryDto>(sql, new { runId }));
         }
+
+        /// <summary>
+        /// مبنای تفکیک واحد. هر چیزی جز «prod» یعنی انبار فروش — پیش‌فرضِ
+        /// امن، چون گزارشِ قبلی همان بود و لینک‌های ذخیره‌شده نباید معنی‌شان
+        /// عوض شود.
+        /// </summary>
+        private static bool IsProdBasis(string? basis)
+            => string.Equals(basis, "prod", StringComparison.OrdinalIgnoreCase);
 
         [HttpPut("margin-targets")]
         [Pay2Authorize(CostForms.Margin, Pay2Perm.Upd)]
@@ -2537,9 +2570,10 @@ IF NOT EXISTS (SELECT 1 FROM dbo.CC_RebalancePref
         [Pay2Authorize(CostForms.ActExport, Pay2Perm.Run)]
         public async Task<IActionResult> GetReport(
             int runId, [FromServices] IBoardReportBuilder builder,
-            [FromQuery] int? unitId = null)
+            [FromQuery] int? unitId = null, [FromQuery] string? basis = null)
         {
-            var bytes = await builder.BuildAsync(runId, unitId);
+            var prod  = IsProdBasis(basis);
+            var bytes = await builder.BuildAsync(runId, unitId, prod);
 
             // نام فارسی: ASP.NET Core خودش هدر Content-Disposition را طبق
             // RFC 5987 با filename*=UTF-8'' رمزگذاری می‌کند، پس نویسه‌ی
@@ -2552,9 +2586,13 @@ IF NOT EXISTS (SELECT 1 FROM dbo.CC_RebalancePref
                        "SELECT UnitName FROM dbo.CC_Unit WHERE UnitId = @unitId",
                        new { unitId })).FirstOrDefault() ?? $"واحد {unitId}";
 
+            // مبنا داخل نام فایل می‌آید، وگرنه دو خروجیِ کاملاً متفاوت از یک
+            // اجرا هم‌نام می‌شدند و روی دیسک هم را بازنویسی می‌کردند.
+            var basisName = prod ? "تولید" : "فروش";
+
             return File(bytes,
                 "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                $"سود و زیان کالا — {unitName} — اجرای {runId}.xlsx");
+                $"سود و زیان کالا — {unitName} — مبنای {basisName} — اجرای {runId}.xlsx");
         }
 
         [HttpPost("runs/{runId:int}/approve")]

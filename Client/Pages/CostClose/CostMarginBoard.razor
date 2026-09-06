@@ -63,13 +63,28 @@ else
             هدف‌دار @TargetedCount
         </MudChip>
 
-        @* تفکیک واحد تولید — «همه واحدها» همان گزارش کل قبلی است و
-           دست‌نخورده می‌ماند؛ انتخاب یک واحد، گزارش را از
-           CC_ItemMarginUnit می‌خواند. کالایی که از هر دو واحد فروش
-           رفته در هر کدام سطر خودش را دارد. *@
+        @* مبنای تفکیک — دو سؤال متفاوت که تا امروز فقط اولی جواب داشت:
+             • انبار فروش : هر واحد چقدر فروخت
+             • واحد تولید : تولیدِ هر واحد چقدر سود داد، حتی اگر از انبار
+                            واحد دیگری فروش رفته باشد
+           برچسب قبلی «واحد تولید» بود ولی داده‌اش انبار فروش — همان چیزی
+           که کالای تولیدِ یزدسپار را زیر یزد نشان می‌داد. *@
         @if (_units.Count > 0)
         {
-            <MudSelect T="int?" Label="واحد تولید" Dense Variant="Variant.Outlined"
+            <MudSelect T="bool" Label="مبنای تفکیک" Dense Variant="Variant.Outlined"
+                       Value="_prodBasis" ValueChanged="OnBasisChanged"
+                       Style="max-width:190px" Class="ms-3">
+                <MudSelectItem T="bool" Value="false">انبار فروش</MudSelectItem>
+                <MudSelectItem T="bool" Value="true">واحد تولید</MudSelectItem>
+            </MudSelect>
+        }
+
+        @* «همه واحدها» همان گزارش کل قبلی است و دست‌نخورده می‌ماند؛
+           انتخاب یک واحد، گزارش را از جدول تفکیکیِ همان مبنا می‌خواند. *@
+        @if (_units.Count > 0)
+        {
+            <MudSelect T="int?" Label="@(_prodBasis ? "واحد تولیدکننده" : "انبار فروش")"
+                       Dense Variant="Variant.Outlined"
                        Value="_unitId" ValueChanged="OnUnitChanged"
                        Style="max-width:230px" Class="ms-3">
                 <MudSelectItem T="int?" Value="@((int?)null)">همه واحدها (گزارش کل)</MudSelectItem>
@@ -332,13 +347,32 @@ else
     private int? _unitId;
 
     /// <summary>
+    /// false = تفکیک بر اساس انبارِ فروش (رفتار قبلی)، true = بر اساس
+    /// واحدی که کالا را تولید کرده. پیش‌فرض همان قبلی می‌ماند تا کسی که
+    /// عادت به این صفحه دارد اعدادش یک‌شبه عوض نشود.
+    /// </summary>
+    private bool _prodBasis;
+
+    /// <summary>
     /// تعویض واحد: null یعنی گزارش کل (CC_ItemMargin)، وگرنه گزارش تفکیکیِ
-    /// همان واحد (CC_ItemMarginUnit). هر دو به یک شکل در _all می‌نشینند،
-    /// چون ItemMarginUnitDto از ItemMarginDto ارث می‌برد.
+    /// همان واحد. هر دو به یک شکل در _all می‌نشینند، چون ItemMarginUnitDto
+    /// از ItemMarginDto ارث می‌برد.
     /// </summary>
     private async Task OnUnitChanged(int? unitId)
     {
         _unitId = unitId;
+        await Load();
+    }
+
+    /// <summary>
+    /// تعویض مبنا واحدِ انتخاب‌شده را هم پاک می‌کند: شناسه‌ی واحد در دو
+    /// مبنا یکی است ولی معنی‌اش نیست، و ماندنش یعنی کاربر بی‌خبر از
+    /// «فروشِ یزد» به «تولیدِ یزد» می‌پرد و فکر می‌کند عدد عوض شده.
+    /// </summary>
+    private async Task OnBasisChanged(bool prodBasis)
+    {
+        _prodBasis = prodBasis;
+        _unitId    = null;
         await Load();
     }
 
@@ -347,11 +381,11 @@ else
         _busy = true;
         try
         {
-            _units = await Api.GetMarginUnitSummaryAsync(RunId);
+            _units = await Api.GetMarginUnitSummaryAsync(RunId, _prodBasis);
 
             _all = _unitId is null
                 ? await Api.GetMarginsAsync(RunId)
-                : (await Api.GetMarginsByUnitAsync(RunId, _unitId))
+                : (await Api.GetMarginsByUnitAsync(RunId, _unitId, _prodBasis))
                       .Cast<ItemMarginDto>().ToList();
 
             ApplyFilter();
@@ -606,7 +640,7 @@ else
         {
             // واحد انتخاب‌شده به سرور هم می‌رود، وگرنه خروجی اکسل همه‌ی
             // کالاها را می‌آورد در حالی که روی صفحه فقط یک واحد دیده می‌شود.
-            var bytes = await Api.GetReportBytesAsync(RunId, _unitId);
+            var bytes = await Api.GetReportBytesAsync(RunId, _unitId, _prodBasis);
             await JS.InvokeVoidAsync("downloadFileFromBytes", ReportFileName(), bytes);
         }
         catch (Exception ex)
@@ -636,7 +670,11 @@ else
             : _units.FirstOrDefault(u => u.UnitId == _unitId)?.UnitName
               ?? $"واحد {_unitId}";
 
-        var name = $"سود و زیان کالا — {unit} — اجرای {RunId}.xlsx";
+        // مبنا داخل نام فایل می‌آید، وگرنه دو خروجی با اعداد متفاوت
+        // هم‌نام می‌شدند و روی دیسک هم را بازنویسی می‌کردند.
+        var basis = _prodBasis ? "تولید" : "فروش";
+
+        var name = $"سود و زیان کالا — {unit} — مبنای {basis} — اجرای {RunId}.xlsx";
 
         foreach (var bad in System.IO.Path.GetInvalidFileNameChars())
             name = name.Replace(bad, '-');

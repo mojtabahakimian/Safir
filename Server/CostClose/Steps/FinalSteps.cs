@@ -47,6 +47,20 @@
                       DT1 = ctx.DateFrom, DT2 = ctx.DateTo },
                 commandTimeout: 900);
 
+            // و همان سود، این‌بار به تفکیک واحدی که کالا را *تولید* کرده.
+            // دو دیمنشن متفاوت‌اند و هیچ‌کدام دیگری را نمی‌سازد: کالای
+            // تولیدِ یزدسپار که از انبار یزد فروش می‌رود، در جدول بالا
+            // کامل زیر یزد می‌نشیند (خرداد ۱۴۰۵: ۱۶ کالا، ۳۶٫۶ میلیارد).
+            // باید بعد از S12 اجرا شود — مبلغ‌ها را از CC_ItemMargin
+            // برمی‌دارد و به نسبت مقدار تولید پخش می‌کند.
+            await ctx.ReportProgress(StepCode, 90, "تفکیک سود به واحد تولیدکننده…");
+
+            await ctx.Db.DoGetStoreProcedureSQLAsync<dynamic>(
+                "dbo.CC_sp_S12p_MarginByProdUnit",
+                new { RunId = ctx.RunId, Month = ctx.Month,
+                      DT1 = ctx.DateFrom, DT2 = ctx.DateTo },
+                commandTimeout: 900);
+
             await ctx.ReportProgress(StepCode, 100,
                 $"{res?.Items ?? 0} کالا، {res?.LossItems ?? 0} زیان‌ده");
 
