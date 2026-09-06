@@ -93,6 +93,18 @@ builder.Services.AddScoped<Safir.Server.Security.Pay2ScopeResolver>();
 builder.Services.AddScoped<Safir.Server.Services.Pay2DisketteService>();
 
 // --- ماژول بستن ماه بهای تمام‌شده (Cost Close) ---
+// ── دستیار هوش مصنوعی ──
+// ابزارها Scoped ثبت می‌شوند چون IDatabaseService هم Scoped است و رشته‌ی
+// اتصال از هدرِ همین درخواست می‌آید؛ Singleton یعنی همه‌ی کاربران به
+// پایگاهِ اولین درخواست وصل می‌شدند.
+builder.Services.AddScoped<Safir.Server.Ai.IAiAccessService, Safir.Server.Ai.AiAccessService>();
+builder.Services.AddScoped<Safir.Server.Ai.IAiToolRegistry, Safir.Server.Ai.AiToolRegistry>();
+builder.Services.AddScoped<Safir.Server.Ai.IAiTool, Safir.Server.Ai.ListRunsTool>();
+builder.Services.AddScoped<Safir.Server.Ai.IAiTool, Safir.Server.Ai.SearchItemTool>();
+builder.Services.AddScoped<Safir.Server.Ai.IAiTool, Safir.Server.Ai.ItemMarginTool>();
+builder.Services.AddScoped<Safir.Server.Ai.IAiTool, Safir.Server.Ai.UnitSummaryTool>();
+builder.Services.AddScoped<Safir.Server.Ai.IAiTool, Safir.Server.Ai.ExceptionsTool>();
+
 builder.Services.AddSingleton<Safir.Server.CostClose.CostCloseQueue>();
 builder.Services.AddSingleton<Safir.Server.CostClose.ICostCloseQueue>(
     sp => sp.GetRequiredService<Safir.Server.CostClose.CostCloseQueue>());

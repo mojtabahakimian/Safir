@@ -103,6 +103,7 @@ builder.Services.AddScoped<Pay2DashboardApiService>();
 builder.Services.AddScoped<IProductionReportApiService, ProductionReportApiService>();
 
 builder.Services.AddScoped<CostCloseApiService>();
+builder.Services.AddScoped<AiApiService>();
 builder.Services.AddScoped<ICrmApiService, CrmApiService>();
 builder.Services.AddScoped<CrmApiService>();
 
