@@ -103,7 +103,22 @@ builder.Services.AddScoped<Pay2DashboardApiService>();
 builder.Services.AddScoped<IProductionReportApiService, ProductionReportApiService>();
 
 builder.Services.AddScoped<CostCloseApiService>();
-builder.Services.AddScoped<AiApiService>();
+// دستیار HttpClient خودش را دارد، نه HttpClient مشترک برنامه.
+// پیش‌فرض ۱۰۰ ثانیه است و مدل — مخصوصاً مدل محلی روی پردازنده — بیشتر
+// طول می‌کشد؛ نتیجه‌اش خطای «The request was canceled due to the
+// configured HttpClient.Timeout» بود در حالی که سرور هنوز مشغول بود.
+// بلند کردنِ تایم‌اوتِ مشترک کار درستی نبود: بقیه‌ی صفحات باید سریع
+// شکست بخورند، وگرنه یک کوئریِ گیرکرده صفحه را دقیقه‌ها معطل می‌کند.
+//
+// سقفِ سمت سرور: MaxToolLoops × TimeoutSeconds. این عدد باید از آن
+// بیشتر باشد وگرنه کلاینت زودتر از سرور تسلیم می‌شود و کاربر خطا
+// می‌بیند در حالی که جواب داشت می‌آمد.
+builder.Services.AddScoped(sp => new AiApiService(
+    new HttpClient(new Safir.Client.Services.Pay2ForbiddenHandler())
+    {
+        BaseAddress = new Uri(builder.HostEnvironment.BaseAddress),
+        Timeout     = TimeSpan.FromMinutes(10)
+    }));
 builder.Services.AddScoped<ICrmApiService, CrmApiService>();
 builder.Services.AddScoped<CrmApiService>();
 
