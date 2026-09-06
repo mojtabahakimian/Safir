@@ -1,0 +1,2 @@
+﻿Msg 207, Level 16, State 1, Server DESKTOP-GLPOA91\SQL2022, Line 1
+Invalid column name 'CreatedAtUtc'.

@@ -28,5 +28,17 @@ namespace Safir.Shared.Constants
         public const string ActExport     = "COST_ACT_EXPORT";      // خروجی اکسل
         public const string ActRebuildDocs = "COST_ACT_REBUILD_DOCS"; // بازسازی سند حواله خروج مواد
         public const string ActPostCorrection = "COST_ACT_POST_CORRECTION"; // سند اصلاحی مغایرت CHK-02
+
+        // ⚠️ اصلاح (تأیید کاربر): این دو قبلاً زیرِ Pay2Perm.Upd روی همان
+        // فرمِ ActResolve بودند — یعنی «بستن استثنا» که در صفحه‌ی «عملیات
+        // حساس» (/salary/manage) فقط یک تیکِ «مجاز است» (=Run) دارد، هیچ‌وقت
+        // این دو قابلیت را نشان نمی‌داد چون آن صفحه اصلاً به ستونِ Upd
+        // دسترسی نمی‌دهد — کاربر هرچقدر هم «همه‌چیز» را در آن صفحه تیک
+        // بزند، باز این دو دکمه پنهان می‌ماندند. طبقِ همان الگویی که بقیه‌ی
+        // عملیاتِ حساس دارند (یک فرمِ مستقل، فقط Run)، این دو حالا فرمِ
+        // جداگانه‌ی خودشان را دارند — در همان صفحه به‌صورت یک ردیفِ عادیِ
+        // دیگر ظاهر می‌شوند، بدون نیاز به هیچ تغییری در خودِ آن صفحه.
+        public const string ActResolvePermanent = "COST_ACT_RESOLVE_PERMANENT"; // پذیرش دائمی مغایرت
+        public const string ActFixDateMismatch  = "COST_ACT_FIX_DATE";          // اصلاح تاریخ مغایرِ سند
     }
 }

@@ -66,7 +66,16 @@ namespace Safir.Server.CostClose.Steps
         public short  SeqNo            => 100;
         public bool   RequiresSnapshot => true;
         public bool   IsGate           => false;
-        public bool   WritesFormulas   => true;   // IMBIBE_MANF و IMBIBE_SAR
+
+        // ⚠️ اصلاح (تأیید کاربر: «وقتی تراز هزینه تبدیل را می‌زنیم نباید
+        // برود خروج مواد را دوباره بزند یا کار دیگری بکند»): قبلاً true
+        // بود، پس هر اجرای S10 باعث می‌شد ارکستریتور S07/S07A/S08 را هم
+        // خودکار صف کند (نگاه کنید WritesFormulas در CloseOrchestrator).
+        // این کار بی‌فایده است: S10 فقط یک ضریبِ یکنواختِ k روی
+        // IMBIBE_MANF/IMBIBE_SAR اعمال می‌کند تا جذب‌شده با واقعی برابر
+        // شود؛ نه MEGHk را عوض می‌کند نه به نرخِ مواد وابسته است — دقیقاً
+        // همان استدلالی که S11 را هم WritesFormulas=false کرده.
+        public bool   WritesFormulas   => false;
 
         public async Task<StepResult> ExecuteAsync(StepContext ctx)
         {

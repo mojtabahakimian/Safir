@@ -85,7 +85,10 @@ AS
 BEGIN
     SET NOCOUNT ON;
 
-    DECLARE @try TINYINT =
+    -- INT و نه TINYINT — نگاه کنید توضیح ستون Attempt در 10-schema.sql.
+    -- با TINYINT، رسیدن شمارنده به ۲۵۵ باعث می‌شد این عبارت سرریز کند و
+    -- کل اجرا با خطای «Arithmetic overflow ... value = 256» متوقف شود.
+    DECLARE @try INT =
         ISNULL((SELECT MAX(Attempt) FROM dbo.CC_RunStep
                 WHERE RunId = @RunId AND StepCode = @StepCode), 0) + 1;
 
@@ -425,6 +428,86 @@ BEGIN
                         WHERE ae.RuleCode = 'CHK-19' AND ae.IsActive = 1
                           AND (ae.Anbar IS NULL) AND (ae.Code IS NULL));
 
+    /* ─── CHK-21 : تاریخ برگشت فروش با تاریخ سند حسابداری‌اش یکی نیست ───
+       پیدا شده روی کد ۳۵۱۰ / انبار ۸۱۳: حواله‌ی برگشت فروش شماره ۳۲۱
+       (HEAD_LST.TAG=24) تاریخِ ۱۴۰۵/۰۱/۲۳ دارد، ولی سندِ حسابداریِ همان
+       برگشت با تاریخِ ۱۴۰۵/۰۲/۲۳ پست شده — یک ماه دیرتر. نتیجه: کاردکس
+       این حواله را جزوِ فروردین حساب کرد (چون تاریخِ خودِ حواله را
+       می‌بیند) ولی حسابداری اصلاً در فروردین دیده نمی‌شد — CHK-02 یک
+       مغایرتِ ۳۳,۸۱۰,۰۰۰ ریالی نشان داد.
+
+       دقیقاً همان الگوی CHK-19 (فاکتور فروش TAG=13 در برابر سندش)، ولی
+       CHK-19 برگشتِ فروش را پوشش نمی‌دهد. تفاوتِ مهم: برخلافِ فاکتورِ
+       فروش که زیرِ همان TAG=13 در DEED_DTL هم پست می‌شود، سندِ
+       حسابداریِ برگشتِ فروش زیرِ TAG=25 پست می‌شود، نه TAG=24 — تأییدشده
+       با دادهٔ واقعی (SaleReturnRebuildService.RunPass2Async، همان
+       تفکیکِ TAG=24/25 که در §2.3 مستندِ هم‌ترازیِ AUTO_BAZ آمده). */
+    INSERT dbo.CC_Exception
+        (RunId, StepCode, RuleCode, ExType, Severity, DocNumber, DocTag, DocDate, Amount, RefList, Description)
+    SELECT  DISTINCT
+            @RunId, 'S00', 'CHK-21', 23, 1,
+            CAST(inv.NUMBER AS BIGINT), 24, inv.DATE_N, h.DATE_S,
+            (SELECT N'saleReturnVsAccounting' AS kind,
+                    CAST(inv.NUMBER AS BIGINT) AS aNumber, 24 AS aTag, N'HEAD_LST' AS aTable, inv.DATE_N AS aDate,
+                    CAST(d.N_S AS BIGINT) AS bNumber, 0 AS bTag, N'DEED_HED' AS bTable, h.DATE_S AS bDate
+             FOR JSON PATH, WITHOUT_ARRAY_WRAPPER),
+            CONCAT(N'برگشت فروش ', inv.NUMBER, N': تاریخ حواله ',
+                   FORMAT(inv.DATE_N,'0000/00/00'), N' با تاریخ سند حسابداری ',
+                   FORMAT(h.DATE_S,'0000/00/00'), N' (سند ', d.N_S, N') یکی نیست')
+    FROM    dbo.HEAD_LST inv
+    JOIN    dbo.DEED_DTL d ON d.NUMBER = inv.NUMBER AND d.TAG = 25
+    JOIN    dbo.DEED_HED h ON h.N_S = d.N_S
+    WHERE   inv.TAG = 24
+      AND   (inv.DATE_N BETWEEN @DT1 AND @DT2 OR h.DATE_S BETWEEN @DT1 AND @DT2)
+      AND   inv.DATE_N <> h.DATE_S
+      AND   NOT EXISTS (SELECT 1 FROM dbo.CC_AcceptedException ae
+                        WHERE ae.RuleCode = 'CHK-21' AND ae.IsActive = 1
+                          AND (ae.Anbar IS NULL) AND (ae.Code IS NULL));
+
+    /* ─── CHK-21 (بخش دوم) : تاریخ حواله برگشت با تاریخ سربرگ خودش یکی نیست ───
+       بخش اول بالا حواله (TAG=24) را با *سند حسابداری* مقایسه می‌کند و برای
+       آن به DEED_DTL جوین می‌زند. ولی وقتی سند حسابداری اصلاً صادر نشده،
+       آن جوین هیچ سطری نمی‌دهد و کنترل بی‌صدا رد می‌شود — دقیقاً همان
+       حالتی که مغایرت را می‌سازد.
+
+       نمونه‌ی واقعی (کد ۳۵۱۰ / انبار ۸۱۳ / فروردین ۱۴۰۵): سند ۳۲۱ در
+       HEAD_LST دو تاریخ دارد — قلم کالا (TAG=24) به تاریخ ۱۴۰۵/۰۱/۲۳ و
+       سربرگ (TAG=25) به تاریخ ۱۴۰۵/۰۲/۲۳. کاردکس تاریخِ TAG=24 را می‌بیند
+       پس حرکت را در فروردین می‌شمارد، ولی SaleReturnRebuildService سند را
+       از سربرگ TAG=25 می‌سازد که خارج از دوره است — پس هیچ سندی صادر
+       نشد (DEED_DTL برای این شماره صفر ردیف دارد) و CHK-02 مغایرت
+       ۳۳,۸۱۰,۰۰۰ ریالی نشان داد.
+
+       این بخش ناسازگاری را یک مرحله زودتر می‌گیرد: مقایسه‌ی دو تاریخِ
+       خودِ HEAD_LST، بدون هیچ وابستگی به اینکه سند صادر شده باشد یا نه. */
+    INSERT dbo.CC_Exception
+        (RunId, StepCode, RuleCode, ExType, Severity, DocNumber, DocTag, DocDate, Amount, RefList, Description)
+    SELECT  DISTINCT
+            @RunId, 'S00', 'CHK-21', 23, 1,
+            CAST(h24.NUMBER AS BIGINT), 24, h24.DATE_N,
+            (SELECT SUM(L.MABL_K) FROM dbo.INVO_LST L
+             WHERE L.NUMBER = h24.NUMBER AND L.TAG = 24),
+            (SELECT N'saleReturnHeaderDates' AS kind,
+                    CAST(h24.NUMBER AS BIGINT) AS aNumber, 24 AS aTag, N'HEAD_LST' AS aTable, h24.DATE_N AS aDate,
+                    CAST(h25.NUMBER AS BIGINT) AS bNumber, 25 AS bTag, N'HEAD_LST' AS bTable, h25.DATE_N AS bDate
+             FOR JSON PATH, WITHOUT_ARRAY_WRAPPER),
+            CONCAT(N'برگشت فروش ', h24.NUMBER, N': تاریخ قلم کالا ',
+                   FORMAT(h24.DATE_N,'0000/00/00'), N' با تاریخ سربرگ ',
+                   FORMAT(h25.DATE_N,'0000/00/00'),
+                   N' یکی نیست — کاردکس از تاریخ قلم و سند حسابداری از تاریخ سربرگ ساخته می‌شود',
+                   CASE WHEN NOT EXISTS (SELECT 1 FROM dbo.DEED_DTL dd
+                                         WHERE dd.NUMBER = h24.NUMBER AND dd.TAG = 25)
+                        THEN N' (تا این لحظه هیچ سند حسابداری برای آن صادر نشده)'
+                        ELSE N'' END)
+    FROM    dbo.HEAD_LST h24
+    JOIN    dbo.HEAD_LST h25 ON h25.NUMBER = h24.NUMBER AND h25.TAG = 25
+    WHERE   h24.TAG = 24
+      AND   (h24.DATE_N BETWEEN @DT1 AND @DT2 OR h25.DATE_N BETWEEN @DT1 AND @DT2)
+      AND   h24.DATE_N <> h25.DATE_N
+      AND   NOT EXISTS (SELECT 1 FROM dbo.CC_AcceptedException ae
+                        WHERE ae.RuleCode = 'CHK-21' AND ae.IsActive = 1
+                          AND (ae.Anbar IS NULL) AND (ae.Code IS NULL));
+
     /* ─── CHK-20 : نرخ میانگین منفی ───
        پیدا شده روی کد ۳۴۶۱/انبار۱: فروش ۱۴۰۵/۰۲/۰۹ کاردکس را وقتی فقط
        ۰٫۴ واحد موجودی بود منفی کرد (۹۹٫۶-، همان مغایرتی که CHK-01 با
@@ -567,14 +650,33 @@ BEGIN
         WHERE   hm.GHEYMAT = @Month
         GROUP BY hm.FNUMB, CAST(hm.CODE AS BIGINT), p.Qty
     ),
+    -- ⚠️ اصلاح (کشف‌شده روی کدهای ۲۷۳۵/۲۸۸۹ و ۲۲ کد نیمه‌ساخته‌ی دیگر):
+    -- برای کالای نیمه‌ساخته‌ای که هم فرمول دارد هم همین ماه به‌عنوان
+    -- ماده‌ی اولیه‌ی کالای دیگری از انبار حواله خورده (TAG=10)، S11
+    -- عمداً میانگینِ واقعیِ انبار را جایگزینِ جمعِ فرمول می‌کند (نگاه کنید
+    -- CC_sp_S11_PropagateRates, بخشِ «نرخ مواد خریدنی» — تأیید کاربر،
+    -- دقیقاً همان چیزی که مغایرت حساب ۷۷۱ را رفع کرد). این چک قبلاً این
+    -- override را نمی‌دانست، پس «بهای خودِ کالا» را همیشه از جمعِ فرمول
+    -- حساب می‌کرد — درحالی‌که S11 مقدارِ دیگری (میانگینِ انبار) را منتشر
+    -- کرده بود؛ نتیجه یک مغایرتِ کاذبِ دائمی بود که هیچ تعداد اجرای S11
+    -- رفعش نمی‌کرد، چون خودِ معیارِ مقایسه اشتباه بود، نه همگرایی.
+    KalasAvg AS (
+        SELECT  CAST(k.CODE AS BIGINT) AS Code,
+                SUM(k.MABL_K) / NULLIF(SUM(k.MEGHk), 0) AS Nerkh
+        FROM    dbo.KALAS k
+        WHERE   k.TAG = 10 AND k.MM = @Month AND k.MEGHk <> 0
+        GROUP BY CAST(k.CODE AS BIGINT)
+    ),
     Khod AS (
         -- اگر هيچ‌کدام از فرمول‌هاي اين کالا در بازه توليد واقعي نداشتند
         -- (تعريف شده ولي هنوز مصرف نشده)، ميانگين ساده جايگزين وزن مي‌شود.
-        SELECT  Code,
-                CASE WHEN SUM(Qty) > 0 THEN SUM(Baha * Qty) / SUM(Qty)
-                     ELSE AVG(Baha) END AS Baha
-        FROM    FormulaCost
-        GROUP BY Code
+        SELECT  f.Code,
+                COALESCE(ka.Nerkh,
+                         CASE WHEN SUM(f.Qty) > 0 THEN SUM(f.Baha * f.Qty) / SUM(f.Qty)
+                              ELSE AVG(f.Baha) END) AS Baha
+        FROM    FormulaCost f
+        LEFT    JOIN KalasAvg ka ON ka.Code = f.Code
+        GROUP BY f.Code, ka.Nerkh
     ),
     DarValed AS (
         SELECT CAST(d.CODE AS BIGINT) AS Code,

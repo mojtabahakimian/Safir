@@ -40,6 +40,10 @@ module.exports = defineConfig({
     baseURL,
     locale: 'fa-IR',
     timezoneId: 'Asia/Tehran',
+    // در توسعه‌ی محلی برنامه روی HTTPS با گواهی self-signed بالا می‌آید
+    // (مثلاً https://localhost:7026 که Visual Studio می‌سازد). بدون این،
+    // هر ناوبری با ERR_CERT_AUTHORITY_INVALID رد می‌شود.
+    ignoreHTTPSErrors: true,
     screenshot: 'only-on-failure',
     video: 'retain-on-failure',
     trace: 'retain-on-failure',

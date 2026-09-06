@@ -33,10 +33,18 @@ namespace Safir.Server.CostClose.Steps
 
         public async Task<StepResult> ExecuteAsync(StepContext ctx)
         {
-            await ctx.ReportProgress(StepCode, 10, "پیمایش کاردکس و بازسازی نرخ میانگین…");
+            // دامنه‌ی محدود فقط داخل حلقه‌ی همگرایی و فقط وقتی S07 دوباره اجرا
+            // نشده باشد — دلیلش در StepContext.NarrowToFormulaItems.
+            var onlyCodes = ctx.NarrowToFormulaItems
+                ? await GetFormulaItemCodesAsync(ctx)
+                : null;
+
+            await ctx.ReportProgress(StepCode, 10, onlyCodes is null
+                ? "پیمایش کاردکس و بازسازی نرخ میانگین…"
+                : $"بازسازی نرخ میانگین برای {onlyCodes.Count} کالای فرمول‌دار…");
 
             var svc = new AverageRateRebuildService(ctx.Db);
-            var res = await svc.RebuildAsync(ct: ctx.Ct);
+            var res = await svc.RebuildAsync(onlyCodes: onlyCodes, ct: ctx.Ct);
 
             await ctx.ReportProgress(StepCode, 100,
                 $"{res.ItemsProcessed} کالا، {res.RowsUpdated} ردیف به‌روز شد");
@@ -45,6 +53,7 @@ namespace Safir.Server.CostClose.Steps
             {
                 items   = res.ItemsProcessed,
                 rows    = res.RowsUpdated,
+                narrow  = onlyCodes is not null,
                 logTail = res.Log.TakeLast(5)
             };
 
@@ -53,5 +62,19 @@ namespace Safir.Server.CostClose.Steps
 
             return StepResult.Ok(res.RowsUpdated, payload);
         }
+
+        /// <summary>
+        /// کالاهایی که رسید تولید می‌گیرند، یعنی آن‌هایی که فرمول دارند. بین
+        /// دورهای حلقه‌ی همگرایی فقط بهای همین‌ها می‌تواند عوض شود.
+        ///
+        /// عمداً به ماه مقید نیست: کالایی که فرمولش برای ماه دیگری تعریف شده
+        /// ولی در این دوره سند تولید دارد هم باید داخل دامنه بماند. چند ده کد
+        /// اضافه ارزانی است در برابر جا انداختنِ یکی.
+        /// </summary>
+        private static async Task<IReadOnlyCollection<string>> GetFormulaItemCodesAsync(StepContext ctx)
+            => (await ctx.Db.DoGetDataSQLAsync<string>(
+                    "SELECT DISTINCT CODE FROM dbo.HEAD_MANF WHERE CODE IS NOT NULL"))
+               .Where(c => !string.IsNullOrWhiteSpace(c))
+               .ToList();
     }
 }

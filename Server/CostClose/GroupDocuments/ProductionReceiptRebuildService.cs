@@ -300,7 +300,7 @@ END CATCH;";
                 b.Append("SET DEADLOCK_PRIORITY LOW; SET XACT_ABORT ON; BEGIN TRANSACTION;");
                 foreach (var s in headerUpdates.Skip(off).Take(headUpdateChunk)) b.Append(s);
                 b.Append("COMMIT TRANSACTION;");
-                await ExecuteWithDeadlockRetryAsync(() => _db.DoExecuteSQLAsync(b.ToString()));
+                await ExecuteWithDeadlockRetryAsync(() => _db.DoExecuteSQLAsync(b.ToString(), commandTimeout: CostCloseTuning.BatchTimeoutSeconds));
             }
 
             var wanted = new HashSet<double>(usableIdx.Select(i => headRows[i].NUMBER!.Value));
@@ -536,7 +536,7 @@ END CATCH;";
                         batch.Append(';');
                     }
                     batch.Append("COMMIT TRANSACTION;");
-                    await ExecuteWithDeadlockRetryAsync(() => _db.DoExecuteSQLAsync(batch.ToString()));
+                    await ExecuteWithDeadlockRetryAsync(() => _db.DoExecuteSQLAsync(batch.ToString(), commandTimeout: CostCloseTuning.BatchTimeoutSeconds));
                 }
                 catch (Exception ex)
                 {

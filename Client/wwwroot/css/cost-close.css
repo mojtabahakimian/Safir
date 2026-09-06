@@ -180,3 +180,44 @@
 @media (max-width: 900px) {
     .cc-balance { grid-template-columns: 1fr; }
 }
+
+/* ── صورت‌های مالی ──────────────────────────────────────────────────
+   سه صورت کنار هم روی صفحه‌ی بزرگ، زیر هم روی صفحه‌ی باریک. */
+
+.cc-fin-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(330px, 1fr));
+    gap: 16px;
+    align-items: start;
+}
+
+.cc-fin {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+}
+
+.cc-fin td {
+    padding: 7px 12px;
+    border-bottom: 1px solid var(--p2-border-light);
+}
+
+.cc-fin td.lbl { text-align: right; }
+.cc-fin td.val { text-align: left; white-space: nowrap; }
+
+/* جمع جزء و جمع نهایی: خطِ بالا و وزنِ بیشتر — قراردادِ صورت‌های مالی */
+.cc-fin tr.sub td { border-top: 1px solid var(--p2-border); font-weight: 600; }
+.cc-fin tr.tot td {
+    border-top: 2px solid var(--p2-border);
+    border-bottom: 3px double var(--p2-border);
+    font-weight: 800;
+}
+
+/* سطر اطلاعی/تطبیق جزو جمع نیست؛ کم‌رنگ و مورب تا با ارقام صورت
+   اشتباه گرفته نشود. */
+.cc-fin tr.info td {
+    color: var(--p2-text-muted);
+    font-size: 12px;
+    font-style: italic;
+    border-bottom: 0;
+}

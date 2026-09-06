@@ -1,0 +1,272 @@
+/* ══════════════════════════════════════════════════════════════════════
+   تم فوق‌العاده پرانرژی، دخترانه، سه بعدی و فانتزی بهای تمام‌شده (cc-theme-party)
+   سرشار از انیمیشن، رنگ‌های صورتی-بنفش-نئون، کاراکترهای سه‌بعدی و حرکت
+   ══════════════════════════════════════════════════════════════════════ */
+
+/* متغیرهای رنگی و استایل‌های تم پارتی */
+body.cc-fx.cc-theme-party {
+    --ccp-pink: #ff2a85;
+    --ccp-hotpink: #ff007f;
+    --ccp-purple: #9d00ff;
+    --ccp-cyan: #00f0ff;
+    --ccp-yellow: #ffe600;
+    --ccp-bg-grad: linear-gradient(135deg, #2d043b 0%, #4a0e4e 30%, #7b1158 70%, #ff1361 100%);
+    
+    background: #250233 !important;
+}
+
+/* افکت درخشان و زنده روی کارت‌های بهای تمام‌شده */
+body.cc-fx.cc-theme-party .cc-rule-card,
+body.cc-fx.cc-theme-party .mud-paper {
+    background: rgba(49, 10, 68, 0.72) !important;
+    backdrop-filter: blur(14px) saturate(190%) !important;
+    -webkit-backdrop-filter: blur(14px) saturate(190%) !important;
+    border: 1.8px solid rgba(255, 64, 160, 0.45) !important;
+    box-shadow: 0 8px 32px rgba(255, 0, 128, 0.25), 0 0 15px rgba(157, 0, 255, 0.2) !important;
+    border-radius: 20px !important;
+    transition: transform 0.35s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.35s ease, border-color 0.35s ease !important;
+    position: relative;
+    overflow: hidden;
+}
+
+body.cc-fx.cc-theme-party .cc-rule-card:hover {
+    transform: translateY(-4px) scale(1.01) !important;
+    border-color: rgba(255, 105, 180, 0.9) !important;
+    box-shadow: 0 14px 40px rgba(255, 0, 128, 0.45), 0 0 25px rgba(0, 240, 255, 0.35) !important;
+}
+
+/* شاین و رقص نور روی کارت‌ها */
+body.cc-fx.cc-theme-party .cc-rule-card::before {
+    content: '';
+    position: absolute;
+    top: -50%;
+    left: -50%;
+    width: 200%;
+    height: 200%;
+    background: radial-gradient(circle, rgba(255,255,255,0.12) 0%, transparent 60%);
+    pointer-events: none;
+    animation: ccp-card-shine 6s linear infinite;
+}
+
+@keyframes ccp-card-shine {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+/* تیترها و فونت‌ها در تم پرانرژی */
+body.cc-fx.cc-theme-party .cc-page h1,
+body.cc-fx.cc-theme-party .cc-page h2,
+body.cc-fx.cc-theme-party .cc-page .mud-typography-h5,
+body.cc-fx.cc-theme-party .cc-page .mud-typography-h6 {
+    background: linear-gradient(90deg, #ff60b0, #ff1493, #ffe600, #00f0ff, #ff60b0) !important;
+    background-size: 300% auto !important;
+    -webkit-background-clip: text !important;
+    background-clip: text !important;
+    color: transparent !important;
+    font-weight: 900 !important;
+    animation: ccp-text-rainbow 4s linear infinite !important;
+    text-shadow: 0 0 20px rgba(255, 20, 147, 0.4) !important;
+}
+
+@keyframes ccp-text-rainbow {
+    0% { background-position: 0% center; }
+    100% { background-position: 300% center; }
+}
+
+/* دکمه‌های شاد و ژله‌ای (Jelly Buttons) */
+body.cc-fx.cc-theme-party .mud-button-filled.mud-button-filled-primary {
+    background: linear-gradient(135deg, #ff007f 0%, #ff52a2 50%, #9d00ff 100%) !important;
+    color: #ffffff !important;
+    border-radius: 25px !important;
+    font-weight: bold !important;
+    box-shadow: 0 6px 20px rgba(255, 0, 127, 0.5), 0 0 12px rgba(255, 255, 255, 0.4) inset !important;
+    transition: all 0.25s cubic-bezier(0.175, 0.885, 0.32, 1.275) !important;
+    border: none !important;
+    animation: ccp-pulse-btn 2.5s infinite alternate !important;
+}
+
+@keyframes ccp-pulse-btn {
+    0% { transform: scale(1); box-shadow: 0 4px 15px rgba(255, 0, 127, 0.4); }
+    100% { transform: scale(1.04); box-shadow: 0 8px 25px rgba(255, 0, 127, 0.7), 0 0 18px rgba(255, 105, 180, 0.6); }
+}
+
+body.cc-fx.cc-theme-party .mud-button-filled.mud-button-filled-primary:hover {
+    transform: scale(1.1) rotate(-1deg) !important;
+    box-shadow: 0 10px 30px rgba(255, 0, 127, 0.8), 0 0 20px #00f0ff !important;
+}
+
+/* چیپ‌ها و بج‌های رنگی و براق */
+body.cc-fx.cc-theme-party .mud-chip {
+    border-radius: 16px !important;
+    font-weight: 700 !important;
+    animation: ccp-chip-float 3s ease-in-out infinite alternate !important;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.2) !important;
+}
+
+@keyframes ccp-chip-float {
+    0% { transform: translateY(0px); }
+    100% { transform: translateY(-2px); }
+}
+
+/* کاراکترهای سه‌بعدی شناور دخترانه و هوش مصنوعی و انیشتین */
+.cc-3d-floating-container {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 998;
+    overflow: hidden;
+}
+
+/* کاراکتر 1: انیشتین سه‌بعدی جادویی (گوشه پایین چپ) */
+.cc-3d-character-einstein {
+    position: absolute;
+    bottom: 25px;
+    left: 85px;
+    width: 120px;
+    height: 140px;
+    pointer-events: auto;
+    cursor: pointer;
+    perspective: 800px;
+    transition: transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+    animation: ccp-float-einstein 4s ease-in-out infinite alternate;
+}
+
+.cc-3d-character-einstein:hover {
+    transform: scale(1.2) rotate(6deg) !important;
+}
+
+.cc-3d-char-inner {
+    width: 100%;
+    height: 100%;
+    position: relative;
+    transform-style: preserve-3d;
+    filter: drop-shadow(0 15px 25px rgba(255, 0, 128, 0.5));
+}
+
+@keyframes ccp-float-einstein {
+    0% { transform: translateY(0) rotate(-2deg); }
+    50% { transform: translateY(-14px) rotate(3deg); }
+    100% { transform: translateY(-4px) rotate(-1deg); }
+}
+
+/* کاراکتر 2: ربات دخترانه هوش مصنوعی سه‌بعدی و ناز (شناور گوشه صفحه) */
+.cc-3d-character-ai {
+    position: absolute;
+    top: 85px;
+    left: 25px;
+    width: 105px;
+    height: 125px;
+    pointer-events: auto;
+    cursor: pointer;
+    perspective: 800px;
+    animation: ccp-float-ai 3.5s ease-in-out infinite alternate;
+}
+
+.cc-3d-character-ai:hover {
+    transform: scale(1.25) rotate(-8deg);
+}
+
+@keyframes ccp-float-ai {
+    0% { transform: translateY(0) rotate(2deg); }
+    100% { transform: translateY(-16px) rotate(-4deg); }
+}
+
+/* هاله نورانی و بال‌های نوری پشت کاراکترها */
+.cc-char-halo {
+    position: absolute;
+    inset: -10px;
+    background: radial-gradient(circle, rgba(255, 0, 128, 0.4) 0%, rgba(0, 240, 255, 0.2) 60%, transparent 80%);
+    border-radius: 50%;
+    filter: blur(8px);
+    animation: ccp-halo-pulse 2s infinite alternate;
+    z-index: -1;
+}
+
+@keyframes ccp-halo-pulse {
+    0% { transform: scale(0.9); opacity: 0.6; }
+    100% { transform: scale(1.2); opacity: 1; }
+}
+
+/* حباب گفتگوی کاراکترهای سه‌بعدی */
+.cc-char-speech {
+    position: absolute;
+    bottom: 100%;
+    right: 50%;
+    transform: translateX(50%);
+    background: linear-gradient(135deg, #ffffff, #ffe3f1);
+    color: #9d005e;
+    font-size: 12.5px;
+    font-weight: 800;
+    padding: 8px 14px;
+    border-radius: 16px;
+    border: 2px solid #ff40a0;
+    box-shadow: 0 6px 20px rgba(255, 0, 128, 0.35);
+    white-space: nowrap;
+    opacity: 0;
+    visibility: hidden;
+    transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+    pointer-events: none;
+    z-index: 10;
+}
+
+.cc-char-speech::after {
+    content: '';
+    position: absolute;
+    top: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    border: 6px solid transparent;
+    border-top-color: #ff40a0;
+}
+
+.cc-char-speech.show {
+    opacity: 1;
+    visibility: visible;
+    transform: translateX(50%) translateY(-8px);
+}
+
+/* ستاره‌ها و قلب‌های معلق پس‌زمینه */
+.cc-sparkle-float {
+    position: absolute;
+    pointer-events: none;
+    animation: ccp-sparkle-fly 4.5s linear infinite;
+    font-size: 20px;
+    z-index: 997;
+}
+
+@keyframes ccp-sparkle-fly {
+    0% { transform: translateY(100vh) rotate(0deg) scale(0.4); opacity: 0; }
+    20% { opacity: 1; transform: translateY(80vh) rotate(70deg) scale(1.1); }
+    80% { opacity: 1; transform: translateY(20vh) rotate(280deg) scale(1.2); }
+    100% { transform: translateY(-50px) rotate(360deg) scale(0.2); opacity: 0; }
+}
+
+/* انیمیشن سوییچر تم */
+.cc-theme-switcher-btn {
+    animation: ccp-btn-spin 6s linear infinite;
+}
+@keyframes ccp-btn-spin {
+    0% { transform: rotate(0deg); }
+    50% { transform: rotate(15deg) scale(1.1); }
+    100% { transform: rotate(0deg); }
+}
+
+/* تم کلاسیک و رسمی (حذف کامل افکت‌های تاریک/نئون و بازگشت به تم روشن شرکتی) */
+body.cc-theme-classic .cc-rule-card,
+body.cc-theme-classic .mud-paper {
+    background: #ffffff !important;
+    border: 1px solid #e0e0e0 !important;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.06) !important;
+    color: #212529 !important;
+}
+
+body.cc-theme-classic .cc-page {
+    background: #f8f9fa !important;
+    color: #212529 !important;
+}
+
+body.cc-theme-classic #cc-fx-canvas,
+body.cc-theme-classic .cc-buddy,
+body.cc-theme-classic .cc-3d-floating-container {
+    display: none !important;
+}

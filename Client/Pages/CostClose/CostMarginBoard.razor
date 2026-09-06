@@ -63,7 +63,41 @@ else
             هدف‌دار @TargetedCount
         </MudChip>
 
+        @* تفکیک واحد تولید — «همه واحدها» همان گزارش کل قبلی است و
+           دست‌نخورده می‌ماند؛ انتخاب یک واحد، گزارش را از
+           CC_ItemMarginUnit می‌خواند. کالایی که از هر دو واحد فروش
+           رفته در هر کدام سطر خودش را دارد. *@
+        @if (_units.Count > 0)
+        {
+            <MudSelect T="int?" Label="واحد تولید" Dense Variant="Variant.Outlined"
+                       Value="_unitId" ValueChanged="OnUnitChanged"
+                       Style="max-width:230px" Class="ms-3">
+                <MudSelectItem T="int?" Value="@((int?)null)">همه واحدها (گزارش کل)</MudSelectItem>
+                @foreach (var u in _units)
+                {
+                    <MudSelectItem T="int?" Value="@u.UnitId">
+                        @u.UnitName — سود @FormatAmount(u.Profit)
+                    </MudSelectItem>
+                }
+            </MudSelect>
+        }
+
         <MudSpacer />
+
+        @if (_basket.Count > 0)
+        {
+            <MudButton Variant="Variant.Filled" Color="Color.Secondary"
+                       StartIcon="@Icons.Material.Filled.ShoppingCartCheckout"
+                       Disabled="_busy" OnClick="RunBasket" Class="me-2">
+                اجرای سبد (@_basket.Count)
+            </MudButton>
+
+            <MudTooltip Text="خالی کردن سبد">
+                <MudIconButton Icon="@Icons.Material.Filled.RemoveShoppingCart"
+                               Size="Size.Small" Disabled="_busy"
+                               OnClick="@(() => _basket.Clear())" />
+            </MudTooltip>
+        }
 
         <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.FormatListBulleted"
                    OnClick="OpenActiveTargets">
@@ -80,9 +114,25 @@ else
 
         @if (Access.CanUpd(CostForms.Margin))
         {
+            @* شرط فعال بودن فقط !_dirty نیست: آن پرچم صرفاً یعنی «همین حالا
+               کشویی را دست زدی» و بعد از هر اعمال هم صفر می‌شود. با بارگذاری
+               تازه‌ی صفحه همیشه false است، پس اهدافِ ذخیره‌شده و فعال هیچ راهی
+               برای اعمالِ دوباره نداشتند — درحالی‌که S12 هر اجرا CC_ItemMargin
+               را DELETE و از نو محاسبه می‌کند و اثر اهداف را پاک می‌کند. یعنی
+               دقیقاً وقتی به این دکمه نیاز بود، خاموش بود.
+               اعمالِ دوباره امن است: AdjustAmount از وضعیت فعلی
+               (CostAmount − SalesAmount) حساب می‌شود، پس روی کالایی که سودش
+               صفر شده صفر درمی‌آید و کنار گذاشته می‌شود.
+
+               ⚠ این کامنت عمداً *بیرون* از تگ است. کامنت Razor داخل فهرست
+               ویژگی‌های یک تگ کامپایل می‌شود ولی در زمان اجرا به‌عنوان نامِ یک
+               attribute به DOM داده می‌شود و setAttribute استثنا می‌دهد؛ کل
+               زیردرختِ رندر می‌شکند و صفحه خالی بالا می‌آید — بدون هیچ خطای
+               کامپایل. *@
             <MudButton Variant="Variant.Filled" Color="Color.Primary"
                        StartIcon="@Icons.Material.Filled.PriceCheck"
-                       OnClick="ApplyTargets" Disabled="@(_busy || !_dirty)">
+                       OnClick="ApplyTargets"
+                       Disabled="@(_busy || (!_dirty && TargetedCount == 0))">
                 اعمال اهداف حاشیه
             </MudButton>
         }
@@ -207,14 +257,23 @@ else
                     </span>
                 </MudTd>
 
+                @* برای همه‌ی کالاها، نه فقط زیان‌ده‌ها: جابه‌جایی مصرف ماده روی
+                   کالای سودده هم کاربرد واقعی دارد — مثلاً وقتی می‌خواهیم سود یک
+                   کالا را با افزودن ماده به فرمولش تا صفر پایین بیاوریم. محدود
+                   بودنش به IsLoss فقط سناریوی «جبران زیان» را می‌دید. *@
                 <MudTd>
                     @if (context.IsLoss)
                     {
-                        <MudTooltip Text="جابه‌جایی مصرف ماده بین فرمول‌ها">
-                            <MudIconButton Icon="@Icons.Material.Filled.SwapHoriz" Size="Size.Small"
-                                           OnClick="@(() => OpenRebalanceMaterial(context))" />
+                        <MudTooltip Text="پیشنهاد خودکار برای صفر کردن این زیان">
+                            <MudIconButton Icon="@Icons.Material.Filled.AutoFixHigh" Size="Size.Small"
+                                           Color="Color.Primary"
+                                           OnClick="@(() => OpenSuggest(context))" />
                         </MudTooltip>
                     }
+                    <MudTooltip Text="جابه‌جایی دستی مصرف ماده بین فرمول‌ها">
+                        <MudIconButton Icon="@Icons.Material.Filled.SwapHoriz" Size="Size.Small"
+                                       OnClick="@(() => OpenRebalanceMaterial(context))" />
+                    </MudTooltip>
                 </MudTd>
             </RowTemplate>
         </MudTable>
@@ -269,12 +328,32 @@ else
         await Load();
     }
 
+    private List<UnitMarginSummaryDto> _units = new();
+    private int? _unitId;
+
+    /// <summary>
+    /// تعویض واحد: null یعنی گزارش کل (CC_ItemMargin)، وگرنه گزارش تفکیکیِ
+    /// همان واحد (CC_ItemMarginUnit). هر دو به یک شکل در _all می‌نشینند،
+    /// چون ItemMarginUnitDto از ItemMarginDto ارث می‌برد.
+    /// </summary>
+    private async Task OnUnitChanged(int? unitId)
+    {
+        _unitId = unitId;
+        await Load();
+    }
+
     private async Task Load()
     {
         _busy = true;
         try
         {
-            _all = await Api.GetMarginsAsync(RunId);
+            _units = await Api.GetMarginUnitSummaryAsync(RunId);
+
+            _all = _unitId is null
+                ? await Api.GetMarginsAsync(RunId)
+                : (await Api.GetMarginsByUnitAsync(RunId, _unitId))
+                      .Cast<ItemMarginDto>().ToList();
+
             ApplyFilter();
         }
         catch (Exception ex)
@@ -367,13 +446,90 @@ else
             await Load();
     }
 
-    private async Task OpenRebalanceMaterial(ItemMarginDto row)
+    /// <summary>
+    /// پیشنهاد خودکار: برنامه زنجیره‌ی مواد را بررسی می‌کند و می‌گوید کدام ماده
+    /// را به کدام کالای سودده منتقل کنیم. تصمیم نهایی با کاربر است.
+    /// </summary>
+    /// <summary>
+    /// سبد جابه‌جایی — چند کالا با هم اجرا می‌شوند.
+    ///
+    /// چرا: اجرای تک‌تک، ظرفیت هر کالای مقصد را از CC_ItemMargin می‌خواند
+    /// که تا پایان بازمحاسبه به‌روز نمی‌شود، پس دو عملیات می‌توانند ظرفیت
+    /// یک کالای سودده را دوبار خرج کنند. ضمناً صف برای هر اجرا فقط یک کار
+    /// می‌پذیرد و بازمحاسبه‌ی دومی به بعد اصلاً ثبت نمی‌شد.
+    /// </summary>
+    private readonly List<RebalanceApplyRequest> _basket = new();
+
+    private async Task OpenSuggest(ItemMarginDto row)
     {
         var p = new DialogParameters
         {
+            ["RunId"]      = RunId,
+            ["SourceCode"] = row.Code,
+            ["ItemName"]   = row.ItemName
+        };
+
+        var dlg = await Dialog.ShowAsync<RebalanceSuggestDialog>(
+            "پیشنهاد جابه‌جایی مواد", p,
+            new DialogOptions { MaxWidth = MaxWidth.Medium, FullWidth = true });
+
+        var res = await dlg.Result;
+        if (res is { Canceled: true }) return;
+
+        // «افزودن به سبد» درخواست را برمی‌گرداند؛ «اعمال فوری» فقط true.
+        if (res.Data is RebalanceApplyRequest planned)
+        {
+            // یک کالا بیش از یک بار در سبد نمی‌نشیند: انتخاب تازه جایگزین
+            // قبلی می‌شود. دو سطر برای یک کالا یعنی کسری‌اش دوبار حساب شود
+            // و دفترِ ظرفیتِ مقصدها هم بی‌دلیل خرج شود.
+            var replaced = _basket.RemoveAll(b => b.SourceCode == planned.SourceCode) > 0;
+            _basket.Add(planned);
+
+            Snackbar.Add(
+                replaced
+                    ? $"انتخاب قبلی این کالا در سبد جایگزین شد ({_basket.Count} مورد)."
+                    : $"به سبد اضافه شد ({_basket.Count} مورد).",
+                Severity.Info);
+            return;
+        }
+
+        await Load();
+    }
+
+    private async Task RunBasket()
+    {
+        if (_basket.Count == 0) return;
+
+        _busy = true;
+        try
+        {
+            var (ok, res, err) = await Api.RebalanceApplyBatchAsync(
+                RunId, new RebalanceBatchRequest { Items = _basket.ToList() });
+
+            if (!ok) { Snackbar.Add(err ?? "اجرای سبد ناموفق بود.", Severity.Error); return; }
+
+            Snackbar.Add(res!.Message,
+                         !res.Recomputing || res.TotalRemaining > 1
+                             ? Severity.Warning : Severity.Success);
+
+            _basket.Clear();
+            await Load();
+        }
+        finally { _busy = false; }
+    }
+
+    private async Task OpenRebalanceMaterial(ItemMarginDto row)
+    {
+        // جهت بستگی به سود/زیان دارد: کالای زیان‌ده مبدأ است (ماده از فرمولش کم
+        // می‌شود تا بها و در نتیجه زیان پایین بیاید)، ولی کالای سودده مقصد است
+        // (ماده به فرمولش اضافه می‌شود تا بها بالا برود و سود کم شود). پیش‌فرض
+        // کردنِ همیشگیِ آن در سمت مبدأ، برای کالای سودده جهت را برعکس می‌داد.
+        var p = new DialogParameters
+        {
             ["RunId"] = RunId,
-            ["PrefillFromCode"] = row.Code,
-            ["PrefillLossAmount"] = row.IsLoss ? Math.Abs(row.Profit) : (double?)null
+            ["PrefillFromCode"] = row.IsLoss ? row.Code : (long?)null,
+            ["PrefillToCode"]   = row.IsLoss ? (long?)null : row.Code,
+            ["PrefillLossAmount"] = Math.Abs(row.Profit)
         };
         var dlg = await Dialog.ShowAsync<RebalanceMaterialDialog>("جابه‌جایی مصرف ماده بین فرمول‌ها", p);
         var result = await dlg.Result;
@@ -448,9 +604,10 @@ else
         _busy = true;
         try
         {
-            var bytes = await Api.GetReportBytesAsync(RunId);
-            await JS.InvokeVoidAsync("downloadFileFromBytes",
-                                     $"cost-close-{RunId}.xlsx", bytes);
+            // واحد انتخاب‌شده به سرور هم می‌رود، وگرنه خروجی اکسل همه‌ی
+            // کالاها را می‌آورد در حالی که روی صفحه فقط یک واحد دیده می‌شود.
+            var bytes = await Api.GetReportBytesAsync(RunId, _unitId);
+            await JS.InvokeVoidAsync("downloadFileFromBytes", ReportFileName(), bytes);
         }
         catch (Exception ex)
         {
@@ -460,6 +617,31 @@ else
             Snackbar.Add(ex.Message, Severity.Error);
         }
         finally { _busy = false; }
+    }
+
+    /// <summary>
+    /// نام فایل اکسل به فارسی و با نام خودِ واحد — نه کد.
+    ///
+    /// نام سمت سرور اینجا اثری ندارد: دانلود با downloadFileFromBytes از
+    /// سمت کلاینت انجام می‌شود و همین رشته روی فایل می‌نشیند، پس محدودیت
+    /// ASCII هدر Content-Disposition اصلاً درگیر نیست.
+    ///
+    /// نویسه‌هایی که ویندوز در نام فایل نمی‌پذیرد پاک می‌شوند تا دانلود
+    /// بی‌صدا شکست نخورد؛ «—» و فاصله مشکلی ندارند.
+    /// </summary>
+    private string ReportFileName()
+    {
+        var unit = _unitId is null
+            ? "همه واحدها"
+            : _units.FirstOrDefault(u => u.UnitId == _unitId)?.UnitName
+              ?? $"واحد {_unitId}";
+
+        var name = $"سود و زیان کالا — {unit} — اجرای {RunId}.xlsx";
+
+        foreach (var bad in System.IO.Path.GetInvalidFileNameChars())
+            name = name.Replace(bad, '-');
+
+        return name;
     }
 
     private static string FormatAmount(double v)

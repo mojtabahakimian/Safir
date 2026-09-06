@@ -207,8 +207,10 @@
                        RunId)؛ ماه بعد که یک اجرای تازه ساخته می‌شود دوباره برمی‌گردد —
                        دقیقاً همان چیزی که برای مغایرت‌های افتتاحیه در فروردین اتفاق
                        افتاد. برای «دیگر هیچ‌وقت نشان نده» باید این دکمه (پذیرش دائمی،
-                       CC_AcceptedException بدون قید RunId) زده شود، نه آن یکی. *@
-                    @if (Access.CanUpd(CostForms.ActResolve))
+                       CC_AcceptedException بدون قید RunId) زده شود، نه آن یکی.
+                       ⚠️ فرمِ جداگانه (ActResolvePermanent)، نه Upd روی ActResolve —
+                       نگاه کنید توضیح CostForms.cs. *@
+                    @if (Access.CanRun(CostForms.ActResolvePermanent))
                     {
                         <MudButton Size="Size.Small" Variant="Variant.Outlined" Color="Color.Warning"
                                    StartIcon="@Icons.Material.Filled.DoNotDisturbOn"
@@ -300,7 +302,20 @@
                 </MudTd>
 
                 <MudTd Style="text-align:left">
-                    @if (!string.IsNullOrEmpty(context.RefList))
+                    @* RefList دو کاربردِ متفاوت دارد: برای CHK-04 فهرستِ خوانای
+                       شماره‌برگه‌هاست، ولی برای CHK-18/CHK-19/CHK-21 یک JSONِ
+                       داخلی است که فقط دیالوگِ «اصلاح تاریخ» می‌خواند (نگاه کنید
+                       OpenDateMismatchFix/DateDriftRef) — نباید خامش اینجا نشان
+                       داده شود. *@
+                    @if (context.RuleCode is "CHK-18" or "CHK-19" or "CHK-21")
+                    {
+                        @if (context.DocNumber is not null)
+                        {
+                            <span class="cc-num">@context.DocNumber</span>
+                        }
+                        else { <span class="mud-text-secondary">—</span> }
+                    }
+                    else if (!string.IsNullOrEmpty(context.RefList))
                     {
                         <MudTooltip Text="@context.RefList">
                             <span class="cc-num cc-reflist">@Shorten(context.RefList)</span>
@@ -325,6 +340,19 @@
                                        Title="@context.FixButtonText"
                                        OnClick="@(() => OpenAutoFix(context.ExceptionId))" />
                     }
+                    @* CHK-04 وقتی اصلاح خودکار ممکن نیست: کالا برای این ماه
+                       هیچ فرمولی ندارد، پس چیزی نیست که نسبت داده شود. راهِ
+                       باقی‌مانده کپیِ فرمول از ماهِ دیگر است — پیش‌فرض ماهِ
+                       قبل، با انتخاب کاربر. *@
+                    @if (context.RuleCode == "CHK-04" && !context.CanAutoFix
+                         && !context.IsResolved && context.Code is not null
+                         && Access.CanRun(CostForms.ActAutoFix))
+                    {
+                        <MudIconButton Icon="@Icons.Material.Filled.ContentCopy"
+                                       Size="Size.Small" Color="Color.Primary"
+                                       Title="کپی فرمول از ماه دیگر"
+                                       OnClick="@(() => OpenFormulaCopy(context))" />
+                    }
                     @if (context.RuleCode == "CHK-15" && !context.IsResolved
                          && Access.CanRun(CostForms.ActAutoFix))
                     {
@@ -333,8 +361,8 @@
                                        Title="اصلاح سطر فرمول منفی"
                                        OnClick="@(() => OpenNegativeFormulaFix(context))" />
                     }
-                    @if (context.RuleCode == "CHK-18" && !context.IsResolved
-                         && Access.CanUpd(CostForms.ActResolve))
+                    @if (context.RuleCode is "CHK-18" or "CHK-21" && !context.IsResolved
+                         && Access.CanRun(CostForms.ActFixDateMismatch))
                     {
                         <MudIconButton Icon="@Icons.Material.Filled.EditCalendar"
                                        Size="Size.Small" Color="Color.Primary"
@@ -364,11 +392,12 @@
                                        Size="Size.Small" Title="رفع شد"
                                        OnClick="@(() => Resolve(context))" />
                     }
-                    @* پذیرش دائمی سرورسمت به مجوز Upd نیاز دارد (چون یک قاعدهٔ دائمی در
-                       CC_AcceptedException می‌سازد)، نه فقط Run مثل «رفع شد» — قبلاً هر دو
-                       دکمه زیر یک شرط بودند، پس کاربری با فقط Run دکمه را می‌دید ولی با ۴۰۳
-                       رد می‌شد. *@
-                    @if (!context.IsResolved && Access.CanUpd(CostForms.ActResolve))
+                    @* پذیرش دائمی یک فرمِ دسترسیِ جداگانه دارد (ActResolvePermanent)،
+                       نه Upd روی همان فرمِ «رفع شد» — چون «بستن استثنا» در صفحه‌ی
+                       «عملیات حساس» فقط یک تیکِ Run دارد و هرگز به ستونِ Upد دسترسی
+                       نمی‌دهد؛ کاربری که همه‌چیز را در آن صفحه تیک بزند هم بدونِ این
+                       فرمِ جدا هرگز این دکمه را نمی‌دید. *@
+                    @if (!context.IsResolved && Access.CanRun(CostForms.ActResolvePermanent))
                     {
                         <MudIconButton Icon="@Icons.Material.Filled.DoNotDisturbOn"
                                        Size="Size.Small" Title="پذیرش دائمی"
@@ -549,10 +578,20 @@
     private async Task OpenAutoFix(long? exceptionId)
     {
         // گام ۱ — پیش‌نمایش
+        //
+        // ⚠️ RunId باید فرستاده شود: رویه با شرطِ
+        //     ISNULL(e.RunId,-1) = ISNULL(@RunId,-1)
+        // استثناها را انتخاب می‌کند، پس با RunIdِ تهی فقط استثناهایی پیدا
+        // می‌شوند که خودشان RunId ندارند. وقتی کاربر از داخل یک اجرا وارد
+        // شده (?runId=…)، استثنا RunId دارد و بدون این، هیچ سطری پیدا
+        // نمی‌شد و دکمه بی‌صدا «موردی برای اصلاح یافت نشد» می‌گفت.
+        // نمونه‌ی واقعی: تیر ۱۴۰۵، کد ۳۵۵۹، استثنا ۱۸۶۳۰ در اجرای ۹ —
+        // درحالی‌که خودِ رویه با پارامتر درست، برگه ۲۲۹ را بی‌مشکل اصلاح
+        // می‌کرد.
         var preview = await Api.FixMissingFormulaAsync(new AutoFixRequest
         {
             PeriodMonth = _month, DateFrom = DateFrom, DateTo = DateTo,
-            ExceptionId = exceptionId, WhatIf = true
+            RunId = RunId, ExceptionId = exceptionId, WhatIf = true
         });
 
         if (preview is null || preview.RowCount == 0)
@@ -581,7 +620,7 @@
             var res = await Api.FixMissingFormulaAsync(new AutoFixRequest
             {
                 PeriodMonth = _month, DateFrom = DateFrom, DateTo = DateTo,
-                ExceptionId = exceptionId, WhatIf = false
+                RunId = RunId, ExceptionId = exceptionId, WhatIf = false
             });
 
             Snackbar.Add(res?.Message ?? "انجام شد", Severity.Success);
@@ -589,6 +628,29 @@
         }
         catch (Exception ex) { Snackbar.Add(ex.Message, Severity.Error); }
         finally { _busy = false; }
+    }
+
+    // ───────── کپی فرمول از ماه دیگر (CHK-04 بدون فرمول ماه) ─────────
+
+    private async Task OpenFormulaCopy(CostExceptionDto ex)
+    {
+        var parameters = new DialogParameters
+        {
+            [nameof(FormulaCopyDialog.Code)]        = ex.Code!.Value,
+            [nameof(FormulaCopyDialog.ItemName)]    = ex.ItemName,
+            [nameof(FormulaCopyDialog.Month)]       = _month,
+            [nameof(FormulaCopyDialog.DateFrom)]    = DateFrom,
+            [nameof(FormulaCopyDialog.DateTo)]      = DateTo,
+            [nameof(FormulaCopyDialog.RunId)]       = RunId,
+            [nameof(FormulaCopyDialog.ExceptionId)] = (long?)ex.ExceptionId
+        };
+
+        var dlg = await Dialog.ShowAsync<FormulaCopyDialog>(
+            "کپی فرمول از ماه دیگر", parameters,
+            new DialogOptions { MaxWidth = MaxWidth.Medium, FullWidth = true });
+
+        var res = await dlg.Result;
+        if (res is { Canceled: false }) await Load();
     }
 
     // ───────── بازسازی نرخ (CHK-09) ─────────
@@ -869,7 +931,13 @@
 
     private async Task OpenAcceptedExceptions()
     {
-        var dlg = await Dialog.ShowAsync<AcceptedExceptionsDialog>("استثناهای پذیرفته‌شده");
+        // بدون DialogOptions، MudBlazor پیش‌فرضِ Small (۶۰۰px) می‌گیرد — برای
+        // جدولِ شش‌ستونیِ این دیالوگ کم است و هر سلول به سه‌چهار خط می‌شکند
+        // («پذیرش دائمی دسته‌جمعی از صفحه مغایرت‌ها» در چهار خط، حتی
+        // «CHK-17» در دو خط).
+        var dlg = await Dialog.ShowAsync<AcceptedExceptionsDialog>(
+            "استثناهای پذیرفته‌شده",
+            new DialogOptions { MaxWidth = MaxWidth.Large, FullWidth = true });
         var result = await dlg.Result;
 
         if (result is { Canceled: false })

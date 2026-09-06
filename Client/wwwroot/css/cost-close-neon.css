@@ -1,0 +1,1069 @@
+/* ══════════════════════════════════════════════════════════════════════
+   تم «نئون» — فقط برای ماژول بهای تمام‌شده
+
+   بعد از cost-close.css بارگذاری می‌شود و رویش می‌نشیند. تمِ بقیه‌ی
+   برنامه دست‌نخورده می‌ماند چون هر انتخابگر اینجا زیر یکی از این دو است:
+
+     .cc-fx              → روی <body>، فقط وقتی یک صفحه‌ی .cc-page باز است
+     .cc-page            → ریشه‌ی خودِ صفحه‌های ماژول
+
+   کلاس .cc-fx را cost-close-fx.js با MutationObserver می‌گذارد و برمی‌دارد،
+   پس هیچ فایل Razor ای لازم نبود عوض شود و امکان نشتی به صفحات دیگر نیست.
+
+   ── خط قرمزِ خوانایی ──
+   این یک ماژول حسابداری با جدول‌های متراکم است. افکت‌ها روی *پس‌زمینه و
+   قاب* می‌نشینند، نه روی متن و عدد: کنتراست متن بالا نگه داشته شده،
+   هیچ انیمیشنی زیر جدول‌ها نمی‌لرزد و رنگ‌های نئون فقط برای تأکید
+   (مثبت/منفی/هدف) به کار می‌روند نه برای بدنه‌ی داده.
+   ══════════════════════════════════════════════════════════════════════ */
+
+.cc-fx {
+    /* ── پالت ──
+       رنگ غالب دیگر مشکی نیست: بنفشِ سیر و نیلی جای آن را گرفتند و
+       سطح‌ها هم رنگِ همان خانواده را دارند، نه خاکستریِ خنثی. تیرگی
+       فقط تا حدی نگه داشته شده که متنِ روشنِ جدول‌ها کنتراست کافی
+       داشته باشد — این ماژول قرار است ساعت‌ها خوانده شود. */
+    --ccn-bg-0:      #241058;   /* بنفشِ سیر — پایه‌ی overscroll */
+    --ccn-bg-1:      #2c1668;
+    --ccn-surface:   rgba(58, 34, 118, .62);
+    --ccn-surface-2: rgba(70, 44, 138, .70);
+    --ccn-border:    rgba(190, 160, 255, .22);
+    --ccn-border-hi: rgba(220, 190, 255, .46);
+
+    --ccn-text:      #f4f0ff;
+    --ccn-text-dim:  #c3b6e8;
+
+    --ccn-cyan:      #22d3ee;
+    --ccn-violet:    #a78bfa;
+    --ccn-pink:      #f472b6;
+    --ccn-lime:      #4ade80;
+    --ccn-amber:     #fbbf24;
+    --ccn-red:       #fb7185;
+
+    --ccn-glow-cyan:   0 0 18px rgba(34, 211, 238, .45);
+    --ccn-glow-violet: 0 0 18px rgba(167, 139, 250, .45);
+}
+
+/* بوم پشت همه چیز. fixed تا با اسکرول نلرزد و pointer-events هیچ
+   تعاملی از کاربر نگیرد. */
+#cc-fx-canvas {
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    display: block;
+}
+
+/* بدنه‌ی تیره فقط وقتی ماژول باز است. transition تا ورود/خروج از
+   ماژول پرش رنگی نداشته باشد.
+   body.cc-fx و نه فقط .cc-fx: بوت‌استرپ و MudBlazor هر دو روی `body`
+   پس‌زمینه می‌گذارند و با تساویِ ویژگی، ترتیبِ بارگذاری تعیین‌کننده
+   می‌شد. این‌طور مستقل از ترتیب برنده است. عملاً هم بومِ ثابت کلِ
+   viewport را می‌پوشاند، ولی این رنگ لبه‌ی overscroll را تیره نگه
+   می‌دارد تا هنگام کشیدنِ صفحه نوارِ سفید ندرخشد. */
+body.cc-fx {
+    background: var(--ccn-bg-0);
+    transition: background .45s ease;
+}
+
+/* محتوای صفحه باید *بالای* بوم بماند.
+   ⚠️ فقط mud-main-content. نسخه‌ی اول این فهرست، mud-appbar و mud-drawer
+   را هم داشت و همان یک کلمه‌ی `position: relative` منوی کناری را از
+   حالت fixed در آورد و داخل جریان صفحه انداخت؛ منو ~۹۰۰ پیکسل ارتفاع
+   دارد، پس کل محتوا را به زیر خودش هل داد و بالای صفحه خالی ماند.
+   نوار بالا، منو، دیالوگ و اسنک‌بار از قبل z-index خودشان را دارند
+   (۱۱۰۰ تا ۱۵۰۰ در MudBlazor) و بدون هیچ دستکاری بالای بومِ صفرِ ما
+   می‌نشینند. */
+.cc-fx .mud-main-content {
+    position: relative;
+    z-index: 1;
+}
+
+/* ── صفحه ───────────────────────────────────────────────────────── */
+
+.cc-fx .cc-page {
+    background: transparent;
+    color: var(--ccn-text);
+}
+
+/* عنوان صفحه — گرادیان متحرک روی خودِ حروف */
+.cc-fx .cc-page h1,
+.cc-fx .cc-page h2,
+.cc-fx .cc-page .mud-typography-h5,
+.cc-fx .cc-page .mud-typography-h6 {
+    background: linear-gradient(100deg,
+                var(--ccn-cyan) 0%, var(--ccn-violet) 38%,
+                var(--ccn-pink) 62%, var(--ccn-cyan) 100%);
+    background-size: 260% 100%;
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    animation: ccn-title 9s linear infinite;
+}
+
+@keyframes ccn-title {
+    to { background-position: 260% 0; }
+}
+
+/* ── کارت‌ها و قاب‌ها: شیشه‌ی مات با لبه‌ی نئونی ─────────────────── */
+
+.cc-fx .cc-rule-card,
+.cc-fx .cc-balance,
+.cc-fx .cc-gauge,
+.cc-fx .cc-page .mud-paper,
+.cc-fx .cc-page .mud-card {
+    background: var(--ccn-surface);
+    backdrop-filter: blur(14px) saturate(140%);
+    -webkit-backdrop-filter: blur(14px) saturate(140%);
+    border: 1px solid var(--ccn-border);
+    border-radius: 16px;
+    color: var(--ccn-text);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, .38),
+                inset 0 1px 0 rgba(255, 255, 255, .06);
+}
+
+/* خطِ نورِ بالای هر کارت — همان چیزی که کارت را «زنده» می‌کند */
+.cc-fx .cc-rule-card,
+.cc-fx .cc-gauge {
+    position: relative;
+    overflow: hidden;
+}
+
+.cc-fx .cc-rule-card::before,
+.cc-fx .cc-gauge::before {
+    content: '';
+    position: absolute;
+    inset-inline: 0;
+    top: 0;
+    height: 1px;
+    background: linear-gradient(90deg,
+                transparent, var(--ccn-cyan), var(--ccn-violet), transparent);
+    opacity: .75;
+}
+
+.cc-fx .cc-rule-head {
+    background: linear-gradient(180deg,
+                rgba(255, 255, 255, .05), transparent);
+    border-bottom: 1px solid var(--ccn-border);
+    color: var(--ccn-text);
+}
+
+/* ── نوار ابزار و چیپ‌ها ────────────────────────────────────────── */
+
+/* ⚠️ border-color اینجا !important دارد و جای دیگری ندارد.
+   MudBlazor روی .mud-chip مقدار `currentcolor` می‌گذارد و کلاس‌های
+   رنگیِ variant (mud-chip-color-error و مانندش) رنگِ متن را عوض
+   می‌کنند؛ نتیجه این‌که لبه‌ی چیپ با رنگِ متن سفید می‌شد و روی
+   پس‌زمینه‌ی تیره مثل یک قابِ سفیدِ ناهماهنگ می‌درخشید. چون منشأ
+   مشکل `currentcolor` است نه ویژگیِ کم، بالا بردن specificity حلش
+   نمی‌کرد. */
+.cc-fx .cc-page .mud-chip {
+    border: 1px solid var(--ccn-border) !important;
+    background: rgba(255, 255, 255, .04);
+    color: var(--ccn-text-dim);
+    transition: box-shadow .2s ease, border-color .2s ease, color .2s ease;
+}
+
+.cc-fx .cc-page .mud-chip:hover {
+    border-color: var(--ccn-border-hi);
+    color: var(--ccn-text);
+}
+
+.cc-fx .cc-page .mud-chip.mud-chip-filled {
+    background: linear-gradient(135deg,
+                rgba(34, 211, 238, .22), rgba(167, 139, 250, .22));
+    border-color: var(--ccn-border-hi) !important;
+    color: #fff;
+    box-shadow: var(--ccn-glow-cyan);
+}
+
+/* ── دکمه‌ها ────────────────────────────────────────────────────── */
+
+.cc-fx .cc-page .mud-button-filled.mud-button-filled-primary {
+    background: linear-gradient(135deg, #22d3ee, #6366f1 55%, #a78bfa);
+    border: 0;
+    color: #05080f;
+    font-weight: 700;
+    box-shadow: 0 6px 22px rgba(99, 102, 241, .42);
+}
+
+.cc-fx .cc-page .mud-button-filled.mud-button-filled-primary:hover {
+    box-shadow: 0 8px 30px rgba(99, 102, 241, .62);
+    filter: brightness(1.08);
+}
+
+.cc-fx .cc-page .mud-button-outlined {
+    border-color: var(--ccn-border-hi) !important;
+    color: var(--ccn-text);
+}
+
+.cc-fx .cc-page .mud-button-outlined:hover {
+    background: rgba(200, 170, 255, .14);
+    box-shadow: var(--ccn-glow-cyan);
+}
+
+.cc-fx .cc-page .mud-icon-button {
+    color: var(--ccn-text-dim);
+}
+
+.cc-fx .cc-page .mud-icon-button:hover {
+    color: var(--ccn-cyan);
+    text-shadow: var(--ccn-glow-cyan);
+}
+
+/* ── جدول‌ها: جایی که خوانایی بر افکت مقدم است ──────────────────── */
+
+.cc-fx .cc-page .mud-table,
+.cc-fx .cc-page .mud-simple-table {
+    background: transparent;
+    color: var(--ccn-text);
+}
+
+.cc-fx .cc-page .mud-table-head th,
+.cc-fx .cc-page .mud-simple-table thead th {
+    background: rgba(45, 24, 96, .92);
+    color: var(--ccn-text-dim);
+    border-bottom: 1px solid var(--ccn-border-hi);
+    font-weight: 700;
+    letter-spacing: .3px;
+    /* سرستون هنگام اسکرول روی داده نمی‌افتد */
+    backdrop-filter: blur(8px);
+}
+
+.cc-fx .cc-page .mud-table-row td,
+.cc-fx .cc-page .mud-simple-table tbody td {
+    border-bottom: 1px solid rgba(200, 170, 255, .12);
+    color: var(--ccn-text);
+}
+
+.cc-fx .cc-page .mud-table-row:hover td,
+.cc-fx .cc-page .mud-simple-table tbody tr:hover td {
+    background: rgba(200, 170, 255, .10);
+}
+
+/* سطر انتخاب‌شده — نوار نئونی سمت راست (RTL) */
+.cc-fx .cc-page .cc-row-sel td,
+.cc-fx .cc-page .cc-row-key td {
+    background: linear-gradient(90deg,
+                rgba(34, 211, 238, .14), transparent 60%);
+    box-shadow: inset 3px 0 0 var(--ccn-cyan);
+}
+
+/* ── اعداد: تنها جایی که رنگ معنا دارد ──────────────────────────── */
+
+.cc-fx .cc-page .cc-num {
+    font-variant-numeric: tabular-nums;
+    letter-spacing: .2px;
+}
+
+.cc-fx .cc-page .cc-num.pos {
+    color: var(--ccn-lime);
+    text-shadow: 0 0 12px rgba(74, 222, 128, .35);
+}
+
+.cc-fx .cc-page .cc-num.neg {
+    color: var(--ccn-red);
+    text-shadow: 0 0 12px rgba(251, 113, 133, .35);
+}
+
+.cc-fx .cc-page .cc-gauge .val {
+    font-weight: 800;
+    letter-spacing: .5px;
+}
+
+.cc-fx .cc-page .cc-gauge.ok   .val { color: var(--ccn-lime);  text-shadow: 0 0 16px rgba(74, 222, 128, .45); }
+.cc-fx .cc-page .cc-gauge.warn .val { color: var(--ccn-amber); text-shadow: 0 0 16px rgba(251, 191, 36, .45); }
+.cc-fx .cc-page .cc-gauge.bad  .val { color: var(--ccn-red);   text-shadow: 0 0 16px rgba(251, 113, 133, .45); }
+
+.cc-fx .cc-page .cc-gauge .lbl,
+.cc-fx .cc-page .cc-subgroup-label,
+.cc-fx .cc-page .mud-text-secondary {
+    color: var(--ccn-text-dim);
+}
+
+/* ── فیلدهای ورودی ─────────────────────────────────────────────── */
+
+.cc-fx .cc-page .mud-input > input,
+.cc-fx .cc-page .mud-input-slot,
+.cc-fx .cc-page .mud-select-input {
+    color: var(--ccn-text);
+}
+
+.cc-fx .cc-page .mud-input-outlined-border {
+    border-color: var(--ccn-border);
+}
+
+.cc-fx .cc-page .mud-input-control:focus-within .mud-input-outlined-border {
+    border-color: var(--ccn-cyan);
+    box-shadow: var(--ccn-glow-cyan);
+}
+
+.cc-fx .cc-page .mud-input-label {
+    color: var(--ccn-text-dim);
+}
+
+/* ── هشدارها ───────────────────────────────────────────────────── */
+
+.cc-fx .cc-page .mud-alert {
+    backdrop-filter: blur(10px);
+    border: 1px solid var(--ccn-border);
+    background: rgba(62, 38, 126, .70);
+    color: var(--ccn-text);
+}
+
+.cc-fx .cc-page .cc-remedy {
+    background: rgba(34, 211, 238, .08);
+    border-bottom: 1px solid rgba(34, 211, 238, .22);
+    color: var(--ccn-text);
+}
+
+.cc-fx .cc-page .cc-bulk-toolbar {
+    background: rgba(251, 191, 36, .1);
+    border-bottom: 1px solid rgba(251, 191, 36, .25);
+}
+
+/* ── نوار پیشرفت و اسپینر ──────────────────────────────────────── */
+
+.cc-fx .cc-page .mud-progress-linear-bar {
+    background: linear-gradient(90deg, var(--ccn-cyan), var(--ccn-violet), var(--ccn-pink));
+    box-shadow: var(--ccn-glow-violet);
+}
+
+/* ── ورودِ نرم کارت‌ها ─────────────────────────────────────────── */
+
+.cc-fx .cc-page .cc-rule-card,
+.cc-fx .cc-page .cc-gauge {
+    animation: ccn-rise .5s cubic-bezier(.22, .8, .28, 1) both;
+}
+
+@keyframes ccn-rise {
+    from { opacity: 0; transform: translateY(10px) scale(.995); }
+    to   { opacity: 1; transform: none; }
+}
+
+/* ── اسکرول‌بار ────────────────────────────────────────────────── */
+
+.cc-fx .cc-page *::-webkit-scrollbar { width: 10px; height: 10px; }
+.cc-fx .cc-page *::-webkit-scrollbar-track { background: rgba(255, 255, 255, .03); }
+.cc-fx .cc-page *::-webkit-scrollbar-thumb {
+    background: linear-gradient(180deg, var(--ccn-cyan), var(--ccn-violet));
+    border-radius: 8px;
+}
+
+/* ── احترام به ترجیح کاربر ─────────────────────────────────────
+   هر انیمیشنی اینجا تزئینی است، پس با prefers-reduced-motion کاملاً
+   خاموش می‌شود — نه کند، خاموش. بوم هم خودش در JS ثابت می‌ماند. */
+@media (prefers-reduced-motion: reduce) {
+    body:not(.cc-motion-ok) .cc-fx .cc-page h1,
+    body:not(.cc-motion-ok) .cc-fx .cc-page h2,
+    body:not(.cc-motion-ok) .cc-fx .cc-page .mud-typography-h5,
+    body:not(.cc-motion-ok) .cc-fx .cc-page .mud-typography-h6,
+    body:not(.cc-motion-ok) .cc-fx .cc-page .cc-rule-card,
+    body:not(.cc-motion-ok) .cc-fx .cc-page .cc-gauge {
+        animation: none;
+    }
+}
+
+/* ── صفحه‌های باریک ───────────────────────────────────────────────
+   backdrop-filter روی موبایل گران است و بومِ متحرک هم باتری می‌برد؛
+   شیشه ساده و مات می‌شود. خودِ بوم را JS روی موبایل سبک‌تر می‌کند. */
+@media (max-width: 768px) {
+    .cc-fx .cc-rule-card,
+    .cc-fx .cc-balance,
+    .cc-fx .cc-gauge,
+    .cc-fx .cc-page .mud-paper,
+    .cc-fx .cc-page .mud-card {
+        backdrop-filter: none;
+        -webkit-backdrop-filter: none;
+        background: var(--ccn-bg-1);
+    }
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   لایه‌ی «حال‌وهوا» — بازیگوشی، بدون دست‌زدن به داده
+
+   قاعده: هر چیزی که اینجاست یا در پوسته است (رفیق، کانفتی، حالت خالی)
+   یا یک واکنشِ لمسی روی کنترل‌هاست. هیچ‌کدام روی عدد، نام کالا یا متنِ
+   مغایرت نمی‌نشیند — آن‌ها باید جدی و بی‌حاشیه بمانند.
+   ══════════════════════════════════════════════════════════════════════ */
+
+/* ── کانفتی ─────────────────────────────────────────────────────── */
+
+.cc-confetti {
+    position: fixed;
+    inset: 0;
+    z-index: 2000;          /* بالای اسنک‌بار (۱۵۰۰) تا دیده شود */
+    pointer-events: none;
+}
+
+/* ── رفیقِ گوشه‌ی صفحه ───────────────────────────────────────────── */
+
+.cc-buddy {
+    position: fixed;
+    /* ⚠️ عمداً left و نه inset-inline-start: صفحه RTL است، پس
+       inset-inline-start یعنی سمتِ *راست* — دقیقاً همان‌جایی که منوی
+       کناری باز می‌شود و رفیق را زیر خودش می‌گیرد. اینجا جهت‌مندی
+       نمی‌خواهیم؛ یک عنصرِ شناورِ مستقل است که باید همیشه دور از منو،
+       یعنی گوشه‌ی چپِ پایین بنشیند. */
+    left: 18px;
+    bottom: 18px;
+    z-index: 1600;
+    display: flex;
+    align-items: flex-end;
+    gap: 8px;
+    font-family: var(--p2-font);
+}
+
+.cc-buddy-face {
+    width: 52px;
+    height: 52px;
+    border-radius: 50%;
+    border: 1px solid var(--ccn-border-hi);
+    background: linear-gradient(135deg, rgba(34, 211, 238, .22), rgba(167, 139, 250, .22));
+    backdrop-filter: blur(10px);
+    box-shadow: 0 6px 22px rgba(0, 0, 0, .45), var(--ccn-glow-cyan);
+    font-size: 26px;
+    line-height: 1;
+    cursor: pointer;
+    /* شناورِ همیشگی — همان «حرکتِ دائم» که صفحه را زنده نگه می‌دارد */
+    animation: cc-float 3.6s ease-in-out infinite;
+}
+
+.cc-buddy-face:hover { transform: scale(1.08) rotate(-6deg); }
+.cc-buddy-face.pop   { animation: cc-pop .45s cubic-bezier(.3,1.6,.5,1); }
+
+@keyframes cc-float {
+    0%, 100% { transform: translateY(0)     rotate(0deg); }
+    50%      { transform: translateY(-9px)  rotate(4deg); }
+}
+
+@keyframes cc-pop {
+    0%   { transform: scale(1); }
+    40%  { transform: scale(1.35) rotate(-12deg); }
+    100% { transform: scale(1); }
+}
+
+.cc-buddy-bubble {
+    max-width: 260px;
+    padding: 10px 14px;
+    border-radius: 16px 16px 16px 4px;
+    background: rgba(52, 30, 108, .92);
+    border: 1px solid var(--ccn-border-hi);
+    color: var(--ccn-text);
+    font-size: 13px;
+    line-height: 1.7;
+    box-shadow: 0 8px 26px rgba(0, 0, 0, .5);
+    opacity: 0;
+    transform: translateY(8px) scale(.96);
+    transition: opacity .22s ease, transform .22s cubic-bezier(.3,1.4,.5,1);
+}
+
+.cc-buddy-bubble.show { opacity: 1; transform: none; }
+
+/* ── جمله‌ی طنز در حالت خالی ────────────────────────────────────── */
+
+.cc-fun-quip {
+    margin-top: 8px;
+    font-size: 13px;
+    color: var(--ccn-text-dim);
+    opacity: .85;
+    animation: cc-fade-in .5s ease both;
+}
+
+@keyframes cc-fade-in {
+    from { opacity: 0; transform: translateY(6px); }
+    to   { opacity: .85; transform: none; }
+}
+
+/* ── واکنش‌های لمسی: انرژی روی کنترل‌ها، نه روی داده ─────────────── */
+
+.cc-fun .cc-page .mud-button-root,
+.cc-fun .cc-page .mud-chip {
+    transition: transform .16s cubic-bezier(.3,1.5,.5,1),
+                box-shadow .2s ease, filter .2s ease;
+}
+
+.cc-fun .cc-page .mud-button-root:hover { transform: translateY(-2px) scale(1.03); }
+.cc-fun .cc-page .mud-button-root:active { transform: translateY(0) scale(.96); }
+.cc-fun .cc-page .mud-chip:hover        { transform: translateY(-2px) rotate(-1.5deg); }
+
+.cc-fun .cc-page .mud-icon-button:hover { transform: scale(1.18) rotate(8deg); }
+.cc-fun .cc-page .mud-icon-button:active { transform: scale(.9); }
+
+/* کارت‌ها با نزدیک شدن نشانگر کمی بلند می‌شوند */
+.cc-fun .cc-rule-card,
+.cc-fun .cc-gauge {
+    transition: transform .25s cubic-bezier(.3,1.3,.5,1), box-shadow .25s ease;
+}
+
+.cc-fun .cc-rule-card:hover,
+.cc-fun .cc-gauge:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 14px 40px rgba(0, 0, 0, .5),
+                0 0 0 1px var(--ccn-border-hi),
+                inset 0 1px 0 rgba(255, 255, 255, .08);
+}
+
+/* سطر جدول با هاور کمی به سمت داخل می‌لغزد — ریز، ولی صفحه را
+   «پاسخ‌گو» نشان می‌دهد. عمداً بدون تغییرِ اندازه‌ی متن. */
+.cc-fun .cc-page .mud-table-row {
+    transition: transform .16s ease, background .16s ease;
+}
+
+.cc-fun .cc-page .mud-table-row:hover { transform: translateX(-3px); }
+
+/* عددِ گِیج وقتی عوض می‌شود یک «تپش» می‌زند. متن دست‌نخورده می‌ماند؛
+   فقط مقیاس تغییر می‌کند، پس هیچ رقمی بازنویسی نمی‌شود. */
+.cc-fun .cc-page .cc-gauge .val {
+    animation: cc-beat 2.6s ease-in-out infinite;
+    transform-origin: center;
+}
+
+@keyframes cc-beat {
+    0%, 92%, 100% { transform: scale(1); }
+    96%           { transform: scale(1.06); }
+}
+
+/* نوار پیشرفت: درخششی که مدام روی آن می‌لغزد */
+.cc-fun .cc-page .mud-progress-linear-bar::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(90deg, transparent,
+                rgba(255, 255, 255, .45), transparent);
+    animation: cc-sheen 1.8s linear infinite;
+}
+
+@keyframes cc-sheen {
+    from { transform: translateX(-100%); }
+    to   { transform: translateX(100%); }
+}
+
+/* ── احترام به ترجیح کاربر ─────────────────────────────────────── */
+
+@media (prefers-reduced-motion: reduce) {
+    body:not(.cc-motion-ok) .cc-buddy,
+    body:not(.cc-motion-ok) .cc-confetti { display: none; }
+
+    /* body:not(.cc-motion-ok) روی همه — تا وقتی کاربر صریحاً
+       localStorage['cc-motion']='on' گذاشته، این بلوک کنار برود.
+       بدون این، JS افکت‌ها را روشن می‌کرد ولی CSS همان لحظه
+       خاموششان می‌کرد و نتیجه یک نیمه‌کاره‌ی گیج‌کننده می‌شد. */
+    body:not(.cc-motion-ok) .cc-fun .cc-page .mud-button-root,
+    body:not(.cc-motion-ok) .cc-fun .cc-page .mud-chip,
+    body:not(.cc-motion-ok) .cc-fun .cc-page .mud-icon-button,
+    body:not(.cc-motion-ok) .cc-fun .cc-rule-card,
+    body:not(.cc-motion-ok) .cc-fun .cc-gauge,
+    body:not(.cc-motion-ok) .cc-fun .cc-page .mud-table-row,
+    body:not(.cc-motion-ok) .cc-fun .cc-page .cc-gauge .val,
+    body:not(.cc-motion-ok) .cc-fun .cc-page .mud-progress-linear-bar::after {
+        animation: none !important;
+        transition: none !important;
+        transform: none !important;
+    }
+
+    /* عنوانِ گرادیانی و ورودِ کارت‌ها هم همین‌طور */
+    body:not(.cc-motion-ok) .cc-fx .cc-page h1,
+    body:not(.cc-motion-ok) .cc-fx .cc-page h2,
+    body:not(.cc-motion-ok) .cc-fx .cc-page .mud-typography-h5,
+    body:not(.cc-motion-ok) .cc-fx .cc-page .mud-typography-h6,
+    body:not(.cc-motion-ok) .cc-fx .cc-page .cc-rule-card,
+    body:not(.cc-motion-ok) .cc-fx .cc-page .cc-gauge {
+        animation: none;
+    }
+}
+
+/* روی صفحه‌های باریک، رفیق کوچک‌تر می‌شود تا جلوی دکمه‌ها را نگیرد */
+@media (max-width: 768px) {
+    .cc-buddy { left: 10px; bottom: 10px; }
+    .cc-buddy-face { width: 42px; height: 42px; font-size: 21px; }
+    .cc-buddy-bubble { max-width: 180px; font-size: 12px; }
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   «انیشتین در حال فکر» — نشانگر مشغول بودن سیستم
+
+   چرا خودمان کشیدیم و تصویر/لاتی نگذاشتیم: برنامه آفلاین اجرا می‌شود و
+   هیچ CDN ای در دسترس نیست؛ ضمناً یک SVG کوچکِ درون‌خطی از هر GIF ای
+   سبک‌تر است و با تم رنگ می‌گیرد.
+
+   عمق سه‌بعدی از preserve-3d و translateZ لایه‌ها می‌آید، نه از یک
+   موتور 3D: سر آرام می‌چرخد و موها/سبیل در عمقِ متفاوت می‌نشینند، پس
+   با چرخش، اختلافِ منظر (parallax) واقعی دیده می‌شود.
+   ══════════════════════════════════════════════════════════════════════ */
+
+.cc-think {
+    position: fixed;
+    left: 18px;
+    bottom: 18px;
+    z-index: 1650;          /* بالای رفیق (۱۶۰۰) */
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    pointer-events: none;   /* هرگز جلوی کلیک کاربر را نمی‌گیرد */
+    animation: cc-think-in .45s cubic-bezier(.2,1.3,.4,1) both;
+}
+
+@keyframes cc-think-in {
+    from { opacity: 0; transform: translateY(16px) scale(.85); }
+    to   { opacity: 1; transform: none; }
+}
+
+.cc-think.out { animation: cc-think-out .3s ease both; }
+
+@keyframes cc-think-out {
+    to { opacity: 0; transform: translateY(10px) scale(.9); }
+}
+
+.cc-think-stage {
+    position: relative;
+    width: 120px;
+    height: 132px;
+    perspective: 520px;     /* هرچه کمتر، عمق اغراق‌آمیزتر */
+}
+
+/* هاله‌ی نبض‌دار پشت سر — «مغز دارد کار می‌کند» */
+.cc-think-glow {
+    position: absolute;
+    inset: 12px;
+    border-radius: 50%;
+    background: radial-gradient(circle,
+                rgba(34,211,238,.34), rgba(167,139,250,.16) 55%, transparent 72%);
+    filter: blur(6px);
+    animation: cc-glow 2.4s ease-in-out infinite;
+}
+
+@keyframes cc-glow {
+    0%, 100% { transform: scale(.92); opacity: .65; }
+    50%      { transform: scale(1.1); opacity: 1; }
+}
+
+/* خودِ سر: چرخش آرامِ سه‌بعدی، انگار دارد فکر می‌کند */
+.cc-einstein {
+    position: absolute;
+    inset: 0;
+    transform-style: preserve-3d;
+    animation: cc-ponder 5.2s ease-in-out infinite;
+}
+
+@keyframes cc-ponder {
+    0%, 100% { transform: rotateY(-13deg) rotateX(5deg)  translateY(0); }
+    30%      { transform: rotateY(9deg)   rotateX(-3deg) translateY(-4px); }
+    60%      { transform: rotateY(14deg)  rotateX(4deg)  translateY(2px); }
+}
+
+.cc-einstein svg { width: 100%; height: 100%; overflow: visible; }
+
+/* لایه‌های عمق — همان چیزی که چرخش را سه‌بعدی نشان می‌دهد */
+.cc-e-coat  { transform: translateZ(-10px); }
+.cc-e-rim   { transform: translateZ(24px); }
+.cc-e-hair  { transform: translateZ(14px); }
+.cc-e-face  { transform: translateZ(0); }
+.cc-e-brow  { transform: translateZ(20px); }
+.cc-e-eyes  { transform: translateZ(22px); }
+.cc-e-stash { transform: translateZ(26px); }
+
+/* موها تک‌تک می‌لرزند — با تأخیرِ متفاوت تا هماهنگ نباشند */
+.cc-e-hair > * { animation: cc-hair 2.8s ease-in-out infinite; transform-origin: 50% 100%; }
+.cc-e-hair > :nth-child(2) { animation-delay: -.6s; }
+.cc-e-hair > :nth-child(3) { animation-delay: -1.2s; }
+.cc-e-hair > :nth-child(4) { animation-delay: -1.8s; }
+.cc-e-hair > :nth-child(5) { animation-delay: -2.3s; }
+
+@keyframes cc-hair {
+    0%, 100% { transform: rotate(-2.5deg) scaleY(1); }
+    50%      { transform: rotate(2.5deg)  scaleY(1.06); }
+}
+
+/* مردمک‌ها به بالا-کنار نگاه می‌کنند: ژستِ جهانیِ «دارم فکر می‌کنم» */
+.cc-e-pupil { animation: cc-look 5.2s ease-in-out infinite; }
+
+@keyframes cc-look {
+    0%, 100% { transform: translate(0, 0); }
+    30%      { transform: translate(3px, -2px); }
+    62%      { transform: translate(-2px, -3px); }
+}
+
+/* پلک زدن — نادر و سریع، وگرنه عصبی به نظر می‌رسد */
+.cc-e-lid { animation: cc-blink 6.4s infinite; transform-origin: 50% 50%; }
+
+@keyframes cc-blink {
+    0%, 92%, 100% { transform: scaleY(0); }
+    94%, 98%      { transform: scaleY(1); }
+}
+
+/* حباب‌های فکر — فرمول‌های خودِ همین ماژول، نه E=mc² */
+.cc-think-bubbles {
+    position: absolute;
+    inset-inline-start: 84px;
+    top: -6px;
+    width: 190px;
+    height: 96px;
+}
+
+.cc-think-bubbles span {
+    position: absolute;
+    white-space: nowrap;
+    font-size: 11px;
+    color: var(--ccn-cyan);
+    background: rgba(52, 30, 108, .90);
+    border: 1px solid var(--ccn-border-hi);
+    border-radius: 12px;
+    padding: 3px 9px;
+    opacity: 0;
+    animation: cc-bubble 6s ease-in-out infinite;
+}
+
+.cc-think-bubbles span:nth-child(1) { animation-delay: 0s;   top: 62px; }
+.cc-think-bubbles span:nth-child(2) { animation-delay: 2s;   top: 62px; }
+.cc-think-bubbles span:nth-child(3) { animation-delay: 4s;   top: 62px; }
+
+@keyframes cc-bubble {
+    0%       { opacity: 0; transform: translateY(0) scale(.8); }
+    12%      { opacity: 1; transform: translateY(-14px) scale(1); }
+    30%      { opacity: 1; transform: translateY(-30px) scale(1); }
+    45%, 100%{ opacity: 0; transform: translateY(-46px) scale(.92); }
+}
+
+.cc-think-label {
+    font-size: 12px;
+    color: var(--ccn-text-dim);
+    background: rgba(52, 30, 108, .88);
+    border: 1px solid var(--ccn-border);
+    border-radius: 12px;
+    padding: 4px 12px;
+    backdrop-filter: blur(8px);
+}
+
+.cc-think-label::after {
+    content: '';
+    animation: cc-dots 1.4s steps(4, end) infinite;
+}
+
+@keyframes cc-dots {
+    0%   { content: ''; }
+    25%  { content: '.'; }
+    50%  { content: '..'; }
+    75%  { content: '...'; }
+}
+
+/* وقتی انیشتین هست، رفیق کنار می‌رود — دو شخصیت هم‌زمان شلوغ است */
+body.cc-thinking .cc-buddy { opacity: 0; transform: translateY(20px); pointer-events: none; }
+.cc-buddy { transition: opacity .3s ease, transform .3s ease; }
+
+/* ══════════════════════════════════════════════════════════════════════
+   بازشدنِ پنجره‌ها با عمق
+
+   دیالوگ‌های MudBlazor بیرون از .cc-page رندر می‌شوند (ته body)، پس
+   دامنه‌شان .cc-fx است — یعنی فقط وقتی داخل این ماژول باشی.
+   ══════════════════════════════════════════════════════════════════════ */
+
+/* ⚠️ اغراق عمدی. نسخه‌ی اول (translateY 26px، rotateX 11°، 0.42s) آن‌قدر
+   ملایم بود که کاربر گفت «افکت قابل توجهی ندارند». دیالوگ چیزی است که
+   ناگهان جلوی چشم می‌آید؛ اگر قرار است حرکت داشته باشد باید دیده شود.
+   حالا از دور و از پایین می‌آید، می‌چرخد، و با کمی رد شدن از اندازه
+   (overshoot) سر جایش می‌نشیند. */
+.cc-fx .mud-dialog {
+    animation: cc-dialog-in .62s cubic-bezier(.16, 1.5, .3, 1) both;
+    transform-origin: 50% 100%;
+    /* لازم برای ::after درخشش که با inset روی همین قاب می‌نشیند؛
+       overflow تا درخشش از گوشه‌های گرد بیرون نزند. */
+    position: relative;
+    overflow: hidden;
+}
+
+@keyframes cc-dialog-in {
+    0% {
+        opacity: 0;
+        transform: perspective(1100px) translateY(120px) translateZ(-260px)
+                   rotateX(-42deg) scale(.72);
+        filter: blur(14px);
+    }
+    55% {
+        opacity: 1;
+        filter: blur(0);
+    }
+    72% {
+        /* رد شدن از اندازه — همان چیزی که حرکت را «فنری» نشان می‌دهد */
+        transform: perspective(1100px) translateY(-10px) translateZ(24px)
+                   rotateX(5deg) scale(1.035);
+    }
+    100% {
+        opacity: 1;
+        transform: perspective(1100px) none;
+        filter: none;
+    }
+}
+
+/* درخششی که یک بار از روی قاب رد می‌شود — لحظه‌ی «باز شدن» را برجسته
+   می‌کند. pointer-events هیچ کلیکی را نمی‌گیرد. */
+.cc-fx .mud-dialog::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    pointer-events: none;
+    background: linear-gradient(115deg, transparent 35%,
+                rgba(34, 211, 238, .28) 50%, transparent 65%);
+    animation: cc-dialog-sweep .85s ease-out .12s both;
+}
+
+@keyframes cc-dialog-sweep {
+    from { opacity: 0; transform: translateX(-130%); }
+    35%  { opacity: 1; }
+    to   { opacity: 0; transform: translateX(130%); }
+}
+
+/* پرده‌ی پشت دیالوگ نرم می‌آید، نه یک‌باره */
+.cc-fx .mud-overlay .mud-overlay-scrim {
+    animation: cc-scrim-in .45s ease both;
+    backdrop-filter: blur(7px) saturate(70%);
+}
+
+@keyframes cc-scrim-in {
+    from { opacity: 0; backdrop-filter: blur(0) saturate(100%); }
+    to   { opacity: 1; }
+}
+
+/* محتوای دیالوگ بعد از خودِ قاب می‌آید و از پایین بالا می‌خزد —
+   دو حرکتِ پشت‌سرهم به‌جای یکی، تا «باز شدن» حس شود نه «ظاهر شدن». */
+.cc-fx .mud-dialog .mud-dialog-content {
+    animation: cc-dialog-content .5s cubic-bezier(.2, 1.3, .35, 1) .18s both;
+}
+
+@keyframes cc-dialog-content {
+    from { opacity: 0; transform: translateY(22px) scale(.97); }
+    to   { opacity: 1; transform: none; }
+}
+
+/* سرتیتر و دکمه‌ها هم با تأخیرِ بیشتر — پلکانی */
+.cc-fx .mud-dialog .mud-dialog-title {
+    animation: cc-dialog-content .45s ease .1s both;
+}
+
+.cc-fx .mud-dialog .mud-dialog-actions {
+    animation: cc-dialog-content .45s ease .28s both;
+}
+
+/* اسنک‌بار هم از پایین می‌پرد بالا */
+.cc-fx .mud-snackbar {
+    animation: cc-snack-in .4s cubic-bezier(.2, 1.4, .4, 1) both;
+}
+
+@keyframes cc-snack-in {
+    from { opacity: 0; transform: translateY(24px) scale(.94); }
+    to   { opacity: 1; transform: none; }
+}
+
+/* ── احترام به ترجیح کاربر ─────────────────────────────────────── */
+
+@media (prefers-reduced-motion: reduce) {
+    body:not(.cc-motion-ok) .cc-think { display: none; }
+
+    body:not(.cc-motion-ok) .cc-fx .mud-dialog,
+    body:not(.cc-motion-ok) .cc-fx .mud-dialog .mud-dialog-content,
+    body:not(.cc-motion-ok) .cc-fx .mud-overlay .mud-overlay-scrim,
+    body:not(.cc-motion-ok) .cc-fx .mud-snackbar {
+        animation: none !important;
+        filter: none !important;
+        transform: none !important;
+    }
+}
+
+@media (max-width: 768px) {
+    .cc-think { transform: scale(.8); transform-origin: bottom left; }
+}
+
+/* ── انیشتینِ کوچک، کنارِ هر بخشِ در حال اجرا ─────────────────────
+   در «بازسازی اسناد گروهی» هر ردیف نوعِ سندِ خودش را دارد؛ این نسخه‌ی
+   کوچک فقط کنارِ همان ردیفی می‌نشیند که در همان لحظه سند می‌زند، پس
+   کاربر بدون خواندنِ متن می‌فهمد کجای کار است.
+
+   همان SVG و همان انیمیشن‌های نسخه‌ی بزرگ استفاده می‌شود (یک منبع
+   واحد در einsteinSvg)، فقط قاب کوچک‌تر و perspective تندتر است تا
+   در این اندازه هم چرخش دیده شود. */
+
+.cc-think-mini {
+    display: inline-block;
+    width: 34px;
+    height: 40px;
+    margin-inline-start: 10px;
+    vertical-align: middle;
+    perspective: 200px;
+    flex: 0 0 auto;
+}
+
+.cc-think-mini .cc-einstein {
+    position: relative;
+    inset: auto;
+    width: 100%;
+    height: 100%;
+    animation-duration: 3.4s;   /* تندتر از نسخه‌ی بزرگ: پرجنب‌وجوش‌تر */
+}
+
+.cc-think-mini svg { width: 100%; height: 100%; }
+
+/* در این اندازه، عمقِ نسخه‌ی بزرگ اغراق‌آمیز می‌شود و لایه‌ها از هم
+   جدا می‌افتند؛ پس فشرده‌تر می‌شود. */
+.cc-think-mini .cc-e-coat  { transform: translateZ(-4px); }
+.cc-think-mini .cc-e-hair  { transform: translateZ(5px); }
+.cc-think-mini .cc-e-brow  { transform: translateZ(7px); }
+.cc-think-mini .cc-e-eyes  { transform: translateZ(8px); }
+.cc-think-mini .cc-e-rim   { transform: translateZ(9px); }
+.cc-think-mini .cc-e-stash { transform: translateZ(10px); }
+
+/* ردیف باید بتواند انیشتین را کنار خودش جا بدهد */
+.cc-fx .rgd-row {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    body:not(.cc-motion-ok) .cc-think-mini { display: none; }
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   همان پالت، داخل پنجره‌ها
+
+   دیالوگ‌های MudBlazor بیرون از .cc-page و ته <body> رندر می‌شوند، پس
+   قانون‌های بالا که همه زیر .cc-page بودند به آن‌ها نمی‌رسید و «بازسازی
+   اسناد گروهی» و بقیه با رنگ پیش‌فرض MudBlazor باز می‌شدند — یک پنجره‌ی
+   روشن وسط یک ماژول بنفش.
+
+   دامنه اینجا .cc-fx .mud-dialog است: فقط وقتی داخل این ماژول باشی. هیچ
+   دیالوگی در بقیه‌ی برنامه رنگ نمی‌گیرد.
+   ══════════════════════════════════════════════════════════════════════ */
+
+.cc-fx .mud-dialog {
+    background: linear-gradient(160deg,
+                rgba(58, 34, 118, .96), rgba(38, 22, 84, .97));
+    border: 1px solid var(--ccn-border-hi);
+    border-radius: 18px;
+    color: var(--ccn-text);
+    box-shadow: 0 24px 70px rgba(0, 0, 0, .55),
+                0 0 0 1px rgba(190, 160, 255, .12),
+                inset 0 1px 0 rgba(255, 255, 255, .08);
+}
+
+/* سرتیتر و نوار دکمه‌ها با خطِ جداکننده‌ی هم‌خانواده */
+.cc-fx .mud-dialog .mud-dialog-title {
+    color: var(--ccn-text);
+    border-bottom: 1px solid var(--ccn-border);
+    background: linear-gradient(180deg, rgba(255, 255, 255, .06), transparent);
+}
+
+.cc-fx .mud-dialog .mud-dialog-actions {
+    border-top: 1px solid var(--ccn-border);
+    background: rgba(0, 0, 0, .14);
+}
+
+.cc-fx .mud-dialog,
+.cc-fx .mud-dialog .mud-typography,
+.cc-fx .mud-dialog label {
+    color: var(--ccn-text);
+}
+
+.cc-fx .mud-dialog .mud-text-secondary,
+.cc-fx .mud-dialog .mud-typography-caption {
+    color: var(--ccn-text-dim);
+}
+
+/* کارت/کاغذِ تودرتو داخل دیالوگ — مثلاً جدول‌های پیش‌نمایش */
+.cc-fx .mud-dialog .mud-paper {
+    background: rgba(70, 44, 138, .55);
+    border: 1px solid var(--ccn-border);
+    border-radius: 14px;
+    color: var(--ccn-text);
+}
+
+/* ── جدول‌های داخل دیالوگ ── */
+
+.cc-fx .mud-dialog .mud-table,
+.cc-fx .mud-dialog .mud-simple-table { background: transparent; color: var(--ccn-text); }
+
+.cc-fx .mud-dialog .mud-table-head th,
+.cc-fx .mud-dialog .mud-simple-table thead th {
+    background: rgba(45, 24, 96, .92);
+    color: var(--ccn-text-dim);
+    border-bottom: 1px solid var(--ccn-border-hi);
+    font-weight: 700;
+}
+
+.cc-fx .mud-dialog .mud-table-row td,
+.cc-fx .mud-dialog .mud-simple-table tbody td {
+    border-bottom: 1px solid rgba(200, 170, 255, .12);
+    color: var(--ccn-text);
+}
+
+.cc-fx .mud-dialog .mud-table-row:hover td,
+.cc-fx .mud-dialog .mud-simple-table tbody tr:hover td {
+    background: rgba(200, 170, 255, .10);
+}
+
+/* ── کنترل‌ها داخل دیالوگ ── */
+
+.cc-fx .mud-dialog .mud-button-filled.mud-button-filled-primary {
+    background: linear-gradient(135deg, #22d3ee, #6366f1 55%, #a78bfa);
+    border: 0;
+    color: #120a2e;
+    font-weight: 700;
+    box-shadow: 0 6px 22px rgba(99, 102, 241, .45);
+}
+
+.cc-fx .mud-dialog .mud-button-outlined,
+.cc-fx .mud-dialog .mud-button-text {
+    border-color: var(--ccn-border-hi) !important;
+    color: var(--ccn-text);
+}
+
+.cc-fx .mud-dialog .mud-icon-button { color: var(--ccn-text-dim); }
+.cc-fx .mud-dialog .mud-icon-button:hover { color: var(--ccn-cyan); }
+
+.cc-fx .mud-dialog .mud-chip {
+    border: 1px solid var(--ccn-border) !important;
+    background: rgba(255, 255, 255, .05);
+    color: var(--ccn-text-dim);
+}
+
+.cc-fx .mud-dialog .mud-input > input,
+.cc-fx .mud-dialog .mud-input-slot,
+.cc-fx .mud-dialog .mud-select-input { color: var(--ccn-text); }
+
+.cc-fx .mud-dialog .mud-input-outlined-border { border-color: var(--ccn-border); }
+
+.cc-fx .mud-dialog .mud-input-control:focus-within .mud-input-outlined-border {
+    border-color: var(--ccn-cyan);
+    box-shadow: var(--ccn-glow-cyan);
+}
+
+.cc-fx .mud-dialog .mud-input-label { color: var(--ccn-text-dim); }
+
+/* چک‌باکس و رادیو: پیش‌فرضشان روی بنفش تیره دیده نمی‌شود */
+.cc-fx .mud-dialog .mud-checkbox .mud-icon-root,
+.cc-fx .mud-dialog .mud-radio .mud-icon-root { color: var(--ccn-text-dim); }
+
+.cc-fx .mud-dialog .mud-checkbox-true .mud-icon-root,
+.cc-fx .mud-dialog .mud-radio.mud-checked .mud-icon-root { color: var(--ccn-cyan); }
+
+.cc-fx .mud-dialog .mud-alert {
+    background: rgba(70, 44, 138, .7);
+    border: 1px solid var(--ccn-border);
+    color: var(--ccn-text);
+    backdrop-filter: blur(8px);
+}
+
+.cc-fx .mud-dialog .mud-divider { border-color: var(--ccn-border); }
+
+/* ── مخصوص «بازسازی اسناد گروهی» ──
+   آن دیالوگ رنگ نتیجه را از --mud-palette-success/error می‌گیرد که روی
+   بنفش تیره کم‌کنتراست است؛ اینجا با رنگ‌های خودِ تم جایگزین می‌شود. */
+.cc-fx .rgd-result.ok  { color: var(--ccn-lime) !important; }
+.cc-fx .rgd-result.err { color: var(--ccn-red)  !important; }
+
+.cc-fx .rgd-progress {
+    background: rgba(255, 255, 255, .10);
+    border-radius: 4px;
+    overflow: hidden;
+}

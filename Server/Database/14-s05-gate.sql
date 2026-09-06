@@ -573,23 +573,57 @@ BEGIN
                           AND  TRY_CAST(d.HES_T AS BIGINT) = TRY_CAST(f.CODE AS BIGINT)
                           AND  d.SHARH LIKE N'%افتتاحيه%'
                     )
+        ),
+        -- جهتِ معکوسِ MissingOpening: سند افتتاحیه در حسابداری هست ولی
+        -- کاردکس برای همان کالا/انبار موجودی اول دوره ندارد (MOGODI_A=0
+        -- یا اصلاً ردیفی در STUF_FSK نیست). تا امروز فقط جهتِ اول تشخیص
+        -- داده می‌شد و این حالت بدون هیچ توضیحی گزارش می‌شد.
+        --
+        -- روی داده‌ی واقعی (فروردین ۱۴۰۵، انبار ۸۰۷ «انبار محصول یزد»)
+        -- سه کالا دقیقاً همین وضع را داشتند و مبلغ مغایرت مو‌به‌مو برابر
+        -- سند افتتاحیه بود:
+        --     ۲۸۸۲ → ۱۲,۶۰۷,۲۴۰   ۳۱۴۲ → ۲۵,۱۱۷,۰۶۸   ۳۳۴۲ → ۲۹,۲۷۹,۸۱۷
+        -- مثل جهتِ اول، این هم خودکار قابل اصلاح نیست: فقط انبار/حسابداری
+        -- می‌داند کدام سمت درست است.
+        ExtraOpening AS (
+            SELECT  DISTINCT am.Anbar, TRY_CAST(d.HES_T AS BIGINT) AS code
+            FROM    dbo.DEED_DTL d
+            JOIN    dbo.DEED_HED h ON h.N_S = d.N_S
+            JOIN    dbo.CC_AnbarHes am ON am.HesKol = d.HES_K AND am.HesMoin = d.HES_M
+            WHERE   d.SHARH LIKE N'%افتتاحيه%'
+              AND   NOT EXISTS (
+                        SELECT 1 FROM dbo.STUF_FSK f
+                        WHERE  f.ANBAR = am.Anbar
+                          AND  TRY_CAST(f.CODE AS BIGINT) = TRY_CAST(d.HES_T AS BIGINT)
+                          AND  f.MOGODI_A <> 0
+                    )
         )
         INSERT dbo.CC_Exception
             (RunId, StepCode, RuleCode, ExType, Severity, Anbar, Code, Amount, Description)
         SELECT  @RunId, 'S05', 'CHK-02', 2, 2,
                 ISNULL(k.Anbar, hh.Anbar), ISNULL(k.code, hh.code),
                 ISNULL(k.Mande, 0) - ISNULL(hh.Mande, 0),
+                -- ⚠ علت، *اول* جمله می‌آید نه آخرش. قبلاً کلمه‌ی «افتتاحیه»
+                -- ته یک جمله‌ی بلند بود و کاربر باید تا انتها می‌خواند تا
+                -- بفهمد این مغایرت اصلاً از گردش ماه نیست. حالا اولین چیزی
+                -- که بعد از نام انبار دیده می‌شود همین است.
                 CONCAT(N'انبار ', ISNULL(k.Anbar, hh.Anbar),
-                       N' (', ISNULL(a.NAMES, N'نامشخص'), N'): کارت انبار ',
-                       FORMAT(ISNULL(k.Mande, 0), 'N0'),
+                       N' (', ISNULL(a.NAMES, N'نامشخص'), N'): ',
+                       CASE WHEN mo.code IS NOT NULL OR eo.code IS NOT NULL
+                            THEN N'⚠ مغایرت مربوط به افتتاحیه است، نه گردش این ماه. '
+                            ELSE N'' END,
+                       N'کارت انبار ', FORMAT(ISNULL(k.Mande, 0), 'N0'),
                        N' در برابر حسابداری ', FORMAT(ISNULL(hh.Mande, 0), 'N0'),
                        CASE WHEN mo.code IS NOT NULL
-                            THEN N' — علت محتمل: موجودی اول دورهٔ این کالا در کاردکس ثبت شده (STUF_FSK) ولی سند افتتاحیهٔ آن هرگز در حسابداری صادر نشده؛ نیاز به بررسی و تصمیم دستیِ انبار/حسابداری دارد، نه بازسازی خودکار.'
+                            THEN N' — موجودی اول دوره در کاردکس ثبت شده (STUF_FSK) ولی سند افتتاحیهٔ آن هرگز در حسابداری صادر نشده. تصمیم با انبار/حسابداری است؛ بازسازی خودکار درستش نمی‌کند.'
+                            WHEN eo.code IS NOT NULL
+                            THEN N' — سند افتتاحیه در حسابداری صادر شده ولی کاردکس موجودی اول دوره‌ای ندارد (STUF_FSK صفر است). مبلغ مغایرت معمولاً دقیقاً برابر همان سند افتتاحیه است. تصمیم با انبار/حسابداری است که کدام سمت درست است؛ بازسازی خودکار درستش نمی‌کند.'
                             ELSE N'' END)
         FROM    KartAnbar k
         FULL    OUTER JOIN Hesabdari hh ON hh.Anbar = k.Anbar AND hh.code = k.code
         LEFT    JOIN dbo.TCOD_ANBAR a ON a.CODE = ISNULL(k.Anbar, hh.Anbar)
         LEFT    JOIN MissingOpening mo ON mo.Anbar = ISNULL(k.Anbar, hh.Anbar) AND mo.code = ISNULL(k.code, hh.code)
+        LEFT    JOIN ExtraOpening   eo ON eo.Anbar = ISNULL(k.Anbar, hh.Anbar) AND eo.code = ISNULL(k.code, hh.code)
         WHERE   ABS(ISNULL(k.Mande, 0) - ISNULL(hh.Mande, 0)) > 1
           -- پذیرش دائمی — نگاه کنید توضیح بالای CHK-01. برای همین دلیل
           -- این‌جا هم اضافه شد: مورد شناخته‌شده‌ی «موجودی اول دوره سند

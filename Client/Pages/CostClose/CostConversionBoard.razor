@@ -63,6 +63,7 @@
                 <div class="cc-conv-grid">
                     <div></div>
                     <div class="h">جذب‌شده</div>
+                    <div class="h">کنترل از ۷۵۱</div>
                     <div class="h">واقعی</div>
                     <div class="h">اختلاف</div>
                     <div class="h">ضریب</div>
@@ -71,6 +72,7 @@
                     {
                         <div class="lbl @(r.CostKind == 0 ? "bold" : "")">@r.KindText</div>
                         <div class="cc-num">@FormatAmount((double)r.AbsorbedAmount)</div>
+                        <div class="cc-num">@(r.AbsorbedFromWip is null ? "—" : FormatAmount((double)r.AbsorbedFromWip.Value))</div>
                         <div class="cc-num">@FormatAmount((double)r.ActualAmount)</div>
                         <div class="cc-num @(r.Difference < 0 ? "neg" : r.Difference > 0 ? "pos" : "")">
                             @FormatAmount((double)r.Difference)
@@ -109,7 +111,7 @@
 <style>
     .cc-conv-grid {
         display: grid;
-        grid-template-columns: 130px 1fr 1fr 1fr 90px;
+        grid-template-columns: 130px 1fr 1fr 1fr 1fr 90px;
         gap: 8px 12px;
         align-items: center;
         font-size: 13px;

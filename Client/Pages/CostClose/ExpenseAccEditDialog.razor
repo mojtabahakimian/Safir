@@ -1,0 +1,130 @@
+@using Safir.Shared.Models.CostClose
+@inject CostCloseApiService Api
+@inject ISnackbar Snackbar
+
+@* افزودن/ویرایش یک سرفصل هزینه‌ی دوره.
+
+   ⚠️ این‌ها هزینه‌هایی‌اند که در تولید جذب *نمی‌شوند*. حساب‌هایی که در
+   «حساب‌های واحد» (CC_UnitAcc) به‌عنوان دستمزد/سربار تعریف شده‌اند نباید
+   اینجا هم بیایند، وگرنه یک بار در بهای تمام‌شده و یک بار در صورت سود و
+   زیان کم می‌شوند. روی داده‌ی واقعی همین اتفاق برای ۷۱۳/۷۲۳/۷۲۵ افتاد. *@
+
+<MudDialog>
+    <DialogContent>
+        <MudSelect T="byte" @bind-Value="_kind" Label="طبقه" Dense
+                   Variant="Variant.Outlined" Class="mb-3">
+            <MudSelectItem Value="@((byte)1)">هزینه‌های فروش</MudSelectItem>
+            <MudSelectItem Value="@((byte)2)">هزینه‌های اداری</MudSelectItem>
+            <MudSelectItem Value="@((byte)3)">هزینه‌های مالی</MudSelectItem>
+            <MudSelectItem Value="@((byte)4)">سایر هزینه‌ها</MudSelectItem>
+        </MudSelect>
+
+        <MudAutocomplete T="AccountLookupDto" Label="حساب کل" Dense Required
+                         Variant="Variant.Outlined" Class="mb-3"
+                         Value="_kol" ValueChanged="OnKolChanged"
+                         SearchFunc="SearchKol" ToStringFunc="@(a => a is null ? "" : $"{a.Code} — {a.Name}")" />
+
+        <MudAutocomplete T="AccountLookupDto" Label="معین (خالی = همه)" Dense
+                         Variant="Variant.Outlined" Class="mb-3"
+                         Disabled="@(_kol is null)"
+                         Value="_moin" ValueChanged="OnMoinChanged"
+                         SearchFunc="SearchMoin" ToStringFunc="@(a => a is null ? "" : $"{a.Code} — {a.Name}")" />
+
+        <MudAutocomplete T="AccountLookupDto" Label="تفصیلی (خالی = همه)" Dense
+                         Variant="Variant.Outlined" Class="mb-3"
+                         Disabled="@(_moin is null)"
+                         @bind-Value="_taf"
+                         SearchFunc="SearchTaf" ToStringFunc="@(a => a is null ? "" : $"{a.Code} — {a.Name}")" />
+
+        <MudNumericField T="decimal" @bind-Value="_ratio" Label="ضریب" Dense
+                         Variant="Variant.Outlined" Min="0" Max="1" Step="0.05M" Class="mb-1"
+                         HelperText="اگر فقط سهمی از این حساب به این طبقه تعلق دارد؛ ۱ یعنی کل آن" />
+
+        <MudTextField T="string" @bind-Value="_note" Label="یادداشت" Dense
+                      Variant="Variant.Outlined" Class="mb-2" />
+
+        <MudCheckBox T="bool" @bind-Value="_active" Dense Label="فعال" />
+    </DialogContent>
+
+    <DialogActions>
+        <MudButton OnClick="Cancel">انصراف</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary"
+                   Disabled="@(_busy || _kol is null)" OnClick="Save">ذخیره</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private MudDialogInstance MudDialog { get; set; } = default!;
+
+    /// <summary>خالی = افزودن</summary>
+    [Parameter] public CostExpenseAccDto? Existing { get; set; }
+
+    private byte    _kind = 1;
+    private decimal _ratio = 1;
+    private string? _note;
+    private bool    _active = true;
+    private bool    _busy;
+
+    private AccountLookupDto? _kol, _moin, _taf;
+
+    protected override void OnInitialized()
+    {
+        if (Existing is null) return;
+
+        _kind   = Existing.ExpenseKind;
+        _ratio  = Existing.Ratio;
+        _note   = Existing.Note;
+        _active = Existing.IsActive;
+
+        _kol = new AccountLookupDto { Code = Existing.HesKol, Name = Existing.KolName ?? "" };
+        if (Existing.HesMoin is not null)
+            _moin = new AccountLookupDto { Code = Existing.HesMoin.Value, Name = Existing.MoinName ?? "" };
+        if (Existing.HesTafsili is not null)
+            _taf = new AccountLookupDto { Code = Existing.HesTafsili.Value, Name = Existing.TafsiliName ?? "" };
+    }
+
+    // عوض شدن سطح بالاتر، سطح پایین‌تر را بی‌معنا می‌کند — پاکش می‌کنیم
+    // تا ترکیبِ ناسازگار ذخیره نشود.
+    private void OnKolChanged(AccountLookupDto? v)  { _kol = v; _moin = null; _taf = null; }
+    private void OnMoinChanged(AccountLookupDto? v) { _moin = v; _taf = null; }
+
+    private async Task<IEnumerable<AccountLookupDto>> SearchKol(string q)
+        => await Api.SearchKolAsync(q);
+
+    private async Task<IEnumerable<AccountLookupDto>> SearchMoin(string q)
+        => _kol is null ? Array.Empty<AccountLookupDto>()
+                        : await Api.SearchMoinAsync((int)_kol.Code, q);
+
+    private async Task<IEnumerable<AccountLookupDto>> SearchTaf(string q)
+        => (_kol is null || _moin is null) ? Array.Empty<AccountLookupDto>()
+                        : await Api.SearchTafsiliAsync((int)_kol.Code, (int)_moin.Code, q);
+
+    private async Task Save()
+    {
+        _busy = true;
+        try
+        {
+            var req = new UpsertExpenseAccRequest
+            {
+                ExpenseKind = _kind,
+                HesKol      = (int)_kol!.Code,
+                HesMoin     = _moin is null ? null : (int)_moin.Code,
+                HesTafsili  = _taf is null ? null : (int)_taf.Code,
+                Ratio       = _ratio,
+                IsActive    = _active,
+                Note        = _note
+            };
+
+            var (ok, err) = Existing is null
+                ? await Api.AddExpenseAccAsync(req)
+                : await Api.UpdateExpenseAccAsync(Existing.Id, req);
+
+            if (!ok) { Snackbar.Add(err ?? "ذخیره نشد.", Severity.Error); return; }
+
+            MudDialog.Close(DialogResult.Ok(true));
+        }
+        finally { _busy = false; }
+    }
+
+    private void Cancel() => MudDialog.Cancel();
+}

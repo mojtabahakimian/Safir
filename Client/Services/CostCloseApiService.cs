@@ -185,6 +185,80 @@ namespace Safir.Client.Services
             return await res.Content.ReadFromJsonAsync<AutoFixResultDto>();
         }
 
+        // ───────── سرفصل‌های هزینه‌ی دوره ─────────
+
+        public async Task<List<CostExpenseAccDto>> GetExpenseAccsAsync()
+        {
+            try
+            {
+                return await _http.GetFromJsonAsync<List<CostExpenseAccDto>>(
+                    $"{Base}/expense-accs") ?? new();
+            }
+            catch { return new(); }
+        }
+
+        public async Task<(bool Ok, string? Error)> AddExpenseAccAsync(UpsertExpenseAccRequest req)
+        {
+            var res = await _http.PostAsJsonAsync($"{Base}/expense-accs", req);
+            return res.IsSuccessStatusCode
+                ? (true, null)
+                : (false, await res.Content.ReadAsStringAsync());
+        }
+
+        public async Task<(bool Ok, string? Error)> UpdateExpenseAccAsync(int id, UpsertExpenseAccRequest req)
+        {
+            var res = await _http.PutAsJsonAsync($"{Base}/expense-accs/{id}", req);
+            return res.IsSuccessStatusCode
+                ? (true, null)
+                : (false, await res.Content.ReadAsStringAsync());
+        }
+
+        public async Task<(bool Ok, string? Error)> DeleteExpenseAccAsync(int id)
+        {
+            var res = await _http.DeleteAsync($"{Base}/expense-accs/{id}");
+            return res.IsSuccessStatusCode
+                ? (true, null)
+                : (false, await res.Content.ReadAsStringAsync());
+        }
+
+        /// <summary>صورت‌های مالی این اجرا (بهای ساخته‌شده، بهای فروش‌رفته، سود و زیان)</summary>
+        public async Task<FinancialStatementsDto?> GetFinancialStatementsAsync(int runId)
+        {
+            try
+            {
+                return await _http.GetFromJsonAsync<FinancialStatementsDto>(
+                    $"{Base}/runs/{runId}/financial-statements");
+            }
+            catch { return null; }
+        }
+
+        /// <summary>
+        /// فرمول‌های این کالا در ماه‌های دیگر — برای وقتی کالا برای ماهِ جاری
+        /// فرمول ندارد و باید یکی کپی شود. ماهِ قبل اولِ فهرست است.
+        /// </summary>
+        public async Task<List<FormulaOptionDto>> GetFormulaOptionsAsync(long code, byte month)
+        {
+            try
+            {
+                return await _http.GetFromJsonAsync<List<FormulaOptionDto>>(
+                    $"{Base}/fix/formula-options?code={code}&month={month}") ?? new();
+            }
+            catch { return new(); }
+        }
+
+        /// <summary>کپیِ فرمول از ماهِ دیگر به ماهِ جاری و وصل‌کردنش به برگه‌های تولید.</summary>
+        public async Task<CopyFormulaResultDto?> CopyFormulaAsync(CopyFormulaRequest req)
+        {
+            var res = await _http.PostAsJsonAsync($"{Base}/fix/copy-formula", req);
+            if (!res.IsSuccessStatusCode)
+                return new CopyFormulaResultDto
+                {
+                    Message = await res.Content.ReadAsStringAsync()
+                };
+
+            return await res.Content.ReadFromJsonAsync<CopyFormulaResultDto>();
+        }
+
         /// <summary>دکمه «بازسازی نرخ» برای CHK-09 — S10 و S11 را دوباره اجرا می‌کند.</summary>
         public async Task<(bool Ok, int Remaining, string? Error)> RebuildRatesAsync(int runId)
         {
@@ -357,6 +431,58 @@ namespace Safir.Client.Services
             return (true, await res.Content.ReadFromJsonAsync<List<RebalancePreviewDto>>(), null);
         }
 
+        // ───────── سود و زیان به تفکیک واحد تولید ─────────
+
+        public async Task<List<ItemMarginUnitDto>> GetMarginsByUnitAsync(int runId, int? unitId = null)
+            => await _http.GetFromJsonAsync<List<ItemMarginUnitDto>>(
+                   $"{Base}/runs/{runId}/margins-by-unit" +
+                   (unitId is null ? "" : $"?unitId={unitId}")) ?? new();
+
+        public async Task<List<UnitMarginSummaryDto>> GetMarginUnitSummaryAsync(int runId)
+            => await _http.GetFromJsonAsync<List<UnitMarginSummaryDto>>(
+                   $"{Base}/runs/{runId}/margin-unit-summary") ?? new();
+
+        // ───────── پیشنهاد خودکار جابه‌جایی مواد ─────────
+
+        public async Task<(bool Ok, RebalanceSuggestResultDto? Data, string? Error)>
+            RebalanceSuggestAsync(int runId, long sourceCode, byte maxDepth = 2)
+        {
+            var res = await _http.GetAsync(
+                $"{Base}/runs/{runId}/rebalance-suggest/{sourceCode}?maxDepth={maxDepth}");
+
+            if (!res.IsSuccessStatusCode)
+                return (false, null, await res.Content.ReadAsStringAsync());
+
+            return (true, await res.Content.ReadFromJsonAsync<RebalanceSuggestResultDto>(), null);
+        }
+
+        public async Task<(bool Ok, RebalanceApplyResultDto? Data, string? Error)>
+            RebalanceApplyAsync(int runId, RebalanceApplyRequest req, bool recompute = true)
+        {
+            var res = await _http.PostAsJsonAsync(
+                $"{Base}/runs/{runId}/rebalance-apply?recompute={recompute}", req);
+
+            if (!res.IsSuccessStatusCode)
+                return (false, null, await res.Content.ReadAsStringAsync());
+
+            return (true, await res.Content.ReadFromJsonAsync<RebalanceApplyResultDto>(), null);
+        }
+
+        public async Task<(bool Ok, RebalanceBatchResultDto? Data, string? Error)>
+            RebalanceApplyBatchAsync(int runId, RebalanceBatchRequest req, bool recompute = true)
+        {
+            var res = await _http.PostAsJsonAsync(
+                $"{Base}/runs/{runId}/rebalance-apply-batch?recompute={recompute}", req);
+
+            if (!res.IsSuccessStatusCode)
+                return (false, null, await res.Content.ReadAsStringAsync());
+
+            return (true, await res.Content.ReadFromJsonAsync<RebalanceBatchResultDto>(), null);
+        }
+
+        public async Task ForgetRebalancePrefAsync(int runId, long sourceCode, long materialCode)
+            => await _http.DeleteAsync($"{Base}/rebalance-pref/{sourceCode}/{materialCode}");
+
         /// <summary>
         /// بایت‌های گزارش اکسل هیئت‌مدیره.
         ///
@@ -367,9 +493,10 @@ namespace Safir.Client.Services
         /// با downloadFileFromBytes به کاربر داده شود — همان الگویی که
         /// PayrollTab و ReportsTab در بخش حقوق و دستمزد استفاده می‌کنند.
         /// </summary>
-        public async Task<byte[]> GetReportBytesAsync(int runId)
+        public async Task<byte[]> GetReportBytesAsync(int runId, int? unitId = null)
         {
-            var res = await _http.GetAsync($"{Base}/runs/{runId}/report.xlsx");
+            var res = await _http.GetAsync($"{Base}/runs/{runId}/report.xlsx" +
+                                           (unitId is null ? "" : $"?unitId={unitId}"));
 
             if (!res.IsSuccessStatusCode)
             {

@@ -1,0 +1,178 @@
+@page "/cost-close/runs/{RunId:int}/statements"
+@using Safir.Shared.Models.CostClose
+@using Safir.Shared.Constants
+@using Safir.Client.Services
+@inject CostCloseApiService Api
+@inject Pay2AccessApiService Access
+@inject IJSRuntime JS
+@inject ISnackbar Snackbar
+
+@* صورت‌های مالیِ یک اجرای بستن ماه.
+
+   سه صورتِ استاندارد کنار هم، از داده‌ی همان اجرا. ارقامِ سود و زیان از
+   S12 می‌آیند (نرخ واقعیِ کاردکس) و هزینه‌های دوره از سرفصل‌هایی که در
+   CC_ExpenseAcc تعریف شده‌اند.
+
+   ⚠️ سطرهای «نوع=۳» اطلاعی یا تطبیقی‌اند، نه جزئی از جمع — عمداً کم‌رنگ
+   و با کادر جدا نمایش داده می‌شوند تا کسی آن‌ها را با ارقام صورت جمع نزند. *@
+
+<PageTitle>صورت‌های مالی بهای تمام‌شده</PageTitle>
+
+<div class="cc-page" dir="rtl">
+
+    <div class="cc-toolbar">
+        <CostBackButton />
+        <MudText Typo="Typo.h6">صورت‌های مالی</MudText>
+        <MudSpacer />
+
+        @* همان فایلِ گزارش هیئت‌مدیره است که صفحه‌ی «سود و زیان کالا» هم
+           می‌دهد — صورت‌های مالی داخلش شیت خودشان را دارند. دکمه اینجا هم
+           هست چون کاربری که صورت‌ها را باز کرده، طبیعی است همین‌جا دنبال
+           خروجی بگردد، نه در صفحه‌ی دیگر. *@
+        @if (Access.CanRun(CostForms.ActExport))
+        {
+            <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.Download"
+                       OnClick="DownloadReport" Disabled="_downloading">
+                خروجی اکسل
+            </MudButton>
+        }
+
+        @if (_data is not null)
+        {
+            <MudChip T="string" Size="Size.Small" Variant="Variant.Text">
+                اجرا #@RunId
+            </MudChip>
+        }
+    </div>
+
+    @if (_busy)
+    {
+        <MudProgressLinear Indeterminate Color="Color.Primary" Class="mb-3" />
+    }
+    else if (_error is not null)
+    {
+        <MudAlert Severity="Severity.Error" Class="mb-3">@_error</MudAlert>
+    }
+    else if (_data is not null)
+    {
+        <div class="cc-fin-grid">
+            @Statement("بهای تمام‌شده کالای ساخته‌شده", Icons.Material.Filled.Factory, _data.Cogm)
+            @Statement("بهای تمام‌شده کالای فروش‌رفته", Icons.Material.Filled.LocalShipping, _data.Cogs)
+            @Statement("سود و زیان", Icons.Material.Filled.TrendingUp, _data.Income)
+        </div>
+
+        @if (_data.Expenses.Count > 0)
+        {
+            <MudPaper Class="cc-rule-card mt-3" Elevation="0">
+                <div class="cc-rule-head">
+                    <MudIcon Icon="@Icons.Material.Filled.ReceiptLong" Size="Size.Small" />
+                    <MudText Typo="Typo.subtitle2">سرفصل‌های هزینه</MudText>
+                </div>
+
+                <MudSimpleTable Dense Style="overflow-x:auto">
+                    <thead>
+                        <tr>
+                            <th>طبقه</th>
+                            <th>کل</th>
+                            <th>معین</th>
+                            <th>تفصیلی</th>
+                            <th style="text-align:left">ضریب</th>
+                            <th style="text-align:left">مانده حساب</th>
+                            <th style="text-align:left">سهم این طبقه</th>
+                            <th>یادداشت</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var e in _data.Expenses)
+                        {
+                            <tr>
+                                <td>@e.Category</td>
+                                <td><span class="cc-num">@e.Kol</span></td>
+                                <td><span class="cc-num">@(e.Moin?.ToString() ?? "همه")</span></td>
+                                <td><span class="cc-num">@(e.Tafsili?.ToString() ?? "همه")</span></td>
+                                <td style="text-align:left"><span class="cc-num">@e.Ratio.ToString("0.###")</span></td>
+                                <td style="text-align:left"><span class="cc-num">@Fmt(e.Balance)</span></td>
+                                <td style="text-align:left"><span class="cc-num">@Fmt(e.Share)</span></td>
+                                <td>@e.Note</td>
+                            </tr>
+                        }
+                    </tbody>
+                </MudSimpleTable>
+            </MudPaper>
+        }
+        else
+        {
+            <MudAlert Severity="Severity.Info" Dense Class="mt-3">
+                هیچ سرفصل هزینه‌ای تعریف نشده. تا وقتی سرفصل‌ها در تنظیمات ثبت
+                نشوند، هزینه‌های دوره صفر می‌مانند و «سود عملیاتی» با «سود ناخالص»
+                یکی می‌شود.
+            </MudAlert>
+        }
+    }
+</div>
+
+@code {
+    [Parameter] public int RunId { get; set; }
+
+    private FinancialStatementsDto? _data;
+    private bool    _busy = true;
+    private bool    _downloading;
+    private string? _error;
+
+    private async Task DownloadReport()
+    {
+        _downloading = true;
+        try
+        {
+            // unitId نمی‌فرستیم: صورت‌های مالی سرجمعِ کل شرکت‌اند، نه یک واحد.
+            var bytes = await Api.GetReportBytesAsync(RunId, null);
+            await JS.InvokeVoidAsync("downloadFileFromBytes",
+                $"صورت‌های مالی — اجرا {RunId}.xlsx", bytes);
+        }
+        catch (Exception ex) { Snackbar.Add(ex.Message, Severity.Error); }
+        finally { _downloading = false; }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Access.EnsureLoadedAsync();
+        try
+        {
+            _data = await Api.GetFinancialStatementsAsync(RunId);
+            if (_data is null) _error = "خواندن صورت‌های مالی ناموفق بود.";
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _busy = false; }
+    }
+
+    private RenderFragment Statement(string title, string icon, List<FinLineDto> lines) => @<MudPaper Class="cc-rule-card" Elevation="0">
+        <div class="cc-rule-head">
+            <MudIcon Icon="@icon" Size="Size.Small" />
+            <MudText Typo="Typo.subtitle2">@title</MudText>
+        </div>
+
+        <table class="cc-fin">
+            @foreach (var l in lines)
+            {
+                <tr class="@RowClass(l.Kind)">
+                    <td class="lbl">@l.Text</td>
+                    <td class="val">
+                        <span class="cc-num @(l.Amount < 0 ? "neg" : "")">@Fmt(l.Amount)</span>
+                    </td>
+                </tr>
+            }
+        </table>
+    </MudPaper>;
+
+    // ۰=عادی ۱=جمع جزء ۲=جمع نهایی ۳=اطلاعی/تطبیق
+    private static string RowClass(byte kind) => kind switch
+    {
+        1 => "sub",
+        2 => "tot",
+        3 => "info",
+        _ => ""
+    };
+
+    private static string Fmt(double? v)
+        => v is null ? "—" : v.Value.ToString("N0");
+}

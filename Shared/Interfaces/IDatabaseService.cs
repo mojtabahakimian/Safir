@@ -11,7 +11,18 @@ namespace Safir.Shared.Interfaces
     public interface IDatabaseService
     {
         Task<IEnumerable<TEntity>> DoGetDataSQLAsync<TEntity>(string sql, object parameters = null);
-        Task<int> DoExecuteSQLAsync(string sql, object parameters = null);
+
+        /// <param name="commandTimeout">
+        /// ثانیه. null یعنی پیش‌فرض Dapper (۳۰ ثانیه) — برای کوئری‌های عادیِ
+        /// رابط کاربری همان درست است و نباید بی‌دلیل بلندتر شود، وگرنه یک
+        /// کوئریِ گیرکرده به‌جای خطا دادن، صفحه را دقیقه‌ها معطل می‌کند.
+        ///
+        /// عدد صریح فقط برای دستورهای سنگینِ بستنِ ماه است که ذاتاً بلندند یا
+        /// با پایپ‌لاینِ در حال اجرا سرِ قفل رقابت می‌کنند — نمونه‌ی واقعی:
+        /// CleanupDriftedAccountingAsync در بازسازی اسناد گروهی، خرداد ۱۴۰۵،
+        /// «Execution Timeout Expired» با اینکه خودِ کوئری صفر ردیف برمی‌گرداند.
+        /// </param>
+        Task<int> DoExecuteSQLAsync(string sql, object parameters = null, int? commandTimeout = null);
 
         Task<TEntity> DoGetDataSQLAsyncSingle<TEntity>(string sql, object? parameters = null);
         Task<IEnumerable<TEntity>> DoGetStoreProcedureSQLAsync<TEntity>(string storedProcedureName, object parameters = null, int commandTimeout = 30);

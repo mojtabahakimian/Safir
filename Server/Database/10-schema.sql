@@ -52,7 +52,12 @@ CREATE TABLE dbo.CC_RunStep (
     StepCode      VARCHAR(10)   NOT NULL,
     StepTitle     NVARCHAR(120) NOT NULL,
     SeqNo         SMALLINT      NOT NULL,
-    Attempt       TINYINT       NOT NULL DEFAULT 1,
+    -- INT و نه TINYINT: حلقه‌ی همگرایی S07A↔S11 در هر اجرا تا ۴۰ دور می‌رود و
+    -- این شمارنده بین اجراهای مکررِ همان Run انباشته می‌شود. روی یک ران واقعی
+    -- (اردیبهشت ۱۴۰۵) S07A به ۲۵۵ رسید و دور بعد با
+    -- «Arithmetic overflow error for data type tinyint, value = 256»
+    -- کل بستن ماه را متوقف کرد. ۲۵۵ در استفاده‌ی عادی قابل‌دسترس است.
+    Attempt       INT           NOT NULL DEFAULT 1,
     Status        TINYINT       NOT NULL,           -- 0=درانتظار 1=درحال‌اجرا 2=موفق
                                                     -- 3=هشدار 4=خطا 5=رد‌شده
     StartedAtUtc  DATETIME2     NULL,

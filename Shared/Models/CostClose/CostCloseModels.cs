@@ -84,7 +84,12 @@ namespace Safir.Shared.Models.CostClose
         public string StepCode      { get; set; } = string.Empty;
         public string StepTitle     { get; set; } = string.Empty;
         public short  SeqNo         { get; set; }
-        public byte   Attempt       { get; set; }
+        // int و نه byte — باید با نوع ستون CC_RunStep.Attempt یکی بماند.
+        // آن ستون از TINYINT به INT عریض شد (نگاه کنید 22-runstep-attempt-int.sql)
+        // چون شمارنده‌ی تلاش با حلقه‌ی همگرایی S07A↔S11 از ۲۵۵ رد می‌شود.
+        // ماندنِ این خاصیت روی byte یعنی Dapper موقع map کردن همان ستون
+        // شکست می‌خورد و کل «خواندن وضعیت اجرا» خطا می‌دهد.
+        public int    Attempt       { get; set; }
         public byte   Status        { get; set; }
         public DateTime? StartedAtUtc  { get; set; }
         public DateTime? FinishedAtUtc { get; set; }
@@ -304,6 +309,127 @@ namespace Safir.Shared.Models.CostClose
         public List<string>            Warnings { get; set; } = new();
     }
 
+    /// <summary>
+    /// یک فرمولِ نامزد برای کپی به ماهِ جاری — خروجی CC_sp_FormulaOptions.
+    ///
+    /// وقتی کالا برای ماهِ جاری هیچ فرمولی ندارد، «اصلاح خودکار» کاری از
+    /// دستش برنمی‌آید (چیزی نیست که نسبت داده شود). قاعده‌ی صاحب پروژه:
+    /// فرمولِ ماه قبل پیشنهاد شود، و اگر ماه قبل هم نداشت، همه‌ی فرمول‌های
+    /// آن کالا بدون توجه به ماه فهرست شوند تا کاربر خودش انتخاب کند.
+    /// </summary>
+    public class FormulaOptionDto
+    {
+        public int    Fnumb       { get; set; }
+        public int    Mah         { get; set; }
+        public long?  DateActiv   { get; set; }
+        public double Wage        { get; set; }
+        public double Overhead    { get; set; }
+        public int    LineCount   { get; set; }
+
+        /// <summary>فرمولِ ماهِ قبل — پیشنهادِ پیش‌فرض</summary>
+        public bool   IsPrevMonth { get; set; }
+
+        /// <summary>تا حالا برگه‌ی تولیدی به این فرمول وصل شده؟ متروک نباشد.</summary>
+        public bool   EverUsed    { get; set; }
+    }
+
+    /// <summary>کپیِ یک فرمول از ماهِ دیگر به ماهِ جاری و وصل‌کردنش به برگه‌ها</summary>
+    public class CopyFormulaRequest
+    {
+        public long  Code        { get; set; }
+        public byte  PeriodMonth { get; set; }
+        public int   SourceFnumb { get; set; }
+        public long  DateFrom    { get; set; }
+        public long  DateTo      { get; set; }
+        public int?  RunId       { get; set; }
+        public long? ExceptionId { get; set; }
+        public bool  WhatIf      { get; set; } = true;
+    }
+
+    public class CopyFormulaResultDto
+    {
+        public bool   WasPreview { get; set; }
+        public int    RowCount   { get; set; }
+
+        /// <summary>شماره‌ی فرمولِ تازه‌ساخته‌شده — فقط بعد از اجرای واقعی</summary>
+        public int?   NewFnumb   { get; set; }
+        public string Message    { get; set; } = string.Empty;
+        public List<AutoFixPreviewRow> Rows { get; set; } = new();
+    }
+
+    /// <summary>
+    /// یک سطر از صورت‌های مالی. Kind شکلِ نمایش را تعیین می‌کند، نه معنا:
+    /// ۰=سطر عادی، ۱=جمع جزء، ۲=جمع نهایی، ۳=سطر اطلاعی/تطبیق.
+    /// </summary>
+    public class FinLineDto
+    {
+        public int     Row    { get; set; }
+        public string? Text   { get; set; }
+        public double? Amount { get; set; }
+        public byte    Kind   { get; set; }
+    }
+
+    /// <summary>یک سرفصل هزینه و سهمش — تا هر رقمِ صورت قابل ردیابی باشد</summary>
+    public class FinExpenseDto
+    {
+        public string? Category { get; set; }
+        public int     Kol      { get; set; }
+        public int?    Moin     { get; set; }
+        public int?    Tafsili  { get; set; }
+        public decimal Ratio    { get; set; }
+        public double  Balance  { get; set; }
+        public double  Share    { get; set; }
+        public string? Note     { get; set; }
+    }
+
+    /// <summary>
+    /// یک سرفصل هزینه‌ی دوره. برخلاف CC_UnitAcc که به واحد تولیدی می‌چسبد،
+    /// این‌ها هزینه‌ی کل شرکت‌اند و در تولید جذب نمی‌شوند.
+    /// </summary>
+    public class CostExpenseAccDto
+    {
+        public int     Id          { get; set; }
+        public byte    ExpenseKind { get; set; }   // ۱=فروش ۲=اداری ۳=مالی ۴=سایر
+        public int     HesKol      { get; set; }
+        public int?    HesMoin     { get; set; }
+        public int?    HesTafsili  { get; set; }
+        public decimal Ratio       { get; set; } = 1;
+        public bool    IsActive    { get; set; } = true;
+        public string? Note        { get; set; }
+
+        public string? KolName     { get; set; }
+        public string? MoinName    { get; set; }
+        public string? TafsiliName { get; set; }
+
+        public string KindName => ExpenseKind switch
+        {
+            1 => "فروش", 2 => "اداری", 3 => "مالی", _ => "سایر"
+        };
+    }
+
+    public class UpsertExpenseAccRequest
+    {
+        public byte    ExpenseKind { get; set; }
+        public int     HesKol      { get; set; }
+        public int?    HesMoin     { get; set; }
+        public int?    HesTafsili  { get; set; }
+        public decimal Ratio       { get; set; } = 1;
+        public bool    IsActive    { get; set; } = true;
+        public string? Note        { get; set; }
+    }
+
+    /// <summary>خروجی CC_sp_FinancialStatements — سه صورت به‌علاوه تفکیک هزینه</summary>
+    public class FinancialStatementsDto
+    {
+        /// <summary>صورت بهای تمام‌شده کالای ساخته‌شده</summary>
+        public List<FinLineDto> Cogm     { get; set; } = new();
+        /// <summary>صورت بهای تمام‌شده کالای فروش‌رفته</summary>
+        public List<FinLineDto> Cogs     { get; set; } = new();
+        /// <summary>صورت سود و زیان</summary>
+        public List<FinLineDto> Income   { get; set; } = new();
+        public List<FinExpenseDto> Expenses { get; set; } = new();
+    }
+
     public class RebuildRatesResultDto
     {
         public int Remaining { get; set; }
@@ -479,11 +605,172 @@ namespace Safir.Shared.Models.CostClose
     /// <summary>یک فرمول که ماده‌ی انتخاب‌شده را مصرف می‌کند — برای انتخاب فرمول مبدأ/مقصد</summary>
     public class MaterialConsumerDto
     {
+        public int     FNUMB      { get; set; }   // یک کالا می‌تواند در یک ماه چند فرمول داشته باشد
         public long    ParentCode { get; set; }
         public string? ParentName { get; set; }
         public double  MEGHk      { get; set; }   // مصرف فعلی به‌ازای هر واحد محصول
         public double  Rate       { get; set; }   // نرخ ماده (ریال به‌ازای واحد)
         public double? ProdQty    { get; set; }   // مقدار تولید این فرمول در ماه (null یعنی سند تولید ندارد)
+    }
+
+    // ───────── سود و زیان به تفکیک واحد تولید ─────────
+
+    /// <summary>
+    /// یک سطر سود و زیان برای یک کالا در یک واحد تولید.
+    /// جمعِ سطرهای یک کالا روی همه‌ی واحدها ≈ سطر همان کالا در گزارش کل.
+    /// </summary>
+    public class ItemMarginUnitDto : ItemMarginDto
+    {
+        /// <summary>null یعنی فروش از انباری که به هیچ واحدی نگاشت ندارد</summary>
+        public int?    UnitId   { get; set; }
+        public string? UnitName { get; set; }
+    }
+
+    /// <summary>سرجمع یک واحد تولید — برای کارت‌های بالای گزارش</summary>
+    public class UnitMarginSummaryDto
+    {
+        public int?    UnitId      { get; set; }
+        public string  UnitName    { get; set; } = string.Empty;
+        public int     Items       { get; set; }
+        public int     LossItems   { get; set; }
+        public double  SalesAmount { get; set; }
+        public double  CostAmount  { get; set; }
+        public double  Profit      { get; set; }
+
+        public double ProfitPct => SalesAmount == 0 ? 0 : Profit / SalesAmount * 100;
+    }
+
+    // ───────── پیشنهاد خودکار جابه‌جایی مواد ─────────
+
+    /// <summary>
+    /// یک مادهٔ نامزد برای جابه‌جایی، خروجی CC_sp_RebalanceSuggest.
+    /// دستمزد و سربار هرگز اهرم نیستند — تنها مقدار مواد.
+    /// </summary>
+    public class RebalanceSuggestionDto
+    {
+        public long    MaterialCode   { get; set; }
+        public string? MaterialName   { get; set; }
+
+        /// <summary>۱ = مادهٔ مستقیم فرمول، ۲ = ماده‌ای داخل یک نیمه‌ساخته</summary>
+        public byte    Depth          { get; set; }
+        public long?   ViaCode        { get; set; }
+        public string? ViaName        { get; set; }
+
+        public double  AvailableQty   { get; set; }
+        public double  Rate           { get; set; }
+        public double  RemovableValue { get; set; }
+
+        /// <summary>برای عمق ۲ کمتر از ۱۰۰ است: اثر بین همه مصرف‌کنندگان نیمه‌ساخته پخش می‌شود</summary>
+        public double  DilutionPct    { get; set; }
+        public double  EffectiveValue { get; set; }
+
+        public int     DestCount      { get; set; }
+        public double  DestCapacity   { get; set; }
+        public double  Deficit        { get; set; }
+
+        /// <summary>چقدر از کسری واقعاً با این ماده پوشش داده می‌شود</summary>
+        public double  Coverage       { get; set; }
+
+        public bool    IsRemembered      { get; set; }
+        public long?   RememberedTarget  { get; set; }
+
+        /// <summary>هیچ کالای سوددهی این ماده را مصرف نمی‌کند — قابل استفاده نیست</summary>
+        public bool NoDestination => DestCount == 0;
+
+        /// <summary>کسری را کامل می‌پوشاند</summary>
+        public bool CoversFully => Deficit > 0 && Coverage >= Deficit;
+    }
+
+    /// <summary>یک کالای سوددهِ مقصد برای یک ماده</summary>
+    public class RebalanceDestinationDto
+    {
+        public long    MaterialCode { get; set; }
+        public long    TargetCode   { get; set; }
+        public string? TargetName   { get; set; }
+
+        /// <summary>
+        /// ظرفیتِ خالص: چقدر بار می‌تواند بگیرد بدون اینکه کالای سوددهی را
+        /// زیان‌ده کند، پس از کسرِ سهمی که به خودِ کالای مبدأ برمی‌گردد.
+        /// همین عدد است که با کسری مقایسه می‌شود.
+        /// </summary>
+        public double  Capacity     { get; set; }
+
+        /// <summary>ظرفیت پیش از کسرِ بازگشت — برای وقتی کاربر بخواهد تفاوت را ببیند</summary>
+        public double  GrossCapacity { get; set; }
+
+        /// <summary>
+        /// چند درصد از باری که روی این مقصد گذاشته می‌شود از راه فرمول‌ها به
+        /// خودِ کالای زیان‌ده برمی‌گردد. تسکینِ خالص = ظرفیت × (۱ − این).
+        /// </summary>
+        public double  BouncePct    { get; set; }
+
+        /// <summary>چند کالای زیان‌دهِ دیگر پایین‌دستِ این مقصدند — زیانشان بیشتر می‌شود</summary>
+        public int     LoserCount   { get; set; }
+
+        /// <summary>نیمه‌ساخته است (فروش ندارد)؛ ظرفیتش از سود کالاهای پایین‌دست آمده</summary>
+        public bool    IsSemi       { get; set; }
+
+        public bool    IsRemembered { get; set; }
+    }
+
+    public class RebalanceSuggestResultDto
+    {
+        public double Deficit { get; set; }
+        public List<RebalanceSuggestionDto>  Materials    { get; set; } = new();
+        public List<RebalanceDestinationDto> Destinations { get; set; } = new();
+    }
+
+    /// <summary>انتخاب کاربر برای اجرا — یک ماده، یک یا چند مقصد</summary>
+    public class RebalanceApplyRequest
+    {
+        public long   SourceCode   { get; set; }
+        public long   MaterialCode { get; set; }
+
+        /// <summary>مقصدها؛ اگر خالی باشد، خودکار به‌ترتیب ظرفیت پر می‌شود</summary>
+        public List<long> TargetCodes { get; set; } = new();
+
+        /// <summary>انتخاب برای دفعات بعد در CC_RebalancePref ذخیره شود؟</summary>
+        public bool Remember { get; set; }
+    }
+
+    /// <summary>
+    /// سبد جابه‌جایی: چند عملیات با هم، با یک دفترِ ظرفیتِ مشترک و فقط
+    /// یک بازمحاسبه در پایان.
+    ///
+    /// چرا لازم است: وقتی عملیات‌ها تک‌تک اجرا شوند، هرکدام ظرفیت مقصد را
+    /// از CC_ItemMargin می‌خواند که تا پایان بازمحاسبه به‌روز نمی‌شود — پس
+    /// دو عملیات می‌توانند ظرفیت یک کالای سودده را دوبار کامل خرج کنند و
+    /// آن را به زیان ببرند. ضمناً صف برای هر اجرا فقط یک کار می‌پذیرد، پس
+    /// بازمحاسبه‌ی عملیات دوم به بعد اصلاً در صف نمی‌رفت.
+    /// </summary>
+    public class RebalanceBatchRequest
+    {
+        public List<RebalanceApplyRequest> Items { get; set; } = new();
+    }
+
+    public class RebalanceBatchResultDto
+    {
+        public List<RebalanceApplyResultDto> Results { get; set; } = new();
+        public double TotalMoved     { get; set; }
+        public double TotalRemaining { get; set; }
+        public bool   Recomputing    { get; set; }
+        public string Message        { get; set; } = string.Empty;
+    }
+
+    /// <summary>گزارش اجرای انتقال — شامل باقیمانده وقتی ظرفیت کافی نبوده</summary>
+    public class RebalanceApplyResultDto
+    {
+        /// <summary>کالای مبدأ — در گزارش سبد لازم است تا سطرها قابل تفکیک باشند</summary>
+        public long   SourceCode   { get; set; }
+        public string? SourceName  { get; set; }
+        public double Deficit      { get; set; }
+        public double Moved        { get; set; }
+        public double Remaining    { get; set; }
+        public int    TargetsUsed  { get; set; }
+
+        /// <summary>زنجیره بازمحاسبه در صف رفت؟ تا تمام نشود عدد سود تغییر نمی‌کند.</summary>
+        public bool   Recomputing  { get; set; }
+        public string Message      { get; set; } = string.Empty;
     }
 
     public class RebalanceMaterialRequest
@@ -492,12 +779,24 @@ namespace Safir.Shared.Models.CostClose
         public long   FromParentCode { get; set; }
         public long   ToParentCode   { get; set; }
         public double Qty            { get; set; }
+
+        /// <summary>
+        /// FNUMB فرمول‌هایی که کاربر تیک زده. خالی/null یعنی «همه‌ی فرمول‌های
+        /// هر دو کالا که این ماده را مصرف می‌کنند و سند تولید دارند» — که حالت
+        /// درست و پیش‌فرض است، چون تغییرِ یکسان روی همه، کل مصرف فیزیکی ماه را
+        /// ثابت نگه می‌دارد و انحراف مصرف نمی‌سازد.
+        /// </summary>
+        public List<int>? SelectedFNUMBs { get; set; }
     }
 
     /// <summary>خروجی پیش‌نمایش/اعمالِ CC_sp_RebalanceMaterialQty برای یک طرف (مبدأ یا مقصد)</summary>
     public class RebalancePreviewDto
     {
+        public int     FNUMB             { get; set; }
         public long    ParentCode        { get; set; }
+        /// <summary>«مقدار» — واحد خودِ ردیف. MEGHk = MEGH × نسبت واحد.</summary>
+        public double  MEGHBefore        { get; set; }
+        public double  MEGHAfter         { get; set; }
         public string? ParentName        { get; set; }
         public double  MEGHkBefore       { get; set; }
         public double  MEGHkAfter        { get; set; }

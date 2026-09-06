@@ -252,6 +252,12 @@ END CATCH;";
             var optionss = acc.OPTIONSS ?? string.Empty;
             var isDailyMode = acc.SNDKH == true;
 
+            // ⚠️ پاک‌سازیِ خودکارِ سطرهای جامانده اینجا هم عمداً نیست — به
+            // همان دلیلی که در SaleRebuildService توضیح داده شده: نمی‌شود
+            // خودکار تصمیم گرفت تاریخِ برگه درست است یا تاریخِ سند. روی
+            // داده‌ی واقعی دو سطر (۴۰ ریال) از این نوع هست که با همان مسیرِ
+            // «اصلاح تاریخ» باید رفع شوند.
+
             var headRows = (await _db.DoGetDataSQLAsync<HeadRow>(
                 "SELECT NUMBER, DATE_N, N_S, USER_NAME, CUST_NO, DEPATMAN, SHIFT, ARZD, MABL_HAZ, MOIN_HAZ, " +
                 "MBAA, HMBAA, TAKHFIF, M_NAGHD, MABL_HAV, MOIN_HAV, MABL_VAR, MOIN_VAR, FNUMCO, MOLAH FROM dbo.HEAD_LST " +
@@ -591,7 +597,7 @@ END CATCH;";
                         batch.Append(';');
                     }
                     batch.Append("COMMIT TRANSACTION;");
-                    await ExecuteWithDeadlockRetryAsync(() => _db.DoExecuteSQLAsync(batch.ToString()));
+                    await ExecuteWithDeadlockRetryAsync(() => _db.DoExecuteSQLAsync(batch.ToString(), commandTimeout: CostCloseTuning.BatchTimeoutSeconds));
                 }
                 catch (Exception ex)
                 {

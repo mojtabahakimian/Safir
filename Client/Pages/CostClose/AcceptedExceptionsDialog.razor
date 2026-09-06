@@ -6,7 +6,21 @@
 
 <MudDialog>
     <DialogContent>
-        <div dir="rtl" style="min-width:560px">
+    @* min-width ثابت برداشته شد: عرض را DialogOptions تعیین می‌کند
+       (MaxWidth.Large + FullWidth از OpenAcceptedExceptions)، و ستون‌های
+       کوتاه با nowrap نگه داشته می‌شوند تا «CHK-17» یا نام پذیرنده وسط
+       کلمه نشکند. اگر پنجره باریک بود، جدول خودش افقی اسکرول می‌شود —
+       نه اینکه سلول‌ها له شوند. *@
+    <style>
+        .cc-acc-tbl table       { width: 100%; }
+        .cc-acc-tbl             { overflow-x: auto; }
+        .cc-acc-tbl td,
+        .cc-acc-tbl th          { vertical-align: top; }
+        .cc-acc-tbl .nw         { white-space: nowrap; }
+        .cc-acc-tbl .reason     { min-width: 260px; }
+    </style>
+
+        <div dir="rtl" class="cc-acc-tbl">
             <MudText Typo="Typo.body2" Class="mb-3">
                 این موارد دیگر در هیچ اجرا یا ماهی مسدودکننده نشان داده نمی‌شوند —
                 نه فقط همین اجرا. «لغو پذیرش» دوباره در اجرای بعدی به‌عنوان
@@ -38,11 +52,11 @@
                         @foreach (var it in _items)
                         {
                             <tr>
-                                <td>@it.RuleCode</td>
+                                <td class="nw">@it.RuleCode</td>
                                 <td>@(it.Code is null ? "همه" : $"{it.CodeName} ({it.Code})")</td>
-                                <td>@(it.Anbar is null ? "همه" : $"{it.AnbarName} ({it.Anbar})")</td>
-                                <td>@it.Reason</td>
-                                <td>@it.AcceptedBy</td>
+                                <td class="nw">@(it.Anbar is null ? "همه" : $"{it.AnbarName} ({it.Anbar})")</td>
+                                <td class="reason">@it.Reason</td>
+                                <td class="nw">@it.AcceptedBy</td>
                                 <td>
                                     <MudIconButton Icon="@Icons.Material.Filled.Undo" Size="Size.Small"
                                                    Title="لغو پذیرش" OnClick="@(() => Revoke(it))" />

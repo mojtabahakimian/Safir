@@ -30,27 +30,54 @@
                 }
                 else
                 {
-                    <MudSelect T="long?" Label="از فرمول (کم می‌شود)" Dense Variant="Variant.Outlined"
+                    <MudSelect T="long?" Label="از کالا (کم می‌شود)" Dense Variant="Variant.Outlined"
                                Class="mb-3" Value="_fromCode" ValueChanged="OnFromChanged">
-                        @foreach (var c in _consumers)
+                        @foreach (var g in ConsumerGroups)
                         {
-                            <MudSelectItem Value="@((long?)c.ParentCode)" Disabled="@(c.ProdQty is null or 0)">
-                                @c.ParentName (@c.ParentCode) — مصرف @c.MEGHk.ToString("N3")
-                                @(c.ProdQty is null or 0 ? " — بدون سند تولید" : "")
+                            <MudSelectItem Value="@((long?)g.Key)" Disabled="@(!g.Any(Usable))">
+                                @GroupLabel(g)
                             </MudSelectItem>
                         }
                     </MudSelect>
 
-                    <MudSelect T="long?" Label="به فرمول (اضافه می‌شود)" Dense Variant="Variant.Outlined"
+                    <MudSelect T="long?" Label="به کالا (اضافه می‌شود)" Dense Variant="Variant.Outlined"
                                Class="mb-3" Value="_toCode" ValueChanged="OnToChanged">
-                        @foreach (var c in _consumers)
+                        @foreach (var g in ConsumerGroups)
                         {
-                            <MudSelectItem Value="@((long?)c.ParentCode)" Disabled="@(c.ProdQty is null or 0)">
-                                @c.ParentName (@c.ParentCode) — مصرف @c.MEGHk.ToString("N3")
-                                @(c.ProdQty is null or 0 ? " — بدون سند تولید" : "")
+                            <MudSelectItem Value="@((long?)g.Key)" Disabled="@(!g.Any(Usable))">
+                                @GroupLabel(g)
                             </MudSelectItem>
                         }
                     </MudSelect>
+
+                    @* یک کالا می‌تواند در یک ماه چند فرمول داشته باشد. پیش‌فرض
+                       «همه» است چون تغییرِ یکسان روی همه، کل مصرف فیزیکی ماه را
+                       ثابت نگه می‌دارد و انحراف مصرف نمی‌سازد. *@
+                    @if (InvolvedFormulas.Count > 2)
+                    {
+                        <MudAlert Severity="Severity.Info" Dense Class="mb-2">
+                            یکی از این کالاها بیش از یک فرمول در این ماه دارد. تغییر
+                            به یک میزان روی همه‌ی فرمول‌های تیک‌خورده پخش می‌شود تا
+                            جمع مصرف ماه ثابت بماند و انحراف مصرف ایجاد نشود.
+                        </MudAlert>
+
+                        <div class="mb-3">
+                            @foreach (var f in InvolvedFormulas)
+                            {
+                                <MudCheckBox T="bool" Dense
+                                             Value="@IsPicked(f.FNUMB)"
+                                             ValueChanged="@(v => PickFormula(f.FNUMB, v))"
+                                             Label="@FormulaLabel(f)" />
+                            }
+
+                            @if (!HasPickOnBothSides)
+                            {
+                                <MudText Typo="Typo.caption" Color="Color.Error" style="display:block">
+                                    از هر طرف دست‌کم یک فرمول باید تیک بخورد.
+                                </MudText>
+                            }
+                        </div>
+                    }
 
                     <div class="mb-3">
                         <MudNumericField T="double?" @bind-Value="_qty" Label="مقدار جابه‌جایی (واحد کاردکس ماده)"
@@ -59,9 +86,10 @@
                         @if (_suggestedQty is not null)
                         {
                             <MudText Typo="Typo.caption" Class="mud-text-secondary" style="display:block">
-                                پیشنهاد برای جبران کامل زیان (@FormatAmount(PrefillLossAmount!.Value) ریال ÷
+                                پیشنهاد برای @(PrefillToCode is not null ? "صفر کردن کامل سود" : "جبران کامل زیان")
+                                (@FormatAmount(PrefillLossAmount!.Value) ریال ÷
                                 نرخ ماده @FormatAmount(_fromRate)): @_suggestedQty.Value.ToString("N3")
-                                — قابل ویرایش است؛ برای جبران جزئی عدد کوچک‌تری بزن.
+                                — قابل ویرایش است؛ برای اثر جزئی عدد کوچک‌تری بزن.
                             </MudText>
                         }
                     </div>
@@ -82,8 +110,10 @@
                             <thead>
                                 <tr>
                                     <th>فرمول</th>
-                                    <th style="text-align:left">مصرف قبل</th>
-                                    <th style="text-align:left">مصرف بعد</th>
+                                    <th style="text-align:left">مقدار قبل</th>
+                                    <th style="text-align:left">مقدار بعد</th>
+                                    <th style="text-align:left">مقدار کل قبل</th>
+                                    <th style="text-align:left">مقدار کل بعد</th>
                                     <th style="text-align:left">بها قبل</th>
                                     <th style="text-align:left">بها بعد</th>
                                 </tr>
@@ -92,7 +122,15 @@
                                 @foreach (var p in _preview)
                                 {
                                     <tr>
-                                        <td>@p.ParentName (@p.ParentCode)</td>
+                                        <td>
+                                            @p.ParentName (@p.ParentCode)
+                                            @if (_preview!.Count > 2)
+                                            {
+                                                <span class="cc-hint"> — فرمول @p.FNUMB</span>
+                                            }
+                                        </td>
+                                        <td style="text-align:left">@p.MEGHBefore.ToString("N3")</td>
+                                        <td style="text-align:left">@p.MEGHAfter.ToString("N3")</td>
                                         <td style="text-align:left">@p.MEGHkBefore.ToString("N3")</td>
                                         <td style="text-align:left">@p.MEGHkAfter.ToString("N3")</td>
                                         <td style="text-align:left">@p.CostPerUnitBefore.ToString("N0")</td>
@@ -120,10 +158,20 @@
     [CascadingParameter] private MudDialogInstance MudDialog { get; set; } = default!;
     [Parameter] public int RunId { get; set; }
 
-    /// <summary>کد کالایی که این دیالوگ از ردیفش باز شده — پیش‌فرض «از فرمول»</summary>
+    /// <summary>کد کالایی که این دیالوگ از ردیفش باز شده — پیش‌فرض «از کالا»</summary>
     [Parameter] public long? PrefillFromCode { get; set; }
 
-    /// <summary>مبلغ زیان همین کالا (ریال) — برای پیشنهاد خودکار مقدار جابه‌جایی</summary>
+    /// <summary>
+    /// کد کالایی که دیالوگ از ردیفش باز شده، وقتی کالا سودده است — پیش‌فرض
+    /// «به کالا». جهت برعکسِ حالت زیان‌ده است: برای پایین آوردن سود باید ماده
+    /// به فرمول همان کالا **اضافه** شود، نه از آن کم.
+    /// </summary>
+    [Parameter] public long? PrefillToCode { get; set; }
+
+    /// <summary>
+    /// مبلغی که باید جبران شود (ریال) — زیان برای کالای زیان‌ده، سود برای کالای
+    /// سودده. در هر دو حالت مقدار پیشنهادی = این مبلغ ÷ نرخ ماده.
+    /// </summary>
     [Parameter] public double? PrefillLossAmount { get; set; }
 
     private FormulaMaterialDto? _material;
@@ -165,24 +213,110 @@
             if (PrefillFromCode is not null && _consumers.Any(c => c.ParentCode == PrefillFromCode))
                 _fromCode = PrefillFromCode;
 
+            if (PrefillToCode is not null && _consumers.Any(c => c.ParentCode == PrefillToCode))
+                _toCode = PrefillToCode;
+
             TrySuggestQty();
         }
         finally { _loadingConsumers = false; }
     }
 
-    private void OnFromChanged(long? v) { _fromCode = v; _preview = null; TrySuggestQty(); }
-    private void OnToChanged(long? v) { _toCode = v; _preview = null; }
+    private void OnFromChanged(long? v)
+    {
+        _fromCode = v; _preview = null; ResetPicks(); TrySuggestQty();
+    }
+
+    private void OnToChanged(long? v)
+    {
+        _toCode = v; _preview = null; ResetPicks(); TrySuggestQty();
+    }
+
+    // ── فرمول‌های یک کالا ────────────────────────────────────────────
+    // یک کالا می‌تواند در یک ماه بیش از یک فرمول داشته باشد (نمونه‌ی واقعی:
+    // «شیر اسکیم» در اردیبهشت ۱۴۰۵ دو فرمول دارد). قبلاً هر فرمول یک ردیف
+    // جدا در هر دو لیست بود — دو گزینه با نام و کد کاملاً یکسان، بدون هیچ
+    // راهی برای تشخیص، درحالی‌که انتخاب هرکدام همان ParentCode را می‌فرستاد.
+
+    private static bool Usable(MaterialConsumerDto c) => c.ProdQty is > 0;
+
+    private IEnumerable<IGrouping<long, MaterialConsumerDto>> ConsumerGroups
+        => _consumers.GroupBy(c => c.ParentCode);
+
+    private static string GroupLabel(IGrouping<long, MaterialConsumerDto> g)
+    {
+        var usable = g.Where(Usable).ToList();
+        var head   = $"{g.First().ParentName} ({g.Key})";
+
+        if (usable.Count == 0) return head + " — بدون سند تولید";
+
+        return usable.Count == 1
+            ? $"{head} — مصرف {usable[0].MEGHk:N3}"
+            : $"{head} — {usable.Count} فرمول";
+    }
+
+    /// <summary>فرمول‌های قابل‌استفاده‌ی دو طرف انتخاب‌شده</summary>
+    private List<MaterialConsumerDto> InvolvedFormulas
+        => _consumers
+            .Where(c => Usable(c) && (c.ParentCode == _fromCode || c.ParentCode == _toCode))
+            .OrderBy(c => c.ParentCode).ThenBy(c => c.FNUMB)
+            .ToList();
+
+    private readonly HashSet<int> _unpicked = new();
+
+    private void ResetPicks() => _unpicked.Clear();
+
+    private bool IsPicked(int fnumb) => !_unpicked.Contains(fnumb);
+
+    private void PickFormula(int fnumb, bool picked)
+    {
+        if (picked) _unpicked.Remove(fnumb); else _unpicked.Add(fnumb);
+        _preview = null;
+    }
+
+    private string FormulaLabel(MaterialConsumerDto f)
+    {
+        var side = f.ParentCode == _fromCode ? "کم" : "اضافه";
+        return $"فرمول {f.FNUMB} — {f.ParentName} ({f.ParentCode}) — {side} می‌شود — "
+             + $"مصرف {f.MEGHk:N3} · تولید {f.ProdQty:N0}";
+    }
+
+    private List<int> PickedFNUMBs
+        => InvolvedFormulas.Where(f => IsPicked(f.FNUMB)).Select(f => f.FNUMB).ToList();
+
+    private bool HasPickOnBothSides
+        => InvolvedFormulas.Any(f => f.ParentCode == _fromCode && IsPicked(f.FNUMB))
+        && InvolvedFormulas.Any(f => f.ParentCode == _toCode   && IsPicked(f.FNUMB));
 
     /// <summary>
-    /// وقتی فرمول مبدأ همان کالای زیان‌ده‌ای است که دیالوگ از رویش باز شده،
-    /// مقدار جابه‌جایی را از روی زیان ÷ نرخ ماده پیشنهاد می‌دهد — کاربر مجبور
-    /// نیست خودش این تقسیم را دستی انجام دهد؛ همچنان قابل ویرایش می‌ماند.
+    /// مقدار جابه‌جایی را از روی «مبلغ ÷ نرخ ماده» پیشنهاد می‌دهد تا کاربر
+    /// مجبور نباشد خودش این تقسیم را دستی انجام دهد؛ همچنان قابل ویرایش است.
+    ///
+    /// دو جهت دارد و هر دو از همان کالایی می‌آیند که دیالوگ از رویش باز شده:
+    ///   • کالای زیان‌ده  → سمت مبدأ است؛ ماده از فرمولش کم می‌شود تا بها پایین
+    ///     بیاید و زیان جبران شود.
+    ///   • کالای سودده   → سمت مقصد است؛ ماده به فرمولش اضافه می‌شود تا بها بالا
+    ///     برود و سود تا صفر پایین بیاید.
     /// </summary>
     private void TrySuggestQty()
     {
         _suggestedQty = null;
 
-        if (PrefillLossAmount is not > 0 || _fromCode != PrefillFromCode) return;
+        if (PrefillLossAmount is not > 0) return;
+
+        // کالای سودده: مقصد است، پس نرخ ماده را از همان سمت می‌گیریم
+        if (PrefillToCode is not null && _toCode == PrefillToCode)
+        {
+            var toConsumer = _consumers.FirstOrDefault(
+                c => c.ParentCode == _toCode && c.Rate > 0);
+            if (toConsumer is null) return;
+
+            _fromRate = toConsumer.Rate;
+            _suggestedQty = Math.Round(PrefillLossAmount.Value / toConsumer.Rate, 3);
+            _qty = _suggestedQty;
+            return;
+        }
+
+        if (_fromCode != PrefillFromCode) return;
 
         var fromConsumer = _consumers.FirstOrDefault(c => c.ParentCode == _fromCode);
         if (fromConsumer is null || fromConsumer.Rate <= 0) return;
@@ -196,14 +330,17 @@
 
     private bool CanPreview =>
         _fromCode is not null && _toCode is not null && _fromCode != _toCode &&
-        _qty is > 0;
+        _qty is > 0 && HasPickOnBothSides;
 
     private RebalanceMaterialRequest BuildRequest() => new()
     {
         MaterialCode   = _material!.Code,
         FromParentCode = _fromCode!.Value,
         ToParentCode   = _toCode!.Value,
-        Qty            = _qty!.Value
+        Qty            = _qty!.Value,
+        // وقتی هیچ تیکی برداشته نشده، null می‌فرستیم تا رویه خودش «همه»
+        // را بردارد — یک مسیر، نه دو مسیرِ موازی که بتوانند از هم جدا بیفتند.
+        SelectedFNUMBs = _unpicked.Count == 0 ? null : PickedFNUMBs
     };
 
     private async Task LoadPreview()

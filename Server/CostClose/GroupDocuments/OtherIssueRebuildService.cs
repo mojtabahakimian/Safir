@@ -385,7 +385,7 @@ namespace Safir.Server.CostClose.GroupDocuments
                         batch.Append(';');
                     }
                     batch.Append("COMMIT TRANSACTION;");
-                    await ExecuteWithDeadlockRetryAsync(() => _db.DoExecuteSQLAsync(batch.ToString()));
+                    await ExecuteWithDeadlockRetryAsync(() => _db.DoExecuteSQLAsync(batch.ToString(), commandTimeout: CostCloseTuning.BatchTimeoutSeconds));
                 }
                 catch (Exception ex)
                 {

@@ -1,0 +1,91 @@
+@* کامپوننت انتخاب تم ماژول بهای تمام‌شده
+   حالت‌ها:
+   1) classic: تم اصلی و استاندارد کل نرم‌افزار (روشن/سفید شرکتی)
+   2) neon: تم نئون فعلی بهای تمام‌شده (بنفش و فیروزه‌ای شبانه)
+   3) party: تم هایپر پرانرژی و فانتزی (دخترانه، صورتی-بنفش، کاراکترهای سه‌بعدی انیشتین و AI، موشن افراطی)
+*@
+@inject IJSRuntime JS
+
+<MudMenu Dense="true" AnchorOrigin="Origin.BottomLeft" TransformOrigin="Origin.TopLeft">
+    <ActivatorContent>
+        <MudTooltip Text="انتخاب تم و فانتزی صفحه" Arrow="true">
+            <MudIconButton Icon="@GetThemeIcon()"
+                           Color="@GetThemeColor()"
+                           Size="Size.Small"
+                           Class="cc-theme-switcher-btn" />
+        </MudTooltip>
+    </ActivatorContent>
+    <ChildContent>
+        <MudMenuItem Icon="@Icons.Material.Filled.Palette"
+                     OnClick="@(() => SetTheme("classic"))">
+            <div class="d-flex align-center justify-space-between" style="min-width: 170px;">
+                <span>تم رسمی سامانه</span>
+                @if (_currentTheme == "classic") { <MudIcon Icon="@Icons.Material.Filled.Check" Size="Size.Small" Color="Color.Success" /> }
+            </div>
+        </MudMenuItem>
+
+        <MudMenuItem Icon="@Icons.Material.Filled.DarkMode"
+                     OnClick="@(() => SetTheme("neon"))">
+            <div class="d-flex align-center justify-space-between" style="min-width: 170px;">
+                <span>تم نئون سایبری</span>
+                @if (_currentTheme == "neon") { <MudIcon Icon="@Icons.Material.Filled.Check" Size="Size.Small" Color="Color.Primary" /> }
+            </div>
+        </MudMenuItem>
+
+        <MudMenuItem Icon="@Icons.Material.Filled.AutoAwesome"
+                     Class="cc-party-menu-item"
+                     OnClick="@(() => SetTheme("party"))">
+            <div class="d-flex align-center justify-space-between" style="min-width: 170px; font-weight: bold; color: #ff2a85;">
+                <span>تم پرانرژی و فانتزی AI 💖</span>
+                @if (_currentTheme == "party") { <MudIcon Icon="@Icons.Material.Filled.Check" Size="Size.Small" Color="Color.Secondary" /> }
+            </div>
+        </MudMenuItem>
+    </ChildContent>
+</MudMenu>
+
+@code {
+    private string _currentTheme = "neon";
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var stored = await JS.InvokeAsync<string>("localStorage.getItem", "cc-theme-mode");
+            if (!string.IsNullOrEmpty(stored))
+            {
+                _currentTheme = stored;
+            }
+        }
+        catch { }
+    }
+
+    private async Task SetTheme(string mode)
+    {
+        _currentTheme = mode;
+        try
+        {
+            await JS.InvokeVoidAsync("ccSetTheme", mode);
+        }
+        catch { }
+    }
+
+    private string GetThemeIcon()
+    {
+        return _currentTheme switch
+        {
+            "classic" => Icons.Material.Filled.Palette,
+            "party" => Icons.Material.Filled.AutoAwesome,
+            _ => Icons.Material.Filled.NightsStay
+        };
+    }
+
+    private Color GetThemeColor()
+    {
+        return _currentTheme switch
+        {
+            "classic" => Color.Default,
+            "party" => Color.Secondary,
+            _ => Color.Info
+        };
+    }
+}
