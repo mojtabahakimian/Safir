@@ -1887,7 +1887,10 @@ namespace Safir.Server.Controllers
         {
             // نام جدول از ورودی ساخته می‌شود، پس فقط از همین دو مقدارِ ثابت —
             // هر رشته‌ی دیگری به sale برمی‌گردد و هیچ‌وقت داخل SQL نمی‌رود.
-            var table = IsProdBasis(basis)
+            var prodBasis = IsProdBasis(basis);
+            if (prodBasis) await EnsureProdUnitRowsAsync(runId);
+
+            var table = prodBasis
                       ? "dbo.CC_ItemMarginProdUnit"
                       : "dbo.CC_ItemMarginUnit";
 
@@ -1924,7 +1927,9 @@ namespace Safir.Server.Controllers
         public async Task<ActionResult<IEnumerable<UnitMarginSummaryDto>>> GetMarginUnitSummary(
             int runId, [FromQuery] string? basis = null)
         {
-            var prod  = IsProdBasis(basis);
+            var prod = IsProdBasis(basis);
+            if (prod) await EnsureProdUnitRowsAsync(runId);
+
             var table = prod ? "dbo.CC_ItemMarginProdUnit" : "dbo.CC_ItemMarginUnit";
 
             // سطر UnitId = NULL در دو مبنا دو معنی کاملاً متفاوت دارد و
@@ -1957,6 +1962,45 @@ namespace Safir.Server.Controllers
         /// </summary>
         private static bool IsProdBasis(string? basis)
             => string.Equals(basis, "prod", StringComparison.OrdinalIgnoreCase);
+
+        /// <summary>
+        /// جدول تفکیک تولید در گام S12 پر می‌شود، پس اجراهایی که پیش از
+        /// اضافه‌شدن این قابلیت بسته شده‌اند سطری ندارند و صفحه خالی
+        /// می‌آمد بدون اینکه معلوم باشد چرا. اینجا همان رویه یک‌بار برای
+        /// همان اجرا اجرا می‌شود.
+        ///
+        /// امن است: رویه اول سطرهای همان RunId را پاک می‌کند و دوباره
+        /// می‌سازد، پس اجرای دوباره چیزی را دوبار نمی‌شمارد و به هیچ
+        /// جدول دیگری دست نمی‌زند. اجرای تأییدشده هم دست‌نخورده می‌ماند
+        /// چون این جدول ورودی هیچ گام یا سندی نیست — فقط گزارش است.
+        /// </summary>
+        private async Task EnsureProdUnitRowsAsync(int runId)
+        {
+            var rows = await _db.DoGetDataSQLAsyncSingle<int>(
+                "SELECT COUNT(*) FROM dbo.CC_ItemMarginProdUnit WHERE RunId = @runId",
+                new { runId });
+
+            if (rows > 0) return;
+
+            var run = await _db.DoGetDataSQLAsyncSingle<CostRunPeriod>(
+                "SELECT PeriodMonth, DateFrom, DateTo FROM dbo.CC_Run WHERE RunId = @runId",
+                new { runId });
+
+            if (run is null) return;
+
+            await _db.DoGetStoreProcedureSQLAsync<dynamic>(
+                "dbo.CC_sp_S12p_MarginByProdUnit",
+                new { RunId = runId, Month = run.PeriodMonth,
+                      DT1 = run.DateFrom, DT2 = run.DateTo },
+                commandTimeout: 900);
+        }
+
+        private sealed class CostRunPeriod
+        {
+            public byte PeriodMonth { get; set; }
+            public long DateFrom    { get; set; }
+            public long DateTo      { get; set; }
+        }
 
         [HttpPut("margin-targets")]
         [Pay2Authorize(CostForms.Margin, Pay2Perm.Upd)]
@@ -2572,7 +2616,9 @@ IF NOT EXISTS (SELECT 1 FROM dbo.CC_RebalancePref
             int runId, [FromServices] IBoardReportBuilder builder,
             [FromQuery] int? unitId = null, [FromQuery] string? basis = null)
         {
-            var prod  = IsProdBasis(basis);
+            var prod = IsProdBasis(basis);
+            if (prod) await EnsureProdUnitRowsAsync(runId);
+
             var bytes = await builder.BuildAsync(runId, unitId, prod);
 
             // نام فارسی: ASP.NET Core خودش هدر Content-Disposition را طبق

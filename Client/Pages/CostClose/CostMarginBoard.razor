@@ -68,16 +68,18 @@ else
              • واحد تولید : تولیدِ هر واحد چقدر سود داد، حتی اگر از انبار
                             واحد دیگری فروش رفته باشد
            برچسب قبلی «واحد تولید» بود ولی داده‌اش انبار فروش — همان چیزی
-           که کالای تولیدِ یزدسپار را زیر یزد نشان می‌داد. *@
-        @if (_units.Count > 0)
-        {
-            <MudSelect T="bool" Label="مبنای تفکیک" Dense Variant="Variant.Outlined"
-                       Value="_prodBasis" ValueChanged="OnBasisChanged"
-                       Style="max-width:190px" Class="ms-3">
-                <MudSelectItem T="bool" Value="false">انبار فروش</MudSelectItem>
-                <MudSelectItem T="bool" Value="true">واحد تولید</MudSelectItem>
-            </MudSelect>
-        }
+           که کالای تولیدِ یزدسپار را زیر یزد نشان می‌داد.
+
+           ⚠ این یکی عمداً به _units وابسته نیست. وقتی پشت
+           «_units.Count > 0» بود، انتخابِ مبنایی که برای آن اجرا داده
+           نداشت، لیست را خالی می‌کرد و بعد *هر دو* انتخابگر ناپدید
+           می‌شدند — کاربر گیر می‌کرد و راهی برای برگشتن نداشت. *@
+        <MudSelect T="bool" Label="مبنای تفکیک" Dense Variant="Variant.Outlined"
+                   Value="_prodBasis" ValueChanged="OnBasisChanged"
+                   Style="max-width:190px" Class="ms-3">
+            <MudSelectItem T="bool" Value="false">انبار فروش</MudSelectItem>
+            <MudSelectItem T="bool" Value="true">واحد تولید</MudSelectItem>
+        </MudSelect>
 
         @* «همه واحدها» همان گزارش کل قبلی است و دست‌نخورده می‌ماند؛
            انتخاب یک واحد، گزارش را از جدول تفکیکیِ همان مبنا می‌خواند. *@
@@ -95,6 +97,13 @@ else
                     </MudSelectItem>
                 }
             </MudSelect>
+        }
+        else
+        {
+            @* بدون این، نبودنِ انتخابگرِ واحد شبیه اشکال به نظر می‌رسید. *@
+            <MudText Typo="Typo.caption" Class="ms-3 mud-text-secondary">
+                این اجرا تفکیک واحد ندارد
+            </MudText>
         }
 
         <MudSpacer />
