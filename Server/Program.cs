@@ -104,6 +104,7 @@ builder.Services.AddScoped<Safir.Server.Ai.IAiTool, Safir.Server.Ai.SearchItemTo
 builder.Services.AddScoped<Safir.Server.Ai.IAiTool, Safir.Server.Ai.ItemMarginTool>();
 builder.Services.AddScoped<Safir.Server.Ai.IAiTool, Safir.Server.Ai.UnitSummaryTool>();
 builder.Services.AddScoped<Safir.Server.Ai.IAiTool, Safir.Server.Ai.ExceptionsTool>();
+builder.Services.AddScoped<Safir.Server.Ai.IAiTool, Safir.Server.Ai.DescribeDataTool>();
 
 builder.Services.AddSingleton<Safir.Server.CostClose.CostCloseQueue>();
 builder.Services.AddSingleton<Safir.Server.CostClose.ICostCloseQueue>(
