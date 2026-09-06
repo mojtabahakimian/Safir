@@ -27,6 +27,20 @@ namespace Safir.Shared.Models.Ai
         public int TodayMessages { get; set; }
     }
 
+    /// <summary>یک کاربر در فهرست انتخاب.</summary>
+    public class AiUserLookupDto
+    {
+        public int    UserCo   { get; set; }
+        public string? UserName { get; set; }
+
+        /// <summary>از قبل دسترسی دارد — تا دوباره اضافه نشود.</summary>
+        public bool HasAccess { get; set; }
+
+        public string Display => string.IsNullOrWhiteSpace(UserName)
+                               ? $"کاربر {UserCo}"
+                               : $"{UserName} ({UserCo})";
+    }
+
     public class UpsertAiAccessRequest
     {
         public bool   IsEnabled     { get; set; }

@@ -6,6 +6,7 @@ using Safir.Shared.Constants;
 using Safir.Shared.Interfaces;
 using Safir.Shared.Models.Ai;
 using Safir.Shared.Models.Permissions;
+using Safir.Shared.Utility;
 using System.Diagnostics;
 using System.Security.Claims;
 using System.Text.Json;
@@ -158,13 +159,58 @@ namespace Safir.Server.Controllers
         [HttpGet("admin/access")]
         [Pay2Authorize(Pay2Forms.AdminAcl, Pay2Perm.See)]
         public async Task<ActionResult<IEnumerable<AiUserAccessDto>>> ListAccess()
-            => Ok(await _db.DoGetDataSQLAsync<AiUserAccessDto>(@"
+        {
+            var rows = await _db.DoGetDataSQLAsync<AiUserAccessDto>(@"
                 SELECT  a.UserCo, a.IsEnabled, a.Mode, a.AllowRawSql, a.MaxRows,
                         a.DailyMessages, a.BlockedForms, a.Note,
                         a.UpdatedBy, a.UpdatedAtUtc,
+                        u.SAL_NAME AS UserName,
                         dbo.AI_fn_TodayMessageCount(a.UserCo) AS TodayMessages
                 FROM    dbo.AI_UserAccess a
-                ORDER BY a.UserCo"));
+                LEFT    JOIN dbo.SALA_DTL u ON u.IDD = a.UserCo");
+
+            return Ok(rows.Select(r =>
+            {
+                r.UserName = CL_METHODS.FixPersianChars(
+                                 CL_METHODS.DECODEUN(r.UserName ?? string.Empty));
+                return r;
+            })
+            .OrderBy(r => r.UserName)
+            .ToList());
+        }
+
+        /// <summary>
+        /// کاربران فعال، برای انتخاب از فهرست به‌جای تایپ کردن کد.
+        /// ENABL = 0 یعنی فعال — همان شرطی که خودِ ورود به برنامه دارد،
+        /// وگرنه کاربر غیرفعال هم در فهرست می‌آمد و دسترسی گرفتن برایش
+        /// بی‌معنی بود.
+        /// </summary>
+        [HttpGet("admin/users")]
+        [Pay2Authorize(Pay2Forms.AdminAcl, Pay2Perm.See)]
+        public async Task<ActionResult<IEnumerable<AiUserLookupDto>>> ListUsers()
+        {
+            var rows = await _db.DoGetDataSQLAsync<AiUserLookupDto>(@"
+                SELECT  u.IDD AS UserCo, u.SAL_NAME AS UserName,
+                        CAST(CASE WHEN a.UserCo IS NULL THEN 0 ELSE 1 END AS BIT) AS HasAccess
+                FROM    dbo.SALA_DTL u
+                LEFT    JOIN dbo.AI_UserAccess a ON a.UserCo = u.IDD
+                WHERE   u.ENABL = 0");
+
+            // ⚠ SAL_NAME رمزگذاری‌شده ذخیره می‌شود و خام نشان دادنش رشته‌ای
+            // مثل «/[Z`^[XXQ^» می‌دهد. همان کدگشایی و نرمال‌سازی‌ای که
+            // LookupController و صفحه‌ی ورود دارند، اینجا هم لازم است.
+            // مرتب‌سازی هم بعد از کدگشایی معنی دارد، نه روی متن رمزشده.
+            var list = rows.Select(u =>
+            {
+                u.UserName = CL_METHODS.FixPersianChars(
+                                 CL_METHODS.DECODEUN(u.UserName ?? string.Empty));
+                return u;
+            })
+            .OrderBy(u => u.UserName)
+            .ToList();
+
+            return Ok(list);
+        }
 
         [HttpPut("admin/access/{userCo:int}")]
         [Pay2Authorize(Pay2Forms.AdminAcl, Pay2Perm.Upd)]

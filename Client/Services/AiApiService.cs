@@ -46,6 +46,10 @@ namespace Safir.Client.Services
         public async Task<List<AiUserAccessDto>> ListAccessAsync()
             => await _http.GetFromJsonAsync<List<AiUserAccessDto>>($"{Base}/admin/access") ?? new();
 
+        /// <summary>کاربران فعال برای فهرست انتخاب.</summary>
+        public async Task<List<AiUserLookupDto>> ListUsersAsync()
+            => await _http.GetFromJsonAsync<List<AiUserLookupDto>>($"{Base}/admin/users") ?? new();
+
         public async Task<(bool Ok, string? Error)> SaveAccessAsync(int userCo, UpsertAiAccessRequest req)
         {
             var res = await _http.PutAsJsonAsync($"{Base}/admin/access/{userCo}", req);

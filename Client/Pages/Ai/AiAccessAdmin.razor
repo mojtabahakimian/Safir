@@ -23,11 +23,19 @@
 
 <MudPaper Class="pa-3 mb-4">
     <div class="d-flex align-center gap-3 flex-wrap">
-        <MudNumericField T="int" @bind-Value="_newUserCo" Label="کد کاربر"
-                         Variant="Variant.Outlined" Dense Style="max-width:150px" />
+        @* انتخاب از فهرست، نه تایپ کد: کسی کد کاربرها را حفظ نیست و یک
+           رقم اشتباه یعنی دسترسی به آدمِ دیگری داده می‌شود. کاربرانی که
+           از قبل در جدول هستند فیلتر می‌شوند تا سطر تکراری پیش نیاید. *@
+        <MudAutocomplete T="AiUserLookupDto" Label="کاربر"
+                         Value="_newUser" ValueChanged="@(v => _newUser = v)"
+                         SearchFunc="SearchUsers" ToStringFunc="@(u => u?.Display ?? "")"
+                         Variant="Variant.Outlined" Dense Clearable
+                         ResetValueOnEmptyText MinCharacters="0" MaxItems="30"
+                         Style="min-width:320px" />
+
         <MudButton Variant="Variant.Filled" Color="Color.Primary"
                    StartIcon="@Icons.Material.Filled.PersonAdd"
-                   Disabled="_busy || _newUserCo <= 0" OnClick="AddUser">
+                   Disabled="@(_busy || _newUser is null)" OnClick="AddUser">
             افزودن کاربر
         </MudButton>
         <MudSpacer />
@@ -39,7 +47,7 @@
 <MudTable Items="_rows" Dense Hover Loading="_busy" Breakpoint="Breakpoint.Sm"
           Elevation="1" LoadingProgressColor="Color.Primary">
     <HeaderContent>
-        <MudTh>کد کاربر</MudTh>
+        <MudTh>کاربر</MudTh>
         <MudTh>فعال</MudTh>
         <MudTh>حالت</MudTh>
         <MudTh>کوئری آزاد</MudTh>
@@ -51,7 +59,10 @@
         <MudTh></MudTh>
     </HeaderContent>
     <RowTemplate>
-        <MudTd DataLabel="کد کاربر">@context.UserCo</MudTd>
+        <MudTd DataLabel="کاربر">
+            <MudText>@(string.IsNullOrWhiteSpace(context.UserName) ? $"کاربر {context.UserCo}" : context.UserName)</MudText>
+            <MudText Typo="Typo.caption" Class="mud-text-secondary">کد @context.UserCo</MudText>
+        </MudTd>
 
         <MudTd DataLabel="فعال">
             <MudSwitch T="bool" Value="context.IsEnabled" Color="Color.Success"
@@ -120,17 +131,43 @@
 </MudTable>
 
 @code {
-    private List<AiUserAccessDto> _rows = new();
+    private List<AiUserAccessDto> _rows  = new();
+    private List<AiUserLookupDto> _users = new();
+    private AiUserLookupDto?      _newUser;
+
     private bool    _busy;
     private string? _error;
-    private int     _newUserCo;
 
     protected override async Task OnInitializedAsync() => await Load();
+
+    /// <summary>
+    /// جستجو روی نام و کد با هم — کاربر گاهی نام را می‌داند و گاهی کد را.
+    /// متن خالی چند نفر اول را نشان می‌دهد تا فهرست از ابتدا خالی نباشد.
+    /// </summary>
+    // امضای SearchFunc در MudBlazor 6.21 پارامتر CancellationToken ندارد؛
+    // اضافه کردنش خطای «هیچ overload مطابقت ندارد» می‌دهد.
+    private Task<IEnumerable<AiUserLookupDto>> SearchUsers(string? value)
+    {
+        var pool = _users.Where(u => !u.HasAccess);
+
+        if (string.IsNullOrWhiteSpace(value))
+            return Task.FromResult<IEnumerable<AiUserLookupDto>>(pool.Take(30));
+
+        var q = value.Trim();
+
+        return Task.FromResult(pool.Where(u =>
+            (u.UserName ?? "").Contains(q, StringComparison.OrdinalIgnoreCase) ||
+            u.UserCo.ToString().Contains(q)));
+    }
 
     private async Task Load()
     {
         _busy = true; _error = null;
-        try   { _rows = await Api.ListAccessAsync(); }
+        try
+        {
+            _rows  = await Api.ListAccessAsync();
+            _users = await Api.ListUsersAsync();
+        }
         catch (Exception ex) { _error = Friendly(ex); }
         finally { _busy = false; }
     }
@@ -175,7 +212,9 @@
 
     private async Task AddUser()
     {
-        if (_rows.Any(r => r.UserCo == _newUserCo))
+        if (_newUser is null) return;
+
+        if (_rows.Any(r => r.UserCo == _newUser.UserCo))
         {
             Snackbar.Add("این کاربر از قبل در فهرست هست.", Severity.Warning);
             return;
@@ -185,13 +224,14 @@
         // افزودن به فهرست نباید خودش یعنی دادن دسترسی باشد.
         var row = new AiUserAccessDto
         {
-            UserCo = _newUserCo, IsEnabled = false, Mode = 0,
+            UserCo = _newUser.UserCo, UserName = _newUser.UserName,
+            IsEnabled = false, Mode = 0,
             AllowRawSql = false, MaxRows = 500, DailyMessages = 100,
             BlockedForms = "PAY2_PAYROLL,PAY2_EMPLOYEE"
         };
 
         await Save(row);
-        _newUserCo = 0;
+        _newUser = null;
         await Load();
     }
 
