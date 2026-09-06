@@ -43,7 +43,7 @@ namespace Safir.Server.CostClose
                           : "dbo.CC_ItemMarginUnit";
 
             var basisLabel = prodBasis ? "واحد تولید" : "انبار فروش";
-            var nullLabel  = prodBasis ? "بدون تولید در این ماه" : "بدون واحد";
+            var nullLabel  = prodBasis ? "هرگز تولید نشده" : "بدون واحد";
 
             using var grid = await _db.DoGetDataSQLAsyncMultiple(
                 "EXEC dbo.CC_sp_S13_ReportData @RunId=@r", new { r = runId });
@@ -217,7 +217,7 @@ namespace Safir.Server.CostClose
             // سلول‌هایی که استایل صریح می‌گیرند (سرستون‌ها) هم پوشش داشته باشند.
             wb.Style.Font.FontName = ReportFont;
 
-            AddSheet(wb, marginSheetName, margins, freezeTop: true,
+            AddSheet(wb, marginSheetName, margins,
                      formulas: new()
                      {
                          ["درصد سود"] = ProfitPctFormula("سود", "فروش خالص"),
@@ -228,7 +228,8 @@ namespace Safir.Server.CostClose
                          ["قیمت تمام‌شده استاندارد"] =
                              "=SUM([مواد]{r}:[سربار]{r})"
                      },
-                     highlight: StandardCostColumns);
+                     highlight: StandardCostColumns,
+                     noTotal: MarginNoTotalColumns);
 
             AddSheet(wb, unitSummarySheet, unitSummary,
                      formulas: new() { ["درصد سود"] = ProfitPctFormula("سود", "فروش") });
@@ -254,7 +255,7 @@ namespace Safir.Server.CostClose
                 AddSheet(wb, "سرفصل‌های هزینه", exp);
             }
             AddSheet(wb, "هزینه تبدیل",      conv);
-            AddSheet(wb, "بیشترین تغییر نرخ", changes, freezeTop: true);
+            AddSheet(wb, "بیشترین تغییر نرخ", changes);
             AddSheet(wb, "خلاصه اجرا",       summary);
 
             using var ms = new MemoryStream();
@@ -391,10 +392,31 @@ namespace Safir.Server.CostClose
             ws.Column(2).Width = 22;
         }
 
+        /// <summary>
+        /// ستون‌هایی که جمعشان بی‌معنی است و نباید در سطر جمع بیایند.
+        ///
+        /// همه‌شان «نرخ» یا «شناسه»اند، نه مبلغ: جمعِ قیمت واحدِ ۳۰۰ کالا
+        /// عددی می‌سازد که به هیچ چیز در دنیای واقعی اشاره نمی‌کند، و
+        /// جمعِ ستون کد از آن هم بی‌معنی‌تر است.
+        ///
+        /// این فهرست عمداً پارامتر است و نه ثابتِ سراسری: نام «بهای
+        /// تمام‌شده» در شیت سود کالا نرخِ واحد است ولی در شیت سرجمع واحدها
+        /// مبلغ کل — یک فهرست مشترک، دومی را هم بی‌دلیل حذف می‌کرد.
+        /// </summary>
+        private static readonly string[] MarginNoTotalColumns =
+        {
+            "کد", "قیمت واحد", "بهای تمام‌شده",
+            "مواد", "دستمزد", "سربار", "قیمت تمام‌شده استاندارد"
+        };
+
+        /// <summary>ستون‌هایی که در سمت راستِ شیت فریز می‌شوند.</summary>
+        private static readonly string[] FrozenColumns = { "کد", "کالا" };
+
         private static void AddSheet(
-            XLWorkbook wb, string name, List<dynamic> rows, bool freezeTop = false,
+            XLWorkbook wb, string name, List<dynamic> rows,
             Dictionary<string, string>? formulas = null,
-            IReadOnlyCollection<string>? highlight = null)
+            IReadOnlyCollection<string>? highlight = null,
+            IReadOnlyCollection<string>? noTotal = null)
         {
             var ws = wb.Worksheets.Add(name);
             ws.RightToLeft = true;
@@ -439,6 +461,12 @@ namespace Safir.Server.CostClose
                     : XLColor.FromHtml("#F1F5F9");
                 cell.Style.Border.BottomBorder = XLBorderStyleValues.Thin;
                 cell.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
+
+                // شکستن متنِ سرستون: نام‌های بلند مثل «قیمت تمام‌شده
+                // استاندارد» ستون را بی‌دلیل پهن می‌کردند و کاربر برای دیدن
+                // ستون‌های بعدی افقی اسکرول می‌کرد.
+                cell.Style.Alignment.WrapText = true;
+                cell.Style.Alignment.Vertical = XLAlignmentVerticalValues.Center;
             }
 
             // داده
@@ -493,11 +521,88 @@ namespace Safir.Server.CostClose
                 }
             }
 
+            // ── سطر جمع ──
+            // فرمول SUM، نه عددِ ازپیش‌محاسبه‌شده: کاربر می‌تواند سطری را
+            // فیلتر یا دستی عوض کند و جمع خودش را اصلاح می‌کند. (SUBTOTAL
+            // با فیلتر هماهنگ‌تر بود ولی سطرهای پنهانِ AutoFilter را کنار
+            // می‌گذارد و کسی که فیلتر را فراموش کرده جمعِ ناقص می‌بیند
+            // بدون اینکه بفهمد — SUM همیشه همان چیزی است که نوشته شده.)
+            var noTotalSet = noTotal is null
+                ? new HashSet<string>()
+                : new HashSet<string>(noTotal.Select(x => x.FixPersianChars()));
+
+            var totalRow  = rows.Count + 2;
+            var firstData = 2;
+            var lastData  = rows.Count + 1;
+
+            for (int c = 0; c < cols.Count; c++)
+            {
+                var cell = ws.Cell(totalRow, c + 1);
+                cell.Style.Font.Bold = true;
+                cell.Style.Fill.BackgroundColor = XLColor.FromHtml("#E2E8F0");
+                cell.Style.Border.TopBorder = XLBorderStyleValues.Thin;
+
+                if (noTotalSet.Contains(cols[c].FixPersianChars())) continue;
+
+                // فقط ستون‌هایی که واقعاً عدد دارند. اولین مقدارِ غیرخالی
+                // ملاک است؛ ستونی که همه‌جا خالی است (مثل «درصد سود» که با
+                // فرمول پر می‌شود) از روی فرمولش تشخیص داده می‌شود.
+                var isNumeric = rows
+                    .Select(r => ((IDictionary<string, object>)r)[cols[c]])
+                    .FirstOrDefault(v => v is not null)
+                        is double or decimal or float or int or long or short;
+
+                if (formulas is not null && formulas.TryGetValue(cols[c], out var tpl))
+                {
+                    // همان فرمولِ ستون روی سطر جمع — «درصد سود» در سطر جمع
+                    // یعنی سودِ کل تقسیم بر فروشِ کل، که درست است. میانگینِ
+                    // درصدهای سطرها غلط می‌بود.
+                    cell.FormulaA1 = Resolve(tpl, totalRow);
+                    cell.Style.NumberFormat.Format = "#,##0.0;#,##0.0-";
+                    continue;
+                }
+
+                if (!isNumeric) continue;
+
+                var letter = XLHelper.GetColumnLetterFromNumber(c + 1);
+                cell.FormulaA1 = $"=SUM({letter}{firstData}:{letter}{lastData})";
+                cell.Style.NumberFormat.Format = "#,##0;#,##0-";
+            }
+
+            // برچسب «جمع» در اولین ستونی که جمع ندارد (معمولاً «کد»)، وگرنه
+            // سطر جمع بدون عنوان می‌ماند و شبیه یک سطر داده به نظر می‌رسد.
+            var labelCol = cols.FindIndex(x => noTotalSet.Contains(x.FixPersianChars()));
+            var labelCell = ws.Cell(totalRow, (labelCol < 0 ? 0 : labelCol) + 1);
+            labelCell.Value = "جمع";
+            labelCell.Style.Font.Bold = true;
+            labelCell.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
+
             ws.Columns().AdjustToContents(10.0, 45.0);
-            ws.SheetView.FreezeRows(freezeTop ? 1 : 0);
+
+            // ── شکستن متن و فریزِ ستون‌های شناسه ──
+            // کد و نام کالا هنگام اسکرول افقی باید بمانند، وگرنه در شیتی با
+            // ۱۶ ستون معلوم نیست عددِ جلوی چشم مالِ کدام کالاست.
+            var freezeCols = 0;
+            for (int c = 0; c < cols.Count; c++)
+            {
+                if (!FrozenColumns.Any(f => f.FixPersianChars() == cols[c].FixPersianChars()))
+                    break;
+
+                ws.Column(c + 1).Style.Alignment.WrapText = true;
+                freezeCols = c + 1;
+            }
+
+            // AdjustToContents ستونِ نام را تا ۴۵ پهن می‌کند و آن‌وقت
+            // WrapText عملاً بی‌اثر است؛ عرضِ ثابت کوچک‌تر لازم است تا
+            // نامِ بلند در چند خط بشکند.
+            if (freezeCols > 1) ws.Column(freezeCols).Width = 28;
+
+            // سرستون همیشه فریز می‌شود، نه فقط وقتی freezeTop خواسته شده:
+            // هر شیتی که اسکرول شود بدون آن ستون‌هایش بی‌نام می‌شوند.
+            ws.SheetView.Freeze(1, freezeCols);
 
             if (rows.Count > 1)
-                ws.Range(1, 1, rows.Count + 1, cols.Count).SetAutoFilter();
+                ws.Range(1, 1, lastData, cols.Count).SetAutoFilter();
         }
     }
 }
