@@ -25,16 +25,19 @@ namespace Safir.Server.Controllers
     [Authorize]
     public class AiAssistantController : ControllerBase
     {
-        private readonly IAiAccessService _access;
-        private readonly IAiToolRegistry  _tools;
-        private readonly IDatabaseService _db;
+        private readonly IAiAccessService       _access;
+        private readonly IAiToolRegistry        _tools;
+        private readonly IDatabaseService       _db;
+        private readonly IAiConversationService _chat;
 
         public AiAssistantController(
-            IAiAccessService access, IAiToolRegistry tools, IDatabaseService db)
+            IAiAccessService access, IAiToolRegistry tools, IDatabaseService db,
+            IAiConversationService chat)
         {
             _access = access;
             _tools  = tools;
             _db     = db;
+            _chat   = chat;
         }
 
         private int CurrentUserCo
@@ -56,7 +59,31 @@ namespace Safir.Server.Controllers
             => Ok(await _access.GetEffectiveAsync(CurrentUserCo));
 
         /// <summary>
-        /// اجرای یک ابزار. فعلاً کاربر (یا آزمایش) مستقیم صدا می‌زند؛ در
+        /// پرسیدن یک سؤال از دستیار.
+        ///
+        /// تاریخچه از کلاینت می‌آید ولی هیچ مجوزی از آن گرفته نمی‌شود —
+        /// دسترسی همیشه از هویتِ همین درخواست و جدولِ دسترسی خوانده
+        /// می‌شود، وگرنه یک کلاینت دستکاری‌شده می‌توانست با جعل تاریخچه
+        /// خودش را مجاز نشان بدهد.
+        /// </summary>
+        [HttpPost("chat")]
+        public async Task<ActionResult<AiChatReplyDto>> Chat([FromBody] AiChatRequest req)
+        {
+            if (string.IsNullOrWhiteSpace(req.Question))
+                return BadRequest("سؤال خالی است.");
+
+            var convId = req.ConversationId ?? Guid.NewGuid();
+
+            var reply = await _chat.AskAsync(
+                CurrentUserCo, CurrentUserName, convId,
+                req.History, req.Question.Trim(), HttpContext.RequestAborted);
+
+            Response.Headers["X-Conversation-Id"] = convId.ToString();
+            return Ok(reply);
+        }
+
+        /// <summary>
+        /// اجرای مستقیم یک ابزار. فعلاً کاربر (یا آزمایش) مستقیم صدا می‌زند؛ در
         /// فاز بعد همین مسیر را حلقه‌ی عامل صدا می‌زند. مجوز در هر دو حالت
         /// یکی است — عمداً، تا رسیدن مدل هیچ در امنیت عوض نکند.
         /// </summary>

@@ -69,4 +69,51 @@ namespace Safir.Shared.Models.Ai
         public string Title       { get; set; } = "";
         public string Description { get; set; } = "";
     }
+
+    // ───────────────────── گفتگو ─────────────────────
+
+    public class AiChatTurnDto
+    {
+        public bool   IsUser { get; set; }
+        public string Text   { get; set; } = "";
+    }
+
+    public class AiChatRequest
+    {
+        public Guid?  ConversationId { get; set; }
+        public string Question       { get; set; } = "";
+
+        /// <summary>
+        /// تاریخچه از سمت کلاینت می‌آید و سرور حالتی نگه نمی‌دارد.
+        /// ساده‌تر است و با چند نمونه‌ی سرور هم کار می‌کند؛ در عوض سرور
+        /// فقط به آخرین چند نوبت اعتماد می‌کند و خودش از لاگ نمی‌خواند،
+        /// چون کلاینت می‌تواند تاریخچه را دستکاری کند. مجوزها هرگز از
+        /// این مسیر نمی‌آیند.
+        /// </summary>
+        public List<AiChatTurnDto> History { get; set; } = new();
+    }
+
+    public class AiChatStepDto
+    {
+        public string  Tool       { get; set; } = "";
+        public bool    Ok         { get; set; }
+        public int     Rows       { get; set; }
+        public int     DurationMs { get; set; }
+        public string? Note       { get; set; }
+    }
+
+    public class AiChatReplyDto
+    {
+        public string? Text  { get; set; }
+        public string? Error { get; set; }
+
+        /// <summary>
+        /// چه ابزارهایی صدا زده شد و چند سطر برگشت. به کاربر نشان داده
+        /// می‌شود: جوابِ بدونِ منبع در گزارش مالی قابل اتکا نیست.
+        /// </summary>
+        public List<AiChatStepDto> Steps { get; set; } = new();
+
+        /// <summary>از هدر پاسخ پر می‌شود، نه از بدنه.</summary>
+        public Guid? ConversationId { get; set; }
+    }
 }

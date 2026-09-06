@@ -17,6 +17,32 @@ namespace Safir.Client.Services
             => await _http.GetFromJsonAsync<AiEffectiveAccessDto>($"{Base}/access")
                ?? new AiEffectiveAccessDto { DisabledReason = "پاسخی از سرور دریافت نشد." };
 
+        /// <summary>
+        /// پرسیدن از دستیار. شناسه‌ی گفتگو از هدر پاسخ خوانده می‌شود تا
+        /// پیام‌های بعدی در همان گفتگو لاگ شوند و بازرسی بعدی بتواند کل
+        /// یک مکالمه را کنار هم ببیند.
+        /// </summary>
+        public async Task<AiChatReplyDto> ChatAsync(AiChatRequest req)
+        {
+            var res = await _http.PostAsJsonAsync($"{Base}/chat", req);
+
+            if (!res.IsSuccessStatusCode)
+                return new AiChatReplyDto
+                {
+                    Error = await res.Content.ReadAsStringAsync() is { Length: > 0 } m
+                          ? m : $"خطای سرور (کد {(int)res.StatusCode})."
+                };
+
+            var reply = await res.Content.ReadFromJsonAsync<AiChatReplyDto>()
+                        ?? new AiChatReplyDto { Error = "پاسخی دریافت نشد." };
+
+            if (res.Headers.TryGetValues("X-Conversation-Id", out var v) &&
+                Guid.TryParse(v.FirstOrDefault(), out var id))
+                reply.ConversationId = id;
+
+            return reply;
+        }
+
         public async Task<List<AiUserAccessDto>> ListAccessAsync()
             => await _http.GetFromJsonAsync<List<AiUserAccessDto>>($"{Base}/admin/access") ?? new();
 

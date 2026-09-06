@@ -106,6 +106,28 @@ builder.Services.AddScoped<Safir.Server.Ai.IAiTool, Safir.Server.Ai.UnitSummaryT
 builder.Services.AddScoped<Safir.Server.Ai.IAiTool, Safir.Server.Ai.ExceptionsTool>();
 builder.Services.AddScoped<Safir.Server.Ai.IAiTool, Safir.Server.Ai.DescribeDataTool>();
 
+// ── ارائه‌دهنده‌ی مدل ──
+// انتخاب با تنظیمات است نه با کد، تا رفتن از Ollama محلی به سرویس ابری
+// فقط عوض کردن appsettings باشد. کلید هرگز اینجا نیست — فقط نامِ متغیر
+// محیطی‌اش، چون appsettings در گیت است.
+builder.Services.AddSingleton(sp =>
+    sp.GetRequiredService<IConfiguration>().GetSection("Ai").Get<Safir.Server.Ai.AiOptions>()
+    ?? new Safir.Server.Ai.AiOptions());
+
+builder.Services.AddHttpClient<Safir.Server.Ai.OpenAiCompatibleProvider>();
+builder.Services.AddHttpClient<Safir.Server.Ai.AnthropicProvider>();
+
+builder.Services.AddScoped<Safir.Server.Ai.IAiChatProvider>(sp =>
+{
+    var opt = sp.GetRequiredService<Safir.Server.Ai.AiOptions>();
+    return string.Equals(opt.Provider, "anthropic", StringComparison.OrdinalIgnoreCase)
+         ? sp.GetRequiredService<Safir.Server.Ai.AnthropicProvider>()
+         : sp.GetRequiredService<Safir.Server.Ai.OpenAiCompatibleProvider>();
+});
+
+builder.Services.AddScoped<Safir.Server.Ai.IAiConversationService,
+                           Safir.Server.Ai.AiConversationService>();
+
 builder.Services.AddSingleton<Safir.Server.CostClose.CostCloseQueue>();
 builder.Services.AddSingleton<Safir.Server.CostClose.ICostCloseQueue>(
     sp => sp.GetRequiredService<Safir.Server.CostClose.CostCloseQueue>());

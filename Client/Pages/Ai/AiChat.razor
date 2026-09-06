@@ -1,0 +1,161 @@
+@page "/ai/chat"
+@using Safir.Shared.Models.Ai
+@using Safir.Client.Services
+@inject AiApiService Api
+
+<PageTitle>دستیار هوش مصنوعی</PageTitle>
+
+<MudText Typo="Typo.h5" Class="mb-3">دستیار هوش مصنوعی</MudText>
+
+@if (_access is null)
+{
+    <MudProgressLinear Indeterminate Color="Color.Primary" />
+}
+else if (!_access.IsEnabled)
+{
+    <MudAlert Severity="Severity.Warning">@_access.DisabledReason</MudAlert>
+}
+else
+{
+    <MudPaper Class="pa-3 mb-3" Elevation="0" Style="background:var(--mud-palette-background-grey)">
+        <MudText Typo="Typo.body2">
+            @if (_access.Mode == 0)
+            {
+                <text>این دستیار فقط می‌خواند و هیچ تغییری در داده نمی‌دهد. </text>
+            }
+            دسترسی‌اش محدود به همان بخش‌هایی است که خودتان دسترسی دارید.
+            امروز @_access.TodayMessages از @_access.DailyMessages پیام.
+        </MudText>
+    </MudPaper>
+
+    <div class="ai-thread mb-3">
+        @foreach (var m in _turns)
+        {
+            <MudPaper Class="@($"pa-3 mb-2 {(m.IsUser ? "ms-8" : "me-8")}")"
+                      Elevation="@(m.IsUser ? 0 : 1)"
+                      Style="@(m.IsUser ? "background:var(--mud-palette-background-grey)" : "")">
+                <MudText Typo="Typo.caption" Class="mud-text-secondary">
+                    @(m.IsUser ? "شما" : "دستیار")
+                </MudText>
+                <MudText Style="white-space:pre-wrap">@m.Text</MudText>
+            </MudPaper>
+        }
+
+        @* منبعِ جواب. در گزارش مالی، عددِ بدون منبع قابل اتکا نیست —
+           کاربر باید ببیند از کدام ابزار و چند سطر آمده. *@
+        @if (_lastSteps.Count > 0)
+        {
+            <MudExpansionPanels Elevation="0" Class="me-8">
+                <MudExpansionPanel Text="@($"منابع این پاسخ ({_lastSteps.Count} فراخوانی)")">
+                    @foreach (var s in _lastSteps)
+                    {
+                        <MudText Typo="Typo.caption" Class="d-block">
+                            <MudIcon Icon="@(s.Ok ? Icons.Material.Filled.CheckCircle : Icons.Material.Filled.Error)"
+                                     Size="Size.Small"
+                                     Color="@(s.Ok ? Color.Success : Color.Error)" />
+                            @s.Tool
+                            @if (s.Ok) { <text> — @s.Rows سطر در @s.DurationMs میلی‌ثانیه</text> }
+                            else       { <text> — @s.Note</text> }
+                        </MudText>
+                    }
+                </MudExpansionPanel>
+            </MudExpansionPanels>
+        }
+
+        @if (_busy)
+        {
+            <MudProgressLinear Indeterminate Color="Color.Primary" Class="my-2" />
+        }
+
+        @if (_error is not null)
+        {
+            <MudAlert Severity="Severity.Error" Class="my-2">@_error</MudAlert>
+        }
+    </div>
+
+    <div class="d-flex gap-2 align-start">
+        <MudTextField @bind-Value="_question" Label="سؤالتان را بنویسید"
+                      Variant="Variant.Outlined" Lines="2" Immediate
+                      OnKeyDown="OnKey" Disabled="_busy" />
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" Class="mt-2"
+                   StartIcon="@Icons.Material.Filled.Send"
+                   Disabled="@(_busy || string.IsNullOrWhiteSpace(_question))"
+                   OnClick="Send">ارسال</MudButton>
+    </div>
+
+    <MudText Typo="Typo.caption" Class="mud-text-secondary mt-2 d-block">
+        نمونه: «سود و زیان کالاهای تولید واحد یزد در مرداد چقدر بود؟»
+    </MudText>
+}
+
+@code {
+    private AiEffectiveAccessDto? _access;
+    private readonly List<AiChatTurnDto> _turns = new();
+    private List<AiChatStepDto> _lastSteps = new();
+
+    private string  _question = "";
+    private bool    _busy;
+    private string? _error;
+    private Guid?   _conversationId;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try   { _access = await Api.GetMyAccessAsync(); }
+        catch (Exception ex)
+        {
+            _access = new AiEffectiveAccessDto
+            {
+                IsEnabled = false,
+                DisabledReason = "خطا در ارتباط با سرور: " + ex.Message
+            };
+        }
+    }
+
+    /// <summary>Enter می‌فرستد، Shift+Enter خط جدید.</summary>
+    private async Task OnKey(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter" && !e.ShiftKey && !_busy && !string.IsNullOrWhiteSpace(_question))
+            await Send();
+    }
+
+    private async Task Send()
+    {
+        var q = _question.Trim();
+        if (q.Length == 0) return;
+
+        _question  = "";
+        _error     = null;
+        _lastSteps = new();
+        _turns.Add(new AiChatTurnDto { IsUser = true, Text = q });
+        _busy = true;
+
+        try
+        {
+            // تاریخچه بدون خودِ سؤالِ جاری فرستاده می‌شود؛ سرور آن را
+            // جداگانه می‌گیرد.
+            var history = _turns.Take(_turns.Count - 1).ToList();
+
+            var reply = await Api.ChatAsync(new AiChatRequest
+            {
+                ConversationId = _conversationId,
+                Question       = q,
+                History        = history
+            });
+
+            _conversationId ??= reply.ConversationId;
+            _lastSteps = reply.Steps;
+
+            if (reply.Error is not null) _error = reply.Error;
+            else _turns.Add(new AiChatTurnDto { IsUser = false, Text = reply.Text ?? "" });
+        }
+        catch (Exception ex) { _error = "خطا در ارتباط با سرور: " + ex.Message; }
+        finally
+        {
+            _busy = false;
+
+            // شمارنده‌ی سقف روزانه بعد از هر پیام به‌روز می‌شود، وگرنه
+            // کاربر تا بارگذاری بعدی نمی‌فهمد چقدر مانده.
+            try { _access = await Api.GetMyAccessAsync(); } catch { }
+        }
+    }
+}
