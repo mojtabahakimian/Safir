@@ -196,7 +196,14 @@ else
         _busy = true; _test = null; _error = null;
         try
         {
-            _test = await Api.TestConnectionAsync();
+            // مقادیرِ همین فرم فرستاده می‌شوند، نه آنچه ذخیره شده — تا
+            // بشود پیش از ذخیره آزمایش کرد.
+            _test = await Api.TestConnectionAsync(new UpsertAiConfigRequest
+            {
+                Provider = _cfg?.Provider ?? "openai",
+                BaseUrl  = _cfg?.BaseUrl,
+                ApiKey   = string.IsNullOrWhiteSpace(_newKey) ? null : _newKey.Trim()
+            });
 
             // فهرست مدل‌ها از خودِ سرویس می‌آید، پس ادمین لازم نیست نام
             // دقیق را از جای دیگری پیدا کند یا حدس بزند.

@@ -54,6 +54,30 @@ namespace Safir.Server.Ai
     }
 
 
+    /// <summary>
+    /// چسباندن مسیر به آدرس پایه، با تحملِ شکل‌هایی که آدم واقعاً وارد
+    /// می‌کند.
+    ///
+    /// روی همین پروژه هر دو اشتباه رخ داد: یک بار آدرسِ صفحه‌ی وبِ درگاه
+    /// («/dashboard/endpoint») که ۳۰۷ به صفحه‌ی ورود می‌داد، و یک بار
+    /// ریشه به‌همراه «/v1» که با افزودنِ مسیر می‌شد «/v1/v1/...». هر دو
+    /// خطایی می‌دادند که به تنظیمات اشاره نمی‌کرد.
+    /// </summary>
+    public static class AiUrl
+    {
+        public static string Combine(string baseUrl, string path)
+        {
+            var b = (baseUrl ?? "").Trim().TrimEnd('/');
+
+            // «/v1» انتهایی حذف می‌شود چون خودِ مسیرها آن را دارند.
+            if (b.EndsWith("/v1", StringComparison.OrdinalIgnoreCase))
+                b = b[..^3];
+
+            return b.TrimEnd('/') + path;
+        }
+    }
+
+
     // ═══════════════════ تنظیمات ═══════════════════
 
     public sealed class AiOptions
@@ -142,7 +166,7 @@ namespace Safir.Server.Ai
             try
             {
                 var res = await _http.PostAsJsonAsync(
-                    Combine(_opt.BaseUrl, "/v1/chat/completions"), body, ct);
+                    AiUrl.Combine(_opt.BaseUrl, "/v1/chat/completions"), body, ct);
 
                 var raw = await res.Content.ReadAsStringAsync(ct);
 
@@ -239,8 +263,6 @@ namespace Safir.Server.Ai
             _          => $"سرویس هوش مصنوعی خطا داد (کد {status})."
         };
 
-        internal static string Combine(string baseUrl, string path)
-            => baseUrl.TrimEnd('/') + path;
     }
 
 
@@ -334,7 +356,7 @@ namespace Safir.Server.Ai
             try
             {
                 var res = await _http.PostAsJsonAsync(
-                    OpenAiCompatibleProvider.Combine(_opt.BaseUrl, "/v1/messages"), body, ct);
+                    AiUrl.Combine(_opt.BaseUrl, "/v1/messages"), body, ct);
 
                 var raw = await res.Content.ReadAsStringAsync(ct);
 

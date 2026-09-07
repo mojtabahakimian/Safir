@@ -340,9 +340,40 @@ namespace Safir.Server.Controllers
         [Pay2Authorize(Pay2Forms.AdminAcl, Pay2Perm.See)]
         public async Task<ActionResult<AiConnectionTestDto>> TestConnection(
             [FromServices] IAiSettingsProvider settings,
-            [FromServices] IHttpClientFactory httpFactory)
+            [FromServices] IHttpClientFactory httpFactory,
+            [FromBody] UpsertAiConfigRequest? draft = null)
         {
-            var opt = await settings.GetAsync();
+            // ⚠ کل بدنه داخل try است، نه فقط بخشِ شبکه. اولین نسخه فقط
+            // فراخوانی HTTP را می‌گرفت و خطای خواندنِ تنظیمات به‌صورت
+            // ۵۰۰ بیرون می‌زد — یعنی همان چیزی که این دکمه باید تشخیص
+            // بدهد، خودش تبدیل به خطای بی‌توضیح می‌شد.
+            AiOptions opt;
+            try
+            {
+                opt = await settings.GetAsync();
+            }
+            catch (Exception ex)
+            {
+                return Ok(new AiConnectionTestDto
+                {
+                    Ok = false,
+                    Message = "خواندن تنظیمات ممکن نشد: " + ex.Message
+                });
+            }
+
+            // مقادیرِ روی فرم بر تنظیماتِ ذخیره‌شده اولویت دارند.
+            //
+            // بدون این، ادمین آدرس و کلید را تایپ می‌کرد، «آزمایش اتصال»
+            // می‌زد و سرور تنظیماتِ *قدیمی* را می‌سنجید — دقیقاً همان
+            // چیزی که یک بار پیش آمد و نتیجه‌اش گیج‌کننده بود. کلیدِ خالی
+            // یعنی «همان کلیدِ ذخیره‌شده»، تا برای آزمایش لازم نباشد
+            // دوباره تایپش کند.
+            if (draft is not null)
+            {
+                if (!string.IsNullOrWhiteSpace(draft.Provider)) opt.Provider = draft.Provider;
+                if (!string.IsNullOrWhiteSpace(draft.BaseUrl))  opt.BaseUrl  = draft.BaseUrl;
+                if (!string.IsNullOrWhiteSpace(draft.ApiKey))   opt.ApiKey   = draft.ApiKey;
+            }
 
             if (string.IsNullOrWhiteSpace(opt.BaseUrl))
                 return Ok(new AiConnectionTestDto { Ok = false, Message = "آدرس سرویس تنظیم نشده است." });
@@ -356,20 +387,17 @@ namespace Safir.Server.Controllers
 
             try
             {
-                var url = opt.BaseUrl.TrimEnd('/') +
-                          (opt.Provider.Equals("anthropic", StringComparison.OrdinalIgnoreCase)
-                           ? "/v1/models" : "/v1/models");
-
-                var res = await http.GetAsync(url);
+                var res = await http.GetAsync(AiUrl.Combine(opt.BaseUrl, "/v1/models"));
                 var raw = await res.Content.ReadAsStringAsync();
 
                 if (!res.IsSuccessStatusCode)
                     return Ok(new AiConnectionTestDto
                     {
                         Ok = false,
-                        Message = $"سرویس پاسخ داد ولی خطا: کد {(int)res.StatusCode}. " +
-                                  ((int)res.StatusCode == 401
-                                   ? "کلید پذیرفته نشد." : "")
+                        // متنِ خودِ سرویس هم می‌آید: «Missing API key» خیلی
+                        // گویاتر از «کد ۴۰۱» است.
+                        Message = $"سرویس خطا داد (کد {(int)res.StatusCode}). " +
+                                  (raw.Length > 300 ? raw[..300] : raw)
                     });
 
                 var models = new List<string>();

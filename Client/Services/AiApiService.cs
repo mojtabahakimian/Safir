@@ -101,9 +101,9 @@ namespace Safir.Client.Services
         /// می‌تواند تا تایم‌اوت طول بکشد و ۱۰۰ ثانیه‌ی پیش‌فرض وسطش
         /// می‌شکست — خطایی که به نظر می‌رسید از خودِ برنامه است.
         /// </summary>
-        public async Task<AiConnectionTestDto> TestConnectionAsync()
+        public async Task<AiConnectionTestDto> TestConnectionAsync(UpsertAiConfigRequest draft)
         {
-            var res = await Slow().PostAsync($"{Base}/admin/config/test", null);
+            var res = await Slow().PostAsJsonAsync($"{Base}/admin/config/test", draft);
 
             return res.IsSuccessStatusCode
                  ? await res.Content.ReadFromJsonAsync<AiConnectionTestDto>()
