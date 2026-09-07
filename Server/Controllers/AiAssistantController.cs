@@ -278,7 +278,11 @@ namespace Safir.Server.Controllers
                 Model          = string.IsNullOrWhiteSpace(row?.Model)   ? eff.Model   : row!.Model,
                 TimeoutSeconds = row?.TimeoutSeconds > 0 ? row.TimeoutSeconds : eff.TimeoutSeconds,
                 MaxToolLoops   = row?.MaxToolLoops   > 0 ? row.MaxToolLoops   : eff.MaxToolLoops,
-                HasApiKey      = !string.IsNullOrWhiteSpace(eff.ApiKey),
+                // ⚠ از خودِ سطر، نه از تنظیماتِ مؤثر. وقتی IsEnabled خاموش
+                // است تنظیماتِ مؤثر این سطر را نادیده می‌گیرد، و صفحه
+                // می‌نوشت «کلیدی ثبت نشده» در حالی که کلید ذخیره شده بود.
+                HasApiKey      = !string.IsNullOrWhiteSpace(key) ||
+                                 !string.IsNullOrWhiteSpace(eff.ApiKey),
                 ApiKeyTail     = key is { Length: >= 4 } ? key[^4..] : null,
                 // کلیدی هست ولی در پایگاه نیست، پس از محیط آمده. ادمین باید
                 // بداند چرا صفحه کلید نشان نمی‌دهد ولی سرویس کار می‌کند.
@@ -401,18 +405,48 @@ namespace Safir.Server.Controllers
                     });
 
                 var models = new List<string>();
-                using var doc = JsonDocument.Parse(raw);
+                using (var doc = JsonDocument.Parse(raw))
+                {
+                    if (doc.RootElement.TryGetProperty("data", out var arr) &&
+                        arr.ValueKind == JsonValueKind.Array)
+                        foreach (var m in arr.EnumerateArray())
+                            if (m.TryGetProperty("id", out var id))
+                                models.Add(id.GetString() ?? "");
+                }
 
-                if (doc.RootElement.TryGetProperty("data", out var arr) &&
-                    arr.ValueKind == JsonValueKind.Array)
-                    foreach (var m in arr.EnumerateArray())
-                        if (m.TryGetProperty("id", out var id))
-                            models.Add(id.GetString() ?? "");
+                // ⚠ فهرست مدل‌ها روی این درگاه بدون کلید هم جواب می‌دهد، پس
+                // موفق شدنش هیچ چیزی درباره‌ی کلید ثابت نمی‌کند — یک بار
+                // «اتصال برقرار است» داد در حالی که کلیدی در کار نبود و
+                // بعد خودِ گفتگو ۴۰۱ گرفت. آزمایش واقعی یک درخواستِ
+                // کوچکِ تولید است که هم کلید و هم نامِ مدل را می‌سنجد.
+                var model = string.IsNullOrWhiteSpace(draft?.Model) ? opt.Model : draft!.Model;
+
+                var probe = await http.PostAsJsonAsync(
+                    AiUrl.Combine(opt.BaseUrl, "/v1/chat/completions"),
+                    new
+                    {
+                        model,
+                        max_tokens = 8,
+                        messages = new[] { new { role = "user", content = "ping" } }
+                    });
+
+                var probeRaw = await probe.Content.ReadAsStringAsync();
+
+                if (!probe.IsSuccessStatusCode)
+                    return Ok(new AiConnectionTestDto
+                    {
+                        Ok = false,
+                        Message = $"فهرست مدل‌ها گرفته شد ولی خودِ مدل جواب نداد " +
+                                  $"(کد {(int)probe.StatusCode}): " +
+                                  (probeRaw.Length > 300 ? probeRaw[..300] : probeRaw),
+                        Models = models
+                    });
 
                 return Ok(new AiConnectionTestDto
                 {
                     Ok = true,
-                    Message = $"اتصال برقرار است. {models.Count} مدل در دسترس.",
+                    Message = $"اتصال و کلید سالم است. مدل «{model}» جواب داد. " +
+                              $"{models.Count} مدل در دسترس.",
                     Models = models
                 });
             }

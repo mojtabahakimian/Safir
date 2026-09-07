@@ -19,6 +19,18 @@
 }
 else
 {
+    @* بدون این هشدار، ادمین آدرس و کلید را ذخیره می‌کند، آزمایش سبز
+       می‌گیرد و بعد گفتگو کار نمی‌کند — چون کلیدِ خاموش اصلاً خوانده
+       نمی‌شود. دقیقاً همین یک بار پیش آمد. *@
+    @if (!_cfg.IsEnabled && !string.IsNullOrWhiteSpace(_cfg.BaseUrl))
+    {
+        <MudAlert Severity="Severity.Warning" Class="mb-3" Style="max-width:720px">
+            این تنظیمات ذخیره شده ولی <b>فعال نیست</b>؛ تا وقتی کلید بالا را روشن
+            نکنید، دستیار از تنظیمات فایل سرور استفاده می‌کند و کلیدِ ثبت‌شده‌ی
+            اینجا خوانده نمی‌شود.
+        </MudAlert>
+    }
+
     <MudPaper Class="pa-4" Elevation="1" Style="max-width:720px">
         <MudSwitch T="bool" @bind-Value="_cfg.IsEnabled" Color="Color.Success"
                    Label="استفاده از این تنظیمات (به‌جای تنظیمات فایل سرور)" Class="mb-3" />
@@ -202,6 +214,7 @@ else
             {
                 Provider = _cfg?.Provider ?? "openai",
                 BaseUrl  = _cfg?.BaseUrl,
+                Model    = _cfg?.Model,
                 ApiKey   = string.IsNullOrWhiteSpace(_newKey) ? null : _newKey.Trim()
             });
 
