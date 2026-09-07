@@ -7,10 +7,47 @@ namespace Safir.Client.Services
     /// <summary>دسترسی کلاینت به دستیار هوش مصنوعی.</summary>
     public class AiApiService
     {
+        /// <summary>
+        /// HttpClient مشترکِ برنامه. توکن ورود روی همین نمونه و به‌صورت
+        /// DefaultRequestHeaders.Authorization نشسته (AuthService و
+        /// ApiAuthenticationStateProvider)، پس هر کلاینتِ *دیگری* بدون
+        /// توکن می‌رود و ۴۰۱ می‌گیرد — همان اشتباهی که یک بار مرتکب شدم.
+        /// </summary>
         private readonly HttpClient _http;
+
+        /// <summary>
+        /// کلاینتِ جداگانه فقط برای «پرسیدن از دستیار»، چون آن یکی درخواستی
+        /// است که می‌تواند دقیقه‌ها طول بکشد و Timeout پیش‌فرضِ ۱۰۰ ثانیه
+        /// وسطش قطع می‌کرد. Timeout روی خودِ HttpClient است نه روی درخواست،
+        /// پس با CancellationToken نمی‌شد بلندترش کرد و کلاینت دوم لازم بود.
+        ///
+        /// بلند کردنِ Timeout مشترک گزینه نبود: بقیه‌ی صفحات باید سریع شکست
+        /// بخورند، وگرنه یک کوئریِ گیرکرده صفحه را دقیقه‌ها معطل می‌کند.
+        /// </summary>
+        private readonly HttpClient _slow;
+
         private const string Base = "api/ai";
 
-        public AiApiService(HttpClient http) => _http = http;
+        public AiApiService(HttpClient http)
+        {
+            _http = http;
+            _slow = new HttpClient
+            {
+                BaseAddress = http.BaseAddress,
+                Timeout     = TimeSpan.FromMinutes(10)
+            };
+        }
+
+        /// <summary>
+        /// توکن در هر فراخوانی از کلاینت مشترک کپی می‌شود، نه یک بار در
+        /// سازنده: کاربر ممکن است بین دو سؤال خارج و دوباره وارد شود و
+        /// توکن عوض شود.
+        /// </summary>
+        private HttpClient Slow()
+        {
+            _slow.DefaultRequestHeaders.Authorization = _http.DefaultRequestHeaders.Authorization;
+            return _slow;
+        }
 
         /// <summary>دستیار برای کاربر جاری چه می‌تواند بکند.</summary>
         public async Task<AiEffectiveAccessDto> GetMyAccessAsync()
@@ -24,7 +61,7 @@ namespace Safir.Client.Services
         /// </summary>
         public async Task<AiChatReplyDto> ChatAsync(AiChatRequest req)
         {
-            var res = await _http.PostAsJsonAsync($"{Base}/chat", req);
+            var res = await Slow().PostAsJsonAsync($"{Base}/chat", req);
 
             if (!res.IsSuccessStatusCode)
                 return new AiChatReplyDto
