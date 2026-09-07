@@ -12,7 +12,11 @@
 
 <PageTitle>دستیار هوش مصنوعی</PageTitle>
 
-<MudText Typo="Typo.h5" Class="mb-3">دستیار هوش مصنوعی</MudText>
+<div class="d-flex align-center mb-3">
+    <MudText Typo="Typo.h5">دستیار هوش مصنوعی</MudText>
+    @* ⚠ موقتی — نشانِ نسخه، پیش از تحویل نهایی حذف شود. *@
+    <BuildStamp />
+</div>
 
 @if (_access is null)
 {
