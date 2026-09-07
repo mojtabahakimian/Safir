@@ -106,6 +106,13 @@ builder.Services.AddScoped<Safir.Server.Ai.IAiTool, Safir.Server.Ai.UnitSummaryT
 builder.Services.AddScoped<Safir.Server.Ai.IAiTool, Safir.Server.Ai.ExceptionsTool>();
 builder.Services.AddScoped<Safir.Server.Ai.IAiTool, Safir.Server.Ai.DescribeDataTool>();
 
+// ابزارهای حالتِ «هر سؤالی» — هر سه پشت مجوز «کوئری آزاد» هستند و
+// پیش‌فرضشان خاموش است، چون محدودیتِ فرم‌به‌فرم را دور می‌زنند.
+builder.Services.AddScoped<Safir.Server.Ai.IAiTool, Safir.Server.Ai.ListTablesTool>();
+builder.Services.AddScoped<Safir.Server.Ai.IAiTool, Safir.Server.Ai.DescribeTableTool>();
+builder.Services.AddScoped<Safir.Server.Ai.IAiTool, Safir.Server.Ai.FindColumnTool>();
+builder.Services.AddScoped<Safir.Server.Ai.IAiTool, Safir.Server.Ai.RunSqlTool>();
+
 // ── ارائه‌دهنده‌ی مدل ──
 // انتخاب با تنظیمات است نه با کد، تا رفتن از Ollama محلی به سرویس ابری
 // فقط عوض کردن appsettings باشد. کلید هرگز اینجا نیست — فقط نامِ متغیر
