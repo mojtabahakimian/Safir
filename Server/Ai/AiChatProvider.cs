@@ -165,10 +165,33 @@ namespace Safir.Server.Ai
 
             try
             {
-                var res = await _http.PostAsJsonAsync(
-                    AiUrl.Combine(_opt.BaseUrl, "/v1/chat/completions"), body, ct);
+                // ── تلاش دوباره برای خطای گذرا ──
+                // درگاه گاهی ۵۰۳ یا ۴۲۹ می‌دهد چون خودش لحظه‌ای شلوغ است.
+                // شکستنِ کل گفتگو به‌خاطر آن، بعد از چند مرحله کارِ
+                // انجام‌شده را هم دور می‌ریزد؛ یک بار صبر و تکرار تقریباً
+                // همیشه کافی است.
+                HttpResponseMessage res;
+                string raw;
+                var attempt = 0;
 
-                var raw = await res.Content.ReadAsStringAsync(ct);
+                while (true)
+                {
+                    res = await _http.PostAsJsonAsync(
+                        AiUrl.Combine(_opt.BaseUrl, "/v1/chat/completions"), body, ct);
+
+                    raw = await res.Content.ReadAsStringAsync(ct);
+
+                    var transient = (int)res.StatusCode is 429 or 500 or 502 or 503 or 504;
+
+                    if (res.IsSuccessStatusCode || !transient || attempt >= 2) break;
+
+                    attempt++;
+                    _log.LogWarning("AI provider {Status}, retry {Attempt}", res.StatusCode, attempt);
+
+                    // مکث فزاینده: اگر سرویس لحظه‌ای پر است، فشار آوردنِ
+                    // فوری وضع را بدتر می‌کند.
+                    await Task.Delay(TimeSpan.FromSeconds(2 * attempt), ct);
+                }
 
                 if (!res.IsSuccessStatusCode)
                 {
@@ -260,6 +283,9 @@ namespace Safir.Server.Ai
             401 or 403 => "کلید سرویس هوش مصنوعی پذیرفته نشد.",
             404        => "مدل یا آدرس سرویس پیدا نشد.",
             429        => "سقف درخواست سرویس هوش مصنوعی پر شده است.",
+            // بعد از سه تلاش هنوز ۵۰۳ یعنی مشکل از سمت سرویس است، نه
+            // چیزی که کاربر بتواند درستش کند — پس همین را بگوییم.
+            502 or 503 or 504 => "سرویس هوش مصنوعی موقتاً در دسترس نیست. چند لحظه بعد دوباره بپرسید.",
             _          => $"سرویس هوش مصنوعی خطا داد (کد {status})."
         };
 
