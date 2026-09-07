@@ -423,7 +423,7 @@ namespace Safir.Server.Controllers
             [FromBody] UpsertAiConfigRequest req, [FromServices] IAiSettingsProvider settings)
         {
             if (req.TimeoutSeconds is < 5 or > 900) return BadRequest("تایم‌اوت باید بین ۵ تا ۹۰۰ ثانیه باشد.");
-            if (req.MaxToolLoops   is < 1 or > 30)  return BadRequest("سقف مراحل باید بین ۱ تا ۳۰ باشد.");
+            if (req.MaxToolLoops   is < 1 or > 20)  return BadRequest("سقف مراحل باید بین ۱ تا ۲۰ باشد.");
 
             if (req.IsEnabled && string.IsNullOrWhiteSpace(req.BaseUrl))
                 return BadRequest("برای فعال کردن سرویس، آدرس لازم است.");

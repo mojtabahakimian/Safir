@@ -116,11 +116,14 @@ else
                              Style="max-width:180px" />
             @* یک سؤالِ اکتشافی به‌راحتی ۵ تا ۷ مرحله می‌برد: فهرست
                جدول‌ها، ساختار، کوئری، اصلاح خطا، و جمع‌بندی. سقف ۴ وسط
-               کار تمام می‌شد. *@
+               کار تمام می‌شد.
+
+               عددِ بالاتر از ۱۰ معمولاً چیزی اضافه نمی‌کند: بودجه‌ی
+               زمانیِ هشت‌دقیقه‌ای زودتر از آن می‌رسد. *@
             <MudNumericField T="int" @bind-Value="_cfg.MaxToolLoops" Label="سقف مراحل ابزار"
-                             Variant="Variant.Outlined" Dense Min="1" Max="30"
+                             Variant="Variant.Outlined" Dense Min="1" Max="20"
                              Style="max-width:180px"
-                             HelperText="برای سؤال‌های اکتشافی ۱۰ یا بیشتر" />
+                             HelperText="۱۰ مناسب است؛ بودجه‌ی زمانی ۸ دقیقه هم جدا اعمال می‌شود" />
         </div>
 
         <MudDivider Class="my-3" />

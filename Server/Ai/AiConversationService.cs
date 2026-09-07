@@ -120,8 +120,28 @@ namespace Safir.Server.Ai
 
             var steps = new List<AiChatStepDto>();
 
+            // ── بودجه‌ی زمانیِ کل ──
+            // شمارشِ مرحله به‌تنهایی کافی نیست. کلاینت ۱۰ دقیقه صبر
+            // می‌کند، ولی سقفِ مرحله ضربدر تایم‌اوتِ هر فراخوانی خیلی
+            // بیشتر می‌شود (۱۰ مرحله × ۱۲۰ ثانیه = ۲۰ دقیقه، و در
+            // بدترین تنظیم ساعت‌ها). آن‌وقت کلاینت زودتر تسلیم می‌شد و
+            // کاربر خطا می‌دید در حالی که سرور هنوز کار می‌کرد و جوابش
+            // را هم دور می‌ریخت.
+            //
+            // هشت دقیقه زیر ۱۰ دقیقه‌ی کلاینت است و فاصله‌اش برای
+            // جمع‌بندیِ آخر می‌ماند.
+            var budget = TimeSpan.FromMinutes(8);
+            var clock  = Stopwatch.StartNew();
+
             for (int loop = 0; loop < opt.MaxToolLoops; loop++)
             {
+                if (clock.Elapsed > budget)
+                {
+                    await _notify.StatusAsync(conversationId,
+                        "زمان پاسخ طولانی شد؛ جمع‌بندی با داده‌های موجود…");
+                    break;
+                }
+
                 await _notify.StatusAsync(conversationId,
                     loop == 0 ? "در حال بررسی سؤال…" : "در حال جمع‌بندی داده‌ها…");
 
@@ -189,8 +209,8 @@ namespace Safir.Server.Ai
             messages.Add(new AiMessage
             {
                 Role    = "user",
-                Content = "به سقف مراحل رسیدی. با همین داده‌هایی که تا اینجا " +
-                          "گرفته‌ای جواب بده و صریح بگو چه چیزی ناقص مانده."
+                Content = "به سقف رسیدی (مرحله یا زمان). با همین داده‌هایی که تا " +
+                          "اینجا گرفته‌ای جواب بده و صریح بگو چه چیزی ناقص مانده."
             });
 
             var last = await provider.CompleteAsync(messages, Array.Empty<IAiTool>(), ct);
