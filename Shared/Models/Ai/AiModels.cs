@@ -174,6 +174,20 @@ namespace Safir.Shared.Models.Ai
         public int    Chars    { get; set; }
     }
 
+    /// <summary>یک گفتگو در فهرست تاریخچه.</summary>
+    public class AiConversationDto
+    {
+        public Guid     ConversationId { get; set; }
+        public string   Title          { get; set; } = "";
+        public DateTime UpdatedAtUtc   { get; set; }
+        public int      Messages       { get; set; }
+    }
+
+    public class RenameConversationRequest
+    {
+        public string Title { get; set; } = "";
+    }
+
     public class AiChatStepDto
     {
         public string  Tool       { get; set; } = "";

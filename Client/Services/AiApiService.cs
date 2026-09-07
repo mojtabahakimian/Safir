@@ -140,6 +140,21 @@ namespace Safir.Client.Services
             return (await res.Content.ReadFromJsonAsync<AiAttachmentDto>(), null);
         }
 
+        // ───────── تاریخچه‌ی گفتگوها ─────────
+
+        public async Task<List<AiConversationDto>> ListConversationsAsync()
+            => await _http.GetFromJsonAsync<List<AiConversationDto>>($"{Base}/conversations") ?? new();
+
+        public async Task<List<AiChatTurnDto>> GetConversationAsync(Guid id)
+            => await _http.GetFromJsonAsync<List<AiChatTurnDto>>($"{Base}/conversations/{id}") ?? new();
+
+        public async Task<bool> RenameConversationAsync(Guid id, string title)
+            => (await _http.PutAsJsonAsync($"{Base}/conversations/{id}/title",
+                    new RenameConversationRequest { Title = title })).IsSuccessStatusCode;
+
+        public async Task<bool> DeleteConversationAsync(Guid id)
+            => (await _http.DeleteAsync($"{Base}/conversations/{id}")).IsSuccessStatusCode;
+
         // ───────── تنظیمات سرویس ─────────
 
         public async Task<AiConfigDto> GetConfigAsync()

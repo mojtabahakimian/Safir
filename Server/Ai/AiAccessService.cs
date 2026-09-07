@@ -29,6 +29,10 @@ namespace Safir.Server.Ai
         Task<(bool Allowed, string? Reason)> CanUseToolAsync(int userCo, IAiTool tool);
 
         Task LogAsync(AiLogEntry entry);
+
+        /// <summary>سرِ گفتگو را می‌سازد یا زمانش را جلو می‌برد.</summary>
+        Task TouchConversationAsync(
+            Guid conversationId, int userCo, string? userName, string firstQuestion);
     }
 
     public sealed class AiLogEntry
@@ -144,6 +148,13 @@ namespace Safir.Server.Ai
                 VALUES
                     (@ConversationId, @UserCo, @UserName, @Kind, @ToolName,
                      @Payload, @RowsReturned, @Allowed, @DenyReason, @DurationMs)", e);
+
+        public async Task TouchConversationAsync(
+            Guid conversationId, int userCo, string? userName, string firstQuestion)
+            => await _db.DoGetStoreProcedureSQLAsync<dynamic>(
+                   "dbo.AI_sp_TouchConversation",
+                   new { ConversationId = conversationId, UserCo = userCo,
+                         UserName = userName, FirstQuestion = firstQuestion });
 
         /// <summary>
         /// فهرست فرم‌های مسدود. «ي»/«ك» عربی اینجا موضوعیت ندارد چون

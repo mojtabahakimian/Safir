@@ -85,6 +85,82 @@ namespace Safir.Server.Controllers
             return Ok(reply);
         }
 
+        // ─────────────────── تاریخچه‌ی گفتگوها ───────────────────
+        //
+        // هر کاربر فقط گفتگوهای خودش را می‌بیند. شرط UserCo در *هر*
+        // کوئری تکرار شده، نه فقط در فهرست: کسی که شناسه‌ی گفتگوی
+        // دیگری را حدس بزند نباید بتواند متنش را بخواند.
+
+        [HttpGet("conversations")]
+        public async Task<ActionResult<IEnumerable<AiConversationDto>>> ListConversations(
+            [FromQuery] int take = 50)
+            => Ok(await _db.DoGetDataSQLAsync<AiConversationDto>(@"
+                SELECT TOP (@take) c.ConversationId, c.Title, c.UpdatedAtUtc,
+                       (SELECT COUNT(*) FROM dbo.AI_ChatLog l
+                        WHERE l.ConversationId = c.ConversationId AND l.Kind IN (0,1)) AS Messages
+                FROM   dbo.AI_Conversation c
+                WHERE  c.UserCo = @userCo
+                ORDER BY c.UpdatedAtUtc DESC",
+                new { take = Math.Clamp(take, 1, 200), userCo = CurrentUserCo }));
+
+        /// <summary>
+        /// پیام‌های یک گفتگو. از همان لاگ خوانده می‌شود و نسخه‌ی دومی از
+        /// متن نگه داشته نمی‌شود — یک منبع، بدون خطر واگرایی.
+        /// فقط پیام کاربر و پاسخ مدل؛ فراخوانی ابزارها اینجا نمی‌آید چون
+        /// جزو گفتگو نیستند و در «منابع این پاسخ» دیده می‌شوند.
+        /// </summary>
+        [HttpGet("conversations/{id:guid}")]
+        public async Task<ActionResult<IEnumerable<AiChatTurnDto>>> GetConversation(Guid id)
+        {
+            var owns = await _db.DoGetDataSQLAsyncSingle<int>(
+                "SELECT COUNT(*) FROM dbo.AI_Conversation WHERE ConversationId = @id AND UserCo = @userCo",
+                new { id, userCo = CurrentUserCo });
+
+            if (owns == 0) return NotFound("این گفتگو پیدا نشد.");
+
+            return Ok(await _db.DoGetDataSQLAsync<AiChatTurnDto>(@"
+                SELECT CAST(CASE WHEN Kind = 0 THEN 1 ELSE 0 END AS BIT) AS IsUser,
+                       ISNULL(Payload, N'') AS Text
+                FROM   dbo.AI_ChatLog
+                WHERE  ConversationId = @id AND Kind IN (0,1)
+                ORDER BY Id", new { id }));
+        }
+
+        [HttpPut("conversations/{id:guid}/title")]
+        public async Task<IActionResult> RenameConversation(
+            Guid id, [FromBody] RenameConversationRequest req)
+        {
+            var title = (req.Title ?? "").Trim();
+
+            if (title.Length == 0)   return BadRequest("عنوان خالی است.");
+            if (title.Length > 200)  title = title[..200];
+
+            var n = await _db.DoExecuteSQLAsync(@"
+                UPDATE dbo.AI_Conversation SET Title = @title
+                WHERE  ConversationId = @id AND UserCo = @userCo",
+                new { id, title, userCo = CurrentUserCo });
+
+            return n == 0 ? NotFound("این گفتگو پیدا نشد.") : Ok();
+        }
+
+        /// <summary>
+        /// حذف واقعی، همراه با پیام‌ها. نگه‌داشتنِ پنهانیِ متنی که کاربر
+        /// فکر می‌کند پاک شده، با هدفِ لاگ جور درنمی‌آید.
+        /// </summary>
+        [HttpDelete("conversations/{id:guid}")]
+        public async Task<IActionResult> DeleteConversation(Guid id)
+        {
+            var n = await _db.DoExecuteSQLAsync(@"
+                DELETE FROM dbo.AI_Conversation
+                WHERE  ConversationId = @id AND UserCo = @userCo;
+
+                DELETE FROM dbo.AI_ChatLog
+                WHERE  ConversationId = @id AND UserCo = @userCo;",
+                new { id, userCo = CurrentUserCo });
+
+            return Ok();
+        }
+
         /// <summary>
         /// خواندن فایل پیوست و برگرداندن متنِ استخراج‌شده.
         ///
