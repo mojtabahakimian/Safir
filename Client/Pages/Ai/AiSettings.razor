@@ -110,9 +110,13 @@ else
             <MudNumericField T="int" @bind-Value="_cfg.TimeoutSeconds" Label="تایم‌اوت (ثانیه)"
                              Variant="Variant.Outlined" Dense Min="5" Max="900"
                              Style="max-width:180px" />
+            @* یک سؤالِ اکتشافی به‌راحتی ۵ تا ۷ مرحله می‌برد: فهرست
+               جدول‌ها، ساختار، کوئری، اصلاح خطا، و جمع‌بندی. سقف ۴ وسط
+               کار تمام می‌شد. *@
             <MudNumericField T="int" @bind-Value="_cfg.MaxToolLoops" Label="سقف مراحل ابزار"
-                             Variant="Variant.Outlined" Dense Min="1" Max="12"
-                             Style="max-width:180px" />
+                             Variant="Variant.Outlined" Dense Min="1" Max="30"
+                             Style="max-width:180px"
+                             HelperText="برای سؤال‌های اکتشافی ۱۰ یا بیشتر" />
         </div>
 
         <MudDivider Class="my-3" />

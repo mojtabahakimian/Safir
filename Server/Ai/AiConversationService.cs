@@ -172,8 +172,35 @@ namespace Safir.Server.Ai
                 }
             }
 
-            // به سقف خوردیم. بهتر از حلقه‌ی بی‌پایان است، ولی باید صریح
-            // گفته شود — جوابِ ناقصی که شبیه جوابِ کامل باشد بدترین حالت است.
+            // ── سقف مراحل تمام شد ──
+            // به‌جای پیام «کامل نشد»، یک بار دیگر می‌پرسیم — این‌بار بدون
+            // هیچ ابزاری. مدل مجبور می‌شود با همان چیزی که تا حالا جمع
+            // کرده جواب بدهد.
+            //
+            // قبلاً کاربر بعد از چند مرحله فقط یک خطا می‌دید، در حالی که
+            // داده‌ی مفیدی جمع شده بود و فقط جمع‌بندی نشده بود.
+            await _notify.StatusAsync(conversationId, "جمع‌بندی با داده‌های موجود…");
+
+            messages.Add(new AiMessage
+            {
+                Role    = "user",
+                Content = "به سقف مراحل رسیدی. با همین داده‌هایی که تا اینجا " +
+                          "گرفته‌ای جواب بده و صریح بگو چه چیزی ناقص مانده."
+            });
+
+            var last = await provider.CompleteAsync(messages, Array.Empty<IAiTool>(), ct);
+
+            if (last.Ok && !string.IsNullOrWhiteSpace(last.Text))
+            {
+                await _access.LogAsync(new AiLogEntry
+                {
+                    ConversationId = conversationId, UserCo = userCo, UserName = userName,
+                    Kind = 1, Payload = last.Text
+                });
+
+                return new AiChatReplyDto { Text = last.Text, Steps = steps };
+            }
+
             return new AiChatReplyDto
             {
                 Error = $"پاسخ در {opt.MaxToolLoops} مرحله کامل نشد. سؤال را ساده‌تر بپرسید.",
@@ -255,9 +282,19 @@ namespace Safir.Server.Ai
                     DurationMs = (int)sw.ElapsedMilliseconds
                 });
 
-                // پیام خام SQL به مدل نمی‌رود: هم نام جدول‌ها را بی‌دلیل
-                // بیرون می‌دهد، هم مدل را به حدس زدنِ کوئری تشویق می‌کند.
-                return ("اجرای این ابزار با خطا مواجه شد.",
+                // ⚠ متنِ خطا *باید* به مدل برسد. اولین نسخه آن را پنهان
+                // می‌کرد و نتیجه‌اش این بود: مدل نام جدول را حدس زد
+                // («CostExceptions» به‌جای «CC_Exception»)، پیام
+                // «خطای اجرا» گرفت که هیچ نمی‌گفت، و چون نمی‌دانست چه
+                // چیزی غلط بوده نتوانست اصلاح کند و سقف مراحل تمام شد.
+                //
+                // چیزی هم لو نمی‌رود: خطا دربارهٔ کوئریِ خودِ مدل است و
+                // ساختار پایگاه را با describe_table به‌هرحال می‌بیند.
+                // متنِ کاربر جداست و همچنان کوتاه می‌ماند.
+                var detail = ex.Message.Length > 400 ? ex.Message[..400] : ex.Message;
+
+                return ($"خطا در اجرا: {detail} — " +
+                        "نام جدول و ستون‌ها را با describe_table بررسی کن و دوباره تلاش کن.",
                         new AiChatStepDto { Tool = call.Name, Ok = false, Note = "خطای اجرا" });
             }
         }
