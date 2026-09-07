@@ -39,12 +39,25 @@ namespace Safir.Client.Services
         }
 
         /// <summary>
-        /// توکن در هر فراخوانی از کلاینت مشترک کپی می‌شود، نه یک بار در
-        /// سازنده: کاربر ممکن است بین دو سؤال خارج و دوباره وارد شود و
-        /// توکن عوض شود.
+        /// *همه‌ی* هدرهای پیش‌فرضِ کلاینت مشترک کپی می‌شوند، نه فقط توکن.
+        ///
+        /// ⚠ سرور پایگاه داده را از هدر X-DB-Connection انتخاب می‌کند
+        /// (ConnectionManagerService آن را روی کلاینت مشترک می‌گذارد).
+        /// وقتی فقط Authorization کپی می‌شد، درخواستِ گفتگو بدون آن هدر
+        /// می‌رفت و سرور به رشته‌ی اتصالِ پیش‌فرضِ appsettings برمی‌گشت —
+        /// سروری که در این نصب اصلاً در دسترس نیست. نتیجه‌اش خطای خامِ
+        /// TdsParser بود که هیچ ربطی به هوش مصنوعی نداشت.
+        ///
+        /// در هر فراخوانی کپی می‌شود، نه یک بار در سازنده: کاربر ممکن است
+        /// بین دو سؤال پایگاه را عوض کند یا خارج و دوباره وارد شود.
         /// </summary>
         private HttpClient Slow()
         {
+            _slow.DefaultRequestHeaders.Clear();
+
+            foreach (var h in _http.DefaultRequestHeaders)
+                _slow.DefaultRequestHeaders.TryAddWithoutValidation(h.Key, h.Value);
+
             _slow.DefaultRequestHeaders.Authorization = _http.DefaultRequestHeaders.Authorization;
             return _slow;
         }
@@ -64,11 +77,30 @@ namespace Safir.Client.Services
             var res = await Slow().PostAsJsonAsync($"{Base}/chat", req);
 
             if (!res.IsSuccessStatusCode)
-                return new AiChatReplyDto
+            {
+                var body = await res.Content.ReadAsStringAsync();
+
+                // ⚠ بدنه‌ی خام نمایش داده نمی‌شود. در حالت توسعه، صفحه‌ی
+                // خطای ASP.NET کل هدرهای درخواست را چاپ می‌کند و توکنِ
+                // ورودِ کاربر داخلش است — یک بار همین‌طور روی صفحه دیده
+                // شد. پیام کوتاه و بی‌خطر برای کاربر، جزئیات در لاگ سرور.
+                var friendly = (int)res.StatusCode switch
                 {
-                    Error = await res.Content.ReadAsStringAsync() is { Length: > 0 } m
-                          ? m : $"خطای سرور (کد {(int)res.StatusCode})."
+                    401 => "نشست شما منقضی شده است. یک بار خارج و دوباره وارد شوید.",
+                    403 => "دستیار برای شما فعال نیست.",
+                    404 => "این قابلیت روی سرور موجود نیست؛ نسخه‌ی سرور قدیمی است.",
+                    500 => "خطای داخلی سرور. جزئیات در لاگ سرور ثبت شده است.",
+                    _   => $"خطای سرور (کد {(int)res.StatusCode})."
                 };
+
+                // فقط وقتی پاسخ یک پیام کوتاه و ساده باشد (نه صفحه‌ی خطا)
+                // متنش نشان داده می‌شود؛ پیام‌های عمدیِ خودِ سرور فارسی و
+                // کوتاه‌اند.
+                if (body.Length is > 0 and <= 200 && !body.Contains("<") && !body.Contains("   at "))
+                    friendly = body;
+
+                return new AiChatReplyDto { Error = friendly };
+            }
 
             var reply = await res.Content.ReadFromJsonAsync<AiChatReplyDto>()
                         ?? new AiChatReplyDto { Error = "پاسخی دریافت نشد." };
