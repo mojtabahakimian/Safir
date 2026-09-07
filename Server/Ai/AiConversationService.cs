@@ -258,7 +258,7 @@ namespace Safir.Server.Ai
             {tools}
 
             دانسته‌های پایه درباره‌ی این پایگاه داده:
-            {AiDataDictionary.Core}
+            {AiDataDictionary.CoreBrief}
             """;
         }
     }
