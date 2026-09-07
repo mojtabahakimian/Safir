@@ -8,25 +8,17 @@ using System.Text;
 namespace Safir.Server.CostClose.GroupDocuments
 {
     // ═══════════════════════════════════════════════════════════════════════
-    //  بازسازی «سند برگشت خرید آزاد» (DEED_HED/DEED_DTL برای HEAD_LST.TAG=26،
-    //  NO_S=3) — پورتِ دستیِ SANAD() از فرم «برگشت خرید آزاد» در AUTO_BAZ،
-    //  عیناً از روی سورس VB که صاحب پروژه فرستاد (نه حدس زده شده).
+    //  بازسازی «سند برگشت خرید آزاد» (DEED_HED/DEED_DTL برای HEAD_LST.TAG=27،
+    //  NO_S=3) — پورتِ اصلاح‌شده بر اساس منطق C12 در AUTO_BAZ.
     //
-    //  ⚠️ این سرویس دقیقاً همان چیزی است که کشفِ مغایرت کد ۳۶۸/انبار ۲ نشان
-    //  داد که غایب است: هیچ‌کدام از ۶ سرویس سند گروهیِ قبلی TAG=26/27 را
-    //  پوشش نمی‌دادند، پس این سند هرگز با نرخ تازه بازسازی نمی‌شد.
+    //  ⚠️ ساختار کلیدها در برگشت خرید آزاد:
+    //  - TAG=27: سربرگ برگشت خرید آزاد (مشتری، مبالغ، چک‌ها، N_S)
+    //  - TAG=26: حواله خروج سایر انبار مرتبط (اقلام کالا در INVO_LST.TAG=26)
+    //  ارتباط این دو از طریق ستون NUMBER1 در HEAD_LST (TAG=27) برقرار می‌شود:
+    //  HEAD_LST(TAG=27).NUMBER1 = INVO_LST(TAG=26).NUMBER
     //
-    //  نکته‌ی کلیدیِ منطق (که علتِ خودِ مغایرت بود): ارزش موجودیِ هر ردیف
-    //  Round(MEGHk × AVRAGE) است — نرخ AVRAGE هر سطر INVO_LST.TAG=26 (که
-    //  AverageRateRebuildService می‌نویسد)، نه MABL_K خامِ ثبت‌شده روی سطر.
-    //  اگر MABL_K با این مقدارِ تازه فرق داشته باشد، اختلاف در یک سطرِ جداگانه
-    //  («کنترل») به حساب عملکردِ AMALKARD-99999-CODE پست می‌شود — دقیقاً طبق
-    //  کدِ اصلی، نه یک اصلاح.
-    //
-    //  GETGRPKALA (نامِ گروه کالا برای RADAH=5..10) در سورسِ فرستاده‌شده نبود؛
-    //  چون روی این دیتابیس RADAH هرگز از ۵ فراتر نمی‌رود (فقط ۰..۵ دیده شد)،
-    //  یک برچسبِ عمومیِ "گروه {n}" جایگزین شده — فقط متنِ توضیح را عوض
-    //  می‌کند، نه حساب یا مبلغ را.
+    //  ارزش موجودی هر ردیف کالا: Round(MEGHk × AVRAGE) با نرخ تازه‌ی AVRAGE.
+    //  اختلاف MABL_K با ارزش جدید به حساب عملکرد AMALKARD-99999-CODE منتقل می‌شود.
     // ═══════════════════════════════════════════════════════════════════════
 
     public sealed class PurchaseReturnFreeRebuildResult
@@ -62,6 +54,7 @@ namespace Safir.Server.CostClose.GroupDocuments
         private sealed class HeadRow
         {
             public double? NUMBER    { get; set; }
+            public double? NUMBER1   { get; set; }
             public long?   DATE_N    { get; set; }
             public double? N_S       { get; set; }
             public string? USER_NAME { get; set; }
@@ -103,7 +96,7 @@ namespace Safir.Server.CostClose.GroupDocuments
             public double? MABL   { get; set; }
         }
 
-        // ───────────────────────────── کمکی‌های قالب‌بندی (مثل سرویس‌های خواهر) ─────────────────────────────
+        // ───────────────────────────── کمکی‌های قالب‌بندی ─────────────────────────────
 
         private static string SqlNum(double? v)
             => v.HasValue ? v.Value.ToString("0.##########", CultureInfo.InvariantCulture) : "NULL";
@@ -122,11 +115,8 @@ namespace Safir.Server.CostClose.GroupDocuments
             return true;
         }
 
-        private static string GrpKalaLabel(int radahPlus4) => $"گروه {radahPlus4}"; // نگاه کنید توضیح بالای فایل
+        private static string GrpKalaLabel(int radahPlus4) => $"گروه {radahPlus4}";
 
-        // بازتلاش روی بن‌بست (Deadlock) — هر برگه تراکنش جدای خودش را موازی
-        // با بقیه اجرا می‌کند (SET DEADLOCK_PRIORITY LOW)؛ چون کار هر برگه
-        // idempotent است، تلاش دوباره‌ی همان تراکنش پس از خطای ۱۲۰۵ امن است.
         private static async Task ExecuteWithDeadlockRetryAsync(Func<Task> action, int maxAttempts = 3)
         {
             for (var attempt = 1; ; attempt++)
@@ -158,7 +148,7 @@ namespace Safir.Server.CostClose.GroupDocuments
             await Task.WhenAll(tasks);
         }
 
-        // ───────── CREATHES/ISHESAB — کش‌های محلی به همین فراخوانی ─────────
+        // ───────── CREATHES/ISHESAB ─────────
 
         private readonly ConcurrentDictionary<(long, long, long), bool> _existingAccounts = new();
         private readonly ConcurrentDictionary<int, string> _bankNameCache = new();
@@ -252,40 +242,29 @@ END CATCH;";
             var optionss = acc.OPTIONSS ?? string.Empty;
             var isDailyMode = acc.SNDKH == true;
 
-            // ⚠️ پاک‌سازیِ خودکارِ سطرهای جامانده اینجا هم عمداً نیست — به
-            // همان دلیلی که در SaleRebuildService توضیح داده شده: نمی‌شود
-            // خودکار تصمیم گرفت تاریخِ برگه درست است یا تاریخِ سند. روی
-            // داده‌ی واقعی دو سطر (۴۰ ریال) از این نوع هست که با همان مسیرِ
-            // «اصلاح تاریخ» باید رفع شوند.
-
+            // سربرگ برگشت خرید آزاد از TAG = 27 خوانده می‌شود.
             var headRows = (await _db.DoGetDataSQLAsync<HeadRow>(
-                "SELECT NUMBER, DATE_N, N_S, USER_NAME, CUST_NO, DEPATMAN, SHIFT, ARZD, MABL_HAZ, MOIN_HAZ, " +
+                "SELECT NUMBER, NUMBER1, DATE_N, N_S, USER_NAME, CUST_NO, DEPATMAN, SHIFT, ARZD, MABL_HAZ, MOIN_HAZ, " +
                 "MBAA, HMBAA, TAKHFIF, M_NAGHD, MABL_HAV, MOIN_HAV, MABL_VAR, MOIN_VAR, FNUMCO, MOLAH FROM dbo.HEAD_LST " +
-                "WHERE NUMBER BETWEEN @From AND @To AND TAG = 26 AND DATE_N BETWEEN @DateFrom AND @DateTo ORDER BY NUMBER",
+                "WHERE NUMBER BETWEEN @From AND @To AND TAG = 27 AND DATE_N BETWEEN @DateFrom AND @DateTo ORDER BY NUMBER",
                 new { From = fromNumber, To = toNumber, DateFrom = dateFrom, DateTo = dateTo })).ToList();
 
-            AddLog($"برگشت خرید آزاد (TAG=26): شروع بازسازی از {fromNumber} تا {toNumber} — {headRows.Count} برگه یافت شد.");
+            AddLog($"برگشت خرید آزاد (TAG=27): شروع بازسازی از {fromNumber} تا {toNumber} — {headRows.Count} برگه یافت شد.");
             if (headRows.Count == 0) { result.Success = true; return result; }
-
-            // ردیف همراهِ TAG=27 در HEAD_LST باید موجود باشد؛ FK_DEED_DTL_HEAD_LST دقیقاً همین را چک می‌کند.
-            // بدون آن، برگه به‌جای throw کردنِ خطای FK، با یک هشدار رد می‌شود.
-            var pairedNumbers = new HashSet<double>(await _db.DoGetDataSQLAsync<double>(
-                "SELECT NUMBER FROM dbo.HEAD_LST WHERE TAG = 27 AND NUMBER BETWEEN @From AND @To",
-                new { From = fromNumber, To = toNumber }));
 
             var sheetUsable = new bool[headRows.Count];
             for (int i = 0; i < headRows.Count; i++)
             {
                 var h = headRows[i];
                 if (h.NUMBER is null || h.DATE_N is null || h.DATE_N < 10101) { AddLog($"برگه {h.NUMBER}: تاریخ نامعتبر."); continue; }
-                if (!pairedNumbers.Contains(h.NUMBER.Value)) { AddLog($"برگه {h.NUMBER}: ردیف همراه TAG=27 در HEAD_LST یافت نشد — رد شد."); continue; }
+                if (h.NUMBER1 is null || h.NUMBER1 <= 0) { AddLog($"برگه {h.NUMBER}: ارجاع به حواله انبار (NUMBER1) نامعتبر است — رد شد."); continue; }
                 sheetUsable[i] = true;
             }
             var usableIdx = Enumerable.Range(0, headRows.Count).Where(i => sheetUsable[i]).ToList();
 
             static string BuildSharh(HeadRow h) => LeftTrim($"فاكتور برگشت خريد شماره {h.NUMBER} مورخ {PersianDate(h.DATE_N!.Value)}", 255);
 
-            // ───── شماره‌گذاری سند (سند روزانه یا تکی، طبق SNDKH — مثل سرویس‌های خواهر) ─────
+            // ───── شماره‌گذاری سند (سند روزانه یا تکی، طبق SNDKH) ─────
             var dailyNs = new Dictionary<long, double>();
             var singleExistingHeaderDates = new Dictionary<double, long?>();
             var singleNeedsNewHeader = new bool[headRows.Count];
@@ -318,7 +297,7 @@ END CATCH;";
                     if (headRows[i].N_S != resolved)
                     {
                         headRows[i].N_S = resolved;
-                        await _db.DoExecuteSQLAsync("UPDATE dbo.HEAD_LST SET N_S=@Ns WHERE NUMBER=@Num AND TAG=26", new { Ns = resolved, Num = headRows[i].NUMBER!.Value });
+                        await _db.DoExecuteSQLAsync("UPDATE dbo.HEAD_LST SET N_S=@Ns WHERE NUMBER=@Num AND TAG=27", new { Ns = resolved, Num = headRows[i].NUMBER!.Value });
                     }
                 }
             }
@@ -347,7 +326,7 @@ END CATCH;";
                     for (int k = 0; k < newHeaderIdx.Count; k++)
                     {
                         headRows[newHeaderIdx[k]].N_S = reserved[k];
-                        await _db.DoExecuteSQLAsync("UPDATE dbo.HEAD_LST SET N_S=@Ns WHERE NUMBER=@Num AND TAG=26", new { Ns = reserved[k], Num = headRows[newHeaderIdx[k]].NUMBER!.Value });
+                        await _db.DoExecuteSQLAsync("UPDATE dbo.HEAD_LST SET N_S=@Ns WHERE NUMBER=@Num AND TAG=27", new { Ns = reserved[k], Num = headRows[newHeaderIdx[k]].NUMBER!.Value });
                     }
                 }
             }
@@ -359,7 +338,8 @@ END CATCH;";
             {
                 if (!sheetUsable[R]) return;
                 var h = headRows[R];
-                var num = h.NUMBER!.Value;
+                var num = h.NUMBER!.Value;          // شماره برگه (TAG=27)
+                var noteNum = h.NUMBER1!.Value;     // شماره حواله انبار (TAG=26)
                 var ns = h.N_S!.Value;
                 var dateN = h.DATE_N!.Value;
                 var arzd = h.ARZD ?? 1d;
@@ -377,10 +357,9 @@ END CATCH;";
                     if (!string.IsNullOrWhiteSpace(h.CUST_NO))
                         CL_HESABDARI.GETTAF3(h.CUST_NO, ref ckol, ref cmoin, ref ctaf, ref ctaf2, ref ctaf3, ref ctaf4);
 
-                    // JAMF = مجموع ارزشِ همه‌ی ردیف‌های TAG=26 همین برگه (بر اساس MABL_K خامِ ثبت‌شده،
-                    // عیناً VB — نه نرخ تازه؛ نرخ تازه فقط برای سطرِ موجودی و کنترل استفاده می‌شود پایین‌تر).
+                    // JAMF = مجموع ارزش خام اقلام در حواله انبار (INVO_LST.TAG=26 و NUMBER=NUMBER1)
                     var jamf = (await _db.DoGetDataSQLAsync<double?>(
-                        "SELECT SUM(MABL_K) FROM dbo.INVO_LST WHERE NUMBER=@N AND TAG=26", new { N = num })).FirstOrDefault() ?? 0d;
+                        "SELECT SUM(MABL_K) FROM dbo.INVO_LST WHERE NUMBER=@NoteNum AND TAG=26", new { NoteNum = noteNum })).FirstOrDefault() ?? 0d;
                     var jamch = (await _db.DoGetDataSQLAsync<double?>(
                         "SELECT SUM(MABL) FROM dbo.PAY_GETD WHERE TAG=27 AND NUMBER=@N", new { N = num })).FirstOrDefault() ?? 0d;
 
@@ -467,14 +446,15 @@ END CATCH;";
                         AddRow(ckol, cmoin, ctaf, h.CUST_NO ?? string.Empty, sharh2, 0, h.MABL_VAR!.Value);
                     }
 
-                    // ───── ردیف‌های موجودی + کنترلِ نرخ (اصلِ همان چیزی که مغایرت را می‌بست) ─────
+                    // ───── ردیف‌های موجودی + کنترلِ نرخ ─────
                     var khmavad = 0d; var khnim = 0d; var khsakht = 0d; var khsay = 0d; var bazar = 0d;
                     var hs = new double[7];
 
+                    // اقلام کالا بر اساس شماره حواله انبار (NUMBER = NUMBER1 و TAG = 26) خوانده می‌شوند.
                     var lines = await _db.DoGetDataSQLAsync<LineRow>(
                         "SELECT L.CODE, L.MEGHk, L.MABL_K, L.AVRAGE, L.ANBAR, S.RADAH, S.NAME " +
                         "FROM dbo.INVO_LST L INNER JOIN dbo.STUF_DEF S ON L.CODE = S.CODE " +
-                        "WHERE L.NUMBER=@N AND L.TAG=26", new { N = num });
+                        "WHERE L.NUMBER=@NoteNum AND L.TAG=26", new { NoteNum = noteNum });
 
                     foreach (var line in lines)
                     {
@@ -598,6 +578,15 @@ END CATCH;";
                     }
                     batch.Append("COMMIT TRANSACTION;");
                     await ExecuteWithDeadlockRetryAsync(() => _db.DoExecuteSQLAsync(batch.ToString(), commandTimeout: CostCloseTuning.BatchTimeoutSeconds));
+
+                    // ───── کنترل تراز سند پس از ثبت ─────
+                    var diff = (await _db.DoGetDataSQLAsync<double?>(
+                        "SELECT SUM(BED) - SUM(BES) FROM dbo.DEED_DTL WHERE NUMBER=@Num AND TAG=27", new { Num = num })).FirstOrDefault();
+                    if (diff.HasValue && Math.Abs(diff.Value) > 0.5)
+                    {
+                        Interlocked.Exchange(ref successFlag, 0);
+                        RecordFailure($"برگه برگشت خرید آزاد {num} (سند {ns}): سند ناتراز است (مغایرت: {diff.Value:N0} ریال)");
+                    }
                 }
                 catch (Exception ex)
                 {
