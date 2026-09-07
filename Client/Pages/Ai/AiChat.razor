@@ -111,12 +111,22 @@ else
     <div class="d-flex gap-2 align-start">
         @* فایل پیش از ارسالِ سؤال خوانده می‌شود تا کاربر ببیند چه چیزی
            استخراج شده — نه اینکه بعد از دو دقیقه بفهمد فایل خالی بوده. *@
+        @* ⚠ در MudBlazor 6.21 نامِ این پارامتر ButtonTemplate است، نه
+           ActivatorContent (آن API نسخه‌ی ۷ است). با نام اشتباه، Razor
+           خطا نمی‌دهد ولی هیچ چیزی رندر نمی‌شود — دکمه بی‌سروصدا غایب
+           بود و شبیه مشکل کشِ مرورگر به نظر می‌رسید.
+
+           «for="@context"» هم لازم است: context همان شناسه‌ی inputِ
+           پنهان است و بدون آن، کلیک روی دکمه پنجره‌ی فایل را باز
+           نمی‌کند. *@
         <MudFileUpload T="IBrowserFile" FilesChanged="OnFilePicked" Class="mt-2"
                        Accept=".txt,.csv,.md,.json,.xml,.log,.sql,.xlsx,.xlsm">
-            <ActivatorContent>
-                <MudIconButton Icon="@Icons.Material.Filled.AttachFile"
-                               Color="Color.Default" Disabled="_busy" />
-            </ActivatorContent>
+            <ButtonTemplate Context="fileInputId">
+                <MudIconButton HtmlTag="label" for="@fileInputId"
+                               Icon="@Icons.Material.Filled.AttachFile"
+                               Color="Color.Default" Disabled="_busy"
+                               Title="پیوست فایل" />
+            </ButtonTemplate>
         </MudFileUpload>
 
         <MudTextField @bind-Value="_question" Label="سؤالتان را بنویسید"
