@@ -83,6 +83,38 @@ namespace Safir.Client.Services
         public async Task<List<AiUserAccessDto>> ListAccessAsync()
             => await _http.GetFromJsonAsync<List<AiUserAccessDto>>($"{Base}/admin/access") ?? new();
 
+        // ───────── تنظیمات سرویس ─────────
+
+        public async Task<AiConfigDto> GetConfigAsync()
+            => await _http.GetFromJsonAsync<AiConfigDto>($"{Base}/admin/config") ?? new();
+
+        public async Task<(bool Ok, string? Error)> SaveConfigAsync(UpsertAiConfigRequest req)
+        {
+            var res = await _http.PutAsJsonAsync($"{Base}/admin/config", req);
+            return res.IsSuccessStatusCode
+                 ? (true, null)
+                 : (false, await res.Content.ReadAsStringAsync());
+        }
+
+        /// <summary>
+        /// آزمایش با کلاینتِ بلندمدت، نه مشترک: اگر آدرس اشتباه باشد پاسخ
+        /// می‌تواند تا تایم‌اوت طول بکشد و ۱۰۰ ثانیه‌ی پیش‌فرض وسطش
+        /// می‌شکست — خطایی که به نظر می‌رسید از خودِ برنامه است.
+        /// </summary>
+        public async Task<AiConnectionTestDto> TestConnectionAsync()
+        {
+            var res = await Slow().PostAsync($"{Base}/admin/config/test", null);
+
+            return res.IsSuccessStatusCode
+                 ? await res.Content.ReadFromJsonAsync<AiConnectionTestDto>()
+                   ?? new AiConnectionTestDto { Message = "پاسخی دریافت نشد." }
+                 : new AiConnectionTestDto
+                   {
+                       Ok = false,
+                       Message = $"خطای سرور (کد {(int)res.StatusCode})."
+                   };
+        }
+
         /// <summary>کاربران فعال برای فهرست انتخاب.</summary>
         public async Task<List<AiUserLookupDto>> ListUsersAsync()
             => await _http.GetFromJsonAsync<List<AiUserLookupDto>>($"{Base}/admin/users") ?? new();

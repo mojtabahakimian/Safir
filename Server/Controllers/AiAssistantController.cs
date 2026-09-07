@@ -254,6 +254,150 @@ namespace Safir.Server.Controllers
             return Ok();
         }
 
+        // ─────────────────── تنظیمات سرویس ───────────────────
+
+        /// <summary>
+        /// تنظیمات فعلی. ⚠ کلید برنمی‌گردد — فقط اینکه ثبت شده و چهار
+        /// نویسه‌ی آخرش، که برای «همانی است که فکر می‌کنم؟» کافی است.
+        /// </summary>
+        [HttpGet("admin/config")]
+        [Pay2Authorize(Pay2Forms.AdminAcl, Pay2Perm.See)]
+        public async Task<ActionResult<AiConfigDto>> GetConfig(
+            [FromServices] IAiSettingsProvider settings)
+        {
+            var row = await ((AiSettingsProvider)settings).ReadRowAsync();
+            var eff = await settings.GetAsync();
+
+            var key = row?.ApiKey;
+
+            return Ok(new AiConfigDto
+            {
+                IsEnabled      = row?.IsEnabled ?? false,
+                Provider       = row?.Provider ?? eff.Provider,
+                BaseUrl        = string.IsNullOrWhiteSpace(row?.BaseUrl) ? eff.BaseUrl : row!.BaseUrl,
+                Model          = string.IsNullOrWhiteSpace(row?.Model)   ? eff.Model   : row!.Model,
+                TimeoutSeconds = row?.TimeoutSeconds > 0 ? row.TimeoutSeconds : eff.TimeoutSeconds,
+                MaxToolLoops   = row?.MaxToolLoops   > 0 ? row.MaxToolLoops   : eff.MaxToolLoops,
+                HasApiKey      = !string.IsNullOrWhiteSpace(eff.ApiKey),
+                ApiKeyTail     = key is { Length: >= 4 } ? key[^4..] : null,
+                // کلیدی هست ولی در پایگاه نیست، پس از محیط آمده. ادمین باید
+                // بداند چرا صفحه کلید نشان نمی‌دهد ولی سرویس کار می‌کند.
+                KeyFromEnv     = string.IsNullOrWhiteSpace(key) &&
+                                 !string.IsNullOrWhiteSpace(eff.ApiKey),
+                UpdatedBy      = row?.UpdatedBy,
+                UpdatedAtUtc   = row?.UpdatedAtUtc
+            });
+        }
+
+        [HttpPut("admin/config")]
+        [Pay2Authorize(Pay2Forms.AdminAcl, Pay2Perm.Upd)]
+        public async Task<IActionResult> SaveConfig(
+            [FromBody] UpsertAiConfigRequest req, [FromServices] IAiSettingsProvider settings)
+        {
+            if (req.TimeoutSeconds is < 5 or > 900) return BadRequest("تایم‌اوت باید بین ۵ تا ۹۰۰ ثانیه باشد.");
+            if (req.MaxToolLoops   is < 1 or > 12)  return BadRequest("سقف مراحل باید بین ۱ تا ۱۲ باشد.");
+
+            if (req.IsEnabled && string.IsNullOrWhiteSpace(req.BaseUrl))
+                return BadRequest("برای فعال کردن سرویس، آدرس لازم است.");
+
+            // آدرس باید ریشه باشد. مسیرِ صفحه‌ی وبِ درگاه اشتباهِ رایجی است
+            // که ۳۰۷ به صفحه‌ی ورود می‌دهد و پیامش برای کاربر بی‌معنی است.
+            if (!string.IsNullOrWhiteSpace(req.BaseUrl) &&
+                !Uri.TryCreate(req.BaseUrl, UriKind.Absolute, out _))
+                return BadRequest("آدرس معتبر نیست. نمونه: http://localhost:20128");
+
+            await _db.DoExecuteSQLAsync(@"
+                UPDATE dbo.AI_Config
+                SET IsEnabled = @IsEnabled, Provider = @Provider, BaseUrl = @BaseUrl,
+                    Model = @Model, TimeoutSeconds = @TimeoutSeconds,
+                    MaxToolLoops = @MaxToolLoops,
+                    -- کلید فقط وقتی عوض می‌شود که مقدارِ تازه آمده باشد یا
+                    -- صراحتاً پاک‌کردن خواسته شده باشد. ذخیره‌ی ساده‌ی
+                    -- تنظیماتِ دیگر نباید کلید را بی‌سروصدا بشوید.
+                    ApiKey = CASE WHEN @ClearApiKey = 1 THEN NULL
+                                  WHEN @ApiKey IS NOT NULL AND LEN(@ApiKey) > 0 THEN @ApiKey
+                                  ELSE ApiKey END,
+                    UpdatedBy = @user, UpdatedAtUtc = SYSUTCDATETIME()
+                WHERE Id = 1",
+                new
+                {
+                    req.IsEnabled, req.Provider, req.BaseUrl, req.Model,
+                    req.TimeoutSeconds, req.MaxToolLoops,
+                    req.ApiKey, ClearApiKey = req.ClearApiKey ? 1 : 0,
+                    user = CurrentUserName
+                });
+
+            settings.Invalidate();
+            return Ok();
+        }
+
+        /// <summary>
+        /// آزمایش اتصال: فهرست مدل‌های سرویس را می‌گیرد. هم آدرس و کلید را
+        /// می‌سنجد و هم نام دقیق مدل‌ها را نشان می‌دهد تا ادمین مجبور نباشد
+        /// حدس بزند یا از جای دیگری کپی کند.
+        /// </summary>
+        [HttpPost("admin/config/test")]
+        [Pay2Authorize(Pay2Forms.AdminAcl, Pay2Perm.See)]
+        public async Task<ActionResult<AiConnectionTestDto>> TestConnection(
+            [FromServices] IAiSettingsProvider settings,
+            [FromServices] IHttpClientFactory httpFactory)
+        {
+            var opt = await settings.GetAsync();
+
+            if (string.IsNullOrWhiteSpace(opt.BaseUrl))
+                return Ok(new AiConnectionTestDto { Ok = false, Message = "آدرس سرویس تنظیم نشده است." });
+
+            var http = httpFactory.CreateClient("ai");
+            http.Timeout = TimeSpan.FromSeconds(20);
+
+            if (!string.IsNullOrWhiteSpace(opt.ApiKey))
+                http.DefaultRequestHeaders.Authorization =
+                    new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", opt.ApiKey);
+
+            try
+            {
+                var url = opt.BaseUrl.TrimEnd('/') +
+                          (opt.Provider.Equals("anthropic", StringComparison.OrdinalIgnoreCase)
+                           ? "/v1/models" : "/v1/models");
+
+                var res = await http.GetAsync(url);
+                var raw = await res.Content.ReadAsStringAsync();
+
+                if (!res.IsSuccessStatusCode)
+                    return Ok(new AiConnectionTestDto
+                    {
+                        Ok = false,
+                        Message = $"سرویس پاسخ داد ولی خطا: کد {(int)res.StatusCode}. " +
+                                  ((int)res.StatusCode == 401
+                                   ? "کلید پذیرفته نشد." : "")
+                    });
+
+                var models = new List<string>();
+                using var doc = JsonDocument.Parse(raw);
+
+                if (doc.RootElement.TryGetProperty("data", out var arr) &&
+                    arr.ValueKind == JsonValueKind.Array)
+                    foreach (var m in arr.EnumerateArray())
+                        if (m.TryGetProperty("id", out var id))
+                            models.Add(id.GetString() ?? "");
+
+                return Ok(new AiConnectionTestDto
+                {
+                    Ok = true,
+                    Message = $"اتصال برقرار است. {models.Count} مدل در دسترس.",
+                    Models = models
+                });
+            }
+            catch (Exception ex)
+            {
+                return Ok(new AiConnectionTestDto
+                {
+                    Ok = false,
+                    Message = "اتصال برقرار نشد: " + ex.Message
+                });
+            }
+        }
+
         /// <summary>لاگ — برای بازرسی اینکه چه کسی چه چیزی از دستیار پرسید.</summary>
         [HttpGet("admin/log")]
         [Pay2Authorize(Pay2Forms.AdminAcl, Pay2Perm.See)]

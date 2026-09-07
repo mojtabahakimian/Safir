@@ -71,6 +71,12 @@ namespace Safir.Server.Ai
         /// </summary>
         public string ApiKeyEnv { get; set; } = "SAFIR_AI_API_KEY";
 
+        /// <summary>
+        /// کلیدِ واقعی — از جدول AI_Config یا از متغیر محیطی. هیچ‌وقت از
+        /// appsettings خوانده نمی‌شود و هیچ‌وقت به کلاینت برنمی‌گردد.
+        /// </summary>
+        public string? ApiKey { get; set; }
+
         public int TimeoutSeconds { get; set; } = 120;
 
         /// <summary>سقف رفت‌وبرگشت با ابزار در یک سؤال.</summary>
@@ -100,10 +106,9 @@ namespace Safir.Server.Ai
 
             _http.Timeout = TimeSpan.FromSeconds(opt.TimeoutSeconds);
 
-            var key = Environment.GetEnvironmentVariable(opt.ApiKeyEnv);
-            if (!string.IsNullOrWhiteSpace(key))
+            if (!string.IsNullOrWhiteSpace(opt.ApiKey))
                 _http.DefaultRequestHeaders.Authorization =
-                    new AuthenticationHeaderValue("Bearer", key);
+                    new AuthenticationHeaderValue("Bearer", opt.ApiKey);
         }
 
         public string Describe => $"{_opt.Provider} ({_opt.Model})";
@@ -261,9 +266,8 @@ namespace Safir.Server.Ai
 
             _http.Timeout = TimeSpan.FromSeconds(opt.TimeoutSeconds);
 
-            var key = Environment.GetEnvironmentVariable(opt.ApiKeyEnv);
-            if (!string.IsNullOrWhiteSpace(key))
-                _http.DefaultRequestHeaders.Add("x-api-key", key);
+            if (!string.IsNullOrWhiteSpace(opt.ApiKey))
+                _http.DefaultRequestHeaders.Add("x-api-key", opt.ApiKey);
 
             _http.DefaultRequestHeaders.Add("anthropic-version", "2023-06-01");
         }

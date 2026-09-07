@@ -84,6 +84,59 @@ namespace Safir.Shared.Models.Ai
         public string Description { get; set; } = "";
     }
 
+    // ───────────────────── تنظیمات سرویس ─────────────────────
+
+    /// <summary>
+    /// تنظیمات سرویس برای صفحه‌ی ادمین.
+    ///
+    /// ⚠ ApiKey اینجا نیست و هیچ‌وقت نخواهد بود. فقط HasApiKey و چهار
+    /// نویسه‌ی آخر برمی‌گردد؛ دیدنِ کلید در رابط کاربری هیچ کاربردی ندارد
+    /// و فقط راهی برای بیرون رفتنش می‌سازد.
+    /// </summary>
+    public class AiConfigDto
+    {
+        public bool    IsEnabled      { get; set; }
+        public string  Provider       { get; set; } = "openai";
+        public string? BaseUrl        { get; set; }
+        public string? Model          { get; set; }
+        public int     TimeoutSeconds { get; set; } = 120;
+        public int     MaxToolLoops   { get; set; } = 4;
+
+        public bool    HasApiKey      { get; set; }
+        public string? ApiKeyTail     { get; set; }
+
+        /// <summary>کلید از متغیر محیطی می‌آید، نه از این صفحه.</summary>
+        public bool    KeyFromEnv     { get; set; }
+
+        public string? UpdatedBy      { get; set; }
+        public DateTime? UpdatedAtUtc { get; set; }
+    }
+
+    public class UpsertAiConfigRequest
+    {
+        public bool    IsEnabled      { get; set; }
+        public string  Provider       { get; set; } = "openai";
+        public string? BaseUrl        { get; set; }
+        public string? Model          { get; set; }
+        public int     TimeoutSeconds { get; set; } = 120;
+        public int     MaxToolLoops   { get; set; } = 4;
+
+        /// <summary>
+        /// خالی یعنی «کلید فعلی را دست نزن». برای پاک کردن باید
+        /// ClearApiKey را true فرستاد — وگرنه هر ذخیره‌ی ساده‌ای که کلید
+        /// را دوباره تایپ نکرده، بی‌سروصدا کلید را پاک می‌کرد.
+        /// </summary>
+        public string? ApiKey         { get; set; }
+        public bool    ClearApiKey    { get; set; }
+    }
+
+    public class AiConnectionTestDto
+    {
+        public bool    Ok      { get; set; }
+        public string? Message { get; set; }
+        public List<string> Models { get; set; } = new();
+    }
+
     // ───────────────────── گفتگو ─────────────────────
 
     public class AiChatTurnDto

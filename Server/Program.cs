@@ -114,16 +114,14 @@ builder.Services.AddSingleton(sp =>
     sp.GetRequiredService<IConfiguration>().GetSection("Ai").Get<Safir.Server.Ai.AiOptions>()
     ?? new Safir.Server.Ai.AiOptions());
 
-builder.Services.AddHttpClient<Safir.Server.Ai.OpenAiCompatibleProvider>();
-builder.Services.AddHttpClient<Safir.Server.Ai.AnthropicProvider>();
+// کلاینتِ نام‌دار: ارائه‌دهنده در هر درخواست با تنظیماتِ تازه از پایگاه
+// ساخته می‌شود، پس نمی‌تواند AddHttpClient<T> جنریک باشد.
+builder.Services.AddHttpClient("ai");
 
-builder.Services.AddScoped<Safir.Server.Ai.IAiChatProvider>(sp =>
-{
-    var opt = sp.GetRequiredService<Safir.Server.Ai.AiOptions>();
-    return string.Equals(opt.Provider, "anthropic", StringComparison.OrdinalIgnoreCase)
-         ? sp.GetRequiredService<Safir.Server.Ai.AnthropicProvider>()
-         : sp.GetRequiredService<Safir.Server.Ai.OpenAiCompatibleProvider>();
-});
+builder.Services.AddScoped<Safir.Server.Ai.IAiSettingsProvider,
+                           Safir.Server.Ai.AiSettingsProvider>();
+builder.Services.AddScoped<Safir.Server.Ai.IAiProviderFactory,
+                           Safir.Server.Ai.AiProviderFactory>();
 
 builder.Services.AddScoped<Safir.Server.Ai.IAiConversationService,
                            Safir.Server.Ai.AiConversationService>();

@@ -1,0 +1,226 @@
+@page "/ai/settings"
+@using Safir.Shared.Models.Ai
+@using Safir.Client.Services
+@inject AiApiService Api
+@inject ISnackbar Snackbar
+
+<PageTitle>تنظیمات سرویس هوش مصنوعی</PageTitle>
+
+<MudText Typo="Typo.h5" Class="mb-3">تنظیمات سرویس هوش مصنوعی</MudText>
+
+@if (_error is not null)
+{
+    <MudAlert Severity="Severity.Error" Class="mb-3">@_error</MudAlert>
+}
+
+@if (_cfg is null)
+{
+    <MudProgressLinear Indeterminate Color="Color.Primary" />
+}
+else
+{
+    <MudPaper Class="pa-4" Elevation="1" Style="max-width:720px">
+        <MudSwitch T="bool" @bind-Value="_cfg.IsEnabled" Color="Color.Success"
+                   Label="استفاده از این تنظیمات (به‌جای تنظیمات فایل سرور)" Class="mb-3" />
+
+        <MudSelect T="string" @bind-Value="_cfg.Provider" Label="نوع سرویس"
+                   Variant="Variant.Outlined" Dense Class="mb-3">
+            <MudSelectItem T="string" Value="@("openai")">سازگار با OpenAI (درگاه واسط، Ollama، LM Studio)</MudSelectItem>
+            <MudSelectItem T="string" Value="@("anthropic")">Anthropic Messages API</MudSelectItem>
+        </MudSelect>
+
+        <MudTextField T="string" @bind-Value="_cfg.BaseUrl" Label="آدرس سرویس"
+                      Variant="Variant.Outlined" Dense Class="mb-1"
+                      Placeholder="http://localhost:20128"
+                      HelperText="فقط ریشه، بدون مسیر. مسیر /v1/chat/completions خودکار اضافه می‌شود." />
+
+        @* راهنمای صریح، چون همین یک بار وقت گرفت: آدرسِ صفحه‌ی وبِ درگاه
+           به‌جای ریشه‌ی API. *@
+        <MudText Typo="Typo.caption" Class="mud-text-secondary mb-3 d-block">
+            آدرس صفحه‌ی داشبورد درگاه را وارد نکنید؛ آن صفحه به ورود هدایت می‌شود.
+        </MudText>
+
+        <div class="d-flex gap-2 align-start mb-3">
+            <MudTextField T="string" @bind-Value="_cfg.Model" Label="مدل"
+                          Variant="Variant.Outlined" Dense
+                          Placeholder="ag/claude-sonnet-4-6" />
+
+            @if (_models.Count > 0)
+            {
+                <MudSelect T="string" Label="مدل‌های موجود" Dense Variant="Variant.Outlined"
+                           Value="_cfg.Model" ValueChanged="@(v => _cfg.Model = v)"
+                           Style="min-width:260px">
+                    @foreach (var m in _models)
+                    {
+                        <MudSelectItem T="string" Value="@m">@m</MudSelectItem>
+                    }
+                </MudSelect>
+            }
+        </div>
+
+        @* ── کلید ──
+           هیچ‌وقت مقدار فعلی نمایش داده نمی‌شود. خالی گذاشتن یعنی «دست
+           نزن»، وگرنه هر ذخیره‌ی ساده‌ای کلید را پاک می‌کرد. *@
+        <MudTextField T="string" @bind-Value="_newKey" Label="کلید API"
+                      Variant="Variant.Outlined" Dense InputType="InputType.Password"
+                      Class="mb-1"
+                      HelperText="خالی بگذارید تا کلید فعلی دست‌نخورده بماند." />
+
+        <div class="mb-3">
+            @if (_cfg.KeyFromEnv)
+            {
+                <MudChip T="string" Size="Size.Small" Color="Color.Info"
+                         Icon="@Icons.Material.Filled.Dns">
+                    کلید از متغیر محیطی سرور خوانده می‌شود
+                </MudChip>
+            }
+            else if (_cfg.HasApiKey)
+            {
+                <MudChip T="string" Size="Size.Small" Color="Color.Success"
+                         Icon="@Icons.Material.Filled.Key">
+                    کلید ثبت شده — پایان: …@_cfg.ApiKeyTail
+                </MudChip>
+                <MudButton Size="Size.Small" Color="Color.Error" Variant="Variant.Text"
+                           OnClick="@(() => _clearKey = !_clearKey)">
+                    @(_clearKey ? "انصراف از حذف کلید" : "حذف کلید")
+                </MudButton>
+            }
+            else
+            {
+                <MudChip T="string" Size="Size.Small" Color="Color.Warning"
+                         Icon="@Icons.Material.Filled.KeyOff">
+                    کلیدی ثبت نشده
+                </MudChip>
+            }
+        </div>
+
+        <div class="d-flex gap-3 mb-3">
+            <MudNumericField T="int" @bind-Value="_cfg.TimeoutSeconds" Label="تایم‌اوت (ثانیه)"
+                             Variant="Variant.Outlined" Dense Min="5" Max="900"
+                             Style="max-width:180px" />
+            <MudNumericField T="int" @bind-Value="_cfg.MaxToolLoops" Label="سقف مراحل ابزار"
+                             Variant="Variant.Outlined" Dense Min="1" Max="12"
+                             Style="max-width:180px" />
+        </div>
+
+        <MudDivider Class="my-3" />
+
+        <div class="d-flex gap-2 align-center flex-wrap">
+            <MudButton Variant="Variant.Filled" Color="Color.Primary"
+                       StartIcon="@Icons.Material.Filled.Save"
+                       Disabled="_busy" OnClick="Save">ذخیره</MudButton>
+
+            <MudButton Variant="Variant.Outlined" Color="Color.Secondary"
+                       StartIcon="@Icons.Material.Filled.NetworkCheck"
+                       Disabled="_busy" OnClick="Test">آزمایش اتصال</MudButton>
+
+            @if (_cfg.UpdatedAtUtc is not null)
+            {
+                <MudText Typo="Typo.caption" Class="mud-text-secondary">
+                    آخرین تغییر: @_cfg.UpdatedBy —
+                    @_cfg.UpdatedAtUtc.Value.ToLocalTime().ToString("yyyy/MM/dd HH:mm")
+                </MudText>
+            }
+        </div>
+
+        @if (_busy)
+        {
+            <MudProgressLinear Indeterminate Color="Color.Primary" Class="mt-3" />
+        }
+
+        @if (_test is not null)
+        {
+            <MudAlert Severity="@(_test.Ok ? Severity.Success : Severity.Error)" Class="mt-3">
+                @_test.Message
+            </MudAlert>
+        }
+    </MudPaper>
+}
+
+@code {
+    private AiConfigDto?         _cfg;
+    private AiConnectionTestDto? _test;
+    private List<string>         _models = new();
+
+    private string  _newKey = "";
+    private bool    _clearKey;
+    private bool    _busy;
+    private string? _error;
+
+    protected override async Task OnInitializedAsync() => await Load();
+
+    private async Task Load()
+    {
+        _busy = true; _error = null;
+        try   { _cfg = await Api.GetConfigAsync(); }
+        catch (Exception ex) { _error = Friendly(ex); }
+        finally { _busy = false; }
+    }
+
+    private async Task Save()
+    {
+        if (_cfg is null) return;
+
+        _busy = true; _error = null;
+        try
+        {
+            var (ok, err) = await Api.SaveConfigAsync(new UpsertAiConfigRequest
+            {
+                IsEnabled      = _cfg.IsEnabled,
+                Provider       = _cfg.Provider,
+                BaseUrl        = _cfg.BaseUrl,
+                Model          = _cfg.Model,
+                TimeoutSeconds = _cfg.TimeoutSeconds,
+                MaxToolLoops   = _cfg.MaxToolLoops,
+                ApiKey         = string.IsNullOrWhiteSpace(_newKey) ? null : _newKey.Trim(),
+                ClearApiKey    = _clearKey
+            });
+
+            if (ok)
+            {
+                Snackbar.Add("ذخیره شد.", Severity.Success);
+
+                // کلید از حافظه‌ی صفحه پاک می‌شود تا در فرم نماند.
+                _newKey   = "";
+                _clearKey = false;
+                await Load();
+            }
+            else Snackbar.Add(err ?? "ذخیره نشد.", Severity.Error);
+        }
+        catch (Exception ex) { _error = Friendly(ex); }
+        finally { _busy = false; }
+    }
+
+    private async Task Test()
+    {
+        _busy = true; _test = null; _error = null;
+        try
+        {
+            _test = await Api.TestConnectionAsync();
+
+            // فهرست مدل‌ها از خودِ سرویس می‌آید، پس ادمین لازم نیست نام
+            // دقیق را از جای دیگری پیدا کند یا حدس بزند.
+            if (_test.Ok) _models = _test.Models;
+        }
+        catch (Exception ex) { _error = Friendly(ex); }
+        finally { _busy = false; }
+    }
+
+    private static string Friendly(Exception ex)
+    {
+        var code = (ex as HttpRequestException)?.StatusCode;
+
+        var text = code switch
+        {
+            System.Net.HttpStatusCode.Unauthorized =>
+                "نشست شما منقضی شده است. یک بار خارج و دوباره وارد شوید.",
+            System.Net.HttpStatusCode.Forbidden =>
+                "شما دسترسی تنظیمات را ندارید.",
+            System.Net.HttpStatusCode.NotFound =>
+                "این قابلیت روی سرور موجود نیست؛ نسخه‌ی سرور قدیمی است.",
+            _ => "خطا در ارتباط با سرور: " + ex.Message
+        };
+
+        return code is null ? text : $"{text} (کد {(int)code})";
+    }
+}

@@ -32,19 +32,16 @@ namespace Safir.Server.Ai
 
     public sealed class AiConversationService : IAiConversationService
     {
-        private readonly IAiChatProvider  _provider;
-        private readonly IAiToolRegistry  _tools;
-        private readonly IAiAccessService _access;
-        private readonly AiOptions        _opt;
+        private readonly IAiProviderFactory _factory;
+        private readonly IAiToolRegistry    _tools;
+        private readonly IAiAccessService   _access;
 
         public AiConversationService(
-            IAiChatProvider provider, IAiToolRegistry tools,
-            IAiAccessService access, AiOptions opt)
+            IAiProviderFactory factory, IAiToolRegistry tools, IAiAccessService access)
         {
-            _provider = provider;
-            _tools    = tools;
-            _access   = access;
-            _opt      = opt;
+            _factory = factory;
+            _tools   = tools;
+            _access  = access;
         }
 
         public async Task<AiChatReplyDto> AskAsync(
@@ -52,6 +49,8 @@ namespace Safir.Server.Ai
             IReadOnlyList<AiChatTurnDto> history, string question,
             CancellationToken ct = default)
         {
+            var (provider, opt) = await _factory.CreateAsync();
+
             var eff = await _access.GetEffectiveAsync(userCo);
 
             if (!eff.IsEnabled || eff.QuotaExhausted)
@@ -93,9 +92,9 @@ namespace Safir.Server.Ai
 
             var steps = new List<AiChatStepDto>();
 
-            for (int loop = 0; loop < _opt.MaxToolLoops; loop++)
+            for (int loop = 0; loop < opt.MaxToolLoops; loop++)
             {
-                var reply = await _provider.CompleteAsync(messages, allowed, ct);
+                var reply = await provider.CompleteAsync(messages, allowed, ct);
 
                 if (!reply.Ok)
                     return new AiChatReplyDto { Error = reply.Error, Steps = steps };
@@ -141,7 +140,7 @@ namespace Safir.Server.Ai
             // گفته شود — جوابِ ناقصی که شبیه جوابِ کامل باشد بدترین حالت است.
             return new AiChatReplyDto
             {
-                Error = $"پاسخ در {_opt.MaxToolLoops} مرحله کامل نشد. سؤال را ساده‌تر بپرسید.",
+                Error = $"پاسخ در {opt.MaxToolLoops} مرحله کامل نشد. سؤال را ساده‌تر بپرسید.",
                 Steps = steps
             };
         }
