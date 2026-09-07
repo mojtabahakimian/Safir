@@ -77,10 +77,58 @@ namespace Safir.Server.Controllers
 
             var reply = await _chat.AskAsync(
                 CurrentUserCo, CurrentUserName, convId,
-                req.History, req.Question.Trim(), HttpContext.RequestAborted);
+                req.History, req.Question.Trim(),
+                req.AttachmentName, req.AttachmentText,
+                HttpContext.RequestAborted);
 
             Response.Headers["X-Conversation-Id"] = convId.ToString();
             return Ok(reply);
+        }
+
+        /// <summary>
+        /// خواندن فایل پیوست و برگرداندن متنِ استخراج‌شده.
+        ///
+        /// فایل ذخیره نمی‌شود؛ متن به کلاینت برمی‌گردد و او آن را همراه
+        /// سؤال می‌فرستد. این‌طور سرور حالتی نگه نمی‌دارد و کاربر هم پیش
+        /// از فرستادن می‌بیند چه چیزی خوانده شده.
+        /// </summary>
+        [HttpPost("attachment")]
+        [RequestSizeLimit(AiAttachmentReader.MaxFileBytes + 1024)]
+        public async Task<ActionResult<AiAttachmentDto>> ReadAttachment(IFormFile file)
+        {
+            if (file is null || file.Length == 0)
+                return BadRequest("فایلی دریافت نشد.");
+
+            if (file.Length > AiAttachmentReader.MaxFileBytes)
+                return BadRequest(
+                    $"حجم فایل بیشتر از {AiAttachmentReader.MaxFileBytes / 1024 / 1024} مگابایت است.");
+
+            if (!AiAttachmentReader.IsSupported(file.FileName))
+                return BadRequest($"این نوع فایل پشتیبانی نمی‌شود. مجاز: {AiAttachmentReader.SupportedList}");
+
+            // فقط کاربری که خودش دستیار دارد می‌تواند فایل بفرستد، وگرنه
+            // این اندپوینت یک مبدلِ اکسل‌به‌متنِ رایگان برای همه می‌شد.
+            var eff = await _access.GetEffectiveAsync(CurrentUserCo);
+            if (!eff.IsEnabled) return StatusCode(403, eff.DisabledReason);
+
+            try
+            {
+                await using var stream = file.OpenReadStream();
+                var text = AiAttachmentReader.Read(stream, file.FileName);
+
+                return Ok(new AiAttachmentDto
+                {
+                    FileName = file.FileName,
+                    Text     = text,
+                    Chars    = text.Length
+                });
+            }
+            catch (Exception)
+            {
+                // پیام خام کتابخانه برای کاربر بی‌معنی است؛ چیزی که به
+                // دردش می‌خورد این است که فایل خراب یا رمزدار است.
+                return BadRequest("خواندن این فایل ممکن نشد. شاید خراب یا رمزگذاری‌شده باشد.");
+            }
         }
 
         /// <summary>

@@ -158,6 +158,20 @@ namespace Safir.Shared.Models.Ai
         /// این مسیر نمی‌آیند.
         /// </summary>
         public List<AiChatTurnDto> History { get; set; } = new();
+
+        /// <summary>
+        /// متنِ استخراج‌شده‌ی فایل پیوست. سرور فایل را نگه نمی‌دارد، پس
+        /// متن از همین‌جا می‌آید.
+        /// </summary>
+        public string? AttachmentName { get; set; }
+        public string? AttachmentText { get; set; }
+    }
+
+    public class AiAttachmentDto
+    {
+        public string FileName { get; set; } = "";
+        public string Text     { get; set; } = "";
+        public int    Chars    { get; set; }
     }
 
     public class AiChatStepDto

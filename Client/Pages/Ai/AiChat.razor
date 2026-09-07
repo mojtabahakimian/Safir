@@ -2,6 +2,11 @@
 @using Safir.Shared.Models.Ai
 @using Safir.Client.Services
 @inject AiApiService Api
+@inject NavigationManager Nav
+@inject IAuthService AuthService
+@implements IAsyncDisposable
+@using Microsoft.AspNetCore.SignalR.Client
+@using Safir.Shared.Interfaces
 
 <PageTitle>دستیار هوش مصنوعی</PageTitle>
 
@@ -62,9 +67,30 @@ else
             </MudExpansionPanels>
         }
 
+        @* وضعیتِ واقعی، نه فقط یک نوار در حال حرکت: کاربر می‌بیند
+           دستیار همین حالا مشغول چه کاری است و چند سطر گرفته. *@
         @if (_busy)
         {
-            <MudProgressLinear Indeterminate Color="Color.Primary" Class="my-2" />
+            <MudPaper Class="pa-3 my-2 me-8" Elevation="0"
+                      Style="background:var(--mud-palette-background-grey)">
+                <div class="d-flex align-center gap-2">
+                    <MudProgressCircular Size="Size.Small" Indeterminate Color="Color.Primary" />
+                    <MudText Typo="Typo.body2">@(_status ?? "در حال پردازش…")</MudText>
+                </div>
+
+                @if (_statusLog.Count > 1)
+                {
+                    <div class="mt-2">
+                        @foreach (var s in _statusLog.Take(_statusLog.Count - 1))
+                        {
+                            <MudText Typo="Typo.caption" Class="mud-text-secondary d-block">
+                                <MudIcon Icon="@Icons.Material.Filled.Check" Size="Size.Small" />
+                                @s
+                            </MudText>
+                        }
+                    </div>
+                }
+            </MudPaper>
         }
 
         @if (_error is not null)
@@ -73,7 +99,26 @@ else
         }
     </div>
 
+    @if (_attachment is not null)
+    {
+        <MudChip T="string" Color="Color.Info" Class="mb-2"
+                 Icon="@Icons.Material.Filled.AttachFile"
+                 OnClose="@(() => _attachment = null)">
+            @_attachment.FileName — @_attachment.Chars.ToString("N0") نویسه
+        </MudChip>
+    }
+
     <div class="d-flex gap-2 align-start">
+        @* فایل پیش از ارسالِ سؤال خوانده می‌شود تا کاربر ببیند چه چیزی
+           استخراج شده — نه اینکه بعد از دو دقیقه بفهمد فایل خالی بوده. *@
+        <MudFileUpload T="IBrowserFile" FilesChanged="OnFilePicked" Class="mt-2"
+                       Accept=".txt,.csv,.md,.json,.xml,.log,.sql,.xlsx,.xlsm">
+            <ActivatorContent>
+                <MudIconButton Icon="@Icons.Material.Filled.AttachFile"
+                               Color="Color.Default" Disabled="_busy" />
+            </ActivatorContent>
+        </MudFileUpload>
+
         <MudTextField @bind-Value="_question" Label="سؤالتان را بنویسید"
                       Variant="Variant.Outlined" Lines="2" Immediate
                       OnKeyDown="OnKey" Disabled="_busy" />
@@ -98,8 +143,42 @@ else
     private string? _error;
     private Guid?   _conversationId;
 
+    private AiAttachmentDto? _attachment;
+
+    private HubConnection?    _hub;
+    private string?           _status;
+    private readonly List<string> _statusLog = new();
+
+    /// <summary>
+    /// شناسه‌ی گفتگو پیش از اولین سؤال ساخته می‌شود، نه بعد از آن: برای
+    /// شنیدن پیام‌های وضعیت باید *قبل* از شروع پردازش در گروه باشیم.
+    /// </summary>
+    private Guid ConversationId => _conversationId ??= Guid.NewGuid();
+
+    private async Task OnFilePicked(IBrowserFile? file)
+    {
+        if (file is null) return;
+
+        _busy = true; _error = null;
+        try
+        {
+            // سقف سمت سرور هم هست؛ این فقط جلوی رفت‌وبرگشت بی‌فایده را
+            // می‌گیرد.
+            await using var stream = file.OpenReadStream(5 * 1024 * 1024);
+
+            var (data, err) = await Api.UploadAttachmentAsync(stream, file.Name, file.Size);
+
+            if (err is not null) _error = err;
+            else _attachment = data;
+        }
+        catch (Exception ex) { _error = "خواندن فایل ممکن نشد: " + ex.Message; }
+        finally { _busy = false; }
+    }
+
     protected override async Task OnInitializedAsync()
     {
+        await ConnectHubAsync();
+
         try   { _access = await Api.GetMyAccessAsync(); }
         catch (Exception ex)
         {
@@ -109,6 +188,44 @@ else
                 DisabledReason = "خطا در ارتباط با سرور: " + ex.Message
             };
         }
+    }
+
+    /// <summary>
+    /// اتصال به هاب برای پیام‌های وضعیت. مثل صفحات بهای تمام‌شده، توکن
+    /// از AccessTokenProvider می‌رود چون مرورگر روی درخواستِ upgrade
+    /// اجازه‌ی هدر سفارشی نمی‌دهد.
+    ///
+    /// شکست اتصال، چت را نمی‌شکند: بدون آن فقط پیام‌های وضعیت را از دست
+    /// می‌دهیم، نه خودِ جواب را.
+    /// </summary>
+    private async Task ConnectHubAsync()
+    {
+        try
+        {
+            _hub = new HubConnectionBuilder()
+                .WithUrl(Nav.ToAbsoluteUri("/hubs/ai-chat"), o =>
+                {
+                    o.AccessTokenProvider = () => AuthService.GetTokenAsync();
+                })
+                .WithAutomaticReconnect()
+                .Build();
+
+            _hub.On<string>("Status", msg =>
+            {
+                _status = msg;
+                _statusLog.Add(msg);
+                InvokeAsync(StateHasChanged);
+            });
+
+            await _hub.StartAsync();
+            await _hub.SendAsync("Subscribe", ConversationId.ToString());
+        }
+        catch { _hub = null; }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_hub is not null) await _hub.DisposeAsync();
     }
 
     /// <summary>Enter می‌فرستد، Shift+Enter خط جدید.</summary>
@@ -126,6 +243,8 @@ else
         _question  = "";
         _error     = null;
         _lastSteps = new();
+        _status    = null;
+        _statusLog.Clear();
         _turns.Add(new AiChatTurnDto { IsUser = true, Text = q });
         _busy = true;
 
@@ -137,12 +256,16 @@ else
 
             var reply = await Api.ChatAsync(new AiChatRequest
             {
-                ConversationId = _conversationId,
+                ConversationId = ConversationId,
                 Question       = q,
-                History        = history
+                History        = history,
+                AttachmentName = _attachment?.FileName,
+                AttachmentText = _attachment?.Text
             });
 
-            _conversationId ??= reply.ConversationId;
+            // پیوست فقط برای همان یک سؤال است؛ ماندنش باعث می‌شد سؤال
+            // بعدی هم بی‌خبر همان فایل را حمل کند.
+            _attachment = null;
             _lastSteps = reply.Steps;
 
             if (reply.Error is not null) _error = reply.Error;

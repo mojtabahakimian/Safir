@@ -115,6 +115,31 @@ namespace Safir.Client.Services
         public async Task<List<AiUserAccessDto>> ListAccessAsync()
             => await _http.GetFromJsonAsync<List<AiUserAccessDto>>($"{Base}/admin/access") ?? new();
 
+        /// <summary>
+        /// فایل را به سرور می‌فرستد و متنِ استخراج‌شده را می‌گیرد. فایل
+        /// ذخیره نمی‌شود؛ متن همراه سؤال بعدی فرستاده می‌شود.
+        /// </summary>
+        public async Task<(AiAttachmentDto? Data, string? Error)> UploadAttachmentAsync(
+            Stream stream, string fileName, long size)
+        {
+            using var content = new MultipartFormDataContent();
+            using var file    = new StreamContent(stream);
+
+            content.Add(file, "file", fileName);
+
+            var res = await Slow().PostAsync($"{Base}/attachment", content);
+
+            if (!res.IsSuccessStatusCode)
+            {
+                var body = await res.Content.ReadAsStringAsync();
+                return (null, body.Length is > 0 and <= 200
+                            ? body
+                            : $"خواندن فایل ممکن نشد (کد {(int)res.StatusCode}).");
+            }
+
+            return (await res.Content.ReadFromJsonAsync<AiAttachmentDto>(), null);
+        }
+
         // ───────── تنظیمات سرویس ─────────
 
         public async Task<AiConfigDto> GetConfigAsync()

@@ -125,6 +125,8 @@ builder.Services.AddScoped<Safir.Server.Ai.IAiProviderFactory,
 
 builder.Services.AddScoped<Safir.Server.Ai.IAiConversationService,
                            Safir.Server.Ai.AiConversationService>();
+builder.Services.AddScoped<Safir.Server.Ai.IAiChatNotifier,
+                           Safir.Server.Ai.AiChatNotifier>();
 
 builder.Services.AddSingleton<Safir.Server.CostClose.CostCloseQueue>();
 builder.Services.AddSingleton<Safir.Server.CostClose.ICostCloseQueue>(
@@ -273,6 +275,7 @@ app.Use(async (context, next) =>
 app.MapRazorPages();
 app.MapControllers(); // Make sure API controllers are mapped
 app.MapHub<Safir.Server.CostClose.CostCloseHub>("/hubs/cost-close");
+app.MapHub<Safir.Server.Ai.AiChatHub>("/hubs/ai-chat");
 
 app.MapFallbackToFile("index.html"); // Fallback for Blazor routing
 
