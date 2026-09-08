@@ -113,6 +113,12 @@ builder.Services.AddScoped<Safir.Server.Ai.IAiTool, Safir.Server.Ai.DescribeTabl
 builder.Services.AddScoped<Safir.Server.Ai.IAiTool, Safir.Server.Ai.FindColumnTool>();
 builder.Services.AddScoped<Safir.Server.Ai.IAiTool, Safir.Server.Ai.RunSqlTool>();
 
+// مستندِ فارسیِ ساختار پایگاه. فهرستش Singleton است چون فایل ثابت است و
+// تجزیه‌اش (۷۶۲ بخش) نباید هر درخواست تکرار شود؛ به پایگاه هم کاری ندارد.
+builder.Services.AddSingleton<Safir.Server.Ai.IAiDocsIndex, Safir.Server.Ai.AiDocsIndex>();
+builder.Services.AddScoped<Safir.Server.Ai.IAiTool, Safir.Server.Ai.TableDocTool>();
+builder.Services.AddScoped<Safir.Server.Ai.IAiTool, Safir.Server.Ai.SearchDocsTool>();
+
 // ── ارائه‌دهنده‌ی مدل ──
 // انتخاب با تنظیمات است نه با کد، تا رفتن از Ollama محلی به سرویس ابری
 // فقط عوض کردن appsettings باشد. کلید هرگز اینجا نیست — فقط نامِ متغیر

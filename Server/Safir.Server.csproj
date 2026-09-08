@@ -31,6 +31,10 @@
 		<Content Include="Rpts\R_DAFTAR_TAFZILY_2_2.mrt">
 			<CopyToOutputDirectory>Always</CopyToOutputDirectory>
 		</Content>
+		<!-- فرهنگِ فارسیِ جدول‌ها و ویوها؛ دستیار در زمان اجرا از آن می‌خواند. -->
+		<Content Include="Ai\Docs\DATABASE_DOCUMENTATION.md">
+			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+		</Content>
 	</ItemGroup>
 
 	<ItemGroup>
