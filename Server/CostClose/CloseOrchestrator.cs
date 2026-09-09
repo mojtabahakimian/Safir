@@ -197,9 +197,28 @@ namespace Safir.Server.CostClose
                 // «آستانه‌ای» (بیشترین تغییرِ TotalCost بین دو دورِ پیاپی، روی هر
                 // کالا) است، نه برابریِ دقیق — با همان آستانه‌ی یک‌ریالیِ CHK-02
                 // («این دو باید دقیقاً یکی باشند» تا سطح ریال، نه فراتر).
+                //
+                // ⚠️ اصلاح (ران ۱۰/ماه ۵، کد ۳۳۶۵): آستانه‌ي مطلقِ تنها کافي
+                // نيست. وقتي خودِ نرخ بزرگ است، «يک ريال» يک آستانه نيست،
+                // يک آرزوست: روي مقدارِ ۱e15 هر دور فقط ۳۵٪ فاصله را
+                // مي‌بندد، پس رسيدن به زيرِ يک ريال ~۷۷ دور مي‌خواهد و سقفِ
+                // حلقه ۴۰ است. نتيجه: ۴۰ دورِ ۱۱ ثانيه‌اي (~۷ دقيقه) سوخت
+                // و اجرا با همان عددِ خراب تمام شد.
+                // پس هر کالا با هر دو معيار سنجيده مي‌شود و *يکي* کافي است:
+                // يا تغييرش زير يک ريال است، يا زير يک‌ميليونيمِ خودِ نرخ.
+                // يک‌ميليونيم روي نرخِ پنج‌ميليوني مي‌شود پنج ريال — از هر
+                // آستانه‌ي بااهميتِ حسابداري خيلي ريزتر.
                 const double RateConvergeThreshold = 1.0;
+                const double RateConvergeRelative  = 1e-6;
                 Dictionary<long, double>? lastRates = null;
                 int    s11Cycles          = 0;
+
+                // بيشترين تغييرِ دورِ قبل — براي تشخيصِ «دارد کار مي‌کند» از
+                // «دارد جا مي‌زند». حلقه‌اي که فاصله‌اش آب نمي‌رود، با ۴۰ دور
+                // هم آب نمي‌رود؛ زودتر ايستادن و گفتنِ اينکه کدام کالا
+                // مقصر است، از هفت دقيقه انتظارِ بي‌نتيجه بهتر است.
+                double? prevWorst   = null;
+                int     stalledRows = 0;
                 // تست عملی روی ران واقعی (کدهای ۳۳۶۵ و ۳۱۰۰، هر دو زنجیره‌ی
                 // خودمصرفِ چندسطحی): با نسبتِ ثابتِ ≈۰.۷۵ در هر دور، از
                 // بیشترین‌تغییرِ ~۱۳۸ ریال تا زیر آستانه‌ی یک‌ریالی حدود
@@ -214,6 +233,11 @@ namespace Safir.Server.CostClose
                 // درست کار می‌کند، فقط برای فاصله‌ی اولیه‌ی بزرگ‌تر به
                 // دورهای بیشتری نیاز دارد؛ ۴۰ حاشیه‌ی اطمینانِ بیشتری می‌دهد.
                 const int MaxS11Cycles    = 40;
+
+                // سه دور، نه یکی: تعداد کالاهایی که هر دور به‌روز می‌شوند
+                // نوسان دارد، و یک دورِ تخت می‌تواند اتفاقی باشد. سه دور
+                // پشت‌سرهم دیگر اتفاق نیست.
+                const int StallRounds     = 3;
 
                 // ── دامنه‌ی S07A ──
                 // پاس اول (و هر پاس بعد از یک بازتولیدِ تازه‌ی S07) باید کل
@@ -379,7 +403,8 @@ namespace Safir.Server.CostClose
                         var rates = await GetItemCostSnapshotAsync(db, job.RunId);
                         (double Max, long? Code)? delta = lastRates is null
                             ? null
-                            : MaxAbsDelta(lastRates, rates);
+                            : MaxUnconvergedDelta(lastRates, rates,
+                                                  RateConvergeThreshold, RateConvergeRelative);
 
                         // ⚠️ اصلاح (تأیید کاربر، کد ۳۵۱۴/whey پودر کشف شد): مقایسه
                         // باید روی مقدارِ گردشده به نزدیک‌ترین ریال باشد، نه رقمِ
@@ -421,8 +446,20 @@ namespace Safir.Server.CostClose
                             await LogAsync(db, job.RunId, "S11", 1,
                                 $"همگرایی در دور {s11Cycles + 1} — یک پاس کاملِ S07A برای تأیید اجرا می‌شود");
                         }
-                        else if (s11Cycles < MaxS11Cycles)
+                        else if (s11Cycles < MaxS11Cycles && stalledRows < StallRounds)
                         {
+                            // ── جا زده یا دارد کار می‌کند؟ ──
+                            // میراییِ S11 هر دور ۳۵٪ از فاصله را می‌بندد، پس
+                            // یک حلقه‌ی سالم باید هر دور محسوس کوچک‌تر شود.
+                            // اگر سه دور پشت‌سرهم تکان نخورَد، دورِ چهل‌ام هم
+                            // نمی‌خورَد — فقط ۱۱ ثانیه‌ی دیگر می‌سوزاند.
+                            if (delta is not null && prevWorst is not null)
+                            {
+                                if (delta.Value.Max >= prevWorst.Value * 0.99) stalledRows++;
+                                else stalledRows = 0;
+                            }
+                            prevWorst = delta?.Max;
+
                             // نرخ بعد از پاس تأییدیِ کامل تکان خورد: یعنی
                             // کالایی بیرون از «فرمول‌دارها» هم عوض می‌شده و
                             // دامنه‌ی باریک آن را جا انداخته بود.
@@ -456,8 +493,16 @@ namespace Safir.Server.CostClose
                         {
                             lastRates = rates;
                             var worstItem = delta is null ? "؟" : await DescribeItemAsync(db, delta.Value.Code);
+
+                            // چرا متوقف شد فرق می‌کند: «به سقف خوردیم» یعنی
+                            // کُند بود، «جا زد» یعنی داده‌ی این کالا خراب است
+                            // و دور بیشتر درستش نمی‌کند. کاربر باید بداند کدام.
+                            var why = stalledRows >= StallRounds
+                                ? $"فاصله‌ی نرخ در {StallRounds} دور پیاپی کوچک نشد — تکرارِ بیشتر جوابش نیست"
+                                : $"همگرایی نرخ پس از {MaxS11Cycles} دور تکرار کامل نشد";
+
                             await LogAsync(db, job.RunId, "S11", 2,
-                                $"همگرایی نرخ پس از {MaxS11Cycles} دور تکرار کامل نشد (بیشترین تغییر هنوز {delta?.Max:N0} ریال روی کالای {worstItem}) — با آخرین مقدار ادامه داده می‌شود");
+                                $"{why} (بیشترین تغییر هنوز {delta?.Max:N0} ریال روی کالای {worstItem}) — با آخرین مقدار ادامه داده می‌شود");
                         }
                     }
                 }
@@ -551,8 +596,19 @@ namespace Safir.Server.CostClose
         /// می‌شود، نه نادیده گرفته می‌شود — یک کالای گم‌شده نباید بی‌صدا از
         /// چشمِ آستانه‌ی همگرایی رد شود.
         /// </summary>
-        private static (double Max, long? Code) MaxAbsDelta(
-            Dictionary<long, double> prev, Dictionary<long, double> curr)
+        /// <remarks>
+        /// کالاهایی که *همگرا شده‌اند* اصلاً وارد بیشترین‌گیری نمی‌شوند.
+        /// یک کالا همگراست اگر تغییرش زیر یک ریال باشد، یا زیر یک‌ میلیونیمِ
+        /// خودِ نرخ. معیار دوم همان چیزی است که آستانه‌ی مطلق کم دارد: روی
+        /// نرخِ بزرگ، «یک ریال» دقتی است که خودِ FLOAT هم تضمینش نمی‌کند،
+        /// چه رسد به یک زنجیره‌ی چندسطحیِ بازمحاسبه‌شونده.
+        ///
+        /// اگر همه همگرا باشند صفر برمی‌گردد — یعنی همان معنای قبلیِ
+        /// «هیچ تغییرِ معناداری نمانده».
+        /// </remarks>
+        private static (double Max, long? Code) MaxUnconvergedDelta(
+            Dictionary<long, double> prev, Dictionary<long, double> curr,
+            double absTol, double relTol)
         {
             double max = 0;
             long? maxCode = null;
@@ -561,6 +617,12 @@ namespace Safir.Server.CostClose
                 var p = prev.TryGetValue(code, out var pv) ? pv : 0;
                 var c = curr.TryGetValue(code, out var cv) ? cv : 0;
                 var d = Math.Abs(c - p);
+
+                if (d <= absTol) continue;
+
+                var scale = Math.Max(Math.Abs(p), Math.Abs(c));
+                if (d <= scale * relTol) continue;
+
                 if (d > max) { max = d; maxCode = code; }
             }
             return (max, maxCode);
