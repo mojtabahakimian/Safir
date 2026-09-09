@@ -417,7 +417,15 @@ namespace Safir.Server.CostClose.AverageRateRebuild
                         // AVRAGE2 نوشته می‌شود — تأیید کاربر. (رفع ترتیب
                         // واقعی مشکل در BuildKardexAsync/شاخه‌ی BACK_HEAD بود،
                         // نه در این فرمول — نگاه کنید کامنت آن‌جا.)
-                        st.MBKM += (t.MEGH_MAR ?? 0) * (line?.AVRAGE ?? 0);
+                        // ⚠️ اگر ردیفِ فروشِ اصلی در این پیمایش لمس نشده باشد،
+                        // line.AVRAGE هنوز صفر است. کد اصلی همان صفر را جمع
+                        // می‌زد: کالا با ارزشِ صفر برمی‌گشت ولی مقدارش شمرده
+                        // می‌شد، و میانگین مصنوعاً پایین می‌آمد.
+                        // اتوباز این را به میانگینِ جاری برگردانده و درست هم
+                        // هست — برگشت باید با یک نرخِ واقعی وارد شود، نه صفر.
+                        // اینجا هم همان، تا دو برنامه یک جواب بدهند.
+                        var returnRate = (line?.AVRAGE ?? 0) > 0 ? line!.AVRAGE : st.MIAN;
+                        st.MBKM += (t.MEGH_MAR ?? 0) * returnRate;
                         st.MOGUDI += t.MEGH_MAR ?? 0;
                         Recalc(st);
                         if (line is not null)
@@ -837,7 +845,8 @@ namespace Safir.Server.CostClose.AverageRateRebuild
                   FROM dbo.INVO_LST i
                   INNER JOIN dbo.HEAD_LST h ON i.NUMBER = h.NUMBER AND i.TAG = h.TAG
                   INNER JOIN dbo.TAGCOD t ON h.TAG = t.CODE
-                  WHERE i.CODE = @Code AND (@Anbar IS NULL OR i.ANBAR = @Anbar) AND h.DATE_N > @SinceDate",
+                  WHERE i.TAG <> 20 AND i.TAG <> 23
+                    AND i.CODE = @Code AND (@Anbar IS NULL OR i.ANBAR = @Anbar) AND h.DATE_N > @SinceDate",
 
                 @"SELECT h.DATE_N, 6 AS TAG, i.NUMBER, i.ANBARF AS ANBAR, i.CODE, i.MEGH, i.MEGHk, i.MEGH_MAR,
                          i.MABL, i.MABL_K, i.N_KOL, i.ID AS id, t.tartib
@@ -869,7 +878,7 @@ namespace Safir.Server.CostClose.AverageRateRebuild
                 // یکی در TMPAV101 اصلی وجود نداشت (کد قدیمی هیچ‌جا BACK_HEAD
                 // را نمی‌خواند) — عمداً و آگاهانه اضافه شده، نه یک پورت وفادار:
                 // ردیف INVO_LST خودِ فروش (TAG=2) دوباره اینجا با برچسب TAG=4
-                // در تاریخ واقعیِ برگشت (bh.DATE_N، نه تاریخ فروش اصلی) ظاهر
+                // در تاریخ واقعیِ برگشت (bh.DATE_N، نه تاریخ فروش اصلی) ظاهر    ``
                 // می‌شود تا Case 4 اجرا شود و AVRAGE2 را به‌روز کند. چون همان
                 // ID فروش اصلی است، line.AVRAGE در Case 4 همان MIANِ لحظه‌ی
                 // فروش خواهد بود — دقیقاً رفتاری که کامنت Case 4 توصیف می‌کند.
@@ -951,7 +960,7 @@ namespace Safir.Server.CostClose.AverageRateRebuild
             // دارند که FBK ندارد: سنتینلِ ۹۹۹۹ برای برگشتِ هم‌روزِ فروش.
             // نگه داشتنِ کدی که فقط تا وقتی درست است که اجرا نشود، تله است.
 
-            var sql = "SELECT * FROM (" + string.Join(" UNION ", parts) + ") AS AVGSRC ORDER BY DATE_N, tartib, id";
+            var sql = "SELECT * FROM (" + string.Join(" UNION ", parts) + ") AS AVGSRC ORDER BY DATE_N, tartib, id, NUMBER";
 
             return await _db.DoGetDataSQLAsync<KardexRow>(sql, new { Code = code, Anbar = anbar, SinceDate = sinceDate });
         }
