@@ -641,11 +641,16 @@ namespace Safir.Server.CostClose.AverageRateRebuild
         /// ترتیبِ خطیِ ثابتی هر دو طرف را همزمان درست نمی‌کند)، کاردکسِ *همه‌ی*
         /// انبارهای این کالا یک‌جا خوانده و بر اساس (DATE_N, BARGAH) در یک
         /// جریان زمانیِ واحد ادغام می‌شود. هر انبار مانده‌ی متحرکِ (MBKM/MIAN/
-        /// MOGUDI) مستقلِ خودش را دارد؛ چون رویدادها به ترتیب زمانیِ واقعی
-        /// پردازش می‌شوند (نه به ترتیبِ «انبار به انبار»)، Case ۵ی هر حواله‌ی
-        /// انتقالی همیشه قبل از Case ۶ متناظرش پردازش می‌شود — چه چرخه باشد
-        /// چه نباشد. UPDATEها همه در یک دسته‌ی نهایی flush می‌شوند (نه به‌ازای
-        /// هر انبار)، چون دیگر concept «انبار بعدی» معنا ندارد.
+        /// MOGUDI) مستقلِ خودش را دارد.
+        ///
+        /// ⚠️ ترتیبِ زمانیِ مشترک به‌تنهایی تضمین نمی‌کند Case ۵ قبل از Case ۶
+        /// بیاید — هر دو ردیف یک DATE_N دارند و tartib کد ۶ (=۱۰) از کد ۵
+        /// (=۱۴) کوچک‌تر است، پس بدون کارِ اضافه دقیقاً برعکس می‌شد. آنچه این
+        /// را درست می‌کند، tartib ساختگیِ شاخه‌ی انتقالیِ ورود در همین حالت
+        /// است (کدِ مبدأ + ۰٫۵) — نگاه کنید BuildKardexAsync.
+        ///
+        /// UPDATEها همه در یک دسته‌ی نهایی flush می‌شوند (نه به‌ازای هر انبار)،
+        /// چون دیگر concept «انبار بعدی» معنا ندارد.
         /// </summary>
         private async Task ProcessCyclicCodeAsync(
             string code,
@@ -790,6 +795,37 @@ namespace Safir.Server.CostClose.AverageRateRebuild
             // کل مسیر میانگین را تا انتهای ماه منحرف می‌کند — دقیقاً همان
             // علتِ نوسان ۹۷۰۴۲۴۲۹۵۳ ریالیِ سود کد ۳۳۶۵ بین اجراهای پیاپی.
             // id شناسه‌ی IDENTITY است، پس صعودی = ترتیب واقعیِ درج/رویداد.
+            // ── tartib شاخه‌ی انتقالیِ ورود، در دو حالت فرق می‌کند ──
+            // ⚠️ اصلاح (از مقایسه با AUTO_BAZ درآمد؛ کامنت قبلیِ
+            // ProcessCyclicCodeAsync اینجا ادعای غلطی می‌کرد):
+            //
+            //   • انبارِ مشخص: TAG=6 فقط در کوئریِ انبارِ مقصد می‌آید و TAG=5
+            //     فقط در کوئریِ مبدأ؛ این دو هرگز در یک نتیجه کنار هم نیستند،
+            //     پس tartib طبیعیِ TAGCOD (کد ۶) درست است. وابستگیِ «مبدأ قبل
+            //     از مقصد» را ترتیبِ خودِ انبارها تأمین می‌کند.
+            //
+            //   • ادغام‌شده (@Anbar = NULL، کالای چرخه‌دار): هر دو ردیف در یک
+            //     نتیجه‌اند و DATE_N شان هم یکی است (از سربرگ یک حواله). پس
+            //     ترتیبشان را فقط tartib تعیین می‌کند — و tartib کد ۶ برابر
+            //     ۱۰ است در برابر ۱۴ برای کد ۵، یعنی مقصد *همیشه* قبل از مبدأ
+            //     پردازش می‌شد، Touched هرگز به‌موقع ست نمی‌شد، و Case 6 همان
+            //     MABL_K کهنه‌ای را می‌خواند که قرار بود رفع شود.
+            //     پس در این حالت tartib از کدِ *مبدأ* ساخته می‌شود به‌علاوه‌ی
+            //     نیم واحد (۱۴٫۵)، تا ورود بلافاصله بعد از خروجِ خودش بنشیند
+            //     بدون اینکه جای هیچ رویداد دیگری در آن روز عوض شود.
+            //
+            // روی این پایگاه ۱۶ کالا چرخه‌ی واقعی دارند — از جمله ۳۳۶۵، ۳۷۴ و
+            // ۳۶۸ که هر سه قبلاً منشأ مغایرت بوده‌اند.
+            var transferInTartib = anbar.HasValue
+                ? "t.tartib"
+                : "CAST(ISNULL(tsrc.tartib, 0) AS FLOAT) + 0.5";
+
+            // LEFT و نه INNER: این JOIN فقط برای گرفتنِ tartibِ مبدأ است و
+            // نباید هیچ ردیفی را حذف کند.
+            var transferInSrcJoin = anbar.HasValue
+                ? string.Empty
+                : " LEFT JOIN dbo.TAGCOD tsrc ON tsrc.CODE = h.TAG";
+
             var parts = new List<string>
             {
                 @"SELECT h.DATE_N, i.TAG, i.NUMBER, i.ANBAR, i.CODE, i.MEGH, i.MEGHk, i.MEGH_MAR,
@@ -799,12 +835,12 @@ namespace Safir.Server.CostClose.AverageRateRebuild
                   INNER JOIN dbo.TAGCOD t ON h.TAG = t.CODE
                   WHERE i.CODE = @Code AND (@Anbar IS NULL OR i.ANBAR = @Anbar) AND h.DATE_N > @SinceDate",
 
-                @"SELECT h.DATE_N, 6 AS TAG, i.NUMBER, i.ANBARF AS ANBAR, i.CODE, i.MEGH, i.MEGHk, i.MEGH_MAR,
-                         i.MABL, i.MABL_K, i.N_KOL, i.ID AS id, t.tartib
-                  FROM dbo.INVO_LST i
-                  INNER JOIN dbo.HEAD_LST h ON i.NUMBER = h.NUMBER AND i.TAG = h.TAG
-                  INNER JOIN dbo.TAGCOD t ON h.TAG + 1 = t.CODE
-                  WHERE i.CODE = @Code AND (@Anbar IS NULL OR i.ANBARF = @Anbar) AND h.DATE_N > @SinceDate AND i.TAG = 5",
+                $@"SELECT h.DATE_N, 6 AS TAG, i.NUMBER, i.ANBARF AS ANBAR, i.CODE, i.MEGH, i.MEGHk, i.MEGH_MAR,
+                          i.MABL, i.MABL_K, i.N_KOL, i.ID AS id, {transferInTartib} AS tartib
+                   FROM dbo.INVO_LST i
+                   INNER JOIN dbo.HEAD_LST h ON i.NUMBER = h.NUMBER AND i.TAG = h.TAG
+                   INNER JOIN dbo.TAGCOD t ON h.TAG + 1 = t.CODE{transferInSrcJoin}
+                   WHERE i.CODE = @Code AND (@Anbar IS NULL OR i.ANBARF = @Anbar) AND h.DATE_N > @SinceDate AND i.TAG = 5",
 
                 // tartib هم اینجا هاردکد است، نه از TAGCOD خوانده می‌شود —
                 // چون TAG این شاخه (17 یا 18) واقعی نیست، خودِ همین کوئری با
