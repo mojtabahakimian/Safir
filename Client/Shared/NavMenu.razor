@@ -92,6 +92,25 @@
                 </MudNavLink>
             </MudNavGroup>
 
+            @* دستیار بیرون از گروهِ بهای تمام‌شده است چون قرار نیست فقط
+               آن ماژول را جواب بدهد؛ ابزارهای بعدی حوزه‌های دیگر را هم
+               می‌گیرند. «دسترسی» زیر همان مجوزی است که بقیه‌ی دسترسی‌ها
+               را می‌دهد، پس اگر کاربر ادمین نباشد صفحه ۴۰۳ می‌دهد. *@
+            <MudNavGroup Title="دستیار هوش مصنوعی" Icon="@Icons.Material.Filled.SmartToy" Expanded="false">
+                <MudNavLink Href="/ai/chat" Match="NavLinkMatch.Prefix"
+                            Icon="@Icons.Material.Filled.Chat">
+                    گفتگو
+                </MudNavLink>
+                <MudNavLink Href="/ai/access" Match="NavLinkMatch.Prefix"
+                            Icon="@Icons.Material.Filled.AdminPanelSettings">
+                    دسترسی کاربران
+                </MudNavLink>
+                <MudNavLink Href="/ai/settings" Match="NavLinkMatch.Prefix"
+                            Icon="@Icons.Material.Filled.Tune">
+                    تنظیمات سرویس
+                </MudNavLink>
+            </MudNavGroup>
+
             <MudNavLink Disabled="true" Icon="@Icons.Material.Filled.Info">
                 نسخه: @appVersion
             </MudNavLink>

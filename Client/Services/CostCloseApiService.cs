@@ -431,16 +431,25 @@ namespace Safir.Client.Services
             return (true, await res.Content.ReadFromJsonAsync<List<RebalancePreviewDto>>(), null);
         }
 
-        // ───────── سود و زیان به تفکیک واحد تولید ─────────
+        // ───────── سود و زیان به تفکیک واحد ─────────
+        //
+        // prodBasis دو سؤال متفاوت را جدا می‌کند:
+        //   false → هر واحد چقدر «فروخت» (انبار فروش)
+        //   true  → تولیدِ هر واحد چقدر سود داد، حتی وقتی از انبار واحد
+        //           دیگری فروش رفته باشد
 
-        public async Task<List<ItemMarginUnitDto>> GetMarginsByUnitAsync(int runId, int? unitId = null)
+        public async Task<List<ItemMarginUnitDto>> GetMarginsByUnitAsync(
+            int runId, int? unitId = null, bool prodBasis = false)
             => await _http.GetFromJsonAsync<List<ItemMarginUnitDto>>(
-                   $"{Base}/runs/{runId}/margins-by-unit" +
-                   (unitId is null ? "" : $"?unitId={unitId}")) ?? new();
+                   $"{Base}/runs/{runId}/margins-by-unit?basis={Basis(prodBasis)}" +
+                   (unitId is null ? "" : $"&unitId={unitId}")) ?? new();
 
-        public async Task<List<UnitMarginSummaryDto>> GetMarginUnitSummaryAsync(int runId)
+        public async Task<List<UnitMarginSummaryDto>> GetMarginUnitSummaryAsync(
+            int runId, bool prodBasis = false)
             => await _http.GetFromJsonAsync<List<UnitMarginSummaryDto>>(
-                   $"{Base}/runs/{runId}/margin-unit-summary") ?? new();
+                   $"{Base}/runs/{runId}/margin-unit-summary?basis={Basis(prodBasis)}") ?? new();
+
+        private static string Basis(bool prodBasis) => prodBasis ? "prod" : "sale";
 
         // ───────── پیشنهاد خودکار جابه‌جایی مواد ─────────
 
@@ -493,10 +502,12 @@ namespace Safir.Client.Services
         /// با downloadFileFromBytes به کاربر داده شود — همان الگویی که
         /// PayrollTab و ReportsTab در بخش حقوق و دستمزد استفاده می‌کنند.
         /// </summary>
-        public async Task<byte[]> GetReportBytesAsync(int runId, int? unitId = null)
+        public async Task<byte[]> GetReportBytesAsync(
+            int runId, int? unitId = null, bool prodBasis = false)
         {
-            var res = await _http.GetAsync($"{Base}/runs/{runId}/report.xlsx" +
-                                           (unitId is null ? "" : $"?unitId={unitId}"));
+            var res = await _http.GetAsync(
+                $"{Base}/runs/{runId}/report.xlsx?basis={Basis(prodBasis)}" +
+                (unitId is null ? "" : $"&unitId={unitId}"));
 
             if (!res.IsSuccessStatusCode)
             {

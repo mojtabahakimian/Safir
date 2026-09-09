@@ -1,0 +1,303 @@
+@page "/ai/access"
+@using Safir.Shared.Models.Ai
+@using Safir.Client.Services
+@inject AiApiService Api
+@inject ISnackbar Snackbar
+@inject IDialogService Dialog
+
+<PageTitle>دسترسی دستیار هوش مصنوعی</PageTitle>
+
+<div class="d-flex align-center mb-2">
+    <MudText Typo="Typo.h5">دسترسی دستیار هوش مصنوعی</MudText>
+    @* ⚠ موقتی — نشانِ نسخه، پیش از تحویل نهایی حذف شود. *@
+    <BuildStamp />
+</div>
+
+@* توضیح قاعده، چون تیک زدن بدون فهمیدنِ آن خطرناک است. *@
+<MudAlert Severity="Severity.Info" Dense Class="mb-4">
+    دسترسی دستیار هیچ‌وقت از دسترسی خودِ کاربر بیشتر نمی‌شود. اینجا فقط سقف
+    تعیین می‌کنید؛ کاربری که در برنامه به بخشی دسترسی ندارد، از راه چت هم
+    به آن نمی‌رسد. کاربری که در این فهرست نیست، اصلاً دستیار ندارد.
+    <br />
+    <b>استثنا:</b> کلید «کوئری آزاد» همین قاعده را دور می‌زند — با آن،
+    دستیار می‌تواند هر جدولی را بخواند، از جمله حقوق و دستمزد. فقط برای
+    کاربری روشنش کنید که این سطح دسترسی برایش پذیرفته است.
+</MudAlert>
+
+@if (_error is not null)
+{
+    <MudAlert Severity="Severity.Error" Class="mb-4">@_error</MudAlert>
+}
+
+<MudPaper Class="pa-3 mb-4">
+    <div class="d-flex align-center gap-3 flex-wrap">
+        @* انتخاب از فهرست، نه تایپ کد: کسی کد کاربرها را حفظ نیست و یک
+           رقم اشتباه یعنی دسترسی به آدمِ دیگری داده می‌شود. کاربرانی که
+           از قبل در جدول هستند فیلتر می‌شوند تا سطر تکراری پیش نیاید. *@
+        <MudAutocomplete T="AiUserLookupDto" Label="کاربر"
+                         Value="_newUser" ValueChanged="@(v => _newUser = v)"
+                         SearchFunc="SearchUsers" ToStringFunc="@(u => u?.Display ?? "")"
+                         Variant="Variant.Outlined" Dense Clearable
+                         ResetValueOnEmptyText MinCharacters="0" MaxItems="30"
+                         Style="min-width:320px" />
+
+        <MudButton Variant="Variant.Filled" Color="Color.Primary"
+                   StartIcon="@Icons.Material.Filled.PersonAdd"
+                   Disabled="@(_busy || _newUser is null)" OnClick="AddUser">
+            افزودن کاربر
+        </MudButton>
+        <MudSpacer />
+        <MudButton Variant="Variant.Text" StartIcon="@Icons.Material.Filled.Refresh"
+                   Disabled="_busy" OnClick="Load">تازه‌سازی</MudButton>
+    </div>
+</MudPaper>
+
+<MudTable Items="_rows" Dense Hover Loading="_busy" Breakpoint="Breakpoint.Sm"
+          Elevation="1" LoadingProgressColor="Color.Primary">
+    <HeaderContent>
+        <MudTh>کاربر</MudTh>
+        <MudTh>فعال</MudTh>
+        <MudTh>حالت</MudTh>
+        <MudTh>کوئری آزاد</MudTh>
+        <MudTh>سقف سطر</MudTh>
+        <MudTh>سقف پیام روزانه</MudTh>
+        <MudTh>امروز</MudTh>
+        <MudTh>فرم‌های مسدود</MudTh>
+        <MudTh>آخرین تغییر</MudTh>
+        <MudTh></MudTh>
+    </HeaderContent>
+    <RowTemplate>
+        <MudTd DataLabel="کاربر">
+            <MudText>@(string.IsNullOrWhiteSpace(context.UserName) ? $"کاربر {context.UserCo}" : context.UserName)</MudText>
+            <MudText Typo="Typo.caption" Class="mud-text-secondary">کد @context.UserCo</MudText>
+        </MudTd>
+
+        <MudTd DataLabel="فعال">
+            <MudSwitch T="bool" Value="context.IsEnabled" Color="Color.Success"
+                       ValueChanged="@(v => OnChange(context, x => x.IsEnabled = v))" />
+        </MudTd>
+
+        <MudTd DataLabel="حالت">
+            <MudSelect T="byte" Value="context.Mode" Dense Variant="Variant.Outlined"
+                       Style="min-width:150px"
+                       ValueChanged="@(v => OnChange(context, x => x.Mode = v))">
+                <MudSelectItem T="byte" Value="@((byte)0)">فقط خواندن</MudSelectItem>
+                <MudSelectItem T="byte" Value="@((byte)1)">پیشنهاد عمل با تأیید</MudSelectItem>
+            </MudSelect>
+        </MudTd>
+
+        @* ⚠ این کلید محدودیتِ فرم‌به‌فرم را دور می‌زند: کاربر می‌تواند هر
+           جدولی را بخواند که کاربرِ SQL برنامه می‌بیند، از جمله حقوق و
+           دستمزد. هشدارش باید کنار خودش باشد، نه در مستندات. *@
+        <MudTd DataLabel="کوئری آزاد">
+            <MudTooltip Text="با این کلید، دستیار به همه‌ی جدول‌ها دسترسی خواندنی دارد و محدودیت فرم‌ها اعمال نمی‌شود.">
+                <MudSwitch T="bool" Value="context.AllowRawSql" Color="Color.Warning"
+                           ValueChanged="@(v => OnChange(context, x => x.AllowRawSql = v))" />
+            </MudTooltip>
+        </MudTd>
+
+        <MudTd DataLabel="سقف سطر">
+            <MudNumericField T="int" Value="context.MaxRows" Dense Variant="Variant.Outlined"
+                             Min="1" Max="20000" Style="max-width:110px"
+                             ValueChanged="@(v => OnChange(context, x => x.MaxRows = v))" />
+        </MudTd>
+
+        <MudTd DataLabel="سقف پیام روزانه">
+            <MudNumericField T="int" Value="context.DailyMessages" Dense Variant="Variant.Outlined"
+                             Min="0" Max="10000" Style="max-width:110px"
+                             ValueChanged="@(v => OnChange(context, x => x.DailyMessages = v))" />
+        </MudTd>
+
+        @* مصرف امروز کنار سقف: بدون این، «چرا کار نمی‌کند» جواب ندارد. *@
+        <MudTd DataLabel="امروز">
+            <MudChip T="string" Size="Size.Small"
+                     Color="@(context.TodayMessages >= context.DailyMessages ? Color.Error : Color.Default)">
+                @context.TodayMessages
+            </MudChip>
+        </MudTd>
+
+        <MudTd DataLabel="فرم‌های مسدود">
+            <MudTextField T="string" Value="context.BlockedForms" Dense Variant="Variant.Outlined"
+                          Style="min-width:220px" Placeholder="PAY2_PAYROLL,PAY2_EMPLOYEE"
+                          ValueChanged="@(v => OnChange(context, x => x.BlockedForms = v))" />
+        </MudTd>
+
+        <MudTd DataLabel="آخرین تغییر">
+            <MudText Typo="Typo.caption">
+                @context.UpdatedBy
+                @if (context.UpdatedAtUtc is not null)
+                {
+                    <text> — @context.UpdatedAtUtc.Value.ToLocalTime().ToString("yyyy/MM/dd HH:mm")</text>
+                }
+            </MudText>
+        </MudTd>
+
+        <MudTd>
+            <MudIconButton Icon="@Icons.Material.Filled.Delete" Color="Color.Error"
+                           Size="Size.Small" Disabled="_busy"
+                           OnClick="@(() => Remove(context))" />
+        </MudTd>
+    </RowTemplate>
+    <NoRecordsContent>
+        <MudText Class="pa-4">هنوز به هیچ کاربری دسترسی دستیار داده نشده است.</MudText>
+    </NoRecordsContent>
+</MudTable>
+
+@code {
+    private List<AiUserAccessDto> _rows  = new();
+    private List<AiUserLookupDto> _users = new();
+    private AiUserLookupDto?      _newUser;
+
+    private bool    _busy;
+    private string? _error;
+
+    protected override async Task OnInitializedAsync() => await Load();
+
+    /// <summary>
+    /// جستجو روی نام و کد با هم — کاربر گاهی نام را می‌داند و گاهی کد را.
+    /// متن خالی چند نفر اول را نشان می‌دهد تا فهرست از ابتدا خالی نباشد.
+    /// </summary>
+    // امضای SearchFunc در MudBlazor 6.21 پارامتر CancellationToken ندارد؛
+    // اضافه کردنش خطای «هیچ overload مطابقت ندارد» می‌دهد.
+    private Task<IEnumerable<AiUserLookupDto>> SearchUsers(string? value)
+    {
+        var pool = _users.Where(u => !u.HasAccess);
+
+        if (string.IsNullOrWhiteSpace(value))
+            return Task.FromResult<IEnumerable<AiUserLookupDto>>(pool.Take(30));
+
+        var q = value.Trim();
+
+        return Task.FromResult(pool.Where(u =>
+            (u.UserName ?? "").Contains(q, StringComparison.OrdinalIgnoreCase) ||
+            u.UserCo.ToString().Contains(q)));
+    }
+
+    private async Task Load()
+    {
+        _busy = true; _error = null;
+        try
+        {
+            _rows  = await Api.ListAccessAsync();
+            _users = await Api.ListUsersAsync();
+        }
+        catch (Exception ex) { _error = Friendly(ex); }
+        finally { _busy = false; }
+    }
+
+    /// <summary>
+    /// هر تغییر بلافاصله ذخیره می‌شود و دکمه‌ی «ذخیره» جدا ندارد. در جدولی
+    /// با ده کاربر، دکمه‌ی جدا یعنی کاربر تیک می‌زند، صفحه را می‌بندد و
+    /// بعداً تعجب می‌کند چرا اعمال نشده.
+    /// </summary>
+    private async Task OnChange(AiUserAccessDto row, Action<AiUserAccessDto> apply)
+    {
+        apply(row);
+        await Save(row);
+    }
+
+    private async Task Save(AiUserAccessDto row)
+    {
+        _busy = true;
+        try
+        {
+            var (ok, err) = await Api.SaveAccessAsync(row.UserCo, new UpsertAiAccessRequest
+            {
+                IsEnabled     = row.IsEnabled,
+                Mode          = row.Mode,
+                AllowRawSql   = row.AllowRawSql,
+                MaxRows       = row.MaxRows,
+                DailyMessages = row.DailyMessages,
+                BlockedForms  = row.BlockedForms,
+                Note          = row.Note
+            });
+
+            if (ok) Snackbar.Add("ذخیره شد.", Severity.Success);
+            else
+            {
+                Snackbar.Add(err ?? "ذخیره نشد.", Severity.Error);
+                await Load();          // برگرداندن به وضعیت واقعی سرور
+            }
+        }
+        catch (Exception ex) { Snackbar.Add(Friendly(ex), Severity.Error); }
+        finally { _busy = false; }
+    }
+
+    private async Task AddUser()
+    {
+        if (_newUser is null) return;
+
+        if (_rows.Any(r => r.UserCo == _newUser.UserCo))
+        {
+            Snackbar.Add("این کاربر از قبل در فهرست هست.", Severity.Warning);
+            return;
+        }
+
+        // کاربر تازه عمداً غیرفعال و با پیش‌فرضِ محافظه‌کارانه اضافه می‌شود:
+        // افزودن به فهرست نباید خودش یعنی دادن دسترسی باشد.
+        var row = new AiUserAccessDto
+        {
+            UserCo = _newUser.UserCo, UserName = _newUser.UserName,
+            IsEnabled = false, Mode = 0,
+            AllowRawSql = false, MaxRows = 500, DailyMessages = 100,
+            BlockedForms = "PAY2_PAYROLL,PAY2_EMPLOYEE"
+        };
+
+        await Save(row);
+        _newUser = null;
+        await Load();
+    }
+
+    private async Task Remove(AiUserAccessDto row)
+    {
+        var ok = await Dialog.ShowMessageBox(
+            "حذف دسترسی",
+            $"دسترسی دستیار برای کاربر {row.UserCo} حذف شود؟ بعد از حذف، دستیار برای او کار نمی‌کند.",
+            yesText: "حذف", cancelText: "انصراف");
+
+        if (ok != true) return;
+
+        _busy = true;
+        try
+        {
+            var (done, err) = await Api.DeleteAccessAsync(row.UserCo);
+            if (done) { Snackbar.Add("حذف شد.", Severity.Success); await Load(); }
+            else Snackbar.Add(err ?? "حذف نشد.", Severity.Error);
+        }
+        catch (Exception ex) { Snackbar.Add(Friendly(ex), Severity.Error); }
+        finally { _busy = false; }
+    }
+
+    /// <summary>
+    /// پیام انگلیسی .NET برای کاربر بی‌معنی است — همان الگوی صفحات بهای
+    /// تمام‌شده.
+    ///
+    /// ⚠ ۴۰۱ و ۴۰۳ عمداً از هم جدا شده‌اند. قبلاً هر دو «دسترسی ندارید»
+    /// می‌گرفتند و وقتی توکن منقضی می‌شد، کاربر دنبال مشکل دسترسی
+    /// می‌گشت در حالی که فقط باید دوباره وارد می‌شد. ۴۰۴ هم جداست چون
+    /// معنی‌اش این است که سرور نسخه‌ی قدیمی است و اندپوینت را ندارد.
+    /// </summary>
+    private static string Friendly(Exception ex)
+    {
+        // کدِ واقعی از خودِ استثنا، نه از جستجوی رشته در متن پیام: متن
+        // پیام ممکن است عددی داشته باشد که کدِ وضعیت نیست و تشخیص را
+        // خراب کند.
+        var code = (ex as HttpRequestException)?.StatusCode;
+
+        var text = code switch
+        {
+            System.Net.HttpStatusCode.Unauthorized =>
+                "نشست شما منقضی شده است. یک بار خارج و دوباره وارد شوید.",
+            System.Net.HttpStatusCode.Forbidden =>
+                "شما دسترسی مدیریت دسترسی‌ها را ندارید.",
+            System.Net.HttpStatusCode.NotFound =>
+                "این قابلیت روی سرور موجود نیست؛ نسخه‌ی سرور قدیمی است. " +
+                "پس از بیلد دوباره، صفحه را با Ctrl+Shift+R تازه کنید.",
+            _ => "خطا در ارتباط با سرور: " + ex.Message
+        };
+
+        // کدِ عددی همیشه نشان داده می‌شود. بدون آن، گزارشِ کاربر
+        // («خطا دارد») برای تشخیص کافی نیست و باید حدس زد.
+        return code is null ? text : $"{text} (کد {(int)code})";
+    }
+}

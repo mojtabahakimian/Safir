@@ -93,6 +93,54 @@ builder.Services.AddScoped<Safir.Server.Security.Pay2ScopeResolver>();
 builder.Services.AddScoped<Safir.Server.Services.Pay2DisketteService>();
 
 // --- ماژول بستن ماه بهای تمام‌شده (Cost Close) ---
+// ── دستیار هوش مصنوعی ──
+// ابزارها Scoped ثبت می‌شوند چون IDatabaseService هم Scoped است و رشته‌ی
+// اتصال از هدرِ همین درخواست می‌آید؛ Singleton یعنی همه‌ی کاربران به
+// پایگاهِ اولین درخواست وصل می‌شدند.
+builder.Services.AddScoped<Safir.Server.Ai.IAiAccessService, Safir.Server.Ai.AiAccessService>();
+builder.Services.AddScoped<Safir.Server.Ai.IAiToolRegistry, Safir.Server.Ai.AiToolRegistry>();
+builder.Services.AddScoped<Safir.Server.Ai.IAiTool, Safir.Server.Ai.ListRunsTool>();
+builder.Services.AddScoped<Safir.Server.Ai.IAiTool, Safir.Server.Ai.SearchItemTool>();
+builder.Services.AddScoped<Safir.Server.Ai.IAiTool, Safir.Server.Ai.ItemMarginTool>();
+builder.Services.AddScoped<Safir.Server.Ai.IAiTool, Safir.Server.Ai.UnitSummaryTool>();
+builder.Services.AddScoped<Safir.Server.Ai.IAiTool, Safir.Server.Ai.ExceptionsTool>();
+builder.Services.AddScoped<Safir.Server.Ai.IAiTool, Safir.Server.Ai.DescribeDataTool>();
+
+// ابزارهای حالتِ «هر سؤالی» — هر سه پشت مجوز «کوئری آزاد» هستند و
+// پیش‌فرضشان خاموش است، چون محدودیتِ فرم‌به‌فرم را دور می‌زنند.
+builder.Services.AddScoped<Safir.Server.Ai.IAiTool, Safir.Server.Ai.ListTablesTool>();
+builder.Services.AddScoped<Safir.Server.Ai.IAiTool, Safir.Server.Ai.DescribeTableTool>();
+builder.Services.AddScoped<Safir.Server.Ai.IAiTool, Safir.Server.Ai.FindColumnTool>();
+builder.Services.AddScoped<Safir.Server.Ai.IAiTool, Safir.Server.Ai.RunSqlTool>();
+
+// مستندِ فارسیِ ساختار پایگاه. فهرستش Singleton است چون فایل ثابت است و
+// تجزیه‌اش (۷۶۲ بخش) نباید هر درخواست تکرار شود؛ به پایگاه هم کاری ندارد.
+builder.Services.AddSingleton<Safir.Server.Ai.IAiDocsIndex, Safir.Server.Ai.AiDocsIndex>();
+builder.Services.AddScoped<Safir.Server.Ai.IAiTool, Safir.Server.Ai.TableDocTool>();
+builder.Services.AddScoped<Safir.Server.Ai.IAiTool, Safir.Server.Ai.SearchDocsTool>();
+
+// ── ارائه‌دهنده‌ی مدل ──
+// انتخاب با تنظیمات است نه با کد، تا رفتن از Ollama محلی به سرویس ابری
+// فقط عوض کردن appsettings باشد. کلید هرگز اینجا نیست — فقط نامِ متغیر
+// محیطی‌اش، چون appsettings در گیت است.
+builder.Services.AddSingleton(sp =>
+    sp.GetRequiredService<IConfiguration>().GetSection("Ai").Get<Safir.Server.Ai.AiOptions>()
+    ?? new Safir.Server.Ai.AiOptions());
+
+// کلاینتِ نام‌دار: ارائه‌دهنده در هر درخواست با تنظیماتِ تازه از پایگاه
+// ساخته می‌شود، پس نمی‌تواند AddHttpClient<T> جنریک باشد.
+builder.Services.AddHttpClient("ai");
+
+builder.Services.AddScoped<Safir.Server.Ai.IAiSettingsProvider,
+                           Safir.Server.Ai.AiSettingsProvider>();
+builder.Services.AddScoped<Safir.Server.Ai.IAiProviderFactory,
+                           Safir.Server.Ai.AiProviderFactory>();
+
+builder.Services.AddScoped<Safir.Server.Ai.IAiConversationService,
+                           Safir.Server.Ai.AiConversationService>();
+builder.Services.AddScoped<Safir.Server.Ai.IAiChatNotifier,
+                           Safir.Server.Ai.AiChatNotifier>();
+
 builder.Services.AddSingleton<Safir.Server.CostClose.CostCloseQueue>();
 builder.Services.AddSingleton<Safir.Server.CostClose.ICostCloseQueue>(
     sp => sp.GetRequiredService<Safir.Server.CostClose.CostCloseQueue>());
@@ -240,6 +288,7 @@ app.Use(async (context, next) =>
 app.MapRazorPages();
 app.MapControllers(); // Make sure API controllers are mapped
 app.MapHub<Safir.Server.CostClose.CostCloseHub>("/hubs/cost-close");
+app.MapHub<Safir.Server.Ai.AiChatHub>("/hubs/ai-chat");
 
 app.MapFallbackToFile("index.html"); // Fallback for Blazor routing
 

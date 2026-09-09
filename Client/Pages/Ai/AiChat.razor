@@ -1,0 +1,494 @@
+@page "/ai/chat"
+@using Safir.Shared.Models.Ai
+@using Safir.Client.Services
+@inject AiApiService Api
+@inject NavigationManager Nav
+@inject IAuthService AuthService
+@inject IDialogService Dialog
+@inject ISnackbar Snackbar
+@implements IAsyncDisposable
+@using Microsoft.AspNetCore.SignalR.Client
+@using Safir.Shared.Interfaces
+
+<PageTitle>دستیار هوش مصنوعی</PageTitle>
+
+<div class="d-flex align-center mb-3">
+    <MudText Typo="Typo.h5">دستیار هوش مصنوعی</MudText>
+    @* ⚠ موقتی — نشانِ نسخه، پیش از تحویل نهایی حذف شود. *@
+    <BuildStamp />
+</div>
+
+@if (_access is null)
+{
+    <MudProgressLinear Indeterminate Color="Color.Primary" />
+}
+else if (!_access.IsEnabled)
+{
+    <MudAlert Severity="Severity.Warning">@_access.DisabledReason</MudAlert>
+}
+else
+{
+    @* نوار تاریخچه. فهرست کشویی است نه ستون کناری: صفحه در RTL و روی
+       نمایشگر کوچک جا نداشت و ستون کناری متن جواب را باریک می‌کرد. *@
+    <div class="d-flex gap-2 align-center mb-3 flex-wrap">
+        <MudButton Variant="Variant.Outlined" Color="Color.Primary" Size="Size.Small"
+                   StartIcon="@Icons.Material.Filled.AddComment"
+                   Disabled="_busy" OnClick="NewConversation">گفتگوی تازه</MudButton>
+
+        <MudButton Variant="Variant.Text" Size="Size.Small"
+                   StartIcon="@Icons.Material.Filled.History"
+                   Disabled="_busy" OnClick="ToggleHistory">
+            تاریخچه (@_conversations.Count)
+        </MudButton>
+
+        @if (_renaming)
+        {
+            <MudTextField @bind-Value="_newTitle" Label="نام گفتگو" Dense Immediate
+                          Variant="Variant.Outlined" Style="max-width:320px"
+                          OnKeyDown="@(async (KeyboardEventArgs e) => { if (e.Key == "Enter") await SaveTitle(); })" />
+            <MudIconButton Icon="@Icons.Material.Filled.Check" Size="Size.Small"
+                           Color="Color.Success" Title="ذخیره" OnClick="SaveTitle" />
+            <MudIconButton Icon="@Icons.Material.Filled.Close" Size="Size.Small"
+                           Title="انصراف" OnClick="@(() => _renaming = false)" />
+        }
+        else if (_title is not null)
+        {
+            <MudText Typo="Typo.body2" Class="mud-text-secondary">— @_title</MudText>
+            <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small"
+                           Title="تغییر نام" Disabled="_busy" OnClick="RenameCurrent" />
+        }
+    </div>
+
+    @if (_showHistory)
+    {
+        <MudPaper Class="pa-2 mb-3" Elevation="1">
+            @if (_conversations.Count == 0)
+            {
+                <MudText Typo="Typo.body2" Class="pa-2">هنوز گفتگویی ذخیره نشده است.</MudText>
+            }
+            else
+            {
+                @foreach (var c in _conversations)
+                {
+                    <div class="d-flex align-center gap-2 pa-2" style="border-bottom:1px solid var(--mud-palette-divider)">
+                        <MudButton Variant="Variant.Text" Class="flex-grow-1 justify-start"
+                                   StartIcon="@Icons.Material.Filled.ChatBubbleOutline"
+                                   OnClick="@(() => OpenConversation(c))">
+                            <div class="text-start">
+                                <MudText Typo="Typo.body2">@c.Title</MudText>
+                                <MudText Typo="Typo.caption" Class="mud-text-secondary">
+                                    @c.Messages پیام —
+                                    @c.UpdatedAtUtc.ToLocalTime().ToString("yyyy/MM/dd HH:mm")
+                                </MudText>
+                            </div>
+                        </MudButton>
+
+                        <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small"
+                                       Color="Color.Error" Title="حذف"
+                                       OnClick="@(() => DeleteConversation(c))" />
+                    </div>
+                }
+            }
+        </MudPaper>
+    }
+
+    <MudPaper Class="pa-3 mb-3" Elevation="0" Style="background:var(--mud-palette-background-grey)">
+        <MudText Typo="Typo.body2">
+            @if (_access.Mode == 0)
+            {
+                <text>این دستیار فقط می‌خواند و هیچ تغییری در داده نمی‌دهد. </text>
+            }
+            دسترسی‌اش محدود به همان بخش‌هایی است که خودتان دسترسی دارید.
+            امروز @_access.TodayMessages از @_access.DailyMessages پیام.
+        </MudText>
+    </MudPaper>
+
+    <div class="ai-thread mb-3">
+        @foreach (var m in _turns)
+        {
+            <MudPaper Class="@($"pa-3 mb-2 {(m.IsUser ? "ms-8" : "me-8")}")"
+                      Elevation="@(m.IsUser ? 0 : 1)"
+                      Style="@(m.IsUser ? "background:var(--mud-palette-background-grey)" : "")">
+                <MudText Typo="Typo.caption" Class="mud-text-secondary">
+                    @(m.IsUser ? "شما" : "دستیار")
+                </MudText>
+                <MudText Style="white-space:pre-wrap">@m.Text</MudText>
+            </MudPaper>
+        }
+
+        @* منبعِ جواب. در گزارش مالی، عددِ بدون منبع قابل اتکا نیست —
+           کاربر باید ببیند از کدام ابزار و چند سطر آمده. *@
+        @if (_lastSteps.Count > 0)
+        {
+            <MudExpansionPanels Elevation="0" Class="me-8">
+                <MudExpansionPanel Text="@($"منابع این پاسخ ({_lastSteps.Count} فراخوانی)")">
+                    @foreach (var s in _lastSteps)
+                    {
+                        <MudText Typo="Typo.caption" Class="d-block">
+                            <MudIcon Icon="@(s.Ok ? Icons.Material.Filled.CheckCircle : Icons.Material.Filled.Error)"
+                                     Size="Size.Small"
+                                     Color="@(s.Ok ? Color.Success : Color.Error)" />
+                            @s.Tool
+                            @if (s.Ok) { <text> — @s.Rows سطر در @s.DurationMs میلی‌ثانیه</text> }
+                            else       { <text> — @s.Note</text> }
+                        </MudText>
+                    }
+                </MudExpansionPanel>
+            </MudExpansionPanels>
+        }
+
+        @* وضعیتِ واقعی، نه فقط یک نوار در حال حرکت: کاربر می‌بیند
+           دستیار همین حالا مشغول چه کاری است و چند سطر گرفته. *@
+        @if (_busy)
+        {
+            <MudPaper Class="pa-3 my-2 me-8" Elevation="0"
+                      Style="background:var(--mud-palette-background-grey)">
+                <div class="d-flex align-center gap-2">
+                    <MudProgressCircular Size="Size.Small" Indeterminate Color="Color.Primary" />
+                    <MudText Typo="Typo.body2">@(_status ?? "در حال پردازش…")</MudText>
+                </div>
+
+                @if (_statusLog.Count > 1)
+                {
+                    <div class="mt-2">
+                        @foreach (var s in _statusLog.Take(_statusLog.Count - 1))
+                        {
+                            <MudText Typo="Typo.caption" Class="mud-text-secondary d-block">
+                                <MudIcon Icon="@Icons.Material.Filled.Check" Size="Size.Small" />
+                                @s
+                            </MudText>
+                        }
+                    </div>
+                }
+            </MudPaper>
+        }
+
+        @if (_error is not null)
+        {
+            <MudAlert Severity="Severity.Error" Class="my-2">@_error</MudAlert>
+        }
+    </div>
+
+    @if (_attachment is not null)
+    {
+        <MudChip T="string" Color="Color.Info" Class="mb-2"
+                 Icon="@Icons.Material.Filled.AttachFile"
+                 OnClose="@(() => _attachment = null)">
+            @_attachment.FileName — @_attachment.Chars.ToString("N0") نویسه
+        </MudChip>
+    }
+
+    <div class="d-flex gap-2 align-start">
+        @* فایل پیش از ارسالِ سؤال خوانده می‌شود تا کاربر ببیند چه چیزی
+           استخراج شده — نه اینکه بعد از دو دقیقه بفهمد فایل خالی بوده. *@
+        @* ⚠ در MudBlazor 6.21 نامِ این پارامتر ButtonTemplate است، نه
+           ActivatorContent (آن API نسخه‌ی ۷ است). با نام اشتباه، Razor
+           خطا نمی‌دهد ولی هیچ چیزی رندر نمی‌شود — دکمه بی‌سروصدا غایب
+           بود و شبیه مشکل کشِ مرورگر به نظر می‌رسید.
+
+           «for="@context"» هم لازم است: context همان شناسه‌ی inputِ
+           پنهان است و بدون آن، کلیک روی دکمه پنجره‌ی فایل را باز
+           نمی‌کند. *@
+        <MudFileUpload T="IBrowserFile" FilesChanged="OnFilePicked" Class="mt-2"
+                       Accept=".txt,.csv,.md,.json,.xml,.log,.sql,.xlsx,.xlsm">
+            <ButtonTemplate Context="fileInputId">
+                <MudIconButton HtmlTag="label" for="@fileInputId"
+                               Icon="@Icons.Material.Filled.AttachFile"
+                               Color="Color.Default" Disabled="_busy"
+                               Title="پیوست فایل" />
+            </ButtonTemplate>
+        </MudFileUpload>
+
+        <MudTextField @bind-Value="_question" Label="سؤالتان را بنویسید"
+                      Variant="Variant.Outlined" Lines="2" Immediate
+                      OnKeyDown="OnKey" Disabled="_busy" />
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" Class="mt-2"
+                   StartIcon="@Icons.Material.Filled.Send"
+                   Disabled="@(_busy || string.IsNullOrWhiteSpace(_question))"
+                   OnClick="Send">ارسال</MudButton>
+    </div>
+
+    <MudText Typo="Typo.caption" Class="mud-text-secondary mt-2 d-block">
+        نمونه: «سود و زیان کالاهای تولید واحد یزد در مرداد چقدر بود؟»
+    </MudText>
+}
+
+@code {
+    private AiEffectiveAccessDto? _access;
+    private readonly List<AiChatTurnDto> _turns = new();
+    private List<AiChatStepDto> _lastSteps = new();
+
+    private string  _question = "";
+    private bool    _busy;
+    private string? _error;
+    private Guid?   _conversationId;
+
+    private AiAttachmentDto? _attachment;
+
+    private List<AiConversationDto> _conversations = new();
+    private bool    _showHistory;
+    private string? _title;
+    private bool    _renaming;
+    private string  _newTitle = "";
+
+    private HubConnection?    _hub;
+    private string?           _status;
+    private readonly List<string> _statusLog = new();
+
+    /// <summary>
+    /// شناسه‌ی گفتگو پیش از اولین سؤال ساخته می‌شود، نه بعد از آن: برای
+    /// شنیدن پیام‌های وضعیت باید *قبل* از شروع پردازش در گروه باشیم.
+    /// </summary>
+    private Guid ConversationId => _conversationId ??= Guid.NewGuid();
+
+    private async Task OnFilePicked(IBrowserFile? file)
+    {
+        if (file is null) return;
+
+        _busy = true; _error = null;
+        try
+        {
+            // سقف سمت سرور هم هست؛ این فقط جلوی رفت‌وبرگشت بی‌فایده را
+            // می‌گیرد.
+            await using var stream = file.OpenReadStream(5 * 1024 * 1024);
+
+            var (data, err) = await Api.UploadAttachmentAsync(stream, file.Name, file.Size);
+
+            if (err is not null) _error = err;
+            else _attachment = data;
+        }
+        catch (Exception ex) { _error = "خواندن فایل ممکن نشد: " + ex.Message; }
+        finally { _busy = false; }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        await ConnectHubAsync();
+
+        await LoadConversationsAsync();
+
+        try   { _access = await Api.GetMyAccessAsync(); }
+        catch (Exception ex)
+        {
+            _access = new AiEffectiveAccessDto
+            {
+                IsEnabled = false,
+                DisabledReason = "خطا در ارتباط با سرور: " + ex.Message
+            };
+        }
+    }
+
+    private async Task LoadConversationsAsync()
+    {
+        try   { _conversations = await Api.ListConversationsAsync(); }
+        catch { /* نبودِ فهرست نباید مانع گفتگو شود */ }
+    }
+
+    private void ToggleHistory() => _showHistory = !_showHistory;
+
+    /// <summary>
+    /// گفتگوی تازه: شناسه‌ی نو و اشتراک تازه در هاب — وگرنه پیام‌های
+    /// وضعیت همچنان به گروهِ گفتگوی قبلی می‌رفت.
+    /// </summary>
+    private async Task NewConversation()
+    {
+        await SwitchHubGroupAsync(null);
+
+        _conversationId = null;
+        _title          = null;
+        _turns.Clear();
+        _lastSteps   = new();
+        _error       = null;
+        _attachment  = null;
+        _showHistory = false;
+
+        await SwitchHubGroupAsync(ConversationId);
+    }
+
+    private async Task OpenConversation(AiConversationDto c)
+    {
+        _busy = true; _error = null;
+        try
+        {
+            var turns = await Api.GetConversationAsync(c.ConversationId);
+
+            await SwitchHubGroupAsync(null);
+
+            _conversationId = c.ConversationId;
+            _title          = c.Title;
+            _turns.Clear();
+            _turns.AddRange(turns);
+
+            // منابع مربوط به پاسخِ همین جلسه‌اند و برای گفتگوی بازشده
+            // معنی ندارند؛ ماندنشان کاربر را گمراه می‌کرد.
+            _lastSteps   = new();
+            _showHistory = false;
+
+            await SwitchHubGroupAsync(c.ConversationId);
+        }
+        catch (Exception ex) { _error = "باز کردن گفتگو ممکن نشد: " + ex.Message; }
+        finally { _busy = false; }
+    }
+
+    /// <summary>
+    /// null یعنی «از گروه فعلی خارج شو». شکست اتصال هاب نباید گفتگو را
+    /// بشکند، پس هر خطا اینجا بلعیده می‌شود.
+    /// </summary>
+    private async Task SwitchHubGroupAsync(Guid? id)
+    {
+        if (_hub is null) return;
+
+        try
+        {
+            if (id is null)
+            {
+                if (_conversationId is not null)
+                    await _hub.SendAsync("Unsubscribe", _conversationId.Value.ToString());
+            }
+            else await _hub.SendAsync("Subscribe", id.Value.ToString());
+        }
+        catch { }
+    }
+
+    /// <summary>
+    /// تغییر نام درجا. MudBlazor پنجره‌ی «یک متن بگیر» آماده ندارد و
+    /// ساختن یک دیالوگ جدا برای یک فیلد، کارِ بیشتری بود از خودِ ویژگی.
+    /// </summary>
+    private void RenameCurrent()
+    {
+        _newTitle = _title ?? "";
+        _renaming = true;
+    }
+
+    private async Task SaveTitle()
+    {
+        var t = (_newTitle ?? "").Trim();
+
+        if (_conversationId is null || t.Length == 0) { _renaming = false; return; }
+
+        if (await Api.RenameConversationAsync(_conversationId.Value, t))
+        {
+            _title = t;
+            await LoadConversationsAsync();
+        }
+        else Snackbar.Add("تغییر نام انجام نشد.", Severity.Error);
+
+        _renaming = false;
+    }
+
+    private async Task DeleteConversation(AiConversationDto c)
+    {
+        var ok = await Dialog.ShowMessageBox(
+            "حذف گفتگو",
+            $"«{c.Title}» و همه‌ی پیام‌هایش حذف شوند؟ این کار برگشت‌پذیر نیست.",
+            yesText: "حذف", cancelText: "انصراف");
+
+        if (ok != true) return;
+
+        if (await Api.DeleteConversationAsync(c.ConversationId))
+        {
+            if (_conversationId == c.ConversationId) await NewConversation();
+            await LoadConversationsAsync();
+        }
+        else Snackbar.Add("حذف انجام نشد.", Severity.Error);
+    }
+
+    /// <summary>
+    /// اتصال به هاب برای پیام‌های وضعیت. مثل صفحات بهای تمام‌شده، توکن
+    /// از AccessTokenProvider می‌رود چون مرورگر روی درخواستِ upgrade
+    /// اجازه‌ی هدر سفارشی نمی‌دهد.
+    ///
+    /// شکست اتصال، چت را نمی‌شکند: بدون آن فقط پیام‌های وضعیت را از دست
+    /// می‌دهیم، نه خودِ جواب را.
+    /// </summary>
+    private async Task ConnectHubAsync()
+    {
+        try
+        {
+            _hub = new HubConnectionBuilder()
+                .WithUrl(Nav.ToAbsoluteUri("/hubs/ai-chat"), o =>
+                {
+                    o.AccessTokenProvider = () => AuthService.GetTokenAsync();
+                })
+                .WithAutomaticReconnect()
+                .Build();
+
+            _hub.On<string>("Status", msg =>
+            {
+                _status = msg;
+                _statusLog.Add(msg);
+                InvokeAsync(StateHasChanged);
+            });
+
+            await _hub.StartAsync();
+            await _hub.SendAsync("Subscribe", ConversationId.ToString());
+        }
+        catch { _hub = null; }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_hub is not null) await _hub.DisposeAsync();
+    }
+
+    /// <summary>Enter می‌فرستد، Shift+Enter خط جدید.</summary>
+    private async Task OnKey(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter" && !e.ShiftKey && !_busy && !string.IsNullOrWhiteSpace(_question))
+            await Send();
+    }
+
+    private async Task Send()
+    {
+        var q = _question.Trim();
+        if (q.Length == 0) return;
+
+        _question  = "";
+        _error     = null;
+        _lastSteps = new();
+        _status    = null;
+        _statusLog.Clear();
+        _turns.Add(new AiChatTurnDto { IsUser = true, Text = q });
+        _busy = true;
+
+        try
+        {
+            // تاریخچه بدون خودِ سؤالِ جاری فرستاده می‌شود؛ سرور آن را
+            // جداگانه می‌گیرد.
+            var history = _turns.Take(_turns.Count - 1).ToList();
+
+            var reply = await Api.ChatAsync(new AiChatRequest
+            {
+                ConversationId = ConversationId,
+                Question       = q,
+                History        = history,
+                AttachmentName = _attachment?.FileName,
+                AttachmentText = _attachment?.Text
+            });
+
+            // پیوست فقط برای همان یک سؤال است؛ ماندنش باعث می‌شد سؤال
+            // بعدی هم بی‌خبر همان فایل را حمل کند.
+            _attachment = null;
+            _lastSteps = reply.Steps;
+
+            if (reply.Error is not null) _error = reply.Error;
+            else _turns.Add(new AiChatTurnDto { IsUser = false, Text = reply.Text ?? "" });
+        }
+        catch (Exception ex) { _error = "خطا در ارتباط با سرور: " + ex.Message; }
+        finally
+        {
+            _busy = false;
+
+            // شمارنده‌ی سقف روزانه بعد از هر پیام به‌روز می‌شود، وگرنه
+            // کاربر تا بارگذاری بعدی نمی‌فهمد چقدر مانده.
+            try { _access = await Api.GetMyAccessAsync(); } catch { }
+
+            // فهرست بعد از هر پیام تازه می‌شود تا گفتگوی تازه بلافاصله
+            // در تاریخچه دیده شود و ترتیبِ «آخرین» درست بماند.
+            await LoadConversationsAsync();
+
+            _title ??= _conversations
+                .FirstOrDefault(c => c.ConversationId == _conversationId)?.Title;
+        }
+    }
+}
