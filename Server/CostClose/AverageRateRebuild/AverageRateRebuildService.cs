@@ -233,14 +233,6 @@ namespace Safir.Server.CostClose.AverageRateRebuild
 
             AddLog($"بازسازی نرخ میانگین: شروع از تاریخ {sinceDate}.");
 
-            // آیا جدول‌های پشتیبان سال قبل (FBK/KBK) روی این دیتابیس وجود دارند؟
-            // بعضی شرکت‌ها این دو جدول را ندارند (رول‌آور سال مالی که هرگز
-            // برایشان اجرا نشده)؛ کوئری منبع کاردکس باید بدون آن‌ها هم کار کند.
-            var hasFbk = (await _db.DoGetDataSQLAsync<int>(
-                "SELECT 1 FROM sys.tables WHERE name = 'HEAD_LST_FBK'")).Any();
-            var hasKbk = (await _db.DoGetDataSQLAsync<int>(
-                "SELECT 1 FROM sys.tables WHERE name = 'HEAD_LST_KBK'")).Any();
-
             // فلگ «هزینه تولید از HEAD_MANF/DTL_MANF بخواند» — همان
             // Strings.Mid(Baseknow.OPTIONSS, 56, 1) == "5" کد اصلی.
             var optionss = (await _db.DoGetDataSQLAsync<string>(
@@ -584,7 +576,7 @@ namespace Safir.Server.CostClose.AverageRateRebuild
                 if (hasCycle)
                 {
                     await ProcessCyclicCodeAsync(
-                        codeKey, orderedAnbars, sinceDate, hasFbk, hasKbk,
+                        codeKey, orderedAnbars, sinceDate,
                         ProcessRowAsync, FlushPendingAsync, RecordFailure, AddLog, ct);
                     return;
                 }
@@ -613,7 +605,7 @@ namespace Safir.Server.CostClose.AverageRateRebuild
                     List<KardexRow> kardex;
                     try
                     {
-                        kardex = (await BuildKardexAsync(code, anbar, sinceDate, hasFbk, hasKbk)).ToList();
+                        kardex = (await BuildKardexAsync(code, anbar, sinceDate)).ToList();
                     }
                     catch (Exception ex)
                     {
@@ -658,7 +650,7 @@ namespace Safir.Server.CostClose.AverageRateRebuild
         private async Task ProcessCyclicCodeAsync(
             string code,
             List<OpeningBalanceRow> anbarRows,
-            long sinceDate, bool hasFbk, bool hasKbk,
+            long sinceDate,
             Func<string, KardexRow, AnbarState, List<string>, Task> processRowAsync,
             Func<string, int, List<string>, Task> flushPendingAsync,
             Action<string> recordFailure,
@@ -686,7 +678,7 @@ namespace Safir.Server.CostClose.AverageRateRebuild
             List<KardexRow> kardex;
             try
             {
-                kardex = (await BuildKardexAsync(code, anbar: null, sinceDate, hasFbk, hasKbk)).ToList();
+                kardex = (await BuildKardexAsync(code, anbar: null, sinceDate)).ToList();
             }
             catch (Exception ex)
             {
@@ -784,7 +776,7 @@ namespace Safir.Server.CostClose.AverageRateRebuild
         /// بدون تکرار کوئری پوشش می‌دهند.
         /// </summary>
         private async Task<IEnumerable<KardexRow>> BuildKardexAsync(
-            string code, int? anbar, long sinceDate, bool hasFbk, bool hasKbk)
+            string code, int? anbar, long sinceDate)
         {
             // ⚠️ ترتیب داخل یک روز: TAGCOD.BARGAH (متن) نیست — TAGCOD.tartib
             // است، همان اصلاحی که با تأیید کاربر روی 14-s05-gate.sql زده شد
@@ -878,10 +870,10 @@ namespace Safir.Server.CostClose.AverageRateRebuild
 
                 // ⚠️ برگشت خرید («کد ۳۵۱۲/انبار ۸۰۷» کشف شد): برخلاف برگشت
                 // فروش (بالا)، اینجا هیچ شاخه‌ی معادلی برای BACK_HEAD.ta=1
-                // وجود نداشت — فقط به hasKbk (جدول HEAD_LST_KBK) وابسته بود
-                // که در این دیتابیس اصلاً وجود ندارد؛ یعنی Case 3 در
-                // ProcessRowAsync کد دارد ولی هرگز هیچ ردیفی به آن نمی‌رسید،
-                // پس هیچ برگشت خریدی تا به حال روی نرخ میانگین اثر نمی‌گذاشت.
+                // وجود نداشت — فقط شاخه‌ی HEAD_LST_KBK بود که هرگز اجرا
+                // نمی‌شد (پایین‌تر را ببینید)؛ یعنی Case 3 در ProcessRowAsync
+                // کد دارد ولی هرگز هیچ ردیفی به آن نمی‌رسید، پس هیچ برگشت
+                // خریدی تا به حال روی نرخ میانگین اثر نمی‌گذاشت.
                 // بررسی کل دیتابیس: فقط همین یک سند (۱۳۳ واحد) — نادر ولی واقعی.
                 //
                 // برخلاف Case 4، اینجا نیازی به سنتینل ۹۹۹۹/تای‌برک هم‌روز
@@ -899,25 +891,25 @@ namespace Safir.Server.CostClose.AverageRateRebuild
                     AND il.CODE = @Code AND (@Anbar IS NULL OR il.ANBAR = @Anbar) AND bh.DATE_N > @SinceDate"
             };
 
-            if (hasFbk)
-            {
-                parts.Add(@"SELECT fb.DATE_N, 4 AS TAG, i.NUMBER, i.ANBAR, i.CODE, i.MEGH, i.MEGHk, i.MEGH_MAR,
-                                   i.MABL, i.MABL_K, i.N_KOL, i.ID AS id, t.tartib
-                            FROM dbo.INVO_LST i
-                            INNER JOIN dbo.HEAD_LST_FBK fb ON i.NUMBER = fb.NUMBER1 AND i.TAG = fb.dtag
-                            INNER JOIN dbo.TAGCOD t ON fb.htag = t.CODE
-                            WHERE i.CODE = @Code AND (@Anbar IS NULL OR i.ANBAR = @Anbar) AND fb.DATE_N > @SinceDate");
-            }
-
-            if (hasKbk)
-            {
-                parts.Add(@"SELECT kb.DATE_N, 3 AS TAG, i.NUMBER, i.ANBAR, i.CODE, i.MEGH, i.MEGHk, i.MEGH_MAR,
-                                   i.MABL, i.MABL_K, i.N_KOL, i.ID AS id, t.tartib
-                            FROM dbo.INVO_LST i
-                            INNER JOIN dbo.HEAD_LST_KBK kb ON i.NUMBER = kb.NUMBER1 AND i.TAG = kb.dtag
-                            INNER JOIN dbo.TAGCOD t ON kb.htag = t.CODE
-                            WHERE i.CODE = @Code AND (@Anbar IS NULL OR i.ANBAR = @Anbar) AND kb.DATE_N > @SinceDate");
-            }
+            // ── شاخه‌های HEAD_LST_FBK / HEAD_LST_KBK عمداً حذف شده‌اند ──
+            // کد اصلی این دو را داشت و شرطشان «آیا این جدول وجود دارد» بود.
+            // اینجا آن شرط با sys.tables چک می‌شد و همیشه false بود، چون هر
+            // دو در این پایگاه *ویو* هستند نه جدول. یعنی این دو شاخه هرگز
+            // اجرا نمی‌شدند و من به‌اشتباه نتیجه گرفتم که وجود ندارند.
+            //
+            // بعد از دیدنِ تعریفشان معلوم شد چیزِ تازه‌ای نمی‌آورند:
+            //   HEAD_LST_FBK = HEAD_LST WHERE TAG = 4   (htag=4, dtag=2)
+            //   HEAD_LST_KBK = HEAD_LST WHERE TAG = 3   (htag=3, dtag=1)
+            //   BACK_HEAD    = HEAD_LST با ta = TAG − 2
+            // یعنی هر سه یک مجموعه‌ی سطرند؛ FBK همان ta=2 است و KBK همان
+            // ta=1. شمارش تأیید کرد: FBK سیزده سطر، ta=2 سیزده سطر؛ KBK یک
+            // سطر، ta=1 یک سطر.
+            //
+            // پس اگر کسی آن شرط را «درست» کند و به sys.objects بدهد، هر
+            // برگشت فروش دو بار در کاردکس می‌آمد و میانگین را خراب می‌کرد.
+            // شاخه‌های BACK_HEAD بالا همان کار را می‌کنند و یک چیز بیشتر
+            // دارند که FBK ندارد: سنتینلِ ۹۹۹۹ برای برگشتِ هم‌روزِ فروش.
+            // نگه داشتنِ کدی که فقط تا وقتی درست است که اجرا نشود، تله است.
 
             var sql = "SELECT * FROM (" + string.Join(" UNION ", parts) + ") AS AVGSRC ORDER BY DATE_N, tartib, id";
 
