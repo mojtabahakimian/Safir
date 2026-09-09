@@ -145,6 +145,39 @@ namespace Safir.Server.CostClose.AverageRateRebuild
 
         private static string SqlNum(double v) => v.ToString(CultureInfo.InvariantCulture);
 
+        /// <summary>
+        /// آستانه‌ی «عملاً صفر» برای مقدار و مبلغ.
+        ///
+        /// ── چرا لازم است ──
+        /// کد اصلی «MOGUDI == 0» را دقیق مقایسه می‌کند. مقدارها double اند و
+        /// از جمع و تفریقِ صدها تراکنش ساخته می‌شوند، پس جایی که از نظر
+        /// حسابداری باید دقیقاً صفر باشند، در عمل یک باقیمانده‌ی ریز
+        /// می‌مانند. آن مقایسه‌ی دقیق باقیمانده را صفر نمی‌بیند و خط بعد
+        /// همان را می‌کند مخرجِ تقسیم.
+        ///
+        /// مورد واقعی (کد ۳۳۶۵، انبار ۸۰۹، ۱۴۰۵/۰۵/۰۶): MOGUDI روی
+        /// ۷٫۱۰۵۴۲۷۳۵۷۶۰۱۰۰۲e-15 نشست و MBKM روی ۲٫۰۵-؛ تقسیم، نرخ را به
+        /// ۲۸۸٬۳۱۱٬۹۴۸٬۰۸۳٬۲۰۰- رساند. همان عددِ نجومی بعداً از راه SMABL به
+        /// ۳۱ کالای دیگر سرایت کرد و حلقه‌ی همگرایی S07A↔S11 را از کار
+        /// انداخت.
+        ///
+        /// ۱e-6 کیلوگرم یعنی یک میلی‌گرم. هیچ کاردکسی این را نمی‌شمارد، پس
+        /// روی داده‌ی سالم هیچ نتیجه‌ای عوض نمی‌شود — تست روی کد ۳۳۶۵ عیناً
+        /// همان نرخ‌های قبلی را داد.
+        /// </summary>
+        private const double ZeroEpsilon = 1e-6;
+
+        /// <summary>
+        /// قاعده‌ی مشترکِ بازمحاسبه‌ی نرخ، همان‌طور که کد اصلی دارد — فقط با
+        /// آستانه به‌جای مقایسه‌ی دقیقِ صفر. نگاه کنید <see cref="ZeroEpsilon"/>.
+        /// </summary>
+        private static void Recalc(AnbarState st)
+        {
+            if (Math.Abs(st.MBKM) < ZeroEpsilon) { }
+            else if (Math.Abs(st.MOGUDI) < ZeroEpsilon) { st.MBKM = 0d; }
+            else { st.MIAN = st.MBKM / st.MOGUDI; }
+        }
+
         // ───────── محدودیت موازی‌سازی — مثل MaterialIssueRebuildService ─────────
 
         private static async Task ParallelForAsync(int count, int maxDegree, Func<int, Task> body)
@@ -319,9 +352,7 @@ namespace Safir.Server.CostClose.AverageRateRebuild
                     {
                         st.MBKM += t.MABL_K ?? 0;
                         st.MOGUDI += t.MEGHk ?? 0;
-                        if (st.MBKM == 0d) { }
-                        else if (st.MOGUDI == 0d) { st.MBKM = 0d; }
-                        else { st.MIAN = st.MBKM / st.MOGUDI; }
+                        Recalc(st);
                         if (line is not null)
                         {
                             line.AVRAGE = st.MIAN;
@@ -334,9 +365,7 @@ namespace Safir.Server.CostClose.AverageRateRebuild
                         if (st.MBKM <= 0d) st.MBKM = (t.MABL ?? 0) * (t.MEGH_MAR ?? 0);
                         else st.MBKM += st.MIAN * (t.MEGH_MAR ?? 0);
                         st.MOGUDI += t.MEGH_MAR ?? 0;
-                        if (st.MBKM == 0d) { }
-                        else if (st.MOGUDI == 0d) { st.MBKM = 0d; }
-                        else { st.MIAN = st.MBKM / st.MOGUDI; }
+                        Recalc(st);
                         if (line is not null)
                         {
                             line.AVRAGE = st.MIAN;
@@ -349,9 +378,7 @@ namespace Safir.Server.CostClose.AverageRateRebuild
                         if (st.MBKM <= 0d) st.MBKM = t.MABL_K ?? 0;
                         else st.MBKM += (t.MEGHk ?? 0) * st.MIAN;
                         st.MOGUDI += t.MEGHk ?? 0;
-                        if (st.MBKM == 0d) { }
-                        else if (st.MOGUDI == 0d) { st.MBKM = 0d; }
-                        else { st.MIAN = st.MBKM / st.MOGUDI; }
+                        Recalc(st);
                         if (line is not null)
                         {
                             line.AVRAGE = st.MIAN;
@@ -374,9 +401,7 @@ namespace Safir.Server.CostClose.AverageRateRebuild
                     {
                         st.MBKM -= (t.MEGH_MAR ?? 0) * st.MIAN;
                         st.MOGUDI -= t.MEGH_MAR ?? 0;
-                        if (st.MBKM == 0d) { }
-                        else if (st.MOGUDI == 0d) { st.MBKM = 0d; }
-                        else { st.MIAN = st.MBKM / st.MOGUDI; }
+                        Recalc(st);
                         if (line is not null)
                         {
                             line.AVRAGE2 = st.MIAN;
@@ -394,9 +419,7 @@ namespace Safir.Server.CostClose.AverageRateRebuild
                         // نه در این فرمول — نگاه کنید کامنت آن‌جا.)
                         st.MBKM += (t.MEGH_MAR ?? 0) * (line?.AVRAGE ?? 0);
                         st.MOGUDI += t.MEGH_MAR ?? 0;
-                        if (st.MBKM == 0d) { }
-                        else if (st.MOGUDI == 0d) { st.MBKM = 0d; }
-                        else { st.MIAN = st.MBKM / st.MOGUDI; }
+                        Recalc(st);
                         if (line is not null)
                         {
                             line.AVRAGE2 = st.MIAN;
@@ -433,9 +456,7 @@ namespace Safir.Server.CostClose.AverageRateRebuild
                         var mablK = (line is not null && line.Touched) ? line.MABL_K : (t.MABL_K ?? 0);
                         st.MBKM += mablK;
                         st.MOGUDI += t.MEGHk ?? 0;
-                        if (st.MBKM == 0d) { }
-                        else if (st.MOGUDI == 0d) { st.MBKM = 0d; }
-                        else { st.MIAN = st.MBKM / st.MOGUDI; }
+                        Recalc(st);
                         if (line is not null)
                         {
                             line.AVRAGE2 = st.MIAN;
@@ -485,9 +506,7 @@ namespace Safir.Server.CostClose.AverageRateRebuild
 
                             st.MBKM += line.MABL_K;
                             st.MOGUDI += t.MEGHk ?? 0;
-                            if (st.MBKM == 0d) { }
-                            else if (st.MOGUDI == 0d) { st.MBKM = 0d; }
-                            else { st.MIAN = st.MBKM / st.MOGUDI; }
+                            Recalc(st);
                             line.AVRAGE = st.MIAN;
 
                             pending.Add($@"UPDATE dbo.INVO_LST SET MABL = {SqlNum(line.MABL)}, MABL_K = {SqlNum(line.MABL_K)}, AVRAGE = {SqlNum(st.MIAN)} WHERE ID = {line.id}");
@@ -498,9 +517,7 @@ namespace Safir.Server.CostClose.AverageRateRebuild
                     {
                         st.MBKM += st.MIAN * (t.MEGHk ?? 0);
                         st.MOGUDI += t.MEGHk ?? 0;
-                        if (st.MBKM == 0d) { }
-                        else if (st.MOGUDI == 0d) { st.MBKM = 0d; }
-                        else { st.MIAN = st.MBKM / st.MOGUDI; }
+                        Recalc(st);
 
                         var grd = anbgrdLines.FirstOrDefault(x => x.CODE == t.CODE && x.GRD_NUM == t.NUMBER);
                         if (grd is not null) grd.MABL = st.MIAN;
@@ -795,37 +812,24 @@ namespace Safir.Server.CostClose.AverageRateRebuild
             // کل مسیر میانگین را تا انتهای ماه منحرف می‌کند — دقیقاً همان
             // علتِ نوسان ۹۷۰۴۲۴۲۹۵۳ ریالیِ سود کد ۳۳۶۵ بین اجراهای پیاپی.
             // id شناسه‌ی IDENTITY است، پس صعودی = ترتیب واقعیِ درج/رویداد.
-            // ── tartib شاخه‌ی انتقالیِ ورود، در دو حالت فرق می‌کند ──
-            // ⚠️ اصلاح (از مقایسه با AUTO_BAZ درآمد؛ کامنت قبلیِ
-            // ProcessCyclicCodeAsync اینجا ادعای غلطی می‌کرد):
+            // ── چرا tartib شاخه‌ی انتقالیِ ورود دست‌کاری *نمی‌شود* ──
+            // ⚠️ یک بار امتحان شد و پس گرفته شد؛ اینجا می‌ماند تا دوباره
+            // امتحان نشود.
             //
-            //   • انبارِ مشخص: TAG=6 فقط در کوئریِ انبارِ مقصد می‌آید و TAG=5
-            //     فقط در کوئریِ مبدأ؛ این دو هرگز در یک نتیجه کنار هم نیستند،
-            //     پس tartib طبیعیِ TAGCOD (کد ۶) درست است. وابستگیِ «مبدأ قبل
-            //     از مقصد» را ترتیبِ خودِ انبارها تأمین می‌کند.
+            // واقعیتِ درست: در حالت ادغام‌شده، TAG=6 (tartib ۱۰) پیش از TAG=5
+            // (tartib ۱۴) پردازش می‌شود، پس Touched به‌موقع ست نمی‌شود و
+            // Case 6 مقدارِ ذخیره‌شده‌ی MABL_K را می‌خواند نه مقدارِ همین دور.
             //
-            //   • ادغام‌شده (@Anbar = NULL، کالای چرخه‌دار): هر دو ردیف در یک
-            //     نتیجه‌اند و DATE_N شان هم یکی است (از سربرگ یک حواله). پس
-            //     ترتیبشان را فقط tartib تعیین می‌کند — و tartib کد ۶ برابر
-            //     ۱۰ است در برابر ۱۴ برای کد ۵، یعنی مقصد *همیشه* قبل از مبدأ
-            //     پردازش می‌شد، Touched هرگز به‌موقع ست نمی‌شد، و Case 6 همان
-            //     MABL_K کهنه‌ای را می‌خواند که قرار بود رفع شود.
-            //     پس در این حالت tartib از کدِ *مبدأ* ساخته می‌شود به‌علاوه‌ی
-            //     نیم واحد (۱۴٫۵)، تا ورود بلافاصله بعد از خروجِ خودش بنشیند
-            //     بدون اینکه جای هیچ رویداد دیگری در آن روز عوض شود.
+            // نتیجه‌گیریِ غلط این بود که پس باید ورود را بعد از خروج نشاند
+            // (tartib مبدأ + ۰٫۵). این کار ترتیبِ رویدادها را عوض می‌کند، نه
+            // فقط تازگیِ یک عدد را — و روی کد ۳۳۶۵/انبار ۸۰۹ در ۱۴۰۵/۰۵/۰۶
+            // انبار را از مسیر «خروجِ ۳۸٫۵ از موجودیِ ۱۳٫۵» می‌بَرد: MOGUDI
+            // به ۲۵- می‌رود و بعد با ورودِ ۲۵ به ۷٫۱e-15 برمی‌گردد، نه صفر.
+            // آن‌وقت تقسیمِ MBKM بر آن باقیمانده نرخ را به ۲٫۸۸e14- می‌رساند
+            // و از آنجا به کلِ زنجیره سرایت می‌کند.
             //
-            // روی این پایگاه ۱۶ کالا چرخه‌ی واقعی دارند — از جمله ۳۳۶۵، ۳۷۴ و
-            // ۳۶۸ که هر سه قبلاً منشأ مغایرت بوده‌اند.
-            var transferInTartib = anbar.HasValue
-                ? "t.tartib"
-                : "CAST(ISNULL(tsrc.tartib, 0) AS FLOAT) + 0.5";
-
-            // LEFT و نه INNER: این JOIN فقط برای گرفتنِ tartibِ مبدأ است و
-            // نباید هیچ ردیفی را حذف کند.
-            var transferInSrcJoin = anbar.HasValue
-                ? string.Empty
-                : " LEFT JOIN dbo.TAGCOD tsrc ON tsrc.CODE = h.TAG";
-
+            // با ترتیبِ طبیعی این اتفاق نمی‌افتد. کهنه‌بودنِ MABL_K در Case 6
+            // مسئله‌ی کوچک‌تری است و ارزشِ این ریسک را ندارد.
             var parts = new List<string>
             {
                 @"SELECT h.DATE_N, i.TAG, i.NUMBER, i.ANBAR, i.CODE, i.MEGH, i.MEGHk, i.MEGH_MAR,
@@ -835,12 +839,12 @@ namespace Safir.Server.CostClose.AverageRateRebuild
                   INNER JOIN dbo.TAGCOD t ON h.TAG = t.CODE
                   WHERE i.CODE = @Code AND (@Anbar IS NULL OR i.ANBAR = @Anbar) AND h.DATE_N > @SinceDate",
 
-                $@"SELECT h.DATE_N, 6 AS TAG, i.NUMBER, i.ANBARF AS ANBAR, i.CODE, i.MEGH, i.MEGHk, i.MEGH_MAR,
-                          i.MABL, i.MABL_K, i.N_KOL, i.ID AS id, {transferInTartib} AS tartib
-                   FROM dbo.INVO_LST i
-                   INNER JOIN dbo.HEAD_LST h ON i.NUMBER = h.NUMBER AND i.TAG = h.TAG
-                   INNER JOIN dbo.TAGCOD t ON h.TAG + 1 = t.CODE{transferInSrcJoin}
-                   WHERE i.CODE = @Code AND (@Anbar IS NULL OR i.ANBARF = @Anbar) AND h.DATE_N > @SinceDate AND i.TAG = 5",
+                @"SELECT h.DATE_N, 6 AS TAG, i.NUMBER, i.ANBARF AS ANBAR, i.CODE, i.MEGH, i.MEGHk, i.MEGH_MAR,
+                         i.MABL, i.MABL_K, i.N_KOL, i.ID AS id, t.tartib
+                  FROM dbo.INVO_LST i
+                  INNER JOIN dbo.HEAD_LST h ON i.NUMBER = h.NUMBER AND i.TAG = h.TAG
+                  INNER JOIN dbo.TAGCOD t ON h.TAG + 1 = t.CODE
+                  WHERE i.CODE = @Code AND (@Anbar IS NULL OR i.ANBARF = @Anbar) AND h.DATE_N > @SinceDate AND i.TAG = 5",
 
                 // tartib هم اینجا هاردکد است، نه از TAGCOD خوانده می‌شود —
                 // چون TAG این شاخه (17 یا 18) واقعی نیست، خودِ همین کوئری با
