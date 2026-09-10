@@ -643,7 +643,16 @@ BEGIN
                     WHERE fx.UnitId = @UnitId AND TRY_CAST(fx.CODE AS BIGINT) = ca.CODE AND fx.IsFixed = 1
                 );
 
-        IF ABS(@absWipFixed - @absTotal) > 10000000
+        /* ⚠️ آستانه از CC_CheckRule مي‌آيد، نه عددِ هاردکد.
+           قبلاً ۱۰٬۰۰۰٬۰۰۰ ثابت بود؛ ولي قاعده‌ي صاحب پروژه اين است که
+           «انحراف زير ۱۰۰۰ ريال صفر حساب مي‌شود»، و او جذب دستمزد را در
+           گامِ سوم به صفر مي‌رساند — با سقفِ ده‌ميليوني، اختلافِ نُه‌ميليوني
+           هرگز ديده نمي‌شد و آن گام بي‌سروصدا ناتمام مي‌ماند.
+           پيش‌فرضِ ۱۰۰۰ با يک UPDATE روي Threshold قابل تغيير است. */
+        DECLARE @thr08 FLOAT =
+            ISNULL((SELECT Threshold FROM dbo.CC_CheckRule WHERE RuleCode = 'CHK-08'), 1000);
+
+        IF ABS(@absWipFixed - @absTotal) > @thr08
             INSERT dbo.CC_Exception
                 (RunId, StepCode, RuleCode, ExType, Severity, Amount, Description)
             VALUES (@RunId, 'S10', 'CHK-08', 10, 1, @absWipFixed - @absTotal,
