@@ -2,7 +2,7 @@
    تنظیمات ماژول بستن ماه و دستیار — انتقال به پایگاه دیگر
 
    از YAZDSEPAR1405 روی DESKTOP-GLPOA91\SQL2022
-   گرفته شده در 2026-09-10 18:50.
+   گرفته شده در 2026-09-10 18:57.
 
    ── چه می‌کند ──
    هر ردیفِ تنظیمات را اگر نبود می‌سازد و اگر بود به‌روز می‌کند (MERGE).
@@ -166,8 +166,8 @@ PRINT N'CC_AnbarHes: ' + CAST(@@ROWCOUNT AS NVARCHAR(10)) + N' ردیف';
 SET IDENTITY_INSERT dbo.CC_ExpenseAcc ON;
 MERGE dbo.CC_ExpenseAcc AS t
 USING (VALUES
-  (1, 1, 714, NULL, NULL, 1.000000, 1, N'???? ???? ????? ? ???'),
-  (2, 1, 724, NULL, NULL, 1.000000, 1, N'???? ???? ?? ????? ? ???')
+  (1, 1, 714, NULL, NULL, 1.000000, 1, N'هزینه دستمزد توزیع و فروش'),
+  (2, 1, 724, NULL, NULL, 1.000000, 1, N'سایر هزینه های توزیع و فروش')
 ) AS s ([Id], [ExpenseKind], [HesKol], [HesMoin], [HesTafsili], [Ratio], [IsActive], [Note])
 ON t.[Id] = s.[Id]
 WHEN MATCHED THEN UPDATE SET
@@ -463,7 +463,7 @@ USING (VALUES
   (N'CHK-01', N'کاردکس منفی', N'S05', 1, 2, -1.0000000000000000e-002, N'تاریخ رسید یا حواله را جابه‌جا کنید تا موجودی در هیچ لحظه‌ای منفی نشود.', 1, 10, NULL, NULL),
   (N'CHK-02', N'مغایرت کارت انبار و حسابداری', N'S05', 2, 2, NULL, N'معمولاً حواله‌ای است که فاکتورش صادر نشده، یا تاریخ فاکتور در ماه بعد افتاده. تاریخ‌ها را یکسان کنید.', 1, 20, NULL, NULL),
   (N'CHK-03', N'فرمول بدون نرخ جذب هزینه تبدیل', N'S00', 9, 1, NULL, N'در فرمول، «جذب هزینه دستمزد» را پر کنید. اگر عمداً صفر است (محصول فرعی مانند آب پنیر خالص)، آن را در فهرست استثناهای پذیرفته‌شده ثبت کنید تا دیگر هشدار ندهد.', 1, 30, NULL, NULL),
-  (N'CHK-04', N'کالای تولیدشده بدون فرمول ماه', N'S00', 12, 2, NULL, N'نسخه ماه جاری فرمول ساخته نشده است. با «کپی فرمول» نسخه ماه را بسازید.', 1, 40, N'CC_sp_Fix_MissingFormula', N'??? ?????? ????'),
+  (N'CHK-04', N'کالای تولیدشده بدون فرمول ماه', N'S00', 12, 2, NULL, N'نسخه ماه جاری فرمول ساخته نشده است. با «کپی فرمول» نسخه ماه را بسازید.', 1, 40, N'CC_sp_Fix_MissingFormula', N'اصلاح خودکار برگه'),
   (N'CHK-05', N'ماده بدون منبع نرخ', N'S00', 4, 1, NULL, N'این ماده نه فرمول دارد و نه گردش خروج در ماه، بنابراین نرخش صفر می‌ماند و صفر را به همه کالاهای بالادست منتقل می‌کند. یک نرخ برایش تعیین کنید.', 1, 50, NULL, NULL),
   (N'CHK-06', N'حلقه در ساختار فرمول', N'S00', 5, 2, NULL, N'کالا مستقیم یا غیرمستقیم خودش را مصرف می‌کند. تا این حلقه شکسته نشود، محاسبه نرخ ممکن نیست.', 1, 60, NULL, NULL),
   (N'CHK-07', N'مانده نامتوازن مواد در حساب ۷۵۱', N'S00', 13, 1, 1.0000000000000000e-003, N'اگر یک طرف صفر باشد، حواله جا افتاده است. آستانه یک در هزار است؛ کمتر از آن گِردکردن طبیعی است و نیاز به اقدام ندارد.', 1, 70, NULL, NULL),
@@ -505,7 +505,7 @@ PRINT N'CC_CheckRule: ' + CAST(@@ROWCOUNT AS NVARCHAR(10)) + N' ردیف';
    ────────────────────────────────────────────────────────────────── */
 MERGE dbo.AI_UserAccess AS t
 USING (VALUES
-  (114, 1, 1, 1, 500, 100, N'PAY2_PAYROLL,PAY2_EMPLOYEE', NULL, N'??? ???? ???????', '2026-09-06T22:02:20.8325250')
+  (114, 1, 1, 1, 500, 100, N'PAY2_PAYROLL,PAY2_EMPLOYEE', NULL, N'آقای دکتر حکیمیان', '2026-09-06T22:02:20.8325250')
 ) AS s ([UserCo], [IsEnabled], [Mode], [AllowRawSql], [MaxRows], [DailyMessages], [BlockedForms], [Note], [UpdatedBy], [UpdatedAtUtc])
 ON t.[UserCo] = s.[UserCo]
 WHEN MATCHED THEN UPDATE SET
@@ -528,7 +528,7 @@ PRINT N'AI_UserAccess: ' + CAST(@@ROWCOUNT AS NVARCHAR(10)) + N' ردیف';
    ────────────────────────────────────────────────────────────────── */
 MERGE dbo.AI_Config AS t
 USING (VALUES
-  (1, 1, N'openai', N'http://localhost:20128', N'ag/gemini-3.8-flash-low', 900, 30, N'??? ???? ???????', '2026-09-07T18:21:13.3901214')
+  (1, 1, N'openai', N'http://localhost:20128', N'ag/gemini-3.8-flash-low', 900, 30, N'آقای دکتر حکیمیان', '2026-09-07T18:21:13.3901214')
 ) AS s ([Id], [IsEnabled], [Provider], [BaseUrl], [Model], [TimeoutSeconds], [MaxToolLoops], [UpdatedBy], [UpdatedAtUtc])
 ON t.[Id] = s.[Id]
 WHEN MATCHED THEN UPDATE SET
