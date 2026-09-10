@@ -137,8 +137,42 @@ BEGIN
        دقیقاً صفر نمی‌شود؛ این آستانه برای فیلتر همین نویز است، نه برای
        نادیده گرفتن کمبود واقعی. پیش‌فرض -0.001.
        ───────────────────────────────────────────────────────────── */
-    DECLARE @Chk01Threshold DECIMAL(18,6) =
-        ISNULL((SELECT Threshold FROM dbo.CC_CheckRule WHERE RuleCode = 'CHK-01'), -0.001);
+    /* ⚠️ آستانه از «واحد» به «ریال» تغییر کرد.
+       ── چرا ──
+       آستانه‌ی مطلقِ واحد نمی‌تواند هم‌زمان برای کالای تُنی و کالای گرمی
+       درست باشد. مایه پنیر (کد ۲۱۸۶) حواله‌هایش ۰٫۰۰۲ تا ۰٫۰۰۵ واحد
+       است، پس آستانه‌ی ۰٫۰۱- بیش از سه برابرِ یک حواله‌ی کامل بود: کلِ
+       گردشِ آن کالا زیر آستانه می‌افتاد و موجودیِ منفی‌اش هرگز گزارش
+       نمی‌شد — با اینکه در انبار ۸۱۰ تا ۰٫۰۴۷- واحد پایین می‌رفت، یعنی
+       ۲٬۰۷۳٬۰۷۴ ریال.
+       معیارِ ریالی این را حل می‌کند و با بقیه‌ی تصمیم‌های صاحب پروژه هم
+       هم‌زبان است («انحراف زیر ۱۰۰۰ ریال صفر است»). */
+    DECLARE @Chk01Rial DECIMAL(18,2) =
+        ISNULL((SELECT Threshold FROM dbo.CC_CheckRule WHERE RuleCode = 'CHK-01'), 1000);
+
+    /* کفِ مقداری، مستقل از ریال: زیر یک‌میلیونیمِ واحد دیگر موجودی نیست،
+       باقیمانده‌ی اعشاریِ FLOAT است. بدون این، یک کالای گران با
+       باقیمانده‌ی ۷e-15 هم می‌توانست از سدِ ریالی رد شود. */
+    DECLARE @Chk01QtyFloor DECIMAL(18,9) = -0.000001;
+
+    /* نرخِ هر (انبار،کالا) برای ارزش‌گذاریِ موجودیِ منفی — آخرین نرخِ
+       شناخته‌شده‌ی کاردکس. اگر کالایی هیچ نرخی ندارد نمی‌شود ارزشش را
+       سنجید، پس همان قاعده‌ی مقداریِ قبلی (۰٫۰۱-) برایش می‌ماند. */
+    IF OBJECT_ID('tempdb..#Nerkh') IS NOT NULL DROP TABLE #Nerkh;
+
+    SELECT  Anbar, code, Nerkh
+    INTO    #Nerkh
+    FROM   (SELECT i.ANBAR AS Anbar, TRY_CAST(i.CODE AS BIGINT) AS code,
+                   i.AVRAGE AS Nerkh,
+                   ROW_NUMBER() OVER (
+                       PARTITION BY i.ANBAR, TRY_CAST(i.CODE AS BIGINT)
+                       ORDER BY h.DATE_N DESC, i.ID DESC) AS rn
+            FROM   dbo.INVO_LST i
+            JOIN   dbo.HEAD_LST h ON h.NUMBER = i.NUMBER AND h.TAG = i.TAG
+            WHERE  i.AVRAGE > 0) x
+    WHERE  rn = 1;
+
+    CREATE CLUSTERED INDEX IX_Nerkh ON #Nerkh(Anbar, code);
 
     IF OBJECT_ID('tempdb..#PM') IS NOT NULL DROP TABLE #PM;
 
@@ -300,12 +334,16 @@ BEGIN
         FROM    AllMovement
     ),
     AvvalinManfi AS (
-        SELECT  Anbar, code, DATE_N, NUMBER, TAG, Tartib, Mande,
+        SELECT  t.Anbar, t.code, t.DATE_N, t.NUMBER, t.TAG, t.Tartib, t.Mande,
+                ISNULL(n.Nerkh, 0) AS Nerkh,
                 ROW_NUMBER() OVER (
-                    PARTITION BY Anbar, code
-                    ORDER BY DATE_N, Tartib, NUMBER) AS rn
-        FROM    Tajamoi
-        WHERE   Mande < @Chk01Threshold
+                    PARTITION BY t.Anbar, t.code
+                    ORDER BY t.DATE_N, t.Tartib, t.NUMBER) AS rn
+        FROM    Tajamoi t
+        LEFT    JOIN #Nerkh n ON n.Anbar = t.Anbar AND n.code = t.code
+        WHERE   t.Mande < @Chk01QtyFloor
+          AND   (   (n.Nerkh IS NOT NULL AND ABS(t.Mande) * n.Nerkh > @Chk01Rial)
+                 OR (n.Nerkh IS NULL     AND t.Mande < -0.01) )
     )
     INSERT dbo.CC_Exception
         (RunId, StepCode, RuleCode, ExType, Severity,
@@ -316,7 +354,7 @@ BEGIN
                    m.DATE_N / 10000, '/',
                    FORMAT(m.DATE_N / 100 % 100, '00'), '/',
                    FORMAT(m.DATE_N % 100, '00'),
-                   N' منفی می‌شود')
+                   N' منفی می‌شود (', FORMAT(ABS(m.Mande) * m.Nerkh, 'N0'), N' ریال)')
     FROM    AvvalinManfi m
     LEFT    JOIN dbo.TCOD_ANBAR a ON a.CODE = m.Anbar
     WHERE   m.rn = 1
