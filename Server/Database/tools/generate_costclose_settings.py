@@ -35,7 +35,7 @@ DATE_T  = {"datetime","datetime2","date","smalldatetime","datetimeoffset","time"
 
 
 def sqlcmd(query, wide=False):
-    args = ["sqlcmd", "-S", SERVER, "-d", DB, "-E", "-y", "0",
+    args = ["sqlcmd", "-S", SERVER, "-d", DB, "-E", "-y", "0", "-f", "o:65001",
             "-s", "\x1f", "-Q", "SET NOCOUNT ON; " + query]
     p = subprocess.run(args, capture_output=True, text=True,
                        encoding="utf-8", errors="replace")
