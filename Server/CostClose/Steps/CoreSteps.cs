@@ -167,11 +167,28 @@ namespace Safir.Server.CostClose.Steps
                       DT1 = ctx.DateFrom, DT2 = ctx.DateTo },
                 commandTimeout: 1800);
 
+            // ⚠️ «مسدودکننده» از CC_CheckRule.IsBlocking می‌آید، نه از
+            // Severity. قبلاً هر استثنای Severity=2 اجرا را می‌خواباند —
+            // ده قاعده این شدت را دارند و روی یک ماه واقعی یعنی توقف پشتِ
+            // CHK-02 با ۲۲۳ مورد و CHK-17 با ۴۸ مورد.
+            //
+            // ولی CHK-02 در گامِ ششمِ کارِ صاحب پروژه رفع می‌شود، بعد از
+            // صدور اسناد گروهی؛ تا آن اسناد نباشند مغایرتِ کاردکس و
+            // حسابداری اصلاً معنا ندارد. ایستادن پشتش، جلوی همان کاری را
+            // می‌گرفت که قرار بود رفعش کند.
+            //
+            // قاعده‌ی او: کاردکس منفی متوقف کند، بقیه فقط گزارش شوند.
+            // تنها همان است که *محاسبه* را خراب می‌کند (تقسیم میانگین
+            // متحرک بر مقدار منفی)، نه اینکه صرفاً وضعیت را نشان دهد.
+            //
+            // نگاه کنید 33-gate-blocking-rules.sql برای اینکه چرا ستونِ
+            // جدا و نه خودِ Severity.
             var counts = await ctx.Db.DoGetDataSQLAsyncSingle<GateCounts>(
-                @"SELECT SUM(CASE WHEN Severity = 2 THEN 1 ELSE 0 END) AS Blocking,
-                         SUM(CASE WHEN Severity = 1 THEN 1 ELSE 0 END) AS Warning
-                  FROM   dbo.CC_Exception
-                  WHERE  RunId = @r AND IsResolved = 0",
+                @"SELECT SUM(CASE WHEN ISNULL(r.IsBlocking, 0) = 1 THEN 1 ELSE 0 END) AS Blocking,
+                         SUM(CASE WHEN ISNULL(r.IsBlocking, 0) = 0 THEN 1 ELSE 0 END) AS Warning
+                  FROM   dbo.CC_Exception e
+                  LEFT   JOIN dbo.CC_CheckRule r ON r.RuleCode = e.RuleCode
+                  WHERE  e.RunId = @r AND e.IsResolved = 0",
                 new { r = ctx.RunId });
 
             var blocking = counts?.Blocking ?? 0;
@@ -186,9 +203,13 @@ namespace Safir.Server.CostClose.Steps
             // پیام صریح لازم است چون بدون آن ردیف «دروازه اعتبارسنجی» در
             // صفحه پایش فقط یک آیکون هشدار خالی نشان می‌داد؛ کاربر می‌پرسید
             // «چرا اجرا اینجا متوقف شد؟» بدون اینکه ردیف خودش جواب بدهد.
+            // پیام صریح می‌گوید چه چیزی متوقف کرده، چون حالا فقط یک چیز
+            // می‌تواند: کاردکس منفی. بدون این، کاربر دنبال ۲۲۳ مورد CHK-02
+            // می‌گشت که اصلاً جلوی کار را نگرفته‌اند.
             return blocking > 0
                  ? new StepResult(CostStepStatus.Warning, 0, payload,
-                       $"{blocking} مورد مسدودکننده — رفع کنید، سپس «ادامه اجرا» را بزنید")
+                       $"{blocking} مورد کاردکس منفی — اول این‌ها را رفع کنید، سپس «ادامه اجرا» را بزنید" +
+                       (warning > 0 ? $" ({warning} مورد دیگر فقط هشدارند و جلوی اجرا را نمی‌گیرند)" : ""))
                  : StepResult.Ok(0, payload);
         }
 
