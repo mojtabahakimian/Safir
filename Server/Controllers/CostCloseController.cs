@@ -563,18 +563,76 @@ namespace Safir.Server.Controllers
             // دارد و فقط تاریخِ ۱۰۵۶ به ۱۴۰۵/۰۴/۱۳ رفته بود. اگر کاربر
             // «تاریخ فاکتور درست است» را انتخاب کند، این سند نباید جابه‌جا
             // شود — باید تاریخِ همان فاکتور اصلاح گردد.
+            // برگه‌ی طرفِ مقابل — همانی که تاریخش درست است و سند باید با آن
+            // بخواند. ⚠️ قبلاً همیشه ANumber گرفته می‌شد؛ وقتی UseA=false و
+            // سند در طرفِ «الف» بود، شماره‌ی اشتباه شمرده می‌شد.
+            var sheetNumber = req.UseA ? refData.ANumber : refData.BNumber;
+
             if (table == "DEED_HED")
             {
                 var others = (await _db.DoGetDataSQLAsync<int>(
                     @"SELECT COUNT(DISTINCT d.NUMBER) FROM dbo.DEED_DTL d
                       WHERE d.N_S = @number AND d.NUMBER <> @srcNumber",
-                    new { number, srcNumber = refData.ANumber })).FirstOrDefault();
+                    new { number, srcNumber = sheetNumber })).FirstOrDefault();
 
                 if (others > 0)
-                    return BadRequest(
-                        $"این سند حسابداری ({number}) سندِ روزانه است و {others} برگه‌ی دیگر هم در آن ثبت شده؛ " +
-                        "تغییر تاریخش آن‌ها را هم به ماه دیگری می‌برد. به‌جایش گزینه‌ی دیگر را انتخاب کنید " +
-                        "تا تاریخِ خودِ این برگه اصلاح شود.");
+                {
+                    // ── سندِ روزانه: تاریخش را عوض نمی‌کنیم، برگه را جدا می‌کنیم ──
+                    //
+                    // قبلاً اینجا فقط خطا برمی‌گشت و کاربر را به گزینه‌ی دیگر
+                    // حواله می‌داد. ولی وقتی تاریخِ *برگه* درست است، آن گزینه
+                    // یعنی خراب کردنِ چیزی که درست است. کارِ درست همان است که
+                    // شاخه‌ی HEAD_LST/BACK_HEAD پایین‌تر می‌کند: سطرهای همین
+                    // برگه از سندِ روزانه بیرون کشیده می‌شوند تا «بازسازی
+                    // اسناد گروهی» آن‌ها را در سندِ ماهِ درست دوباره بسازد.
+                    // بقیه‌ی برگه‌ها و تاریخِ خودِ سند دست‌نخورده می‌مانند.
+                    //
+                    // ⚠️ فقط وقتی مجاز است که سطرهای همین برگه به‌تنهایی تراز
+                    // باشند؛ وگرنه سندِ باقی‌مانده ناتراز می‌شود. اندازه
+                    // می‌گیریم، حدس نمی‌زنیم.
+                    var imbalance = (await _db.DoGetDataSQLAsync<double?>(
+                        @"SELECT SUM(d.BED) - SUM(d.BES) FROM dbo.DEED_DTL d
+                          WHERE d.N_S = @number AND d.NUMBER = @srcNumber",
+                        new { number, srcNumber = sheetNumber })).FirstOrDefault() ?? 0d;
+
+                    if (Math.Abs(imbalance) > 1)
+                        return BadRequest(
+                            $"سند حسابداری ({number}) سندِ روزانه است و {others} برگه‌ی دیگر هم دارد، " +
+                            $"ولی سطرهای برگه‌ی {sheetNumber:0} به‌تنهایی تراز نیستند " +
+                            $"(اختلاف {imbalance:N0} ریال). جدا کردنشان سند را ناتراز می‌کند — " +
+                            "این مورد را دستی بررسی کنید.");
+
+                    var pulled = await _db.DoExecuteSQLAsync(
+                        "DELETE FROM dbo.DEED_DTL WHERE N_S = @number AND NUMBER = @srcNumber",
+                        new { number, srcNumber = sheetNumber },
+                        commandTimeout: Safir.Server.CostClose.CostCloseTuning.BatchTimeoutSeconds);
+
+                    if (pulled == 0)
+                        return BadRequest(
+                            $"در سند {number} هیچ سطری برای برگه‌ی {sheetNumber:0} پیدا نشد — " +
+                            "شاید قبلاً جدا شده باشد.");
+
+                    await _db.DoExecuteSQLAsync(
+                        @"UPDATE dbo.CC_Exception
+                             SET IsResolved = 1, ResolvedBy = @user, ResolvedAtUtc = SYSUTCDATETIME(),
+                                 ResolutionNote = @note
+                           WHERE ExceptionId = @id",
+                        new
+                        {
+                            id,
+                            user = CurrentUser,
+                            note = $"سند روزانه {number} دست نخورد ({others} برگه‌ی دیگر)؛ " +
+                                   $"{pulled} سطرِ برگه‌ی {sheetNumber:0} از آن جدا شد."
+                        });
+
+                    return Ok(new
+                    {
+                        message =
+                            $"تاریخ سند {number} عوض نشد — سندِ روزانه است و {others} برگه‌ی دیگر هم دارد. " +
+                            $"به‌جایش {pulled} سطرِ برگه‌ی {sheetNumber:0} از آن جدا شد تا در سندِ ماهِ درست " +
+                            "دوباره ثبت شود. حالا «بازسازی اسناد گروهی» را اجرا کنید."
+                    });
+                }
             }
 
             // DEED_HED کلیدش N_S است، نه (NUMBER,TAG) مثل HEAD_LST/BACK_HEAD —
