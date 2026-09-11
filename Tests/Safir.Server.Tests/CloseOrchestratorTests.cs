@@ -85,28 +85,61 @@ public sealed class CloseOrchestratorTests
     }
 
     /// <summary>
-    /// رگرسیون کامیت 53e99f4 («raise S11 cycle budget to 40»، کشف‌شده روی
-    /// RunId=6/اردیبهشت با کد ۷۱ «نایلون»). سقف باید ۴۰ بماند: با ۲۵،
-    /// کالاهایی که فاصله‌ی اولشان بزرگ‌تر بود به سقف می‌خوردند بدون رسیدن
-    /// به زیر آستانه و در CHK-09 گیر می‌افتادند.
+    /// فاصله‌ای که کوچک نمی‌شود، با دورِ بیشتر هم کوچک نمی‌شود.
+    ///
+    /// ⚠️ این تست قبلاً «دقیقاً ۴۱ اجرای S11» را انتظار داشت: هر فاصله‌ی
+    /// پابرجا تا سقفِ ۴۰ دور ادامه پیدا می‌کرد. روی یک گامِ ۱۱ ثانیه‌ای
+    /// یعنی هفت دقیقه انتظار برای نتیجه‌ای که از دورِ سوم معلوم بود.
+    ///
+    /// حالا وقتی بیشترین فاصله سه دورِ پیاپی آب نرود، همان‌جا می‌ایستد و
+    /// می‌گوید کدام کالا نگهش داشته. سقفِ ۴۰ سرِ جایش است و برای حالتِ
+    /// دیگری است — نگاه کنید تستِ بعدی.
     /// </summary>
     [Fact]
-    public async Task Non_converging_rates_stop_after_exactly_forty_cycles_with_a_warning()
+    public async Task Rates_that_never_shrink_stop_early_instead_of_burning_the_whole_budget()
     {
         var db = new CostCloseFakeDatabase
         {
-            // هر دور ۱۰۰ ریال دورتر — هرگز همگرا نمی‌شود
+            // هر دور ۱۰۰ ریال دورتر — فاصله ثابت می‌ماند، هرگز آب نمی‌رود
             RateGenerator = read => new Dictionary<long, double> { [71] = read * 100.0 }
         };
 
         var s11 = Step("S11", 110);
         await RunAsync(db, Step("S07A", 75), s11);
 
-        // دورِ اولِ مبنا + ۴۰ دورِ تکرار = ۴۱ اجرای S11
-        Assert.Equal(41, s11.Runs);
+        // خیلی کمتر از سقف، ولی به‌اندازه‌ای که «ثابت بودن» ثابت شود
+        Assert.InRange(s11.Runs, 4, 10);
 
-        Assert.Contains(db.Logs, l => l.Severity == 2 && l.Message.Contains("همگرایی نرخ پس از 40 دور"));
+        Assert.Contains(db.Logs, l => l.Severity == 2 && l.Message.Contains("دور پیاپی کوچک نشد"));
         // نرسیدن به همگرایی نباید اجرا را شکست بدهد — «با آخرین مقدار ادامه»
+        Assert.Contains(CostRunStatus.Completed, db.StatusWrites);
+    }
+
+    /// <summary>
+    /// رگرسیون کامیت 53e99f4 («raise S11 cycle budget to 40»، کشف‌شده روی
+    /// RunId=6/اردیبهشت با کد ۷۱ «نایلون»). سقف باید ۴۰ بماند: با ۲۵،
+    /// کالاهایی که فاصله‌ی اولشان بزرگ‌تر بود به سقف می‌خوردند بدون رسیدن
+    /// به زیر آستانه و در CHK-09 گیر می‌افتادند.
+    ///
+    /// اینجا فاصله هر دور آب می‌رود ولی خیلی کند (۱٪)، پس تشخیصِ «جا زدن»
+    /// فعال نمی‌شود و سقف باید کارش را بکند — همان حالتی که آن کامیت
+    /// برایش سقف را از ۲۵ به ۴۰ برد.
+    /// </summary>
+    [Fact]
+    public async Task Slowly_shrinking_rates_still_use_the_full_forty_cycle_budget()
+    {
+        var db = new CostCloseFakeDatabase
+        {
+            // مقدار به ۱۰۰۰ نزدیک می‌شود، هر دور فقط ۱٪ از فاصله‌ی باقیمانده
+            RateGenerator = read =>
+                new Dictionary<long, double> { [71] = 1000.0 - 900.0 * Math.Pow(0.99, read) }
+        };
+
+        var s11 = Step("S11", 110);
+        await RunAsync(db, Step("S07A", 75), s11);
+
+        Assert.Equal(41, s11.Runs);
+        Assert.Contains(db.Logs, l => l.Severity == 2 && l.Message.Contains("همگرایی نرخ پس از 40 دور"));
         Assert.Contains(CostRunStatus.Completed, db.StatusWrites);
     }
 
