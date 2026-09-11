@@ -141,6 +141,19 @@ GO
 IF COL_LENGTH('dbo.CC_Exception','RuleCode') IS NULL
     ALTER TABLE dbo.CC_Exception ADD RuleCode VARCHAR(12) NULL;
 GO
+/* جهتِ مغایرتِ افتتاحیه، وقتی S05 تشخیصش داده — NULL يعني اين مغايرت
+   ربطي به افتتاحيه ندارد و از گردشِ خودِ ماه است.
+       1 = MissingOpening — کاردکس موجودي اول دوره دارد، سند ندارد
+       2 = ExtraOpening   — سند افتتاحيه هست، کاردکس موجودي اول دوره ندارد
+
+   ⚠️ چرا ستون و نه استنتاجِ دوباره در گزارش: S05 اين را همان‌جا که
+   CHK-02 را مي‌سازد دقيق مي‌داند (CTEهاي MissingOpening/ExtraOpening)،
+   ولي تا امروز نتيجه فقط داخلِ متنِ Description مي‌نشست و دور ريخته
+   مي‌شد. صفحه‌ي مغايرت‌ها مجبور بود خودش از نو حدس بزند و معيارِ
+   ضعيف‌تري داشت. نگاه کنيد CostCloseController.GetExceptions. */
+IF COL_LENGTH('dbo.CC_Exception','OpeningKind') IS NULL
+    ALTER TABLE dbo.CC_Exception ADD OpeningKind TINYINT NULL;
+GO
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name='IX_CC_Exception_Run')
     CREATE INDEX IX_CC_Exception_Run
         ON dbo.CC_Exception(RunId, StepCode, IsResolved, Severity);

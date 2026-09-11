@@ -138,11 +138,34 @@ namespace Safir.Server.CostClose.Steps
             // این گام روی همه فرمول‌های ماه UPDATE می‌زند و می‌تواند طول
             // بکشد، پس مثل S00/S05/S10/S11 با فراخوانی واقعی رویه ذخیره‌شده
             // اجرا می‌شود که commandTimeout را می‌پذیرد.
-            var res = (await ctx.Db.DoGetStoreProcedureSQLAsync<ApplyResult>(
-                "dbo.CC_sp_S09_ApplyDecisions",
-                new { RunId = ctx.RunId, Month = ctx.Month,
-                      DT1 = ctx.DateFrom, DT2 = ctx.DateTo, WhatIf = false },
-                commandTimeout: 1800)).FirstOrDefault();
+            // ⚠️ بن‌بست باید بازتلاش شود. این گام روی DTL_MANF می‌نویسد و
+            // نرم‌افزار قدیمی همان جدول را باز دارد؛ SQL Server یکی از دو
+            // نشست را قربانی می‌کند و در متن خطا می‌گوید «Rerun the
+            // transaction». تا امروز کسی دوباره اجرایش نمی‌کرد: خطا به
+            // ارکستریتور می‌رسید، اجرا Failed می‌شد و کاربر باید دستی از
+            // نو شروع می‌کرد.
+            //
+            // چرا اجرای دوباره اینجا امن است — با این‌که رویه انباشتی است
+            // و MEGHk را روی مقدار فعلی می‌افزاید: کلِ نوشتن داخل یک
+            // BEGIN TRAN با XACT_ABORT ON است و SQL Server تراکنشِ قربانیِ
+            // بن‌بست را همیشه کامل برمی‌گرداند. پس تلاش بعدی #Prod و
+            // #Share را از جدول‌های پایه از نو می‌سازد و روی همان مقدارِ
+            // اولیه می‌نشیند. اگر روزی آن BEGIN TRAN از رویه برداشته شود،
+            // این بازتلاش باید با آن برداشته شود وگرنه انحراف دوبار
+            // تخصیص می‌یابد.
+            //
+            // اسنپ‌شات عمداً بیرون از این حلقه است: ارکستریتور آن را قبل
+            // از گام می‌گیرد و رویه‌اش در هر بار اجرا یک سطر تازه در
+            // CC_Snapshot ثبت می‌کند.
+            var res = (await CostCloseRetry.ExecuteAsync(
+                () => ctx.Db.DoGetStoreProcedureSQLAsync<ApplyResult>(
+                    "dbo.CC_sp_S09_ApplyDecisions",
+                    new { RunId = ctx.RunId, Month = ctx.Month,
+                          DT1 = ctx.DateFrom, DT2 = ctx.DateTo, WhatIf = false },
+                    commandTimeout: 1800),
+                onRetry: (attempt, ex) => ctx.ReportProgress(StepCode, 30,
+                    $"بن‌بست پایگاه داده؛ تلاش {attempt} از {CostCloseRetry.DefaultMaxAttempts}…")
+            )).FirstOrDefault();
 
             await ctx.ReportProgress(StepCode, 100, $"{res?.Value ?? 0} سطر به‌روز شد");
 

@@ -1,3 +1,4 @@
+using Safir.Shared.Interfaces;
 using Safir.Shared.Models.CostClose;
 using System.Collections.Concurrent;
 using System.Threading.Channels;
@@ -148,6 +149,35 @@ namespace Safir.Server.CostClose
 
         protected override async Task ExecuteAsync(CancellationToken ct)
         {
+            // ───── آزادسازیِ اجراهای یخ‌زده، پیش از هر کار دیگر ─────
+            // صف در حافظه‌ی همین پروسه است. اگر سرور وسط یک اجرا ری‌استارت
+            // شود، صف از بین می‌رود ولی CC_Run.Status روی «در حال اجرا»
+            // می‌ماند — برای همیشه، چون هیچ‌کس دیگر آن اجرا را دست نمی‌گیرد.
+            // کاربر ساعت‌ها بعد صفحه را باز می‌کند و اجرایی می‌بیند که
+            // هیچ‌وقت گام بعدی را شروع نمی‌کند.
+            //
+            // اینجا، درست بعد از بالا آمدن، هر اجرایی که ضربانش کهنه است
+            // «متوقف‌شده» علامت می‌خورد تا با «ادامه اجرا» قابل ادامه باشد.
+            // نگاه کنید 34-run-heartbeat.sql.
+            try
+            {
+                using var scope = _scopes.CreateScope();
+                var db = scope.ServiceProvider.GetRequiredService<IDatabaseService>();
+
+                var freed = (await db.DoGetDataSQLAsync<int>(
+                    "EXEC dbo.CC_sp_ReleaseStaleRuns @StaleMinutes = 15")).ToList();
+
+                if (freed.Count > 0)
+                    _logger.LogWarning(
+                        "{Count} اجرای یخ‌زده آزاد شد: {Runs}", freed.Count, string.Join(", ", freed));
+            }
+            catch (Exception ex)
+            {
+                // نبودِ رویه (پایگاهی که هنوز 34 را نگرفته) نباید جلوی
+                // بالا آمدنِ سرویس را بگیرد.
+                _logger.LogWarning(ex, "آزادسازی اجراهای یخ‌زده انجام نشد");
+            }
+
             // خودِ ReadAllAsync وقتی صف خالي است و توکن لغو مي‌شود
             // OperationCanceledException مي‌اندازد — يعني مسير عادي خاموش شدن
             // برنامه. اگر اينجا نگيريمش، از ExecuteAsync بيرون مي‌زند و چون

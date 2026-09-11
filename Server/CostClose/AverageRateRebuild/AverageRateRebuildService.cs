@@ -178,6 +178,36 @@ namespace Safir.Server.CostClose.AverageRateRebuild
             else { st.MIAN = st.MBKM / st.MOGUDI; }
         }
 
+        /// <summary>
+        /// بازتلاش روی بن‌بست (Deadlock، خطای ۱۲۰۵).
+        ///
+        /// ── چرا اینجا لازم است ──
+        /// کالاهای مختلف موازی پردازش می‌شوند (تا ۱۶ رشته) و همه روی همان
+        /// INVO_LST می‌نویسند. سطرهای دو کالای بی‌ربط می‌توانند روی یک صفحه
+        /// بنشینند، پس دو رشته می‌توانند قفلِ هم را بخواهند و SQL Server یکی
+        /// را قربانی کند.
+        ///
+        /// ── چرا تلاش دوباره امن است ──
+        /// هر دستور شکل `UPDATE … SET AVRAGE = <عدد> WHERE ID = <عدد>` دارد؛
+        /// مقدارها از قبل محاسبه شده‌اند و به وضعیتِ فعلیِ سطر وابسته نیستند.
+        /// اجرای دوباره عیناً همان نتیجه را می‌دهد.
+        ///
+        /// همین الگو از قبل در سرویس‌های اسناد گروهی هست؛ فقط این یکی نداشت.
+        /// وقفه‌ی تصادفی است تا همان دو رشته دوباره به هم نخورند.
+        /// </summary>
+        private static async Task ExecuteWithDeadlockRetryAsync(Func<Task> action, int maxAttempts = 4)
+        {
+            for (var attempt = 1; ; attempt++)
+            {
+                try { await action(); return; }
+                catch (Microsoft.Data.SqlClient.SqlException ex)
+                    when ((ex.Number == 1205 || ex.Number == 1222) && attempt < maxAttempts)
+                {
+                    await Task.Delay(Random.Shared.Next(150, 450) * attempt);
+                }
+            }
+        }
+
         // ───────── محدودیت موازی‌سازی — مثل MaterialIssueRebuildService ─────────
 
         private static async Task ParallelForAsync(int count, int maxDegree, Func<int, Task> body)
@@ -564,14 +594,25 @@ namespace Safir.Server.CostClose.AverageRateRebuild
                     var batch = new System.Text.StringBuilder();
                     var endAt = Math.Min(off + chunkSize, pending.Count);
                     for (int k = off; k < endAt; k++) batch.Append(pending[k]).Append(';').Append('\n');
+                    var sqlBatch = batch.ToString();
                     try
                     {
-                        await _db.DoExecuteSQLAsync(batch.ToString(), commandTimeout: CostCloseTuning.BatchTimeoutSeconds);
+                        // ⚠️ بن‌بست باید بازتلاش شود، نه اینکه رد شویم. قبلاً هر
+                        // خطایی — از جمله ۱۲۰۵ — فقط ثبت می‌شد و همان دسته‌ی
+                        // ۲۰۰تایی بی‌صدا دور ریخته می‌شد: دویست نرخ به‌روز
+                        // نمی‌شد و اجرا «تمام» می‌شد. خودِ SQL Server هم در
+                        // متن خطا می‌گوید «Rerun the transaction».
+                        await ExecuteWithDeadlockRetryAsync(() =>
+                            _db.DoExecuteSQLAsync(sqlBatch, commandTimeout: CostCloseTuning.BatchTimeoutSeconds));
+
                         Interlocked.Add(ref rowsUpdated, endAt - off);
                     }
                     catch (Exception ex)
                     {
-                        RecordFailure($"کالا {code} انبار {anbar}: خطا در اجرای دسته‌ی به‌روزرسانی: {ex.Message}");
+                        // رسیدن به اینجا یعنی بعد از بازتلاش‌ها هم نشد. عدد
+                        // سطرها در پیام هست تا معلوم باشد چقدر جا مانده.
+                        RecordFailure(
+                            $"کالا {code} انبار {anbar}: {endAt - off} سطر به‌روز نشد — {ex.Message}");
                     }
                 }
             }

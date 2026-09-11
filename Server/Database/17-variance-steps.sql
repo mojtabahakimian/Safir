@@ -234,6 +234,13 @@ BEGIN
            AND ABS(ISNULL(AmountVariance, 0)) > @total * 0.01;
 
     ---- CHK-11: انحراف روي ماده‌اي که در هيچ فرمولي مصرف نشده
+    /* ⚠️ آستانه لازم است: قبلاً *هر* رديفِ انحراف گزارش مي‌شد، حتي صفر.
+       روي يک ماهِ واقعي هشت مورد مي‌آمد که چندتايشان مبلغشان خالي بود —
+       يعني کاربر دنبال چيزي مي‌گشت که وجود نداشت.
+       قاعده‌ي صاحب پروژه: انحراف زير ۱۰۰۰ ريال صفر است. */
+    DECLARE @thr11 FLOAT =
+        ISNULL((SELECT Threshold FROM dbo.CC_CheckRule WHERE RuleCode = 'CHK-11'), 1000);
+
     DELETE dbo.CC_Exception WHERE RunId = @RunId AND RuleCode = 'CHK-11';
 
     INSERT dbo.CC_Exception
@@ -242,7 +249,8 @@ BEGIN
             N'انحراف روي ماده‌اي که در هيچ فرمول اين ماه مصرف نشده'
     FROM    dbo.CC_Variance v
     WHERE   v.RunId = @RunId
-      AND   ISNULL(v.ConsumedQty, 0) = 0;
+      AND   ISNULL(v.ConsumedQty, 0) = 0
+      AND   ABS(ISNULL(v.AmountVariance, 0)) > @thr11;
 
     INSERT dbo.CC_RunLog (RunId, StepCode, Severity, Message, ContextJson)
     SELECT  @RunId, 'S08', 1,

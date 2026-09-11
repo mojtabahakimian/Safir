@@ -242,8 +242,22 @@
 
                 if (opening.Count > 0)
                 {
+                    @* تفکیک دو جهت: هرکدام سند اصلاحیِ متفاوتی می‌خواهند، پس
+                       یک‌کاسه نشان دادنشان کمکی نمی‌کند. OpeningKind خالی
+                       یعنی سطرِ قدیمی، پیش از افزوده‌شدنِ آن ستون. *@
+                    var missing = opening.Count(x => x.OpeningKind == 1);
+                    var extra   = opening.Count(x => x.OpeningKind == 2);
+
                     <MudText Typo="Typo.caption" Class="cc-subgroup-label">
-                        مغایرت افتتاحیه — موجودی اول دوره seed نشده (@opening.Count مورد)
+                        مغایرت افتتاحیه — از گردش این ماه نیست (@opening.Count مورد)
+                        @if (missing > 0)
+                        {
+                            <span> · @missing مورد: کاردکس موجودی اول دوره دارد، سند افتتاحیه ندارد</span>
+                        }
+                        @if (extra > 0)
+                        {
+                            <span> · @extra مورد: سند افتتاحیه هست، کاردکس موجودی اول دوره ندارد</span>
+                        }
                     </MudText>
                     @ExceptionTable(opening)
                 }
