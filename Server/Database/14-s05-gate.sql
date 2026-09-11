@@ -637,10 +637,18 @@ BEGIN
                     )
         )
         INSERT dbo.CC_Exception
-            (RunId, StepCode, RuleCode, ExType, Severity, Anbar, Code, Amount, Description)
+            (RunId, StepCode, RuleCode, ExType, Severity, Anbar, Code, Amount,
+             OpeningKind, Description)
         SELECT  @RunId, 'S05', 'CHK-02', 2, 2,
                 ISNULL(k.Anbar, hh.Anbar), ISNULL(k.code, hh.code),
                 ISNULL(k.Mande, 0) - ISNULL(hh.Mande, 0),
+                -- همان تشخیصی که سه سطر پایین‌تر متنش را می‌سازد، این بار
+                -- به‌صورت داده هم نگه داشته می‌شود. قبلاً فقط داخل جمله‌ی
+                -- Description می‌رفت و صفحه‌ی مغایرت‌ها که می‌خواست این‌ها
+                -- را جدا نشان دهد چاره‌ای جز حدس زدنِ دوباره نداشت.
+                CASE WHEN mo.code IS NOT NULL THEN 1
+                     WHEN eo.code IS NOT NULL THEN 2
+                     ELSE NULL END,
                 -- ⚠ علت، *اول* جمله می‌آید نه آخرش. قبلاً کلمه‌ی «افتتاحیه»
                 -- ته یک جمله‌ی بلند بود و کاربر باید تا انتها می‌خواند تا
                 -- بفهمد این مغایرت اصلاً از گردش ماه نیست. حالا اولین چیزی

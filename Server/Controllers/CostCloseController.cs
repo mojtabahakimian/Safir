@@ -346,7 +346,26 @@ namespace Safir.Server.Controllers
                         e.RefList, e.CanAutoFix, e.Description,
                         r.RemedyText, r.FixButtonText,
                         e.IsResolved, e.ResolvedBy, e.ResolvedAtUtc, e.ResolutionNote,
-                        CASE WHEN e.RuleCode = 'CHK-02' AND EXISTS (
+                        e.OpeningKind,
+                        -- ⚠️ ترتیب شرط‌ها مهم است: اول ستونی که S05 خودش پر
+                        -- کرده، و فقط برای سطرهای قدیمی‌ترِ بدون آن ستون
+                        -- سراغ حدسِ قبلی می‌رویم.
+                        --
+                        -- چرا حدسِ قبلی از کار افتاد: شرطش این بود که حسابِ
+                        -- این (انبار،کد) در کلِ تاریخ دقیقاً یک سطر سند
+                        -- داشته باشد و همان سطر افتتاحیه باشد. آن روزها
+                        -- درست بود، ولی حالا خودِ بستنِ ماه سند حسابداری
+                        -- بازتولید می‌کند (سرویس‌های GroupDocuments: فروش،
+                        -- رسید تولید، انتقال، خروج متفرقه، انبارگردانی…).
+                        -- به‌محض اولین بازسازی، همان حساب سطرهای تازه
+                        -- می‌گیرد، COUNT از ۱ رد می‌شود و پرچم خاموش
+                        -- می‌ماند — کالا واقعاً هم مغایرتِ افتتاحیه دارد،
+                        -- ولی دیگر «تنها سندش افتتاحیه» نیست. برای همین
+                        -- گروهِ جدا در فروردین دیده می‌شد و بعد از چند بار
+                        -- اجرای کامل ناپدید شد، بدون اینکه یک خط کد عوض
+                        -- شده باشد.
+                        CASE WHEN e.OpeningKind IS NOT NULL THEN CAST(1 AS BIT)
+                             WHEN e.RuleCode = 'CHK-02' AND EXISTS (
                             SELECT 1
                             FROM   dbo.CC_AnbarHes ah
                             JOIN   dbo.DEED_DTL d ON d.HES_K = ah.HesKol AND d.HES_M = ah.HesMoin
