@@ -289,6 +289,12 @@ namespace Safir.Server.CostClose
                             _notify.StepProgressAsync(job.RunId, code, pct, msg)
                     };
 
+                    // ضربان: نشانه‌ی حیات، تا اگر سرور وسط کار ری‌استارت شد
+                    // بشود «در حال اجرا»ی واقعی را از یخ‌زده تشخیص داد.
+                    // مرزِ گام بسنده است: بلندترین گام دو تا سه دقیقه است و
+                    // آستانه‌ی کهنگی ۱۵ دقیقه.
+                    await BeatAsync(db, job.RunId);
+
                     await db.DoGetStoreProcedureSQLAsync<dynamic>("dbo.CC_sp_StepStart", new
                     {
                         RunId    = job.RunId,
@@ -543,6 +549,24 @@ namespace Safir.Server.CostClose
                         "Could not mark run {RunId} as failed after the original error", job.RunId);
                 }
             }
+        }
+
+        /// <summary>
+        /// «هنوز زنده‌ام». بدون این، اجرایی که پروسه‌اش مرده تا ابد
+        /// «در حال اجرا» می‌ماند و کاربر فقط با نگاه کردن به تاریخِ آخرین
+        /// خطِ لاگ می‌تواند بفهمد — نگاه کنید 34-run-heartbeat.sql.
+        ///
+        /// خطا عمداً بلعیده می‌شود: ضربان نباید دلیلِ شکستِ یک اجرای سالم شود.
+        /// </summary>
+        private static async Task BeatAsync(IDatabaseService db, int runId)
+        {
+            try
+            {
+                await db.DoExecuteSQLAsync(
+                    "UPDATE dbo.CC_Run SET LastHeartbeatUtc = SYSUTCDATETIME() WHERE RunId = @runId",
+                    new { runId });
+            }
+            catch { /* ضربان از دست رفت؛ گامِ بعدی دوباره می‌زند */ }
         }
 
         private static Task SetRunStatusAsync(IDatabaseService db, int runId, CostRunStatus st)
