@@ -432,7 +432,10 @@
         new ExcelCol<CostExceptionDto> { Title = "شرح",    Text = r => r.Description },
         new ExcelCol<CostExceptionDto> { Title = "سند",    Text = r => r.DocNumber?.ToString() ?? "" },
         new ExcelCol<CostExceptionDto> { Title = "تاریخ سند", Text = r => r.DocDate is long d ? FormatDate(d) : "" },
-        new ExcelCol<CostExceptionDto> { Title = "مبلغ/مقدار", IsNumber = true, Money = true, Sum = true, Number = r => r.Amount },
+        // Fractional و نه Money: این ستون هم ریال دارد هم مقدار. با
+        // #,##0 مقدارهای کسری در فایل «۰» دیده می‌شدند — همان چیزی
+        // که روی صفحه هم «۰-» نشان می‌داد.
+        new ExcelCol<CostExceptionDto> { Title = "مبلغ/مقدار", IsNumber = true, Fractional = true, Sum = true, Number = r => r.Amount },
         new ExcelCol<CostExceptionDto> { Title = "وضعیت",  Text = r => r.IsResolved ? "رفع‌شده" : (r.Severity == 2 ? "مسدودکننده" : "هشدار") },
     };
 
