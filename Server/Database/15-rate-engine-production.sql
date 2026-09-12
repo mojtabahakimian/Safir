@@ -141,7 +141,7 @@ BEGIN
     FROM    dbo.HEAD_LST  h
     JOIN    dbo.INVO_LST  pl  ON pl.NUMBER = h.NUMBER AND pl.TAG = 9
     JOIN    dbo.HEAD_MANF hm  ON hm.FNUMB  = TRY_CAST(pl.N_KOL AS INT) AND hm.GHEYMAT = @Month
-    JOIN    dbo.CC_UnitAnbar cua ON cua.Anbar = pl.ANBAR AND cua.AnbarRole = 3
+    JOIN    dbo.CC_vw_UnitProductAnbar cua ON cua.Anbar = pl.ANBAR
     JOIN    dbo.CC_Unit   u   ON u.UnitId  = cua.UnitId AND u.IsActive = 1
     LEFT    JOIN dbo.stuf_def_nfani nf ON nf.CODE = hm.CODE
     WHERE   h.TAG = 9 AND h.DATE_N BETWEEN @DT1 AND @DT2
@@ -255,7 +255,7 @@ BEGIN
         FROM   dbo.HEAD_LST h
         JOIN   dbo.INVO_LST pl ON pl.NUMBER = h.NUMBER AND pl.TAG = 9
         JOIN   dbo.HEAD_MANF hm ON hm.FNUMB = TRY_CAST(pl.N_KOL AS INT) AND hm.GHEYMAT = @Month
-        JOIN   dbo.CC_UnitAnbar cua ON cua.Anbar = pl.ANBAR AND cua.AnbarRole = 3
+        JOIN   dbo.CC_vw_UnitProductAnbar cua ON cua.Anbar = pl.ANBAR
         JOIN   dbo.CC_Unit u ON u.UnitId = cua.UnitId AND u.IsActive = 1
         WHERE  h.TAG = 9 AND h.DATE_N BETWEEN @DT1 AND @DT2
     )
@@ -398,7 +398,9 @@ BEGIN
 
     -- تشخيص واحد از روي دپارتمان کنار گذاشته شد: دپارتمان را اپراتور دستي
     -- روي برگه مي‌زند و اشتباه تايپي رايج است. ملاک مطمئن، انباري است که
-    -- محصول توليدشده وارد آن مي‌شود (CC_UnitAnbar.AnbarRole = 3، «محصول»)
+    -- محصول توليدشده وارد آن مي‌شود — نماي CC_vw_UnitProductAnbar، که هم
+    -- نقشِ «محصول» در تنظيمات را مي‌پذيرد و هم انباري که واقعاً برگه‌ي
+    -- توليد مي‌گيرد (فايل ۳۵)
     -- — همان چيزي که در تنظيمات واحدها از قبل تعريف شده و کاربر تأييد
     -- کرد بايد ملاک باشد (نه Depatman). CHK-16 (S00) از قبل هر انباري که
     -- برگه توليد دارد ولي به هيچ واحدي وصل نيست را هشدار مي‌دهد.
@@ -410,9 +412,8 @@ BEGIN
     -- تعديل‌شده‌ي واحد اول دوباره ضريب مي‌زند — فرمول‌ها خراب مي‌شوند.
     IF EXISTS (
         SELECT ua.Anbar
-        FROM   dbo.CC_UnitAnbar ua
+        FROM   dbo.CC_vw_UnitProductAnbar ua
         JOIN   dbo.CC_Unit      u  ON u.UnitId = ua.UnitId AND u.IsActive = 1
-        WHERE  ua.AnbarRole = 3
         GROUP  BY ua.Anbar
         HAVING COUNT(DISTINCT ua.UnitId) > 1
     )
@@ -449,8 +450,8 @@ BEGIN
         JOIN    dbo.HEAD_MANF hm ON hm.FNUMB  = TRY_CAST(pl.N_KOL AS INT)
                                 AND hm.GHEYMAT = @Month
         WHERE   h.TAG = 9 AND h.DATE_N BETWEEN @DT1 AND @DT2
-          AND   pl.ANBAR IN (SELECT Anbar FROM dbo.CC_UnitAnbar
-                              WHERE UnitId = @UnitId AND AnbarRole = 3)
+          AND   pl.ANBAR IN (SELECT Anbar FROM dbo.CC_vw_UnitProductAnbar
+                              WHERE UnitId = @UnitId)
           AND   NOT EXISTS (
                     SELECT 1 FROM dbo.CC_LaborAbsorptionRate fx
                     WHERE fx.UnitId = @UnitId AND fx.CODE = hm.CODE AND fx.IsFixed = 1
@@ -497,7 +498,7 @@ BEGIN
             SELECT  TRY_CAST(pl.CODE AS BIGINT) AS CODE, cua.UnitId, SUM(pl.MEGHK) AS Qty
             FROM    dbo.HEAD_LST h
             JOIN    dbo.INVO_LST pl      ON pl.NUMBER = h.NUMBER AND pl.TAG = 9
-            JOIN    dbo.CC_UnitAnbar cua ON cua.Anbar  = pl.ANBAR AND cua.AnbarRole = 3
+            JOIN    dbo.CC_vw_UnitProductAnbar cua ON cua.Anbar  = pl.ANBAR
             JOIN    dbo.CC_Unit u        ON u.UnitId   = cua.UnitId AND u.IsActive = 1
             WHERE   h.TAG = 9 AND h.DATE_N BETWEEN @DT1 AND @DT2
             GROUP BY TRY_CAST(pl.CODE AS BIGINT), cua.UnitId
@@ -559,8 +560,8 @@ BEGIN
                                 AND hm.GHEYMAT = @Month
         JOIN    dbo.CC_LaborAbsorptionRate fx ON fx.UnitId = @UnitId AND fx.CODE = hm.CODE AND fx.IsFixed = 1
         WHERE   h.TAG = 9 AND h.DATE_N BETWEEN @DT1 AND @DT2
-          AND   pl.ANBAR IN (SELECT Anbar FROM dbo.CC_UnitAnbar
-                              WHERE UnitId = @UnitId AND AnbarRole = 3);
+          AND   pl.ANBAR IN (SELECT Anbar FROM dbo.CC_vw_UnitProductAnbar
+                              WHERE UnitId = @UnitId);
 
         SET @actWage = @actWage - @fixedWage;
         SET @actOh   = @actOh   - @fixedOh;
@@ -624,7 +625,7 @@ BEGIN
             SELECT  TRY_CAST(pl.CODE AS BIGINT) AS CODE, cua.UnitId, SUM(pl.MEGHK) AS Qty
             FROM    dbo.HEAD_LST h
             JOIN    dbo.INVO_LST pl      ON pl.NUMBER = h.NUMBER AND pl.TAG = 9
-            JOIN    dbo.CC_UnitAnbar cua ON cua.Anbar  = pl.ANBAR AND cua.AnbarRole = 3
+            JOIN    dbo.CC_vw_UnitProductAnbar cua ON cua.Anbar  = pl.ANBAR
             JOIN    dbo.CC_Unit u        ON u.UnitId   = cua.UnitId AND u.IsActive = 1
             WHERE   h.TAG = 9 AND h.DATE_N BETWEEN @DT1 AND @DT2
             GROUP BY TRY_CAST(pl.CODE AS BIGINT), cua.UnitId
@@ -682,8 +683,8 @@ BEGIN
                         JOIN   dbo.INVO_LST pl ON pl.NUMBER = h.NUMBER AND pl.TAG = 9
                         WHERE  h.TAG = 9 AND h.DATE_N BETWEEN @DT1 AND @DT2
                           AND  TRY_CAST(pl.N_KOL AS INT) = hm.FNUMB
-                          AND  pl.ANBAR IN (SELECT Anbar FROM dbo.CC_UnitAnbar
-                                            WHERE UnitId = @UnitId AND AnbarRole = 3))
+                          AND  pl.ANBAR IN (SELECT Anbar FROM dbo.CC_vw_UnitProductAnbar
+                                            WHERE UnitId = @UnitId))
               AND   NOT EXISTS (
                         SELECT 1 FROM dbo.CC_LaborAbsorptionRate fx
                         WHERE fx.UnitId = @UnitId AND fx.CODE = hm.CODE AND fx.IsFixed = 1

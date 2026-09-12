@@ -281,66 +281,34 @@ BEGIN
     JOIN    dbo.HEAD_MANF h ON h.FNUMB = d.FNUMB AND h.GHEYMAT = @Month
     WHERE   d.MEGH < 0 OR d.MEGHk < 0;
 
-    ---- CHK-16 : برگه تولید به انباري که نقش «محصول» ندارد — بدون اين
-    -- تشخيص، S10 اين برگه‌ها را در محاسبه جذب هيچ واحدي نمي‌بيند و مانده
-    -- حساب ۷۵۱ کاذب مي‌شود (دقيقاً همان چيزي که روي انبار ۱۵ رخ داد).
+    ---- CHK-16 : برگه تولید به انباري که به هيچ واحد توليدي وصل نيست.
+    -- بدون اين تشخيص، S10 اين برگه‌ها را در جذب هيچ واحدي نمي‌بيند و
+    -- مانده حساب ۷۵۱ کاذب مي‌شود (همان چيزي که روي انبار ۱۵ رخ داد).
     --
-    -- ⚠️ دو حالتِ کاملاً متفاوت که قبلاً هر دو يک پيام مي‌گرفتند، و پيام
-    -- براي حالت دوم صريحاً غلط بود («به هيچ واحدي وصل نيست» در حالي که
-    -- وصل بود):
+    -- ⚠️ قبلاً نقشِ «محصول» هم شرط بود، و انباري که در واحد بود ولي نقشش
+    -- «ساير» بود اينجا گزارش مي‌شد. تصميم صاحب پروژه: نقش را از خودِ
+    -- برگه‌ي توليد بخوان، نه از تنظيمات — اگر محصول در اين انبار
+    -- مي‌نشيند، انبارِ محصول است. آن استنتاج حالا در نماي
+    -- CC_vw_UnitProductAnbar است (فايل ۳۵) و موتور نرخ هم از همان
+    -- مي‌خواند، پس اين قاعده ديگر بابتش هشدار نمي‌دهد.
     --
-    --   الف) انبار در هيچ واحدي نيست. اينجا واقعاً نمي‌شود فهميد اين
-    --        توليد کارِ کدام واحد بوده — خودِ برگه فقط انبار را مي‌گويد،
-    --        نه واحد را. نگاشتِ انبار⇄واحد جاي ديگري وجود ندارد، پس
-    --        حدس زدنش از روي برگه ممکن نيست و بايد تعريف شود.
-    --
-    --   ب) انبار در واحدي هست ولي نقشش «محصول» نيست. اينجا واحد معلوم
-    --        است و فقط نقش اشتباه تنظيم شده. پيام بايد اسم همان واحد و
-    --        نقش فعلي را بگويد تا کاربر بداند دقيقاً کجا را عوض کند.
-    --
-    -- به همين دليل نقشِ تنظيمات ملاک است و نه صرفاً «در برگه‌ي توليد
-    -- ديده شده»: ديده‌شدن در برگه مي‌گويد محصول کجا رفته، ولي نمي‌گويد
-    -- کدام واحد ساخته‌اش — و جذب هزينه‌ي تبديل دقيقاً به همين دومي
-    -- نياز دارد.
-    ;WITH Prod AS (
-        SELECT DISTINCT pl.ANBAR, pl.CODE, h.NUMBER, h.DATE_N
-        FROM   dbo.HEAD_LST h
-        JOIN   dbo.INVO_LST pl ON pl.NUMBER = h.NUMBER AND pl.TAG = 9
-        WHERE  h.TAG = 9 AND h.DATE_N BETWEEN @DT1 AND @DT2
-          AND  pl.ANBAR IS NOT NULL
-          AND  NOT EXISTS (SELECT 1 FROM dbo.CC_UnitAnbar ua
-                            JOIN dbo.CC_Unit u ON u.UnitId = ua.UnitId
-                            WHERE ua.Anbar = pl.ANBAR AND ua.AnbarRole = 3 AND u.IsActive = 1)
-    ),
-    /* اگر انبار در چند واحد باشد، يکي را براي پيام برمي‌داريم — کاربر
-       با ديدن همان يکي، بقيه را هم پيدا مي‌کند. */
-    Owner AS (
-        SELECT p.ANBAR,
-               u.UnitName,
-               ua.AnbarRole,
-               rn = ROW_NUMBER() OVER (PARTITION BY p.ANBAR ORDER BY ua.UnitId)
-        FROM   Prod p
-        JOIN   dbo.CC_UnitAnbar ua ON ua.Anbar = p.ANBAR
-        JOIN   dbo.CC_Unit u ON u.UnitId = ua.UnitId AND u.IsActive = 1
-    )
+    -- آنچه مي‌ماند همان يک حالتي است که واقعاً قابل حل نيست: انباري که
+    -- در هيچ واحدي نيست. برگه فقط انبار را ثبت مي‌کند نه واحد را، و
+    -- نگاشتِ انبار⇄واحد جاي ديگري وجود ندارد؛ پس واحدش قابل حدس زدن
+    -- نيست و بايد در تنظيمات تعريف شود.
     INSERT dbo.CC_Exception
         (RunId, StepCode, RuleCode, ExType, Severity, Code, Anbar, DocNumber, DocDate, Description)
-    SELECT @RunId, 'S00', 'CHK-16', 18, 1,
-           TRY_CAST(p.CODE AS BIGINT), p.ANBAR, p.NUMBER, p.DATE_N,
-           CASE WHEN o.UnitName IS NULL
-                THEN CONCAT(N'برگه تولید شماره ', p.NUMBER, N' به انبار ', p.ANBAR,
-                            N' وارد شده، ولی این انبار به هیچ واحد تولیدی وصل نیست')
-                ELSE CONCAT(N'برگه تولید شماره ', p.NUMBER, N' به انبار ', p.ANBAR,
-                            N' وارد شده؛ این انبار در واحد «', o.UnitName,
-                            N'» هست ولی نقشش «',
-                            CASE o.AnbarRole WHEN 1 THEN N'مبنای انحراف'
-                                             WHEN 2 THEN N'مواد اولیه'
-                                             WHEN 4 THEN N'سایر'
-                                             ELSE N'نامشخص' END,
-                            N'» است، نه «محصول»')
-           END
-    FROM   Prod p
-    LEFT   JOIN Owner o ON o.ANBAR = p.ANBAR AND o.rn = 1;
+    SELECT DISTINCT @RunId, 'S00', 'CHK-16', 18, 1,
+           TRY_CAST(pl.CODE AS BIGINT), pl.ANBAR, h.NUMBER, h.DATE_N,
+           CONCAT(N'برگه تولید شماره ', h.NUMBER, N' به انبار ', pl.ANBAR,
+                  N' وارد شده، ولی این انبار به هیچ واحد تولیدی وصل نیست')
+    FROM   dbo.HEAD_LST h
+    JOIN   dbo.INVO_LST pl ON pl.NUMBER = h.NUMBER AND pl.TAG = 9
+    WHERE  h.TAG = 9 AND h.DATE_N BETWEEN @DT1 AND @DT2
+      AND  pl.ANBAR IS NOT NULL
+      AND  NOT EXISTS (SELECT 1 FROM dbo.CC_UnitAnbar ua
+                        JOIN dbo.CC_Unit u ON u.UnitId = ua.UnitId
+                        WHERE ua.Anbar = pl.ANBAR AND u.IsActive = 1);
 
     ---- CHK-17 : شمارش دوم/سوم انبارگردانی بدون مغایرت شمارش اول
     -- طبق فرآیند واقعی انبارگردانی (تأیید کاربر): کالایی که شمارش اول
