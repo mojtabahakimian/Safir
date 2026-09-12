@@ -1190,7 +1190,13 @@ END CATCH;";
                     if (jamf + (h.MABL_HAZ ?? 0d) - (h.TAKHFIF ?? 0d) + (h.MBAA ?? 0d) > 0)
                     {
                         var sharh = LeftTrim($"فاكتور برگشت فروش.  شماره{num}مورخ{PersianDate(dateN)}{h.MOLAH}", 255);
-                        AddRow(ckol, cmoin, ctaf, null, null, null, h.CUST_NO ?? string.Empty, sharh, 0,
+                        // ⚠️ ctaf2/3/4 و نه null: کدِ مشتری سطحِ تفصیلی۲ است، و با
+                        // null فقط در رشته‌ی نمایشیِ HES می‌نشست («۱۱۵-۵-۲۶-۳۵۲۰»)
+                        // ولی ستون HES_T2 خالی می‌ماند. هر گزارشی که با ستون‌های
+                        // عددی گروه‌بندی می‌کند — یعنی همه‌ی گزارش‌های تفصیلی —
+                        // این ردیف‌ها را زیر «۱۱۵-۵-۲۶» بدون مشتری می‌دید.
+                        // Pass1 از اول درست بود؛ فقط این شاخه جا مانده بود.
+                        AddRow(ckol, cmoin, ctaf, ctaf2, ctaf3, ctaf4, h.CUST_NO ?? string.Empty, sharh, 0,
                             Math.Round(jamf + (h.MABL_HAZ ?? 0d) - (h.TAKHFIF ?? 0d) + (h.MBAA ?? 0d)));
                     }
 
@@ -1199,7 +1205,7 @@ END CATCH;";
                     if ((h.M_NAGHD ?? 0d) != 0)
                     {
                         var sharh = LeftTrim($"مبلغ نقد فاكتور برگشت فروش.  شماره{num}مورخ{PersianDate(dateN)}", 255);
-                        AddRow(ckol, cmoin, ctaf, null, null, null, h.CUST_NO ?? string.Empty, sharh, Math.Round(h.M_NAGHD!.Value), 0);
+                        AddRow(ckol, cmoin, ctaf, ctaf2, ctaf3, ctaf4, h.CUST_NO ?? string.Empty, sharh, Math.Round(h.M_NAGHD!.Value), 0);
                     }
                     if ((h.M_NAGHD ?? 0d) != 0)
                     {

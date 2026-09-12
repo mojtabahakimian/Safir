@@ -14,6 +14,17 @@
                 فقط برگه‌های همین ماه اجرا بازسازی می‌شوند.
             </MudText>
 
+            @* وقتی همه با یک پیامِ یکسان شکست می‌خورند، علت مشترک است نه
+               هشت اشکالِ جدا. تکرارِ هشت‌باره‌ی همان جمله فقط کاربر را
+               گمراه می‌کرد که فکر کند هشت چیز خراب است. *@
+            @if (SharedFailure is { } shared)
+            {
+                <MudAlert Severity="Severity.Error" Dense Class="mb-3">
+                    <b>هیچ‌کدام اجرا نشد — یک علت مشترک:</b><br />
+                    @shared
+                </MudAlert>
+            }
+
             <MudCheckBox T="bool" Dense
                          Value="@(_selected.Count == Docs.Length)"
                          ValueChanged="@ToggleAll"
@@ -43,7 +54,7 @@
                             }
                             else
                             {
-                                <span>خطا: @(r.FirstError ?? "نامشخص")</span>
+                                <span>خطا: @(string.IsNullOrWhiteSpace(r.FirstError) ? "نامشخص" : r.FirstError)</span>
                             }
                         </div>
                     }
@@ -95,6 +106,26 @@
     private void Toggle(string suffix, bool on)
     {
         if (on) _selected.Add(suffix); else _selected.Remove(suffix);
+    }
+
+    /// <summary>
+    /// اگر همه شکست خورده‌اند و متنِ خطایشان یکی است، همان یک متن.
+    /// وگرنه null و هر ردیف خطای خودش را می‌گوید.
+    /// </summary>
+    private string? SharedFailure
+    {
+        get
+        {
+            if (_results.Count == 0 || _results.Count != _selected.Count) return null;
+            if (_results.Values.Any(r => r.Success)) return null;
+
+            var msgs = _results.Values
+                .Select(r => (r.FirstError ?? string.Empty).Trim())
+                .Distinct()
+                .ToList();
+
+            return msgs.Count == 1 && msgs[0].Length > 0 ? msgs[0] : null;
+        }
     }
 
     private void ToggleAll(bool on)

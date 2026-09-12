@@ -21,6 +21,14 @@ namespace Safir.Client.Components.Grid
         public string Title { get; init; } = "";
         public bool IsNumber { get; init; }
         public bool Money { get; init; }
+
+        /// <summary>
+        /// ستونی که هم ریال دارد هم مقدارِ کسری (مثل «مبلغ/مقدار» در
+        /// مغایرت‌ها). با Money تنها، ۰٫۰۰۲۹ واحد در فایل «۰» دیده می‌شد.
+        /// این پرچم قالبِ #,##0.###### را می‌دهد که هر دو را درست نشان
+        /// می‌دهد. اگر هر دو ست شوند، همین برنده است.
+        /// </summary>
+        public bool Fractional { get; init; }
         public bool Sum { get; init; }
         public Func<T, string>? Text { get; init; }
         public Func<T, double?>? Number { get; init; }
@@ -65,7 +73,7 @@ namespace Safir.Client.Components.Grid
                     {
                         double val = c.Number?.Invoke(row) ?? 0d;
                         if (c.Sum) sums[j] += val;
-                        sd.Append(NumberCell(cellRef, val, c.Money));
+                        sd.Append(NumberCell(cellRef, val, c.Money, c.Fractional));
                     }
                     else
                     {
@@ -84,7 +92,7 @@ namespace Safir.Client.Components.Grid
                     var c = columns[j];
                     string cellRef = ColLetter(j) + rowNum;
                     if (c.IsNumber && c.Sum)
-                        sd.Append(NumberCell(cellRef, sums[j], c.Money));
+                        sd.Append(NumberCell(cellRef, sums[j], c.Money, c.Fractional));
                     else if (j == footerLabelColumnIndex)
                         sd.Append(TextCell(cellRef, footerLabel));
                     else
@@ -128,9 +136,9 @@ namespace Safir.Client.Components.Grid
             return "<c r=\"" + cellRef + "\" t=\"inlineStr\"><is><t xml:space=\"preserve\">" + XmlEsc(value) + "</t></is></c>";
         }
 
-        private static string NumberCell(string cellRef, double value, bool money)
+        private static string NumberCell(string cellRef, double value, bool money, bool fractional = false)
         {
-            string styleAttr = money ? " s=\"1\"" : "";
+            string styleAttr = fractional ? " s=\"2\"" : money ? " s=\"1\"" : "";
             return "<c r=\"" + cellRef + "\"" + styleAttr + "><v>" + value.ToString(CultureInfo.InvariantCulture) + "</v></c>";
         }
 
@@ -207,12 +215,22 @@ namespace Safir.Client.Components.Grid
         private const string StylesXml =
             "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>" +
             "<styleSheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\">" +
-            "<numFmts count=\"1\"><numFmt numFmtId=\"164\" formatCode=\"#,##0\"/></numFmts>" +
+            "<numFmts count=\"2\">" +
+            "<numFmt numFmtId=\"164\" formatCode=\"#,##0\"/>" +
+            // ⚠️ یک قالب برای هر دو: «#» رقمِ نبودِ معنا را نشان نمی‌دهد،
+            //    پس ۲۰۷۳۰۷۴ می‌شود «2,073,074» و ۰٫۰۰۲۹۲۶ می‌شود «0.002926».
+            //    ستونی که هم ریال دارد هم مقدار، با همین یکی درست در می‌آید.
+            "<numFmt numFmtId=\"165\" formatCode=\"#,##0.######\"/>" +
+            "</numFmts>" +
             "<fonts count=\"1\"><font><sz val=\"11\"/><name val=\"Calibri\"/></font></fonts>" +
             "<fills count=\"2\"><fill><patternFill patternType=\"none\"/></fill><fill><patternFill patternType=\"gray125\"/></fill></fills>" +
             "<borders count=\"1\"><border/></borders>" +
             "<cellStyleXfs count=\"1\"><xf numFmtId=\"0\" fontId=\"0\" fillId=\"0\" borderId=\"0\"/></cellStyleXfs>" +
-            "<cellXfs count=\"2\"><xf numFmtId=\"0\" fontId=\"0\" fillId=\"0\" borderId=\"0\" xfId=\"0\"/><xf numFmtId=\"164\" fontId=\"0\" fillId=\"0\" borderId=\"0\" xfId=\"0\" applyNumberFormat=\"1\"/></cellXfs>" +
+            "<cellXfs count=\"3\">" +
+            "<xf numFmtId=\"0\" fontId=\"0\" fillId=\"0\" borderId=\"0\" xfId=\"0\"/>" +
+            "<xf numFmtId=\"164\" fontId=\"0\" fillId=\"0\" borderId=\"0\" xfId=\"0\" applyNumberFormat=\"1\"/>" +
+            "<xf numFmtId=\"165\" fontId=\"0\" fillId=\"0\" borderId=\"0\" xfId=\"0\" applyNumberFormat=\"1\"/>" +
+            "</cellXfs>" +
             "<cellStyles count=\"1\"><cellStyle name=\"Normal\" xfId=\"0\" builtinId=\"0\"/></cellStyles>" +
             "</styleSheet>";
     }

@@ -295,7 +295,28 @@ namespace Safir.Client.Services
         {
             var res = await _http.PostAsync($"{Base}/runs/{runId}/{endpointSuffix}", null);
             if (!res.IsSuccessStatusCode)
-                return (false, null, await res.Content.ReadAsStringAsync());
+            {
+                // ⚠️ بدنه همیشه متن ندارد: ۴۰۴ و خطاهای مدیریت‌نشده‌ی سرور
+                // خالی برمی‌گردند و کاربر فقط یک «خطا»ی بی‌معنا می‌دید — هشت
+                // بار، بدون هیچ سرنخی. کدِ وضعیت تنها چیزی است که همیشه هست،
+                // پس وقتی بدنه خالی است همان را می‌گوییم.
+                var errBody = (await res.Content.ReadAsStringAsync()).Trim();
+                var code    = (int)res.StatusCode;
+
+                var msg = errBody.Length > 0
+                    ? $"{errBody} (کد {code})"
+                    : code switch
+                    {
+                        401 => "وارد نشده‌اید یا نشستتان منقضی شده — دوباره وارد شوید. (کد ۴۰۱)",
+                        403 => "دسترسی «بازسازی اسناد گروهی» را ندارید. (کد ۴۰۳)",
+                        404 => "این اجرا پیدا نشد یا این قابلیت روی سرور نصب نیست. (کد ۴۰۴)",
+                        409 => "این اجرا در حال انجام است؛ اول متوقفش کنید. (کد ۴۰۹)",
+                        500 => "خطای سمت سرور — معمولاً یعنی اسکریپت‌های دیتابیس عقب‌اند. (کد ۵۰۰)",
+                        _   => $"پاسخ نامنتظره از سرور (کد {code})"
+                    };
+
+                return (false, null, msg);
+            }
 
             var body = await res.Content.ReadFromJsonAsync<GroupDocumentRebuildResultDto>();
             return (true, body, null);
