@@ -111,6 +111,14 @@
                 </MudNavLink>
             </MudNavGroup>
 
+            @* زیر همان مجوزِ ادمینِ دسترسی‌هاست؛ کاربر عادی که بازش کند
+               ۴۰۳ می‌گیرد. جایش اینجاست و نه داخل بهای تمام‌شده، چون
+               مهاجرت‌ها کلِ برنامه را می‌سازند نه فقط آن ماژول را. *@
+            <MudNavLink Href="/admin/db-upgrade" Match="NavLinkMatch.Prefix"
+                        Icon="@Icons.Material.Filled.Storage">
+                به‌روزرسانی دیتابیس
+            </MudNavLink>
+
             <MudNavLink Disabled="true" Icon="@Icons.Material.Filled.Info">
                 نسخه: @appVersion
             </MudNavLink>

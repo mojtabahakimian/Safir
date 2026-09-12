@@ -107,6 +107,9 @@ builder.Services.AddScoped<CostCloseApiService>();
 // نشسته است. کلاینتِ بلندمدتِ لازم برای خودِ گفتگو داخل AiApiService ساخته
 // می‌شود و توکن را در هر فراخوانی از این یکی کپی می‌کند.
 builder.Services.AddScoped<AiApiService>();
+
+// به‌روزرسانی دیتابیس — همان دلیلِ بالا برای کلاینتِ بلندمدتِ داخلی.
+builder.Services.AddScoped<DbAdminApiService>();
 builder.Services.AddScoped<ICrmApiService, CrmApiService>();
 builder.Services.AddScoped<CrmApiService>();
 

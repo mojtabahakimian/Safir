@@ -92,6 +92,10 @@ builder.Services.AddScoped<ICrmAccessService, CrmAccessService>();
 builder.Services.AddScoped<Safir.Server.Security.Pay2ScopeResolver>();
 builder.Services.AddScoped<Safir.Server.Services.Pay2DisketteService>();
 
+// به‌روزرسانی دیتابیس. Scoped است چون رشته‌ی اتصال را از هدر همین درخواست
+// می‌گیرد؛ Singleton بودنش یعنی اجرا روی دیتابیسِ اشتباه.
+builder.Services.AddScoped<Safir.Server.Services.DbUpgradeService>();
+
 // --- ماژول بستن ماه بهای تمام‌شده (Cost Close) ---
 // ── دستیار هوش مصنوعی ──
 // ابزارها Scoped ثبت می‌شوند چون IDatabaseService هم Scoped است و رشته‌ی
