@@ -79,7 +79,7 @@ namespace Safir.Server.Controllers
 
             try
             {
-                var result = await _svc.RunAsync(req.PreviewOnly, ct);
+                var result = await _svc.RunAsync(req.PreviewOnly, req.IncludeBaseData, ct);
 
                 _logger.LogWarning(
                     "به‌روزرسانی دیتابیس {Db} پایان یافت. کد خروج={Code}، مدت={Ms}ms",

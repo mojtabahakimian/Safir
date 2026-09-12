@@ -158,7 +158,7 @@ namespace Safir.Server.Services
         /// دسترسی را می‌سنجد. ScriptSqly خودش حالت آزمایشی ندارد، پس
         /// «بررسی خشک» یعنی تا لبه‌ی اجرا رفتن و برگشتن.
         /// </summary>
-        public async Task<DbUpgradeResult> RunAsync(bool previewOnly, CancellationToken ct)
+        public async Task<DbUpgradeResult> RunAsync(bool previewOnly, bool includeBaseData, CancellationToken ct)
         {
             var cs    = _conn.GetConnectionString();
             var sw    = Stopwatch.StartNew();
@@ -204,7 +204,7 @@ namespace Safir.Server.Services
                     // نیمه‌کاره بدتر از مهاجرتِ کند است. اگر کاربر مرورگر
                     // را ببندد، کار تا آخر می‌رود.
                     await Task.Run(() =>
-                        ScriptSqly.Migrations.ScriptSqly.LetsGo(cs, true, 2),
+                        ScriptSqly.Migrations.ScriptSqly.LetsGo(cs, includeBaseData, 2),
                         CancellationToken.None);
                 }
                 catch (Exception ex)

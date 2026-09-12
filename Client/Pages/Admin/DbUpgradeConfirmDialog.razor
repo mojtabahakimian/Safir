@@ -36,6 +36,21 @@
 
             <MudCheckBox @bind-Value="_backup" Color="Color.Primary"
                           Label="از این دیتابیس بکاپ کامل گرفته‌ام." />
+
+            <MudCheckBox @bind-Value="_baseData" Color="Color.Primary"
+                          Label="بلوک «اطلاعات پایه» هم اجرا شود" />
+
+            @* توضیح لازم است چون اسمِ این بلوک گمراه‌کننده است: فقط درجِ
+               داده نیست، بیشترش تغییر ساختار است. *@
+            <MudText Typo="Typo.caption" Class="mud-text-secondary d-block mt-1">
+                این بلوک حدود ۸۴ تغییرِ ساختاری دارد که همه‌ی دیتابیس‌ها لازم‌شان
+                دارند، به‌علاوه چهار فهرستِ مرجع: ارز، کشور، رتبه و نحوه‌ی پرداخت.
+                این چهار فهرست عمومی‌اند و مخصوصِ هیچ شرکتی نیستند؛ اگر از قبل
+                موجود باشند دوباره درج نمی‌شوند.
+                <br />
+                خاموش کردنش آن ۸۴ تغییر ساختاری را هم می‌خواباند — فقط وقتی
+                خاموشش کنید که دلیل مشخصی دارید.
+            </MudText>
         }
     </DialogContent>
 
@@ -59,11 +74,12 @@
 
     private string _typed  = string.Empty;
     private bool   _backup;
+    private bool   _baseData = true;
 
     private bool CanConfirm =>
         Preview ||
         (_backup && string.Equals(_typed.Trim(), Database, StringComparison.OrdinalIgnoreCase));
 
-    private void Confirm() => MudDialog.Close(DialogResult.Ok(true));
+    private void Confirm() => MudDialog.Close(DialogResult.Ok(_baseData));
     private void Cancel()  => MudDialog.Cancel();
 }

@@ -201,6 +201,9 @@
         var res = await dlg.Result;
         if (res.Canceled) return;
 
+        // دیالوگ خودِ انتخابِ «اطلاعات پایه» را برمی‌گرداند.
+        var includeBaseData = res.Data as bool? ?? true;
+
         _busy   = true;
         _result = null;
         _error  = null;
@@ -210,7 +213,8 @@
         {
             ConfirmDatabase = _status.Database,
             BackupConfirmed = !preview,
-            PreviewOnly     = preview
+            PreviewOnly     = preview,
+            IncludeBaseData = includeBaseData
         });
 
         _busy   = false;
