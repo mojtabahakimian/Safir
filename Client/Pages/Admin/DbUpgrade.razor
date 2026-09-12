@@ -1,0 +1,252 @@
+@page "/admin/db-upgrade"
+@using Safir.Shared.Models.DbAdmin
+@using Safir.Client.Services
+@inject DbAdminApiService Api
+@inject ISnackbar Snackbar
+@inject IDialogService Dialog
+
+<PageTitle>به‌روزرسانی دیتابیس</PageTitle>
+
+<MudText Typo="Typo.h5" Class="mb-2">به‌روزرسانی دیتابیس</MudText>
+
+@* بدون این توضیح، کاربر نمی‌داند که دکمه‌ی پایین صفحه روی *کدام* دیتابیس
+   اثر می‌گذارد — و چون پایگاه از نوار بالای برنامه قابل تعویض است، این
+   دقیقاً همان چیزی است که اشتباه می‌شود. *@
+<MudAlert Severity="Severity.Info" Dense Class="mb-4">
+    این صفحه مهاجرت‌های ساختاری (ScriptSqly) را روی <b>همان دیتابیسی که
+    الان به آن وصلید</b> اجرا می‌کند — نه روی دیتابیس پیش‌فرضِ سرور.
+    پیش از اجرای واقعی حتماً بکاپ کامل بگیرید؛ تغییرات ساختاری برگشت‌پذیر نیستند.
+    <br />
+    ترتیب درست: <b>اول</b> این به‌روزرسانی، <b>بعد</b> دیپلوی نسخه‌ی جدید سفیر.
+    برعکسش یعنی کدِ تازه روی دیتابیسِ قدیمی، که همان خطاهای «ستون نامعتبر» را می‌دهد.
+</MudAlert>
+
+@if (_error is not null)
+{
+    <MudAlert Severity="Severity.Error" Class="mb-4">@_error</MudAlert>
+}
+
+@if (_loading)
+{
+    <MudProgressLinear Indeterminate Color="Color.Primary" Class="mb-4" />
+}
+
+@if (_status is not null)
+{
+    <MudPaper Class="pa-4 mb-4">
+        <div class="d-flex align-center flex-wrap gap-4">
+            <div>
+                <MudText Typo="Typo.caption" Class="mud-text-secondary">سرور</MudText>
+                <MudText Typo="Typo.body1"><b>@_status.Server</b></MudText>
+            </div>
+            <div>
+                <MudText Typo="Typo.caption" Class="mud-text-secondary">دیتابیس</MudText>
+                <MudText Typo="Typo.body1"><b>@_status.Database</b></MudText>
+            </div>
+            <MudSpacer />
+            @if (_status.UpToDate)
+            {
+                <MudChip Color="Color.Success" Icon="@Icons.Material.Filled.CheckCircle">
+                    به‌روز است
+                </MudChip>
+            }
+            else
+            {
+                <MudChip Color="Color.Warning" Icon="@Icons.Material.Filled.Warning">
+                    @_status.ProbesMissing مورد از @_status.ProbesTotal کم است
+                </MudChip>
+            }
+            <MudButton Variant="Variant.Text" StartIcon="@Icons.Material.Filled.Refresh"
+                       OnClick="LoadAsync" Disabled="@_busy">بازخوانی</MudButton>
+        </div>
+    </MudPaper>
+
+    @if (!_status.RunnerAvailable)
+    {
+        <MudAlert Severity="Severity.Warning" Class="mb-4">
+            @_status.Blocker
+            <br />
+            مسیر را در <code>appsettings.json</code> با کلید
+            <code>DbUpgrade:RunnerPath</code> تنظیم کنید.
+        </MudAlert>
+    }
+
+    <MudPaper Class="pa-4 mb-4">
+        <MudText Typo="Typo.subtitle1" Class="mb-2">شاخص‌های وضعیت</MudText>
+        @* نمونه‌اند نه فهرست کامل — گفتنش لازم است تا «همه سبز» با
+           «دیتابیس صددرصد به‌روز» اشتباه گرفته نشود. *@
+        <MudText Typo="Typo.caption" Class="mud-text-secondary d-block mb-3">
+            چند شیءِ شاخص از تازه‌ترین مهاجرت‌ها. سبزبودنِ همه یعنی احتمالاً
+            دیتابیس به‌روز است، ولی جای اجرای خودِ به‌روزرسانی را نمی‌گیرد.
+        </MudText>
+
+        <MudSimpleTable Dense Hover Striped>
+            <thead>
+                <tr>
+                    <th style="width:44px"></th>
+                    <th>نام</th>
+                    <th>نوع</th>
+                    <th>اگر نباشد چه می‌شود</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var p in _status.Probes)
+                {
+                    <tr>
+                        <td>
+                            @if (p.Exists)
+                            {
+                                <MudIcon Icon="@Icons.Material.Filled.CheckCircle" Color="Color.Success" Size="Size.Small" />
+                            }
+                            else
+                            {
+                                <MudIcon Icon="@Icons.Material.Filled.Cancel" Color="Color.Error" Size="Size.Small" />
+                            }
+                        </td>
+                        <td><code>@p.Name</code></td>
+                        <td>@p.Kind</td>
+                        <td class="mud-text-secondary">@p.Description</td>
+                    </tr>
+                }
+            </tbody>
+        </MudSimpleTable>
+    </MudPaper>
+
+    <MudPaper Class="pa-4 mb-4">
+        <MudText Typo="Typo.subtitle1" Class="mb-3">اجرا</MudText>
+        <div class="d-flex gap-3 flex-wrap">
+            <MudButton Variant="Variant.Outlined" Color="Color.Primary"
+                       StartIcon="@Icons.Material.Filled.Visibility"
+                       Disabled="@(_busy || !_status.RunnerAvailable)"
+                       OnClick="@(() => ConfirmAndRunAsync(preview: true))">
+                بررسی خشک (بدون تغییر)
+            </MudButton>
+
+            <MudButton Variant="Variant.Filled" Color="Color.Error"
+                       StartIcon="@Icons.Material.Filled.Storage"
+                       Disabled="@(_busy || !_status.RunnerAvailable)"
+                       OnClick="@(() => ConfirmAndRunAsync(preview: false))">
+                اجرای به‌روزرسانی
+            </MudButton>
+
+            @if (_busy)
+            {
+                <MudProgressCircular Indeterminate Size="Size.Small" Color="Color.Primary" />
+                <MudText Typo="Typo.body2" Class="align-self-center">
+                    در حال اجرا… این صفحه را نبندید.
+                </MudText>
+            }
+        </div>
+    </MudPaper>
+}
+
+@if (_result is not null)
+{
+    <MudPaper Class="pa-4">
+        <div class="d-flex align-center mb-2 gap-3">
+            <MudText Typo="Typo.subtitle1">خروجی اجرا</MudText>
+            <MudChip Size="Size.Small"
+                     Color="@(_result.Success ? Color.Success : Color.Error)">
+                @(_result.Success ? "موفق" : $"ناموفق (کد {_result.ExitCode})")
+            </MudChip>
+            @if (_result.WasPreview)
+            {
+                <MudChip Size="Size.Small" Color="Color.Info">بررسی خشک</MudChip>
+            }
+            <MudText Typo="Typo.caption" Class="mud-text-secondary">
+                @FormatDuration(_result.DurationMs)
+            </MudText>
+        </div>
+
+        <pre style="direction:ltr;text-align:left;white-space:pre-wrap;word-break:break-word;
+                    max-height:420px;overflow:auto;font-size:.8rem;margin:0;">@_result.Output</pre>
+    </MudPaper>
+}
+
+@code {
+    private DbUpgradeStatus? _status;
+    private DbUpgradeResult? _result;
+    private string?          _error;
+    private bool             _loading;
+    private bool             _busy;
+
+    protected override Task OnInitializedAsync() => LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        _error   = null;
+        StateHasChanged();
+
+        var (status, err) = await Api.GetStatusAsync();
+        _status = status;
+        _error  = err;
+        _loading = false;
+    }
+
+    /// <summary>
+    /// هیچ اجرایی بدون تأیید نیست — حتی بررسی خشک، چون همان هم یک فرآیند
+    /// روی سرور راه می‌اندازد و کاربر باید بداند روی کدام دیتابیس.
+    ///
+    /// برای اجرای واقعی، تأیید یعنی تایپ‌کردنِ نام دیتابیس. «بله/خیر» کافی
+    /// نبود: کاربر چند پایگاه دارد و کلیکِ عادت‌شده روی «بله» دقیقاً همان
+    /// اشتباهی است که این دکمه می‌تواند گران تمامش کند.
+    /// </summary>
+    private async Task ConfirmAndRunAsync(bool preview)
+    {
+        if (_status is null) return;
+
+        var parameters = new DialogParameters
+        {
+            ["Database"] = _status.Database,
+            ["Server"]   = _status.Server,
+            ["Preview"]  = preview
+        };
+
+        var dlg = await Dialog.ShowAsync<DbUpgradeConfirmDialog>(
+            preview ? "تأیید بررسی خشک" : "تأیید به‌روزرسانی دیتابیس",
+            parameters,
+            new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true });
+
+        var res = await dlg.Result;
+        if (res.Canceled) return;
+
+        _busy   = true;
+        _result = null;
+        _error  = null;
+        StateHasChanged();
+
+        var (result, err) = await Api.RunAsync(new DbUpgradeRequest
+        {
+            ConfirmDatabase = _status.Database,
+            BackupConfirmed = !preview,
+            PreviewOnly     = preview
+        });
+
+        _busy   = false;
+        _result = result;
+
+        if (err is not null)
+        {
+            _error = err;
+            Snackbar.Add(err, Severity.Error);
+        }
+        else if (result is not null)
+        {
+            Snackbar.Add(result.Success ? "اجرا با موفقیت پایان یافت." : "اجرا ناموفق بود.",
+                         result.Success ? Severity.Success : Severity.Error);
+
+            // وضعیت بعد از اجرای واقعی عوض شده؛ نشان‌دادنِ عددِ قدیمی یعنی
+            // کاربر فکر کند کاری نشده و دوباره بزند.
+            if (!preview) await LoadAsync();
+        }
+    }
+
+    private static string FormatDuration(long ms)
+    {
+        var t = TimeSpan.FromMilliseconds(ms);
+        return t.TotalMinutes >= 1
+             ? $"{(int)t.TotalMinutes} دقیقه و {t.Seconds} ثانیه"
+             : $"{t.TotalSeconds:0.0} ثانیه";
+    }
+}

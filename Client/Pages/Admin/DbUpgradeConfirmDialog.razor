@@ -1,0 +1,69 @@
+@* تأییدیه‌ی اجرا.
+
+   برای اجرای واقعی، دکمه‌ی تأیید تا وقتی نامِ دیتابیس دقیقاً تایپ نشده و
+   تیکِ بکاپ خورده نباشد غیرفعال می‌ماند. سرور هم همین دو شرط را دوباره
+   بررسی می‌کند؛ این صفحه فقط جلوی اشتباه را می‌گیرد، نه جلوی سوءاستفاده. *@
+
+<MudDialog>
+    <DialogContent>
+        @if (Preview)
+        {
+            <MudAlert Severity="Severity.Info" Dense Class="mb-3">
+                بررسی خشک هیچ تغییری در دیتابیس نمی‌دهد؛ فقط پارامترها و
+                دسترسی بررسی می‌شوند.
+            </MudAlert>
+        }
+        else
+        {
+            <MudAlert Severity="Severity.Error" Dense Class="mb-3">
+                این کار ساختار دیتابیس را تغییر می‌دهد و <b>برگشت‌پذیر نیست</b>.
+                تنها راه بازگشت، بازگرداندن بکاپ است.
+            </MudAlert>
+        }
+
+        <MudSimpleTable Dense Class="mb-3">
+            <tbody>
+                <tr><td class="mud-text-secondary">سرور</td><td><b>@Server</b></td></tr>
+                <tr><td class="mud-text-secondary">دیتابیس</td><td><b>@Database</b></td></tr>
+            </tbody>
+        </MudSimpleTable>
+
+        @if (!Preview)
+        {
+            <MudTextField T="string" @bind-Value="_typed" Immediate
+                          Label="@($"برای تأیید، نام دیتابیس را تایپ کنید: {Database}")"
+                          Variant="Variant.Outlined" Dense Class="mb-2" />
+
+            <MudCheckBox @bind-Value="_backup" Color="Color.Primary"
+                          Label="از این دیتابیس بکاپ کامل گرفته‌ام." />
+        }
+    </DialogContent>
+
+    <DialogActions>
+        <MudButton OnClick="Cancel">انصراف</MudButton>
+        <MudButton Variant="Variant.Filled"
+                   Color="@(Preview ? Color.Primary : Color.Error)"
+                   Disabled="@(!CanConfirm)"
+                   OnClick="Confirm">
+            @(Preview ? "اجرای بررسی خشک" : "بله، اجرا کن")
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private MudDialogInstance MudDialog { get; set; } = default!;
+
+    [Parameter] public string Database { get; set; } = string.Empty;
+    [Parameter] public string Server   { get; set; } = string.Empty;
+    [Parameter] public bool   Preview  { get; set; }
+
+    private string _typed  = string.Empty;
+    private bool   _backup;
+
+    private bool CanConfirm =>
+        Preview ||
+        (_backup && string.Equals(_typed.Trim(), Database, StringComparison.OrdinalIgnoreCase));
+
+    private void Confirm() => MudDialog.Close(DialogResult.Ok(true));
+    private void Cancel()  => MudDialog.Cancel();
+}
