@@ -838,7 +838,11 @@
 
     private async Task OpenAddAnbar(CostUnitDto u)
     {
-        var dlg = await Dialog.ShowAsync<UnitAnbarEditDialog>("افزودن انبار", new DialogParameters());
+        var p = new DialogParameters
+        {
+            ["Taken"] = u.Anbars.Select(a => a.Anbar).ToHashSet()
+        };
+        var dlg = await Dialog.ShowAsync<UnitAnbarEditDialog>("افزودن انبار", p);
         var res = await dlg.Result;
         if (res is { Canceled: false, Data: UpsertUnitAnbarRequest req })
         {

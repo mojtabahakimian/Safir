@@ -2901,10 +2901,34 @@ IF NOT EXISTS (SELECT 1 FROM dbo.CC_RebalancePref
                     new { unitId, req.Anbar, req.AnbarRole, req.DoStockCount, req.SeqNo });
                 return Ok();
             }
+            catch (Exception ex) when (IsDuplicateKey(ex))
+            {
+                // بدون این، کاربر متنِ خامِ «Violation of PRIMARY KEY
+                // constraint PK__CC_UnitA__…» را می‌دید که نه می‌گوید چه
+                // شده و نه چه باید کرد.
+                return BadRequest("این انبار از قبل به این واحد اضافه شده است. " +
+                                  "برای تغییر نقش یا ترتیبش، همان ردیف را ویرایش کنید.");
+            }
             catch (Exception ex)
             {
                 return BadRequest(ex.Message);
             }
+        }
+
+        /// <summary>
+        /// خطای کلید تکراری (۲۶۲۷ کلید اصلی، ۲۶۰۱ ایندکس یکتا).
+        ///
+        /// در لایه‌های Dapper/اتصال ممکن است پیچیده شود، پس زنجیره‌ی
+        /// InnerException هم گشته می‌شود.
+        /// </summary>
+        private static bool IsDuplicateKey(Exception? ex)
+        {
+            for (; ex is not null; ex = ex.InnerException)
+                if (ex is Microsoft.Data.SqlClient.SqlException sql &&
+                    (sql.Number == 2627 || sql.Number == 2601))
+                    return true;
+
+            return false;
         }
 
         [HttpPut("units/{unitId:int}/warehouses/{anbar:int}")]
