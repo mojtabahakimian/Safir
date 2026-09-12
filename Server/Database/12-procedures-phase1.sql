@@ -281,24 +281,34 @@ BEGIN
     JOIN    dbo.HEAD_MANF h ON h.FNUMB = d.FNUMB AND h.GHEYMAT = @Month
     WHERE   d.MEGH < 0 OR d.MEGHk < 0;
 
-    ---- CHK-16 : برگه تولید به انباري که به هيچ واحد توليدي (نقش «محصول»)
-    -- وصل نيست — بدون اين تشخيص، S10 اين برگه‌ها را در محاسبه جذب هيچ
-    -- واحدي نمي‌بيند و مانده حساب ۷۵۱ کاذب مي‌شود (دقيقاً همان چيزي که
-    -- روي انبار ۱۵ رخ داد و کاربر تأييد کرد بايد به‌صورت خودکار
-    -- روي هر پايگاه‌داده‌ي جديد هم چک شود).
+    ---- CHK-16 : برگه تولید به انباري که به هيچ واحد توليدي وصل نيست.
+    -- بدون اين تشخيص، S10 اين برگه‌ها را در جذب هيچ واحدي نمي‌بيند و
+    -- مانده حساب ۷۵۱ کاذب مي‌شود (همان چيزي که روي انبار ۱۵ رخ داد).
+    --
+    -- ⚠️ قبلاً نقشِ «محصول» هم شرط بود، و انباري که در واحد بود ولي نقشش
+    -- «ساير» بود اينجا گزارش مي‌شد. تصميم صاحب پروژه: نقش را از خودِ
+    -- برگه‌ي توليد بخوان، نه از تنظيمات — اگر محصول در اين انبار
+    -- مي‌نشيند، انبارِ محصول است. آن استنتاج حالا در نماي
+    -- CC_vw_UnitProductAnbar است (فايل ۳۵) و موتور نرخ هم از همان
+    -- مي‌خواند، پس اين قاعده ديگر بابتش هشدار نمي‌دهد.
+    --
+    -- آنچه مي‌ماند همان يک حالتي است که واقعاً قابل حل نيست: انباري که
+    -- در هيچ واحدي نيست. برگه فقط انبار را ثبت مي‌کند نه واحد را، و
+    -- نگاشتِ انبار⇄واحد جاي ديگري وجود ندارد؛ پس واحدش قابل حدس زدن
+    -- نيست و بايد در تنظيمات تعريف شود.
     INSERT dbo.CC_Exception
-        (RunId, StepCode, RuleCode, ExType, Severity, Code, DocNumber, DocDate, Description)
+        (RunId, StepCode, RuleCode, ExType, Severity, Code, Anbar, DocNumber, DocDate, Description)
     SELECT DISTINCT @RunId, 'S00', 'CHK-16', 18, 1,
-           TRY_CAST(pl.CODE AS BIGINT), h.NUMBER, h.DATE_N,
+           TRY_CAST(pl.CODE AS BIGINT), pl.ANBAR, h.NUMBER, h.DATE_N,
            CONCAT(N'برگه تولید شماره ', h.NUMBER, N' به انبار ', pl.ANBAR,
-                  N' وارد شده که به هیچ واحد تولیدی (نقش «محصول») وصل نیست')
+                  N' وارد شده، ولی این انبار به هیچ واحد تولیدی وصل نیست')
     FROM   dbo.HEAD_LST h
     JOIN   dbo.INVO_LST pl ON pl.NUMBER = h.NUMBER AND pl.TAG = 9
     WHERE  h.TAG = 9 AND h.DATE_N BETWEEN @DT1 AND @DT2
       AND  pl.ANBAR IS NOT NULL
       AND  NOT EXISTS (SELECT 1 FROM dbo.CC_UnitAnbar ua
                         JOIN dbo.CC_Unit u ON u.UnitId = ua.UnitId
-                        WHERE ua.Anbar = pl.ANBAR AND ua.AnbarRole = 3 AND u.IsActive = 1);
+                        WHERE ua.Anbar = pl.ANBAR AND u.IsActive = 1);
 
     ---- CHK-17 : شمارش دوم/سوم انبارگردانی بدون مغایرت شمارش اول
     -- طبق فرآیند واقعی انبارگردانی (تأیید کاربر): کالایی که شمارش اول

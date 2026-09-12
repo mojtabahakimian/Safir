@@ -9,11 +9,20 @@
             <MudSelect T="int" @bind-Value="_anbar" Label="انبار" Dense
                        Variant="Variant.Outlined" Class="mb-3"
                        Disabled="@(Existing is not null)">
-                @foreach (var a in _anbarha)
+                @foreach (var a in Selectable)
                 {
                     <MudSelectItem T="int" Value="@a.CODE">@a.CODE - @a.NAMES</MudSelectItem>
                 }
             </MudSelect>
+
+            @* اگر همه‌ی انبارها از قبل به این واحد اضافه شده‌اند، فهرست خالی
+               می‌ماند و کاربر بدون توضیح گیر می‌کند. *@
+            @if (Existing is null && _anbarha.Count > 0 && Selectable.Count == 0)
+            {
+                <MudAlert Severity="Severity.Info" Dense Class="mb-3">
+                    همه‌ی انبارها از قبل به این واحد اضافه شده‌اند.
+                </MudAlert>
+            }
 
             <MudSelect T="byte" @bind-Value="_anbarRole" Label="نقش انبار" Dense
                        Variant="Variant.Outlined" Class="mb-3">
@@ -44,7 +53,22 @@
     [CascadingParameter] private MudDialogInstance MudDialog { get; set; } = default!;
     [Parameter] public CostUnitAnbarDto? Existing { get; set; }
 
+    /// <summary>
+    /// انبارهایی که همین واحد از قبل دارد. در حالت افزودن از فهرست حذف
+    /// می‌شوند — کلید اصلی (UnitId, Anbar) است و انتخاب دوباره‌شان جز خطای
+    /// کلید تکراری نتیجه‌ای ندارد.
+    ///
+    /// فقط همین واحد، نه همه‌ی واحدها: یک انبار می‌تواند در چند واحد باشد.
+    /// </summary>
+    [Parameter] public IReadOnlyCollection<int>? Taken { get; set; }
+
     private List<TCOD_ANBAR> _anbarha = new();
+
+    /// <summary>در ویرایش، خودِ انبارِ همان ردیف باید بماند وگرنه فیلد خالی می‌شود.</summary>
+    private List<TCOD_ANBAR> Selectable =>
+        Existing is not null || Taken is null || Taken.Count == 0
+            ? _anbarha
+            : _anbarha.Where(a => !Taken.Contains(a.CODE)).ToList();
     private int   _anbar;
     private byte  _anbarRole    = 2;
     private bool  _doStockCount = true;
