@@ -148,8 +148,22 @@
             </MudText>
         </div>
 
-        <pre style="direction:ltr;text-align:left;white-space:pre-wrap;word-break:break-word;
-                    max-height:420px;overflow:auto;font-size:.8rem;margin:0;">@_result.Output</pre>
+        @* خروجی دو زبانه است و جهتش خط‌به‌خط تعیین می‌شود.
+
+           direction ثابتِ ltr خط‌های فارسی را چپه نشان می‌داد. حالتِ
+           خودکارِ مرورگر (unicode-bidi:plaintext یا dir="auto") هم چاره
+           نبود: آن‌ها جهت را از «اولین حرفِ جهت‌دار» می‌گیرند، و تقریباً
+           همه‌ی این خط‌ها با برچسبِ لاتینِ [CostCloseScript] شروع می‌شوند،
+           پس باز هم چپ‌چین می‌ماندند — با اینکه جمله‌شان فارسی است.
+
+           ملاکِ درست «اولین حرف» نیست، «آیا اصلاً فارسی دارد یا نه» است:
+           برچسب فقط یک پیشوند است، نه زبانِ جمله. *@
+        <pre style="white-space:pre-wrap;word-break:break-word;max-height:420px;
+                    overflow:auto;font-size:.8rem;margin:0;">@foreach (var line in OutputLines)
+{
+    <div dir="@(HasPersian(line) ? "rtl" : "ltr")"
+         style="text-align:@(HasPersian(line) ? "right" : "left")">@(line.Length == 0 ? " " : line)</div>
+}</pre>
     </MudPaper>
 }
 
@@ -234,6 +248,21 @@
             // کاربر فکر کند کاری نشده و دوباره بزند.
             if (!preview) await LoadAsync();
         }
+    }
+
+    private string[] OutputLines =>
+        (_result?.Output ?? string.Empty).Replace("\r\n", "\n").Split('\n');
+
+    /// <summary>
+    /// هر حرفی از بلوک عربی/فارسی یونیکد. برای تصمیمِ جهتِ خط همین کافی
+    /// است و لازم نیست فارسی را از عربی تفکیک کنیم — هر دو راست‌به‌چپ‌اند.
+    /// </summary>
+    private static bool HasPersian(string s)
+    {
+        foreach (var c in s)
+            if (c >= '؀' && c <= 'ۿ') return true;
+
+        return false;
     }
 
     private static string FormatDuration(long ms)
