@@ -19,6 +19,11 @@ jobs:
     steps:
       - name: دریافت کد
         uses: actions/checkout@v4
+        with:
+          # ScriptSqly زیرماژول است و سرور مستقیم به آن رفرنس دارد؛
+          # بدون این، کامپایل با «پروژه پیدا نشد» می‌شکند. مخزنش عمومی
+          # است پس توکن اضافه لازم نیست.
+          submodules: recursive
 
       - name: نصب .NET 8
         uses: actions/setup-dotnet@v4
@@ -64,6 +69,11 @@ jobs:
     steps:
       - name: دریافت کد
         uses: actions/checkout@v4
+        with:
+          # ScriptSqly زیرماژول است و سرور مستقیم به آن رفرنس دارد؛
+          # بدون این، کامپایل با «پروژه پیدا نشد» می‌شکند. مخزنش عمومی
+          # است پس توکن اضافه لازم نیست.
+          submodules: recursive
 
       - name: نصب .NET 8
         uses: actions/setup-dotnet@v4

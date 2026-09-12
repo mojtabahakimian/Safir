@@ -34,12 +34,6 @@ namespace Safir.Shared.Models.DbAdmin
         public int ProbesMissing => Probes.Count(p => !p.Exists);
         public bool UpToDate     => ProbesMissing == 0;
 
-        /// <summary>آیا فایل اجرایی ScriptSqly.Runner پیدا شد.</summary>
-        public bool RunnerAvailable { get; set; }
-
-        /// <summary>مسیرِ پیکربندی‌شده — برای وقتی پیدا نشد و باید اصلاح شود.</summary>
-        public string? RunnerPath { get; set; }
-
         /// <summary>اگر چیزی مانع اجراست، دلیلش.</summary>
         public string? Blocker { get; set; }
     }
@@ -63,6 +57,20 @@ namespace Safir.Shared.Models.DbAdmin
 
         /// <summary>اجرای خشک: فقط پارامترها بررسی می‌شوند و چیزی نوشته نمی‌شود.</summary>
         public bool PreviewOnly { get; set; }
+
+        /// <summary>
+        /// بلوکِ «اطلاعات پایه» هم اجرا شود یا نه (پارامتر isCustomCall در
+        /// ScriptSqly).
+        ///
+        /// این بلوک دو چیزِ درهم دارد: حدود ۸۴ تغییرِ ساختاری که همه‌ی
+        /// دیتابیس‌ها لازم دارند، و چهار فهرستِ مرجع (ارز، کشور، رتبه،
+        /// نحوه‌ی پرداخت). خاموش کردنش هر دو را می‌خواباند، نه فقط
+        /// درج داده را — پس پیش‌فرض روشن است و توضیحش در خودِ صفحه آمده.
+        ///
+        /// ⚠ روی دیتابیسی که هیچ سندی ندارد، ScriptSqly خودش این را
+        /// زورکی روشن می‌کند؛ آن حالت از اینجا قابل خاموش کردن نیست.
+        /// </summary>
+        public bool IncludeBaseData { get; set; } = true;
     }
 
     /// <summary>خروجی خامِ اجرا، همان چیزی که Runner روی کنسول می‌نویسد.</summary>

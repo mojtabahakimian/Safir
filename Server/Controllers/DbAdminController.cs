@@ -72,9 +72,6 @@ namespace Safir.Server.Controllers
             if (!req.PreviewOnly && !req.BackupConfirmed)
                 return BadRequest("برای اجرای واقعی، تأیید گرفتن بکاپ اجباری است.");
 
-            if (!status.RunnerAvailable)
-                return BadRequest(status.Blocker ?? "ScriptSqly.Runner در دسترس نیست.");
-
             _logger.LogWarning(
                 "به‌روزرسانی دیتابیس {Db} روی {Server} توسط {User} آغاز شد (preview={Preview}).",
                 status.Database, status.Server,
@@ -82,7 +79,7 @@ namespace Safir.Server.Controllers
 
             try
             {
-                var result = await _svc.RunAsync(req.PreviewOnly, ct);
+                var result = await _svc.RunAsync(req.PreviewOnly, req.IncludeBaseData, ct);
 
                 _logger.LogWarning(
                     "به‌روزرسانی دیتابیس {Db} پایان یافت. کد خروج={Code}، مدت={Ms}ms",
