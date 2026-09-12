@@ -9,32 +9,34 @@ namespace Safir.Server.Services
     /// <summary>
     /// وضعیت‌سنجی و اجرای مهاجرت‌های دیتابیس از داخل سفیر.
     ///
-    /// ⚠ چرا فراخوانی فرآیند بیرونی و نه رفرنسِ مستقیم به ScriptSqly.Core:
+    /// ScriptSqly.Core مستقیماً رفرنس شده و <c>LetsGo</c> در همین فرآیند
+    /// اجرا می‌شود — نه فایل اجرایی جدا، نه مسیری که باید کنار برنامه کپی
+    /// شود، نه چیزی که بشود فراموشش کرد.
     ///
-    ///   ۱) ScriptSqly یک submodule است و در Safir.sln نیست. اگر
-    ///      ProjectReference بدهیم، CI که بدون submodule کد را می‌گیرد
-    ///      اصلاً کامپایل نمی‌شود.
-    ///   ۲) مهاجرت باید یک عملِ عمدی باشد. با فرآیند جدا، هر بار که سرور
-    ///      restart می‌شود — از جمله recycle خودکارِ IIS — هیچ DDLای اجرا
-    ///      نمی‌شود. همان دلیلی که Program.cs از اول مهاجرت را به
-    ///      «updater جدا» سپرده بود؛ این سرویس آن تصمیم را عوض نمی‌کند،
-    ///      فقط دکمه‌اش را جلوی دست می‌آورد.
+    /// ⚠ این *تغییر نمی‌دهد* که مهاجرت یک عملِ عمدی است: هیچ‌جا هنگام بالا
+    /// آمدن برنامه صدا زده نمی‌شود. restart سرور — از جمله recycle خودکار
+    /// IIS — همچنان هیچ DDLای اجرا نمی‌کند. تنها راه، همان دکمه‌ی تأییددار
+    /// در /admin/db-upgrade است.
     /// </summary>
     public sealed class DbUpgradeService
     {
         private readonly IConnectionStringProvider _conn;
         private readonly IDatabaseService _db;
-        private readonly IConfiguration _config;
         private readonly ILogger<DbUpgradeService> _logger;
+
+        /// <summary>
+        /// فقط یک مهاجرت در هر لحظه. دو اجرای هم‌زمان روی یک دیتابیس یعنی
+        /// دو بار همان ALTER، و چون خروجی کنسول هم موقتاً قرض گرفته می‌شود،
+        /// خروجی دو اجرا در هم می‌رفت.
+        /// </summary>
+        private static readonly SemaphoreSlim Gate = new(1, 1);
 
         public DbUpgradeService(IConnectionStringProvider conn,
                                 IDatabaseService db,
-                                IConfiguration config,
                                 ILogger<DbUpgradeService> logger)
         {
             _conn   = conn;
             _db     = db;
-            _config = config;
             _logger = logger;
         }
 
@@ -101,14 +103,6 @@ namespace Safir.Server.Services
                 Database = b.InitialCatalog
             };
 
-            var runner = ResolveRunnerPath();
-            status.RunnerPath      = runner.Path;
-            status.RunnerAvailable = runner.Exists;
-            if (!runner.Exists)
-                status.Blocker = string.IsNullOrWhiteSpace(runner.Path)
-                    ? "مسیر ScriptSqly.Runner در تنظیمات (DbUpgrade:RunnerPath) تعریف نشده است."
-                    : $"فایل اجرایی در «{runner.Path}» پیدا نشد.";
-
             // یک رفت‌وبرگشت برای همه‌ی شاخص‌ها. جدا جدا پرسیدن یعنی هشت
             // رفت‌وبرگشت برای کاری که فقط گزارش می‌دهد.
             var sql = new StringBuilder();
@@ -157,100 +151,166 @@ namespace Safir.Server.Services
         // ─────────────────────────── اجرا ───────────────────────────
 
         /// <summary>
-        /// ScriptSqly.Runner را روی دیتابیسِ *جاری* اجرا می‌کند (همانی که
-        /// هدر X-DB-Connection مشخص کرده، نه لزوماً DefaultConnection).
+        /// مهاجرت‌ها را روی دیتابیسِ *جاری* اجرا می‌کند (همانی که هدر
+        /// X-DB-Connection مشخص کرده، نه لزوماً DefaultConnection).
+        ///
+        /// <paramref name="previewOnly"/> هیچ تغییری نمی‌دهد: فقط اتصال و
+        /// دسترسی را می‌سنجد. ScriptSqly خودش حالت آزمایشی ندارد، پس
+        /// «بررسی خشک» یعنی تا لبه‌ی اجرا رفتن و برگشتن.
         /// </summary>
         public async Task<DbUpgradeResult> RunAsync(bool previewOnly, CancellationToken ct)
         {
-            var runner = ResolveRunnerPath();
-            if (!runner.Exists)
-                throw new InvalidOperationException(
-                    $"فایل اجرایی ScriptSqly.Runner پیدا نشد: {runner.Path}");
+            var cs    = _conn.GetConnectionString();
+            var sw    = Stopwatch.StartNew();
+            var start = DateTime.UtcNow;
 
-            var args = "--type 2 --custom-call" + (previewOnly ? " --preview-only" : "");
-
-            var psi = new ProcessStartInfo
-            {
-                FileName               = runner.Path!,
-                Arguments              = args,
-                RedirectStandardOutput = true,
-                RedirectStandardError  = true,
-                UseShellExecute        = false,
-                CreateNoWindow         = true,
-                WorkingDirectory       = Path.GetDirectoryName(runner.Path!)!
-            };
-
-            // ⚠ رشته‌ی اتصال از متغیر محیطی می‌رود، نه از آرگومان. آرگومان‌ها
-            // در فهرست فرآیندهای ویندوز برای هر کاربری قابل دیدن‌اند و اگر
-            // احراز هویت SQL باشد، پسورد آنجا لو می‌رفت.
-            psi.Environment["SCRIPTSQLY_CONN_STR"] = _conn.GetConnectionString();
-
-            var sw     = Stopwatch.StartNew();
-            var start  = DateTime.UtcNow;
-            var output = new StringBuilder();
-
-            using var proc = new Process { StartInfo = psi, EnableRaisingEvents = true };
-
-            proc.OutputDataReceived += (_, e) => { if (e.Data != null) lock (output) output.AppendLine(e.Data); };
-            proc.ErrorDataReceived  += (_, e) => { if (e.Data != null) lock (output) output.AppendLine(e.Data); };
-
-            proc.Start();
-            proc.BeginOutputReadLine();
-            proc.BeginErrorReadLine();
-
+            await Gate.WaitAsync(ct);
             try
             {
-                await proc.WaitForExitAsync(ct);
+                if (previewOnly)
+                {
+                    var (ok, message) = await ProbeConnectionAsync(cs);
+                    sw.Stop();
+                    return new DbUpgradeResult
+                    {
+                        Success      = ok,
+                        ExitCode     = ok ? 0 : 1,
+                        Output       = message,
+                        DurationMs   = sw.ElapsedMilliseconds,
+                        StartedAtUtc = start,
+                        WasPreview   = true
+                    };
+                }
+
+                var buffer = new StringWriter();
+
+                // ScriptSqly خطاهای SQL را با Console.WriteLine گزارش
+                // می‌دهد و راه دیگری برای گرفتن‌شان ندارد. پس کنسول موقتاً
+                // «انشعاب» می‌گیرد: هم در بافر ما می‌نویسد، هم سر جای
+                // خودش. اگر فقط جایگزین می‌کردیم، لاگ‌های عادی سرور در
+                // این چند دقیقه بلعیده می‌شدند.
+                var prevOut = Console.Out;
+                var prevErr = Console.Error;
+                Console.SetOut(new TeeWriter(prevOut, buffer));
+                Console.SetError(new TeeWriter(prevErr, buffer));
+
+                Exception? failure = null;
+                try
+                {
+                    // روی نخِ جدا، چون LetsGo همگام است و دقیقه‌ها طول
+                    // می‌کشد؛ روی نخِ درخواست، کلِ سرور را معطل می‌کرد.
+                    //
+                    // بدون CancellationToken اجرا می‌شود، عمداً: مهاجرتِ
+                    // نیمه‌کاره بدتر از مهاجرتِ کند است. اگر کاربر مرورگر
+                    // را ببندد، کار تا آخر می‌رود.
+                    await Task.Run(() =>
+                        ScriptSqly.Migrations.ScriptSqly.LetsGo(cs, true, 2),
+                        CancellationToken.None);
+                }
+                catch (Exception ex)
+                {
+                    failure = ex;
+                    _logger.LogError(ex, "اجرای مهاجرت‌ها شکست خورد.");
+                }
+                finally
+                {
+                    Console.SetOut(prevOut);
+                    Console.SetError(prevErr);
+                }
+
+                sw.Stop();
+
+                var text = buffer.ToString();
+                if (failure is not null)
+                    text += Environment.NewLine + failure;
+                else if (string.IsNullOrWhiteSpace(text))
+                    text = "مهاجرت‌ها بدون خطا اجرا شدند.";
+
+                return new DbUpgradeResult
+                {
+                    Success      = failure is null,
+                    ExitCode     = failure is null ? 0 : 1,
+                    Output       = text,
+                    DurationMs   = sw.ElapsedMilliseconds,
+                    StartedAtUtc = start,
+                    WasPreview   = false
+                };
             }
-            catch (OperationCanceledException)
+            finally
             {
-                // مهاجرتِ نیمه‌کاره بدتر از مهاجرتِ کند است؛ کشتنِ فرآیند
-                // وسطِ کار می‌تواند دیتابیس را بین دو حالت رها کند. پس
-                // منتظر می‌مانیم و فقط ثبت می‌کنیم که کاربر قطع کرده.
-                _logger.LogWarning("درخواست لغو شد ولی مهاجرت تا پایان ادامه می‌یابد.");
-                await proc.WaitForExitAsync(CancellationToken.None);
+                Gate.Release();
             }
-
-            sw.Stop();
-
-            string text;
-            lock (output) text = output.ToString();
-
-            return new DbUpgradeResult
-            {
-                Success      = proc.ExitCode == 0,
-                ExitCode     = proc.ExitCode,
-                Output       = text,
-                DurationMs   = sw.ElapsedMilliseconds,
-                StartedAtUtc = start,
-                WasPreview   = previewOnly
-            };
         }
 
         /// <summary>
-        /// مسیر از تنظیمات می‌آید تا روی سرور تولید که ساختار پوشه‌ها فرق
-        /// دارد قابل تنظیم باشد؛ اگر نبود، مسیرِ متعارفِ کنارِ مخزن.
+        /// بررسی خشک: فقط وصل می‌شود و می‌پرسد کجاست. نه چیزی می‌نویسد و
+        /// نه چیزی را قفل می‌کند.
         /// </summary>
-        private (string? Path, bool Exists) ResolveRunnerPath()
+        private static async Task<(bool Ok, string Message)> ProbeConnectionAsync(string cs)
         {
-            var configured = _config["DbUpgrade:RunnerPath"];
-
-            var candidates = new List<string?> { configured };
-
-            if (string.IsNullOrWhiteSpace(configured))
+            try
             {
-                candidates.Add(Path.Combine(AppContext.BaseDirectory,
-                    "ScriptSqly", "ScriptSqly.Runner.exe"));
-                candidates.Add(Path.GetFullPath(Path.Combine(AppContext.BaseDirectory,
-                    "..", "..", "..", "..", "External", "ScriptSqly", "ScriptSqly.Runner",
-                    "bin", "Release", "net8.0", "publish", "win-x64", "ScriptSqly.Runner.exe")));
+                await using var db = new SqlConnection(cs);
+                await db.OpenAsync();
+
+                await using var cmd = db.CreateCommand();
+                cmd.CommandText =
+                    "SELECT DB_NAME(), @@SERVERNAME, CAST(SERVERPROPERTY('ProductVersion') AS NVARCHAR(64)), " +
+                    "CAST(IS_SRVROLEMEMBER('sysadmin') AS INT), CAST(IS_MEMBER('db_owner') AS INT)";
+
+                await using var r = await cmd.ExecuteReaderAsync();
+                if (!await r.ReadAsync())
+                    return (false, "اتصال برقرار شد ولی پاسخی نیامد.");
+
+                var sb = new StringBuilder();
+                sb.AppendLine($"اتصال برقرار است.");
+                sb.AppendLine($"  دیتابیس : {r.GetString(0)}");
+                sb.AppendLine($"  سرور    : {r.GetString(1)}");
+                sb.AppendLine($"  نسخه    : {r.GetString(2)}");
+
+                var sysadmin = r.IsDBNull(3) ? 0 : r.GetInt32(3);
+                var dbowner  = r.IsDBNull(4) ? 0 : r.GetInt32(4);
+
+                // مهاجرت DDL می‌زند؛ کاربری که این دسترسی را ندارد وسط کار
+                // شکست می‌خورد، و چون ScriptSqly بیشتر خطاها را می‌بلعد،
+                // شکستش بی‌صدا خواهد بود. بهتر است همین‌جا معلوم شود.
+                sb.AppendLine(sysadmin == 1 || dbowner == 1
+                    ? "  دسترسی  : کافی برای تغییر ساختار"
+                    : "  ⚠ دسترسی : نه sysadmin و نه db_owner — احتمالاً مهاجرت ناقص می‌ماند");
+
+                return (true, sb.ToString());
+            }
+            catch (Exception ex)
+            {
+                return (false, "اتصال برقرار نشد:" + Environment.NewLine + ex.Message);
+            }
+        }
+
+        /// <summary>هر چه نوشته شود به هر دو مقصد می‌رود.</summary>
+        private sealed class TeeWriter : TextWriter
+        {
+            private readonly TextWriter _a, _b;
+            public TeeWriter(TextWriter a, TextWriter b) { _a = a; _b = b; }
+
+            public override Encoding Encoding => _a.Encoding;
+
+            public override void Write(char value)
+            {
+                _a.Write(value);
+                lock (_b) _b.Write(value);
             }
 
-            foreach (var c in candidates)
-                if (!string.IsNullOrWhiteSpace(c) && File.Exists(c))
-                    return (c, true);
+            public override void Write(string? value)
+            {
+                _a.Write(value);
+                lock (_b) _b.Write(value);
+            }
 
-            return (configured ?? candidates.LastOrDefault(), false);
+            public override void WriteLine(string? value)
+            {
+                _a.WriteLine(value);
+                lock (_b) _b.WriteLine(value);
+            }
         }
     }
 }

@@ -34,12 +34,6 @@ namespace Safir.Shared.Models.DbAdmin
         public int ProbesMissing => Probes.Count(p => !p.Exists);
         public bool UpToDate     => ProbesMissing == 0;
 
-        /// <summary>آیا فایل اجرایی ScriptSqly.Runner پیدا شد.</summary>
-        public bool RunnerAvailable { get; set; }
-
-        /// <summary>مسیرِ پیکربندی‌شده — برای وقتی پیدا نشد و باید اصلاح شود.</summary>
-        public string? RunnerPath { get; set; }
-
         /// <summary>اگر چیزی مانع اجراست، دلیلش.</summary>
         public string? Blocker { get; set; }
     }

@@ -61,16 +61,6 @@
         </div>
     </MudPaper>
 
-    @if (!_status.RunnerAvailable)
-    {
-        <MudAlert Severity="Severity.Warning" Class="mb-4">
-            @_status.Blocker
-            <br />
-            مسیر را در <code>appsettings.json</code> با کلید
-            <code>DbUpgrade:RunnerPath</code> تنظیم کنید.
-        </MudAlert>
-    }
-
     <MudPaper Class="pa-4 mb-4">
         <MudText Typo="Typo.subtitle1" Class="mb-2">شاخص‌های وضعیت</MudText>
         @* نمونه‌اند نه فهرست کامل — گفتنش لازم است تا «همه سبز» با
@@ -117,14 +107,14 @@
         <div class="d-flex gap-3 flex-wrap">
             <MudButton Variant="Variant.Outlined" Color="Color.Primary"
                        StartIcon="@Icons.Material.Filled.Visibility"
-                       Disabled="@(_busy || !_status.RunnerAvailable)"
+                       Disabled="@_busy"
                        OnClick="@(() => ConfirmAndRunAsync(preview: true))">
-                بررسی خشک (بدون تغییر)
+                بررسی اتصال و دسترسی
             </MudButton>
 
             <MudButton Variant="Variant.Filled" Color="Color.Error"
                        StartIcon="@Icons.Material.Filled.Storage"
-                       Disabled="@(_busy || !_status.RunnerAvailable)"
+                       Disabled="@_busy"
                        OnClick="@(() => ConfirmAndRunAsync(preview: false))">
                 اجرای به‌روزرسانی
             </MudButton>

@@ -59,6 +59,11 @@
 	<ItemGroup>
 		<ProjectReference Include="..\Client\Safir.Client.csproj" />
 		<ProjectReference Include="..\Shared\Safir.Shared.csproj" />
+
+		<!-- موتور مهاجرت دیتابیس. زیرماژول است، پس هر checkout باید با
+		     submodules گرفته شود — در .github/workflows/build.yml تنظیم شده.
+		     مخزنش عمومی است و توکن لازم ندارد. -->
+		<ProjectReference Include="..\External\ScriptSqly\ScriptSqly.Core\ScriptSqly.Core.csproj" />
 	</ItemGroup>
 
 </Project>
