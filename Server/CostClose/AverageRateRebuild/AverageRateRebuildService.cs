@@ -326,7 +326,35 @@ namespace Safir.Server.CostClose.AverageRateRebuild
                 .GroupBy(e => e.CODE!)
                 .ToDictionary(g => g.Key, g => g.Select(e => (Src: e.Src!.Value, Dst: e.Dst!.Value)).ToList());
 
-            AddLog($"موجودی اول دوره: {openingBalances.Count} ردیف. کاردکس: {allInvoLines.Count} ردیف. انبارگردانی: {anbgrdLines.Count} ردیف. یال انتقالی: {edgesByCode.Sum(kv => kv.Value.Count)} مورد.");
+            // ⚠️ کالاهایی که *واقعاً* تولید می‌شوند — یعنی رسید تولید دارند.
+            //
+            // بهای فرمول فقط برای همین‌ها یک نرخِ معنادار است. کالایی که
+            // فقط خریده می‌شود ممکن است فرمولی روی کاغذ داشته باشد که
+            // هیچ‌وقت اجرا نشده؛ برداشتنِ بهای آن فرمول به‌عنوان نرخش،
+            // عددی می‌سازد که هیچ سندی پشتش نیست.
+            //
+            // کد ۲۰۲۱ روی newpoodr1405: ۲۷۳ رسید خرید (همه با نرخ صفر)،
+            // هیچ رسید تولیدی (از ۳۵ کالای این پایگاه فقط ۸ تا واقعاً تولید
+            // می‌شوند و ۲۰۲۱ بینشان نیست)، ولی یک فرمولِ تک‌جزئی به ارزش ۱۵٬۷۲۳. همان
+            // ۱۵٬۷۲۳ نرخِ اولیه‌ی انبار شد و اولین انتقالی ۱۲۵ میلیون ریال
+            // از انباری برد که ارزشش صفر بود. جالب اینکه چهار نسخه از پنج
+            // فرمولی که این کالا در آن مصرف می‌شود، نرخش را ~صفر می‌دانند —
+            // یعنی خودِ داده هم آن ۱۵٬۷۲۳ را تأیید نمی‌کند.
+            // ملاک، شماره‌ی TAG نیست بلکه خودِ اتصال به فرمول است: رسیدی که
+            // N_KOL آن به یک FNUMB واقعی اشاره می‌کند، یعنی این کالا از آن
+            // فرمول به وجود آمده. (روی newpoodr1405 رسید تولید TAG=9 است نه
+            // ۷ — یک بار با TAG=7 نوشتمش و فهرست خالی درآمد.)
+            var producedCodes = (await _db.DoGetDataSQLAsync<string>(
+                    @"SELECT DISTINCT il.CODE
+                      FROM   dbo.INVO_LST il
+                      WHERE  il.CODE IS NOT NULL
+                        AND  EXISTS (SELECT 1 FROM dbo.HEAD_MANF hm
+                                     WHERE hm.FNUMB = TRY_CAST(il.N_KOL AS INT))"))
+                .Select(c => c?.Trim())
+                .Where(c => !string.IsNullOrEmpty(c))
+                .ToHashSet(StringComparer.OrdinalIgnoreCase)!;
+
+            AddLog($"موجودی اول دوره: {openingBalances.Count} ردیف. کاردکس: {allInvoLines.Count} ردیف. انبارگردانی: {anbgrdLines.Count} ردیف. یال انتقالی: {edgesByCode.Sum(kv => kv.Value.Count)} مورد. کالای تولیدی: {producedCodes.Count} کد.");
 
             // فقط کالاهایی که واقعاً تراکنش دارند (فاکتور یا انبارگردانی) —
             // مثل کد اصلی، برای جلوگیری از کوئری بی‌مورد روی کالاهای بدون گردش.
@@ -642,7 +670,7 @@ namespace Safir.Server.CostClose.AverageRateRebuild
                 if (hasCycle)
                 {
                     await ProcessCyclicCodeAsync(
-                        codeKey, orderedAnbars, sinceDate,
+                        codeKey, orderedAnbars, sinceDate, producedCodes,
                         ProcessRowAsync, FlushPendingAsync, RecordFailure, AddLog, ct);
                     return;
                 }
@@ -680,7 +708,11 @@ namespace Safir.Server.CostClose.AverageRateRebuild
                     if (st.MIAN == 0d && Math.Abs(st.MOGUDI) < ZeroEpsilon
                                       && Math.Abs(st.MBKM)   < ZeroEpsilon)
                     {
-                        st.MIAN = await GetStandardPriceAsync(code);
+                        // بهای فرمول فقط برای کالای تولیدی — نگاه کنید
+                        // توضیحِ producedCodes.
+                        if (producedCodes.Contains(code.Trim()))
+                            st.MIAN = await GetStandardPriceAsync(code);
+
                         if (st.MIAN == 0d) st.MIAN = await GetFirstPriceAsync(code);
                     }
                     else
@@ -744,6 +776,7 @@ namespace Safir.Server.CostClose.AverageRateRebuild
             string code,
             List<OpeningBalanceRow> anbarRows,
             long sinceDate,
+            IReadOnlySet<string> producedCodes,
             Func<string, KardexRow, AnbarState, List<string>, Task> processRowAsync,
             Func<string, int, List<string>, Task> flushPendingAsync,
             Action<string> recordFailure,
@@ -764,7 +797,9 @@ namespace Safir.Server.CostClose.AverageRateRebuild
                 if (st.MIAN == 0d && Math.Abs(st.MOGUDI) < ZeroEpsilon
                                   && Math.Abs(st.MBKM)   < ZeroEpsilon)
                 {
-                    st.MIAN = await GetStandardPriceAsync(code);
+                    if (producedCodes.Contains(code.Trim()))
+                        st.MIAN = await GetStandardPriceAsync(code);
+
                     if (st.MIAN == 0d) st.MIAN = await GetFirstPriceAsync(code);
                 }
                 else
