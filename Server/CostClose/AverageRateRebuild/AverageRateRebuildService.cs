@@ -662,10 +662,32 @@ namespace Safir.Server.CostClose.AverageRateRebuild
                         MOGUDI = rRow.MOGODI_A ?? 0
                     };
 
-                    if (st.MIAN == 0d)
+                    // ⚠️ «نرخِ صفر» با «نرخِ نامعلوم» یکی نیست.
+                    //
+                    // قبلاً هر MIAN صفر یعنی «نمی‌دانم» و با بهای فرمول
+                    // پر می‌شد. ولی وقتی موجودی اول دوره مقدار دارد و
+                    // ارزشش صفر است، نرخ بدون هیچ ابهامی صفر است —
+                    // جایگزین‌کردنش ارزشی می‌سازد که وجود ندارد.
+                    //
+                    // کد ۲۰۲۱ روی newpoodr1405: ۴٬۱۷۵ واحد با ارزش صفر،
+                    // به‌علاوه‌ی دو خریدِ صفر. بهای فرمولش ۱۵٬۷۲۳ است، پس
+                    // اولین انتقالی ۱۲۵ میلیون ریال از انباری برد که کلِ
+                    // ارزشش صفر بود؛ MBKM منفی شد و میانگین به منفی
+                    // ۹٬۵۷۴ رسید. هر بازسازیِ بعدی همان را دوباره ساخت.
+                    //
+                    // حدس فقط وقتی مجاز است که واقعاً چیزی برای حساب
+                    // کردن نباشد: نه مقداری، نه ارزشی.
+                    if (st.MIAN == 0d && Math.Abs(st.MOGUDI) < ZeroEpsilon
+                                      && Math.Abs(st.MBKM)   < ZeroEpsilon)
                     {
                         st.MIAN = await GetStandardPriceAsync(code);
                         if (st.MIAN == 0d) st.MIAN = await GetFirstPriceAsync(code);
+                    }
+                    else
+                    {
+                        // مقدار هست: نرخ از خودِ ارزش و مقدار می‌آید، حتی
+                        // اگر حاصلش صفر باشد.
+                        Recalc(st);
                     }
 
                     List<KardexRow> kardex;
@@ -738,10 +760,16 @@ namespace Safir.Server.CostClose.AverageRateRebuild
                     MIAN   = r.FI_A ?? 0,
                     MOGUDI = r.MOGODI_A ?? 0
                 };
-                if (st.MIAN == 0d)
+                // همان قاعده‌ی بالا — نگاه کنید توضیح کد ۲۰۲۱.
+                if (st.MIAN == 0d && Math.Abs(st.MOGUDI) < ZeroEpsilon
+                                  && Math.Abs(st.MBKM)   < ZeroEpsilon)
                 {
                     st.MIAN = await GetStandardPriceAsync(code);
                     if (st.MIAN == 0d) st.MIAN = await GetFirstPriceAsync(code);
+                }
+                else
+                {
+                    Recalc(st);
                 }
                 states[r.ANBAR.Value] = st;
             }
