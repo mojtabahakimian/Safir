@@ -5,6 +5,8 @@
 @inject CostCloseApiService Api
 @inject Pay2AccessApiService Access
 @inject ISnackbar Snackbar
+@inject IJSRuntime JS
+@using Safir.Client.Components.CostClose
 
 @* صورت‌های مالیِ چند ماه: تجمیعی و مقایسه‌ای.
 
@@ -28,6 +30,14 @@
                 @_selected.Count دوره انتخاب شده
             </MudChip>
         }
+        @if (_data is not null && Access.CanRun(CostForms.ActExport))
+        {
+            <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.GridOn"
+                       OnClick="ExportAsync" Disabled="_exporting">
+                خروجی اکسل
+            </MudButton>
+        }
+
         <MudButton Variant="Variant.Filled" Color="Color.Primary"
                    StartIcon="@Icons.Material.Filled.Assessment"
                    Disabled="@(_selected.Count == 0 || _busy)"
@@ -209,6 +219,44 @@
         if (err is not null) Snackbar.Add(err, Severity.Error);
     }
 
+    // ═══════════════════════ خروجی اکسل ═══════════════════════
+
+    private bool _exporting;
+
+    /// <summary>
+    /// ساختِ فایل به FinancialStatementsExcel سپرده شده، چون علاوه بر
+    /// جدول باید نمودارِ بومیِ اکسل هم بسازد و آن کار بخش‌های تازه‌ای در
+    /// خودِ فایل لازم دارد (chart و drawing) که سازنده‌ی عمومی نمی‌سازد.
+    /// </summary>
+    private async Task ExportAsync()
+    {
+        if (_data is null) return;
+        _exporting = true;
+        try
+        {
+            var bytes = FinancialStatementsExcel.Build(_data);
+            var name  = _data.Consolidated is not null
+                ? $"صورت‌های مالی — {_data.ConsolidatedLabel}.xlsx"
+                : $"صورت‌های مالی — {_data.Periods[0].Label}.xlsx";
+
+            await JS.InvokeVoidAsync("downloadFileFromBytes", name, bytes);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add("خطا در تهیه خروجی اکسل: " + ex.Message, Severity.Error);
+        }
+        finally { _exporting = false; }
+    }
+
+    /// <summary>
+    /// جمعِ افقی برای سطرِ موجودی و درصد معنا ندارد. همین قاعده در
+    /// FinancialStatementsExcel هم هست تا فایل و صفحه یک چیز بگویند.
+    /// </summary>
+    private static bool SumIsMeaningful(FinLineDto line) =>
+        line.Text?.Contains("درصد") != true &&
+        line.Text?.Contains("موجودی") != true &&
+        line.Text?.Contains('٪') != true;
+
     private RenderFragment Statement(string title, string icon, List<FinLineDto> lines) =>
         @<MudPaper Class="cc-rule-card" Elevation="0">
             <div class="cc-rule-head">
@@ -276,9 +324,7 @@
     /// <summary>جمعِ افقی — فقط برای سطرهایی که جمع‌شدنشان معنا دارد.</summary>
     private string RowTotal(FinLineDto row, Func<FinancialStatementsDto, List<FinLineDto>> pick)
     {
-        if (row.Kind == 3 && row.Text?.Contains('٪') == true) return "—";
-        if (row.Text?.Contains("درصد") == true) return "—";
-        if (row.Text?.Contains("موجودی") == true) return "—";
+        if (!SumIsMeaningful(row)) return "—";
 
         var sum = _data!.Periods
             .Select(p => pick(p.Statements).FirstOrDefault(x => x.Row == row.Row)?.Amount ?? 0)
