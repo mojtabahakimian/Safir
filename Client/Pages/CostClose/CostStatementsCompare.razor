@@ -6,7 +6,7 @@
 @inject Pay2AccessApiService Access
 @inject ISnackbar Snackbar
 @inject IJSRuntime JS
-@using Safir.Client.Components.Grid
+@using Safir.Client.Components.CostClose
 
 @* صورت‌های مالیِ چند ماه: تجمیعی و مقایسه‌ای.
 
@@ -223,25 +223,10 @@
 
     private bool _exporting;
 
-    /// <summary>یک سطر از فایل: بخش، شرح، رقمِ هر ماه، جمع، و تجمیعی.</summary>
-    private sealed class ExportRow
-    {
-        public string   Section      { get; init; } = "";
-        public string   Text         { get; init; } = "";
-        public double?[] Values      { get; init; } = Array.Empty<double?>();
-        public double?  Total        { get; init; }
-        public double?  Consolidated { get; init; }
-    }
-
     /// <summary>
-    /// یک شیت، همه‌ی سه صورت پشت سر هم، هر ماه یک ستون.
-    ///
-    /// ستون‌ها در زمان اجرا ساخته می‌شوند چون تعدادشان به انتخابِ کاربر
-    /// بستگی دارد. ستونِ «تجمیعی» فقط وقتی می‌آید که بیش از یک دوره
-    /// انتخاب شده باشد.
-    ///
-    /// ⚠️ ردیفِ جمعِ پایینِ فایل عمداً ساخته نمی‌شود: جمعِ عمودیِ این
-    /// جدول یعنی جمع‌کردنِ فروش با سود، که عددِ بی‌معنا می‌دهد.
+    /// ساختِ فایل به FinancialStatementsExcel سپرده شده، چون علاوه بر
+    /// جدول باید نمودارِ بومیِ اکسل هم بسازد و آن کار بخش‌های تازه‌ای در
+    /// خودِ فایل لازم دارد (chart و drawing) که سازنده‌ی عمومی نمی‌سازد.
     /// </summary>
     private async Task ExportAsync()
     {
@@ -249,64 +234,7 @@
         _exporting = true;
         try
         {
-            var rows = new List<ExportRow>();
-
-            void AddSection(string name, Func<FinancialStatementsDto, List<FinLineDto>> pick)
-            {
-                foreach (var line in pick(_data.Periods[0].Statements))
-                {
-                    var vals = _data.Periods
-                        .Select(p => pick(p.Statements).FirstOrDefault(x => x.Row == line.Row)?.Amount)
-                        .ToArray();
-
-                    rows.Add(new ExportRow
-                    {
-                        Section = name,
-                        Text    = line.Text ?? "",
-                        Values  = vals,
-                        Total   = SumIsMeaningful(line) ? vals.Sum(v => v ?? 0) : null,
-                        Consolidated = _data.Consolidated is null
-                            ? null
-                            : pick(_data.Consolidated).FirstOrDefault(x => x.Row == line.Row)?.Amount
-                    });
-                }
-            }
-
-            AddSection("سود و زیان", st => st.Income);
-            AddSection("بهای تمام‌شده کالای ساخته‌شده", st => st.Cogm);
-            AddSection("بهای تمام‌شده کالای فروش‌رفته", st => st.Cogs);
-
-            var cols = new List<ExcelCol<ExportRow>>
-            {
-                new() { Title = "بخش", Text = r => r.Section },
-                new() { Title = "شرح", Text = r => r.Text }
-            };
-
-            for (var i = 0; i < _data.Periods.Count; i++)
-            {
-                var idx = i;   // گرفتنِ کپی — وگرنه همه‌ی ستون‌ها آخرین i را می‌بینند
-                cols.Add(new ExcelCol<ExportRow>
-                {
-                    Title    = _data.Periods[idx].Label,
-                    IsNumber = true,
-                    Money    = true,
-                    Number   = r => idx < r.Values.Length ? r.Values[idx] : null
-                });
-            }
-
-            cols.Add(new ExcelCol<ExportRow>
-            {
-                Title = "جمع", IsNumber = true, Money = true, Number = r => r.Total
-            });
-
-            if (_data.Consolidated is not null)
-                cols.Add(new ExcelCol<ExportRow>
-                {
-                    Title = $"تجمیعی — {_data.ConsolidatedLabel}",
-                    IsNumber = true, Money = true, Number = r => r.Consolidated
-                });
-
-            var bytes = GenericExcelExporter.Build(rows, cols, footerLabel: null);
+            var bytes = FinancialStatementsExcel.Build(_data);
             var name  = _data.Consolidated is not null
                 ? $"صورت‌های مالی — {_data.ConsolidatedLabel}.xlsx"
                 : $"صورت‌های مالی — {_data.Periods[0].Label}.xlsx";
@@ -321,8 +249,8 @@
     }
 
     /// <summary>
-    /// جمعِ افقی برای سطرِ موجودی و درصد معنا ندارد — همان قاعده‌ای که
-    /// ستونِ «جمع» در جدولِ صفحه هم رعایت می‌کند.
+    /// جمعِ افقی برای سطرِ موجودی و درصد معنا ندارد. همین قاعده در
+    /// FinancialStatementsExcel هم هست تا فایل و صفحه یک چیز بگویند.
     /// </summary>
     private static bool SumIsMeaningful(FinLineDto line) =>
         line.Text?.Contains("درصد") != true &&
