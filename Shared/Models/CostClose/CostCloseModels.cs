@@ -622,8 +622,28 @@ namespace Safir.Shared.Models.CostClose
         public long?    BalancingCode { get; set; }
         public string?  BalancingName { get; set; }
 
+        /// <summary>
+        /// آستانه‌ی معناداریِ فروش برای درصد — همان قاعده‌ی «زیر ۱۰۰۰ ریال
+        /// صفر است» که در بقیه‌ی ماژول هم هست.
+        ///
+        /// ⚠️ شرطِ قبلی فقط SalesAmount == 0 بود، و کالایی که ۱ ریال فروش
+        /// داشت درصدِ ۴۳٬۸۷۵٬۰۰۱٬۶۹۴- می‌گرفت. چنین عددی نه در صفحه خوانا
+        /// است نه در اکسل جا می‌شود — و همان است که خروجی اکسل را با
+        /// OverflowException می‌انداخت.
+        ///
+        /// نسبت وقتی مخرجش ناچیز است اطلاعاتی ندارد؛ خالی‌گذاشتنش صادق‌تر
+        /// از عددی است که فقط بزرگ به نظر می‌رسد.
+        /// </summary>
+        public const double MinSalesForPct = 1000;
+
         public double ProfitPct =>
-            SalesAmount == 0 ? 0 : Profit / SalesAmount * 100;
+            Math.Abs(SalesAmount) < MinSalesForPct ? 0 : Profit / SalesAmount * 100;
+
+        /// <summary>
+        /// آیا درصد معنا دارد — برای صفحه‌ای که می‌خواهد به‌جای صفر، خط
+        /// تیره نشان بدهد.
+        /// </summary>
+        public bool HasMeaningfulPct => Math.Abs(SalesAmount) >= MinSalesForPct;
 
         public bool IsLoss => Profit < 0;
 

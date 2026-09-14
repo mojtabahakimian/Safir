@@ -222,8 +222,10 @@ else
                 </MudTd>
 
                 <MudTd Style="text-align:left">
+                    @* فروشِ ناچیز درصدِ معناداری نمی‌سازد — خط تیره صادق‌تر
+                       از عددی است که فقط بزرگ به نظر می‌رسد. *@
                     <span class="cc-num @(context.ProfitPct < 0 ? "neg" : "")">
-                        @($"{context.ProfitPct:N0}")
+                        @(context.HasMeaningfulPct ? $"{context.ProfitPct:N0}" : "—")
                     </span>
                 </MudTd>
 
