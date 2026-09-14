@@ -307,6 +307,48 @@ namespace Safir.Server.CostClose
         /// همیشه یکسان نیست (SQL روی نصب‌های قدیمی «ي» عربی می‌نویسد)، پس
         /// جستجوی خامِ کلید گاهی null می‌دهد بدون اینکه خطایی رخ دهد.
         /// </summary>
+        /// <summary>
+        /// نوشتن عدد در سلول، بدون اینکه یک مقدارِ خراب کلِ فایل را بیندازد.
+        ///
+        /// ── چرا لازم شد ──
+        /// قبلاً مستقیم Convert.ToDecimal صدا زده می‌شد. دامنه‌ی decimal تا
+        /// حدود ۷٫۹e۲۸ است و بی‌نهایت و NaN را اصلاً نمی‌پذیرد، پس یک نرخِ
+        /// خرابِ تک‌کالا با OverflowException کلِ خروجی اکسل را می‌انداخت —
+        /// روی اجرای ۱۰ همین شد و کاربر به‌جای فایل، صفحه‌ی خطا گرفت.
+        ///
+        /// گزارش باید خودش را برساند و عددِ مشکوک را *نشان بدهد*، نه اینکه
+        /// به‌خاطرش تسلیم شود: عددِ بزرگ به‌صورت double نوشته می‌شود (اکسل
+        /// تا ۱e۳۰۸ را نگه می‌دارد) و بی‌نهایت/NaN که در اکسل اصلاً عدد
+        /// نیستند، با علامت و رنگ مشخص می‌شوند.
+        /// </summary>
+        private static void SetNumber(IXLCell cell, object raw)
+        {
+            double d;
+            try { d = Convert.ToDouble(raw); }
+            catch { cell.Value = raw?.ToString() ?? ""; return; }
+
+            if (double.IsNaN(d) || double.IsInfinity(d))
+            {
+                cell.Value = double.IsNaN(d) ? "نامعتبر" : (d > 0 ? "بی‌نهایت" : "منفی بی‌نهایت");
+                cell.Style.Font.FontColor = XLColor.FromHtml("#B4342F");
+                cell.Style.Font.Bold = true;
+                return;
+            }
+
+            cell.Style.NumberFormat.Format = "#,##0;#,##0-";
+
+            if (Math.Abs(d) > (double)decimal.MaxValue)
+            {
+                cell.Value = d;                       // خارج از دامنه‌ی decimal
+                cell.Style.Font.FontColor = XLColor.FromHtml("#B4342F");
+                return;
+            }
+
+            var dec = (decimal)d;
+            cell.Value = dec;
+            if (dec < 0) cell.Style.Font.FontColor = XLColor.FromHtml("#B4342F");
+        }
+
         private static object? Col(IDictionary<string, object> row, string name)
         {
             if (row.TryGetValue(name, out var direct)) return direct;
@@ -356,12 +398,7 @@ namespace Safir.Server.CostClose
                     cText.Value = Col(d, "شرح")?.ToString() ?? "";
 
                     if (Col(d, "مبلغ") is { } amount)
-                    {
-                        cVal.Value = Convert.ToDecimal(amount);
-                        cVal.Style.NumberFormat.Format = "#,##0;#,##0-";
-                        if (Convert.ToDecimal(amount) < 0)
-                            cVal.Style.Font.FontColor = XLColor.FromHtml("#B4342F");
-                    }
+                        SetNumber(cVal, amount);
 
                     switch (kind)
                     {
@@ -499,10 +536,7 @@ namespace Safir.Server.CostClose
                     switch (v)
                     {
                         case double or decimal or float:
-                            var d = Convert.ToDecimal(v);
-                            cell.Value = d;
-                            cell.Style.NumberFormat.Format = "#,##0;#,##0-";
-                            if (d < 0) cell.Style.Font.FontColor = XLColor.FromHtml("#B4342F");
+                            SetNumber(cell, v);
                             break;
 
                         case int or long or short:
