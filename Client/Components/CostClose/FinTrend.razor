@@ -1,0 +1,113 @@
+@using Safir.Shared.Models.CostClose
+
+@* روندِ سه رقمِ کلیدی در ماه‌های انتخاب‌شده.
+
+   فقط سه خط: فروش، سود ناخالص، سود عملیاتی. بیشتر از این، نمودار را
+   شلوغ می‌کند بی‌آنکه چیزی بگوید — بقیه‌ی ارقام در جدولِ مقایسه هستند.
+
+   مقیاس از صفر شروع می‌شود، نه از کمینه‌ی داده: نمودارِ بریده تغییرِ
+   کوچک را بزرگ نشان می‌دهد و همان چیزی است که گزارش مالی نباید بکند. *@
+
+@if (Periods.Count >= 2)
+{
+    <MudPaper Class="cc-rule-card mb-3" Elevation="0">
+        <div class="cc-rule-head">
+            <MudIcon Icon="@Icons.Material.Filled.ShowChart" Size="Size.Small" />
+            <MudText Typo="Typo.subtitle2">روند ماه‌به‌ماه</MudText>
+            <MudSpacer />
+            <span class="cc-legend-row" style="gap:14px">
+                <span><span class="cc-dot c1"></span> فروش</span>
+                <span><span class="cc-dot c2"></span> سود ناخالص</span>
+                <span><span class="cc-dot c3"></span> سود عملیاتی</span>
+            </span>
+        </div>
+
+        <svg viewBox="0 0 @W @H" class="cc-trend" role="img" aria-label="روند ماه‌به‌ماه">
+
+            @* خطوط راهنمای افقی و مقیاس *@
+            @for (var g = 0; g <= 4; g++)
+            {
+                var y = Pad + g * (H - Pad - Bottom) / 4.0;
+                var v = _max - g * (_max - _min) / 4.0;
+                <line x1="@Pad" y1="@F(y)" x2="@(W - 8)" y2="@F(y)" class="grid" />
+                @Svg($"<text x='{W - 6}' y='{F(y - 3)}' text-anchor='start'>{Short(v)}</text>")
+            }
+
+            @* سه خط *@
+            @Line(_sales, "sales")
+            @Line(_gross, "gross")
+            @Line(_oper,  "oper")
+
+            @* برچسب ماه‌ها *@
+            @for (var i = 0; i < Periods.Count; i++)
+            {
+                @Svg($"<text x='{F(X(i))}' y='{H - 8}' text-anchor='middle'>{Periods[i].Label}</text>")
+            }
+        </svg>
+    </MudPaper>
+}
+
+@code {
+    [Parameter, EditorRequired] public List<PeriodStatementsDto> Periods { get; set; } = new();
+
+    private const int W      = 720;
+    private const int H      = 260;
+    private const int Pad    = 18;
+    private const int Bottom = 34;
+    private const int Left   = 46;
+
+    private List<double> _sales = new(), _gross = new(), _oper = new();
+    private double _min, _max;
+
+    protected override void OnParametersSet()
+    {
+        double Row(PeriodStatementsDto p, int row) =>
+            p.Statements.Income.FirstOrDefault(l => l.Row == row)?.Amount ?? 0;
+
+        _sales = Periods.Select(p => Row(p, 10)).ToList();
+        _gross = Periods.Select(p => Row(p, 30)).ToList();
+        _oper  = Periods.Select(p => Row(p, 90)).ToList();
+
+        var all = _sales.Concat(_gross).Concat(_oper).Append(0).ToList();
+        _max = all.Max();
+        _min = Math.Min(0, all.Min());          // صفر همیشه روی نمودار هست
+        if (Math.Abs(_max - _min) < 1e-9) _max = _min + 1;
+    }
+
+    private double X(int i) =>
+        Periods.Count == 1
+            ? (W + Left) / 2.0
+            : Left + i * (W - Left - 14.0) / (Periods.Count - 1);
+
+    private double Y(double v) =>
+        Pad + (_max - v) / (_max - _min) * (H - Pad - Bottom);
+
+    private RenderFragment Line(List<double> data, string css) => @<g>
+        <polyline class="@("ln " + css)"
+                  points="@string.Join(" ", data.Select((v, i) => $"{F(X(i))},{F(Y(v))}"))" />
+        @for (var i = 0; i < data.Count; i++)
+        {
+            <circle class="@("pt " + css)" cx="@F(X(i))" cy="@F(Y(data[i]))">
+                <title>@Periods[i].Label: @data[i].ToString("N0")</title>
+            </circle>
+        }
+    </g>;
+
+    /// <summary>&lt;text&gt; در Razor کلیدواژه است؛ markup خام لازم است.</summary>
+    private static MarkupString Svg(string markup) => (MarkupString)markup;
+
+    private static string Short(double v)
+    {
+        var a = Math.Abs(v);
+        return a switch
+        {
+            >= 1_000_000_000 => (v / 1_000_000_000).ToString("0.#") + " میلیارد",
+            >= 1_000_000     => (v / 1_000_000).ToString("0.#") + " م",
+            >= 1_000         => (v / 1_000).ToString("0.#") + " هـ",
+            _                => v.ToString("0")
+        };
+    }
+
+    private static string F(double v) =>
+        v.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
+}

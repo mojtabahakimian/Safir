@@ -1,0 +1,296 @@
+@page "/cost-close/statements/compare"
+@using Safir.Shared.Models.CostClose
+@using Safir.Shared.Constants
+@using Safir.Client.Services
+@inject CostCloseApiService Api
+@inject Pay2AccessApiService Access
+@inject ISnackbar Snackbar
+
+@* صورت‌های مالیِ چند ماه: تجمیعی و مقایسه‌ای.
+
+   ⚠️ تجمیع جمعِ ساده نیست. موجودی اول دوره از نخستین ماه و پایان دوره از
+   آخرین ماه برداشته می‌شود، چون موجودیِ هر ماه هم‌زمان پایانِ آن ماه و
+   آغازِ ماه بعد است و جمع‌کردنش هر موجودیِ میانی را دوبار می‌شمارد.
+   منطقش در FinancialConsolidator است و هشدارش پایین صفحه نمایش داده
+   می‌شود — نه اینکه بی‌صدا فرض شود کاربر می‌داند. *@
+
+<PageTitle>مقایسه و تجمیع صورت‌های مالی</PageTitle>
+
+<div class="cc-page" dir="rtl">
+
+    <div class="cc-toolbar">
+        <CostBackButton />
+        <MudText Typo="Typo.h6">صورت‌های مالی چند دوره</MudText>
+        <MudSpacer />
+        @if (_selected.Count > 0)
+        {
+            <MudChip T="string" Size="Size.Small" Variant="Variant.Text">
+                @_selected.Count دوره انتخاب شده
+            </MudChip>
+        }
+        <MudButton Variant="Variant.Filled" Color="Color.Primary"
+                   StartIcon="@Icons.Material.Filled.Assessment"
+                   Disabled="@(_selected.Count == 0 || _busy)"
+                   OnClick="LoadAsync">
+            نمایش گزارش
+        </MudButton>
+    </div>
+
+    @* ── انتخاب دوره‌ها ── *@
+    <MudPaper Class="cc-rule-card mb-3" Elevation="0">
+        <div class="cc-rule-head">
+            <MudIcon Icon="@Icons.Material.Filled.EventNote" Size="Size.Small" />
+            <MudText Typo="Typo.subtitle2">دوره‌ها را انتخاب کنید</MudText>
+            <MudSpacer />
+            <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="SelectAll">همه</MudButton>
+            <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="ClearAll">هیچ‌کدام</MudButton>
+        </div>
+
+        @if (_runs is null)
+        {
+            <MudProgressLinear Indeterminate Color="Color.Primary" />
+        }
+        else if (_runs.Count == 0)
+        {
+            <MudAlert Severity="Severity.Info" Dense>
+                هنوز هیچ اجرایی ساخته نشده است.
+            </MudAlert>
+        }
+        else
+        {
+            <div class="d-flex flex-wrap gap-2 pa-1">
+                @foreach (var r in _runs)
+                {
+                    <MudCheckBox T="bool" Dense Color="Color.Primary"
+                                 Value="@_selected.Contains(r.RunId)"
+                                 ValueChanged="@(v => Toggle(r.RunId, v))"
+                                 Label="@RunLabel(r)" />
+                }
+            </div>
+
+            @* اجرایی که تأیید نشده ارقامش هنوز می‌تواند عوض شود — گفتنش
+               لازم است، چون در یک گزارشِ تجمیعی دیگر معلوم نیست کدام رقم
+               از کدام اجرا آمده. *@
+            @if (_selected.Any(id => _runs.FirstOrDefault(x => x.RunId == id)?.Status != 4))
+            {
+                <MudAlert Severity="Severity.Warning" Dense Class="mt-2">
+                    دست‌کم یکی از دوره‌های انتخاب‌شده هنوز تأیید نهایی نشده؛
+                    ارقامش با اجرای دوباره می‌تواند تغییر کند.
+                </MudAlert>
+            }
+        }
+    </MudPaper>
+
+    @if (_busy)
+    {
+        <MudProgressLinear Indeterminate Color="Color.Primary" Class="mb-3" />
+    }
+    else if (_error is not null)
+    {
+        <MudAlert Severity="Severity.Error" Class="mb-3">@_error</MudAlert>
+    }
+    else if (_data is not null)
+    {
+        <MudTabs Elevation="0" Rounded ApplyEffectsToContainer PanelClass="pt-3">
+
+            @* ═══ تجمیعی ═══ *@
+            @if (_data.Consolidated is not null)
+            {
+                <MudTabPanel Text="@($"تجمیعی — {_data.ConsolidatedLabel}")"
+                             Icon="@Icons.Material.Filled.Summarize">
+
+                    @foreach (var n in _data.Notes)
+                    {
+                        <MudAlert Severity="Severity.Info" Dense Class="mb-2">@n</MudAlert>
+                    }
+
+                    <div class="cc-fin-grid">
+                        @Statement("بهای تمام‌شده کالای ساخته‌شده",
+                                   Icons.Material.Filled.Factory, _data.Consolidated.Cogm)
+                        @Statement("بهای تمام‌شده کالای فروش‌رفته",
+                                   Icons.Material.Filled.LocalShipping, _data.Consolidated.Cogs)
+                        @Statement("سود و زیان",
+                                   Icons.Material.Filled.TrendingUp, _data.Consolidated.Income)
+                    </div>
+
+                    <FinCharts Data="_data.Consolidated" />
+                </MudTabPanel>
+            }
+
+            @* ═══ مقایسه ═══ *@
+            <MudTabPanel Text="مقایسه‌ی ماه‌به‌ماه" Icon="@Icons.Material.Filled.CompareArrows">
+
+                <FinTrend Periods="_data.Periods" />
+
+                @CompareTable("سود و زیان", p => p.Income)
+                @CompareTable("بهای تمام‌شده کالای ساخته‌شده", p => p.Cogm)
+                @CompareTable("بهای تمام‌شده کالای فروش‌رفته", p => p.Cogs)
+            </MudTabPanel>
+
+            @* ═══ هر دوره جداگانه ═══ *@
+            @foreach (var p in _data.Periods)
+            {
+                <MudTabPanel Text="@p.Label">
+                    <div class="cc-fin-grid">
+                        @Statement("کالای ساخته‌شده", Icons.Material.Filled.Factory, p.Statements.Cogm)
+                        @Statement("کالای فروش‌رفته", Icons.Material.Filled.LocalShipping, p.Statements.Cogs)
+                        @Statement("سود و زیان", Icons.Material.Filled.TrendingUp, p.Statements.Income)
+                    </div>
+                    <FinCharts Data="p.Statements" />
+                </MudTabPanel>
+            }
+        </MudTabs>
+    }
+</div>
+
+@code {
+    private List<CostRunDto>?          _runs;
+    private MultiPeriodStatementsDto?  _data;
+    private readonly HashSet<int>      _selected = new();
+    private bool    _busy;
+    private string? _error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Access.EnsureLoadedAsync();
+        try
+        {
+            var runs = await Api.GetRunsAsync();
+            _runs = runs?.OrderByDescending(r => r.FiscalYear)
+                         .ThenByDescending(r => r.PeriodMonth)
+                         .ThenByDescending(r => r.RunId)
+                         .ToList() ?? new();
+
+            // پیش‌فرضِ مفید: تازه‌ترین اجرای هر ماه، تا کاربر با صفحه‌ی
+            // خالی روبه‌رو نشود. اجرای تکراریِ یک ماه انتخاب نمی‌شود چون
+            // در تجمیع دوبار شمرده می‌شد.
+            foreach (var g in _runs.GroupBy(r => (r.FiscalYear, r.PeriodMonth)))
+                _selected.Add(g.First().RunId);
+        }
+        catch (Exception ex) { _error = ex.Message; }
+    }
+
+    private void Toggle(int runId, bool on)
+    {
+        if (on) _selected.Add(runId); else _selected.Remove(runId);
+    }
+
+    private void SelectAll()
+    {
+        if (_runs is null) return;
+        foreach (var r in _runs) _selected.Add(r.RunId);
+    }
+
+    private void ClearAll() => _selected.Clear();
+
+    private static string RunLabel(CostRunDto r) =>
+        $"{MonthName(r.PeriodMonth)} {r.FiscalYear}" + (r.RunNo > 1 ? $" (#{r.RunId})" : "");
+
+    private static string MonthName(byte m) => m switch
+    {
+        1 => "فروردین", 2 => "اردیبهشت", 3 => "خرداد",  4 => "تیر",
+        5 => "مرداد",   6 => "شهریور",   7 => "مهر",    8 => "آبان",
+        9 => "آذر",     10 => "دی",      11 => "بهمن",  12 => "اسفند",
+        _ => m.ToString()
+    };
+
+    private async Task LoadAsync()
+    {
+        _busy  = true;
+        _error = null;
+        _data  = null;
+        StateHasChanged();
+
+        var (data, err) = await Api.CompareStatementsAsync(_selected);
+        _data  = data;
+        _error = err;
+        _busy  = false;
+
+        if (err is not null) Snackbar.Add(err, Severity.Error);
+    }
+
+    private RenderFragment Statement(string title, string icon, List<FinLineDto> lines) =>
+        @<MudPaper Class="cc-rule-card" Elevation="0">
+            <div class="cc-rule-head">
+                <MudIcon Icon="@icon" Size="Size.Small" />
+                <MudText Typo="Typo.subtitle2">@title</MudText>
+            </div>
+            <table class="cc-fin">
+                @foreach (var l in lines)
+                {
+                    <tr class="@RowClass(l.Kind)">
+                        <td class="lbl">@l.Text</td>
+                        <td class="val">
+                            <span class="cc-num @(l.Amount < 0 ? "neg" : "")">@Fmt(l.Amount)</span>
+                        </td>
+                    </tr>
+                }
+            </table>
+        </MudPaper>;
+
+    /// <summary>
+    /// یک جدول، هر ماه یک ستون، و ستونِ آخر جمعِ همان سطر در همه‌ی ماه‌ها.
+    ///
+    /// ⚠️ ستون «جمع» عمداً همان جمعِ حسابیِ ستون‌هاست و برای سطرهای موجودی
+    /// و درصد معنا ندارد — برای همین آنجا خط تیره می‌گذارد، نه عدد.
+    /// صورتِ درستِ کلِ بازه در تبِ «تجمیعی» است.
+    /// </summary>
+    private RenderFragment CompareTable(string title, Func<FinancialStatementsDto, List<FinLineDto>> pick) =>
+        @<MudPaper Class="cc-rule-card mb-3" Elevation="0">
+            <div class="cc-rule-head">
+                <MudIcon Icon="@Icons.Material.Filled.TableChart" Size="Size.Small" />
+                <MudText Typo="Typo.subtitle2">@title</MudText>
+            </div>
+
+            <div class="cc-cmp-wrap">
+                <table class="cc-cmp">
+                    <thead>
+                        <tr>
+                            <th>شرح</th>
+                            @foreach (var p in _data!.Periods) { <th>@p.Label</th> }
+                            <th>جمع</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var row in pick(_data.Periods[0].Statements))
+                        {
+                            <tr class="@RowClass(row.Kind)">
+                                <td class="lbl">@row.Text</td>
+                                @foreach (var p in _data.Periods)
+                                {
+                                    var v = pick(p.Statements).FirstOrDefault(x => x.Row == row.Row)?.Amount;
+                                    <td class="val">
+                                        <span class="cc-num @(v < 0 ? "neg" : "")">@Fmt(v)</span>
+                                    </td>
+                                }
+                                <td class="val total-col">
+                                    <span class="cc-num">@RowTotal(row, pick)</span>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </MudPaper>;
+
+    /// <summary>جمعِ افقی — فقط برای سطرهایی که جمع‌شدنشان معنا دارد.</summary>
+    private string RowTotal(FinLineDto row, Func<FinancialStatementsDto, List<FinLineDto>> pick)
+    {
+        if (row.Kind == 3 && row.Text?.Contains('٪') == true) return "—";
+        if (row.Text?.Contains("درصد") == true) return "—";
+        if (row.Text?.Contains("موجودی") == true) return "—";
+
+        var sum = _data!.Periods
+            .Select(p => pick(p.Statements).FirstOrDefault(x => x.Row == row.Row)?.Amount ?? 0)
+            .Sum();
+
+        return sum.ToString("N0");
+    }
+
+    private static string RowClass(byte kind) => kind switch
+    {
+        1 => "sub", 2 => "tot", 3 => "info", _ => ""
+    };
+
+    private static string Fmt(double? v) => v is null ? "—" : v.Value.ToString("N0");
+}

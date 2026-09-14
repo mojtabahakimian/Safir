@@ -86,6 +86,12 @@
                             Icon="@Icons.Material.Filled.Rule">
                     مغایرت‌ها
                 </MudNavLink>
+                @* بیرون از یک اجرای مشخص است چون چند دوره را با هم می‌گیرد؛
+                   از داخلِ صورت‌های مالیِ هر اجرا هم لینک دارد. *@
+                <MudNavLink Href="/cost-close/statements/compare" Match="NavLinkMatch.Prefix"
+                            Icon="@Icons.Material.Filled.CompareArrows">
+                    صورت‌های مالی چند دوره
+                </MudNavLink>
                 <MudNavLink Href="/cost-close/settings" Match="NavLinkMatch.Prefix"
                             Icon="@Icons.Material.Filled.Settings">
                     تنظیمات

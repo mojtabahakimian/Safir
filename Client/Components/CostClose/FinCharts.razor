@@ -1,0 +1,252 @@
+@using Safir.Shared.Models.CostClose
+
+@* نمودارهای صورت‌های مالی.
+
+   ── چرا SVG دستی و نه MudChart ──
+   نمودارهای MudBlazor ۶ برچسبِ راست‌به‌چپ و عددِ فارسیِ بلند را خوب
+   نمی‌چینند و رنگ‌شان از تمِ صفحه پیروی نمی‌کند. اینجا سه نمودارِ کوچک و
+   هدفمند لازم است، نه یک کتابخانه‌ی عمومی — و SVG خام هم سبک‌تر است هم
+   با currentColor خودش را با تمِ روشن/تاریک هماهنگ می‌کند.
+
+   ── چرا نمودارِ آبشاری برای سود و زیان ──
+   سود و زیان یک زنجیره‌ی کسر است: فروش منهای بهای فروش‌رفته می‌شود سود
+   ناخالص، منهای هزینه‌ها می‌شود سود عملیاتی. ستون‌های معمولی این رابطه
+   را پنهان می‌کنند؛ آبشار نشان می‌دهد هر رقم از کجا کم شده. *@
+
+<div class="cc-charts">
+
+    @* ═══ ۱) آبشارِ سود و زیان ═══ *@
+    @if (_waterfall.Count > 0)
+    {
+        <MudPaper Class="cc-rule-card" Elevation="0">
+            <div class="cc-rule-head">
+                <MudIcon Icon="@Icons.Material.Filled.BarChart" Size="Size.Small" />
+                <MudText Typo="Typo.subtitle2">از فروش تا سود عملیاتی</MudText>
+            </div>
+
+            <svg viewBox="0 0 @WfW @WfH" class="cc-svg" role="img"
+                 aria-label="نمودار آبشاری سود و زیان">
+                @* خط پایه *@
+                <line x1="0" y1="@Wf(0)" x2="@WfW" y2="@Wf(0)"
+                      class="cc-axis" />
+
+                @for (var i = 0; i < _waterfall.Count; i++)
+                {
+                    var b = _waterfall[i];
+                    var x = WfPad + i * (WfBar + WfGap);
+                    var yTop = Wf(Math.Max(b.From, b.To));
+                    var h = Math.Abs(Wf(b.From) - Wf(b.To));
+                    if (h < 1) h = 1;
+
+                    <rect x="@F(x)" y="@F(yTop)" width="@WfBar" height="@F(h)" rx="3"
+                          class="@("cc-bar " + b.Css)">
+                        <title>@b.Label: @b.Value.ToString("N0")</title>
+                    </rect>
+
+                    @* برچسب عدد بالای ستون و نام زیر محور.
+                       ⚠️ <text> در Razor یک کلیدواژه است و صفت نمی‌پذیرد،
+                       پس عنصرِ SVG به‌صورت markup خام ساخته می‌شود. *@
+                    @Svg($"<text x='{F(x + WfBar / 2.0)}' y='{F(yTop - 6)}' class='cc-bar-val'>{Short(b.Value)}</text>")
+                    @Svg($"<text x='{F(x + WfBar / 2.0)}' y='{WfH - 8}' class='cc-bar-lbl'>{b.Label}</text>")
+                }
+            </svg>
+        </MudPaper>
+    }
+
+    @* ═══ ۲) ترکیب بهای ساخت ═══ *@
+    @if (_mix.Count > 0 && _mixTotal > 0)
+    {
+        <MudPaper Class="cc-rule-card" Elevation="0">
+            <div class="cc-rule-head">
+                <MudIcon Icon="@Icons.Material.Filled.DonutLarge" Size="Size.Small" />
+                <MudText Typo="Typo.subtitle2">ترکیب بهای کالای ساخته‌شده</MudText>
+            </div>
+
+            <div class="cc-donut-wrap">
+                <svg viewBox="0 0 120 120" class="cc-donut" role="img"
+                     aria-label="ترکیب بهای ساخت">
+                    @{
+                        double acc = 0;
+                    }
+                    @foreach (var seg in _mix)
+                    {
+                        var frac = seg.Value / _mixTotal;
+                        var dash = frac * Circ;
+                        var off  = acc * Circ;
+                        acc += frac;
+
+                        <circle cx="60" cy="60" r="@R" fill="none" stroke-width="18"
+                                class="@("cc-seg " + seg.Css)"
+                                stroke-dasharray="@F(dash) @F(Circ - dash)"
+                                stroke-dashoffset="@F(-off)"
+                                transform="rotate(-90 60 60)">
+                            <title>@seg.Label: @seg.Value.ToString("N0")</title>
+                        </circle>
+                    }
+                    @Svg($"<text x='60' y='58' class='cc-donut-top'>{Short(_mixTotal)}</text>")
+                    @Svg("<text x='60' y='72' class='cc-donut-sub'>ریال</text>")
+                </svg>
+
+                <div class="cc-legend">
+                    @foreach (var seg in _mix)
+                    {
+                        <div class="cc-legend-row">
+                            <span class="@("cc-dot " + seg.Css)"></span>
+                            <span class="lbl">@seg.Label</span>
+                            <span class="pct">@((seg.Value / _mixTotal * 100).ToString("0.0"))٪</span>
+                            <span class="val cc-num">@seg.Value.ToString("N0")</span>
+                        </div>
+                    }
+                </div>
+            </div>
+        </MudPaper>
+    }
+
+    @* ═══ ۳) سرفصل‌های هزینه ═══ *@
+    @if (_expenses.Count > 0)
+    {
+        <MudPaper Class="cc-rule-card" Elevation="0">
+            <div class="cc-rule-head">
+                <MudIcon Icon="@Icons.Material.Filled.ReceiptLong" Size="Size.Small" />
+                <MudText Typo="Typo.subtitle2">هزینه‌های دوره به تفکیک طبقه</MudText>
+            </div>
+
+            <div class="cc-hbars">
+                @foreach (var e in _expenses)
+                {
+                    <div class="cc-hbar-row">
+                        <span class="lbl">@e.Label</span>
+                        <div class="track">
+                            <div class="fill" style="width:@F(e.Value / _expMax * 100)%"></div>
+                        </div>
+                        <span class="val cc-num">@e.Value.ToString("N0")</span>
+                    </div>
+                }
+            </div>
+        </MudPaper>
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired] public FinancialStatementsDto Data { get; set; } = new();
+
+    // ── هندسه‌ی آبشار ──
+    private const int WfW   = 560;
+    private const int WfH   = 220;
+    private const int WfPad = 24;
+    private const int WfBar = 62;
+    private const int WfGap = 24;
+
+    private const double R    = 51;
+    private static readonly double Circ = 2 * Math.PI * R;
+
+    private sealed record Bar(string Label, double Value, double From, double To, string Css);
+    private sealed record Seg(string Label, double Value, string Css);
+
+    private List<Bar> _waterfall = new();
+    private List<Seg> _mix       = new();
+    private List<Seg> _expenses  = new();
+    private double    _mixTotal;
+    private double    _expMax = 1;
+
+    private double _min, _max;
+
+    protected override void OnParametersSet()
+    {
+        BuildWaterfall();
+        BuildMix();
+        BuildExpenses();
+    }
+
+    private double? Row(List<FinLineDto> lines, int row) =>
+        lines.FirstOrDefault(l => l.Row == row)?.Amount;
+
+    private void BuildWaterfall()
+    {
+        _waterfall = new();
+
+        var sales = Row(Data.Income, 10);
+        if (sales is null) return;
+
+        var cogs  = Row(Data.Income, 20) ?? 0;   // منفی
+        var gross = Row(Data.Income, 30) ?? 0;
+        var exp   = Row(Data.Income, 80) ?? 0;   // منفی
+        var oper  = Row(Data.Income, 90) ?? 0;
+
+        // هر ستون از کجا تا کجا: ستونِ «کسر» از رقمِ قبلی پایین می‌آید،
+        // ستونِ «جمع» از صفر بالا می‌رود — همان چیزی که آبشار را خوانا
+        // می‌کند.
+        _waterfall.Add(new("فروش",        sales.Value, 0,            sales.Value, "pos"));
+        _waterfall.Add(new("بهای فروش",   cogs,        sales.Value,  sales.Value + cogs, "neg"));
+        _waterfall.Add(new("سود ناخالص",  gross,       0,            gross, "sum"));
+        _waterfall.Add(new("هزینه‌ها",     exp,         gross,        gross + exp, "neg"));
+        _waterfall.Add(new("سود عملیاتی", oper,        0,            oper,
+                            oper < 0 ? "loss" : "sum"));
+
+        _max = _waterfall.SelectMany(b => new[] { b.From, b.To }).Append(0).Max();
+        _min = _waterfall.SelectMany(b => new[] { b.From, b.To }).Append(0).Min();
+        if (Math.Abs(_max - _min) < 1e-9) _max = _min + 1;
+    }
+
+    /// <summary>تبدیل مبلغ به مختصات y — بالای نمودار بیشترین مقدار است.</summary>
+    private double Wf(double v)
+    {
+        const double top = 28, bottom = WfH - 30;
+        return bottom - (v - _min) / (_max - _min) * (bottom - top);
+    }
+
+    private void BuildMix()
+    {
+        _mix = new();
+
+        var mat  = Row(Data.Cogm, 50) ?? 0;   // مواد مصرف‌شده
+        var wage = Row(Data.Cogm, 60) ?? 0;
+        var oh   = Row(Data.Cogm, 70) ?? 0;
+
+        // سهمِ منفی در یک نمودار سهمی معنا ندارد — اگر پیش آمد، نمودار را
+        // اصلاً نمی‌کشیم تا تصویرِ غلط نسازد.
+        if (mat < 0 || wage < 0 || oh < 0) return;
+
+        if (mat  > 0) _mix.Add(new("مواد",   mat,  "c1"));
+        if (wage > 0) _mix.Add(new("دستمزد", wage, "c2"));
+        if (oh   > 0) _mix.Add(new("سربار",  oh,   "c3"));
+
+        _mixTotal = _mix.Sum(s => s.Value);
+    }
+
+    private void BuildExpenses()
+    {
+        _expenses = Data.Expenses
+            .GroupBy(e => e.Category ?? "—")
+            .Select(g => new Seg(g.Key, Math.Abs(g.Sum(x => x.Share)), "c4"))
+            .Where(s => s.Value > 0)
+            .OrderByDescending(s => s.Value)
+            .ToList();
+
+        _expMax = _expenses.Count > 0 ? _expenses.Max(s => s.Value) : 1;
+    }
+
+    /// <summary>عددِ کوتاه برای برچسبِ روی نمودار — «۱٫۲ م» به‌جای ۱٬۲۳۴٬۵۶۷.</summary>
+    private static string Short(double v)
+    {
+        var a = Math.Abs(v);
+        var s = a switch
+        {
+            >= 1_000_000_000 => (v / 1_000_000_000).ToString("0.#") + " میلیارد",
+            >= 1_000_000     => (v / 1_000_000).ToString("0.#") + " م",
+            >= 1_000         => (v / 1_000).ToString("0.#") + " هـ",
+            _                => v.ToString("0")
+        };
+        return s;
+    }
+
+    /// <summary>
+    /// عنصر SVG به‌صورت markup خام. لازم است چون &lt;text&gt; در Razor
+    /// کلیدواژه‌ی کنترلی است و صفت نمی‌پذیرد.
+    /// </summary>
+    private static MarkupString Svg(string markup) => (MarkupString)markup;
+
+    /// <summary>عدد با نقطه‌ی اعشار انگلیسی — SVG با اعشارِ فارسی کار نمی‌کند.</summary>
+    private static string F(double v) =>
+        v.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
+}

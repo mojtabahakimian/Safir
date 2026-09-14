@@ -443,6 +443,45 @@ namespace Safir.Shared.Models.CostClose
         public List<FinExpenseDto> Expenses { get; set; } = new();
     }
 
+    /// <summary>
+    /// صورت‌های مالیِ یک دوره، به‌همراه برچسبِ آن دوره — پایه‌ی گزارشِ
+    /// چندماهه. همان ساختار تک‌اجرا، فقط با هویت.
+    /// </summary>
+    public class PeriodStatementsDto
+    {
+        public int    RunId  { get; set; }
+        public short  Year   { get; set; }
+        public byte   Month  { get; set; }
+        /// <summary>مثلاً «اردیبهشت ۱۴۰۵».</summary>
+        public string Label  { get; set; } = string.Empty;
+
+        public FinancialStatementsDto Statements { get; set; } = new();
+    }
+
+    /// <summary>
+    /// چند دوره کنار هم: هر کدام جداگانه، به‌علاوهٔ یک صورتِ تجمیعی.
+    ///
+    /// ⚠️ تجمیع، جمعِ ساده‌ی همه‌ی سطرها نیست. سطرهای گردشی (خرید، دستمزد،
+    /// سربار، فروش، هزینه‌ها) جمع می‌شوند، ولی موجودیِ اول دوره از
+    /// <b>نخستین</b> ماه و موجودیِ پایان دوره از <b>آخرین</b> ماه برداشته
+    /// می‌شود — وگرنه موجودیِ میانیِ هر ماه چند بار شمرده می‌شد و بهای
+    /// تمام‌شده بی‌معنا می‌شد. سطرهای جمع و درصدها هم دوباره محاسبه
+    /// می‌شوند، نه جمع.
+    /// </summary>
+    public class MultiPeriodStatementsDto
+    {
+        public List<PeriodStatementsDto> Periods { get; set; } = new();
+
+        /// <summary>صورتِ تجمیعیِ کل بازه — فقط وقتی بیش از یک دوره انتخاب شده.</summary>
+        public FinancialStatementsDto? Consolidated { get; set; }
+
+        /// <summary>برچسبِ بازه، مثلاً «فروردین تا خرداد ۱۴۰۵».</summary>
+        public string ConsolidatedLabel { get; set; } = string.Empty;
+
+        /// <summary>هشدارهایی که کاربر باید پیش از اتکا به ارقام بداند.</summary>
+        public List<string> Notes { get; set; } = new();
+    }
+
     public class RebuildRatesResultDto
     {
         public int Remaining { get; set; }
