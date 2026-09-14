@@ -233,6 +233,35 @@ namespace Safir.Client.Services
         }
 
         /// <summary>
+        /// صورت‌های مالیِ چند دوره با هم — هم جداگانه، هم تجمیعی.
+        ///
+        /// برخلاف بقیه‌ی متدهای این کلاس خطا را نمی‌بلعد: این گزارش را
+        /// کاربر عمداً و با انتخابِ چند ماه می‌گیرد، و فهرستِ خالی به‌جای
+        /// پیامِ خطا فقط گیجش می‌کند.
+        /// </summary>
+        public async Task<(MultiPeriodStatementsDto? Data, string? Error)> CompareStatementsAsync(
+            IEnumerable<int> runIds)
+        {
+            try
+            {
+                var ids = string.Join(",", runIds);
+                var res = await _http.GetAsync($"{Base}/financial-statements/compare?runIds={ids}");
+
+                if (res.IsSuccessStatusCode)
+                    return (await res.Content.ReadFromJsonAsync<MultiPeriodStatementsDto>(), null);
+
+                var body = (await res.Content.ReadAsStringAsync()).Trim();
+                return (null, string.IsNullOrWhiteSpace(body)
+                    ? $"خطای {(int)res.StatusCode}."
+                    : body);
+            }
+            catch (Exception ex)
+            {
+                return (null, ex.Message);
+            }
+        }
+
+        /// <summary>
         /// فرمول‌های این کالا در ماه‌های دیگر — برای وقتی کالا برای ماهِ جاری
         /// فرمول ندارد و باید یکی کپی شود. ماهِ قبل اولِ فهرست است.
         /// </summary>

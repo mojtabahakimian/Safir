@@ -37,6 +37,11 @@
             </MudButton>
         }
 
+        <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.CompareArrows"
+                   Href="/cost-close/statements/compare">
+            مقایسه و تجمیع چند ماه
+        </MudButton>
+
         @if (_data is not null)
         {
             <MudChip T="string" Size="Size.Small" Variant="Variant.Text">
@@ -60,6 +65,10 @@
             @Statement("بهای تمام‌شده کالای فروش‌رفته", Icons.Material.Filled.LocalShipping, _data.Cogs)
             @Statement("سود و زیان", Icons.Material.Filled.TrendingUp, _data.Income)
         </div>
+
+        @* نمودارها بعد از خودِ صورت‌ها می‌آیند، نه قبلشان: رقمِ دقیق
+           مرجع است و نمودار فقط شکلِ آن را نشان می‌دهد. *@
+        <FinCharts Data="_data" />
 
         @if (_data.Expenses.Count > 0)
         {

@@ -221,3 +221,128 @@
     font-style: italic;
     border-bottom: 0;
 }
+
+/* ═══════════════════════════ نمودارهای صورت‌های مالی ═══════════════════════════
+   رنگ‌ها از متغیرهای همان تمِ صفحه می‌آیند، نه ثابت — تا با تمِ روشن/تاریک
+   و با پوسته‌های neon/party هم بخوانند. */
+
+.cc-charts {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+    gap: 12px;
+    margin-top: 12px;
+}
+
+.cc-svg { width: 100%; height: auto; display: block; }
+
+.cc-axis { stroke: var(--p2-border); stroke-width: 1; }
+
+.cc-bar { transition: opacity .15s; }
+.cc-bar:hover { opacity: .78; }
+.cc-bar.pos  { fill: var(--p2-primary); }
+.cc-bar.neg  { fill: #f59e0b; }
+.cc-bar.sum  { fill: #10b981; }
+.cc-bar.loss { fill: #ef4444; }
+
+.cc-bar-val {
+    font-size: 11px; font-weight: 600;
+    text-anchor: middle; fill: var(--p2-text-main);
+}
+
+.cc-bar-lbl {
+    font-size: 11px;
+    text-anchor: middle; fill: var(--p2-text-muted);
+}
+
+/* ── دونات ── */
+.cc-donut-wrap {
+    display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+    padding: 4px 2px;
+}
+
+.cc-donut { width: 150px; height: 150px; flex: 0 0 auto; }
+
+.cc-seg { transition: opacity .15s; }
+.cc-seg:hover { opacity: .8; }
+.cc-seg.c1 { stroke: var(--p2-primary); }
+.cc-seg.c2 { stroke: #10b981; }
+.cc-seg.c3 { stroke: #f59e0b; }
+
+.cc-donut-top {
+    font-size: 13px; font-weight: 700;
+    text-anchor: middle; fill: var(--p2-text-main);
+}
+.cc-donut-sub {
+    font-size: 9px; text-anchor: middle; fill: var(--p2-text-muted);
+}
+
+.cc-legend { flex: 1 1 180px; min-width: 180px; }
+
+.cc-legend-row {
+    display: flex; align-items: center; gap: 8px;
+    padding: 3px 0; font-size: 12px;
+}
+.cc-legend-row .lbl { flex: 1 1 auto; color: var(--p2-text-main); }
+.cc-legend-row .pct { color: var(--p2-text-muted); min-width: 44px; text-align: left; }
+.cc-legend-row .val { min-width: 92px; text-align: left; }
+
+.cc-dot { width: 10px; height: 10px; border-radius: 3px; flex: 0 0 auto; }
+.cc-dot.c1 { background: var(--p2-primary); }
+.cc-dot.c2 { background: #10b981; }
+.cc-dot.c3 { background: #f59e0b; }
+.cc-dot.c4 { background: #8b5cf6; }
+
+/* ── میله‌های افقی هزینه ── */
+.cc-hbars { padding: 4px 2px; }
+
+.cc-hbar-row {
+    display: flex; align-items: center; gap: 10px;
+    padding: 5px 0; font-size: 12px;
+}
+.cc-hbar-row .lbl { flex: 0 0 72px; color: var(--p2-text-main); }
+.cc-hbar-row .val { flex: 0 0 110px; text-align: left; }
+
+.cc-hbar-row .track {
+    flex: 1 1 auto; height: 10px; border-radius: 5px;
+    background: var(--p2-border); overflow: hidden;
+}
+.cc-hbar-row .fill {
+    height: 100%; border-radius: 5px;
+    background: linear-gradient(90deg, #8b5cf6, #a78bfa);
+}
+
+/* ── مقایسه‌ی چندماهه ── */
+.cc-cmp-wrap { overflow-x: auto; }
+
+.cc-cmp { width: 100%; border-collapse: collapse; font-size: 13px; }
+.cc-cmp th, .cc-cmp td { padding: 6px 10px; white-space: nowrap; }
+.cc-cmp thead th {
+    position: sticky; top: 0; z-index: 1;
+    background: var(--p2-surface, #fff);
+    border-bottom: 2px solid var(--p2-border);
+    text-align: left; font-weight: 600;
+}
+.cc-cmp thead th:first-child { text-align: right; }
+.cc-cmp td.lbl { text-align: right; }
+.cc-cmp td.val { text-align: left; }
+.cc-cmp tbody tr:hover { background: var(--p2-primary-light, rgba(37,99,235,.06)); }
+.cc-cmp tr.sub td { border-top: 1px solid var(--p2-border); font-weight: 600; }
+.cc-cmp tr.tot td {
+    border-top: 2px solid var(--p2-border);
+    font-weight: 700;
+}
+.cc-cmp tr.info td { color: var(--p2-text-muted); font-size: 12px; font-style: italic; }
+.cc-cmp td.total-col { background: rgba(16,185,129,.08); font-weight: 600; }
+
+/* ── نمودار روند چندماهه ── */
+.cc-trend { width: 100%; height: auto; display: block; }
+.cc-trend .grid { stroke: var(--p2-border); stroke-width: 1; stroke-dasharray: 3 3; }
+.cc-trend .ln   { fill: none; stroke-width: 2.5; }
+.cc-trend .ln.sales { stroke: var(--p2-primary); }
+.cc-trend .ln.gross { stroke: #10b981; }
+.cc-trend .ln.oper  { stroke: #f59e0b; }
+.cc-trend .pt { r: 3.5; }
+.cc-trend .pt.sales { fill: var(--p2-primary); }
+.cc-trend .pt.gross { fill: #10b981; }
+.cc-trend .pt.oper  { fill: #f59e0b; }
+.cc-trend text { font-size: 11px; fill: var(--p2-text-muted); }

@@ -1069,6 +1069,12 @@ namespace Safir.Server.Controllers
         [Pay2Authorize(CostForms.Margin, Pay2Perm.See)]
         public async Task<ActionResult<FinancialStatementsDto>> GetFinancialStatements(int runId)
         {
+            return Ok(await ReadStatementsAsync(runId));
+        }
+
+        /// <summary>خواندنِ چهار نتیجه‌ی CC_sp_FinancialStatements برای یک اجرا.</summary>
+        private async Task<FinancialStatementsDto> ReadStatementsAsync(int runId)
+        {
             var result = new FinancialStatementsDto();
 
             using var grid = await _db.DoGetDataSQLAsyncMultiple(
@@ -1101,6 +1107,72 @@ namespace Safir.Server.Controllers
                     Share    = Convert.ToDouble(Col(r, "سهم_این_طبقه")),
                     Note     = Col(r, "یادداشت")?.ToString()
                 }).ToList();
+
+            return result;
+        }
+
+        /// <summary>
+        /// صورت‌های مالیِ چند دوره کنار هم، به‌علاوهٔ یک صورتِ تجمیعی.
+        ///
+        /// عمداً همان رویه‌ی تک‌اجرا را چند بار صدا می‌زند و تجمیع را در
+        /// حافظه انجام می‌دهد، نه اینکه رویه‌ی تازه‌ای در دیتابیس بسازد:
+        /// این‌طور یک منبعِ حقیقت می‌ماند و اگر فردا صورت‌ها عوض شوند،
+        /// گزارشِ چندماهه خودبه‌خود با آن‌ها می‌خواند. هزینه‌اش چند
+        /// رفت‌وبرگشتِ کوتاه است برای گزارشی که کاربر دستی می‌گیرد.
+        /// </summary>
+        [HttpGet("financial-statements/compare")]
+        [Pay2Authorize(CostForms.Margin, Pay2Perm.See)]
+        public async Task<ActionResult<MultiPeriodStatementsDto>> CompareFinancialStatements(
+            [FromQuery] string runIds)
+        {
+            var ids = (runIds ?? string.Empty)
+                .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .Select(x => int.TryParse(x, out var n) ? n : (int?)null)
+                .Where(x => x is not null).Select(x => x!.Value)
+                .Distinct().ToList();
+
+            if (ids.Count == 0)
+                return BadRequest("هیچ اجرایی انتخاب نشده است.");
+
+            // سقف عمدی: این گزارش به‌ازای هر دوره یک بار رویه را صدا می‌زند،
+            // و انتخابِ بی‌حد یعنی انتظارِ طولانی بدون اینکه کاربر بفهمد چرا.
+            if (ids.Count > 24)
+                return BadRequest("حداکثر ۲۴ دوره را می‌توان با هم مقایسه کرد.");
+
+            var runs = (await _db.DoGetDataSQLAsync<CostRunDto>(
+                $@"SELECT RunId, FiscalYear, PeriodMonth, DateFrom, DateTo
+                   FROM   dbo.CC_Run
+                   WHERE  RunId IN ({string.Join(",", ids)})")).ToList();
+
+            var missing = ids.Where(i => runs.All(r => r.RunId != i)).ToList();
+            if (missing.Count > 0)
+                return BadRequest($"این اجراها پیدا نشدند: {string.Join("، ", missing)}");
+
+            var result = new MultiPeriodStatementsDto();
+
+            foreach (var run in runs.OrderBy(r => r.FiscalYear).ThenBy(r => r.PeriodMonth)
+                                    .ThenBy(r => r.RunId))
+            {
+                result.Periods.Add(new PeriodStatementsDto
+                {
+                    RunId      = run.RunId,
+                    Year       = run.FiscalYear,
+                    Month      = run.PeriodMonth,
+                    Label      = $"{FinancialConsolidator.MonthName(run.PeriodMonth)} {run.FiscalYear}",
+                    Statements = await ReadStatementsAsync(run.RunId)
+                });
+            }
+
+            if (result.Periods.Count > 1)
+            {
+                result.Consolidated = FinancialConsolidator.Consolidate(result.Periods, result.Notes);
+
+                var a = result.Periods[0];
+                var b = result.Periods[^1];
+                result.ConsolidatedLabel = a.Year == b.Year
+                    ? $"{FinancialConsolidator.MonthName(a.Month)} تا {FinancialConsolidator.MonthName(b.Month)} {a.Year}"
+                    : $"{a.Label} تا {b.Label}";
+            }
 
             return Ok(result);
         }
