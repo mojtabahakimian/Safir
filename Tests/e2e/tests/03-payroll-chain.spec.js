@@ -25,8 +25,8 @@ test.describe.configure({ mode: 'serial' });
  */
 const RUN_TAG = Date.now().toString().slice(-6);
 
-/** دوره‌ی آزمایشی: فروردین ۱۴۰۶ — از داده‌ی seed جداست تا تداخل نکند. */
-const PERIOD_DATE = 14060100;
+/** دوره‌ی آزمایشی: شهریور ۱۴۰۵، ماه ۳۱روزه در سال مالیاتی seed. */
+const PERIOD_DATE = 14050600;
 
 /** وضعیت مشترک بین گام‌ها. */
 const ctx = {
@@ -174,8 +174,8 @@ test.describe('زنجیره‌ی کامل حقوق و دستمزد', () => {
         DEC_ID: 0,
         EMP_ID: ctx.empId,
         WS_ID: ctx.wsId,
-        ISSUED_DATE: 14060101,
-        EFF_FROM: 14060101,
+        ISSUED_DATE: 14050601,
+        EFF_FROM: 14050601,
         MARITAL: 2,
         EDU_LEVEL: 2,
         IS_MANAGER: false,
@@ -220,8 +220,8 @@ test.describe('زنجیره‌ی کامل حقوق و دستمزد', () => {
         DEC_ID: ctx.decId,
         EMP_ID: ctx.empId,
         WS_ID: ctx.wsId,
-        ISSUED_DATE: 14060101,
-        EFF_FROM: 14060101,
+        ISSUED_DATE: 14050601,
+        EFF_FROM: 14050601,
         MARITAL: 2,
         EDU_LEVEL: 2,
         IS_MANAGER: false,
@@ -266,6 +266,30 @@ test.describe('زنجیره‌ی کامل حقوق و دستمزد', () => {
       'بستن دوره');
   });
 
+  test('۶-الف) سال مالیاتی ناسازگار پیش از ساخت فیش رد می‌شود', async ({ request }) => {
+    // کارگاه آزمون جداست، اما تنظیمات مالیاتی seed برای ۱۴۰۵ است.
+    const init = await ok(await request.get(
+      `/api/pay2/attendance/init?wsId=${ctx.wsId}&periodDate=14060100`, { headers: auth }),
+      'باز کردن دوره سال دیگر');
+    const data = await init.json();
+    const period = data.period ?? data.Period;
+    const otherPerId = period.peR_ID ?? period.PER_ID;
+    await ok(await request.post(`/api/pay2/attendance/close-period/${otherPerId}`, { headers: auth }),
+      'بستن دوره سال دیگر');
+
+    const res = await request.post('/api/pay2/run/calculate', {
+      headers: auth,
+      data: { WS_ID: ctx.wsId, PER_ID: otherPerId, IsReRun: false },
+    });
+    expect(res.status(), 'محاسبه با سال مالیاتی ناسازگار باید رد شود').toBe(400);
+    expect(await res.text()).toContain('سال مالیاتی');
+    const latestRes = await request.get(
+      `/api/pay2/run/latest?wsId=${ctx.wsId}&perId=${otherPerId}`, { headers: auth });
+    if (latestRes.status() !== 204) {
+      expect(await latestRes.json(), 'نباید فیشی برای سال ناسازگار ساخته شود').toBeNull();
+    }
+  });
+
   test('۷) محاسبه حقوق و درستی حسابِ فیش', async ({ request }) => {
     const res = await ok(await request.post('/api/pay2/run/calculate', {
       headers: auth,
@@ -282,6 +306,8 @@ test.describe('زنجیره‌ی کامل حقوق و دستمزد', () => {
 
     const n = v => Number(v ?? 0);
     const gross = n(me.grosS_PAY ?? me.GROSS_PAY);
+    const nominalDays = n(me.nominaL_DAYS ?? me.NOMINAL_DAYS);
+    const nominalGross = n(me.nominaL_GROSS ?? me.NOMINAL_GROSS);
     const insBase = n(me.inS_BASE ?? me.INS_BASE);
     const insWorker = n(me.inS_WORKER ?? me.INS_WORKER);
     const tax = n(me.taX_AMOUNT ?? me.TAX_AMOUNT);
@@ -291,6 +317,8 @@ test.describe('زنجیره‌ی کامل حقوق و دستمزد', () => {
     const rounding = n(me.roundinG_ADJ ?? me.ROUNDING_ADJ);
 
     expect(gross, 'ناخالص باید مثبت باشد').toBeGreaterThan(0);
+    expect(nominalDays, 'کارکرد اسمی باید از موتور به جدول برسد').toBe(31);
+    expect(nominalGross, 'ناخالص اسمی باید از موتور به جدول برسد').toBeGreaterThan(0);
 
     // نرخ بیمه کارگر ۷٪ است (INS_WORKER_RATE در seed)
     expect(insWorker, 'بیمه کارگر باید ۷٪ مبنای بیمه باشد')
@@ -304,6 +332,46 @@ test.describe('زنجیره‌ی کامل حقوق و دستمزد', () => {
       .toBe(insWorker + tax + n(me.loaN_DED ?? me.LOAN_DED) + n(me.advancE_DED ?? me.ADVANCE_DED) + other);
     expect(net, 'خالص = ناخالص − کسورات (با احتساب گِرد کردن)')
       .toBe(gross + rounding - totalDed);
+  });
+
+  test('۷-الف) ریل فقط بیمه‌ای مبلغ حقوق روزانه اسمی را نشان می‌دهد', async ({ request }) => {
+    // مهر ماه ۳۰روزه است؛ کارکرد اسمی باید با تعداد روز واقعی دوره برابر باشد.
+    const init = await ok(await request.get(
+      `/api/pay2/attendance/init?wsId=${ctx.wsId}&periodDate=14050700`, { headers: auth }),
+      'باز کردن دوره فقط بیمه‌ای');
+    const data = await init.json();
+    const period = data.period ?? data.Period;
+    const perId = period.peR_ID ?? period.PER_ID;
+    const lines = data.lines ?? data.Lines;
+    const mine = lines.find(l => (l.emP_ID ?? l.EMP_ID) === ctx.empId);
+    expect(mine, 'پرسنل باید در کارکرد دوره باشد').toBeTruthy();
+
+    Object.assign(mine, {
+      WORK_DAYS: 30, DAYS: 30, DAYSB: 0,
+      DAYS_TOLID: 30, DAYS_EDARI: 0, DAYS_KHADAMAT: 0, DAYS_FOROSH: 0,
+      OT_NORMAL_H: 0, OT_HOLIDAY_H: 0, OT_ADMIN_H: 0,
+      LEAVE_DAYS: 0, ABSENT_DAYS: 0, MISSION_DAYS: 0, SHORTAGE_H: 0,
+      PERF_AMOUNT: 0, TRANSP_AMOUNT: 0, KASR_OTHER: 0, LOCKED: false,
+    });
+    await ok(await request.post('/api/pay2/attendance/save', {
+      headers: auth, data: { Period: period, Lines: [mine] },
+    }), 'ذخیره کارکرد فقط بیمه‌ای');
+    await ok(await request.post(`/api/pay2/attendance/close-period/${perId}`, { headers: auth }),
+      'بستن دوره فقط بیمه‌ای');
+
+    const calc = await ok(await request.post('/api/pay2/run/calculate', {
+      headers: auth, data: { WS_ID: ctx.wsId, PER_ID: perId, IsReRun: false },
+    }), 'محاسبه فقط بیمه‌ای');
+    const runId = await calc.json();
+    const payload = await (await request.get(`/api/pay2/run/${runId}/lines`, { headers: auth })).json();
+    const employeeLine = (payload.lines ?? payload.Lines ?? [])
+      .find(l => (l.emP_ID ?? l.EMP_ID) === ctx.empId);
+    expect(employeeLine, 'فیش فرد فقط بیمه‌ای باید ساخته شود').toBeTruthy();
+    expect(Number(employeeLine.worK_DAYS ?? employeeLine.WORK_DAYS)).toBe(0);
+    expect(Number(employeeLine.nominaL_DAYS ?? employeeLine.NOMINAL_DAYS)).toBe(30);
+    const details = employeeLine.details ?? employeeLine.Details ?? {};
+    expect(Number(details.BASE_SAL ?? 0), 'ستون حقوق روزانه اسمی باید مبلغ اسمی را نشان دهد')
+      .toBeGreaterThan(0);
   });
 
   test('۸) تأیید نهایی محاسبه', async ({ request }) => {
