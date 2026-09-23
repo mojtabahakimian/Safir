@@ -65,7 +65,14 @@ namespace Safir.Server.Controllers
 
             // 2. استخراج ردیف‌های اصلی فیش حقوقی
             string lineSql = @"
-                SELECT L.*, E.EMP_CODE, E.LAST_NAME + ' ' + E.FIRST_NAME AS FULL_NAME
+                SELECT L.RUN_ID, L.EMP_ID, L.WORK_DAYS,
+                       -- اجراهای موتور قدیمی (تک‌ریلی) این دو ستون را ندارند؛ همان ریل واحد را نشان بده نه صفر
+                       ISNULL(L.NOMINAL_DAYS, L.WORK_DAYS) AS NOMINAL_DAYS,
+                       L.GROSS_PAY,
+                       ISNULL(L.NOMINAL_GROSS, L.GROSS_PAY) AS NOMINAL_GROSS,
+                       L.INS_BASE, L.INS_WORKER, L.TAX_BASE, L.TAX_AMOUNT,
+                       L.LOAN_DED, L.ADVANCE_DED, L.OTHER_DED, L.TOTAL_DED, L.NET_PAY,
+                       E.EMP_CODE, E.LAST_NAME + ' ' + E.FIRST_NAME AS FULL_NAME
                 FROM PAY2_RUN_LINE L
                 INNER JOIN PAY2_EMPLOYEE E ON L.EMP_ID = E.EMP_ID
                 WHERE L.RUN_ID = @runId
@@ -75,7 +82,10 @@ namespace Safir.Server.Controllers
 
             // 3. استخراج مبالغ ریز (Details) و اتصال آن‌ها به ردیف‌ها
             string detSql = @"
-                SELECT D.EMP_ID, I.ITEM_CODE, D.AMOUNT
+                SELECT D.EMP_ID, I.ITEM_CODE,
+                       CASE WHEN I.ITEM_CODE = 'BASE_SAL'
+                            THEN ISNULL(D.NOMINAL_AMOUNT, D.AMOUNT)
+                            ELSE D.AMOUNT END AS AMOUNT
                 FROM PAY2_RUN_DETAIL D
                 INNER JOIN PAY2_ITEM_DEF I ON D.ITEM_ID = I.ITEM_ID
                 WHERE D.RUN_ID = @runId";
@@ -328,6 +338,22 @@ namespace Safir.Server.Controllers
                         throw new InvalidOperationException("دوره انتخاب‌شده به کارگاه انتخاب‌شده تعلق ندارد.");
                     if (periodStatus == 1)
                         throw new InvalidOperationException("دوره کارکرد هنوز باز است. لطفاً ابتدا در تب کارکرد، دکمه 'بستن کارکرد' را بزنید.");
+
+                    // موتور سال مالیاتی را از تنظیمات سراسری می‌خواند، نه از دوره؛ بدون این کنترل
+                    // دوره‌ی ۱۴۰۵ بی‌صدا با پلکان و معافیت سال دیگری محاسبه می‌شد.
+                    var periodDate = await conn.QuerySingleAsync<long>(
+                        "SELECT PERIOD_DATE FROM PAY2_PERIOD WHERE PER_ID = @PER_ID AND WS_ID = @WS_ID",
+                        new { request.PER_ID, request.WS_ID }, tran);
+                    var periodYear = (short)(periodDate / 10000);
+                    var configuredTaxYear = await conn.QuerySingleOrDefaultAsync<string>(
+                        "SELECT CFG_VALUE FROM PAY2_CONFIG WITH (HOLDLOCK) WHERE CFG_KEY = 'TAX_YEAR'", transaction: tran);
+                    if (!short.TryParse(configuredTaxYear, out var taxYear) || taxYear != periodYear)
+                        throw new InvalidOperationException($"سال مالیاتی تنظیمات ({configuredTaxYear ?? "نامشخص"}) با سال دوره ({periodYear}) یکسان نیست. پیش از محاسبه، تنظیمات مالیات را بررسی کنید.");
+                    var bracketCount = await conn.ExecuteScalarAsync<int>(
+                        "SELECT COUNT(*) FROM PAY2_TAX_BRACKET WITH (HOLDLOCK) WHERE TAX_YEAR = @TaxYear",
+                        new { TaxYear = periodYear }, tran);
+                    if (bracketCount == 0)
+                        throw new InvalidOperationException($"برای سال {periodYear} جدول پلکان مالیاتی ثبت نشده است. پیش از محاسبه، پله‌های مالیاتی را تنظیم کنید.");
 
                     var latestRunStatus = await conn.QuerySingleOrDefaultAsync<byte?>(
                         "SELECT STATUS FROM PAY2_RUN WITH (UPDLOCK) WHERE PER_ID = @PER_ID AND IS_LATEST = 1",

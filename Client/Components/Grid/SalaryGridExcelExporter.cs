@@ -42,7 +42,8 @@ namespace Safir.Client.Components.Grid
             {
                 new XCol { Title = "کد پرسنلی", Kind = Kind.TextSafe, Text = l => l.EMP_CODE ?? "" },
                 new XCol { Title = "نام و نام خانوادگی", Kind = Kind.Text, Text = l => l.FULL_NAME ?? "" },
-                new XCol { Title = "کارکرد", Kind = Kind.Number, Money = false, Number = l => (double)l.WORK_DAYS },
+                new XCol { Title = "کارکرد رسمی (پرداخت)", Kind = Kind.Number, Money = false, Sum = true, Number = l => (double)l.WORK_DAYS },
+                new XCol { Title = "کارکرد اسمی (بیمه)", Kind = Kind.Number, Money = false, Sum = true, Number = l => (double)l.NOMINAL_DAYS },
             };
 
             // ستون‌های پویای آیتم‌های حقوقی
@@ -64,6 +65,7 @@ namespace Safir.Client.Components.Grid
 
             // ستون‌های مبلغیِ ثابت
             cols.Add(new XCol { Title = "ناخالص حقوق", Kind = Kind.Number, Money = true, Sum = true, Number = l => l.GROSS_PAY });
+            cols.Add(new XCol { Title = "ناخالص اسمی", Kind = Kind.Number, Money = true, Sum = true, Number = l => l.NOMINAL_GROSS });
             cols.Add(new XCol { Title = "مبنای بیمه", Kind = Kind.Number, Money = true, Sum = true, Number = l => l.INS_BASE });
             cols.Add(new XCol { Title = "بیمه کارگر", Kind = Kind.Number, Money = true, Sum = true, Number = l => l.INS_WORKER });
             cols.Add(new XCol { Title = "مالیات", Kind = Kind.Number, Money = true, Sum = true, Number = l => l.TAX_AMOUNT });

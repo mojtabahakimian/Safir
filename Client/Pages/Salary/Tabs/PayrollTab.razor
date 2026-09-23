@@ -393,6 +393,10 @@
                     </div>
                 </div>
 
+                <div class="p2-text-muted" style="font-size:11px; margin:4px 0 8px;">
+                    «حقوق روزانه اسمی» مبلغ اسمی است؛ سایر اقلام و ناخالص حقوق، مبالغ پرداخت رسمی‌اند. کارکرد و ناخالص اسمی نیز جداگانه نمایش داده شده‌اند.
+                </div>
+
                 <div @key="@($"{CurrentRun?.RUN_ID}-{_dynCols.Count}")" style="height: 62vh; min-height: 380px;">
                 <SfGrid @ref="_payrollGrid"
                         TValue="ExpandoObject"
@@ -416,7 +420,8 @@
                         <!-- ۲) نام و نام خانوادگی -->
                         <GridColumn Field="FULL_NAME" HeaderText="نام و نام خانوادگی" Width="200" TextAlign="TextAlign.Right" Type="Syncfusion.Blazor.Grids.ColumnType.String" IsFrozen="true" CustomAttributes="@_attrName" />
 
-                        <GridColumn Field="WORK_DAYS" HeaderText="کارکرد" Width="100" TextAlign="TextAlign.Center" Type="Syncfusion.Blazor.Grids.ColumnType.Double" Format="0.##" AllowSearching="false" CustomAttributes="@_attrMono" />
+                        <GridColumn Field="WORK_DAYS" HeaderText="کارکرد رسمی (پرداخت)" Width="155" TextAlign="TextAlign.Center" Type="Syncfusion.Blazor.Grids.ColumnType.Double" Format="0.##" AllowSearching="false" CustomAttributes="@_attrMono" />
+                        <GridColumn Field="NOMINAL_DAYS" HeaderText="کارکرد اسمی (بیمه)" Width="155" TextAlign="TextAlign.Center" Type="Syncfusion.Blazor.Grids.ColumnType.Double" Format="0.##" AllowSearching="false" CustomAttributes="@_attrMono" />
 
                         @foreach (var dc in _dynCols)
                         {
@@ -429,6 +434,7 @@
                         }
 
                         <GridColumn Field="GROSS_PAY" HeaderText="ناخالص حقوق" Width="160" TextAlign="TextAlign.Center" Type="Syncfusion.Blazor.Grids.ColumnType.Double" Format="N0" AllowSearching="false" CustomAttributes="@_attrMono" />
+                        <GridColumn Field="NOMINAL_GROSS" HeaderText="ناخالص اسمی" Width="160" TextAlign="TextAlign.Center" Type="Syncfusion.Blazor.Grids.ColumnType.Double" Format="N0" AllowSearching="false" CustomAttributes="@_attrMono" />
 
                         <GridColumn Field="INS_BASE" HeaderText="مبنای بیمه" Width="160" TextAlign="TextAlign.Center" Type="Syncfusion.Blazor.Grids.ColumnType.Double" Format="N0" AllowSearching="false" CustomAttributes="@_attrInsBase" />
 
@@ -445,7 +451,7 @@
                             </Template>
                         </GridColumn>
 
-                        <GridColumn HeaderText="عملیات" Width="190" TextAlign="TextAlign.Center" AllowSorting="false" AllowSearching="false" AllowFiltering="false" AllowResizing="false">
+                        <GridColumn HeaderText="عملیات" Width="150" TextAlign="TextAlign.Center" AllowSorting="false" AllowSearching="false" AllowFiltering="false" AllowResizing="false">
                             <Template>
                                 @{
                                     var r = (IDictionary<string, object>)context;
@@ -453,11 +459,8 @@
                                     var empName = r["FULL_NAME"]?.ToString() ?? "";
                                 }
                                 <div style="display:flex; gap:8px; justify-content:center; align-items:center;">
-                                    <button class="btn-outline-pay2 p2-btn-sm" style="padding:4px 8px; font-size:11px;" @onclick="() => OpenPayslip(empId, empName, false)" title="چاپ فیش اسمی (واقعی)">
-                                        <i class="bi bi-printer"></i> اسمی
-                                    </button>
-                                    <button class="btn-outline-pay2 p2-btn-sm" style="padding:4px 8px; font-size:11px;" @onclick="() => OpenPayslip(empId, empName, true)" title="چاپ فیش رسمی">
-                                        <i class="bi bi-printer"></i> رسمی
+                                    <button class="btn-outline-pay2 p2-btn-sm" style="padding:4px 8px; font-size:11px;" @onclick="() => OpenPayslip(empId, empName)" disabled="@(CurrentRun?.STATUS < 2)" title="@(CurrentRun?.STATUS < 2 ? "پس از تأیید نهایی، فیش قابل چاپ است" : "چاپ فیش پرداخت رسمی")">
+                                        <i class="bi bi-printer"></i> فیش پرداخت
                                     </button>
                                 </div>
                             </Template>
@@ -478,6 +481,12 @@
                                         <span class="p2-text-mono">@a.Sum</span>
                                     </FooterTemplate>
                                 </GridAggregateColumn>
+                                <GridAggregateColumn Field="NOMINAL_DAYS" Type="Syncfusion.Blazor.Grids.AggregateType.Sum" Format="N0">
+                                    <FooterTemplate>
+                                        @{ var a = (Syncfusion.Blazor.Grids.AggregateTemplateContext)context; }
+                                        <span class="p2-text-mono">@a.Sum</span>
+                                    </FooterTemplate>
+                                </GridAggregateColumn>
                                 @foreach (var dc in _dynCols)
                                 {
                                     <GridAggregateColumn Field="@dc.Field" Type="Syncfusion.Blazor.Grids.AggregateType.Sum" Format="N0">
@@ -488,6 +497,12 @@
                                     </GridAggregateColumn>
                                 }
                                 <GridAggregateColumn Field="GROSS_PAY" Type="Syncfusion.Blazor.Grids.AggregateType.Sum" Format="N0">
+                                    <FooterTemplate>
+                                        @{ var a = (Syncfusion.Blazor.Grids.AggregateTemplateContext)context; }
+                                        <span class="p2-text-mono">@a.Sum</span>
+                                    </FooterTemplate>
+                                </GridAggregateColumn>
+                                <GridAggregateColumn Field="NOMINAL_GROSS" Type="Syncfusion.Blazor.Grids.AggregateType.Sum" Format="N0">
                                     <FooterTemplate>
                                         @{ var a = (Syncfusion.Blazor.Grids.AggregateTemplateContext)context; }
                                         <span class="p2-text-mono">@a.Sum</span>
@@ -776,11 +791,13 @@
             row["EMP_CODE"] = l.EMP_CODE ?? "";
             row["FULL_NAME"] = l.FULL_NAME ?? "";
             row["WORK_DAYS"] = (double)l.WORK_DAYS;
+            row["NOMINAL_DAYS"] = (double)l.NOMINAL_DAYS;
             
             foreach (var c in cols)
                 row[codeToField[c.ITEM_CODE]] = (double)(l.Details != null && l.Details.TryGetValue(c.ITEM_CODE, out var dv) ? dv : 0L);
             
             row["GROSS_PAY"] = (double)l.GROSS_PAY;
+            row["NOMINAL_GROSS"] = (double)l.NOMINAL_GROSS;
             row["INS_BASE"] = (double)l.INS_BASE;
             row["INS_WORKER"] = (double)l.INS_WORKER;
             row["TAX_AMOUNT"] = (double)l.TAX_AMOUNT;
@@ -1148,17 +1165,15 @@
     }
 
     // باز کردن پیش‌نمایش/چاپ فیش حقوقی پرسنل در نمایشگر داخلی مرورگر (Blob URL + iframe)
-    void OpenPayslip(int empId, string fullName, bool isOfficial = false)
+    void OpenPayslip(int empId, string fullName)
     {
         if (CurrentRun == null) return;
 
         int runId = CurrentRun.RUN_ID;
-        string slipType = isOfficial ? "(رسمی)" : "(اسمی)";
-
         var parameters = new MudBlazor.DialogParameters
         {
-            ["Title"] = $"فیش حقوقی {slipType} - {fullName}",
-            ["FetchPdfBytes"] = (Func<Task<byte[]>>)(() => RunApi.GetPayslipPdfAsync(runId, empId, isOfficial))
+            ["Title"] = $"فیش پرداخت رسمی - {fullName}",
+            ["FetchPdfBytes"] = (Func<Task<byte[]>>)(() => RunApi.GetPayslipPdfAsync(runId, empId))
         };
 
         var options = new MudBlazor.DialogOptions

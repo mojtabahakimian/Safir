@@ -6,6 +6,12 @@
       "runtimeExecutable": "dotnet",
       "runtimeArgs": ["run", "--project", "Server", "--urls", "http://localhost:5170"],
       "port": 5170
+    },
+    {
+      "name": "safir-ux-test",
+      "runtimeExecutable": "dotnet",
+      "runtimeArgs": ["Server/bin/Release/net8.0/Safir.Server.dll", "--contentRoot", "E:\\prg\\Blazor WebAssembly\\Safir\\Server", "--environment", "Development", "--urls", "http://localhost:5171", "--ConnectionStrings:DefaultConnection=Data Source=MERCEDES\\SQL2022;Initial Catalog=YAZDSEPAR1405_07_01;Integrated Security=True;TrustServerCertificate=True;"],
+      "port": 5171
     }
   ]
 }

@@ -84,8 +84,10 @@
         public string? EMP_CODE { get; set; }
         public string? FULL_NAME { get; set; }
         public decimal WORK_DAYS { get; set; }
+        public decimal NOMINAL_DAYS { get; set; }
 
         public long GROSS_PAY { get; set; }
+        public long NOMINAL_GROSS { get; set; }
         public long INS_BASE { get; set; }
         public long INS_WORKER { get; set; }
         public long TAX_BASE { get; set; }

@@ -610,7 +610,7 @@ namespace Dbf
 
             foreach (var item in attributes.First())
             {
-                mapping.Add(new ObjectToDbfTypeMap<Dictionary<string, object>>(columns[counter], d => d[item.Key]));
+                mapping.Add(new ObjectToDbfTypeMap<Dictionary<string, object>>(columns[counter++], d => d[item.Key]));
             }
 
             Write(dbfFileName, attributes, mapping, encoding, overwirte);
