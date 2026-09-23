@@ -44,113 +44,100 @@ namespace Safir.Server.Services
             ValidateInsuranceIdentities(lines);
 
             // ─── آماده‌سازی لیست‌های DBF ───
-            var dskworList = new List<Dictionary<string, object>>();
+            // ساختار (نام، ترتیب و طول ستون‌ها) و مقادیر ثابت، مو‌به‌مو مطابق دیسکتی است که نرم‌افزار دیگرِ
+            // همین کارگاه برای تیر ۱۴۰۵ ساخته و سامانه‌ی تأمین اجتماعی پذیرفته است: همه‌ی ستون‌ها متنی،
+            // متن فارسی با انکدینگ ایران‌سیستم، سنوات روزانه داخل DSW_ROOZ و حق تأهل داخل DSW_MAZ
+            // (ستون جدای سنوات/تأهل ندارد)، سهم کارفرما در DSK_TKOSO و بیکاری در DSK_BIC.
+            var wor = NewDbfTable(WorLayout);
 
             long totalDailyWage = 0, totalMonthlyWage = 0, totalOtherBenefits = 0;
             long totalMash = 0, totalTotl = 0, totalWorkerIns = 0;
-            long totalMarital = 0, totalSeniority = 0;
 
             foreach (var line in lines)
             {
-                int empId = (int)line.EMP_ID;
                 decimal workDays = (decimal)line.INSURANCE_DAYS;
                 long baseMonthly = (long)line.BASE_WAGE_MONTHLY;
                 long seniorityMonthly = (long)line.SENIORITY_MONTHLY;
                 long dailyWage = workDays > 0 ? (long)Math.Round(baseMonthly / workDays, MidpointRounding.AwayFromZero) : 0;
                 long seniorityBase = workDays > 0 ? (long)Math.Round(seniorityMonthly / workDays, MidpointRounding.AwayFromZero) : 0;
                 long monthlyWage = (long)Math.Round((dailyWage + seniorityBase) * workDays, MidpointRounding.AwayFromZero);
-                long maritalAllowance = (long)line.MARITAL_ALLOWANCE;
-                long otherBenefits = (long)line.DBF_GENERAL_BENEFITS;
+                long benefits = (long)line.DBF_GENERAL_BENEFITS + (long)line.MARITAL_ALLOWANCE;
                 long insBase = (long)line.INS_BASE;
                 long grossPay = (long)line.NOMINAL_GROSS;
                 long workerIns = (long)line.INS_WORKER;
 
                 // جمع‌زن‌ها برای هدر کارگاه
-                totalDailyWage += dailyWage;
+                totalDailyWage += dailyWage + seniorityBase;
                 totalMonthlyWage += monthlyWage;
-                totalOtherBenefits += otherBenefits;
+                totalOtherBenefits += benefits;
                 totalMash += insBase;
                 totalTotl += grossPay;
                 totalWorkerIns += workerIns;
-                totalMarital += maritalAllowance;
-                totalSeniority += seniorityBase;
 
-                // ساخت یک رکورد کارمند
-                var wor = new Dictionary<string, object>
-                {
-                    ["DSW_ID"] = wsCode,
-                    ["DSW_YY"] = year % 100, // دو رقم آخر سال
-                    ["DSW_MM"] = month,
-                    ["DSW_LISTNO"] = "01",
-                    ["DSW_ID1"] = PadInsuranceCode(line.INS_CODE?.ToString()),
-                    ["DSW_FNAME"] = line.FIRST_NAME?.ToString() ?? "",
-                    ["DSW_LNAME"] = line.LAST_NAME?.ToString() ?? "",
-                    ["DSW_DNAME"] = line.FATHER_NAME?.ToString() ?? "",
-                    ["DSW_IDNO"] = line.ID_NUMBER?.ToString() ?? "",
-                    ["DSW_IDPLC"] = line.BIRTH_PLACE?.ToString() ?? "",
-                    ["DSW_IDATE"] = "", // خالی 
-                    ["DSW_BDATE"] = line.BIRTH_DATE != null ? line.BIRTH_DATE.ToString() : "",
-                    ["DSW_SEX"] = (byte)line.GENDER == 1 ? "مرد" : "زن",
-                    ["DSW_NAT"] = (byte)line.NATIONALITY == 1 ? "ایران" : "اتباع",
-                    ["DSW_OCP"] = line.JOB_CODE.ToString(),
-                    ["DSW_SDATE"] = DateInOccurrenceMonth(line.HIRE_DATE, periodDate),
-                    ["DSW_EDATE"] = DateInOccurrenceMonth(line.FIRE_DATE, periodDate),
-                    ["DSW_DD"] = (int)workDays,
-                    ["DSW_ROOZ"] = dailyWage,
-                    ["DSW_MAH"] = monthlyWage,
-                    ["DSW_MAZ"] = otherBenefits,
-                    ["DSW_MASH"] = insBase,
-                    ["DSW_TOTL"] = grossPay,
-                    ["DSW_BIME"] = workerIns,
-                    ["DSW_PRATE"] = 0,
-                    ["DSW_JOB"] = "1",
-                    ["PER_NATCOD"] = line.NATIONAL_CODE?.ToString() ?? "",
-                    ["DSW_INC"] = seniorityBase, // پایه سنوات (قانون ۱۴۰۵)
-                    ["DSW_SPOUS"] = maritalAllowance.ToString() // حق تاهل (در فرمت بیمه String است)
-                };
-                dskworList.Add(wor);
+                AddDbfRow(wor, $"پرسنل کد {line.EMP_CODE}",
+                    wsCode,                                            // DSW_ID
+                    (year % 100).ToString("00"),                       // DSW_YY
+                    month.ToString(),                                  // DSW_MM
+                    "01",                                              // DSW_LISTNO
+                    CleanInsuranceCode(line.INS_CODE?.ToString()),     // DSW_ID1
+                    line.FIRST_NAME?.ToString() ?? "",                 // DSW_FNAME
+                    line.LAST_NAME?.ToString() ?? "",                  // DSW_LNAME
+                    line.FATHER_NAME?.ToString() ?? "",                // DSW_DNAME
+                    line.ID_NUMBER?.ToString() ?? "",                  // DSW_IDNO
+                    line.BIRTH_PLACE?.ToString() ?? "",                // DSW_IDPLC
+                    "0",                                               // DSW_IDATE
+                    line.BIRTH_DATE?.ToString() ?? "",                 // DSW_BDATE
+                    (byte)line.GENDER == 1 ? "مرد" : "زن",             // DSW_SEX
+                    (byte)line.NATIONALITY == 1 ? "ایرانی" : "اتباع",   // DSW_NAT
+                    line.JOB_NAME?.ToString() ?? "",                   // DSW_OCP  (عنوان شغل)
+                    DateInOccurrenceMonth(line.HIRE_DATE, periodDate), // DSW_SDATE
+                    DateInOccurrenceMonth(line.FIRE_DATE, periodDate), // DSW_EDATE
+                    ((int)workDays).ToString(),                        // DSW_DD
+                    (dailyWage + seniorityBase).ToString(),            // DSW_ROOZ (پایه + سنوات روزانه)
+                    monthlyWage.ToString(),                            // DSW_MAH
+                    benefits.ToString(),                               // DSW_MAZ  (مزایای مشمول + حق تأهل)
+                    insBase.ToString(),                                // DSW_MASH
+                    grossPay.ToString(),                               // DSW_TOTL
+                    workerIns.ToString(),                              // DSW_BIME
+                    "0",                                               // DSW_PRATE
+                    line.JOB_CODE?.ToString() ?? "",                   // DSW_JOB  (کد شغل)
+                    line.NATIONAL_CODE?.ToString() ?? "");             // PER_NATCOD
             }
 
-            if (dskworList.Count != lines.Count)
+            if (wor.Rows.Count != lines.Count)
                 throw new InvalidOperationException("فایل بیمه قابل تولید نیست: تعداد رکوردهای DSKWOR با پرسنل واجد شرایط تراز نیست.");
 
             // اجزای حق بیمه دقیقاً از Snapshot همان Run خوانده می‌شوند.
             long totalKarf = lines.Sum(l => (long)l.INS_EMPLOYER_BASE);
             long totalBikari = lines.Sum(l => (long)l.INS_UNEMPLOYMENT);
 
-            var dskkarList = new List<Dictionary<string, object>>();
-            var kar = new Dictionary<string, object>
-            {
-                ["DSK_ID"] = wsCode,
-                ["DSK_NAME"] = head.WS_NAME?.ToString() ?? "",
-                ["DSK_FARM"] = head.EMPLOYER_NAME?.ToString() ?? "",
-                ["DSK_ADRS"] = head.ADDRESS?.ToString() ?? "",
-                ["DSK_KIND"] = 1,
-                ["DSK_YY"] = year % 100,
-                ["DSK_MM"] = month,
-                ["DSK_LISTNO"] = "01",
-                ["DSK_DISC"] = "تولید شده توسط سیستم سفیر",
-                ["DSK_NUM"] = lines.Count,
-                ["DSK_TDD"] = (int)lines.Sum(x => (decimal)x.INSURANCE_DAYS),
-                ["DSK_TROOZ"] = totalDailyWage,
-                ["DSK_TMAH"] = totalMonthlyWage,
-                ["DSK_TMAZ"] = totalOtherBenefits,
-                ["DSK_TMASH"] = totalMash,
-                ["DSK_TTOTL"] = totalTotl,
-                ["DSK_TBIME"] = totalWorkerIns,
-                ["DSK_TKARF"] = totalKarf,
-                ["DSK_TBIC"] = totalBikari,
-                ["DSK_RATE"] = 30,
-                ["DSK_PRATE"] = 0,
-                ["DSK_BIMH"] = 0, // مشاغل سخت و زیان‌آور (اگر نیاز بود بعداً افزوده شود)
-                ["MON_PYM"] = "000",
-                ["DSK_INC"] = totalSeniority,
-                ["DSK_SPOUS"] = totalMarital.ToString()
-            };
-            dskkarList.Add(kar);
+            var kar = NewDbfTable(KarLayout);
+            AddDbfRow(kar, "کارگاه",
+                wsCode,                                                 // DSK_ID
+                head.WS_NAME?.ToString() ?? "",                         // DSK_NAME
+                head.EMPLOYER_NAME?.ToString() ?? "",                   // DSK_FARM
+                head.ADDRESS?.ToString() ?? "",                         // DSK_ADRS
+                "0",                                                    // DSK_KIND
+                (year % 100).ToString("00"),                            // DSK_YY
+                month.ToString(),                                       // DSK_MM
+                "01",                                                   // DSK_LISTNO
+                "",                                                     // DSK_DISC
+                lines.Count.ToString(),                                 // DSK_NUM
+                ((int)lines.Sum(x => (decimal)x.INSURANCE_DAYS)).ToString(), // DSK_TDD
+                totalDailyWage.ToString(),                              // DSK_TROOZ
+                totalMonthlyWage.ToString(),                            // DSK_TMAH
+                totalOtherBenefits.ToString(),                          // DSK_TMAZ
+                totalMash.ToString(),                                   // DSK_TMASH
+                totalTotl.ToString(),                                   // DSK_TTOTL
+                totalWorkerIns.ToString(),                              // DSK_TBIME
+                totalKarf.ToString(),                                   // DSK_TKOSO (سهم کارفرما)
+                totalBikari.ToString(),                                 // DSK_BIC   (بیمه بیکاری)
+                "23",                                                   // DSK_RATE  (۲۰٪ کارفرما + ۳٪ بیکاری)
+                "0",                                                    // DSK_PRATE
+                "0",                                                    // DSK_BIMH
+                "0");                                                   // MON_PYM
 
             // ─── تولید فایل‌های DBF و زیپ کردن ───
-            // استفاده از انکودینگ ویندوز 1256 (رایج‌ترین فرمت برای پورتال جدید بیمه)
             Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
             var encoding = Encoding.GetEncoding(1256);
 
@@ -162,9 +149,8 @@ namespace Safir.Server.Services
 
             try
             {
-                // استفاده از هلپر DbfFile که در پروژه شما وجود دارد
-                DbfFile.Write(pathKar, dskkarList, encoding, overwirte: true);
-                DbfFile.Write(pathWor, dskworList, encoding, overwirte: true);
+                DbfFile.Write(pathKar, kar, encoding, overwrite: true, useIranSystemEncoding: true);
+                DbfFile.Write(pathWor, wor, encoding, overwrite: true, useIranSystemEncoding: true);
 
                 using var memoryStream = new MemoryStream();
                 using (var archive = new ZipArchive(memoryStream, ZipArchiveMode.Create, true))
@@ -183,13 +169,67 @@ namespace Safir.Server.Services
             }
         }
 
-        // شماره بیمه در تامین اجتماعی باید دقیقاً ۱۰ کاراکتر باشد و معمولاً با صفرهای پیشرو پر می‌شود
-        private static string PadInsuranceCode(string? code)
+        // طول هر ستون (همه از نوع C) عیناً از دیسکت پذیرفته‌شده‌ی تیر ۱۴۰۵ همین کارگاه
+        public static readonly (string Name, int Length)[] KarLayout =
         {
-            if (string.IsNullOrWhiteSpace(code))
-                throw new InvalidOperationException("شماره بیمه خالی است و جایگزینی با شماره ساختگی مجاز نیست.");
-            return code.Trim().PadLeft(10, '0');
+            ("DSK_ID", 10), ("DSK_NAME", 100), ("DSK_FARM", 100), ("DSK_ADRS", 100), ("DSK_KIND", 1),
+            ("DSK_YY", 2), ("DSK_MM", 2), ("DSK_LISTNO", 12), ("DSK_DISC", 100), ("DSK_NUM", 5),
+            ("DSK_TDD", 6), ("DSK_TROOZ", 12), ("DSK_TMAH", 12), ("DSK_TMAZ", 12), ("DSK_TMASH", 12),
+            ("DSK_TTOTL", 12), ("DSK_TBIME", 12), ("DSK_TKOSO", 12), ("DSK_BIC", 12), ("DSK_RATE", 12),
+            ("DSK_PRATE", 2), ("DSK_BIMH", 12), ("MON_PYM", 3),
+        };
+
+        public static readonly (string Name, int Length)[] WorLayout =
+        {
+            ("DSW_ID", 10), ("DSW_YY", 2), ("DSW_MM", 2), ("DSW_LISTNO", 12), ("DSW_ID1", 10),
+            ("DSW_FNAME", 100), ("DSW_LNAME", 100), ("DSW_DNAME", 100), ("DSW_IDNO", 15), ("DSW_IDPLC", 100),
+            ("DSW_IDATE", 8), ("DSW_BDATE", 8), ("DSW_SEX", 3), ("DSW_NAT", 10), ("DSW_OCP", 100),
+            ("DSW_SDATE", 8), ("DSW_EDATE", 8), ("DSW_DD", 2), ("DSW_ROOZ", 12), ("DSW_MAH", 12),
+            ("DSW_MAZ", 12), ("DSW_MASH", 12), ("DSW_TOTL", 12), ("DSW_BIME", 12), ("DSW_PRATE", 2),
+            ("DSW_JOB", 6), ("PER_NATCOD", 10),
+        };
+
+        public static DataTable NewDbfTable((string Name, int Length)[] layout)
+        {
+            var table = new DataTable();
+            foreach (var (name, length) in layout)
+                table.Columns.Add(new DataColumn(name, typeof(string)) { MaxLength = length });
+            return table;
         }
+
+        // متن آزاد اگر از طول ستون بیشتر شد بریده می‌شود (مثل خروجی قبلی)؛ شناسه و مبلغ بریده نمی‌شود،
+        // چون عدد یا کد بریده‌شده فایل قانونی را بی‌صدا غلط می‌کند — به‌جایش خطای روشن فارسی.
+        private static readonly HashSet<string> TruncatableDbfFields = new()
+        {
+            "DSK_NAME", "DSK_FARM", "DSK_ADRS", "DSK_DISC",
+            "DSW_FNAME", "DSW_LNAME", "DSW_DNAME", "DSW_IDPLC", "DSW_OCP",
+        };
+
+        public static void AddDbfRow(DataTable table, string owner, params string[] values)
+        {
+            for (int i = 0; i < values.Length; i++)
+            {
+                var column = table.Columns[i];
+                if (values[i].Length <= column.MaxLength) continue;
+                if (!TruncatableDbfFields.Contains(column.ColumnName))
+                    throw new InvalidOperationException(
+                        $"فایل بیمه قابل تولید نیست: مقدار «{values[i]}» برای ستون {column.ColumnName} ({owner}) از {column.MaxLength} کاراکتر مجاز بیشتر است.");
+                values[i] = values[i][..column.MaxLength];
+            }
+            table.Rows.Add(values);
+        }
+
+        // شماره بیمه همان‌طور که هست (بدون صفر پیشرو) — دیسکت پذیرفته‌شده هم «80277820» دارد نه «0080277820»
+        private static string CleanInsuranceCode(string? code)
+        {
+            if (IsMissingInsuranceCode(code))
+                throw new InvalidOperationException("شماره بیمه خالی است و جایگزینی با شماره ساختگی مجاز نیست.");
+            return code!.Trim();
+        }
+
+        // «0» (یا هر تعداد صفر) همان خالی است: در فایل به 0000000000 تبدیل می‌شد و سامانه‌ی تأمین اجتماعی ردش می‌کرد.
+        public static bool IsMissingInsuranceCode(string? code) =>
+            string.IsNullOrWhiteSpace(code) || code.Trim().All(c => c == '0');
 
         // متد جدید: پیش‌نمایش دیسکت (DBF) به صورت JSON
         public async Task<DiskettePreviewDto?> GetInsuranceDiskettePreviewAsync(int runId)
@@ -243,7 +283,7 @@ namespace Safir.Server.Services
 
                 result.WorList.Add(new DisketteWorDto
                 {
-                    DSW_ID1 = PadInsuranceCode(insCodeStr),
+                    DSW_ID1 = CleanInsuranceCode(insCodeStr),
                     FULL_NAME = $"{line.LAST_NAME} {line.FIRST_NAME}",
                     PER_NATCOD = line.NATIONAL_CODE?.ToString() ?? "",
                     DSW_OCP = line.JOB_CODE.ToString(),
@@ -598,8 +638,8 @@ namespace Safir.Server.Services
             foreach (var line in lines)
             {
                 string employee = $"EMP_ID={(int)line.EMP_ID}، EMP_CODE={line.EMP_CODE?.ToString() ?? "-"}";
-                if (string.IsNullOrWhiteSpace(line.INS_CODE?.ToString()))
-                    throw new InvalidOperationException($"فایل بیمه قابل تولید نیست: شماره بیمه پرسنل {employee} خالی است.");
+                if (IsMissingInsuranceCode(line.INS_CODE?.ToString()))
+                    throw new InvalidOperationException($"فایل بیمه قابل تولید نیست: شماره بیمه پرسنل {employee} خالی یا صفر است. اگر این پرسنل بیمه نمی‌شود، در پرونده‌اش «نوع بیمه» را «معاف از بیمه» بگذارید.");
                 if (string.IsNullOrWhiteSpace(line.FIRST_NAME?.ToString()) || string.IsNullOrWhiteSpace(line.LAST_NAME?.ToString()))
                     throw new InvalidOperationException($"فایل بیمه قابل تولید نیست: نام یا نام خانوادگی پرسنل {employee} خالی است.");
                 if (string.IsNullOrWhiteSpace(line.JOB_CODE?.ToString()))
