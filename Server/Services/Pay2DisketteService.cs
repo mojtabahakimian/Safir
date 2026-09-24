@@ -219,12 +219,12 @@ namespace Safir.Server.Services
             table.Rows.Add(values);
         }
 
-        // شماره بیمه همان‌طور که هست (بدون صفر پیشرو) — دیسکت پذیرفته‌شده هم «80277820» دارد نه «0080277820»
-        private static string CleanInsuranceCode(string? code)
+        // شماره بیمه بدون صفر پیشرو، حتی اگر در پرونده با صفر ثبت شده باشد — دیسکت پذیرفته‌شده هم «80277820» دارد نه «0080277820»
+        public static string CleanInsuranceCode(string? code)
         {
             if (IsMissingInsuranceCode(code))
                 throw new InvalidOperationException("شماره بیمه خالی است و جایگزینی با شماره ساختگی مجاز نیست.");
-            return code!.Trim();
+            return code!.Trim().TrimStart('0');
         }
 
         // «0» (یا هر تعداد صفر) همان خالی است: در فایل به 0000000000 تبدیل می‌شد و سامانه‌ی تأمین اجتماعی ردش می‌کرد.
