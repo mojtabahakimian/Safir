@@ -33,6 +33,18 @@ test.beforeEach(async ({ request }) => {
   test.skip(!workshopName, 'کارگاه آزمون زنجیره نیست — اول 03-payroll-chain.spec.js را اجرا کنید.');
 });
 
+// محیط تست (برخلاف بیلد صاحب پروژه در Visual Studio و publish) لایسنس Syncfusion
+// ندارد. با EnableVirtualization پنجره‌ی «Claim your FREE account» روی صفحه می‌آید و
+// جلوی کلیک را می‌گیرد؛ این فقط مشکل محیط است، پس هر بار ظاهر شد برداشته می‌شود.
+test.beforeEach(async ({ page }) => {
+  await page.addLocatorHandler(page.getByText('Claim your FREE account').first(), async () => {
+    await page.evaluate(() => {
+      for (const el of document.querySelectorAll('body > div'))
+        if (/Claim your|trial version of Syncfusion/i.test(el.innerText || '') && !el.querySelector('.e-grid')) el.remove();
+    });
+  });
+});
+
 async function openPeriod(page, periodLabel) {
   await uiLogin(page, 'admin');
   await page.goto('/salary/manage', { waitUntil: 'networkidle' });
@@ -83,4 +95,44 @@ test('تأییدشده: یک دکمه‌ی «فیش پرداخت» فعال که
 
   await slip.click();
   await expect(page.locator('.mud-dialog').getByText(/فیش پرداخت رسمی -/)).toBeVisible();
+});
+
+// گزارش کاربر: با تعداد زیاد پرسنل، باز شدن فیلتر (آیکون قیف) کند و با پرش بود.
+// علت: گرید همه‌ی ردیف‌ها را یک‌جا رندر می‌کرد (۸۰۰ نفر → ۸۰۰ ردیف × ده‌ها ستون)
+// و باز شدن فیلتر کل آن را دوباره می‌ساخت؛ ۲۳ ثانیه برای ۸۰۰ نفر اندازه‌گیری شد.
+// با EnableVirtualization فقط ردیف‌های داخل دید ساخته می‌شوند (۲٫۲ ثانیه).
+// زمان را مستقیم نمی‌سنجیم (وابسته به ماشین است)؛ تعداد ردیفِ رندرشده قطعی است.
+test('۸۰۰ پرسنل: گرید فقط ردیف‌های داخل دید را می‌سازد و فیلتر نام کار می‌کند', async ({ page }) => {
+  const N = 800;
+  // پنجره‌ی فیلتر اکسل بلند است؛ در ارتفاع پیش‌فرض ۷۲۰ دکمه‌ی «اعمال» بیرون از دید می‌افتد
+  await page.setViewportSize({ width: 1440, height: 1100 });
+  await page.route(/\/api\/pay2\/run\/\d+\/lines/, async route => {
+    const res = await route.fetch();
+    const body = await res.json();
+    const key = body.lines ? 'lines' : 'Lines';
+    const src = body[key];
+    body[key] = Array.from({ length: N }, (_, i) => {
+      const c = JSON.parse(JSON.stringify(src[i % src.length]));
+      for (const k of Object.keys(c)) {
+        if (/^emp_id$/i.test(k)) c[k] = 100000 + i;
+        if (/^emp_code$/i.test(k)) c[k] = String(100000 + i);
+        if (/^full_name$/i.test(k)) c[k] = `پرسنل نمونه ${i}`;
+      }
+      return c;
+    });
+    await route.fulfill({ response: res, json: body });
+  });
+  await openPeriod(page, '1405 - 06 - شهریور');
+  await expect(page.getByText(`${N} پرسنل`).first()).toBeVisible();
+
+  const rendered = await page.locator('.e-row').count();
+  expect(rendered, 'ردیف‌ها باید مجازی باشند، نه همه‌ی ۸۰۰ تا').toBeLessThan(100);
+
+  await page.locator('.e-headercell').filter({ hasText: 'نام و نام خانوادگی' }).locator('.e-filtermenudiv').click();
+  const dlg = page.locator('.e-excelfilter');
+  await dlg.locator('input.e-searchinput').fill('نمونه 777');
+  await expect(dlg.locator('.e-checkbox-wrapper', { hasText: 'پرسنل نمونه 777' })).toBeVisible();
+  await dlg.getByRole('button', { name: /اعمال فیلتر|تأیید/ }).first().click();
+  await expect(page.locator('.e-row')).toHaveCount(1);
+  await expect(page.locator('.e-row').first()).toContainText('پرسنل نمونه 777');
 });
