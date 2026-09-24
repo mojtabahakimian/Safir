@@ -398,6 +398,8 @@
                 </div>
 
                 <div @key="@($"{CurrentRun?.RUN_ID}-{_dynCols.Count}")" style="height: 62vh; min-height: 380px;">
+                @* EnableVirtualization: فقط ردیف‌های داخل دید ساخته می‌شوند. بدون آن، با ۸۰۰ پرسنل
+                   باز شدن فیلتر ستون ۲۳ ثانیه طول می‌کشید چون کل ردیف‌ها دوباره رندر می‌شد. *@
                 <SfGrid @ref="_payrollGrid"
                         TValue="ExpandoObject"
                         DataSource="@_gridData"
@@ -405,6 +407,7 @@
                         AllowResizing="true"
                         AllowFiltering="true"
                         AllowTextWrap="false"
+                        EnableVirtualization="true"
                         RowHeight="48"
                         EnableHover="true"
                         EnableRtl="true"
