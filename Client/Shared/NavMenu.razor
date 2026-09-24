@@ -12,194 +12,200 @@
 @inject ConnectionManagerService ConnectionManager
 @inject ClientAppSettingsService ClientAppSettings
 
-<MudNavMenu>
+<div class="safir-nav">
     @if (activeDbSettings != null)
     {
-        <MudAlert Severity="Severity.Info" Class="ma-2 text-center" Style="font-size: 0.8rem; padding: 4px;">
-            @if (activeSazmanSettings != null)
-            {
-                <MudText Typo="Typo.caption" Style="display:block; font-weight: bold;">@activeSazmanSettings.NAME (@activeSazmanSettings.YEA)</MudText>
-            }
-            <MudText Typo="Typo.caption" Style="display:block;">سرور: @activeDbSettings.Server</MudText>
-            <MudText Typo="Typo.caption" Style="display:block;">دیتابیس: @activeDbSettings.Database</MudText>
-        </MudAlert>
+        <div class="safir-nav-workspace" title="@($"سرور: {activeDbSettings.Server} — دیتابیس: {activeDbSettings.Database}")">
+            <div class="safir-nav-workspace-icon"><i class="bi bi-building"></i></div>
+            <div class="safir-nav-workspace-text">
+                @if (activeSazmanSettings != null)
+                {
+                    <div class="safir-nav-workspace-name">@activeSazmanSettings.NAME</div>
+                    <div class="safir-nav-workspace-meta">سال مالی @activeSazmanSettings.YEA · @activeDbSettings.Database</div>
+                }
+                else
+                {
+                    <div class="safir-nav-workspace-name">@activeDbSettings.Database</div>
+                    <div class="safir-nav-workspace-meta">@activeDbSettings.Server</div>
+                }
+            </div>
+        </div>
     }
 
-    <!-- صفحه اصلی -->
-    <MudNavLink Href="/" Match="NavLinkMatch.All" Icon="@Icons.Material.Filled.Home">
-        صفحه اصلی
-    </MudNavLink>
+    <MudNavMenu>
+        <MudNavLink Href="/" Match="NavLinkMatch.All" Icon="@Icons.Material.Filled.Home">
+            صفحه اصلی
+        </MudNavLink>
 
-    <AuthorizeView>
-        <Authorized>
-            <!-- ثبت سفارش -->
-            @if (_isCustomerSelected)
-            {
-                <MudNavLink Href="item-groups" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.ShoppingCart">
-                    ثبت سفارش
+        <AuthorizeView>
+            <Authorized>
+                <div class="safir-nav-section">فروش و مشتریان</div>
+
+                @if (_isCustomerSelected)
+                {
+                    <MudNavLink Href="item-groups" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.ShoppingCart">
+                        ثبت سفارش
+                    </MudNavLink>
+                }
+
+                <MudNavLink Href="visitor-customers" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.List">
+                    لیست مشتریان
                 </MudNavLink>
-            }
 
-            <!-- مشاهده لیست مشتریان -->
-            <MudNavLink Href="visitor-customers" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.List">
-                مشاهده لیست مشتریان
-            </MudNavLink>
-
-            <!-- اتوماسیون -->
-            <MudNavLink Href="/automation/tasks" Icon="@Icons.Material.Filled.Assignment">کارتابل اتوماسیون</MudNavLink>
-
-            <!-- مدیریت ارتباط با مشتریان (CRM) -->
-            <MudNavGroup Title="مدیریت مشتریان (CRM)" Icon="@Icons.Material.Filled.SupportAgent" Expanded="false">
-                <MudNavLink Href="/crm" Match="NavLinkMatch.All" Icon="@Icons.Material.Filled.PeopleAlt">
-                    مدیریت و پیگیری‌ها
+                <MudNavLink Href="customer-define" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.PersonAdd">
+                    تعریف مشتری جدید
                 </MudNavLink>
-                <MudNavLink Href="/crm/dashboard" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.Analytics">
-                    داشبورد آماری
+
+                <MudNavGroup Title="مدیریت مشتریان (CRM)" Icon="@Icons.Material.Filled.SupportAgent" Expanded="false">
+                    <MudNavLink Href="/crm" Match="NavLinkMatch.All" Icon="@Icons.Material.Filled.PeopleAlt">
+                        مدیریت و پیگیری‌ها
+                    </MudNavLink>
+                    <MudNavLink Href="/crm/dashboard" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.Analytics">
+                        داشبورد آماری
+                    </MudNavLink>
+                    <MudNavLink Href="/crm/phonebook" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.ContactPhone">
+                        دفترچه تلفن
+                    </MudNavLink>
+                </MudNavGroup>
+
+                <div class="safir-nav-section">حقوق و دستمزد</div>
+
+                <MudNavLink Href="salary/manage" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.AccountBalanceWallet">
+                    حقوق و دستمزد
                 </MudNavLink>
-                <MudNavLink Href="/crm/phonebook" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.ContactPhone">
-                    دفترچه تلفن
+
+                <MudNavLink Href="salary/my-leave-statement" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.EventNote">
+                    صورت‌حساب مرخصی من
                 </MudNavLink>
-            </MudNavGroup>
 
-            <MudNavLink Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.PersonAdd" Href="customer-define">
-                تعریف مشتری جدید
-            </MudNavLink>
+                <div class="safir-nav-section">تولید و بهای تمام‌شده</div>
 
-            <div class="nav-item px-3">
-                <NavLink class="nav-link" href="salary/manage">
-                    <span class="bi bi-wallet2 me-2" aria-hidden="true"></span> حقوق و دستمزد
-                </NavLink>
-            </div>
-
-            <div class="nav-item px-3">
-                <NavLink class="nav-link" href="salary/my-leave-statement">
-                    <span class="bi bi-file-earmark-pdf me-2" aria-hidden="true"></span> صورت‌حساب مرخصی من
-                </NavLink>
-            </div>
-
-            <MudNavGroup Title="بهای تمام‌شده" Icon="@Icons.Material.Filled.Calculate" Expanded="false">
-                <MudNavLink Href="/cost-close" Match="NavLinkMatch.All"
-                            Icon="@Icons.Material.Filled.Dashboard">
-                    داشبورد
+                <MudNavLink Href="production-reports" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.Report">
+                    ثبت گزارش تولید
                 </MudNavLink>
-                <MudNavLink Href="/cost-close/exceptions" Match="NavLinkMatch.Prefix"
-                            Icon="@Icons.Material.Filled.Rule">
-                    مغایرت‌ها
+
+                <MudNavGroup Title="بهای تمام‌شده" Icon="@Icons.Material.Filled.Calculate" Expanded="false">
+                    <MudNavLink Href="/cost-close" Match="NavLinkMatch.All"
+                                Icon="@Icons.Material.Filled.Dashboard">
+                        داشبورد
+                    </MudNavLink>
+                    <MudNavLink Href="/cost-close/exceptions" Match="NavLinkMatch.Prefix"
+                                Icon="@Icons.Material.Filled.Rule">
+                        مغایرت‌ها
+                    </MudNavLink>
+                    @* بیرون از یک اجرای مشخص است چون چند دوره را با هم می‌گیرد؛
+                       از داخلِ صورت‌های مالیِ هر اجرا هم لینک دارد. *@
+                    <MudNavLink Href="/cost-close/statements/compare" Match="NavLinkMatch.Prefix"
+                                Icon="@Icons.Material.Filled.CompareArrows">
+                        صورت‌های مالی چند دوره
+                    </MudNavLink>
+                    <MudNavLink Href="/cost-close/settings" Match="NavLinkMatch.Prefix"
+                                Icon="@Icons.Material.Filled.Settings">
+                        تنظیمات
+                    </MudNavLink>
+                </MudNavGroup>
+
+                <div class="safir-nav-section">ابزارها</div>
+
+                <MudNavLink Href="/automation/tasks" Icon="@Icons.Material.Filled.Assignment">
+                    کارتابل اتوماسیون
                 </MudNavLink>
-                @* بیرون از یک اجرای مشخص است چون چند دوره را با هم می‌گیرد؛
-                   از داخلِ صورت‌های مالیِ هر اجرا هم لینک دارد. *@
-                <MudNavLink Href="/cost-close/statements/compare" Match="NavLinkMatch.Prefix"
-                            Icon="@Icons.Material.Filled.CompareArrows">
-                    صورت‌های مالی چند دوره
+
+                @* دستیار بیرون از گروهِ بهای تمام‌شده است چون قرار نیست فقط
+                   آن ماژول را جواب بدهد؛ ابزارهای بعدی حوزه‌های دیگر را هم
+                   می‌گیرند. «دسترسی» زیر همان مجوزی است که بقیه‌ی دسترسی‌ها
+                   را می‌دهد، پس اگر کاربر ادمین نباشد صفحه ۴۰۳ می‌دهد. *@
+                <MudNavGroup Title="دستیار هوش مصنوعی" Icon="@Icons.Material.Filled.SmartToy" Expanded="false">
+                    <MudNavLink Href="/ai/chat" Match="NavLinkMatch.Prefix"
+                                Icon="@Icons.Material.Filled.Chat">
+                        گفتگو
+                    </MudNavLink>
+                    <MudNavLink Href="/ai/access" Match="NavLinkMatch.Prefix"
+                                Icon="@Icons.Material.Filled.AdminPanelSettings">
+                        دسترسی کاربران
+                    </MudNavLink>
+                    <MudNavLink Href="/ai/settings" Match="NavLinkMatch.Prefix"
+                                Icon="@Icons.Material.Filled.Tune">
+                        تنظیمات سرویس
+                    </MudNavLink>
+                </MudNavGroup>
+
+                <MudNavGroup Title="گزارش خطای نرم‌افزار" Icon="@Icons.Material.Filled.BugReport" Expanded="false">
+                    <MudNavLink Href="bug-report" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.AddComment">
+                        ثبت گزارش جدید
+                    </MudNavLink>
+                    <MudNavLink Href="my-bug-reports" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.ListAlt">
+                        گزارش‌های من
+                    </MudNavLink>
+                    <MudNavLink Href="bug-report-list" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.ManageSearch">
+                        همه‌ی گزارش‌ها
+                    </MudNavLink>
+                </MudNavGroup>
+
+                <div class="safir-nav-section">سیستم</div>
+
+                <MudNavGroup Title="تنظیمات" Icon="@Icons.Material.Filled.Settings" Expanded="false">
+                    <MudNavLink Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.Person">@context.User.FindFirst(Safir.Shared.Constants.BaseknowClaimTypes.UUSER)?.Value</MudNavLink>
+
+                    <MudNavLink Href="settings/security" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.Security">
+                        امنیت
+                    </MudNavLink>
+
+                    @* زیر همان مجوزِ ادمینِ دسترسی‌هاست؛ کاربر عادی که بازش کند
+                       ۴۰۳ می‌گیرد. جایش اینجاست و نه داخل بهای تمام‌شده، چون
+                       مهاجرت‌ها کلِ برنامه را می‌سازند نه فقط آن ماژول را. *@
+                    <MudNavLink Href="/admin/db-upgrade" Match="NavLinkMatch.Prefix"
+                                Icon="@Icons.Material.Filled.Storage">
+                        به‌روزرسانی دیتابیس
+                    </MudNavLink>
+
+                    <MudNavLink @onclick="BeginSoftRefresh" Icon="@Icons.Material.Filled.SystemUpdateAlt">
+                        بررسی و دریافت بروزرسانی
+                    </MudNavLink>
+
+                    <MudNavLink @onclick="BeginServerStateReset" Icon="@Icons.Material.Filled.DeleteForever">
+                        ریست ذخیره وضعیت
+                    </MudNavLink>
+
+                    <MudNavLink @onclick="BeginFactoryReset" Icon="@Icons.Material.Filled.DeleteForever" Style="color: var(--mud-palette-error);">
+                        ریست کامل سایت
+                    </MudNavLink>
+                </MudNavGroup>
+
+                <MudNavLink Match="NavLinkMatch.Prefix" @onclick="BeginLogout" Icon="@Icons.Material.Filled.Logout">
+                    خروج
                 </MudNavLink>
-                <MudNavLink Href="/cost-close/settings" Match="NavLinkMatch.Prefix"
-                            Icon="@Icons.Material.Filled.Settings">
-                    تنظیمات
+            </Authorized>
+            <NotAuthorized>
+                <MudNavLink Href="login" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.Login">
+                    ورود کاربری
                 </MudNavLink>
-            </MudNavGroup>
 
-            @* دستیار بیرون از گروهِ بهای تمام‌شده است چون قرار نیست فقط
-               آن ماژول را جواب بدهد؛ ابزارهای بعدی حوزه‌های دیگر را هم
-               می‌گیرند. «دسترسی» زیر همان مجوزی است که بقیه‌ی دسترسی‌ها
-               را می‌دهد، پس اگر کاربر ادمین نباشد صفحه ۴۰۳ می‌دهد. *@
-            <MudNavGroup Title="دستیار هوش مصنوعی" Icon="@Icons.Material.Filled.SmartToy" Expanded="false">
-                <MudNavLink Href="/ai/chat" Match="NavLinkMatch.Prefix"
-                            Icon="@Icons.Material.Filled.Chat">
-                    گفتگو
+                <div class="safir-nav-section">تولید</div>
+
+                <MudNavLink Href="production-reports" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.Report">
+                    ثبت گزارش تولید
                 </MudNavLink>
-                <MudNavLink Href="/ai/access" Match="NavLinkMatch.Prefix"
-                            Icon="@Icons.Material.Filled.AdminPanelSettings">
-                    دسترسی کاربران
+
+                <MudNavLink Href="evaporation-report" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.EditNote">
+                    فرم گزارش اواپراتور
                 </MudNavLink>
-                <MudNavLink Href="/ai/settings" Match="NavLinkMatch.Prefix"
-                            Icon="@Icons.Material.Filled.Tune">
-                    تنظیمات سرویس
-                </MudNavLink>
-            </MudNavGroup>
 
-            @* زیر همان مجوزِ ادمینِ دسترسی‌هاست؛ کاربر عادی که بازش کند
-               ۴۰۳ می‌گیرد. جایش اینجاست و نه داخل بهای تمام‌شده، چون
-               مهاجرت‌ها کلِ برنامه را می‌سازند نه فقط آن ماژول را. *@
-            <MudNavLink Href="/admin/db-upgrade" Match="NavLinkMatch.Prefix"
-                        Icon="@Icons.Material.Filled.Storage">
-                به‌روزرسانی دیتابیس
-            </MudNavLink>
-
-            <MudNavLink Disabled="true" Icon="@Icons.Material.Filled.Info">
-                نسخه: @appVersion
-            </MudNavLink>
-
-
-            <MudNavLink Href="production-reports" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.Report">
-                ثبت گزارش تولید
-            </MudNavLink>
-
-            <MudNavLink Href="bug-report" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.BugReport">
-                گزارش خطای نرم‌افزار
-            </MudNavLink>
-
-            <MudNavLink Href="bug-report-list" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.ManageSearch">
-                مشاهده گزارش‌های خطا
-            </MudNavLink>
-
-            <MudNavLink Href="my-bug-reports" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.ListAlt">
-                گزارش‌های خطای من
-            </MudNavLink>
-
-            <!-- گروه تنظیمات -->
-            <MudNavGroup Title="تنظیمات" Icon="@Icons.Material.Filled.Settings" Expanded="false">
-                <MudNavLink Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.Person">@context.User.FindFirst(Safir.Shared.Constants.BaseknowClaimTypes.UUSER)?.Value</MudNavLink>
+                <div class="safir-nav-section">سیستم</div>
 
                 <MudNavLink @onclick="BeginSoftRefresh" Icon="@Icons.Material.Filled.SystemUpdateAlt">
                     بررسی و دریافت بروزرسانی
                 </MudNavLink>
 
-                <MudNavLink @onclick="BeginServerStateReset" Icon="@Icons.Material.Filled.DeleteForever">
-                    ریست ذخیره وضعیت
-                </MudNavLink>
-
                 <MudNavLink @onclick="BeginFactoryReset" Icon="@Icons.Material.Filled.DeleteForever" Style="color: var(--mud-palette-error);">
                     ریست کامل سایت
                 </MudNavLink>
+            </NotAuthorized>
+        </AuthorizeView>
+    </MudNavMenu>
 
-                <MudNavLink Href="settings/security" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.Security">
-                    امنیت
-                </MudNavLink>
-            </MudNavGroup>
-
-            <!-- خروج -->
-            <MudNavLink Match="NavLinkMatch.Prefix" @onclick="BeginLogout" Icon="@Icons.Material.Filled.Logout">
-                خروج
-            </MudNavLink>
-        </Authorized>
-        <NotAuthorized>
-            <!-- Optional: Show a link to log in if the user is not authorized -->
-            <MudNavLink Href="login" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.Login">
-                ورود کاربری
-            </MudNavLink>
-
-            <MudNavLink Href="production-reports" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.Report">
-                ثبت گزارش تولید
-            </MudNavLink>
-
-            <MudNavLink Href="evaporation-report" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.EditNote">
-                فرم گزارش اواپراتور
-            </MudNavLink>
-
-            <MudNavLink Disabled="true" Icon="@Icons.Material.Filled.Info">
-                نسخه: @appVersion
-            </MudNavLink>
-
-            <MudNavLink @onclick="BeginSoftRefresh" Icon="@Icons.Material.Filled.SystemUpdateAlt">
-                بررسی و دریافت بروزرسانی
-            </MudNavLink>
-
-            <MudNavLink @onclick="BeginFactoryReset" Icon="@Icons.Material.Filled.DeleteForever" Style="color: var(--mud-palette-error);">
-                ریست کامل سایت
-            </MudNavLink>
-        </NotAuthorized>
-    </AuthorizeView>
-</MudNavMenu>
+    <div class="safir-nav-version">نسخه @appVersion</div>
+</div>
 
 
 @code {
