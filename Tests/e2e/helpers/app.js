@@ -8,6 +8,7 @@ const USERS = {
   admin:  { username: 'payadmin',  password: '111111', userCo: 9001 },
   viewer: { username: 'payviewer', password: '222222', userCo: 9002 },
   scoped: { username: 'payscoped', password: '333333', userCo: 9003 },
+  sales:  { username: 'salesrep',  password: '444444', userCo: 9004 },
 };
 
 /**
