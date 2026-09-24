@@ -236,7 +236,7 @@
                                                                        Editable="false"
                                                                        Clearable="false" />
                         </div>
-                        <button class="btn-outline-pay2" @onclick="CopyTaxYearAsync" disabled="@string.IsNullOrWhiteSpace(_copySourceYearStr)">
+                        <button class="btn-outline-pay2" @onclick="CopyTaxYearAsync" disabled="@(!CanEditTax || string.IsNullOrWhiteSpace(_copySourceYearStr))">
                             <i class="bi bi-copy"></i> کپی
                         </button>
                     }
@@ -361,7 +361,7 @@
         <div class="pay2-modal-footer" style="justify-content:flex-end;">
             <button class="btn-outline-pay2" @onclick="CloseTaxModal" style="margin-left:10px;">انصراف</button>
 
-            <button class="btn-primary-pay2" @onclick="SaveTaxBracketsAsync" disabled="@(IsSavingTax || !Pay2Access.Access.CanRun(Safir.Shared.Constants.Pay2Forms.ActConfigCritical))">
+            <button class="btn-primary-pay2" @onclick="SaveTaxBracketsAsync" disabled="@(IsSavingTax || !CanEditTax)">
                 @if (IsSavingTax)
                 {
                     <span class="p2-spinner"></span>
@@ -442,8 +442,14 @@
     string TaxExemptMonthlyText =>
         _originalValues.TryGetValue("TAX_EXEMPT_MONTHLY", out var v) && long.TryParse(v, out var n) ? n.ToString("N0") : "—";
 
+    // سرور برای ذخیره‌ی پله‌ها، کپی و TAX_YEAR هر دو را می‌خواهد (ویرایش تنظیمات + تنظیمات حساس)؛
+    // با فقط یکی، دکمه فعال می‌ماند و کلیک همیشه ۴۰۳ می‌گرفت.
+    bool CanEditTax =>
+        Pay2Access.CanUpd(Safir.Shared.Constants.Pay2Forms.Settings) &&
+        Pay2Access.Access.CanRun(Safir.Shared.Constants.Pay2Forms.ActConfigCritical);
+
     string? ActivateYearBlockReason =>
-        !Pay2Access.Access.CanRun(Safir.Shared.Constants.Pay2Forms.ActConfigCritical) ? "برای تغییر سال مالیاتی دسترسی لازم را ندارید"
+        !CanEditTax ? "برای تغییر سال مالیاتی دسترسی لازم را ندارید"
         : _taxDirty ? "اول پله‌ها را ذخیره کنید"
         : !_savedTaxYears.Contains(SelectedTaxYear) ? $"برای سال {SelectedTaxYear} هنوز پله‌ای ذخیره نشده است"
         : null;

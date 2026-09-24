@@ -374,4 +374,35 @@ test.describe('مدیریت پله‌های مالیاتی', () => {
 
     await setTaxYear(request, ACTIVE_YEAR);
   });
+
+  test('کاربر فقط‌خواندنی (RUN روی تنظیمات حساس، بدون UPD تنظیمات): ذخیره، کپی و «محاسبه با سال X» غیرفعال‌اند و API ۴۰۳ فارسی می‌دهد', async ({ page, request }) => {
+    await openSettings(page, 'viewer');
+    await openModal(page);
+    const u = ui(page);
+    await expect(u.save).toBeDisabled();
+    await pickYear(page, u.yearSelect, `سال ${COPY_SOURCE}`);
+    await expect(u.activate).toBeDisabled();
+    await expect(u.activate).toHaveAttribute('title', 'برای تغییر سال مالیاتی دسترسی لازم را ندارید');
+    await shot(page, '10-viewer-modal');
+
+    // «کپی» فقط با جدول خالی دیده می‌شود — با یک سال جدیدِ ذخیره‌نشده
+    await type(u.newYear, '1499');
+    await u.createYear.click();
+    await expect(u.copyButton).toBeVisible();
+    await expect(u.copyButton).toBeDisabled();
+
+    const viewer = { Authorization: `Bearer ${await apiLogin(request, 'viewer')}` };
+    const save = await request.post('/api/pay2/settings/tax/brackets/save', {
+      headers: viewer, data: { TAX_YEAR: 1405, Items: [{ SORT_ORDER: 1, UPPER_LIMIT: 1, RATE_PCT: 1 }] },
+    });
+    expect(save.status()).toBe(403);
+    expect(await save.text()).toMatch(/[؀-ۿ]/);
+
+    const year = await request.post('/api/pay2/settings/configs/save', {
+      headers: viewer, data: { Items: [{ CFG_KEY: 'TAX_YEAR', CFG_VALUE: COPY_SOURCE }] },
+    });
+    expect(year.status()).toBe(403);
+    expect(await year.text()).toMatch(/[؀-ۿ]/);
+    expect(await taxYearInDb(request)).toBe(ACTIVE_YEAR);
+  });
 });
