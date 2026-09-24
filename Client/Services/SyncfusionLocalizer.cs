@@ -62,6 +62,8 @@ namespace Safir.Client.Services
             // دکمه‌ها
             ["Grid_OKButton"] = "تأیید",
             ["Grid_CancelButton"] = "انصراف",
+            // پنجره‌ی فیلتر اکسلی (فهرست تیک‌دار) کلید Grid_Cancel را می‌خواند، نه Grid_CancelButton
+            ["Grid_Cancel"] = "لغو",
             ["Grid_ClearButton"] = "پاک کردن",
             ["Grid_FilterButton"] = "اعمال فیلتر",
 
@@ -120,13 +122,22 @@ namespace Safir.Client.Services
             ["Grid_ChooseColumns"] = "انتخاب ستون‌ها",
             ["Grid_GroupDropArea"] = "ستون را برای گروه‌بندی این‌جا بکشید",
 
-            // صفحه‌بند (در صورت فعال شدن)
-            ["Pager_currentPageInfo"] = "{0} از {1} صفحه",
-            ["Pager_totalItemsInfo"] = "({0} مورد)",
-            ["Pager_firstPageTooltip"] = "صفحهٔ اول",
-            ["Pager_lastPageTooltip"] = "صفحهٔ آخر",
-            ["Pager_nextPageTooltip"] = "صفحهٔ بعد",
-            ["Pager_previousPageTooltip"] = "صفحهٔ قبل",
+            // صفحه‌بند — نام کلیدها باید دقیقاً با SfPager یکی باشد (حساس به حروف بزرگ/کوچک)؛
+            // قبلاً با حرف کوچک نوشته شده بودند و «Current Page Info» خام نمایش داده می‌شد.
+            ["Pager_CurrentPageInfo"] = "صفحهٔ {0} از {1}",
+            ["Pager_TotalItemsInfo"] = "({0} مورد)",
+            ["Pager_FirstPageTooltip"] = "صفحهٔ اول",
+            ["Pager_LastPageTooltip"] = "صفحهٔ آخر",
+            ["Pager_NextPageTooltip"] = "صفحهٔ بعد",
+            ["Pager_PreviousPageTooltip"] = "صفحهٔ قبل",
+            ["Pager_NextPagerTooltip"] = "صفحه‌های بعدی",
+            ["Pager_PreviousPagerTooltip"] = "صفحه‌های قبلی",
+            ["Pager_PagerDropDown"] = "ردیف در هر صفحه",
+            ["Pager_PagerDropDownARIA"] = "تعداد ردیف در هر صفحه",
+            ["Pager_All"] = "همه",
+            ["Pager_Of"] = "از",
+            ["Pager_Page"] = "صفحه",
+            ["Pager_Pages"] = "صفحه",
         };
     }
 }
