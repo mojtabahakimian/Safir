@@ -66,6 +66,9 @@ test.describe('فروش ویزیتوری (salesrep)', () => {
   test.describe.configure({ mode: 'serial' });
 
   test.beforeAll(async ({ request }) => {
+    // beforeAll پیش از beforeEachِ سراسری اجرا می‌شود، پس skipِ آن اینجا اثری ندارد؛
+    // بدون این خط، در CI (بدون دیتابیس) apiLogin شکست می‌خورد و کل گروه fail می‌شود.
+    test.skip(!(await databaseAvailable(request)), 'دیتابیس تست در دسترس نیست — scripts/setup-test-env.sh');
     // سبد و مشتریِ انتخاب‌شده سمت سرور در UserState می‌مانند؛ بدون پاک کردن،
     // اجرای دوم کالا را از قبل در سبد می‌بیند و دکمهٔ «افزودن» ظاهر نمی‌شود.
     const token = await apiLogin(request, 'sales');
