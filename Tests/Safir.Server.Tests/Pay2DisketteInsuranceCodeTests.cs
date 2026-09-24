@@ -26,4 +26,13 @@ public class Pay2DisketteInsuranceCodeTests
     [InlineData("10")]
     public void RealNumbersAreAccepted(string code) =>
         Assert.False(Pay2DisketteService.IsMissingInsuranceCode(code));
+
+    // دیسکت پذیرفته‌شده‌ی تیر ۱۴۰۵ «80277820» دارد؛ شماره‌ای که با صفر پیشرو در پرونده ثبت شده
+    // هم باید همان‌طور برود، نه «0080277820».
+    [Theory]
+    [InlineData("80277820", "80277820")]
+    [InlineData("0080277820", "80277820")]
+    [InlineData(" 0080277820 ", "80277820")]
+    public void DisketteCodeHasNoLeadingZeros(string stored, string expected) =>
+        Assert.Equal(expected, Pay2DisketteService.CleanInsuranceCode(stored));
 }
