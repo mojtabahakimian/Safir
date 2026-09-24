@@ -288,38 +288,6 @@
                         @foreach (var item in _items)
                         {
 
-                            @if (_isHistoricalMode || _isListView)
-                            {
-                                <div style="border: 2px solid blue; padding: 10px;">
-                                    <MudText Color="Color.Error">تست: داخل بلوک نمایش لیستی/تاریخی</MudText>
-                                    @if (_items != null && _items.Any())
-                                    {
-                                        <MudText>تعداد آیتم برای نمایش: @_items.Count</MudText>
-                                        <MudList Clickable="false">
-                                            @foreach (var item in _items)
-                                            {
-                                                <MudListItem @key="item.CODE">
-                                                    <MudListItemAvatar>
-                                                        <MudAvatar Color="Color.Primary">@item.CODE?.FirstOrDefault()</MudAvatar>
-                                                    </MudListItemAvatar>
-                                                    <MudListItemText>
-                                                        <MudText Typo="Typo.body1">@item.NAME</MudText>
-                                                        <MudText Typo="Typo.body2" Color="Color.Secondary">کد: @item.CODE</MudText>
-                                                    </MudListItemText>
-                                                    <MudListItemAction>
-                                                        <MudIcon Icon="@Icons.Material.Filled.Info" />
-                                                    </MudListItemAction>
-                                                </MudListItem>
-                                                <MudDivider />
-                                            }
-                                        </MudList>
-                                    }
-                                    else
-                                    {
-                                        <MudText>لیست آیتم‌ها خالی است یا null.</MudText>
-                                    }
-                                </div>
-                            }
 
                             <MudListItem @key="item.CODE">
                                 <MudListItemAvatar>

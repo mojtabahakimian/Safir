@@ -331,16 +331,9 @@
             return await Task.FromResult(_customerLookupForMessage.Take(10));
 
 
-        // جستجوی سمت کلاینت:
-        var filtered = _customerLookupForMessage
-            .Where(c => (c.Name != null && c.Name.Contains(value, StringComparison.OrdinalIgnoreCase)) ||
-                        (c.Id != null && c.Id.Contains(value, StringComparison.OrdinalIgnoreCase)))
-            .Take(15)
-            .ToList();
-        return await Task.FromResult(filtered);
+        // جستجو سمت سرور: لیست اولیه فقط ۵۰ حساب اول الفبایی است
+        return await LookupService.GetCustomerLookupAsync(value) ?? Enumerable.Empty<LookupDto<string>>();
 
-        // برای جستجوی سمت سرور (اگر لیست مشتریان بسیار بزرگ است):
-        // return await LookupService.GetCustomerLookupAsync(value) ?? Enumerable.Empty<LookupDto<string>>();
     }
 
     private async Task<IEnumerable<PersonelLookupModel>> SearchPersonel(string value)

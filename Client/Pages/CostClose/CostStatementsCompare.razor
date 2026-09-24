@@ -177,6 +177,10 @@
             foreach (var g in _runs.GroupBy(r => (r.FiscalYear, r.PeriodMonth)))
                 _selected.Add(g.First().RunId);
         }
+        catch (HttpRequestException ex) when (ex.StatusCode == System.Net.HttpStatusCode.Forbidden)
+        {
+            _error = "دسترسی لازم برای مشاهده اجراهای بستن ماه را ندارید.";
+        }
         catch (Exception ex) { _error = ex.Message; }
     }
 
