@@ -398,16 +398,21 @@
                 </div>
 
                 <div @key="@($"{CurrentRun?.RUN_ID}-{_dynCols.Count}")" style="height: 62vh; min-height: 380px;">
-                @* EnableVirtualization: فقط ردیف‌های داخل دید ساخته می‌شوند. بدون آن، با ۸۰۰ پرسنل
-                   باز شدن فیلتر ستون ۲۳ ثانیه طول می‌کشید چون کل ردیف‌ها دوباره رندر می‌شد. *@
+                @* صفحه‌بندی به‌جای Virtualization: Syncfusion 29 با هر باز/بسته شدن فیلتر کل گرید را
+                   دوباره رندر می‌کند (FilterCompUpdate → CallStateHasChangedAsync) و ردیف/خانه ShouldRender
+                   ندارند، پس هزینه با تعداد ردیفِ روی صفحه بالا می‌رود (~۴۰ms هر ردیف در Release).
+                   اندازه‌گیری روی ۷۰ نفر: همه‌ی ردیف‌ها ۲٫۹s، Virtualization ۱٫۰s با قفل شدن هنگام اسکرول و
+                   به‌هم‌ریختن تراز ستون‌های ثابت، صفحه‌ی ۱۰تایی ۰٫۶s بدون هیچ‌کدام. صفحه‌های بزرگ (۱۰۰ و ۲۰۰)
+                   به خواست کاربر هستند و به همان نسبت کندترند. کلاس تایپ‌شده به‌جای ExpandoObject هم
+                   امتحان شد و فقط ۶ تا ۱۲٪ سریع‌تر بود؛ ارزش پیچیدگی‌اش را نداشت. *@
                 <SfGrid @ref="_payrollGrid"
                         TValue="ExpandoObject"
                         DataSource="@_gridData"
                         AllowSorting="true"
                         AllowResizing="true"
                         AllowFiltering="true"
-                        AllowTextWrap="false"
-                        EnableVirtualization="true"
+                        AllowTextWrap="true"
+                        AllowPaging="true"
                         RowHeight="48"
                         EnableHover="true"
                         EnableRtl="true"
@@ -415,6 +420,10 @@
                         GridLines="GridLine.Horizontal"
                         Toolbar="@_gridToolbar">
                     <GridFilterSettings Type="Syncfusion.Blazor.Grids.FilterType.Excel"></GridFilterSettings>
+                    @* فقط سرتیترها می‌شکنند تا «کارکرد اسمی (بیمه)» و نام‌های بلند آیتم‌ها کنار آیکون فیلتر بریده نشوند؛
+                       ردیف‌های داده یک‌خطی می‌مانند و ارتفاعشان با RowHeight ثابت است. *@
+                    <GridTextWrapSettings WrapMode="Syncfusion.Blazor.Grids.WrapMode.Header"></GridTextWrapSettings>
+                    <GridPageSettings PageSize="10" PageSizes="@_pageSizes"></GridPageSettings>
                     <GridColumns>
                         <GridColumn Field="EMP_ID" IsPrimaryKey="true" Visible="false" Type="Syncfusion.Blazor.Grids.ColumnType.Number" Width="100" />
 <!-- ۱) کد پرسنلی -->
@@ -423,8 +432,8 @@
                         <!-- ۲) نام و نام خانوادگی -->
                         <GridColumn Field="FULL_NAME" HeaderText="نام و نام خانوادگی" Width="200" TextAlign="TextAlign.Right" Type="Syncfusion.Blazor.Grids.ColumnType.String" IsFrozen="true" CustomAttributes="@_attrName" />
 
-                        <GridColumn Field="WORK_DAYS" HeaderText="کارکرد رسمی (پرداخت)" Width="155" TextAlign="TextAlign.Center" Type="Syncfusion.Blazor.Grids.ColumnType.Double" Format="0.##" AllowSearching="false" CustomAttributes="@_attrMono" />
-                        <GridColumn Field="NOMINAL_DAYS" HeaderText="کارکرد اسمی (بیمه)" Width="155" TextAlign="TextAlign.Center" Type="Syncfusion.Blazor.Grids.ColumnType.Double" Format="0.##" AllowSearching="false" CustomAttributes="@_attrMono" />
+                        <GridColumn Field="WORK_DAYS" HeaderText="کارکرد رسمی (پرداخت)" Width="185" TextAlign="TextAlign.Center" Type="Syncfusion.Blazor.Grids.ColumnType.Double" Format="0.##" AllowSearching="false" CustomAttributes="@_attrMono" />
+                        <GridColumn Field="NOMINAL_DAYS" HeaderText="کارکرد اسمی (بیمه)" Width="185" TextAlign="TextAlign.Center" Type="Syncfusion.Blazor.Grids.ColumnType.Double" Format="0.##" AllowSearching="false" CustomAttributes="@_attrMono" />
 
                         @foreach (var dc in _dynCols)
                         {
@@ -760,6 +769,7 @@
 
     // نوار ابزار داخلی گرید Syncfusion (فقط جعبهٔ جستجو؛ خروجی Excel به‌صورت دکمهٔ سفارشی جداست)
     private readonly List<string> _gridToolbar = new() { "Search" };
+    private readonly int[] _pageSizes = { 10, 20, 50, 100, 200 };
 
     // ارجاع به گرید Syncfusion + پرچم درخواست رفرش بعد از لود داده
     private Syncfusion.Blazor.Grids.SfGrid<ExpandoObject>? _payrollGrid;

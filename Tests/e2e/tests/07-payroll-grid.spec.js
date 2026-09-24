@@ -97,12 +97,45 @@ test('تأییدشده: یک دکمه‌ی «فیش پرداخت» فعال که
   await expect(page.locator('.mud-dialog').getByText(/فیش پرداخت رسمی -/)).toBeVisible();
 });
 
+// گزارش کاربر: عنوان ستون‌ها کنار آیکون فیلتر بریده می‌شد («کارکرد اسمی (بی...»).
+// با WrapMode.Header فقط سرتیتر دوخطی می‌شود؛ ردیف‌های داده یک‌خطی می‌مانند.
+test('عنوان هیچ ستونی کنار آیکون فیلتر بریده نمی‌شود', async ({ page }) => {
+  await openPeriod(page, '1405 - 06 - شهریور');
+
+  const cut = await page.locator('.e-headercell .e-headercelldiv').evaluateAll(divs => divs
+    .filter(d => d.innerText.trim())
+    .filter(d => d.scrollWidth > d.clientWidth + 1 || [...d.querySelectorAll('*')].some(c => c.scrollWidth > c.clientWidth + 1))
+    .map(d => d.innerText.trim()));
+  expect(cut, 'عنوان‌های بریده‌شده').toEqual([]);
+
+  // دو ستون کارکرد آن‌قدر پهن‌اند که عنوانشان یک‌خطی بماند، نه دوخطی
+  for (const header of ['کارکرد رسمی (پرداخت)', 'کارکرد اسمی (بیمه)']) {
+    const lines = await page.locator('.e-headercell .e-headertext', { hasText: header }).first().evaluate(t => {
+      const r = document.createRange(); r.selectNodeContents(t);
+      return new Set([...r.getClientRects()].map(x => Math.round(x.top))).size;
+    });
+    expect(lines, `«${header}» یک‌خطی`).toBe(1);
+  }
+});
+
+// پنجره‌ی فیلتر اکسلی کلید Grid_Cancel را می‌خواند (نه Grid_CancelButton) و بدون آن «Cancel» نشان می‌داد.
+test('دکمه‌های پنجره‌ی فیلتر فارسی‌اند: «تأیید» و «لغو»', async ({ page }) => {
+  await openPeriod(page, '1405 - 06 - شهریور');
+
+  await page.locator('.e-headercell').filter({ hasText: 'کارکرد رسمی (پرداخت)' }).locator('.e-filtermenudiv').click();
+  const dlg = page.locator('.e-excelfilter');
+  await expect(dlg.getByRole('button', { name: 'لغو' })).toBeVisible();
+  await expect(dlg.getByRole('button', { name: 'Cancel' })).toHaveCount(0);
+});
+
 // گزارش کاربر: با تعداد زیاد پرسنل، باز شدن فیلتر (آیکون قیف) کند و با پرش بود.
 // علت: گرید همه‌ی ردیف‌ها را یک‌جا رندر می‌کرد (۸۰۰ نفر → ۸۰۰ ردیف × ده‌ها ستون)
 // و باز شدن فیلتر کل آن را دوباره می‌ساخت؛ ۲۳ ثانیه برای ۸۰۰ نفر اندازه‌گیری شد.
-// با EnableVirtualization فقط ردیف‌های داخل دید ساخته می‌شوند (۲٫۲ ثانیه).
+// اول EnableVirtualization امتحان شد، ولی هنگام اسکرول قفل می‌شد و تراز ستون‌های ثابت
+// به‌هم می‌ریخت؛ حالا صفحه‌بندی (۱۰ ردیف پیش‌فرض) است. فیلتر روی کل داده کار می‌کند،
+// نه فقط صفحه‌ی جاری: «نمونه 777» در صفحه‌ی ۷۸ است و باید پیدا شود.
 // زمان را مستقیم نمی‌سنجیم (وابسته به ماشین است)؛ تعداد ردیفِ رندرشده قطعی است.
-test('۸۰۰ پرسنل: گرید فقط ردیف‌های داخل دید را می‌سازد و فیلتر نام کار می‌کند', async ({ page }) => {
+test('۸۰۰ پرسنل: گرید فقط یک صفحه ردیف می‌سازد و فیلتر نام روی کل داده کار می‌کند', async ({ page }) => {
   const N = 800;
   // پنجره‌ی فیلتر اکسل بلند است؛ در ارتفاع پیش‌فرض ۷۲۰ دکمه‌ی «اعمال» بیرون از دید می‌افتد
   await page.setViewportSize({ width: 1440, height: 1100 });
@@ -126,7 +159,9 @@ test('۸۰۰ پرسنل: گرید فقط ردیف‌های داخل دید را 
   await expect(page.getByText(`${N} پرسنل`).first()).toBeVisible();
 
   const rendered = await page.locator('.e-row').count();
-  expect(rendered, 'ردیف‌ها باید مجازی باشند، نه همه‌ی ۸۰۰ تا').toBeLessThan(100);
+  expect(rendered, 'فقط یک صفحه ساخته شود، نه همه‌ی ۸۰۰ ردیف').toBeLessThan(100);
+  // کلیدهای صفحه‌بند ترجمه شده‌اند؛ Syncfusion در fa-IR عدد را با ارقام فارسی می‌نویسد («۱»)
+  await expect(page.locator('.e-pager')).toContainText(/صفحهٔ [1۱] از/);
 
   await page.locator('.e-headercell').filter({ hasText: 'نام و نام خانوادگی' }).locator('.e-filtermenudiv').click();
   const dlg = page.locator('.e-excelfilter');
