@@ -94,10 +94,10 @@
                     <MudForm @ref="_form">
                         <MudGrid Spacing="2">
                             <MudItem xs="12">
-                                <MudTextField Label="شرح وظیفه*" @bind-Value="_currentTask.TASK" For="@(() => _currentTask.TASK)" Lines="2" Variant="Variant.Outlined" Required="true" />
+                                <MudTextField Label="شرح وظیفه" @bind-Value="_currentTask.TASK" For="@(() => _currentTask.TASK)" Lines="2" Variant="Variant.Outlined" Required="true" />
                             </MudItem>
                             <MudItem xs="12" sm="6" md="3">
-                                <MudSelect T="int" Label="کاربر مجری*" @bind-Value="_currentTask.PERSONEL" For="@(() => _currentTask.PERSONEL)" Variant="Variant.Outlined" Required="true" Dense="true">
+                                <MudSelect T="int" Label="کاربر مجری" @bind-Value="_currentTask.PERSONEL" For="@(() => _currentTask.PERSONEL)" Variant="Variant.Outlined" Required="true" Dense="true">
                                     @if (_personelLookup != null)
                                     {
                                         foreach (var p in _personelLookup)
@@ -112,17 +112,17 @@
                                 </MudSelect>
                             </MudItem>
                             <MudItem xs="6" sm="3" md="2">
-                                <MudSelect T="int" Label="اولویت*" @bind-Value="_currentTask.PERIORITY" For="@(() => _currentTask.PERIORITY)" Variant="Variant.Outlined" Required="true" Dense="true">
+                                <MudSelect T="int" Label="اولویت" @bind-Value="_currentTask.PERIORITY" For="@(() => _currentTask.PERIORITY)" Variant="Variant.Outlined" Required="true" Dense="true">
                                     <MudSelectItem T="int" Value="1">فوری</MudSelectItem> <MudSelectItem T="int" Value="2">معمولی</MudSelectItem>
                                 </MudSelect>
                             </MudItem>
                             <MudItem xs="6" sm="3" md="2">
-                                <MudSelect T="int" Label="وضعیت*" @bind-Value="_currentTask.STATUS" For="@(() => _currentTask.STATUS)" Variant="Variant.Outlined" Required="true" Dense="true">
+                                <MudSelect T="int" Label="وضعیت" @bind-Value="_currentTask.STATUS" For="@(() => _currentTask.STATUS)" Variant="Variant.Outlined" Required="true" Dense="true">
                                     <MudSelectItem T="int" Value="1">انجام نشده</MudSelectItem> <MudSelectItem T="int" Value="2">انجام شده</MudSelectItem> <MudSelectItem T="int" Value="3">لغو شده</MudSelectItem>
                                 </MudSelect>
                             </MudItem>
                             <MudItem xs="12" sm="8" md="2">
-                                <MudAutocomplete T="LookupDto<string>" Label="گیرنده (مشتری)*"
+                                <MudAutocomplete T="LookupDto<string>" Label="گیرنده (مشتری)"
                                                  @bind-Value="SelectedCustomerForTask"
                                                  SearchFunc="SearchCustomersAsync"
                                                  ToStringFunc="@(c => c?.Name ?? string.Empty)"
@@ -188,7 +188,7 @@
                         <MudTd DataLabel="وضعیت">@GetStatusName(context.STATUS)</MudTd>
                         <MudTd DataLabel="تاریخ ارجاع">@FormatShamsiDateFromDateTime(context.STDATE) @context.STTIME?.ToString("hh\\:mm")</MudTd>
                         <MudTd DataLabel="تاریخ انجام">@FormatShamsiDateFromDateTime(context.ENDATE) @context.ENTIME?.ToString("hh\\:mm")</MudTd>
-                        <MudTd DataLabel="نام گیرنده">@GetCustomerName(context.COMP_COD)</MudTd>
+                        <MudTd DataLabel="نام گیرنده">@(context.NAME ?? GetCustomerName(context.COMP_COD))</MudTd>
                         <MudTd DataLabel="عملیات">
                             <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small" Variant="Variant.Outlined" Color="Color.Primary" OnClick="@(() => SelectTaskForEdit(context))" Title="ویرایش" />
                             <MudIconButton Icon="@Icons.Material.Filled.ListAlt" Size="Size.Small" Variant="Variant.Outlined" Color="Color.Secondary" OnClick="@(() => ShowEventsDialog(context.IDNUM))" Title="رویدادها" />
@@ -214,7 +214,6 @@
 @inject LookupApiService LookupService // <-- تزریق مستقیم کلاس سرویس
 @inject AuthenticationStateProvider AuthenticationStateProvider
 @inject ConnectionManagerService ConnectionManager
-                                              // ...
 @code {
     private MudTable<TaskModel>? _table;
     private MudForm? _form;
@@ -657,10 +656,7 @@
             return await Task.FromResult(_customerLookup.Take(10)); // نمایش ۱۰ مشتری اول یا همه اگر کمتر است
                                                                     // فیلتر کردن لیست مشتریان بر اساس نام یا کد (Id)
                                                                     // StringComparison.OrdinalIgnoreCase برای جستجوی غیر حساس به حروف بزرگ و کوچک
-        var filteredCustomers = _customerLookup
-        .Where(c => (c.Name != null && c.Name.Contains(value, StringComparison.OrdinalIgnoreCase)) ||
-        (c.Id != null && c.Id.Contains(value, StringComparison.OrdinalIgnoreCase)))
-        .Take(15); // محدود کردن تعداد نتایج نمایش داده شده برای کارایی بهتر
-        return await Task.FromResult(filteredCustomers);
+        // جستجو سمت سرور: لیست اولیه فقط ۵۰ حساب اول الفبایی است و مشتریان بعدی در آن نیستند
+        return await LookupService.GetCustomerLookupAsync(value) ?? Enumerable.Empty<LookupDto<string>>();
     }
 }

@@ -308,6 +308,38 @@ sqlcmd_local -d "$DB_NAME" -i "$DB_DIR/pay2_detailed_deed_migration.sql"
 # می‌سازد. بدون آن، مرحله‌ی «صدور سند حسابداری» در آزمون سرتاسری قابل رسیدن نیست.
 sqlcmd_local -d "$DB_NAME" -i "$DB_DIR/test_chart_of_accounts.sql"
 
+# ═══════════════════════════════════════════════════════════════════════════
+step "۱۰-ب) بخش‌های غیرحقوقی و موتور زندهٔ مهاجرت"
+# ═══════════════════════════════════════════════════════════════════════════
+# جدول‌های قدیمی WPF که فروش ویزیتوری، کارتابل، گزارش تولید و … می‌خوانند،
+# به‌علاوهٔ کاربر salesrep. قبل از مهاجرت بهای تمام‌شده، چون MOGHA_ANBAR به
+# ANBGRD_* / BACK_HEAD / TAGCOD نیاز دارد.
+sqlcmd_local -d "$DB_NAME" -i "$DB_DIR/test_legacy_tables.sql"
+for f in "$REPO_ROOT"/Server/Scripts/00[1-5]_*.sql; do   # گزارش اواپراتور و گزارش خطا
+  sqlcmd_local -d "$DB_NAME" -i "$f"
+done
+
+# موتور حقوق در schema.sql / pay2_runtime_procedures.sql از نسخهٔ زنده عقب است
+# (مثلاً NOMINAL_DAYS را نمی‌نویسد) و بهای تمام‌شده و دستیار هوش مصنوعی اصلاً
+# در هیچ فایل مستقلی نیستند. پس همان مهاجرتی را اجرا می‌کنیم که روی مشتری
+# اجرا می‌شود: ScriptSqly (ساب‌ماژول) با _type_=2 (حقوق + بهای تمام‌شده).
+git -C "$REPO_ROOT" submodule update --init External/ScriptSqly
+
+# ⚠️ باگ شناخته‌شدهٔ ترتیب در CostCloseScript: بلوک ۱۲ رویه‌هایی می‌سازد که در
+# CC_Exception.RefList درج می‌کنند، ولی آن ستون را بلوک ۱۳ اضافه می‌کند. SQL
+# Server نبودِ *ستون* را (برخلاف جدول) هنگام CREATE PROCEDURE خطا می‌دهد، پس
+# روی هر دیتابیسِ تازه کل LetsGo می‌شکند. تا رفع آن در ScriptSqly، جدول پایه را
+# با 10-schema.sql (همتای مو‌به‌موی baseSchema) می‌سازیم و ستون را جلوتر می‌گذاریم.
+sqlcmd_local -d "$DB_NAME" -i "$DB_DIR/10-schema.sql"
+sqlcmd_local -d "$DB_NAME" -Q "IF COL_LENGTH('dbo.CC_Exception','RefList') IS NULL ALTER TABLE dbo.CC_Exception ADD RefList NVARCHAR(2000) NULL;"
+
+dotnet run --project "$REPO_ROOT/External/ScriptSqly/ScriptSqly.Runner" -- \
+  --conn "Server=$SQL_HOST;Database=$DB_NAME;User Id=sa;Password=$SA_PASSWORD;TrustServerCertificate=True" \
+  --custom-call --type 2 | tail -5
+
+# فرم‌های COST_* را همان مهاجرت می‌سازد؛ دسترسی کاربران آزمایشی بعد از آن.
+sqlcmd_local -d "$DB_NAME" -i "$DB_DIR/test_cost_close_grants.sql"
+
 # شمارش‌ها را سخت‌گیرانه چک نکن — با تولید دوباره seed عوض می‌شوند.
 sqlcmd_local -d "$DB_NAME" -Q "
 SET NOCOUNT ON;
@@ -405,6 +437,7 @@ SQL Server : $SQL_HOST
   payadmin  / 111111   دسترسی کامل، همه کارگاه‌ها
   payviewer / 222222   فقط مشاهده، همه کارگاه‌ها
   payscoped / 333333   دسترسی کامل، فقط کارگاه ۱
+  salesrep  / 444444   ویزیتور فروش (حساب 310-1-1)، بدون دسترسی مدیریتی
 
 ACL_ENFORCE = 1 و ACL_WS_SCOPE_ENFORCE = 1 روشن شده‌اند.
 رمز SQL عمداً چاپ نشد.

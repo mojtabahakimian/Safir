@@ -147,10 +147,6 @@
                 <MudNavGroup Title="تنظیمات" Icon="@Icons.Material.Filled.Settings" Expanded="false">
                     <MudNavLink Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.Person">@context.User.FindFirst(Safir.Shared.Constants.BaseknowClaimTypes.UUSER)?.Value</MudNavLink>
 
-                    <MudNavLink Href="settings/security" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.Security">
-                        امنیت
-                    </MudNavLink>
-
                     @* زیر همان مجوزِ ادمینِ دسترسی‌هاست؛ کاربر عادی که بازش کند
                        ۴۰۳ می‌گیرد. جایش اینجاست و نه داخل بهای تمام‌شده، چون
                        مهاجرت‌ها کلِ برنامه را می‌سازند نه فقط آن ماژول را. *@
