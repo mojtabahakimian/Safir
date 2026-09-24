@@ -17,9 +17,11 @@
 @inject ConnectionManagerService ConnectionManager
 
 <MudLayout>
-    <MudAppBar Elevation="1" Color="Color.Primary">
+    @* رنگ از AppbarBackground/AppbarText تم می‌آید (سفید در تم روشن، خاکستری تیره در تاریک)؛
+       با Color.Primary نوار سبز می‌شد و در تم تاریک بنفش. *@
+    <MudAppBar Elevation="0" Class="safir-appbar">
         <MudIconButton Icon="@Icons.Material.Filled.Menu" Color="Color.Inherit" Edge="Edge.Start" OnClick="@((e) => DrawerToggle())" />
-        <MudText Typo="Typo.h5" Class="ml-3">سفیر</MudText>
+        <MudText Typo="Typo.h6" Class="ml-3" Style="font-weight:800;">سفیر</MudText>
         <MudSpacer />
 
         @* نمایش نام مشتری انتخاب شده برای سفارش *@
@@ -111,7 +113,7 @@
                Elevation="2"
                ClipMode="DrawerClipMode.Always"
                Variant="DrawerVariant.Responsive"
-               Class="mud-theme-background">
+               Class="mud-theme-background safir-drawer">
 
         <MudDrawerHeader>
             <MudText Typo="Typo.h6">منو</MudText>
@@ -125,9 +127,12 @@
     <MudMainContent>
         @if (showConnectivityWarning)
         {
-            <MudAlert Severity="Severity.Warning" Variant="Variant.Filled" Class="mb-4" Style="position: sticky; top: 64px; z-index: 100;">
-                <MudText Typo="Typo.body2" Style="color: white;">@connectivityWarningMessage</MudText>
-                <MudIconButton Icon="@Icons.Material.Filled.Refresh" Size="Size.Small" OnClick="RetryConnectivityCheck" Class="ms-auto" Title="تلاش مجدد" Style="color: white;" />
+            @* Outlined (نه Filled): قاعده‌ی سراسری ‎.mud-alert-filled-warning‎ در pay2-salary.css زمینه را
+               زرد روشن ثابت می‌کند که در تم تاریک چشم را می‌زد و با «color: white» متن ناخوانا می‌شد.
+               Outlined رنگ هشدار تم را برای متن و قاب می‌گیرد و زمینه از Surface است تا در هر دو تم درست باشد. *@
+            <MudAlert Severity="Severity.Warning" Variant="Variant.Outlined" Class="mb-4" Style="position: sticky; top: 64px; z-index: 100; background-color: var(--mud-palette-surface);">
+                <MudText Typo="Typo.body2" Style="color: inherit;">@connectivityWarningMessage</MudText>
+                <MudIconButton Icon="@Icons.Material.Filled.Refresh" Size="Size.Small" OnClick="RetryConnectivityCheck" Class="ms-auto" Title="تلاش مجدد" Style="color: inherit;" />
             </MudAlert>
         }
         <MudContainer MaxWidth="MaxWidth.Large" Class="my-4 pt-4">

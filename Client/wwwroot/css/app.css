@@ -40,3 +40,15 @@
     .mobile-friendly-tabs .mud-tab.mud-tab-active {
         /* background-color: var(--mud-palette-primary-lighter); */
     }
+
+/* ─── نوار بالای برنامه — هم‌زبان با سرتیتر پنل حقوق و دستمزد (سفید، خط باریک پایین) ─── */
+.mud-appbar.safir-appbar {
+    border-bottom: 1px solid var(--mud-palette-lines-default);
+}
+
+/* منوی کناری از راست باز می‌شود (Anchor.End)؛ لبه‌ی چپش رو به صفحه است و گرد می‌شود.
+   overflow را دست نزنید: MudDrawer خودش اسکرول می‌خورد و «hidden» ته منو را می‌بُرد. */
+.mud-drawer.safir-drawer {
+    border-top-left-radius: 8px;
+    border-bottom-left-radius: 8px;
+}
