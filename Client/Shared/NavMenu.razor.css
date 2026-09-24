@@ -1,62 +1,95 @@
-.navbar-toggler {
-    background-color: rgba(255, 255, 255, 0.1);
+/* منوی کناری — هم‌زبان با پنل حقوق و دستمزد: کارت محیط کاری، سرفصل‌های گروه، آیتم‌های گرد.
+   رنگ‌ها از پالت MudBlazor گرفته می‌شوند تا تم تاریک برنامه هم درست بماند. */
+
+.safir-nav {
+    display: flex;
+    flex-direction: column;
+    min-height: 100%;
+    padding: 4px 0 12px;
 }
 
-.top-row {
-    height: 3.5rem;
-    background-color: rgba(0,0,0,0.4);
+/* کارت محیط کاری (شرکت، سال مالی، دیتابیس) */
+.safir-nav-workspace {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin: 4px 12px 10px;
+    padding: 10px 12px;
+    border-radius: 12px;
+    background: rgba(37, 99, 235, 0.08);
+    border: 1px solid rgba(37, 99, 235, 0.18);
 }
 
-.navbar-brand {
-    font-size: 1.1rem;
+.safir-nav-workspace-icon {
+    flex-shrink: 0;
+    width: 34px;
+    height: 34px;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #2563eb;
+    color: #fff;
+    font-size: 16px;
 }
 
-.oi {
-    width: 2rem;
-    font-size: 1.1rem;
-    vertical-align: text-top;
-    top: -2px;
+.safir-nav-workspace-text {
+    min-width: 0;
 }
 
-.nav-item {
-    font-size: 0.9rem;
-    padding-bottom: 0.5rem;
+.safir-nav-workspace-name {
+    font-weight: 700;
+    font-size: 13px;
+    color: var(--mud-palette-text-primary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
-    .nav-item:first-of-type {
-        padding-top: 1rem;
-    }
-
-    .nav-item:last-of-type {
-        padding-bottom: 1rem;
-    }
-
-    .nav-item ::deep a {
-        color: #d7d7d7;
-        border-radius: 4px;
-        height: 3rem;
-        display: flex;
-        align-items: center;
-        line-height: 3rem;
-    }
-
-.nav-item ::deep a.active {
-    background-color: rgba(255,255,255,0.25);
-    color: white;
+.safir-nav-workspace-meta {
+    font-size: 11px;
+    color: var(--mud-palette-text-secondary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
-.nav-item ::deep a:hover {
-    background-color: rgba(255,255,255,0.1);
-    color: white;
+/* سرفصل هر گروه از منو */
+.safir-nav-section {
+    margin: 14px 20px 4px;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.2px;
+    color: var(--mud-palette-text-secondary);
 }
 
-@media (min-width: 641px) {
-    .navbar-toggler {
-        display: none;
-    }
+/* آیتم‌ها: گوشه‌ی گرد و فاصله از لبه، مثل منوی پنل حقوق */
+.safir-nav ::deep .mud-nav-link {
+    margin: 1px 10px;
+    width: calc(100% - 20px);
+    border-radius: 10px;
+    padding-top: 7px;
+    padding-bottom: 7px;
+}
 
-    .collapse {
-        /* Never collapse the sidebar for wide screens */
-        display: block;
-    }
+.safir-nav ::deep .mud-navmenu .mud-nav-group .mud-nav-link {
+    margin-inline-start: 10px;
+}
+
+/* باز شدن گروه با تأخیر در اولین کلیک (رفتار MudBlazor 6.21، از قبل هم بود):
+   MudCollapse ارتفاع محتوا را اولین بار صفر اندازه می‌گیرد و استایل می‌گذارد
+   «height:0px;animation-duration:s;». انیمیشنِ باز شدن (from{height:0}) با قاعده‌ی
+   ‎.mud-navgroup-collapse‎ سیصد میلی‌ثانیه طول می‌کشد، ولی از ۰ تا ۰؛ یعنی گروه ۳۰۰ms
+   بسته می‌ماند و بعد یکباره باز می‌شود. فقط برای همین حالتِ ارتفاع صفر، انیمیشن را
+   یک میلی‌ثانیه می‌کنیم تا animationend فوراً بیاید و وضعیت عادیِ «باز» (height:auto)
+   برسد. بستن و باز شدن‌های بعدی (که ارتفاع درست دارند) همان انیمیشن کتابخانه را دارند. */
+.safir-nav ::deep .mud-navgroup-collapse.mud-collapse-entering[style*="height:0px"] {
+    animation-duration: 1ms !important;
+}
+
+.safir-nav-version {
+    margin-top: auto;
+    padding: 16px 20px 0;
+    font-size: 11px;
+    color: var(--mud-palette-text-disabled);
 }

@@ -1,0 +1,197 @@
+/* صفحه‌ی اصلی — هم‌زبان با داشبورد حقوق و دستمزد (کارت سفید، گوشه‌ی ۱۶، سایه‌ی نرم، کاشی آیکون رنگی).
+   رنگ پس‌زمینه و متن از پالت MudBlazor است تا با تم تاریک برنامه هم خوانا بماند. */
+
+.safir-home {
+    direction: rtl;
+    display: flex;
+    flex-direction: column;
+    gap: 22px;
+}
+
+/* ─── سرتیتر ─── */
+.safir-home-hero {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    flex-wrap: wrap;
+    padding: 22px 24px;
+    border-radius: 16px;
+    background: var(--mud-palette-surface);
+    border: 1px solid var(--mud-palette-lines-default);
+    box-shadow: 0 2px 15px rgba(15, 23, 42, 0.05);
+}
+
+.safir-home-greeting {
+    font-size: 20px;
+    font-weight: 800;
+    color: var(--mud-palette-text-primary);
+}
+
+.safir-home-sub {
+    margin-top: 6px;
+    font-size: 13px;
+    color: var(--mud-palette-text-secondary);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+
+.safir-home-dot {
+    margin: 0 4px;
+}
+
+.safir-home-hero-action {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 18px;
+    border-radius: 10px;
+    background: #2563eb;
+    color: #fff;
+    font-weight: 700;
+    font-size: 14px;
+    text-decoration: none;
+    transition: background-color 0.15s ease;
+}
+
+    .safir-home-hero-action:hover {
+        background: #1d4ed8;
+        color: #fff;
+    }
+
+/* ─── میان‌برها ─── */
+.safir-home-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+    gap: 14px;
+}
+
+.safir-home-tile {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 16px;
+    border-radius: 16px;
+    background: var(--mud-palette-surface);
+    border: 1px solid var(--mud-palette-lines-default);
+    box-shadow: 0 1px 4px rgba(15, 23, 42, 0.04);
+    color: var(--mud-palette-text-primary);
+    text-decoration: none;
+    transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+}
+
+    .safir-home-tile:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 8px 28px rgba(15, 23, 42, 0.10);
+        border-color: rgba(37, 99, 235, 0.35);
+        color: var(--mud-palette-text-primary);
+    }
+
+    .safir-home-tile:focus-visible {
+        outline: 2px solid #2563eb;
+        outline-offset: 2px;
+    }
+
+.safir-home-tile-icon {
+    flex-shrink: 0;
+    width: 46px;
+    height: 46px;
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 21px;
+}
+
+    /* نیمه‌شفاف تا روی پس‌زمینه‌ی روشن و تاریک هر دو درست دیده شود */
+    .safir-home-tile-icon.tone-blue { background: rgba(37, 99, 235, 0.12); color: #2563eb; }
+
+.safir-home-tile-body {
+    flex-grow: 1;
+    min-width: 0;
+}
+
+.safir-home-tile-title {
+    font-weight: 700;
+    font-size: 14px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.safir-home-tile-desc {
+    margin-top: 3px;
+    font-size: 12px;
+    color: var(--mud-palette-text-secondary);
+}
+
+.safir-home-kbd {
+    direction: ltr;
+    font-size: 10px;
+    font-weight: 600;
+    padding: 1px 6px;
+    border-radius: 6px;
+    border: 1px solid var(--mud-palette-lines-default);
+    color: var(--mud-palette-text-secondary);
+}
+
+.safir-home-tile-arrow {
+    color: var(--mud-palette-text-disabled);
+    transition: transform 0.15s ease, color 0.15s ease;
+}
+
+.safir-home-tile:hover .safir-home-tile-arrow {
+    color: #2563eb;
+    transform: translateX(-3px);
+}
+
+/* ─── کاربر واردنشده ─── */
+.safir-home-guest {
+    max-width: 520px;
+    margin: 40px auto 0;
+    padding: 32px 28px;
+    border-radius: 20px;
+    text-align: center;
+    background: var(--mud-palette-surface);
+    border: 1px solid var(--mud-palette-lines-default);
+    box-shadow: 0 8px 28px rgba(15, 23, 42, 0.10);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+}
+
+    .safir-home-guest .safir-home-sub {
+        justify-content: center;
+        margin-bottom: 8px;
+    }
+
+.safir-home-guest-icon {
+    width: 64px;
+    height: 64px;
+    border-radius: 18px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 28px;
+    background: rgba(37, 99, 235, 0.12);
+    color: #2563eb;
+}
+
+@media (max-width: 600px) {
+    .safir-home-hero {
+        padding: 18px;
+    }
+
+    .safir-home-greeting {
+        font-size: 17px;
+    }
+
+    .safir-home-hero-action {
+        width: 100%;
+        justify-content: center;
+    }
+}

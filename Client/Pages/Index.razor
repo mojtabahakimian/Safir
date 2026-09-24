@@ -1,119 +1,110 @@
-﻿@page "/"
+@page "/"
 
 @using System.Security.Claims
 @using Microsoft.AspNetCore.Components.Authorization
 @using Safir.Shared.Constants;
-@using MudBlazor;
+@using Safir.Shared.Utility
 @inject AuthenticationStateProvider AuthenticationStateProvider
+@inject ClientAppSettingsService ClientAppSettings
 
 <PageTitle>صفحه اصلی</PageTitle>
 
 <AuthorizeView>
-    <Authorized Context="authContext">
-        @code
-        {
-            private string? displayName;
-            private string? userId;
-            protected override async Task OnInitializedAsync()
-            {
-                var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
-                var user = authState.User;
-
-                if (user.Identity != null && user.Identity.IsAuthenticated)
-                {
-                    string? FULL_USER = user.FindFirst(BaseknowClaimTypes.UUSER)?.Value;
-                    displayName = FULL_USER ?? ""; //This will not display (issue)
-                }
-            }
-
-        }
-
-        <MudText Typo="Typo.h4" Class="mb-4">@displayName خوش آمدید</MudText>
-    </Authorized>
-
-    <NotAuthorized>
-        <MudPaper Elevation="3" Class="pa-6 ma-4" Style="border-radius: 16px; max-width: 600px; margin: 0 auto;">
-            <MudStack Spacing="4" AlignItems="AlignItems.Center">
-                <MudIcon Icon="@Icons.Material.Filled.Celebration" Color="Color.Primary" Size="Size.Large" />
-                <MudText Typo="Typo.h4" Align="Align.Center" Color="Color.Primary">به سیستم جامع سفیر خوش آمدید</MudText>
-                <MudDivider />
-                <MudText Typo="Typo.body1" Align="Align.Center">برای استفاده از امکانات سیستم، لطفا</MudText>
-                <MudButton Variant="Variant.Filled"
-                           Color="Color.Primary"
-                           Size="Size.Large"
-                           Href="login"
-                           StartIcon="@Icons.Material.Filled.Login"
-                           Class="px-8"> وارد شوید </MudButton>
-            </MudStack>
-        </MudPaper>
-    </NotAuthorized>
-</AuthorizeView>
-
-
-<AuthorizeView>
     <Authorized>
-        <MudGrid>
+        <div class="safir-home">
+            <!-- سرتیتر: خوشامد + محیط کاری -->
+            <div class="safir-home-hero">
+                <div>
+                    <div class="safir-home-greeting">سلام @displayName، خوش آمدید</div>
+                    <div class="safir-home-sub">
+                        <i class="bi bi-calendar3"></i> امروز @_today
+                        @if (!string.IsNullOrWhiteSpace(_companyName))
+                        {
+                            <span class="safir-home-dot">·</span>
+                            <i class="bi bi-building"></i>
+                            @_companyName
+                            @if (_fiscalYear.HasValue)
+                            {
+                                <span>(سال مالی @_fiscalYear)</span>
+                            }
+                        }
+                    </div>
+                </div>
+            </div>
 
-            <MudItem xs="12" sm="6" md="4">
-                <MudCard Elevation="3" Class="rounded-lg h-100">
-                    <MudCardHeader>
-                        <CardHeaderContent>
-                            <MudText Typo="Typo.h6">Salary</MudText>
-                        </CardHeaderContent>
-                        <CardHeaderActions>
-                            <MudIconButton Icon="@Icons.Material.Filled.List" Color="Color.Default" />
-                        </CardHeaderActions>
-                    </MudCardHeader>
-                    <MudCardContent>
-                        <MudText>حقوق و دستمزد</MudText>
-                    </MudCardContent>
-                    <MudCardActions>
-                        <MudButton Href="salary/manage" Variant="Variant.Text" Color="Color.Primary">حقوق و دستمزد</MudButton>
-                    </MudCardActions>
-                </MudCard>
-            </MudItem>
-
-            <MudItem xs="12" sm="6" md="4">
-                <MudCard Elevation="3" Class="rounded-lg h-100">
-                    <MudCardHeader>
-                        <CardHeaderContent>
-                            <MudText Typo="Typo.h6">لیست مشتریان</MudText>
-                        </CardHeaderContent>
-                        <CardHeaderActions>
-                            <MudIconButton Icon="@Icons.Material.Filled.List" Color="Color.Default" />
-                        </CardHeaderActions>
-                    </MudCardHeader>
-                    <MudCardContent>
-                        <MudText>لیست مشتریان من</MudText>
-                        <MudText>Ctrl + F8</MudText>
-                    </MudCardContent>
-                    <MudCardActions>
-                        <MudButton Href="visitor-customers" Variant="Variant.Text" Color="Color.Primary">مشاهده لیست مشتریان</MudButton>
-                    </MudCardActions>
-                </MudCard>
-            </MudItem>
-
-            <MudItem xs="12" sm="6" md="4">
-                <MudCard Elevation="3" Class="rounded-lg h-100">
-                    <MudCardHeader>
-                        <CardHeaderContent>
-                            <MudText Typo="Typo.h6">تعریف مشتری</MudText>
-                        </CardHeaderContent>
-                        <CardHeaderActions>
-                            <MudIconButton Icon="@Icons.Material.Filled.PersonAdd" Color="Color.Default" />
-                        </CardHeaderActions>
-                    </MudCardHeader>
-                    <MudCardContent>
-                        <MudText>تعریف مشتری جدید</MudText>
-                        <MudText>ثبت مشخصات مشتری</MudText>
-                    </MudCardContent>
-                    <MudCardActions>
-                        <MudButton Href="customer-define" Variant="Variant.Text" Color="Color.Primary">تعریف مشتری جدید</MudButton>
-                    </MudCardActions>
-                </MudCard>
-            </MudItem>
-        </MudGrid>
+            @* عمداً فقط سه میان‌بر پرکاربرد؛ بقیه‌ی بخش‌ها در منوی کناری‌اند و صفحه‌ی اول شلوغ نمی‌شود *@
+            <div class="safir-home-grid">
+                @foreach (var tile in _tiles)
+                {
+                    <a class="safir-home-tile" href="@tile.Href">
+                        <div class="safir-home-tile-icon @tile.Tone"><i class="bi @tile.Icon"></i></div>
+                        <div class="safir-home-tile-body">
+                            <div class="safir-home-tile-title">
+                                @tile.Title
+                                @if (!string.IsNullOrEmpty(tile.Shortcut))
+                                {
+                                    <span class="safir-home-kbd">@tile.Shortcut</span>
+                                }
+                            </div>
+                            <div class="safir-home-tile-desc">@tile.Description</div>
+                        </div>
+                        <i class="bi bi-chevron-left safir-home-tile-arrow"></i>
+                    </a>
+                }
+            </div>
+        </div>
     </Authorized>
+
     <NotAuthorized>
+        <div class="safir-home">
+            <div class="safir-home-guest">
+                <div class="safir-home-guest-icon"><i class="bi bi-shield-lock"></i></div>
+                <div class="safir-home-greeting">به سیستم جامع سفیر خوش آمدید</div>
+                <div class="safir-home-sub">برای استفاده از امکانات سیستم، لطفاً وارد شوید.</div>
+                <a class="safir-home-hero-action" href="login">
+                    <i class="bi bi-box-arrow-in-left"></i> ورود به سیستم
+                </a>
+            </div>
+        </div>
     </NotAuthorized>
 </AuthorizeView>
+
+@code {
+    private string? displayName;
+    private string _today = "";
+    private string? _companyName;
+    private short? _fiscalYear;
+
+    private sealed record HomeTile(string Title, string Description, string Href, string Icon, string Tone, string? Shortcut = null);
+
+    // همان سه میان‌بر صفحه‌ی قبلی؛ هر مجوزی را خود صفحه‌ی مقصد بررسی می‌کند
+    private static readonly HomeTile[] _tiles =
+    {
+        new("حقوق و دستمزد", "پرسنل، احکام، کارکرد، محاسبه و گزارش‌ها", "salary/manage", "bi-wallet2", "tone-blue"),
+        new("لیست مشتریان", "مشتریان من و ثبت سفارش", "visitor-customers", "bi-people", "tone-blue", "Ctrl + F8"),
+        new("تعریف مشتری جدید", "ثبت مشخصات مشتری", "customer-define", "bi-person-plus", "tone-blue"),
+    };
+
+    protected override async Task OnInitializedAsync()
+    {
+        _today = CL_Tarikh.FormatShamsiDateFromLong(CL_Tarikh.GetCurrentPersianDateAsLong());
+
+        var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        var user = authState.User;
+        if (user.Identity == null || !user.Identity.IsAuthenticated) return;
+
+        displayName = user.FindFirst(BaseknowClaimTypes.UUSER)?.Value ?? "";
+
+        // نام شرکت فقط برای نمایش است؛ اگر نیامد صفحه بدون آن کار می‌کند
+        try
+        {
+            var sazman = await ClientAppSettings.GetSettingsAsync();
+            _companyName = sazman?.NAME;
+            _fiscalYear = sazman?.YEA;
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"Home: company settings not loaded: {ex.Message}");
+        }
+    }
+}

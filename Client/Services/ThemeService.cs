@@ -34,16 +34,51 @@ namespace Safir.Client.Services
         //     Primary = "#2e7d32", // Green
         private static readonly string GreenColor = "#1DB954"; // Example Spotify Green
 
+        // MudThemeProvider در حالت تاریک از PaletteDark تمِ جاری استفاده می‌کند، نه از Palette.
+        // قبلاً هیچ تمی PaletteDark نداشت و MudBlazor پالت پیش‌فرضِ بنفش خودش را نشان می‌داد
+        // (نوار بالای بنفش)؛ این پالت به هر دو تم داده می‌شود چون برنامه در شروع، حتی با
+        // ترجیح «تاریک»، روی LightTheme بالا می‌آید.
+        // رنگ‌ها از تم «Night» تلگرام دسکتاپ: سرمه‌ای به‌جای خاکستری، تأکید آبی
+        private static readonly PaletteDark DarkPalette = new PaletteDark()
+        {
+            Primary = "#5288c1",            // آبی تأکید تلگرام (دکمه‌ها، آیتم فعال منو)
+            Background = "#0e1621",         // زمینه‌ی اصلی (پشت پیام‌ها در تلگرام)
+            BackgroundGrey = "#242f3d",     // جعبه‌ی جستجو / ورودی‌ها
+            Surface = "#17212b",            // کارت‌ها و پنل‌ها
+            AppbarBackground = "#17212b",
+            AppbarText = "#f5f5f5",
+            DrawerBackground = "#17212b",
+            DrawerText = "#f5f5f5",
+            DrawerIcon = "#708499",
+            TextPrimary = "#f5f5f5",
+            TextSecondary = "#708499",
+            TextDisabled = "#4f5f70",
+            ActionDefault = "#708499",
+            LinesDefault = "#243140",
+            Divider = "#0e1621",
+            // Color.Dark پیش‌فرض MudBlazor (#27272f) روی زمینه‌ی سرمه‌ای دیده نمی‌شود؛ جاهایی که متن یا
+            // چیپ را «Dark» گذاشته‌اند (کد مشتری، وضعیت گزارش خطا، …) در تم تاریک ناپدید می‌شدند.
+            Dark = "#9aa9b8",
+            DarkContrastText = "#0e1621",
+            // پیش‌فرض MudBlazor برای ردیف‌های راه‌راه (سفید ۲۰٪) هر ردیف دوم جدول را خاکستری پررنگ می‌کرد
+            TableStriped = "rgba(255,255,255,0.03)",
+            TableHover = "rgba(82,136,193,0.10)",
+            TableLines = "#243140",
+        };
+
         private static readonly MudTheme LightTheme = new MudTheme()
         {
             Palette = new PaletteLight()
             {
                 Primary = GreenColor,
-                AppbarBackground = GreenColor,
+                // نوار بالا مثل سرتیتر پنل حقوق و دستمزد: سفید با متن تیره، نه رنگ برند
+                AppbarBackground = Colors.Shades.White,
+                AppbarText = "#1e293b",
                 Background = Colors.Shades.White,
                 TextPrimary = Colors.Grey.Darken3,
                 // Add other palette color overrides if needed
             },
+            PaletteDark = DarkPalette,
             Typography = new Typography()
             {
                 Default = new Default()
@@ -61,18 +96,8 @@ namespace Safir.Client.Services
 
         private static readonly MudTheme DarkTheme = new MudTheme()
         {
-            Palette = new PaletteDark()
-            {
-                Primary = GreenColor,
-                Surface = Colors.Grey.Darken4, // Dark background elements
-                Background = Colors.Grey.Darken3, // Main background
-                BackgroundGrey = Colors.Grey.Darken2,
-                AppbarBackground = Colors.Grey.Darken4, // Dark app bar
-                DrawerBackground = Colors.Grey.Darken4,
-                TextPrimary = Colors.Shades.White,
-                TextSecondary = Colors.Grey.Lighten1,
-                // Add other palette color overrides if needed
-            },
+            Palette = DarkPalette,
+            PaletteDark = DarkPalette,
             Typography = new Typography()
             {
                 Default = new Default()
