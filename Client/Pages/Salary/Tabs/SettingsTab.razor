@@ -251,7 +251,17 @@
 
             <!-- ۳) جدول پله‌ها -->
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
-                <b style="font-size:13px;">پله‌های سال @SelectedTaxYearStr</b>
+                <b style="font-size:13px;">
+                    پله‌های سال @SelectedTaxYearStr
+                    @if (_taxLoading)
+                    {
+                        <span class="p2-text-muted" style="font-weight:normal;"> — در حال بارگذاری…</span>
+                    }
+                    else if (!_savedTaxYears.Contains(SelectedTaxYear))
+                    {
+                        <span class="p2-badge-warning" style="padding:1px 8px; font-size:10px; font-weight:normal;">هنوز ذخیره نشده</span>
+                    }
+                </b>
                 <button class="btn-primary-pay2" @onclick="AddTaxBracketRow">
                     <i class="bi bi-plus-circle"></i> افزودن پله
                 </button>
@@ -271,7 +281,7 @@
                     </thead>
 
                     <tbody>
-                        @if (!TaxBrackets.Any())
+                        @if (!TaxBrackets.Any() && !_taxLoading)
                         {
                             <tr>
                                 <td colspan="6" style="text-align:center; padding:24px; color:var(--p2-text-muted);">
@@ -288,7 +298,9 @@
                             </tr>
                         }
 
-                        @{ long rowFrom = 0; }
+                        @{
+                            long rowFrom = 0;
+                        }
                         @foreach (var row in TaxBrackets.OrderBy(x => x.SORT_ORDER))
                         {
                             var from = rowFrom;
@@ -349,16 +361,17 @@
                 • «مالیات پله‌های قبل» خودکار حساب می‌شود و لازم نیست واردش کنید.
             </div>
 
+        </div>
+
+        <div class="pay2-modal-footer" style="justify-content:flex-end;">
+            @* هشدار کنار دکمه‌هاست، نه ته محتوای قابل‌اسکرول؛ آنجا دیده نمی‌شد و «انصراف» بی‌اثر به‌نظر می‌رسید *@
             @if (_confirmCloseTax)
             {
-                <div style="margin-top:12px; padding:10px 14px; background:var(--p2-danger-bg); border:1px solid #fecaca; color:#991b1b; border-radius:10px; font-size:13px;">
+                <div style="flex-grow:1; padding:8px 12px; background:var(--p2-danger-bg); border:1px solid #fecaca; color:#991b1b; border-radius:10px; font-size:12px;">
                     <i class="bi bi-exclamation-octagon"></i>
                     تغییرات ذخیره نشده است. برای بستن <b>بدون ذخیره</b> دوباره «انصراف» یا × را بزنید.
                 </div>
             }
-        </div>
-
-        <div class="pay2-modal-footer" style="justify-content:flex-end;">
             <button class="btn-outline-pay2" @onclick="CloseTaxModal" style="margin-left:10px;">انصراف</button>
 
             <button class="btn-primary-pay2" @onclick="SaveTaxBracketsAsync" disabled="@(IsSavingTax || !Pay2Access.Access.CanRun(Safir.Shared.Constants.Pay2Forms.ActConfigCritical))">
@@ -435,6 +448,7 @@
     string _newTaxYearStr = "";
     string _copySourceYearStr = "";
     bool _taxDirty;          // جدول تغییر ذخیره‌نشده دارد
+    bool _taxLoading;        // تا پاسخ نیامده «پله‌ای ثبت نشده» نشان داده نشود
     bool _confirmCloseTax;   // بار اولِ بستن با تغییر ذخیره‌نشده فقط هشدار می‌دهد
 
     // مقدار ذخیره‌شده (نه ویرایشِ ذخیره‌نشده‌ی همین صفحه)
@@ -601,6 +615,7 @@
         _taxDirty = false;
         _confirmCloseTax = false;
         _newTaxYearStr = "";
+        _taxLoading = true;
         ShowTaxModal = true;
         await LoadTaxYearsLookupAsync();
         await LoadTaxBracketsAsync();
@@ -629,10 +644,12 @@
                 Name = $"سال {y}"
             }).ToList();
 
-            // سالی که تازه ایجاد شده و هنوز پله‌ی ذخیره‌شده ندارد
+            // سالی که تازه ایجاد شده و هنوز پله‌ی ذخیره‌شده ندارد. برچسبش عمداً همان «سال X» است:
+            // Pay2Select متن نمایش‌داده‌شده را با عوض شدن برچسبِ همان مقدار تازه نمی‌کند، پس «(جدید)»
+            // بعد از ذخیره روی کادر می‌ماند. وضعیت «ذخیره‌نشده» کنار عنوان جدول نشان داده می‌شود.
             if (SelectedTaxYear > 0 && !_savedTaxYears.Contains(SelectedTaxYear))
             {
-                _availableTaxYears.Insert(0, new LookupDto<string> { Id = SelectedTaxYearStr, Name = $"سال {SelectedTaxYearStr} (جدید)" });
+                _availableTaxYears.Insert(0, new LookupDto<string> { Id = SelectedTaxYearStr, Name = $"سال {SelectedTaxYearStr}" });
             }
 
             _copySourceYearStr = CopySourceYears.FirstOrDefault()?.Id ?? "";
@@ -669,6 +686,7 @@
 
     async Task LoadTaxBracketsAsync()
     {
+        _taxLoading = true;
         try
         {
             TaxBrackets = await SettingsApi.GetTaxBracketsAsync(SelectedTaxYear);
@@ -679,6 +697,10 @@
         catch (Exception ex)
         {
             Snackbar.Add(ex.Message, MudBlazor.Severity.Error);
+        }
+        finally
+        {
+            _taxLoading = false;
         }
     }
 
