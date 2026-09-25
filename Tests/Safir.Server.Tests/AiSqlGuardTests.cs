@@ -45,6 +45,17 @@ namespace Safir.Server.Tests
         }
 
         [Theory]
+        [InlineData("PAY2_EMPLOYEE", true)]
+        [InlineData("dbo.[SALA_DTL]", true)]
+        [InlineData("v_pay2_bimeh", true)]
+        [InlineData("AI_Config", true)]
+        [InlineData("DEED_DTL", false)]
+        [InlineData("KALAS", false)]
+        [InlineData(null, false)]
+        public void IsDenied_CoversSchemaAndDocTools(string? name, bool denied)
+            => Assert.Equal(denied, AiSqlGuard.IsDenied(name));
+
+        [Theory]
         [InlineData("SELECT 1; DROP TABLE X")]
         [InlineData("UPDATE DEED_HED SET OKF = 1")]
         [InlineData("SELECT * INTO NewT FROM DEED_HED")]

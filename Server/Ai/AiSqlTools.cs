@@ -90,6 +90,20 @@ namespace Safir.Server.Ai
         /// </summary>
         private static readonly string[] DeniedPrefixes = { "PAY2_", "V_PAY2_" };
 
+        /// <summary>
+        /// همان فهرستِ ممنوع برای ابزارهای ساختار و مستند (list_tables، describe_table،
+        /// find_column، table_doc، search_docs). در آزمون طلایی داده‌ی حقوق خوانده نشد ولی
+        /// مدل با describe_table ستون‌های PAY2_EMPLOYEE (کد ملی، شماره حساب…) را دید.
+        /// </summary>
+        public static bool IsDenied(string? objectName)
+        {
+            if (string.IsNullOrWhiteSpace(objectName)) return false;
+            // «dbo.[SALA_DTL]» → «SALA_DTL»
+            var name = objectName.Trim().Split('.').Last().Trim('[', ']', '"', ' ');
+            return DeniedTables.Contains(name) ||
+                   DeniedPrefixes.Any(p => name.StartsWith(p, StringComparison.OrdinalIgnoreCase));
+        }
+
         private static (bool Ok, string? Error) ValidateAst(string sql)
         {
             var parser   = new TSql150Parser(initialQuotedIdentifiers: true);
@@ -186,6 +200,8 @@ namespace Safir.Server.Ai
                 ORDER BY x.ObjectName",
                 new { n = call.MaxRows, q })).ToList();
 
+            rows = rows.Where(r => !AiSqlGuard.IsDenied((string)r.ObjectName)).ToList();
+
             return new AiToolResult { Rows = rows.Count, Data = rows,
                                       Truncated = rows.Count >= call.MaxRows };
         }
@@ -213,6 +229,8 @@ namespace Safir.Server.Ai
             var table = call.Str("table");
             if (string.IsNullOrWhiteSpace(table))
                 return AiToolResult.Fail("پارامتر table لازم است.");
+            if (AiSqlGuard.IsDenied(table))
+                return AiToolResult.Fail($"دسترسی دستیار به «{table}» بسته است.");
 
             var rows = (await _db.DoGetDataSQLAsync<dynamic>(@"
                 SELECT c.name AS ColumnName, ty.name AS DataType,
@@ -288,6 +306,8 @@ namespace Safir.Server.Ai
                 WHERE  c.name LIKE '%' + @col + '%'
                 ORDER BY OBJECT_NAME(c.object_id), c.name",
                 new { n = call.MaxRows, col })).ToList();
+
+            rows = rows.Where(r => !AiSqlGuard.IsDenied((string)r.ObjectName)).ToList();
 
             return new AiToolResult { Rows = rows.Count, Data = rows,
                                      Truncated = rows.Count >= call.MaxRows };

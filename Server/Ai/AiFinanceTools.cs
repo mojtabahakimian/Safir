@@ -447,7 +447,7 @@ namespace Safir.Server.Ai
         /// کد ترکیبی و نامِ حساب‌های شخصِ زیر کل ۱۱۵ در هر چهار سطح تفصیلی — همان
         /// شکلِ کدِ view CUST_HESAB («115-19-1-3»)، بدون ستون‌های دیگرش.
         /// </summary>
-        private const string AccountNamesSql = @"
+        internal const string AccountNamesSql = @"
             SELECT CONCAT(N_KOL,'-',NUMBER,'-',TNUMBER) AS hes, NAME FROM dbo.TDETA_HES WHERE N_KOL = 115
             UNION ALL
             SELECT CONCAT(N_KOL,'-',NUMBER,'-',TNUMBER,'-',TNUMBER2), NAME FROM dbo.TDETA_HES2 WHERE N_KOL = 115
@@ -467,14 +467,64 @@ namespace Safir.Server.Ai
         public string Title       => "عبور از سقف اعتبار";
         public string Description =>
             "مشتریانی که مانده‌ی بدهکارشان از سقف اعتبار تعریف‌شده بیشتر است، به‌علاوه‌ی تعداد مشتریانِ " +
-            "دارای سقف و تعدادی که اصلاً گردش ندارند.";
+            "دارای سقف و تعدادی که اصلاً گردش ندارند. برای «سقف اعتبار فلانی» name یا account بده تا " +
+            "سقف و مانده‌ی همان مشتری (یا اینکه سقف ندارد) برگردد — برایش run_sql ننویس.";
         public string RequiredForm => CostForms.Dashboard;
         public Pay2Perm RequiredPerm => Pay2Perm.See;
-        public string Parameters  => "asOf: تاریخ yyyymmdd (اختیاری؛ پیش‌فرض امروز).";
+        public string Parameters  =>
+            "asOf: تاریخ yyyymmdd (اختیاری؛ پیش‌فرض امروز). " +
+            "name: بخشی از نام مشتری، یا account: کد کامل حساب (مثل 115-19-1-3) — هر دو اختیاری.";
 
         public async Task<AiToolResult> ExecuteAsync(AiToolCall call, CancellationToken ct = default)
         {
             var asOf = FinArgs.Date(call, "asOf") ?? FinArgs.Today();
+
+            // ── یک مشتری مشخص ──
+            // در آزمون، «اولی سقف اعتبار دارد؟» ۸ مرحله (۴ run_sql) طول کشید چون این
+            // ابزار فقط فهرست متخلفان را می‌داد.
+            var account = call.Str("account")?.Trim();
+            var name    = call.Str("name")?.Trim();
+            if (!string.IsNullOrEmpty(account) || !string.IsNullOrEmpty(name))
+            {
+                var codes = !string.IsNullOrEmpty(account)
+                    ? new List<string> { account! }
+                    : (await _db.DoGetDataSQLAsync<string>(
+                        "SELECT TOP (20) n.hes FROM (" + TopDebtorsTool.AccountNamesSql + ") n WHERE " +
+                        AiText.SqlFa("n.NAME") + " LIKE @like",
+                        new { like = "%" + AiText.NormalizeFa(name!) + "%" })).ToList();
+
+                if (codes.Count == 0)
+                    return new AiToolResult { Rows = 0, Data = new { Found = false, Message = "حسابی با این نام زیر حساب کل ۱۱۵ پیدا نشد." } };
+
+                var one = (await _db.DoGetDataSQLAsync<dynamic>(@"
+                    SELECT  c.hes AS Account,
+                            (SELECT MAX(a.TOPETEB) FROM dbo.AZAE a WHERE RTRIM(a.HES) = c.hes) AS CreditLimit,
+                            (SELECT SUM(ISNULL(d.BED, 0) - ISNULL(d.BES, 0)) FROM dbo.DEED_DTL d
+                             JOIN dbo.DEED_HED h ON h.N_S = d.N_S
+                             WHERE d.HES = c.hes AND h.DATE_S <= @asOf) AS Balance
+                    FROM    (SELECT value AS hes FROM STRING_SPLIT(@list, ',')) c",
+                    new { asOf, list = string.Join(",", codes) })).ToList();
+
+                return new AiToolResult
+                {
+                    Rows = one.Count,
+                    Data = new
+                    {
+                        Metric     = "سقف اعتبار مشتری",
+                        AsOf       = asOf,
+                        Definition = "سقف از AZAE.TOPETEB (خالی یا صفر = سقف تعریف نشده)؛ مانده‌ی دفتری همان کد حساب.",
+                        Customers  = one.Select(r => new
+                        {
+                            Account     = (string)r.Account,
+                            CreditLimit = r.CreditLimit is null || (long)r.CreditLimit <= 0 ? (long?)null : (long)r.CreditLimit,
+                            HasLimit    = r.CreditLimit is not null && (long)r.CreditLimit > 0,
+                            Balance     = r.Balance is null ? 0d : (double)r.Balance,
+                            OverLimit   = r.CreditLimit is not null && (long)r.CreditLimit > 0 && r.Balance is not null &&
+                                          (double)r.Balance > (long)r.CreditLimit
+                        })
+                    }
+                };
+            }
 
             // سقف روی کد ترکیبی حساب است (مثلاً 115-1-802)؛ مانده‌ی دقیقاً همان کد،
             // مثل صورت‌حساب مشتری در Safir (DEED_DTL.HES = کد).
