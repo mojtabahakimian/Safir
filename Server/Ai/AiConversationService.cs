@@ -204,7 +204,9 @@ namespace Safir.Server.Ai
                 await _notify.StatusAsync(conversationId,
                     loop == 0 ? "در حال بررسی سؤال…" : "در حال جمع‌بندی داده‌ها…");
 
+                var callClock = Stopwatch.StartNew();
                 var reply = await provider.CompleteAsync(messages, allowed, ct);
+                await LogModelCallAsync(conversationId, userCo, userName, reply, callClock, loop);
 
                 if (!reply.Ok)
                     return new AiChatReplyDto { Error = reply.Error, Steps = steps };
@@ -285,7 +287,9 @@ namespace Safir.Server.Ai
                           "اینجا گرفته‌ای جواب بده و صریح بگو چه چیزی ناقص مانده."
             });
 
+            var lastClock = Stopwatch.StartNew();
             var last = await provider.CompleteAsync(messages, Array.Empty<IAiTool>(), ct);
+            await LogModelCallAsync(conversationId, userCo, userName, last, lastClock, -1);
 
             if (last.Ok && !string.IsNullOrWhiteSpace(last.Text))
             {
@@ -305,6 +309,39 @@ namespace Safir.Server.Ai
                 Error = $"پاسخ در {opt.MaxToolLoops} مرحله کامل نشد. سؤال را ساده‌تر بپرسید.",
                 Steps = steps
             };
+        }
+
+        /// <summary>
+        /// هر درخواست به مدل یک سطر لاگ (Kind=3): کدام مدل جواب داد، خطای خام سرویس، کد HTTP،
+        /// توکن‌ها، زمان، و اینکه مدل کدام ابزارها را خواست. بدون این، «مدل جواب نداد» در لاگ
+        /// هیچ ردی نداشت و علتش فقط در کنسول سرور بود.
+        /// </summary>
+        private Task LogModelCallAsync(Guid conversationId, int userCo, string? userName,
+                                       AiModelReply r, Stopwatch clock, int step)
+            => _access.LogAsync(new AiLogEntry
+            {
+                ConversationId = conversationId, UserCo = userCo, UserName = userName,
+                Kind = 3, ToolName = r.Model, Allowed = r.Ok, DenyReason = r.Error,
+                DurationMs = (int)clock.ElapsedMilliseconds,
+                Payload = JsonSerializer.Serialize(new
+                {
+                    step, ok = r.Ok, status = r.Status, tokensIn = r.TokensIn, tokensOut = r.TokensOut,
+                    toolCalls = r.ToolCalls.Select(c => c.Name), textChars = r.Text?.Length ?? 0,
+                    error = r.Error, detail = r.Detail
+                })
+            });
+
+        /// <summary>فارسیِ خروجی ابزار در لاگ خوانا باشد، نه «بد…».</summary>
+        private static string Readable(string json)
+        {
+            try
+            {
+                return System.Text.Json.Nodes.JsonNode.Parse(json)?.ToJsonString(new JsonSerializerOptions
+                {
+                    Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping
+                }) ?? json;
+            }
+            catch (JsonException) { return json; }   // مثلاً با پیشوندِ «⚠ فقط N سطر اول…»
         }
 
         private async Task<(string Content, AiChatStepDto Step)> RunToolAsync(
@@ -351,6 +388,7 @@ namespace Safir.Server.Ai
                     ConversationId = conversationId, UserCo = userCo, UserName = userName,
                     Kind = 2, ToolName = call.Name, Payload = call.Args.GetRawText(),
                     RowsReturned = result.Rows, Allowed = true,
+                    DenyReason = result.Ok ? null : result.Error,
                     DurationMs = (int)sw.ElapsedMilliseconds
                 });
 
@@ -368,6 +406,14 @@ namespace Safir.Server.Ai
                 // «همه» فرض می‌کند و جمعِ غلط تحویل می‌دهد.
                 if (result.Truncated)
                     json = $"⚠ فقط {result.Rows} سطر اول برگشت؛ نتیجه کامل نیست. " + json;
+
+                // همان چیزی که مدل دید (با نامِ پوشانده)، برای تشخیص اینکه اشتباه از داده بود یا از مدل
+                await _access.LogAsync(new AiLogEntry
+                {
+                    ConversationId = conversationId, UserCo = userCo, UserName = userName,
+                    Kind = 4, ToolName = call.Name, RowsReturned = result.Rows,
+                    Payload = Readable(json) is var log && log.Length <= 8000 ? log : log[..8000] + "…(بریده شد)"
+                });
 
                 return (json, new AiChatStepDto
                 {

@@ -75,14 +75,34 @@ namespace Safir.Server.Controllers
 
             var convId = req.ConversationId ?? Guid.NewGuid();
 
-            var reply = await _chat.AskAsync(
-                CurrentUserCo, CurrentUserName, convId,
-                req.History, req.Question.Trim(),
-                req.AttachmentName, req.AttachmentText,
-                HttpContext.RequestAborted);
-
             Response.Headers["X-Conversation-Id"] = convId.ToString();
-            return Ok(reply);
+            try
+            {
+                return Ok(await _chat.AskAsync(
+                    CurrentUserCo, CurrentUserName, convId,
+                    req.History, req.Question.Trim(),
+                    req.AttachmentName, req.AttachmentText,
+                    HttpContext.RequestAborted));
+            }
+            catch (Exception ex) when (!HttpContext.RequestAborted.IsCancellationRequested)
+            {
+                // خطای پیش‌بینی‌نشده قبلاً فقط ۵۰۰ و «خطا در ارتباط با سرور» بود و در لاگِ دستیار
+                // هیچ ردی نداشت. حالا متنِ کامل در AI_ChatLog (Kind=5) می‌ماند و در فایل تشخیصی می‌آید.
+                try
+                {
+                    await _access.LogAsync(new AiLogEntry
+                    {
+                        ConversationId = convId, UserCo = CurrentUserCo, UserName = CurrentUserName,
+                        Kind = 5, Allowed = false, DenyReason = ex.Message, Payload = ex.ToString()
+                    });
+                }
+                catch { /* اگر خودِ پایگاه قطع است، چیزی برای ثبت نمی‌ماند */ }
+
+                return Ok(new AiChatReplyDto
+                {
+                    Error = "خطای داخلی در دستیار. از منوی گفتگو «دریافت فایل تشخیص» را بزنید و فایل را برای پشتیبانی بفرستید."
+                });
+            }
         }
 
         // ─────────────────── تاریخچه‌ی گفتگوها ───────────────────
@@ -665,6 +685,65 @@ namespace Safir.Server.Controllers
         {
             await store.DeleteAsync(id);
             return Ok();
+        }
+
+        // ───────── فایل تشخیص (برای فرستادن به پشتیبانی) ─────────
+
+        /// <summary>
+        /// همه‌چیز درباره‌ی یک گفتگو (یا اگر شناسه ندهید، آخرین رخدادها) در یک JSON: نسخه‌ی برنامه،
+        /// تنظیمات سرویس بدون کلید، دسترسیِ همان کاربر، و تک‌تک رخدادها به ترتیب — سؤال، هر
+        /// درخواست به مدل (کدام مدل، خطای خام، توکن، زمان)، هر ابزار (پارامتر، سطر، خطا، خروجی‌ای
+        /// که مدل دید) و جواب. کلید API و رمز در آن نیست؛ ولی داده‌ی مالی و نام مشتری هست.
+        /// </summary>
+        [HttpGet("admin/diagnostics")]
+        [Pay2Authorize(Pay2Forms.AdminAcl, Pay2Perm.See)]
+        public async Task<IActionResult> Diagnostics(
+            [FromServices] IAiSettingsProvider settings,
+            [FromQuery] Guid? conversationId = null, [FromQuery] int take = 300)
+        {
+            var eff = (await settings.GetAsync()).Clone();
+
+            var events = (await _db.DoGetDataSQLAsync<dynamic>(@"
+                SELECT TOP (@take) Id, ConversationId, UserCo, UserName, AtUtc,
+                       CASE Kind WHEN 0 THEN N'question' WHEN 1 THEN N'answer' WHEN 2 THEN N'tool_call'
+                                 WHEN 3 THEN N'model_call' WHEN 4 THEN N'tool_output' WHEN 5 THEN N'internal_error'
+                                 ELSE CAST(Kind AS NVARCHAR(5)) END AS Kind,
+                       ToolName, RowsReturned, Allowed, DenyReason, DurationMs, Payload
+                FROM   dbo.AI_ChatLog
+                WHERE  (@conversationId IS NULL OR ConversationId = @conversationId)
+                ORDER BY Id DESC",
+                new { take = Math.Clamp(take, 1, 2000), conversationId })).Reverse().ToList();
+
+            var users = events.Select(e => (int)e.UserCo).Distinct().ToList();
+            var access = new List<object>();
+            foreach (var u in users)
+            {
+                var a = await _access.GetEffectiveAsync(u);
+                access.Add(new { UserCo = u, a.IsEnabled, a.AllowRawSql, a.MaxRows, a.DailyMessages, a.TodayMessages,
+                                 Tools = a.Tools.Select(t => t.Name) });
+            }
+
+            var bundle = new
+            {
+                GeneratedAtUtc = DateTime.UtcNow,
+                Server         = Environment.MachineName,
+                AppVersion     = typeof(AiAssistantController).Assembly.GetName().Version?.ToString(),
+                ConversationId = conversationId,
+                // بدون کلید API؛ فقط اینکه تنظیم شده یا نه
+                Settings = new { eff.Provider, eff.BaseUrl, eff.Model, eff.FallbackModel, eff.ProxyUrl,
+                                 eff.MaskNames, eff.TimeoutSeconds, eff.MaxToolLoops,
+                                 HasApiKey = !string.IsNullOrWhiteSpace(eff.ApiKey) },
+                Access = access,
+                Events = events
+            };
+
+            var bytes = JsonSerializer.SerializeToUtf8Bytes(bundle, new JsonSerializerOptions
+            {
+                WriteIndented = true,
+                Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping
+            });
+            var name = conversationId is null ? "recent" : conversationId.Value.ToString("N")[..8];
+            return File(bytes, "application/json", $"safir-ai-diagnostics-{name}-{DateTime.Now:yyyyMMdd-HHmm}.json");
         }
 
         /// <summary>لاگ — برای بازرسی اینکه چه کسی چه چیزی از دستیار پرسید.</summary>

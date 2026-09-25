@@ -40,7 +40,7 @@ namespace Safir.Server.Ai
         public Guid    ConversationId { get; set; }
         public int     UserCo         { get; set; }
         public string? UserName       { get; set; }
-        public byte    Kind           { get; set; }   // 0=کاربر 1=مدل 2=ابزار
+        public byte    Kind           { get; set; }   // 0=کاربر 1=جواب 2=فراخوانی ابزار 3=درخواست به مدل 4=خروجی ابزار 5=خطای داخلی
         public string? ToolName       { get; set; }
         public string? Payload        { get; set; }
         public int?    RowsReturned   { get; set; }
@@ -141,13 +141,22 @@ namespace Safir.Server.Ai
         }
 
         public async Task LogAsync(AiLogEntry e)
-            => await _db.DoExecuteSQLAsync(@"
+        {
+            // ستون‌ها طول محدود دارند؛ متن خطای SQL از ۲۰۰ نویسه بیشتر است و درجِ بلند
+            // «String or binary data would be truncated» می‌داد — لاگِ خودِ خطا، خطای تازه می‌ساخت.
+            e.DenyReason = Clip(e.DenyReason, 200);
+            e.ToolName   = Clip(e.ToolName, 60);
+            e.UserName   = Clip(e.UserName, 100);
+            await _db.DoExecuteSQLAsync(@"
                 INSERT dbo.AI_ChatLog
                     (ConversationId, UserCo, UserName, Kind, ToolName,
                      Payload, RowsReturned, Allowed, DenyReason, DurationMs)
                 VALUES
                     (@ConversationId, @UserCo, @UserName, @Kind, @ToolName,
                      @Payload, @RowsReturned, @Allowed, @DenyReason, @DurationMs)", e);
+        }
+
+        private static string? Clip(string? s, int max) => s is null || s.Length <= max ? s : s[..(max - 1)] + "…";
 
         public async Task TouchConversationAsync(
             Guid conversationId, int userCo, string? userName, string firstQuestion)

@@ -6,6 +6,7 @@
 @inject IAuthService AuthService
 @inject IDialogService Dialog
 @inject ISnackbar Snackbar
+@inject IJSRuntime JS
 @implements IAsyncDisposable
 @using Microsoft.AspNetCore.SignalR.Client
 @using Safir.Shared.Interfaces
@@ -39,6 +40,14 @@ else
                    StartIcon="@Icons.Material.Filled.History"
                    Disabled="_busy" OnClick="ToggleHistory">
             تاریخچه (@_conversations.Count)
+        </MudButton>
+
+        @* برای وقتی چیزی درست کار نکرد: همه‌ی رخدادهای همین گفتگو (مدل، ابزارها، خطاها) در
+           یک فایل، تا برای پشتیبانی فرستاده شود. فقط مدیر (همان مجوز تنظیمات دستیار). *@
+        <MudButton Variant="Variant.Text" Size="Size.Small"
+                   StartIcon="@Icons.Material.Filled.BugReport"
+                   Disabled="_busy" OnClick="DownloadDiagnostics">
+            دریافت فایل تشخیص
         </MudButton>
 
         @if (_renaming)
@@ -297,6 +306,15 @@ else
     {
         try   { _conversations = await Api.ListConversationsAsync(); }
         catch { /* نبودِ فهرست نباید مانع گفتگو شود */ }
+    }
+
+
+    private async Task DownloadDiagnostics()
+    {
+        var (bytes, name, error) = await Api.GetDiagnosticsAsync(_conversationId);
+        if (bytes is null) { Snackbar.Add(error ?? "فایل تشخیص دریافت نشد.", Severity.Error); return; }
+        await JS.InvokeVoidAsync("downloadFileFromBytes", name, bytes);
+        Snackbar.Add("فایل تشخیص دریافت شد. آن را برای پشتیبانی بفرستید (داده‌ی مالی دارد؛ کلید API ندارد).", Severity.Success);
     }
 
     private void ToggleHistory() => _showHistory = !_showHistory;

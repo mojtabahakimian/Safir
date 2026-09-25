@@ -187,6 +187,24 @@ namespace Safir.Client.Services
                    };
         }
 
+        // ───────── فایل تشخیص ─────────
+
+        /// <summary>بدون شناسه‌ی گفتگو، آخرین رخدادهای همه‌ی گفتگوها.</summary>
+        public async Task<(byte[]? Bytes, string Name, string? Error)> GetDiagnosticsAsync(Guid? conversationId)
+        {
+            var url = $"{Base}/admin/diagnostics" + (conversationId is null ? "" : $"?conversationId={conversationId}");
+            var res = await _http.GetAsync(url);
+            if (res.StatusCode == System.Net.HttpStatusCode.Forbidden)
+                return (null, "", "فایل تشخیص فقط برای مدیر دسترسی‌ها در دسترس است.");
+            if (!res.IsSuccessStatusCode)
+                return (null, "", $"خطای سرور (کد {(int)res.StatusCode}).");
+
+            var name = res.Content.Headers.ContentDisposition?.FileNameStar
+                       ?? res.Content.Headers.ContentDisposition?.FileName?.Trim('"')
+                       ?? "safir-ai-diagnostics.json";
+            return (await res.Content.ReadAsByteArrayAsync(), name, null);
+        }
+
         // ───────── دانش کسب‌وکار ─────────
 
         public async Task<(List<AiKnowledgeDto> Notes, string? Error)> GetKnowledgeAsync()

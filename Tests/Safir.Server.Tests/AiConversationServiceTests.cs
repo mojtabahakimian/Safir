@@ -69,7 +69,8 @@ namespace Safir.Server.Tests
                 Tools = { new AiToolInfoDto { Name = "noop", Title = "noop" } }
             });
             public Task<(bool Allowed, string? Reason)> CanUseToolAsync(int userCo, IAiTool tool) => Task.FromResult((true, (string?)null));
-            public Task LogAsync(AiLogEntry entry) => Task.CompletedTask;
+            public List<AiLogEntry> Logs { get; } = new();
+            public Task LogAsync(AiLogEntry entry) { Logs.Add(entry); return Task.CompletedTask; }
             public Task TouchConversationAsync(Guid c, int u, string? n, string q) => Task.CompletedTask;
         }
 
@@ -203,6 +204,47 @@ namespace Safir.Server.Tests
             Assert.Null(svc.BasisOf(new[] { new AiChatStepDto { Tool = "top_debtors", Ok = false, Rows = 10 } }));
             // «سود مهر؟» ← ابزار سالم ولی صفر سطر (ماه بسته نشده): عددی نیامده، برچسب سبز هم نه
             Assert.Null(svc.BasisOf(new[] { new AiChatStepDto { Tool = "top_debtors", Ok = true, Rows = 0 } }));
+        }
+            // «مدل جواب نداد» قبلاً هیچ ردی در AI_ChatLog نداشت؛ علتِ خام فقط در کنسول سرور بود.
+        [Fact]
+        public async Task ModelError_IsLoggedWithModelAndRawDetail()
+        {
+            var access = new Access();
+            var p = new ScriptedProvider(new AiModelReply
+            {
+                Error = "سرویس هوش مصنوعی موقتاً در دسترس نیست.", Model = "gemini/x", Status = 503,
+                Detail = "{\"error\":\"quota exceeded\"}"
+            });
+            var svc = new AiConversationService(new Factory(p), new AiToolRegistry(new IAiTool[] { new NoopTool() }),
+                access, new Notifier(), new Settings(), new MemoryCache(new MemoryCacheOptions()), new Db());
+
+            var r = await svc.AskAsync(1, "u", Guid.NewGuid(), Array.Empty<AiChatTurnDto>(), "سود؟");
+
+            Assert.NotNull(r.Error);
+            var call = Assert.Single(access.Logs, l => l.Kind == 3);
+            Assert.Equal("gemini/x", call.ToolName);
+            Assert.False(call.Allowed);
+            Assert.Contains("quota exceeded", call.Payload);
+        }
+
+        // خروجیِ ابزار همان‌طور که مدل دید (نام پوشانده) ثبت می‌شود، برای تشخیصِ «اشتباه از داده بود یا از مدل»
+        [Fact]
+        public async Task ToolOutput_IsLoggedMasked()
+        {
+            var access = new Access();
+            var tool = new NoopTool { Data = new { Name = "مشتری الف", Balance = 5 } };
+            var p = new ScriptedProvider(
+                new AiModelReply { ToolCalls = { new AiToolInvocation { Id = "1", Name = "noop", Args = System.Text.Json.JsonDocument.Parse("{}").RootElement } } },
+                new AiModelReply { Text = "N-0001" });
+            var svc = new AiConversationService(new Factory(p), new AiToolRegistry(new IAiTool[] { tool }),
+                access, new Notifier(), new Settings(), new MemoryCache(new MemoryCacheOptions()), new Db());
+
+            await svc.AskAsync(1, "u", Guid.NewGuid(), Array.Empty<AiChatTurnDto>(), "؟");
+
+            var output = Assert.Single(access.Logs, l => l.Kind == 4);
+            Assert.Contains("N-0001", output.Payload);
+            Assert.DoesNotContain("مشتری الف", System.Text.RegularExpressions.Regex.Unescape(output.Payload!));
+            Assert.Equal(2, access.Logs.Count(l => l.Kind == 3));
         }
     }
 }
