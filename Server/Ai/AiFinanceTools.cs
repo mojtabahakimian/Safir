@@ -479,7 +479,26 @@ namespace Safir.Server.Ai
         }
     }
 
-    /// <summary>مانده‌ی بانک‌ها — مانده‌ی دفتری حساب کل ۱۱۲.</summary>
+    /// <summary>
+    /// حساب‌های خودگردان — همان فرم «تعریف حساب‌های خودگردان» WPF (AUTOMATIC) که در جدول
+    /// تک‌سطری SAZMAN ذخیره می‌شود: BANKHA حساب کل بانک‌ها، BEDEHKAR حساب کل بدهکاران تجاری.
+    /// WPF هم همین‌ها را حساب کل می‌خواند (N_KOL = BANKHA). قبلاً ۱۱۲ و ۱۱۵ در کد ثابت بود و روی
+    /// شرکتی با چارت دیگر، عددِ غلط ولی ظاهراً درست می‌داد.
+    /// </summary>
+    internal static class SelfAccounts
+    {
+        public static async Task<(int Kol, string? Why)> KolAsync(IDatabaseService db, string column, string label)
+        {
+            if (column is not ("BANKHA" or "BEDEHKAR")) throw new ArgumentException(column);
+            var kol = (await db.DoGetDataSQLAsync<int?>(
+                $"SELECT TOP (1) CAST({column} AS INT) FROM dbo.SAZMAN")).FirstOrDefault();
+            return kol is > 0
+                ? (kol.Value, null)
+                : (0, $"حساب «{label}» در «تعریف حساب‌های خودگردان» نرم‌افزار تنظیم نشده است؛ بدون آن عدد نساز.");
+        }
+    }
+
+    /// <summary>مانده‌ی بانک‌ها — مانده‌ی دفتری حساب کلِ بانک‌ها (از حساب‌های خودگردان).</summary>
     public sealed class BankBalancesTool : IAiTool
     {
         private readonly IDatabaseService _db;
@@ -488,7 +507,7 @@ namespace Safir.Server.Ai
         public string Name        => "bank_balances";
         public string Title       => "مانده‌ی بانک‌ها";
         public string Description =>
-            "مانده‌ی دفتری هر حساب بانکی (حساب کل ۱۱۲) و جمع کل تا یک تاریخ. این «مانده‌ی دفتری» " +
+            "مانده‌ی دفتری هر حساب بانکی (حساب کلِ بانک‌ها طبق تعریف حساب‌های خودگردان) و جمع کل تا یک تاریخ. این «مانده‌ی دفتری» " +
             "است، نه صورت‌حساب بانک — همین را به کاربر بگو. برای مانده‌ی بانک run_sql نزن.";
         public string RequiredForm => CostForms.Dashboard;
         public Pay2Perm RequiredPerm => Pay2Perm.See;
@@ -499,6 +518,8 @@ namespace Safir.Server.Ai
         {
             var asOf = FinArgs.AsOf(call);
             if (asOf is null) return AiToolResult.Fail(FinArgs.BadAsOf);
+            var (kol, why) = await SelfAccounts.KolAsync(_db, "BANKHA", "بانک‌ها");
+            if (why is not null) return AiToolResult.Fail(why);
 
             var rows = (await _db.DoGetDataSQLAsync<dynamic>(@"
                 SELECT  d.HES_M AS Moin, d.HES_T AS Tafsili, t.NAME AS Name,
@@ -506,10 +527,10 @@ namespace Safir.Server.Ai
                 FROM    dbo.DEED_DTL d
                 JOIN    dbo.DEED_HED h ON h.N_S = d.N_S
                 LEFT JOIN dbo.TDETA_HES t ON t.N_KOL = d.HES_K AND t.NUMBER = d.HES_M AND t.TNUMBER = d.HES_T
-                WHERE   d.HES_K = 112 AND h.DATE_S <= @asOf
+                WHERE   d.HES_K = @kol AND h.DATE_S <= @asOf
                 GROUP BY d.HES_M, d.HES_T, t.NAME
                 HAVING  SUM(ISNULL(d.BED, 0) - ISNULL(d.BES, 0)) <> 0
-                ORDER BY SUM(ISNULL(d.BED, 0) - ISNULL(d.BES, 0)) DESC", new { asOf })).ToList();
+                ORDER BY SUM(ISNULL(d.BED, 0) - ISNULL(d.BES, 0)) DESC", new { asOf, kol })).ToList();
 
             decimal total = rows.Sum(r => Convert.ToDecimal((double)r.Balance));
 
@@ -520,7 +541,7 @@ namespace Safir.Server.Ai
                 {
                     Metric     = "مانده‌ی دفتری بانک‌ها",
                     AsOf       = asOf,
-                    Definition = "جمع بدهکار منهای بستانکار حساب کل ۱۱۲ تا این تاریخ، شامل سند افتتاحیه و همه‌ی اسناد " +
+                    Definition = $"جمع بدهکار منهای بستانکار حساب کل {kol} (بانک‌ها در تعریف حساب‌های خودگردان) تا این تاریخ، شامل سند افتتاحیه و همه‌ی اسناد " +
                                  "(بدون فیلتر وضعیت تأیید OKF، مثل گزارش‌های Safir و WPF). مثبت = موجودی، منفی = بستانکار.",
                     Total      = Math.Round(total),
                     Accounts   = rows
@@ -530,7 +551,7 @@ namespace Safir.Server.Ai
     }
 
     /// <summary>
-    /// بدهکاران — مانده‌ی بدهکار هر حسابِ شخص زیر کل ۱۱۵.
+    /// بدهکاران — مانده‌ی بدهکار هر حسابِ شخص زیر حساب کلِ بدهکاران تجاری (از حساب‌های خودگردان).
     ///
     /// «یک مشتری» = کد کامل حساب (DEED_DTL.HES، مثلاً 115-1-25-3-4-6)، عیناً مثل
     /// صورت‌حساب مشتری در Safir (QDAFTARTAFZIL2_H: DEED_DTL.HES = @HES) و نام از CUST_HESAB.
@@ -545,7 +566,7 @@ namespace Safir.Server.Ai
         public string Name        => "top_debtors";
         public string Title       => "بدهکاران";
         public string Description =>
-            "مشتریانی که بیشترین مانده‌ی بدهکار را دارند (بدهکاران تجاری، حساب کل ۱۱۵، هر کد حساب کامل یک " +
+            "مشتریانی که بیشترین مانده‌ی بدهکار را دارند (بدهکاران تجاری طبق تعریف حساب‌های خودگردان، هر کد حساب کامل یک " +
             "مشتری — همان صورت‌حساب مشتری در Safir) با جمع کل. مانده‌ی دفتری است؛ چک‌های وصول‌نشده جدا حساب نمی‌شوند.";
         public string RequiredForm => CostForms.Dashboard;
         public Pay2Perm RequiredPerm => Pay2Perm.See;
@@ -562,6 +583,8 @@ namespace Safir.Server.Ai
             var name = call.Str("name")?.Trim();
             // نام حساب‌ها ۳۰٪ «ي/ك» عربی دارند؛ هر دو طرف یکسان می‌شوند
             string? like = string.IsNullOrEmpty(name) ? null : "%" + AiText.NormalizeFa(name) + "%";
+            var (kol, why) = await SelfAccounts.KolAsync(_db, "BEDEHKAR", "بدهکاران تجاری");
+            if (why is not null) return AiToolResult.Fail(why);
 
             // ── دو مرحله‌ی جدا، عمداً ──
             // اگر جستجوی نام داخل همان کوئریِ دفتر بنشیند، SQL Server آن را برای هر
@@ -572,14 +595,14 @@ namespace Safir.Server.Ai
             {
                 codes = (await _db.DoGetDataSQLAsync<string>(
                     "SELECT TOP (51) n.hes FROM (" + AccountNamesSql + ") n WHERE " +
-                    AiText.SqlFa("n.NAME") + " LIKE @like", new { like })).ToList();
+                    AiText.SqlFa("n.NAME") + " LIKE @like", new { like, kol })).ToList();
 
                 if (codes.Count == 0)
                     return new AiToolResult
                     {
                         Rows = 0,
                         Data = new { Metric = "بدهکاران تجاری", Found = false, Name = name,
-                                     Message = "حسابی با این نام زیر حساب کل ۱۱۵ پیدا نشد." }
+                                     Message = $"حسابی با این نام زیر حساب کل {kol} (بدهکاران تجاری) پیدا نشد." }
                     };
 
                 // نامِ کلی («فروشگاه»، «آقای») صدها حساب می‌گیرد؛ جمعِ ۵۰تای اول «جمع کل» نیست
@@ -594,7 +617,7 @@ namespace Safir.Server.Ai
                     SELECT  d.HES, SUM(ISNULL(d.BED, 0) - ISNULL(d.BES, 0)) AS Balance
                     FROM    dbo.DEED_DTL d
                     JOIN    dbo.DEED_HED h ON h.N_S = d.N_S
-                    WHERE   d.HES_K = 115 AND h.DATE_S <= @asOf {0}
+                    WHERE   d.HES_K = @kol AND h.DATE_S <= @asOf {0}
                     GROUP BY d.HES
                     HAVING  {1})";
             var sql = codes is null
@@ -602,11 +625,11 @@ namespace Safir.Server.Ai
                 : string.Format(cte, "AND d.HES IN @codes", "1 = 1");
 
             var total = (await _db.DoGetDataSQLAsync<dynamic>(sql +
-                " SELECT COUNT(*) AS Debtors, SUM(Balance) AS TotalDebt FROM b", new { asOf, codes })).FirstOrDefault();
+                " SELECT COUNT(*) AS Debtors, SUM(Balance) AS TotalDebt FROM b", new { asOf, codes, kol })).FirstOrDefault();
 
             var rows = (await _db.DoGetDataSQLAsync<dynamic>(sql + @"
                 SELECT TOP (@top) b.HES AS Account, b.Balance FROM b ORDER BY b.Balance DESC",
-                new { asOf, top, codes })).ToList();
+                new { asOf, top, codes, kol })).ToList();
 
             // نام‌ها جدا و فقط برای همین چند کد (view CUST_HESAB روی همه‌ی ستون‌ها UNION
             // یکتاساز دارد و کند است؛ همان کدِ ترکیبی را مستقیم از جدول‌ها می‌سازیم)
@@ -614,7 +637,7 @@ namespace Safir.Server.Ai
             var names = accounts.Count == 0 ? new Dictionary<string, string>() :
                 (await _db.DoGetDataSQLAsync<(string hes, string NAME)>(
                     "SELECT n.hes, n.NAME FROM (" + AccountNamesSql + ") n WHERE n.hes IN @accounts",
-                    new { accounts }))
+                    new { accounts, kol }))
                 .GroupBy(x => x.hes).ToDictionary(g => g.Key, g => g.First().NAME);
 
             var top10 = rows.Select(r => new
@@ -631,7 +654,7 @@ namespace Safir.Server.Ai
                 {
                     Metric     = "بدهکاران تجاری",
                     AsOf       = asOf,
-                    Definition = "مانده‌ی بدهکار (بدهکار منهای بستانکار) هر حساب شخص (کد کامل) زیر حساب کل ۱۱۵، " +
+                    Definition = $"مانده‌ی بدهکار (بدهکار منهای بستانکار) هر حساب شخص (کد کامل) زیر حساب کل {kol} (بدهکاران تجاری در تعریف حساب‌های خودگردان)، " +
                                  "همه‌ی اسناد بدون فیلتر تأیید. بدون name فقط مانده‌های مثبت؛ با name همه‌ی حساب‌های هم‌نام " +
                                  "(مانده‌ی منفی یعنی بستانکار). چک‌های وصول‌نشده کم نشده‌اند.",
                     Total      = total,
@@ -641,17 +664,17 @@ namespace Safir.Server.Ai
         }
 
         /// <summary>
-        /// کد ترکیبی و نامِ حساب‌های شخصِ زیر کل ۱۱۵ در هر چهار سطح تفصیلی — همان
-        /// شکلِ کدِ view CUST_HESAB («115-19-1-3»)، بدون ستون‌های دیگرش.
+        /// کد ترکیبی و نامِ حساب‌های شخصِ زیر کلِ @kol در هر چهار سطح تفصیلی — همان
+        /// شکلِ کدِ view CUST_HESAB («115-19-1-3»)، بدون ستون‌های دیگرش. پارامتر @kol لازم است.
         /// </summary>
         internal const string AccountNamesSql = @"
-            SELECT CONCAT(N_KOL,'-',NUMBER,'-',TNUMBER) AS hes, NAME FROM dbo.TDETA_HES WHERE N_KOL = 115
+            SELECT CONCAT(N_KOL,'-',NUMBER,'-',TNUMBER) AS hes, NAME FROM dbo.TDETA_HES WHERE N_KOL = @kol
             UNION ALL
-            SELECT CONCAT(N_KOL,'-',NUMBER,'-',TNUMBER,'-',TNUMBER2), NAME FROM dbo.TDETA_HES2 WHERE N_KOL = 115
+            SELECT CONCAT(N_KOL,'-',NUMBER,'-',TNUMBER,'-',TNUMBER2), NAME FROM dbo.TDETA_HES2 WHERE N_KOL = @kol
             UNION ALL
-            SELECT CONCAT(N_KOL,'-',NUMBER,'-',TNUMBER,'-',TNUMBER2,'-',TNUMBER3), NAME FROM dbo.TDETA_HES3 WHERE N_KOL = 115
+            SELECT CONCAT(N_KOL,'-',NUMBER,'-',TNUMBER,'-',TNUMBER2,'-',TNUMBER3), NAME FROM dbo.TDETA_HES3 WHERE N_KOL = @kol
             UNION ALL
-            SELECT CONCAT(N_KOL,'-',NUMBER,'-',TNUMBER,'-',TNUMBER2,'-',TNUMBER3,'-',TNUMBER4), NAME FROM dbo.TDETA_HES4 WHERE N_KOL = 115";
+            SELECT CONCAT(N_KOL,'-',NUMBER,'-',TNUMBER,'-',TNUMBER2,'-',TNUMBER3,'-',TNUMBER4), NAME FROM dbo.TDETA_HES4 WHERE N_KOL = @kol";
     }
 
     /// <summary>عبور از سقف اعتبار — AZAE.TOPETEB در برابر مانده‌ی دفتری همان حساب.</summary>
@@ -685,15 +708,18 @@ namespace Safir.Server.Ai
             var name    = call.Str("name")?.Trim();
             if (!string.IsNullOrEmpty(account) || !string.IsNullOrEmpty(name))
             {
+                var (kol, why) = await SelfAccounts.KolAsync(_db, "BEDEHKAR", "بدهکاران تجاری");
+                if (why is not null && string.IsNullOrEmpty(account)) return AiToolResult.Fail(why);
+
                 var codes = !string.IsNullOrEmpty(account)
                     ? new List<string> { account! }
                     : (await _db.DoGetDataSQLAsync<string>(
                         "SELECT TOP (20) n.hes FROM (" + TopDebtorsTool.AccountNamesSql + ") n WHERE " +
                         AiText.SqlFa("n.NAME") + " LIKE @like",
-                        new { like = "%" + AiText.NormalizeFa(name!) + "%" })).ToList();
+                        new { like = "%" + AiText.NormalizeFa(name!) + "%", kol })).ToList();
 
                 if (codes.Count == 0)
-                    return new AiToolResult { Rows = 0, Data = new { Found = false, Message = "حسابی با این نام زیر حساب کل ۱۱۵ پیدا نشد." } };
+                    return new AiToolResult { Rows = 0, Data = new { Found = false, Message = $"حسابی با این نام زیر حساب کل {kol} (بدهکاران تجاری) پیدا نشد." } };
 
                 var one = (await _db.DoGetDataSQLAsync<dynamic>(@"
                     SELECT  c.hes AS Account,
