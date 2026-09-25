@@ -24,5 +24,17 @@ namespace Safir.Server.Tests
             Assert.Contains("قاعده 1:", block);
             Assert.Contains("یادداشت دیگر جا نشد", block);
         }
+
+        // صفحه یادداشتِ ۴۰۰۰ نویسه‌ای را می‌پذیرد؛ قبلاً چنین یادداشتِ «همیشه»ای بی‌صدا به پرامپت نمی‌رسید
+        [Fact]
+        public void Block_SingleLongNote_IsTruncatedNotDropped()
+        {
+            var block = AiKnowledgeStore.Block(new[] { new AiKnowledgeDto { Title = "قاعده بلند", Body = new string('ب', 3990) } })!;
+
+            Assert.Contains("قاعده بلند:", block);
+            Assert.Contains("business_notes", block);
+            Assert.DoesNotContain("جا نشد", block);
+            Assert.True(block.Length <= AiKnowledgeStore.PromptBudget);
+        }
     }
 }

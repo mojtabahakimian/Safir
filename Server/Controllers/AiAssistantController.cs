@@ -518,6 +518,9 @@ namespace Safir.Server.Controllers
                 if (!string.IsNullOrWhiteSpace(draft.ApiKey))   opt.ApiKey   = draft.ApiKey;
                 // پروکسی خالی در فرم معنی دارد (بدون پروکسی)، پس همیشه از فرم
                 opt.ProxyUrl = string.IsNullOrWhiteSpace(draft.ProxyUrl) ? null : draft.ProxyUrl.Trim();
+                // تایم‌اوتِ فرم هم، مثل بقیه‌ی فیلدها؛ وگرنه ادمینی که آن را بالا برده و پیش از
+                // ذخیره آزمایش می‌گیرد، باز با مقدارِ قبلی شکست می‌خورد.
+                if (draft.TimeoutSeconds is >= 5 and <= 900) opt.TimeoutSeconds = draft.TimeoutSeconds;
             }
 
             if (string.IsNullOrWhiteSpace(opt.BaseUrl))

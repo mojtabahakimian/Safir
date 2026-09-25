@@ -196,11 +196,13 @@ namespace Safir.Server.Tests
                 new AiToolRegistry(new IAiTool[] { fixedTool, rawSql }), new Access(), new Notifier(), new Settings(),
                 new MemoryCache(new MemoryCacheOptions()), new Db());
 
-            var steps = new List<AiChatStepDto> { new() { Tool = "top_debtors", Ok = true } };
+            var steps = new List<AiChatStepDto> { new() { Tool = "top_debtors", Ok = true, Rows = 10 } };
             if (withRawSql) steps.Add(new() { Tool = "run_sql", Ok = true });
 
             Assert.Equal(expected, svc.BasisOf(steps));
-            Assert.Null(svc.BasisOf(new[] { new AiChatStepDto { Tool = "top_debtors", Ok = false } }));
+            Assert.Null(svc.BasisOf(new[] { new AiChatStepDto { Tool = "top_debtors", Ok = false, Rows = 10 } }));
+            // «سود مهر؟» ← ابزار سالم ولی صفر سطر (ماه بسته نشده): عددی نیامده، برچسب سبز هم نه
+            Assert.Null(svc.BasisOf(new[] { new AiChatStepDto { Tool = "top_debtors", Ok = true, Rows = 0 } }));
         }
     }
 }

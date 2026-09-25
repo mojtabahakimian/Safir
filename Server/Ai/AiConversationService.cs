@@ -86,12 +86,16 @@ namespace Safir.Server.Ai
         /// برچسبِ جواب را کد تعیین می‌کند، نه مدل: هر run_sqlِ موفق ← «اکتشافی» (حتی اگر
         /// ابزار ثابت هم صدا زده شده باشد، چون معلوم نیست کدام عدد از کدام آمده)؛ فقط
         /// ابزارهای ثابت ← «تأییدشده»؛ هیچ داده‌ای ← بدون برچسب.
+        /// ابزارِ ثابتی که صفر سطر داد (ماهِ بسته‌نشده، نامِ پیدانشده) عددی نداده؛ برچسب سبزِ
+        /// «عدد از گزارش‌های ثابت» روی جوابِ «سود مهر هنوز نیست» گمراه‌کننده بود.
         /// </summary>
         public string? BasisOf(IEnumerable<AiChatStepDto> steps)
         {
-            var used = steps.Where(s => s.Ok).Select(s => _tools.Find(s.Tool)).OfType<IAiTool>().ToList();
-            if (used.Any(t => t.FreeQuery))      return AiAnswerBasis.Exploratory;
-            if (used.Any(t => t.Verified))       return AiAnswerBasis.Verified;
+            var used = steps.Where(s => s.Ok)
+                            .Select(s => (Step: s, Tool: _tools.Find(s.Tool)))
+                            .Where(x => x.Tool is not null).ToList();
+            if (used.Any(x => x.Tool!.FreeQuery))                  return AiAnswerBasis.Exploratory;
+            if (used.Any(x => x.Tool!.Verified && x.Step.Rows > 0)) return AiAnswerBasis.Verified;
             return null;
         }
 

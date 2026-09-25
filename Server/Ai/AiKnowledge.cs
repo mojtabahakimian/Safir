@@ -64,11 +64,17 @@ namespace Safir.Server.Ai
         {
             var sb = new System.Text.StringBuilder();
             int skipped = 0;
+            const string cut = " …(بقیه‌اش با business_notes)\n";
             foreach (var n in notes)
             {
                 var line = $"• {n.Title}: {n.Body.Trim()}\n";
-                if (sb.Length + line.Length > PromptBudget) { skipped++; continue; }
-                sb.Append(line);
+                int room = PromptBudget - sb.Length;
+                if (line.Length <= room) { sb.Append(line); continue; }
+
+                // یادداشتِ بلند (صفحه تا ۴۰۰۰ نویسه می‌پذیرد) قبلاً کامل حذف می‌شد، حتی وقتی
+                // تنها یادداشت بود؛ حالا سرش می‌آید و بقیه‌اش جست‌وجو می‌شود.
+                if (room - cut.Length >= 200) sb.Append(line, 0, room - cut.Length).Append(cut);
+                else skipped++;
             }
             if (skipped > 0)
                 sb.Append($"({skipped} یادداشت دیگر جا نشد؛ با business_notes بگرد.)\n");
