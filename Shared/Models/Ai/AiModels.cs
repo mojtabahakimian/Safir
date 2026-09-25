@@ -101,6 +101,9 @@ namespace Safir.Shared.Models.Ai
         public string? Model          { get; set; }
         public int     TimeoutSeconds { get; set; } = 120;
         public int     MaxToolLoops   { get; set; } = 4;
+        public string? ProxyUrl       { get; set; }
+        public string? FallbackModel  { get; set; }
+        public bool    MaskNames      { get; set; } = true;
 
         public bool    HasApiKey      { get; set; }
         public string? ApiKeyTail     { get; set; }
@@ -120,6 +123,15 @@ namespace Safir.Shared.Models.Ai
         public string? Model          { get; set; }
         public int     TimeoutSeconds { get; set; } = 120;
         public int     MaxToolLoops   { get; set; } = 4;
+
+        /// <summary>خالی = بدون پروکسی. نمونه: http://127.0.0.1:10809</summary>
+        public string? ProxyUrl       { get; set; }
+
+        /// <summary>خالی = بدون مدل جایگزین.</summary>
+        public string? FallbackModel  { get; set; }
+
+        /// <summary>نام مشتری/کالا پیش از ارسال به مدل با شناسه عوض شود.</summary>
+        public bool    MaskNames      { get; set; } = true;
 
         /// <summary>
         /// خالی یعنی «کلید فعلی را دست نزن». برای پاک کردن باید

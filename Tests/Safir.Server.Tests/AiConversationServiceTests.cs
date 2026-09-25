@@ -1,0 +1,134 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
+using Microsoft.Extensions.Caching.Memory;
+using Safir.Server.Ai;
+using Safir.Server.Security;
+using Safir.Shared.Interfaces;
+using Safir.Shared.Models;
+using Safir.Shared.Models.Ai;
+using Xunit;
+
+namespace Safir.Server.Tests
+{
+    /// <summary>
+    /// حلقه‌ی گفتگو با مدلِ ساختگی — بدون شبکه و بدون دیتابیس.
+    /// </summary>
+    public class AiConversationServiceTests
+    {
+        private sealed class ScriptedProvider : IAiChatProvider
+        {
+            private readonly Queue<AiModelReply> _replies;
+            public List<IReadOnlyList<AiMessage>> Calls { get; } = new();
+            public ScriptedProvider(params AiModelReply[] replies) => _replies = new(replies);
+            public string Describe => "fake";
+
+            public Task<AiModelReply> CompleteAsync(IReadOnlyList<AiMessage> messages,
+                IReadOnlyList<IAiTool> tools, CancellationToken ct = default)
+            {
+                Calls.Add(messages.ToList());
+                return Task.FromResult(_replies.Count > 0 ? _replies.Dequeue() : new AiModelReply { Text = "آخر" });
+            }
+        }
+
+        private sealed class Factory : IAiProviderFactory
+        {
+            private readonly IAiChatProvider _p;
+            public Factory(IAiChatProvider p) => _p = p;
+            public Task<(IAiChatProvider Provider, AiOptions Options)> CreateAsync() =>
+                Task.FromResult((_p, new AiOptions { MaxToolLoops = 5 }));
+        }
+
+        private sealed class NoopTool : IAiTool
+        {
+            public object? Data { get; init; }
+            public string? LastArgs { get; private set; }
+            public string Name => "noop";
+            public string Title => "noop";
+            public string Description => "";
+            public string RequiredForm => "X";
+            public Pay2Perm RequiredPerm => Pay2Perm.See;
+            public string Parameters => "";
+            public Task<AiToolResult> ExecuteAsync(AiToolCall call, CancellationToken ct = default)
+            {
+                LastArgs = call.Args.ValueKind == System.Text.Json.JsonValueKind.Undefined ? null : call.Args.GetRawText();
+                return Task.FromResult(new AiToolResult { Data = Data });
+            }
+        }
+
+        private sealed class Access : IAiAccessService
+        {
+            public Task<AiEffectiveAccessDto> GetEffectiveAsync(int userCo) => Task.FromResult(new AiEffectiveAccessDto
+            {
+                IsEnabled = true, DailyMessages = 100, MaxRows = 10,
+                Tools = { new AiToolInfoDto { Name = "noop", Title = "noop" } }
+            });
+            public Task<(bool Allowed, string? Reason)> CanUseToolAsync(int userCo, IAiTool tool) => Task.FromResult((true, (string?)null));
+            public Task LogAsync(AiLogEntry entry) => Task.CompletedTask;
+            public Task TouchConversationAsync(Guid c, int u, string? n, string q) => Task.CompletedTask;
+        }
+
+        private sealed class Notifier : IAiChatNotifier
+        {
+            public Task StatusAsync(Guid conversationId, string message) => Task.CompletedTask;
+        }
+
+        private sealed class Settings : IAppSettingsService
+        {
+            public Task<SAZMAN?> GetSazmanSettingsAsync() => Task.FromResult<SAZMAN?>(new SAZMAN { YEA = 1405 });
+            public Task<int?> GetDefaultBedehkarKolAsync() => Task.FromResult<int?>(null);
+        }
+
+        private static AiConversationService Build(IAiChatProvider p, NoopTool? tool = null) =>
+            new(new Factory(p), new AiToolRegistry(new IAiTool[] { tool ?? new NoopTool() }), new Access(), new Notifier(), new Settings(),
+                new MemoryCache(new MemoryCacheOptions()));
+
+        // رگرسیون آزمون پایه: «سود فروردین» متن خالی برگرداند و کاربر صفحه‌ی سفید دید.
+        [Fact]
+        public async Task EmptyReply_IsRetriedInsteadOfShownBlank()
+        {
+            var p = new ScriptedProvider(new AiModelReply { Text = "  " }, new AiModelReply { Text = "سود ۱۰ است." });
+
+            var r = await Build(p).AskAsync(1, "u", Guid.NewGuid(), Array.Empty<AiChatTurnDto>(), "سود؟");
+
+            Assert.Equal("سود ۱۰ است.", r.Text);
+            Assert.Equal(2, p.Calls.Count);
+        }
+
+        // رگرسیون آزمون پایه: «سود این ماه» سود مرداد را داد چون مدل امروز را نمی‌دانست.
+        [Fact]
+        public async Task SystemPrompt_CarriesTodayAndFiscalYear()
+        {
+            var p = new ScriptedProvider(new AiModelReply { Text = "ok" });
+
+            await Build(p).AskAsync(1, "u", Guid.NewGuid(), Array.Empty<AiChatTurnDto>(), "سود این ماه؟");
+
+            var system = p.Calls[0].First(m => m.Role == "system").Content!;
+            Assert.Contains("«این ماه» یعنی", system);
+            Assert.Contains("سال مالی 1405", system);
+        }
+    
+        // مرحله‌ی ۴ پلن: نام مشتری نباید به سرویس مدل برسد، ولی کاربر باید نام واقعی را ببیند.
+        [Fact]
+        public async Task Names_AreMaskedForModel_AndRestoredForUser()
+        {
+            var tool = new NoopTool { Data = new { Top = new[] { new { Name = "فروشگاه زنجیره‌ای نمونه", Balance = 417 } } } };
+            var args = System.Text.Json.JsonDocument.Parse("{\"name\":\"N-0001\"}").RootElement;
+            var p = new ScriptedProvider(
+                new AiModelReply { ToolCalls = { new AiToolInvocation { Id = "1", Name = "noop", Args = System.Text.Json.JsonDocument.Parse("{}").RootElement } } },
+                new AiModelReply { ToolCalls = { new AiToolInvocation { Id = "2", Name = "noop", Args = args } } },
+                new AiModelReply { Text = "بیشترین بدهی: N-0001 با ۴۱۷." });
+
+            var r = await Build(p, tool).AskAsync(1, "u", Guid.NewGuid(), Array.Empty<AiChatTurnDto>(), "بدهکار؟");
+
+            var sentToModel = string.Join("\n", p.Calls.SelectMany(c => c).Select(m => m.Content));
+            Assert.DoesNotContain("فروشگاه زنجیره‌ای نمونه", sentToModel);
+            Assert.Contains("N-0001", sentToModel);
+            Assert.Equal("بیشترین بدهی: فروشگاه زنجیره‌ای نمونه با ۴۱۷.", r.Text);
+            // شناسه‌ای که مدل در پارامتر فرستاد، برای ابزار نام واقعی شد
+            Assert.Contains("فروشگاه", System.Text.RegularExpressions.Regex.Unescape(tool.LastArgs!));
+        }
+    }
+}

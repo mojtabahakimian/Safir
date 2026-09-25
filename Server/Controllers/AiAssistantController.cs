@@ -402,6 +402,9 @@ namespace Safir.Server.Controllers
                 Model          = string.IsNullOrWhiteSpace(row?.Model)   ? eff.Model   : row!.Model,
                 TimeoutSeconds = row?.TimeoutSeconds > 0 ? row.TimeoutSeconds : eff.TimeoutSeconds,
                 MaxToolLoops   = row?.MaxToolLoops   > 0 ? row.MaxToolLoops   : eff.MaxToolLoops,
+                ProxyUrl       = row?.ProxyUrl,
+                FallbackModel  = row?.FallbackModel,
+                MaskNames      = row?.MaskNames ?? eff.MaskNames,
                 // ⚠ از خودِ سطر، نه از تنظیماتِ مؤثر. وقتی IsEnabled خاموش
                 // است تنظیماتِ مؤثر این سطر را نادیده می‌گیرد، و صفحه
                 // می‌نوشت «کلیدی ثبت نشده» در حالی که کلید ذخیره شده بود.
@@ -434,11 +437,17 @@ namespace Safir.Server.Controllers
                 !Uri.TryCreate(req.BaseUrl, UriKind.Absolute, out _))
                 return BadRequest("آدرس معتبر نیست. نمونه: http://localhost:20128");
 
+            if (!string.IsNullOrWhiteSpace(req.ProxyUrl) &&
+                !(Uri.TryCreate(req.ProxyUrl.Trim(), UriKind.Absolute, out var proxy) &&
+                  proxy.Scheme is "http" or "https" or "socks5"))
+                return BadRequest("آدرس پروکسی معتبر نیست. نمونه: http://127.0.0.1:10809");
+
             await _db.DoExecuteSQLAsync(@"
                 UPDATE dbo.AI_Config
                 SET IsEnabled = @IsEnabled, Provider = @Provider, BaseUrl = @BaseUrl,
                     Model = @Model, TimeoutSeconds = @TimeoutSeconds,
                     MaxToolLoops = @MaxToolLoops,
+                    ProxyUrl = @ProxyUrl, FallbackModel = @FallbackModel, MaskNames = @MaskNames,
                     -- کلید فقط وقتی عوض می‌شود که مقدارِ تازه آمده باشد یا
                     -- صراحتاً پاک‌کردن خواسته شده باشد. ذخیره‌ی ساده‌ی
                     -- تنظیماتِ دیگر نباید کلید را بی‌سروصدا بشوید.
@@ -451,6 +460,9 @@ namespace Safir.Server.Controllers
                 {
                     req.IsEnabled, req.Provider, req.BaseUrl, req.Model,
                     req.TimeoutSeconds, req.MaxToolLoops,
+                    ProxyUrl      = string.IsNullOrWhiteSpace(req.ProxyUrl)      ? null : req.ProxyUrl.Trim(),
+                    FallbackModel = string.IsNullOrWhiteSpace(req.FallbackModel) ? null : req.FallbackModel.Trim(),
+                    req.MaskNames,
                     req.ApiKey, ClearApiKey = req.ClearApiKey ? 1 : 0,
                     user = CurrentUserName
                 });
@@ -478,7 +490,10 @@ namespace Safir.Server.Controllers
             AiOptions opt;
             try
             {
-                opt = await settings.GetAsync();
+                // کپی: قبلاً مقادیرِ فرم مستقیم روی نمونه‌ی کش‌شده نوشته می‌شد و
+                // «آزمایش اتصال» با یک آدرسِ آزمایشی تا ۳۰ ثانیه دستیارِ واقعیِ
+                // همه را به همان آدرس می‌فرستاد.
+                opt = (await settings.GetAsync()).Clone();
             }
             catch (Exception ex)
             {
@@ -501,12 +516,14 @@ namespace Safir.Server.Controllers
                 if (!string.IsNullOrWhiteSpace(draft.Provider)) opt.Provider = draft.Provider;
                 if (!string.IsNullOrWhiteSpace(draft.BaseUrl))  opt.BaseUrl  = draft.BaseUrl;
                 if (!string.IsNullOrWhiteSpace(draft.ApiKey))   opt.ApiKey   = draft.ApiKey;
+                // پروکسی خالی در فرم معنی دارد (بدون پروکسی)، پس همیشه از فرم
+                opt.ProxyUrl = string.IsNullOrWhiteSpace(draft.ProxyUrl) ? null : draft.ProxyUrl.Trim();
             }
 
             if (string.IsNullOrWhiteSpace(opt.BaseUrl))
                 return Ok(new AiConnectionTestDto { Ok = false, Message = "آدرس سرویس تنظیم نشده است." });
 
-            var http = httpFactory.CreateClient("ai");
+            var http = AiHttp.Create(httpFactory, opt.ProxyUrl);
             http.Timeout = TimeSpan.FromSeconds(20);
 
             if (!string.IsNullOrWhiteSpace(opt.ApiKey))
@@ -566,11 +583,42 @@ namespace Safir.Server.Controllers
                         Models = models
                     });
 
+                // مدل جایگزین هم همین‌جا سنجیده می‌شود؛ نامِ غلطش فقط روزی
+                // معلوم می‌شد که مدل اصلی از کار افتاده — بدترین زمان ممکن.
+                var fallback = draft is null ? opt.FallbackModel : draft.FallbackModel;
+                string fallbackNote = "";
+                if (!string.IsNullOrWhiteSpace(fallback))
+                {
+                    var fb = await http.PostAsJsonAsync(
+                        AiUrl.Combine(opt.BaseUrl, "/v1/chat/completions"),
+                        new
+                        {
+                            model = fallback.Trim(),
+                            max_tokens = 8,
+                            messages = new[] { new { role = "user", content = "ping" } }
+                        });
+
+                    if (!fb.IsSuccessStatusCode)
+                    {
+                        var fbRaw = await fb.Content.ReadAsStringAsync();
+                        return Ok(new AiConnectionTestDto
+                        {
+                            Ok = false,
+                            Message = $"مدل اصلی «{model}» سالم است ولی مدل جایگزین «{fallback}» جواب نداد " +
+                                      $"(کد {(int)fb.StatusCode}): " + (fbRaw.Length > 300 ? fbRaw[..300] : fbRaw),
+                            Models = models
+                        });
+                    }
+
+                    fallbackNote = $" مدل جایگزین «{fallback}» هم جواب داد.";
+                }
+
                 return Ok(new AiConnectionTestDto
                 {
                     Ok = true,
-                    Message = $"اتصال و کلید سالم است. مدل «{model}» جواب داد. " +
-                              $"{models.Count} مدل در دسترس.",
+                    Message = $"اتصال و کلید سالم است. مدل «{model}» جواب داد.{fallbackNote} " +
+                              $"{models.Count} مدل در دسترس." +
+                              (string.IsNullOrWhiteSpace(opt.ProxyUrl) ? "" : $" (از طریق پروکسی {opt.ProxyUrl})"),
                     Models = models
                 });
             }

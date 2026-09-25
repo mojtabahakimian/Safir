@@ -74,6 +74,41 @@ else
             }
         </div>
 
+        @* مدل جایگزین: اگر مدل اصلی خطا داد (قطعی، مسدود شدن حساب، تایم‌اوت)
+           همان درخواست یک بار با این مدل می‌رود — روی همین آدرس و کلید. *@
+        <div class="d-flex gap-2 align-start mb-3">
+            <MudTextField T="string" @bind-Value="_cfg.FallbackModel" Label="مدل جایگزین (اختیاری)"
+                          Variant="Variant.Outlined" Dense Clearable
+                          HelperText="اگر مدل اصلی جواب نداد، با این مدل امتحان می‌شود. خالی = بدون جایگزین." />
+
+            @if (_models.Count > 0)
+            {
+                <MudSelect T="string" Label="مدل‌های موجود" Dense Variant="Variant.Outlined"
+                           Value="_cfg.FallbackModel" ValueChanged="@(v => _cfg.FallbackModel = v)"
+                           Style="min-width:260px">
+                    @foreach (var m in _models)
+                    {
+                        <MudSelectItem T="string" Value="@m">@m</MudSelectItem>
+                    }
+                </MudSelect>
+            }
+        </div>
+
+        @* پروکسی فقط روی ارتباطِ دستیار با مدل اعمال می‌شود؛ بقیه‌ی برنامه و
+           SQL Server مستقیم می‌مانند. *@
+        <MudTextField T="string" @bind-Value="_cfg.ProxyUrl" Label="پروکسی (اختیاری)"
+                      Variant="Variant.Outlined" Dense Clearable Class="mb-3"
+                      Placeholder="http://127.0.0.1:10809"
+                      HelperText="برای سرویس‌های خارجی از پشت v2rayN و مانند آن. خالی = اتصال مستقیم." />
+
+        @* پیش‌فرض روشن: سرویس خارجی نام مشتری‌ها را نبیند. برای مدلِ محلی
+           (داخل شبکه) می‌شود خاموشش کرد. *@
+        <MudSwitch T="bool" @bind-Value="_cfg.MaskNames" Color="Color.Primary" Class="mb-1"
+                   Label="نام مشتری‌ها و کالاها به مدل فرستاده نشود (به‌جایش شناسه)" />
+        <MudText Typo="Typo.caption" Class="mud-text-secondary mb-3 d-block">
+            مدل فقط عدد و شناسه (مثل N-0001) می‌بیند و Safir پیش از نمایش جواب، نام واقعی را برمی‌گرداند.
+        </MudText>
+
         @* ── کلید ──
            هیچ‌وقت مقدار فعلی نمایش داده نمی‌شود. خالی گذاشتن یعنی «دست
            نزن»، وگرنه هر ذخیره‌ی ساده‌ای کلید را پاک می‌کرد. *@
@@ -195,6 +230,9 @@ else
                 Model          = _cfg.Model,
                 TimeoutSeconds = _cfg.TimeoutSeconds,
                 MaxToolLoops   = _cfg.MaxToolLoops,
+                ProxyUrl       = _cfg.ProxyUrl,
+                FallbackModel  = _cfg.FallbackModel,
+                MaskNames      = _cfg.MaskNames,
                 ApiKey         = string.IsNullOrWhiteSpace(_newKey) ? null : _newKey.Trim(),
                 ClearApiKey    = _clearKey
             });
@@ -226,6 +264,8 @@ else
                 Provider = _cfg?.Provider ?? "openai",
                 BaseUrl  = _cfg?.BaseUrl,
                 Model    = _cfg?.Model,
+                ProxyUrl      = _cfg?.ProxyUrl,
+                FallbackModel = _cfg?.FallbackModel,
                 ApiKey   = string.IsNullOrWhiteSpace(_newKey) ? null : _newKey.Trim()
             });
 

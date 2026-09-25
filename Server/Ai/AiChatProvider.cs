@@ -105,6 +105,59 @@ namespace Safir.Server.Ai
 
         /// <summary>سقف رفت‌وبرگشت با ابزار در یک سؤال.</summary>
         public int MaxToolLoops { get; set; } = 6;
+
+        /// <summary>
+        /// پروکسیِ فقط همین ارتباط (مثلاً v2rayN: http://127.0.0.1:10809).
+        /// خالی = مستقیم. بقیه‌ی برنامه از آن رد نمی‌شود.
+        /// </summary>
+        public string? ProxyUrl { get; set; }
+
+        /// <summary>مدلی که اگر مدل اصلی خطا داد یک بار امتحان می‌شود. خالی = هیچ.</summary>
+        public string? FallbackModel { get; set; }
+
+        /// <summary>نام مشتری/کالا/حساب پیش از رفتن به مدل با شناسه عوض شود (AiNameMasker).</summary>
+        public bool MaskNames { get; set; } = true;
+
+        /// <summary>
+        /// کپی، تا تغییرِ موقت (آزمایش اتصال با مقادیر فرم، ساختن مدل جایگزین)
+        /// به نمونه‌ای که در کش است نرسد.
+        /// </summary>
+        public AiOptions Clone() => (AiOptions)MemberwiseClone();
+    }
+
+    /// <summary>
+    /// اول مدل اصلی؛ اگر خطا داد (قطعی، ۴۰۳ حساب، تایم‌اوت) همان پیام‌ها یک بار
+    /// با مدل جایگزین. هر مرحله‌ی حلقه جدا تصمیم می‌گیرد، پس اگر مدل اصلی
+    /// وسط گفتگو برگشت، مرحله‌ی بعد دوباره با خودش می‌رود.
+    /// </summary>
+    public sealed class FallbackChatProvider : IAiChatProvider
+    {
+        private readonly IAiChatProvider _primary;
+        private readonly IAiChatProvider _fallback;
+
+        public FallbackChatProvider(IAiChatProvider primary, IAiChatProvider fallback)
+        {
+            _primary  = primary;
+            _fallback = fallback;
+        }
+
+        public string Describe => $"{_primary.Describe} → {_fallback.Describe}";
+
+        public async Task<AiModelReply> CompleteAsync(
+            IReadOnlyList<AiMessage> messages,
+            IReadOnlyList<IAiTool> tools,
+            CancellationToken ct = default)
+        {
+            var first = await _primary.CompleteAsync(messages, tools, ct);
+            if (first.Ok || ct.IsCancellationRequested) return first;
+
+            var second = await _fallback.CompleteAsync(messages, tools, ct);
+
+            // اگر هر دو خطا دادند، هر دو دلیل دیده شود؛ فقط دومی گمراه‌کننده است
+            return second.Ok
+                ? second
+                : new AiModelReply { Error = $"{first.Error} — مدل جایگزین هم: {second.Error}" };
+        }
     }
 
 

@@ -1,4 +1,7 @@
+using Microsoft.Data.SqlClient;
+using Microsoft.SqlServer.TransactSql.ScriptDom;
 using Safir.Server.Security;
+using Safir.Server.Services;
 using Safir.Shared.Constants;
 using Safir.Shared.Interfaces;
 using System.Text.RegularExpressions;
@@ -56,7 +59,91 @@ namespace Safir.Server.Ai
             if (q.Contains("--") || q.Contains("/*"))
                 return (false, "توضیح داخل کوئری مجاز نیست.");
 
-            return (true, null);
+            return ValidateAst(q);
+        }
+
+        // ── لایه‌ی دوم: پارسر رسمی T-SQL ──
+        // Regex بالا متن را می‌بیند نه ساختار را؛ OPENQUERY، جدولِ موقت، نام
+        // سه‌بخشیِ دیتابیسِ دیگر و خواندن از sys از آن رد می‌شدند.
+        // TSql150 = SQL Server 2019، پایین‌ترین نسخه‌ی مشتری‌ها.
+        //
+        // ⚠ این هم سدّ نهایی نیست: سدّ واقعی کاربرِ فقط‌خواندنیِ جدا با DENY روی
+        // همین جدول‌هاست. viewی که یکی از این جدول‌ها را join کند از اینجا رد
+        // می‌شود؛ فهرست پایین فقط راه‌های مستقیم را می‌بندد.
+
+        /// <summary>
+        /// جدول‌هایی که دستیار هرگز نباید بخواند: SALA_DTL رمزِ کاربران را دارد و
+        /// کدگذاری‌اش برگشت‌پذیر است؛ SAL_CHEK مجوزها؛ AI_Config کلید API؛
+        /// لاگ‌های دستیار پرسش‌های کاربرانِ دیگر.
+        /// </summary>
+        private static readonly HashSet<string> DeniedTables = new(StringComparer.OrdinalIgnoreCase)
+        {
+            "SALA_DTL", "SAL_CHEK",
+            // viewهایی که همان جدول‌ها را می‌خوانند؛ SALS نام کاربری کدشده را نشان می‌دهد
+            "SALS", "SALSUSER",
+            "AI_Config", "AI_UserAccess", "AI_ChatLog", "AI_Conversation"
+        };
+
+        /// <summary>
+        /// حقوق و دستمزد: خواندنِ مستقیمش کنترل دسترسیِ کارگاه (PAY2_USER_WS)
+        /// را دور می‌زند.
+        /// </summary>
+        private static readonly string[] DeniedPrefixes = { "PAY2_", "V_PAY2_" };
+
+        private static (bool Ok, string? Error) ValidateAst(string sql)
+        {
+            var parser   = new TSql150Parser(initialQuotedIdentifiers: true);
+            var fragment = parser.Parse(new StringReader(sql), out var parseErrors);
+
+            if (parseErrors.Count > 0)
+                return (false, $"کوئری قابل تجزیه نیست: {parseErrors[0].Message}");
+
+            if (fragment is not TSqlScript script
+                || script.Batches.Count != 1
+                || script.Batches[0].Statements.Count != 1)
+                return (false, "فقط یک دستور مجاز است.");
+
+            if (script.Batches[0].Statements[0] is not SelectStatement select)
+                return (false, "فقط SELECT (یا WITH … SELECT) مجاز است.");
+
+            if (select.Into is not null)
+                return (false, "SELECT … INTO مجاز نیست.");
+
+            var v = new ObjectVisitor();
+            select.Accept(v);
+            return v.Error is null ? (true, null) : (false, v.Error);
+        }
+
+        private sealed class ObjectVisitor : TSqlFragmentVisitor
+        {
+            public string? Error { get; private set; }
+
+            private void Deny(string message) => Error ??= message;
+
+            private void Check(SchemaObjectName? name)
+            {
+                if (name is null) return;
+
+                var baseName = name.BaseIdentifier?.Value ?? "";
+
+                if (name.ServerIdentifier is not null || name.DatabaseIdentifier is not null)
+                    Deny("ارجاع به دیتابیس یا سرور دیگر مجاز نیست.");
+                else if (baseName.StartsWith("#"))
+                    Deny("جدول موقت مجاز نیست.");
+                else if (string.Equals(name.SchemaIdentifier?.Value, "sys", StringComparison.OrdinalIgnoreCase))
+                    Deny("خواندن از schema سیستمی (sys) مجاز نیست؛ برای ساختار جدول‌ها از describe_table استفاده کن.");
+                else if (DeniedTables.Contains(baseName)
+                         || DeniedPrefixes.Any(p => baseName.StartsWith(p, StringComparison.OrdinalIgnoreCase)))
+                    Deny($"دسترسی دستیار به «{baseName}» بسته است.");
+            }
+
+            public override void Visit(NamedTableReference node)                => Check(node.SchemaObject);
+            public override void Visit(SchemaObjectFunctionTableReference node) => Check(node.SchemaObject);
+
+            public override void Visit(OpenRowsetTableReference node) => Deny("OPENROWSET مجاز نیست.");
+            public override void Visit(OpenQueryTableReference node)  => Deny("OPENQUERY مجاز نیست.");
+            public override void Visit(AdHocTableReference node)      => Deny("OPENDATASOURCE مجاز نیست.");
+            public override void Visit(OpenXmlTableReference node)    => Deny("OPENXML مجاز نیست.");
         }
     }
 
@@ -218,8 +305,14 @@ namespace Safir.Server.Ai
     /// </summary>
     public sealed class RunSqlTool : IAiTool
     {
-        private readonly IDatabaseService _db;
-        public RunSqlTool(IDatabaseService db) => _db = db;
+        private readonly string _connectionString;
+
+        // اتصالِ فقط‌خواندنیِ جدا اگر در تنظیمات باشد (ConnectionStrings:AiReadOnly)؛
+        // وگرنه همان اتصال برنامه — و آن‌وقت سدّ اصلی همان AiSqlGuard است.
+        public RunSqlTool(IConfiguration config, IConnectionStringProvider fallback) =>
+            _connectionString = config.GetConnectionString("AiReadOnly") is { Length: > 0 } ro
+                ? ro
+                : fallback.GetConnectionString();
 
         public string Name        => "run_sql";
         public string Title       => "اجرای کوئری";
@@ -240,18 +333,43 @@ namespace Safir.Server.Ai
             var (ok, error) = AiSqlGuard.Validate(sql);
             if (!ok) return AiToolResult.Fail(error!);
 
+            // ردیف‌به‌ردیف تا سقف، نه اول همه و بعد Take: قبلاً یک SELECT بی‌TOP
+            // روی DEED_DTL (۳۳۰ هزار ردیف) کلش را در حافظه‌ی سرور می‌آورد و
+            // بعد ۵۰۰ تا را نگه می‌داشت.
+            //
             // تایم‌اوت کوتاه: کوئریِ بدِ مدل نباید سرورِ همه را بخواباند.
             // ۳۰ ثانیه برای گزارش‌های معمول کافی است و برای اسکنِ کاملِ
-            // یک جدول بزرگ نیست — که همان چیزی است که می‌خواهیم.
-            var rows = (await _db.DoGetDataSQLAsync<dynamic>(sql!)).ToList();
+            // یک جدول بزرگ نیست. (قبلاً همین کامنت بود ولی تایم‌اوتی تنظیم نمی‌شد.)
+            var rows = new List<Dictionary<string, object?>>();
+            bool truncated = false;
 
-            var capped = rows.Take(call.MaxRows).ToList();
+            await using var conn = new SqlConnection(_connectionString);
+            await conn.OpenAsync(ct);
+            await using var cmd = new SqlCommand(sql, conn) { CommandTimeout = 30 };
+            await using (var reader = await cmd.ExecuteReaderAsync(ct))
+            {
+                while (await reader.ReadAsync(ct))
+                {
+                    if (rows.Count == call.MaxRows)
+                    {
+                        truncated = true;
+                        // بدون Cancel، بستنِ reader بقیه‌ی نتیجه را تا آخر می‌خواند
+                        cmd.Cancel();
+                        break;
+                    }
+
+                    var row = new Dictionary<string, object?>(reader.FieldCount);
+                    for (int i = 0; i < reader.FieldCount; i++)
+                        row[reader.GetName(i)] = reader.IsDBNull(i) ? null : reader.GetValue(i);
+                    rows.Add(row);
+                }
+            }
 
             return new AiToolResult
             {
-                Rows      = capped.Count,
-                Data      = capped,
-                Truncated = rows.Count > capped.Count
+                Rows      = rows.Count,
+                Data      = rows,
+                Truncated = truncated
             };
         }
     }

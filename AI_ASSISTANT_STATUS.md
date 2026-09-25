@@ -1,0 +1,96 @@
+# وضعیت پروژه‌ی «دستیار هوش مصنوعی مالی» — برای ادامه‌ی کار
+
+> این فایل برای هر عامل هوش مصنوعی یا برنامه‌نویسی است که کار را ادامه می‌دهد.
+> اول `AGENTS.md` را بخوانید؛ بعد این را. آخرین به‌روزرسانی: ۱۴۰۵/۰۷/۰۳ (2026-09-25).
+> **هیچ‌کدام از تغییرات زیر commit نشده است.** صاحب پروژه گفته بدون اجازه‌اش commit/push نشود.
+
+## هدف
+مدیرِ شرکت در صفحه‌ی `/ai/chat` به فارسیِ عادی سؤال مالی بپرسد («سود این ماه؟»،
+«بیشترین بدهی؟»، «پرفروش‌ترین کالا؟») و جوابِ **درست** بگیرد. قاعده‌ی طلایی: عددِ غلط با
+اطمینان از «نمی‌دانم» بدتر است.
+
+## تصمیم‌های گرفته‌شده
+- بخش هوش مصنوعی فعلی Safir حفظ و تقویت می‌شود؛ محصول آماده (Wren/Vanna/…) نه.
+- «اول ابزار ثابت، بعد SQL آزاد»: عدد را کد C# با **منطق خودِ Safir** حساب می‌کند؛ مدل فقط
+  ابزار و پارامتر را انتخاب می‌کند. `run_sql` فقط برای سؤال‌های نامعمول.
+- **ملاک درستی، کد فعلی Safir است** (نه WPF، نه Access، نه مستندات، نه عددِ خامِ دفتر).
+- مشتری باید بتواند سرویس مدل خودش را در `/ai/settings` بدهد (آدرس، کلید، مدل، مدل جایگزین، پروکسی).
+- SQL Server مشتری‌ها ۲۰۱۹ به بالا: پارسر TSql150، بدون دستورهای مخصوص ۲۰۲۲، بدون
+  Resource Governor/`sp_configure`/`NOLOCK`، بدون تغییر در جدول‌های WPF.
+
+## پلن و وضعیت
+| مرحله | وضعیت |
+|---|---|
+| ۰. شناخت دیتابیس و کد | ✅ |
+| ۱. ایمن‌سازی | 🟡 انجام: تاریخ امروز در پرامپت، محافظ SQL با ScriptDom، جدول‌های ممنوع (به‌علاوه‌ی viewهای SALS/SALSUSER/V_PAY2_*)، سقف ردیف و timeout، پروکسی و مدل جایگزین، اصلاح متن CHK-02، **نقش فقط‌خواندنی `safir_ai_reader` (مهاجرت ۳۸، روی کپی محلی با EXECUTE AS تأیید شد) + اسکریپت ساخت login `Server/Database/tools/ai_readonly_login.sql`**، **یکسان‌سازی ی/ک و فاصله در جستجوی نام کالا (`Server/Ai/AiText.cs`)**. **مانده:** چکِ خودکارِ «هر عدد از ابزار آمده باشد» (اختیاری — آزمون طلایی غلطِ با اطمینان صفر نشان داده) و آزمون سرتاسری با login واقعی `safir_ai` |
+| ۲. تعریف‌ها | ✅ صاحب پروژه جواب داد (بخش «تصمیم‌های حسابداری») |
+| ۳. ابزارهای ثابت | ✅ ۷ ابزار در `Server/Ai/AiFinanceTools.cs` |
+| ۴. حریم داده (نام مشتری/کالا → شناسه قبل از ارسال به مدل) | ✅ `Server/Ai/AiNameMasker.cs`؛ گزینه‌ی «نام‌ها به مدل فرستاده نشود» در `/ai/settings` (پیش‌فرض روشن، ستون `AI_Config.MaskNames`، مهاجرت ۳۹). نام‌ها در خروجی ابزار → `N-0001`؛ پارامترِ ابزار و جواب نهایی → نام واقعی؛ تاریخچه‌ی همان گفتگو هم پوشانده می‌شود. جدول تبدیل فقط در حافظه‌ی سرور (۲ ساعت). محدودیت: متنی که کاربر خودش تایپ می‌کند پوشانده نمی‌شود |
+| ۵. آزمون طلایی | ✅ ۴۶ سؤال، اجراکننده و نمره‌دهی (`Tests/ai-eval/`). **مانده (اختیاری):** رساندن به ۱۵۰ سؤال و بخشِ کنارگذاشته (hold-out) |
+| ۶. انتخاب مدل | ✅ اصلی: ترکیب 9router `claude-sonnet-4-5` (= Gemini 3.8 Flash High از مسیر Antigravity/OAuth) به انتخاب صاحب پروژه. جایگزین: `gemini/gemini-3.8-flash` (کلید API رسمی — اگر حساب‌های OAuth مسدود شد). جایگزین کندتر است (۱۶–۵۵ث) و یک بار در آزمون گیر کرد؛ فقط وقتی مدل اصلی خطا دهد به کار می‌رود |
+| ۷. اجرای آزمایشی پنهان روی سیستم مشتری | ⏳ |
+| ۸. Production | ⏳ |
+
+## نتیجه‌ی آزمون‌ها (کپی محلی YAZDSEPAR1405، مدل: ترکیب `claude-sonnet-4-5` در 9router که در واقع Gemini است)
+| دور | درست | غلطِ با اطمینان |
+|---|---|---|
+| قبل از هر تغییر (۸ سؤال) | ۲ | ۲ |
+| بعد از ابزارهای ثابت (۱۰ سؤال) | ۱۰ | ۰ |
+| آزمون طلایی ۲۵ سؤال × ۲ بار | **۵۰/۵۰** | **۰** |
+| سؤال تازه با «ي/ك» عربی (item-ar) × ۲ | ۲/۲ | ۰ |
+| آزمون طلایی ۲۶ سؤال با پنهان‌سازی نام روشن | **۲۶/۲۶** | **۰** — هیچ شناسه‌ای در جواب نهایی نماند |
+| پیکربندی نهایی (اصلی + جایگزین)، ۲۸ سؤال | ۲۷/۲۸ | ۰ — تنها خطا: جستجوی نام مشتری ۸۰ث طول کشید (timeout)؛ دو مرحله‌ای شد (۱۶ms) |
+| سؤال‌های بدهکاران (۵ سؤال × ۲، شامل یک مشتری در حساب سطح ۴ و یک نام با ي/ك عربی — این دو سؤال نام واقعی دارند و در `golden.local.json` (بیرون از git) هستند) | **۱۰/۱۰** | **۰** |
+| ۱۸ سؤال تازه (غلط تایپی، چندماهه، رتبه‌بندی، ۵ «نمی‌دانم»، امنیتی PAY2) | **۱۸/۱۸** | **۰** |
+یک خطای واقعی در آزمون طلایی پیدا و رفع شد: «فروش پودر شیر خشک» — دو کالای هم‌نام
+(۱۷۳۲ ماده‌ی اولیه، ۳۳۶۵ محصول فروخته‌شده)؛ حالا `sales_by_product` پارامتر `name` دارد و همه‌ی هم‌نام‌ها را برمی‌گرداند.
+
+## فایل‌های تغییرکرده (همه commit‌نشده)
+- `Server/Ai/AiDateContext.cs` (جدید) — «امروز/این ماه/ماه قبل/سال مالی» با PersianCalendar
+- `Server/Ai/AiFinanceTools.cs` (جدید) — sales_by_product, compare_sales, profit_and_loss, bank_balances, top_debtors, credit_limit_breaches, unsold_items
+- `Server/Ai/AiConversationService.cs` — بلوک تاریخ و قواعد در پرامپت، تلاش دوباره روی جواب خالی
+- `Server/Ai/AiSqlTools.cs` — ScriptDom، جدول‌های ممنوع (SALA_DTL، SAL_CHEK، AI_*، PAY2_*)، خواندن جریانی تا سقف، timeout ۳۰ث، `AiReadOnly`
+- `Server/Ai/AiTools.cs` — `list_runs` برچسب فارسی وضعیت/نوع اجرا
+- `Server/Ai/AiChatProvider.cs` — `ProxyUrl`، `FallbackModel`، `Clone()`، `FallbackChatProvider`
+- `Server/Ai/AiSettingsProvider.cs` — خواندن ستون‌های جدید، `AiHttp` (پروکسی با دورزدنِ localhost)
+- `Server/Ai/AiDataDictionary.cs` — اصلاح TAGهای CHK-02
+- `Server/Controllers/AiAssistantController.cs` — ذخیره/آزمایش پروکسی و مدل جایگزین؛ آزمایش اتصال دیگر تنظیمات کش‌شده را عوض نمی‌کند
+- `Shared/Models/Ai/AiModels.cs`، `Client/Pages/Ai/AiSettings.razor` — دو فیلد جدید
+- `Server/Program.cs` — ثبت ۷ ابزار
+- `Server/Ai/AiNameMasker.cs` (جدید) + سیم‌کشی در `AiConversationService` (IMemoryCache)؛ مهاجرت ۳۹ `Server/Database/39-ai-config-mask-names.sql` و در ScriptSqly؛ کلید `MaskNames` در AiOptions/AiConfigRow/DTOها/صفحه‌ی تنظیمات
+- `Server/Ai/AiText.cs` (جدید) — `NormalizeFa` و `SqlFa` برای ی/ک؛ در `search_item` و `sales_by_product` به‌کار رفته
+- مهاجرت ۳۸: `Server/Database/38-ai-readonly-role.sql` و همان متن در ساب‌ماژول ScriptSqly؛ `Server/Database/tools/ai_readonly_login.sql` (دستی، به‌دست مدیر سرور؛ رمز داخل فایل ذخیره نشود)
+- `Server/Safir.Server.csproj` — بسته‌ی `Microsoft.SqlServer.TransactSql.ScriptDom` 180.117.0
+- مهاجرت ۳۷: `Server/Database/37-ai-config-proxy.sql` **و** `External/ScriptSqly/ScriptSqly.Core/ScriptSqly.CostClose.cs`
+  (ساب‌ماژول؛ commit جدا + به‌روزرسانی اشاره‌گر لازم دارد. نسخه‌ی `E:\prg\ScriptSqly` قدیمی‌تر است و یک تغییرِ commit‌نشده‌ی دیگری در `ScriptSqly.Main.cs` دارد — دست نزنید)
+- تست‌ها: `Tests/Safir.Server.Tests/Ai*Tests.cs` (۸ فایل جدید) — کل: ۲۲۲ تست سبز؛ `golden.json` حالا ۴۶ سؤال
+- `Tests/ai-eval/` (جدید): `golden.json`، `run.mjs`، `grade.mjs`، `grade.test.mjs`، `.gitignore` (پوشه‌ی results حاوی نام مشتری است؛ commit نشود)
+
+## تغییرات روی کپی محلی دیتابیس (MERCEDES\SQL2022 / YAZDSEPAR1405 — داده‌ی واقعی نیست)
+- مهاجرت‌های ۳۷، ۳۸ و ۳۹ اجرا شد (نقش `safir_ai_reader` ساخته شد؛ login ساخته نشده).
+- `AI_Config`: مدل `claude-sonnet-4-5`، جایگزین `DeepSeek-V4-Flash`، بدون پروکسی، آدرس `http://localhost:20128` (9router)؛ کلید را صاحب پروژه خودش وارد کرده.
+- `AI_UserAccess`: ردیف کاربر ۷۸ (`Controller`) اضافه شد، سقف روزانه ۱۰۰۰ برای آزمون.
+
+## چطور اجرا و آزمون کنیم
+```
+dotnet build Safir.sln -c Debug      # و -c Release
+dotnet test Tests/Safir.Server.Tests
+python .github/scripts/check_pay2_acl.py        # روی ویندوز: PYTHONIOENCODING=utf-8
+node --test Tests/ai-eval/grade.test.mjs
+# آزمون طلایی (برنامه روی 5170 و روی همان کپی دیتابیس؛ توکنِ کاربرِ واردشده از localStorage مرورگر):
+SAFIR_TOKEN=... node Tests/ai-eval/run.mjs --runs 2
+```
+عددهای `golden.json` فقط برای همین کپی و «امروز = ۱۴۰۵/۰۷/۰۳» معتبرند.
+
+## تصمیم‌های حسابداری (جواب صاحب پروژه، ۱۴۰۵/۰۷/۰۳)
+1. `OKF` یعنی «سند چاپ/تأیید شده یا نه» و اهمیتی ندارد → **هیچ‌وقت فیلتر نمی‌شود** (متن AiDataDictionary هم اصلاح شد؛ قبلاً مدل را به فیلتر OKF=1 و مانده‌ی بانک غلط می‌کشاند).
+2. «یک مشتری» = **کد کامل حساب** (`DEED_DTL.HES`، تا ۶ سطح، مثلاً `115-1-25-3-4-6`) — عیناً مثل صورت‌حساب مشتری در Safir (`QDAFTARTAFZIL2_H`: `HES = @HES`، نام از `CUST_HESAB`). ۳۱۴ بدهکار. `top_debtors` پارامتر `name` هم دارد (با یکسان‌سازی ی/ک). `credit_limit_breaches` هم مانده‌ی دقیقاً همان کد را می‌گیرد.
+   `GHATEI=1` یعنی سند قطعی و برای همیشه غیرقابل حذف/اصلاح؛ سندِ قطعی‌نشده هم معتبر است → این هم فیلتر نمی‌شود.
+3. چک‌های وصول‌نشده: صاحب پروژه مطمئن نیست → فعلاً **کم نمی‌شود** و در «تعریف» جواب گفته می‌شود.
+4. ماهِ بسته‌نشده: **سود گفته نمی‌شود**، فقط «بسته نشده». روی این کپی فقط فروردین کامل بسته شده.
+
+مستندات دیگری که صاحب پروژه داد: `E:\prg\Salary HoghooghDastmozd\Data for ai\SQL.txt`، `C:\Users\Administrator\Desktop\ai\Salary\HesabStructures.txt`، `E:\prg\MrCorrect\Doc\DBINFO\` (مرجع‌اند؛ ملاک، کد Safir است).
+
+## قدم بعدی پیشنهادی
+- مرحله ۵: گسترش `golden.json` به ۱۵۰ سؤال (محاوره‌ای، غلط تایپی، سؤال‌های خارج از حوزه).
+- مرحله ۶: اجرای همین آزمون روی ۲–۳ مدل (با نام واقعی مدل، نه نام ترکیب 9router).

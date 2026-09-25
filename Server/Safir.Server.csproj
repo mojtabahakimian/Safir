@@ -48,6 +48,7 @@
 		<PackageReference Include="IPE.SmsIr" Version="1.2.7" />
 		<PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="8.0.0" />
 		<PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly.Server" Version="8.0.0" />
+		<PackageReference Include="Microsoft.SqlServer.TransactSql.ScriptDom" Version="180.117.0" />
 
 		<PackageReference Include="QuestPDF" Version="2025.4.0" />
 		<PackageReference Include="Stimulsoft.Reports.Web.NetCore" Version="2023.1.1" />

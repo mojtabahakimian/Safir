@@ -1,3 +1,5 @@
+using Microsoft.Extensions.Caching.Memory;
+using Safir.Shared.Interfaces;
 using Safir.Shared.Models.Ai;
 using System.Diagnostics;
 using System.Text.Json;
@@ -37,16 +39,34 @@ namespace Safir.Server.Ai
         private readonly IAiToolRegistry    _tools;
         private readonly IAiAccessService   _access;
         private readonly IAiChatNotifier    _notify;
+        private readonly IAppSettingsService _settings;
+        private readonly IMemoryCache        _cache;
 
         public AiConversationService(
             IAiProviderFactory factory, IAiToolRegistry tools,
-            IAiAccessService access, IAiChatNotifier notify)
+            IAiAccessService access, IAiChatNotifier notify,
+            IAppSettingsService settings, IMemoryCache cache)
         {
-            _factory = factory;
-            _tools   = tools;
-            _access  = access;
-            _notify  = notify;
+            _factory  = factory;
+            _tools    = tools;
+            _access   = access;
+            _notify   = notify;
+            _settings = settings;
+            _cache    = cache;
         }
+
+        /// <summary>
+        /// جدولِ نام↔شناسه برای هر گفتگو جداست و در حافظه‌ی سرور می‌ماند تا
+        /// نوبت بعدیِ همان گفتگو («حالا ماه قبلش را بگو») همان شناسه‌ها را ببیند.
+        /// هرگز در پایگاه یا لاگ نوشته نمی‌شود.
+        /// </summary>
+        private AiNameMasker? MaskerFor(Guid conversationId, AiOptions opt) =>
+            !opt.MaskNames ? null :
+            _cache.GetOrCreate($"ai_mask_{conversationId}", e =>
+            {
+                e.SlidingExpiration = TimeSpan.FromHours(2);
+                return new AiNameMasker();
+            });
 
         public async Task<AiChatReplyDto> AskAsync(
             int userCo, string? userName, Guid conversationId,
@@ -88,16 +108,23 @@ namespace Safir.Server.Ai
                     Error = "هیچ ابزاری برای دسترسی شما فعال نیست. با مدیر سیستم تماس بگیرید."
                 };
 
+            // سال مالیِ همین پایگاه؛ اگر خوانده نشد، بلوک تاریخ بدون آن ساخته می‌شود
+            var fiscalYear = (await _settings.GetSazmanSettingsAsync())?.YEA;
+
+            var masker = MaskerFor(conversationId, opt);
+
             var messages = new List<AiMessage>
             {
-                new() { Role = "system", Content = BuildSystemPrompt(eff) }
+                new() { Role = "system", Content = BuildSystemPrompt(eff, fiscalYear, masker is not null) }
             };
 
+            // جوابِ نوبت‌های قبل نام واقعی دارد (بعد از برگرداندن)؛ پیش از ارسال
+            // دوباره شناسه می‌شود
             foreach (var t in history.TakeLast(20))
                 messages.Add(new AiMessage
                 {
                     Role    = t.IsUser ? "user" : "assistant",
-                    Content = t.Text
+                    Content = masker?.MaskKnown(t.Text) ?? t.Text
                 });
 
             // فایل پیوست به‌عنوان *داده* می‌آید، با مرز صریح. اگر داخلش
@@ -150,9 +177,22 @@ namespace Safir.Server.Ai
                 if (!reply.Ok)
                     return new AiChatReplyDto { Error = reply.Error, Steps = steps };
 
+                // جواب خالی بدون ابزار: در آزمون پایه «سود فروردین» بعد از چهار
+                // ابزارِ موفق متن خالی برگرداند و کاربر صفحه‌ی سفید دید. یک بار
+                // دیگر (در همان سقف مراحل) صریحاً جواب را می‌خواهیم.
+                if (reply.ToolCalls.Count == 0 && string.IsNullOrWhiteSpace(reply.Text))
+                {
+                    messages.Add(new AiMessage
+                    {
+                        Role    = "user",
+                        Content = "جوابت خالی بود. با همین داده‌هایی که از ابزارها گرفته‌ای جواب بده."
+                    });
+                    continue;
+                }
+
                 if (reply.ToolCalls.Count == 0)
                 {
-                    var answer = reply.Text ?? "پاسخی تولید نشد.";
+                    var answer = masker?.Unmask(reply.Text!) ?? reply.Text!;
 
                     await _access.LogAsync(new AiLogEntry
                     {
@@ -178,7 +218,7 @@ namespace Safir.Server.Ai
                         $"در حال {t?.Title ?? call.Name}…");
 
                     var (content, step) = await RunToolAsync(
-                        userCo, userName, conversationId, call, eff, ct);
+                        userCo, userName, conversationId, call, eff, masker, ct);
 
                     steps.Add(step);
 
@@ -217,6 +257,8 @@ namespace Safir.Server.Ai
 
             if (last.Ok && !string.IsNullOrWhiteSpace(last.Text))
             {
+                last.Text = masker?.Unmask(last.Text) ?? last.Text;
+
                 await _access.LogAsync(new AiLogEntry
                 {
                     ConversationId = conversationId, UserCo = userCo, UserName = userName,
@@ -235,7 +277,7 @@ namespace Safir.Server.Ai
 
         private async Task<(string Content, AiChatStepDto Step)> RunToolAsync(
             int userCo, string? userName, Guid conversationId,
-            AiToolInvocation call, AiEffectiveAccessDto eff, CancellationToken ct)
+            AiToolInvocation call, AiEffectiveAccessDto eff, AiNameMasker? masker, CancellationToken ct)
         {
             var tool = _tools.Find(call.Name);
 
@@ -268,7 +310,8 @@ namespace Safir.Server.Ai
                 {
                     UserCo  = userCo,
                     MaxRows = eff.MaxRows,
-                    Args    = call.Args
+                    // مدل شناسه (N-0001) می‌فرستد؛ ابزار باید نام واقعی را جستجو کند
+                    Args    = masker?.UnmaskArgs(call.Args) ?? call.Args
                 }, ct);
 
                 await _access.LogAsync(new AiLogEntry
@@ -285,6 +328,9 @@ namespace Safir.Server.Ai
 
                 var json = JsonSerializer.Serialize(result.Data,
                     new JsonSerializerOptions { WriteIndented = false });
+
+                // نام مشتری/کالا/حساب پیش از رفتن به مدل شناسه می‌شود (MaskNames)
+                if (masker is not null) json = masker.MaskJson(json);
 
                 // بریده‌شدن باید صریح گفته شود، وگرنه مدل ۵۰۰ سطرِ اول را
                 // «همه» فرض می‌کند و جمعِ غلط تحویل می‌دهد.
@@ -324,7 +370,7 @@ namespace Safir.Server.Ai
             }
         }
 
-        private string BuildSystemPrompt(AiEffectiveAccessDto eff)
+        private string BuildSystemPrompt(AiEffectiveAccessDto eff, int? fiscalYear, bool masked = false)
         {
             var tools = string.Join("\n",
                 eff.Tools.Select(t => $"  • {t.Name} — {t.Title}"));
@@ -349,8 +395,34 @@ namespace Safir.Server.Ai
             • «مغایرت» را فقط وقتی بگو که واقعاً غلط باشد. کارِ ناتمام
               مغایرت نیست.
 
+            ── تاریخ (سرور حساب کرده؛ خودت حساب نکن) ──
+            {AiDateContext.Build(DateTime.Now, fiscalYear)}
+
             قواعد کار:
             • فارسی جواب بده، کوتاه و دقیق.
+            • برای این سؤال‌ها ابزار ثابت هست و عددش را خود Safir حساب می‌کند؛
+              اول همین‌ها را صدا بزن و برایشان run_sql ننویس:
+                فروش و پرفروش‌ترین کالا ← sales_by_product
+                مقایسه‌ی فروش دو دوره ← compare_sales
+                سود و زیان ماه ← profit_and_loss
+                مانده‌ی بانک ← bank_balances
+                بدهکاران ← top_debtors
+                عبور از سقف اعتبار ← credit_limit_breaches
+                کالاهای بدون فروش ← unsold_items
+              «تعریف» (Definition) هر ابزار را در یک جمله‌ی کوتاه به کاربر بگو، و
+              عدد و درصد را همان‌طور که ابزار داده گزارش کن — خودت جمع یا درصد نگیر.
+            {(masked
+              ? "• نام مشتری‌ها، کالاها و حساب‌ها در خروجی ابزارها به‌شکل شناسه (مثل N-0001) آمده است. " +
+                "همان شناسه را عیناً در جواب و در پارامترِ ابزارها بنویس؛ Safir پیش از نمایش، نام واقعی را جایش می‌گذارد. " +
+                "درباره‌ی شناسه‌ها توضیح نده و نام حدس نزن."
+              : "")}
+            • هر جا کاربر «امروز»، «این ماه»، «ماه قبل» یا «الان» گفت، همان
+              بازه‌ی بالا را به کار ببر و در جوابت صریح بگو کدام بازه را حساب
+              کرده‌ای. هرگز ماه دیگری را جای «این ماه» گزارش نکن.
+            • سود و بهای تمام‌شده‌ی یک ماه فقط وقتی معتبر است که در list_runs
+              آن ماه اجرای «کامل‌شده» (StatusName) داشته باشد. اگر ندارد، عدد سود
+              نگو؛ بگو «بستن بهای تمام‌شده‌ی این ماه هنوز کامل نشده» و چه چیزی
+              لازم است. اجرای «آزمایشی» (KindName) را «نهایی» یا «قطعی» ننام.
             • عدد را از خودت نساز. هر رقمی که می‌گویی باید از خروجی یکی از
               ابزارها آمده باشد. اگر ابزاری برای سؤالی نداری، همین را
               صریح بگو.

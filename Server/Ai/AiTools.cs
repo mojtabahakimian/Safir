@@ -107,7 +107,13 @@ namespace Safir.Server.Ai
         {
             var rows = (await _db.DoGetDataSQLAsync<dynamic>(@"
                 SELECT TOP (@n) RunId, FiscalYear, PeriodMonth, DateFrom, DateTo,
-                       Status, IsLatest
+                       Status, IsLatest,
+                       -- برچسب فارسی: عدد خامِ وضعیت را مدل نمی‌فهمید و اجرای آزمایشیِ
+                       -- ناتمام را «بسته و نهایی» گزارش می‌کرد (CostRunStatus/CostRunKind)
+                       CASE Status WHEN 0 THEN N'پیش‌نویس' WHEN 1 THEN N'در حال اجرا'
+                                   WHEN 2 THEN N'متوقف (ناتمام)' WHEN 3 THEN N'کامل‌شده'
+                                   WHEN 4 THEN N'خطا' WHEN 5 THEN N'برگشت‌خورده' END AS StatusName,
+                       CASE RunKind WHEN 1 THEN N'آزمایشی' WHEN 2 THEN N'قطعی' END AS KindName
                 FROM   dbo.CC_Run ORDER BY RunId DESC", new { n = call.MaxRows })).ToList();
 
             return new AiToolResult { Rows = rows.Count, Data = rows };
@@ -133,12 +139,13 @@ namespace Safir.Server.Ai
             var q = call.Str("q");
             if (string.IsNullOrWhiteSpace(q)) return AiToolResult.Fail("پارامتر q لازم است.");
 
+            // «شير» عربی باید «شیر» را پیدا کند؛ دو فاصله‌ی نام‌ها هم یکی می‌شود
             var rows = (await _db.DoGetDataSQLAsync<dynamic>(@"
                 SELECT TOP (@n) TRY_CAST(s.CODE AS BIGINT) AS Code, s.NAME
                 FROM   dbo.STUF_DEF s
-                WHERE  s.NAME LIKE @like OR s.CODE LIKE @like
+                WHERE  " + AiText.SqlFa("s.NAME") + @" LIKE @like OR s.CODE LIKE @like
                 ORDER BY s.NAME",
-                new { n = call.MaxRows, like = "%" + q.Trim() + "%" })).ToList();
+                new { n = call.MaxRows, like = "%" + AiText.NormalizeFa(q) + "%" })).ToList();
 
             return new AiToolResult { Rows = rows.Count, Data = rows };
         }

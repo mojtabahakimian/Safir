@@ -1,5 +1,7 @@
 using Microsoft.Extensions.Caching.Memory;
 using Safir.Shared.Interfaces;
+using System.Collections.Concurrent;
+using System.Net;
 
 namespace Safir.Server.Ai
 {
@@ -57,7 +59,10 @@ namespace Safir.Server.Ai
                 Model          = _fromAppSettings.Model,
                 ApiKeyEnv      = _fromAppSettings.ApiKeyEnv,
                 TimeoutSeconds = _fromAppSettings.TimeoutSeconds,
-                MaxToolLoops   = _fromAppSettings.MaxToolLoops
+                MaxToolLoops   = _fromAppSettings.MaxToolLoops,
+                ProxyUrl       = _fromAppSettings.ProxyUrl,
+                FallbackModel  = _fromAppSettings.FallbackModel,
+                MaskNames      = _fromAppSettings.MaskNames
             };
 
             if (row is { IsEnabled: true })
@@ -69,6 +74,12 @@ namespace Safir.Server.Ai
                 if (!string.IsNullOrWhiteSpace(row.Model))    eff.Model    = row.Model;
                 if (row.TimeoutSeconds > 0)                   eff.TimeoutSeconds = row.TimeoutSeconds;
                 if (row.MaxToolLoops   > 0)                   eff.MaxToolLoops   = row.MaxToolLoops;
+
+                // این دو خالی‌شدنی‌اند: پاک کردنشان در صفحه یعنی «بدون پروکسی» و
+                // «بدون جایگزین»، پس سطرِ فعال همیشه حرف آخر را می‌زند.
+                eff.ProxyUrl      = row.ProxyUrl;
+                eff.FallbackModel = row.FallbackModel;
+                eff.MaskNames     = row.MaskNames;
 
                 eff.ApiKey = row.ApiKey;
             }
@@ -84,7 +95,8 @@ namespace Safir.Server.Ai
         public async Task<AiConfigRow?> ReadRowAsync()
             => await _db.DoGetDataSQLAsyncSingle<AiConfigRow>(@"
                 SELECT IsEnabled, Provider, BaseUrl, Model, ApiKey,
-                       TimeoutSeconds, MaxToolLoops, UpdatedBy, UpdatedAtUtc
+                       TimeoutSeconds, MaxToolLoops, ProxyUrl, FallbackModel, MaskNames,
+                       UpdatedBy, UpdatedAtUtc
                 FROM   dbo.AI_Config WHERE Id = 1");
     }
 
@@ -117,16 +129,64 @@ namespace Safir.Server.Ai
 
         public async Task<(IAiChatProvider, AiOptions)> CreateAsync()
         {
-            var opt  = await _settings.GetAsync();
-            var http = _httpFactory.CreateClient("ai");
+            var opt = await _settings.GetAsync();
 
-            IAiChatProvider provider =
-                string.Equals(opt.Provider, "anthropic", StringComparison.OrdinalIgnoreCase)
-                    ? new AnthropicProvider(http, opt, _logs.CreateLogger<AnthropicProvider>())
-                    : new OpenAiCompatibleProvider(http, opt, _logs.CreateLogger<OpenAiCompatibleProvider>());
+            var provider = Build(opt);
+
+            if (!string.IsNullOrWhiteSpace(opt.FallbackModel) &&
+                !string.Equals(opt.FallbackModel, opt.Model, StringComparison.OrdinalIgnoreCase))
+            {
+                var fb = opt.Clone();
+                fb.Model = opt.FallbackModel!;
+                provider = new FallbackChatProvider(provider, Build(fb));
+            }
 
             return (provider, opt);
         }
+
+        // هر ارائه‌دهنده HttpClient خودش را می‌گیرد، چون سازنده‌شان هدرِ کلید و
+        // Timeout را روی همان نمونه می‌نشاند.
+        private IAiChatProvider Build(AiOptions opt)
+        {
+            var http = AiHttp.Create(_httpFactory, opt.ProxyUrl);
+
+            return string.Equals(opt.Provider, "anthropic", StringComparison.OrdinalIgnoreCase)
+                ? new AnthropicProvider(http, opt, _logs.CreateLogger<AnthropicProvider>())
+                : new OpenAiCompatibleProvider(http, opt, _logs.CreateLogger<OpenAiCompatibleProvider>());
+        }
+    }
+
+    /// <summary>
+    /// HttpClientِ دستیار، با پروکسی یا بدون آن.
+    ///
+    /// پروکسی از پایگاه می‌آید و ادمین می‌تواند عوضش کند، پس نمی‌شود آن را
+    /// موقع بالا آمدن برنامه روی کلاینتِ نام‌دار نشاند. برای هر آدرسِ پروکسی
+    /// یک handler ساخته و نگه داشته می‌شود — ساختنِ handler تازه در هر پیام
+    /// سوکت‌ها را تمام می‌کرد.
+    /// </summary>
+    public static class AiHttp
+    {
+        private static readonly ConcurrentDictionary<string, SocketsHttpHandler> Handlers = new();
+
+        public static HttpClient Create(IHttpClientFactory factory, string? proxyUrl)
+        {
+            if (string.IsNullOrWhiteSpace(proxyUrl))
+                return factory.CreateClient("ai");
+
+            var handler = Handlers.GetOrAdd(proxyUrl.Trim(), url => new SocketsHttpHandler
+            {
+                Proxy    = BuildProxy(url),
+                UseProxy = true,
+                // DNS و مسیر پروکسی ممکن است عوض شود؛ اتصال‌ها تا ابد نمانند
+                PooledConnectionLifetime = TimeSpan.FromMinutes(5)
+            });
+
+            return new HttpClient(handler, disposeHandler: false);
+        }
+
+        // درگاهِ محلی (مثلاً 9router روی localhost) نباید از پروکسی برود:
+        // v2rayN آن را به سرور خارجی می‌فرستاد و ۵۰۳ برمی‌گشت.
+        public static WebProxy BuildProxy(string url) => new(url) { BypassProxyOnLocal = true };
     }
 
     public sealed class AiConfigRow
@@ -138,6 +198,9 @@ namespace Safir.Server.Ai
         public string?   ApiKey         { get; set; }
         public int       TimeoutSeconds { get; set; }
         public int       MaxToolLoops   { get; set; }
+        public string?   ProxyUrl       { get; set; }
+        public string?   FallbackModel  { get; set; }
+        public bool      MaskNames      { get; set; } = true;
         public string?   UpdatedBy      { get; set; }
         public DateTime? UpdatedAtUtc   { get; set; }
     }
