@@ -31,6 +31,31 @@ namespace Safir.Server.Tests
         public void Date_Rejects(string json)
             => Assert.Null(FinArgs.Date(Call(json), "d"));
 
+        // تاریخِ نامعتبر قبلاً بی‌صدا «امروز» می‌شد و مانده‌ی امروز جای مانده‌ی آن تاریخ برمی‌گشت
+        [Theory]
+        [InlineData("{\"asOf\":\"14050732\"}")]
+        [InlineData("{\"asOf\":\"1405/7\"}")]
+        public void AsOf_Invalid_IsRejected_NotToday(string json)
+            => Assert.Null(FinArgs.AsOf(Call(json)));
+
+        [Theory]
+        [InlineData("{}")]
+        [InlineData("{\"asOf\":null}")]
+        [InlineData("{\"asOf\":\"\"}")]
+        public void AsOf_Missing_IsToday(string json)
+            => Assert.Equal(FinArgs.Today(), FinArgs.AsOf(Call(json)));
+
+        // Nemotron عدد را رشته می‌فرستاد و profit_and_loss هر بار «خطای نوع داده» می‌داد
+        [Theory]
+        [InlineData("{\"month\":1}", 1)]
+        [InlineData("{\"month\":\"1\"}", 1)]
+        [InlineData("{\"month\":\"۶\"}", 6)]
+        [InlineData("{\"month\":\"x\"}", 0)]
+        [InlineData("{\"month\":true}", 0)]
+        [InlineData("{}", 0)]
+        public void Int_AcceptsNumericStrings(string json, int expected)
+            => Assert.Equal(expected, Call(json).Int("month"));
+
         [Fact]
         public void Pct_IsServerSide_AndSafeOnZero()
         {

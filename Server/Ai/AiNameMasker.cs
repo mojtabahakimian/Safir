@@ -33,11 +33,22 @@ namespace Safir.Server.Ai
 
         public int Count { get { lock (_lock) return _toReal.Count; } }
 
-        public static bool IsNameKey(string key) =>
-            key.EndsWith("name", StringComparison.OrdinalIgnoreCase) ||
-            key.Equals("TAFZIL", StringComparison.OrdinalIgnoreCase) ||
-            key.Equals("MOIN", StringComparison.OrdinalIgnoreCase) ||
-            key.Equals("NAM", StringComparison.OrdinalIgnoreCase);
+        // برچسب‌ها و نام‌های ساختاری، نه نامِ مشتری یا کالا. پوشاندنشان مدل را کور می‌کرد:
+        // list_runs «کامل‌شده/آزمایشی» را N-000x می‌فرستاد و مدل وضعیتِ بستن ماه را حدس زد؛
+        // describe_table نام ستون‌ها را پنهان می‌کرد و run_sql بی‌استفاده می‌شد.
+        private static readonly HashSet<string> Structural = new(StringComparer.OrdinalIgnoreCase)
+            { "StatusName", "KindName", "UnitName", "ObjectName", "ColumnName", "TableName", "SchemaName", "TypeName" };
+
+        public static bool IsNameKey(string key)
+        {
+            // run_sql ستونِ تکراری را NAME_2 می‌کند؛ همان قاعده‌ی NAME باید بماند
+            key = Regex.Replace(key, @"_\d+$", "");
+            if (Structural.Contains(key)) return false;
+            return key.EndsWith("name", StringComparison.OrdinalIgnoreCase) ||
+                   key.Equals("TAFZIL", StringComparison.OrdinalIgnoreCase) ||
+                   key.Equals("MOIN", StringComparison.OrdinalIgnoreCase) ||
+                   key.Equals("NAM", StringComparison.OrdinalIgnoreCase);
+        }
 
         public string Token(string real)
         {

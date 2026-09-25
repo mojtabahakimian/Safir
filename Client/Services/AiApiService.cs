@@ -187,6 +187,25 @@ namespace Safir.Client.Services
                    };
         }
 
+        // ───────── دانش کسب‌وکار ─────────
+
+        public async Task<(List<AiKnowledgeDto> Notes, string? Error)> GetKnowledgeAsync()
+        {
+            var res = await _http.GetAsync($"{Base}/admin/knowledge");
+            return res.IsSuccessStatusCode
+                 ? (await res.Content.ReadFromJsonAsync<List<AiKnowledgeDto>>() ?? new(), null)
+                 : (new(), await res.Content.ReadAsStringAsync());
+        }
+
+        public async Task<(bool Ok, string? Error)> SaveKnowledgeAsync(AiKnowledgeDto note)
+        {
+            var res = await _http.PutAsJsonAsync($"{Base}/admin/knowledge", note);
+            return res.IsSuccessStatusCode ? (true, null) : (false, await res.Content.ReadAsStringAsync());
+        }
+
+        public async Task<bool> DeleteKnowledgeAsync(int id)
+            => (await _http.DeleteAsync($"{Base}/admin/knowledge/{id}")).IsSuccessStatusCode;
+
         /// <summary>کاربران فعال برای فهرست انتخاب.</summary>
         public async Task<List<AiUserLookupDto>> ListUsersAsync()
             => await _http.GetFromJsonAsync<List<AiUserLookupDto>>($"{Base}/admin/users") ?? new();

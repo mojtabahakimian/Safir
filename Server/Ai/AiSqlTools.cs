@@ -329,12 +329,28 @@ namespace Safir.Server.Ai
 
         // اتصالِ فقط‌خواندنیِ جدا اگر در تنظیمات باشد (ConnectionStrings:AiReadOnly)؛
         // وگرنه همان اتصال برنامه — و آن‌وقت سدّ اصلی همان AiSqlGuard است.
-        public RunSqlTool(IConfiguration config, IConnectionStringProvider fallback) =>
-            _connectionString = config.GetConnectionString("AiReadOnly") is { Length: > 0 } ro
-                ? ro
-                : fallback.GetConnectionString();
+        public RunSqlTool(IConfiguration config, IConnectionStringProvider fallback)
+        {
+            var app = fallback.GetConnectionString();
+            if (config.GetConnectionString("AiReadOnly") is not { Length: > 0 } ro)
+            {
+                _connectionString = app;
+                return;
+            }
+
+            // سرور و دیتابیس از دیتابیسِ انتخاب‌شده‌ی همین درخواست (X-DB-Connection)، فقط
+            // نام کاربری/رمز از AiReadOnly. وگرنه با انتخاب شرکت یا سال دیگر، ابزارهای ثابت
+            // از دیتابیس B می‌خواندند و run_sql هنوز از دیتابیس A.
+            var target = new SqlConnectionStringBuilder(app);
+            _connectionString = new SqlConnectionStringBuilder(ro)
+            {
+                DataSource     = target.DataSource,
+                InitialCatalog = target.InitialCatalog
+            }.ConnectionString;
+        }
 
         public string Name        => "run_sql";
+        public bool   FreeQuery   => true;
         public string Title       => "اجرای کوئری";
         public string Description =>
             "یک کوئری SELECT روی پایگاه اجرا می‌کند و سطرها را برمی‌گرداند. " +

@@ -113,6 +113,21 @@ else
                     @(m.IsUser ? "شما" : "دستیار")
                 </MudText>
                 <MudText Style="white-space:pre-wrap">@m.Text</MudText>
+                @* برچسب را سرور از روی ابزارهای صدازده‌شده می‌گذارد، نه مدل *@
+                @if (m.Basis == AiAnswerBasis.Verified)
+                {
+                    <MudChip Size="Size.Small" Color="Color.Success" Variant="Variant.Outlined" Class="mt-2 ms-0"
+                             Icon="@Icons.Material.Filled.Verified">
+                        عدد از گزارش‌های ثابت Safir
+                    </MudChip>
+                }
+                else if (m.Basis == AiAnswerBasis.Exploratory)
+                {
+                    <MudChip Size="Size.Small" Color="Color.Warning" Variant="Variant.Outlined" Class="mt-2 ms-0"
+                             Icon="@Icons.Material.Filled.WarningAmber">
+                        اکتشافی — با کوئری آزاد به دست آمده؛ پیش از تصمیم با گزارش Safir تطبیق دهید
+                    </MudChip>
+                }
             </MudPaper>
         }
 
@@ -472,7 +487,7 @@ else
             _lastSteps = reply.Steps;
 
             if (reply.Error is not null) _error = reply.Error;
-            else _turns.Add(new AiChatTurnDto { IsUser = false, Text = reply.Text ?? "" });
+            else _turns.Add(new AiChatTurnDto { IsUser = false, Text = reply.Text ?? "", Basis = reply.Basis });
         }
         catch (Exception ex) { _error = "خطا در ارتباط با سرور: " + ex.Message; }
         finally

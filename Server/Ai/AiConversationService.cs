@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Caching.Memory;
+using Safir.Server.Services;
 using Safir.Shared.Interfaces;
 using Safir.Shared.Models.Ai;
 using System.Diagnostics;
@@ -41,11 +42,14 @@ namespace Safir.Server.Ai
         private readonly IAiChatNotifier    _notify;
         private readonly IAppSettingsService _settings;
         private readonly IMemoryCache        _cache;
+        private readonly IConnectionStringProvider _conn;
+        private readonly IAiKnowledgeStore? _knowledge;
 
         public AiConversationService(
             IAiProviderFactory factory, IAiToolRegistry tools,
             IAiAccessService access, IAiChatNotifier notify,
-            IAppSettingsService settings, IMemoryCache cache)
+            IAppSettingsService settings, IMemoryCache cache, IConnectionStringProvider conn,
+            IAiKnowledgeStore? knowledge = null)
         {
             _factory  = factory;
             _tools    = tools;
@@ -53,6 +57,8 @@ namespace Safir.Server.Ai
             _notify   = notify;
             _settings = settings;
             _cache    = cache;
+            _conn     = conn;
+            _knowledge = knowledge;
         }
 
         /// <summary>
@@ -63,13 +69,31 @@ namespace Safir.Server.Ai
         /// ConversationId از کلاینت می‌آید؛ کلید باید کاربر را هم داشته باشد، وگرنه کاربرِ
         /// دیگری با فرستادنِ همان شناسه (و خواستنِ «N-0003 را بنویس») نامی را می‌دید که
         /// از ابزارهای کاربرِ اول آمده بود و شاید خودش مجوزش را ندارد.
-        private AiNameMasker? MaskerFor(int userCo, Guid conversationId, AiOptions opt) =>
-            !opt.MaskNames ? null :
-            _cache.GetOrCreate($"ai_mask_{userCo}_{conversationId}", e =>
+        /// شماره‌ی کاربر فقط در یک دیتابیس یکتاست؛ با عوض کردنِ شرکت/سال در همان گفتگو،
+        /// شناسه‌های دیتابیسِ قبلی نباید به نام‌های دیتابیسِ جدید برگردند (یا برعکس).
+        private AiNameMasker? MaskerFor(int userCo, Guid conversationId, AiOptions opt)
+        {
+            if (!opt.MaskNames) return null;
+            var db = new Microsoft.Data.SqlClient.SqlConnectionStringBuilder(_conn.GetConnectionString());
+            return _cache.GetOrCreate($"ai_mask_{db.DataSource}|{db.InitialCatalog}_{userCo}_{conversationId}", e =>
             {
                 e.SlidingExpiration = TimeSpan.FromHours(2);
                 return new AiNameMasker();
             });
+        }
+
+        /// <summary>
+        /// برچسبِ جواب را کد تعیین می‌کند، نه مدل: هر run_sqlِ موفق ← «اکتشافی» (حتی اگر
+        /// ابزار ثابت هم صدا زده شده باشد، چون معلوم نیست کدام عدد از کدام آمده)؛ فقط
+        /// ابزارهای ثابت ← «تأییدشده»؛ هیچ داده‌ای ← بدون برچسب.
+        /// </summary>
+        public string? BasisOf(IEnumerable<AiChatStepDto> steps)
+        {
+            var used = steps.Where(s => s.Ok).Select(s => _tools.Find(s.Tool)).OfType<IAiTool>().ToList();
+            if (used.Any(t => t.FreeQuery))      return AiAnswerBasis.Exploratory;
+            if (used.Any(t => t.Verified))       return AiAnswerBasis.Verified;
+            return null;
+        }
 
         public async Task<AiChatReplyDto> AskAsync(
             int userCo, string? userName, Guid conversationId,
@@ -115,10 +139,11 @@ namespace Safir.Server.Ai
             var fiscalYear = (await _settings.GetSazmanSettingsAsync())?.YEA;
 
             var masker = MaskerFor(userCo, conversationId, opt);
+            var notes  = _knowledge is null ? null : await _knowledge.PromptBlockAsync();
 
             var messages = new List<AiMessage>
             {
-                new() { Role = "system", Content = BuildSystemPrompt(eff, fiscalYear, masker is not null) }
+                new() { Role = "system", Content = BuildSystemPrompt(eff, fiscalYear, masker is not null, notes) }
             };
 
             // جوابِ نوبت‌های قبل نام واقعی دارد (بعد از برگرداندن)؛ پیش از ارسال
@@ -203,7 +228,7 @@ namespace Safir.Server.Ai
                         Kind = 1, Payload = answer
                     });
 
-                    return new AiChatReplyDto { Text = answer, Steps = steps };
+                    return new AiChatReplyDto { Text = answer, Steps = steps, Basis = BasisOf(steps) };
                 }
 
                 messages.Add(new AiMessage
@@ -268,7 +293,7 @@ namespace Safir.Server.Ai
                     Kind = 1, Payload = last.Text
                 });
 
-                return new AiChatReplyDto { Text = last.Text, Steps = steps };
+                return new AiChatReplyDto { Text = last.Text, Steps = steps, Basis = BasisOf(steps) };
             }
 
             return new AiChatReplyDto
@@ -373,10 +398,15 @@ namespace Safir.Server.Ai
             }
         }
 
-        private string BuildSystemPrompt(AiEffectiveAccessDto eff, int? fiscalYear, bool masked = false)
+        private string BuildSystemPrompt(AiEffectiveAccessDto eff, int? fiscalYear, bool masked = false, string? notes = null)
         {
             var tools = string.Join("\n",
                 eff.Tools.Select(t => $"  • {t.Name} — {t.Title}"));
+
+            var companyRules = notes is null ? "" :
+                "\n── قاعده‌های این شرکت (نوشته‌ی حسابدارِ همین شرکت؛ بر حدس تو و بر دانسته‌های پایه مقدم‌اند) ──\n" +
+                notes +
+                "اگر یکی از این قاعده‌ها با خروجیِ یک ابزار ثابت نمی‌خواند، عددِ ابزار را بگو و تناقض را صریح گزارش کن.";
 
             return $"""
             تو دستیار نرم‌افزار مالی و صنعتی «سفیر» هستی و به کاربران این
@@ -408,6 +438,8 @@ namespace Safir.Server.Ai
                 فروش و پرفروش‌ترین کالا ← sales_by_product
                 مقایسه‌ی فروش دو دوره ← compare_sales
                 سود و زیان ماه ← profit_and_loss
+                صورت‌های مالی / بهای تمام‌شده‌ی ساخت و فروش‌رفته ← financial_statements
+                ترازنامه، دارایی و بدهی، تراز آزمایشی، مانده‌ی یک حساب کل ← trial_balance
                 مانده‌ی بانک ← bank_balances
                 بدهکاران ← top_debtors
                 عبور از سقف اعتبار ← credit_limit_breaches
@@ -469,6 +501,7 @@ namespace Safir.Server.Ai
 
             دانسته‌های پایه درباره‌ی این پایگاه داده:
             {AiDataDictionary.CoreBrief}
+            {companyRules}
             """;
         }
     }

@@ -108,6 +108,10 @@ builder.Services.AddScoped<Safir.Server.Ai.IAiTool, Safir.Server.Ai.ListRunsTool
 builder.Services.AddScoped<Safir.Server.Ai.IAiTool, Safir.Server.Ai.SalesByProductTool>();
 builder.Services.AddScoped<Safir.Server.Ai.IAiTool, Safir.Server.Ai.CompareSalesTool>();
 builder.Services.AddScoped<Safir.Server.Ai.IAiTool, Safir.Server.Ai.ProfitAndLossTool>();
+builder.Services.AddScoped<Safir.Server.Ai.IAiTool, Safir.Server.Ai.FinancialStatementsTool>();
+builder.Services.AddScoped<Safir.Server.Ai.IAiTool, Safir.Server.Ai.TrialBalanceTool>();
+builder.Services.AddScoped<Safir.Server.Ai.IAiKnowledgeStore, Safir.Server.Ai.AiKnowledgeStore>();
+builder.Services.AddScoped<Safir.Server.Ai.IAiTool, Safir.Server.Ai.BusinessNotesTool>();
 builder.Services.AddScoped<Safir.Server.Ai.IAiTool, Safir.Server.Ai.BankBalancesTool>();
 builder.Services.AddScoped<Safir.Server.Ai.IAiTool, Safir.Server.Ai.TopDebtorsTool>();
 builder.Services.AddScoped<Safir.Server.Ai.IAiTool, Safir.Server.Ai.CreditLimitTool>();

@@ -29,6 +29,18 @@ namespace Safir.Server.Ai
         /// <summary>ابزارهای کوئریِ آزاد مجوز جداگانه می‌خواهند.</summary>
         bool RequiresRawSql => false;
 
+        /// <summary>
+        /// عدد را خودِ Safir با منطقِ ثابت و آزموده حساب می‌کند (ابزارهای AiFinanceTools).
+        /// جوابی که فقط از این‌ها آمده برچسب «تأییدشده» می‌گیرد؛ جوابی که run_sql دارد «اکتشافی».
+        /// </summary>
+        bool Verified => false;
+
+        /// <summary>
+        /// کوئریِ نوشته‌ی خودِ مدل را اجرا می‌کند (run_sql). ابزارهای ساختار و مستند هم
+        /// RequiresRawSql دارند ولی عددی تولید نمی‌کنند، پس جواب را «اکتشافی» نمی‌کنند.
+        /// </summary>
+        bool FreeQuery => false;
+
         /// <summary>توضیح پارامترها برای مدل — به زبان ساده، نه JSON Schema.</summary>
         string Parameters { get; }
 
@@ -43,9 +55,22 @@ namespace Safir.Server.Ai
         /// <summary>پارامترها به‌صورت JSON، همان‌طور که مدل تولید می‌کند.</summary>
         public JsonElement Args { get; init; }
 
+        /// <summary>
+        /// عدد صحیح؛ «"1"» و «"۱"» هم قبول است. بعضی مدل‌ها (Nemotron در آزمون طلایی) عدد را
+        /// رشته می‌فرستند و TryGetInt32 روی رشته استثنا می‌دهد — مدل هر بار «خطای نوع داده» می‌گرفت
+        /// و سود ماهِ بسته‌شده را «در دسترس نیست» می‌گفت.
+        /// </summary>
         public int    Int(string name, int fallback = 0)
-            => Args.ValueKind == JsonValueKind.Object &&
-               Args.TryGetProperty(name, out var v) && v.TryGetInt32(out var i) ? i : fallback;
+        {
+            if (Args.ValueKind != JsonValueKind.Object || !Args.TryGetProperty(name, out var v)) return fallback;
+            if (v.ValueKind == JsonValueKind.Number) return v.TryGetInt32(out var i) ? i : fallback;
+            if (v.ValueKind != JsonValueKind.String) return fallback;
+            var s = new string((v.GetString() ?? "").Trim().Select(c =>
+                c is >= '۰' and <= '۹' ? (char)('0' + (c - '۰')) :
+                c is >= '٠' and <= '٩' ? (char)('0' + (c - '٠')) : c).ToArray());
+            return int.TryParse(s, System.Globalization.NumberStyles.Integer,
+                                System.Globalization.CultureInfo.InvariantCulture, out var j) ? j : fallback;
+        }
 
         public string? Str(string name)
             => Args.ValueKind == JsonValueKind.Object &&

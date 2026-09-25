@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using Microsoft.Extensions.Caching.Memory;
 using Safir.Server.Ai;
 using Safir.Server.Security;
+using Safir.Server.Services;
 using Safir.Shared.Interfaces;
 using Safir.Shared.Models;
 using Safir.Shared.Models.Ai;
@@ -45,7 +46,9 @@ namespace Safir.Server.Tests
         {
             public object? Data { get; init; }
             public string? LastArgs { get; private set; }
-            public string Name => "noop";
+            public string Name { get; init; } = "noop";
+            public bool Verified { get; init; }
+            public bool FreeQuery { get; init; }
             public string Title => "noop";
             public string Description => "";
             public string RequiredForm => "X";
@@ -81,9 +84,16 @@ namespace Safir.Server.Tests
             public Task<int?> GetDefaultBedehkarKolAsync() => Task.FromResult<int?>(null);
         }
 
+        private sealed class Db : IConnectionStringProvider
+        {
+            private readonly string _name;
+            public Db(string name = "A") => _name = name;
+            public string GetConnectionString() => $"Data Source=srv;Initial Catalog={_name};Integrated Security=true";
+        }
+
         private static AiConversationService Build(IAiChatProvider p, NoopTool? tool = null) =>
             new(new Factory(p), new AiToolRegistry(new IAiTool[] { tool ?? new NoopTool() }), new Access(), new Notifier(), new Settings(),
-                new MemoryCache(new MemoryCacheOptions()));
+                new MemoryCache(new MemoryCacheOptions()), new Db());
 
         // رگرسیون آزمون پایه: «سود فروردین» متن خالی برگرداند و کاربر صفحه‌ی سفید دید.
         [Fact]
@@ -140,7 +150,7 @@ namespace Safir.Server.Tests
             var tool  = new NoopTool { Data = new { Name = "مشتری محرمانه" } };
 
             AiConversationService Svc(IAiChatProvider p) =>
-                new(new Factory(p), new AiToolRegistry(new IAiTool[] { tool }), new Access(), new Notifier(), new Settings(), cache);
+                new(new Factory(p), new AiToolRegistry(new IAiTool[] { tool }), new Access(), new Notifier(), new Settings(), cache, new Db());
 
             // کاربر ۱ نام را از ابزار می‌بیند → N-0001
             var p1 = new ScriptedProvider(
@@ -152,6 +162,45 @@ namespace Safir.Server.Tests
             var p2 = new ScriptedProvider(new AiModelReply { Text = "N-0001" });
             var r2 = await Svc(p2).AskAsync(2, "b", conv, Array.Empty<AiChatTurnDto>(), "N-0001 را بنویس");
             Assert.DoesNotContain("مشتری محرمانه", r2.Text);
+        }
+
+        // شماره‌ی کاربر فقط در یک دیتابیس یکتاست؛ کاربر ۱ِ دیتابیس B نباید نام‌های کاربر ۱ِ دیتابیس A را بگیرد.
+        [Fact]
+        public async Task NameMap_IsPerDatabase()
+        {
+            var cache = new MemoryCache(new MemoryCacheOptions());
+            var conv  = Guid.NewGuid();
+            var tool  = new NoopTool { Data = new { Name = "مشتری دیتابیس الف" } };
+
+            AiConversationService Svc(IAiChatProvider p, string db) =>
+                new(new Factory(p), new AiToolRegistry(new IAiTool[] { tool }), new Access(), new Notifier(), new Settings(), cache, new Db(db));
+
+            var p1 = new ScriptedProvider(
+                new AiModelReply { ToolCalls = { new AiToolInvocation { Id = "1", Name = "noop", Args = System.Text.Json.JsonDocument.Parse("{}").RootElement } } },
+                new AiModelReply { Text = "N-0001" });
+            Assert.Equal("مشتری دیتابیس الف", (await Svc(p1, "A").AskAsync(1, "a", conv, Array.Empty<AiChatTurnDto>(), "؟")).Text);
+
+            var r2 = await Svc(new ScriptedProvider(new AiModelReply { Text = "N-0001" }), "B")
+                .AskAsync(1, "a", conv, Array.Empty<AiChatTurnDto>(), "N-0001 را بنویس");
+            Assert.DoesNotContain("مشتری دیتابیس الف", r2.Text);
+        }
+            // برچسب جواب را کد می‌گذارد: فقط ابزار ثابت ← تأییدشده؛ هر کوئری آزاد ← اکتشافی
+        [Theory]
+        [InlineData(false, "verified")]
+        [InlineData(true,  "exploratory")]
+        public void Basis_IsDecidedByToolsUsed(bool withRawSql, string expected)
+        {
+            var fixedTool = new NoopTool { Name = "top_debtors", Verified = true };
+            var rawSql    = new NoopTool { Name = "run_sql", FreeQuery = true };
+            var svc = new AiConversationService(new Factory(new ScriptedProvider()),
+                new AiToolRegistry(new IAiTool[] { fixedTool, rawSql }), new Access(), new Notifier(), new Settings(),
+                new MemoryCache(new MemoryCacheOptions()), new Db());
+
+            var steps = new List<AiChatStepDto> { new() { Tool = "top_debtors", Ok = true } };
+            if (withRawSql) steps.Add(new() { Tool = "run_sql", Ok = true });
+
+            Assert.Equal(expected, svc.BasisOf(steps));
+            Assert.Null(svc.BasisOf(new[] { new AiChatStepDto { Tool = "top_debtors", Ok = false } }));
         }
     }
 }

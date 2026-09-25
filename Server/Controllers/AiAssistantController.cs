@@ -524,7 +524,9 @@ namespace Safir.Server.Controllers
                 return Ok(new AiConnectionTestDto { Ok = false, Message = "آدرس سرویس تنظیم نشده است." });
 
             var http = AiHttp.Create(httpFactory, opt.ProxyUrl);
-            http.Timeout = TimeSpan.FromSeconds(20);
+            // همان تایم‌اوتِ تنظیمات، نه ۲۰ ثانیه‌ی ثابت: پشت پروکسی، /v1/models در 9router
+            // حدود ۲۵ ثانیه طول کشید و آزمایش «اتصال برقرار نشد» گفت در حالی که گفتگو کار می‌کرد.
+            http.Timeout = TimeSpan.FromSeconds(opt.TimeoutSeconds > 0 ? opt.TimeoutSeconds : 120);
 
             if (!string.IsNullOrWhiteSpace(opt.ApiKey))
                 http.DefaultRequestHeaders.Authorization =
@@ -630,6 +632,36 @@ namespace Safir.Server.Controllers
                     Message = "اتصال برقرار نشد: " + ex.Message
                 });
             }
+        }
+
+        // ───────── دانش کسب‌وکار (یادداشت‌های حسابدار) ─────────
+
+        [HttpGet("admin/knowledge")]
+        [Pay2Authorize(Pay2Forms.AdminAcl, Pay2Perm.See)]
+        public async Task<ActionResult<List<AiKnowledgeDto>>> GetKnowledge([FromServices] IAiKnowledgeStore store)
+        {
+            try { return Ok(await store.AllAsync()); }
+            catch { return BadRequest("جدول AI_Knowledge روی این پایگاه نیست؛ به‌روزرسانی پایگاه (مهاجرت ۴۰) را اجرا کنید."); }
+        }
+
+        [HttpPut("admin/knowledge")]
+        [Pay2Authorize(Pay2Forms.AdminAcl, Pay2Perm.Upd)]
+        public async Task<ActionResult<int>> SaveKnowledge(
+            [FromBody] AiKnowledgeDto note, [FromServices] IAiKnowledgeStore store)
+        {
+            note.Title = note.Title?.Trim() ?? "";
+            note.Body  = note.Body?.Trim()  ?? "";
+            if (note.Title.Length is 0 or > 200) return BadRequest("عنوان لازم است و حداکثر ۲۰۰ نویسه.");
+            if (note.Body.Length  is 0 or > 4000) return BadRequest("متن لازم است و حداکثر ۴۰۰۰ نویسه.");
+            return Ok(await store.SaveAsync(note, CurrentUserName));
+        }
+
+        [HttpDelete("admin/knowledge/{id:int}")]
+        [Pay2Authorize(Pay2Forms.AdminAcl, Pay2Perm.Del)]
+        public async Task<IActionResult> DeleteKnowledge(int id, [FromServices] IAiKnowledgeStore store)
+        {
+            await store.DeleteAsync(id);
+            return Ok();
         }
 
         /// <summary>لاگ — برای بازرسی اینکه چه کسی چه چیزی از دستیار پرسید.</summary>

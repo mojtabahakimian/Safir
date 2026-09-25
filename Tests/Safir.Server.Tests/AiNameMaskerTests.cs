@@ -19,6 +19,24 @@ namespace Safir.Server.Tests
             Assert.Equal(3, m.Count);
         }
 
+        // run_sql ستونِ تکراری را NAME_2 می‌کند؛ نامِ دوم بدون پوشش به مدل می‌رفت
+        [Fact]
+        public void MaskJson_DuplicateColumnSuffix_IsStillMasked()
+        {
+            var json = new AiNameMasker().MaskJson("[{\"NAME\":\"مشتری الف\",\"NAME_2\":\"مشتری ب\"}]");
+            Assert.DoesNotContain("مشتری ب", json);
+        }
+
+        // برچسب‌ها نام شخص نیستند؛ پوشاندنشان «کامل‌شده/آزمایشی» و نام ستون‌ها را از مدل می‌گرفت
+        [Fact]
+        public void MaskJson_KeepsStructuralLabels()
+        {
+            var json = System.Text.RegularExpressions.Regex.Unescape(new AiNameMasker().MaskJson(
+                "[{\"StatusName\":\"کامل‌شده\",\"KindName\":\"آزمایشی\",\"UnitName\":\"کیلوگرم\",\"ObjectName\":\"DEED_DTL\",\"ColumnName\":\"BED\"}]"));
+            foreach (var s in new[] { "کامل‌شده", "آزمایشی", "کیلوگرم", "DEED_DTL", "BED" })
+                Assert.Contains(s, json);
+        }
+
         [Fact]
         public void SameName_SameToken()
         {

@@ -52,6 +52,21 @@ namespace Safir.Server.Ai
             return d;
         }
 
+        /// <summary>
+        /// «تا تاریخ»: نیامده ← امروز؛ آمده ولی نامعتبر ← null. قبلاً نامعتبر هم بی‌صدا
+        /// امروز می‌شد و مانده‌ی امروز به‌جای مانده‌ی تاریخِ خواسته‌شده برمی‌گشت.
+        /// </summary>
+        public static long? AsOf(AiToolCall call)
+        {
+            var given = call.Args.ValueKind == JsonValueKind.Object &&
+                        call.Args.TryGetProperty("asOf", out var v) &&
+                        v.ValueKind is not JsonValueKind.Null &&
+                        !(v.ValueKind == JsonValueKind.String && string.IsNullOrWhiteSpace(v.GetString()));
+            return given ? Date(call, "asOf") : Today();
+        }
+
+        public const string BadAsOf = "asOf باید تاریخ شمسی معتبر yyyymmdd باشد (مثلاً 14050631).";
+
         public static long Today()
         {
             var pc = new PersianCalendar();
@@ -80,6 +95,7 @@ namespace Safir.Server.Ai
             "اگر بیش از یکی بود، همه را به کاربر بگو.";
         public string RequiredForm => CostForms.Margin;
         public Pay2Perm RequiredPerm => Pay2Perm.See;
+        public bool Verified => true;
         public string Parameters  =>
             "from، to: تاریخ yyyymmdd (الزامی). top: تعداد کالا (پیش‌فرض ۱۰). " +
             "by: amount (مبلغ، پیش‌فرض) یا qty (مقدار). name: بخشی از نام کالا (اختیاری). code: فقط یک کد (اختیاری).";
@@ -169,6 +185,7 @@ namespace Safir.Server.Ai
             "درصد تغییر را برمی‌گرداند. درصد را خودت حساب نکن.";
         public string RequiredForm => CostForms.Margin;
         public Pay2Perm RequiredPerm => Pay2Perm.See;
+        public bool Verified => true;
         public string Parameters  => "fromA، toA: دوره‌ی اول (قبلی). fromB، toB: دوره‌ی دوم (جدید). همه yyyymmdd.";
 
         public async Task<AiToolResult> ExecuteAsync(AiToolCall call, CancellationToken ct = default)
@@ -225,31 +242,14 @@ namespace Safir.Server.Ai
             "برای «سود ماه» همین را صدا بزن و در جواب بگو کدام سود (ناخالص/عملیاتی) است.";
         public string RequiredForm => CostForms.Margin;
         public Pay2Perm RequiredPerm => Pay2Perm.See;
+        public bool Verified => true;
         public string Parameters  => "month: ۱ تا ۱۲ (الزامی). year: سال مالی (اختیاری؛ پیش‌فرض سال این پایگاه).";
 
         public async Task<AiToolResult> ExecuteAsync(AiToolCall call, CancellationToken ct = default)
         {
             int month = call.Int("month");
             if (month is < 1 or > 12) return AiToolResult.Fail("month باید ۱ تا ۱۲ باشد.");
-            int year = call.Int("year");
-            if (year == 0)
-                year = (await _db.DoGetDataSQLAsync<int?>("SELECT TOP (1) CAST(YEA AS INT) FROM dbo.SAZMAN")).FirstOrDefault() ?? 0;
-
-            var run = (await _db.DoGetDataSQLAsync<dynamic>(@"
-                SELECT TOP (1) r.RunId, r.Status, r.RunKind, r.DateFrom, r.DateTo,
-                       (SELECT COUNT(*) FROM dbo.CC_ItemMargin m WHERE m.RunId = r.RunId) AS MarginRows
-                FROM   dbo.CC_Run r
-                WHERE  r.FiscalYear = @year AND r.PeriodMonth = @month AND r.IsLatest = 1
-                ORDER BY r.RunId DESC", new { year, month })).FirstOrDefault();
-
-            string? why =
-                run is null                   ? "برای این ماه هیچ اجرای بستن بهای تمام‌شده‌ای ثبت نشده است." :
-                (int)run.Status == 1          ? "بستن بهای تمام‌شده‌ی این ماه در حال اجراست." :
-                (int)run.Status == 2          ? "بستن بهای تمام‌شده‌ی این ماه متوقف و ناتمام مانده است." :
-                (int)run.Status == 4          ? "بستن بهای تمام‌شده‌ی این ماه با خطا متوقف شده است." :
-                (int)run.Status != 3          ? "اجرای این ماه کامل‌شده نیست." :
-                (int)run.MarginRows == 0      ? "اجرای این ماه کامل شده ولی محاسبه‌ی سود کالاها (گام S12) خروجی ندارد." :
-                null;
+            var (year, run, why) = await ClosedRun.FindAsync(_db, month, call.Int("year"));
 
             if (why is not null)
                 return new AiToolResult
@@ -292,6 +292,193 @@ namespace Safir.Server.Ai
         }
     }
 
+    /// <summary>
+    /// آخرین اجرای بستن ماه و اینکه عددش قابل اتکاست یا نه — مشترکِ سود و زیان و صورت‌های مالی.
+    /// </summary>
+    internal static class ClosedRun
+    {
+        public static async Task<(int Year, dynamic? Run, string? Why)> FindAsync(IDatabaseService db, int month, int year)
+        {
+            if (year == 0)
+                year = (await db.DoGetDataSQLAsync<int?>("SELECT TOP (1) CAST(YEA AS INT) FROM dbo.SAZMAN")).FirstOrDefault() ?? 0;
+
+            var run = (await db.DoGetDataSQLAsync<dynamic>(@"
+                SELECT TOP (1) r.RunId, r.Status, r.RunKind, r.DateFrom, r.DateTo,
+                       (SELECT COUNT(*) FROM dbo.CC_ItemMargin m WHERE m.RunId = r.RunId) AS MarginRows
+                FROM   dbo.CC_Run r
+                WHERE  r.FiscalYear = @year AND r.PeriodMonth = @month AND r.IsLatest = 1
+                ORDER BY r.RunId DESC", new { year, month })).FirstOrDefault();
+
+            string? why =
+                run is null                   ? "برای این ماه هیچ اجرای بستن بهای تمام‌شده‌ای ثبت نشده است." :
+                (int)run.Status == 1          ? "بستن بهای تمام‌شده‌ی این ماه در حال اجراست." :
+                (int)run.Status == 2          ? "بستن بهای تمام‌شده‌ی این ماه متوقف و ناتمام مانده است." :
+                (int)run.Status == 4          ? "بستن بهای تمام‌شده‌ی این ماه با خطا متوقف شده است." :
+                (int)run.Status != 3          ? "اجرای این ماه کامل‌شده نیست." :
+                (int)run.MarginRows == 0      ? "اجرای این ماه کامل شده ولی محاسبه‌ی سود کالاها (گام S12) خروجی ندارد." :
+                null;
+
+            return (year, run, why);
+        }
+    }
+
+    /// <summary>
+    /// صورت‌های مالی کامل یک ماه — هر چهار خروجیِ CC_sp_FinancialStatements، همان که صفحه‌ی
+    /// صورت‌های مالیِ بهای تمام‌شده در Safir نشان می‌دهد. profit_and_loss فقط سومی را می‌دهد.
+    /// </summary>
+    public sealed class FinancialStatementsTool : IAiTool
+    {
+        private readonly IDatabaseService _db;
+        private readonly string _cs;
+        public FinancialStatementsTool(IDatabaseService db, IConnectionStringProvider cs)
+        {
+            _db = db;
+            _cs = cs.GetConnectionString();
+        }
+
+        public string Name        => "financial_statements";
+        public string Title       => "صورت‌های مالی ماه";
+        public string Description =>
+            "صورت‌های مالی Safir برای یک ماهِ بسته‌شده: ۱) بهای تمام‌شده‌ی کالای ساخته‌شده، ۲) بهای تمام‌شده‌ی " +
+            "کالای فروش‌رفته با خط تطبیق و اختلاف، ۳) سود و زیان، ۴) سرفصل‌های هزینه. برای «صورت مالی»، " +
+            "«صورت بهای تمام‌شده» یا «گزارش کامل ماه» همین را صدا بزن؛ برای فقط «سود» profit_and_loss کافی است. " +
+            "ماهِ بسته‌نشده Available=false دارد — آن‌وقت عدد نساز. ترازنامه اینجا نیست؛ برای مانده‌ی حساب‌ها trial_balance.";
+        public string RequiredForm => CostForms.Margin;
+        public Pay2Perm RequiredPerm => Pay2Perm.See;
+        public bool Verified => true;
+        public string Parameters  => "month: ۱ تا ۱۲ (الزامی). year: سال مالی (اختیاری؛ پیش‌فرض سال این پایگاه).";
+
+        public async Task<AiToolResult> ExecuteAsync(AiToolCall call, CancellationToken ct = default)
+        {
+            int month = call.Int("month");
+            if (month is < 1 or > 12) return AiToolResult.Fail("month باید ۱ تا ۱۲ باشد.");
+            var (year, run, why) = await ClosedRun.FindAsync(_db, month, call.Int("year"));
+
+            if (why is not null)
+                return new AiToolResult
+                {
+                    Rows = 0,
+                    Data = new { Available = false, Year = year, Month = month, Reason = why,
+                                 Hint = "تا وقتی ماه بسته نشده، صورت مالی قابل اتکایی وجود ندارد؛ عدد نساز." }
+                };
+
+            int runId = (int)run!.RunId;
+            await using var conn = new SqlConnection(_cs);
+            await conn.OpenAsync(ct);
+            using var grid = await conn.QueryMultipleAsync(
+                "EXEC dbo.CC_sp_FinancialStatements @RunId = @runId", new { runId }, commandTimeout: 60);
+
+            var cogm     = (await grid.ReadAsync()).ToList();
+            var cogs     = (await grid.ReadAsync()).ToList();
+            var pl       = (await grid.ReadAsync()).ToList();
+            var expenses = (await grid.ReadAsync()).ToList();
+
+            return new AiToolResult
+            {
+                Rows = cogm.Count + cogs.Count + pl.Count,
+                Data = new
+                {
+                    Available   = true,
+                    Year        = year,
+                    Month       = month,
+                    Period      = new { From = (long)run.DateFrom, To = (long)run.DateTo },
+                    RunId       = runId,
+                    RunKind     = (int)run.RunKind == 2 ? "قطعی" : "آزمایشی",
+                    Source      = "صورت‌های مالی بهای تمام‌شده‌ی Safir (CC_sp_FinancialStatements)",
+                    Note        = "ستون «نوع»: ۰ سطر عادی، ۱ جمع میانی، ۲ جمع نهایی، ۳ سطر اطلاعی/تطبیق (جزو جمع نیست). " +
+                                  "اگر «اختلاف» در صورت دوم صفر نیست، آن را به کاربر بگو. اگر اجرا آزمایشی است، بگو.",
+                    CostOfGoodsManufactured = cogm,
+                    CostOfGoodsSold         = cogs,
+                    ProfitAndLoss           = pl,
+                    ExpenseAccounts         = expenses
+                }
+            };
+        }
+    }
+
+    /// <summary>
+    /// تراز آزمایشی در سطح حساب کل: جمع بدهکار، بستانکار و مانده‌ی هر کل تا یک تاریخ.
+    ///
+    /// Safir ترازنامه‌ی طبقه‌بندی‌شده ندارد؛ این همان مانده‌های خام است با دو برچسب از خود
+    /// TOTA_HES: M_D (۱ = دائمی/ترازنامه‌ای، ۲ = موقت/سود و زیانی) و GROUP. هیچ شماره‌ی حسابی
+    /// در کد نیست، پس روی چارت حساب هر شرکتی همان‌طور کار می‌کند.
+    /// </summary>
+    public sealed class TrialBalanceTool : IAiTool
+    {
+        private readonly IDatabaseService _db;
+        public TrialBalanceTool(IDatabaseService db) => _db = db;
+
+        public string Name        => "trial_balance";
+        public string Title       => "تراز آزمایشی";
+        public string Description =>
+            "تراز آزمایشی در سطح حساب کل تا یک تاریخ: نام حساب، جمع بدهکار، جمع بستانکار، مانده (بدهکار منهای " +
+            "بستانکار)، M_D (۱ دائمی/ترازنامه‌ای، ۲ موقت/سود و زیانی) و گروه حساب؛ به‌علاوه‌ی جمع هر گروه و " +
+            "اینکه تراز «تراز» است یا نه. برای «ترازنامه»، «دارایی‌ها»، «بدهی‌ها»، «سرمایه»، «تراز آزمایشی» یا " +
+            "مانده‌ی هر حساب کل همین را صدا بزن. جمع‌ها را خودت حساب نکن؛ Groups و Totals را بگو.";
+        public string RequiredForm => CostForms.Dashboard;
+        public Pay2Perm RequiredPerm => Pay2Perm.See;
+        public bool Verified => true;
+        public string Parameters  => "asOf: تاریخ yyyymmdd (اختیاری؛ پیش‌فرض امروز). kind: 1 فقط حساب‌های دائمی، 2 فقط موقت (اختیاری).";
+
+        public async Task<AiToolResult> ExecuteAsync(AiToolCall call, CancellationToken ct = default)
+        {
+            var asOf = FinArgs.AsOf(call);
+            if (asOf is null) return AiToolResult.Fail(FinArgs.BadAsOf);
+            int kind = call.Int("kind");
+            if (kind is not (0 or 1 or 2)) return AiToolResult.Fail("kind باید 1 یا 2 باشد (یا خالی).");
+
+            var rows = (await _db.DoGetDataSQLAsync<dynamic>(@"
+                SELECT  d.HES_K AS Kol, MAX(k.NAME) AS AccountTitle,
+                        CAST(MAX(k.M_D) AS INT) AS M_D, CAST(MAX(k.[GROUP]) AS INT) AS AccountGroup,
+                        SUM(ISNULL(d.BED, 0)) AS Debit, SUM(ISNULL(d.BES, 0)) AS Credit,
+                        SUM(ISNULL(d.BED, 0) - ISNULL(d.BES, 0)) AS Balance
+                FROM    dbo.DEED_DTL d
+                JOIN    dbo.DEED_HED h ON h.N_S = d.N_S
+                LEFT JOIN dbo.TOTA_HES k ON k.NUMBER = d.HES_K
+                WHERE   h.DATE_S <= @asOf
+                GROUP BY d.HES_K
+                ORDER BY d.HES_K", new { asOf })).ToList();
+
+            decimal Dec(object v) => Convert.ToDecimal((double)v);
+            decimal debit  = rows.Sum(r => Dec(r.Debit));
+            decimal credit = rows.Sum(r => Dec(r.Credit));
+
+            var shown = rows.Where(r => kind == 0 || (r.M_D is int m && m == kind)).ToList();
+            var groups = shown
+                .GroupBy(r => new { G = (int?)r.AccountGroup, M = (int?)r.M_D })
+                .Select(g => new { AccountGroup = g.Key.G, M_D = g.Key.M, Accounts = g.Count(),
+                                   Balance = Math.Round(g.Sum(r => Dec(r.Balance))) })
+                .OrderBy(g => g.AccountGroup).ToList();
+
+            return new AiToolResult
+            {
+                Rows = shown.Count,
+                Data = new
+                {
+                    Metric     = "تراز آزمایشی در سطح کل",
+                    AsOf       = asOf,
+                    Definition = "جمع بدهکار و بستانکار هر حساب کل تا این تاریخ، شامل سند افتتاحیه و همه‌ی اسناد " +
+                                 "(بدون فیلتر OKF، مثل بقیه‌ی مانده‌های Safir). مانده‌ی مثبت = بدهکار، منفی = بستانکار. " +
+                                 "M_D و گروه از جدول حساب‌های کل (TOTA_HES) می‌آیند، نه از حدس.",
+                    Note       = "Safir ترازنامه‌ی طبقه‌بندی‌شده ندارد. اگر کاربر «ترازنامه» خواست، بگو این تراز آزمایشیِ " +
+                                 "حساب‌های دائمی (M_D=1) است. حساب‌های موقت (M_D=2) تا بستن سال به سود و زیان انباشته منتقل " +
+                                 "نمی‌شوند، پس دائمی‌ها به‌تنهایی تراز نیستند؛ این را توضیح بده و خودت جمع نزن. " +
+                                 "اگر Balanced=false است، اختلاف را صریح بگو.",
+                    Totals     = new { Debit = Math.Round(debit), Credit = Math.Round(credit),
+                                       Difference = Math.Round(debit - credit),
+                                       Balanced   = Math.Abs(debit - credit) < 1,
+                                       // مانده‌ی جمعِ موقت‌ها = سود (منفی) یا زیان (مثبت) دوره تا این تاریخ
+                                       PermanentBalance = Math.Round(rows.Where(r => r.M_D is int m && m == 1).Sum(r => Dec(r.Balance))),
+                                       TemporaryBalance = Math.Round(rows.Where(r => r.M_D is int m && m == 2).Sum(r => Dec(r.Balance))) },
+                    Groups     = groups,
+                    Accounts   = shown.Select(r => new { r.Kol, r.AccountTitle, r.M_D, r.AccountGroup,
+                                                         Debit = Math.Round(Dec(r.Debit)), Credit = Math.Round(Dec(r.Credit)),
+                                                         Balance = Math.Round(Dec(r.Balance)) })
+                }
+            };
+        }
+    }
+
     /// <summary>مانده‌ی بانک‌ها — مانده‌ی دفتری حساب کل ۱۱۲.</summary>
     public sealed class BankBalancesTool : IAiTool
     {
@@ -305,11 +492,13 @@ namespace Safir.Server.Ai
             "است، نه صورت‌حساب بانک — همین را به کاربر بگو. برای مانده‌ی بانک run_sql نزن.";
         public string RequiredForm => CostForms.Dashboard;
         public Pay2Perm RequiredPerm => Pay2Perm.See;
+        public bool Verified => true;
         public string Parameters  => "asOf: تاریخ yyyymmdd (اختیاری؛ پیش‌فرض امروز).";
 
         public async Task<AiToolResult> ExecuteAsync(AiToolCall call, CancellationToken ct = default)
         {
-            var asOf = FinArgs.Date(call, "asOf") ?? FinArgs.Today();
+            var asOf = FinArgs.AsOf(call);
+            if (asOf is null) return AiToolResult.Fail(FinArgs.BadAsOf);
 
             var rows = (await _db.DoGetDataSQLAsync<dynamic>(@"
                 SELECT  d.HES_M AS Moin, d.HES_T AS Tafsili, t.NAME AS Name,
@@ -360,13 +549,15 @@ namespace Safir.Server.Ai
             "مشتری — همان صورت‌حساب مشتری در Safir) با جمع کل. مانده‌ی دفتری است؛ چک‌های وصول‌نشده جدا حساب نمی‌شوند.";
         public string RequiredForm => CostForms.Dashboard;
         public Pay2Perm RequiredPerm => Pay2Perm.See;
+        public bool Verified => true;
         public string Parameters  =>
             "asOf: تاریخ yyyymmdd (اختیاری؛ پیش‌فرض امروز). top: تعداد (پیش‌فرض ۱۰). " +
             "name: بخشی از نام مشتری (اختیاری) — برای «بدهی فلانی چقدر است»؛ همه‌ی حساب‌های هم‌نام برمی‌گردد.";
 
         public async Task<AiToolResult> ExecuteAsync(AiToolCall call, CancellationToken ct = default)
         {
-            var asOf = FinArgs.Date(call, "asOf") ?? FinArgs.Today();
+            var asOf = FinArgs.AsOf(call);
+            if (asOf is null) return AiToolResult.Fail(FinArgs.BadAsOf);
             int top  = Math.Clamp(call.Int("top", 10), 1, Math.Min(call.MaxRows, 100));
             var name = call.Str("name")?.Trim();
             // نام حساب‌ها ۳۰٪ «ي/ك» عربی دارند؛ هر دو طرف یکسان می‌شوند
@@ -477,13 +668,15 @@ namespace Safir.Server.Ai
             "سقف و مانده‌ی همان مشتری (یا اینکه سقف ندارد) برگردد — برایش run_sql ننویس.";
         public string RequiredForm => CostForms.Dashboard;
         public Pay2Perm RequiredPerm => Pay2Perm.See;
+        public bool Verified => true;
         public string Parameters  =>
             "asOf: تاریخ yyyymmdd (اختیاری؛ پیش‌فرض امروز). " +
             "name: بخشی از نام مشتری، یا account: کد کامل حساب (مثل 115-19-1-3) — هر دو اختیاری.";
 
         public async Task<AiToolResult> ExecuteAsync(AiToolCall call, CancellationToken ct = default)
         {
-            var asOf = FinArgs.Date(call, "asOf") ?? FinArgs.Today();
+            var asOf = FinArgs.AsOf(call);
+            if (asOf is null) return AiToolResult.Fail(FinArgs.BadAsOf);
 
             // ── یک مشتری مشخص ──
             // در آزمون، «اولی سقف اعتبار دارد؟» ۸ مرحله (۴ run_sql) طول کشید چون این
@@ -585,6 +778,7 @@ namespace Safir.Server.Ai
             "مواد اولیه و نیمه‌ساخته هم جزو کالاهای تعریف‌شده‌اند؛ این را به کاربر بگو.";
         public string RequiredForm => CostForms.Margin;
         public Pay2Perm RequiredPerm => Pay2Perm.See;
+        public bool Verified => true;
         public string Parameters  => "from، to: تاریخ yyyymmdd (الزامی). top: تعداد نمونه در فهرست (پیش‌فرض ۲۰).";
 
         public async Task<AiToolResult> ExecuteAsync(AiToolCall call, CancellationToken ct = default)
