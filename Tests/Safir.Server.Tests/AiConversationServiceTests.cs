@@ -130,5 +130,28 @@ namespace Safir.Server.Tests
             // شناسه‌ای که مدل در پارامتر فرستاد، برای ابزار نام واقعی شد
             Assert.Contains("فروشگاه", System.Text.RegularExpressions.Regex.Unescape(tool.LastArgs!));
         }
+    
+        // کاربرِ دیگر با همان ConversationId نباید جدولِ نام‌های کاربرِ اول را بگیرد.
+        [Fact]
+        public async Task NameMap_IsPerUser_NotJustPerConversation()
+        {
+            var cache = new MemoryCache(new MemoryCacheOptions());
+            var conv  = Guid.NewGuid();
+            var tool  = new NoopTool { Data = new { Name = "مشتری محرمانه" } };
+
+            AiConversationService Svc(IAiChatProvider p) =>
+                new(new Factory(p), new AiToolRegistry(new IAiTool[] { tool }), new Access(), new Notifier(), new Settings(), cache);
+
+            // کاربر ۱ نام را از ابزار می‌بیند → N-0001
+            var p1 = new ScriptedProvider(
+                new AiModelReply { ToolCalls = { new AiToolInvocation { Id = "1", Name = "noop", Args = System.Text.Json.JsonDocument.Parse("{}").RootElement } } },
+                new AiModelReply { Text = "N-0001" });
+            Assert.Equal("مشتری محرمانه", (await Svc(p1).AskAsync(1, "a", conv, Array.Empty<AiChatTurnDto>(), "؟")).Text);
+
+            // کاربر ۲ همان شناسه‌ی گفتگو را می‌فرستد و مدلش N-0001 می‌نویسد
+            var p2 = new ScriptedProvider(new AiModelReply { Text = "N-0001" });
+            var r2 = await Svc(p2).AskAsync(2, "b", conv, Array.Empty<AiChatTurnDto>(), "N-0001 را بنویس");
+            Assert.DoesNotContain("مشتری محرمانه", r2.Text);
+        }
     }
 }

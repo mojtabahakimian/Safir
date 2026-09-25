@@ -44,6 +44,22 @@ namespace Safir.Server.Tests
             Assert.False(ok);
         }
 
+        // «SELECT COUNT(*), SUM(BED)»: دو ستونِ بی‌نام نباید یکی شوند
+        [Fact]
+        public void ColumnKey_UnnamedAndDuplicateColumns_StayDistinct()
+        {
+            var row = new System.Collections.Generic.Dictionary<string, object?>();
+            row[RunSqlTool.ColumnKey("", 0, row)]     = 1;
+            row[RunSqlTool.ColumnKey("", 1, row)]     = 2;
+            row[RunSqlTool.ColumnKey("NAME", 2, row)] = "a";
+            row[RunSqlTool.ColumnKey("NAME", 3, row)] = "b";
+
+            Assert.Equal(4, row.Count);
+            Assert.Equal(1, row["Column1"]);
+            Assert.Equal(2, row["Column2"]);
+            Assert.Equal("b", row["NAME_2"]);
+        }
+
         [Theory]
         [InlineData("PAY2_EMPLOYEE", true)]
         [InlineData("dbo.[SALA_DTL]", true)]

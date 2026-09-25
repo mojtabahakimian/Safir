@@ -380,7 +380,7 @@ namespace Safir.Server.Ai
             if (like is not null)
             {
                 codes = (await _db.DoGetDataSQLAsync<string>(
-                    "SELECT TOP (50) n.hes FROM (" + AccountNamesSql + ") n WHERE " +
+                    "SELECT TOP (51) n.hes FROM (" + AccountNamesSql + ") n WHERE " +
                     AiText.SqlFa("n.NAME") + " LIKE @like", new { like })).ToList();
 
                 if (codes.Count == 0)
@@ -390,6 +390,12 @@ namespace Safir.Server.Ai
                         Data = new { Metric = "بدهکاران تجاری", Found = false, Name = name,
                                      Message = "حسابی با این نام زیر حساب کل ۱۱۵ پیدا نشد." }
                     };
+
+                // نامِ کلی («فروشگاه»، «آقای») صدها حساب می‌گیرد؛ جمعِ ۵۰تای اول «جمع کل» نیست
+                if (codes.Count > 50)
+                    return AiToolResult.Fail(
+                        "بیش از ۵۰ حساب با این نام هست؛ جمع و تعدادشان قابل اتکا نیست. " +
+                        "از کاربر نام دقیق‌تر بخواه، یا بدون name فهرست بدهکاران را بگیر.");
             }
 
             const string cte = @"

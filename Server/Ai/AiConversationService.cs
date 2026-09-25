@@ -60,9 +60,12 @@ namespace Safir.Server.Ai
         /// نوبت بعدیِ همان گفتگو («حالا ماه قبلش را بگو») همان شناسه‌ها را ببیند.
         /// هرگز در پایگاه یا لاگ نوشته نمی‌شود.
         /// </summary>
-        private AiNameMasker? MaskerFor(Guid conversationId, AiOptions opt) =>
+        /// ConversationId از کلاینت می‌آید؛ کلید باید کاربر را هم داشته باشد، وگرنه کاربرِ
+        /// دیگری با فرستادنِ همان شناسه (و خواستنِ «N-0003 را بنویس») نامی را می‌دید که
+        /// از ابزارهای کاربرِ اول آمده بود و شاید خودش مجوزش را ندارد.
+        private AiNameMasker? MaskerFor(int userCo, Guid conversationId, AiOptions opt) =>
             !opt.MaskNames ? null :
-            _cache.GetOrCreate($"ai_mask_{conversationId}", e =>
+            _cache.GetOrCreate($"ai_mask_{userCo}_{conversationId}", e =>
             {
                 e.SlidingExpiration = TimeSpan.FromHours(2);
                 return new AiNameMasker();
@@ -111,7 +114,7 @@ namespace Safir.Server.Ai
             // سال مالیِ همین پایگاه؛ اگر خوانده نشد، بلوک تاریخ بدون آن ساخته می‌شود
             var fiscalYear = (await _settings.GetSazmanSettingsAsync())?.YEA;
 
-            var masker = MaskerFor(conversationId, opt);
+            var masker = MaskerFor(userCo, conversationId, opt);
 
             var messages = new List<AiMessage>
             {

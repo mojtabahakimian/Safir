@@ -380,7 +380,7 @@ namespace Safir.Server.Ai
 
                     var row = new Dictionary<string, object?>(reader.FieldCount);
                     for (int i = 0; i < reader.FieldCount; i++)
-                        row[reader.GetName(i)] = reader.IsDBNull(i) ? null : reader.GetValue(i);
+                        row[ColumnKey(reader.GetName(i), i, row)] = reader.IsDBNull(i) ? null : reader.GetValue(i);
                     rows.Add(row);
                 }
             }
@@ -391,6 +391,19 @@ namespace Safir.Server.Ai
                 Data      = rows,
                 Truncated = truncated
             };
+        }
+
+        /// <summary>
+        /// «SELECT COUNT(*), SUM(BED)» دو ستونِ بی‌نام دارد؛ با نامِ خامِ ستون، دومی
+        /// اولی را بازنویسی می‌کرد و مدل یک عدد را جای دیگری گزارش می‌داد.
+        /// </summary>
+        public static string ColumnKey(string? rawName, int i, IDictionary<string, object?> row)
+        {
+            var name = rawName;
+            if (string.IsNullOrWhiteSpace(name)) name = $"Column{i + 1}";
+            var key = name;
+            for (int n = 2; row.ContainsKey(key); n++) key = $"{name}_{n}";
+            return key;
         }
     }
 }
