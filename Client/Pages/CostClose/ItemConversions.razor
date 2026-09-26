@@ -1,0 +1,274 @@
+@page "/cost-close/conversions"
+@using Safir.Shared.Models.CostClose
+@using Safir.Client.Services
+@inject ItemConversionApiService Api
+@inject IDialogService Dialog
+@inject ISnackbar Snackbar
+
+<PageTitle>تبدیل کالا</PageTitle>
+
+<div class="cc-page" dir="rtl">
+
+    <div class="cc-toolbar">
+        <CostBackButton />
+        <MudText Typo="Typo.h6">تبدیل کالا به کالا</MudText>
+        <MudSpacer />
+        <MudButton StartIcon="@Icons.Material.Filled.Add" Color="Color.Primary"
+                   Variant="Variant.Filled" Disabled="_busy" OnClick="OpenNew">
+            تبدیل جدید
+        </MudButton>
+    </div>
+
+    <MudAlert Severity="Severity.Info" Dense Class="mb-3">
+        یک کالا از انباری خارج و کالای دیگری به انبار دیگری وارد می‌شود، با همان ارزش.
+        برگه‌ی خودش را دارد (نوع ۳۰) و هیچ فاکتور خریدی صادر نمی‌شود.
+        مبلغ از میانگین کاردکس گرفته می‌شود و تایپ نمی‌شود.
+    </MudAlert>
+
+    @if (_busy) { <MudProgressLinear Indeterminate Color="Color.Primary" Class="mb-3" /> }
+
+    @if (_error is not null)
+    {
+        <MudAlert Severity="Severity.Error" Class="mb-3">@_error</MudAlert>
+    }
+
+    @if (_incomplete > 0)
+    {
+        <MudAlert Severity="Severity.Error" Dense Class="mb-3">
+            @_incomplete برگه ناقص است — یا مقصدش کامل نیست و کالا هیچ‌جا وارد نمی‌شود،
+            یا سربرگی است بدون ردیف. تا اصلاح نشوند، بستن ماه متوقف می‌ماند (CHK-24).
+        </MudAlert>
+    }
+
+    @if (!_busy && _rows.Count == 0)
+    {
+        <MudAlert Severity="Severity.Normal" Dense>هنوز تبدیلی ثبت نشده است.</MudAlert>
+    }
+    else
+    {
+        <MudTable Items="_rows" Dense Hover Breakpoint="Breakpoint.Sm" Elevation="0" Class="cc-table">
+            <HeaderContent>
+                <MudTh>برگه</MudTh>
+                <MudTh>تاریخ</MudTh>
+                <MudTh>از</MudTh>
+                <MudTh>به</MudTh>
+                <MudTh style="text-align:left">مبلغ</MudTh>
+                <MudTh style="text-align:left">نرخ مقصد</MudTh>
+                <MudTh>سند</MudTh>
+                <MudTh></MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd DataLabel="برگه">@((long)context.Number)</MudTd>
+                <MudTd DataLabel="تاریخ">@FormatDate(context.DateN)</MudTd>
+
+                <MudTd DataLabel="از">
+                    @if (context.HasLine)
+                    {
+                        <div>@context.FromName</div>
+                        <MudText Typo="Typo.caption" Class="cc-dim">
+                            @context.FromQty.ToString("N2") @context.FromUnit — @context.FromAnbarName
+                        </MudText>
+                    }
+                    else
+                    {
+                        <MudTooltip Text="سربرگ برگه هست ولی هیچ ردیف کالایی رویش ثبت نشده — چیزی از انبار کم یا زیاد نمی‌کند">
+                            <MudChip T="string" Size="Size.Small" Color="Color.Error" Variant="Variant.Text">
+                                سربرگ بدون ردیف
+                            </MudChip>
+                        </MudTooltip>
+                    }
+                </MudTd>
+
+                <MudTd DataLabel="به">
+                    @if (!context.HasLine)
+                    {
+                        <MudText Typo="Typo.caption" Class="cc-dim">—</MudText>
+                    }
+                    else if (context.IsComplete)
+                    {
+                        <div>@context.ToName</div>
+                        <MudText Typo="Typo.caption" Class="cc-dim">
+                            @context.ToQty?.ToString("N2") @context.ToUnit — @context.ToAnbarName
+                        </MudText>
+                    }
+                    else
+                    {
+                        <MudChip T="string" Size="Size.Small" Color="Color.Error" Variant="Variant.Text">
+                            مقصد ناقص
+                        </MudChip>
+                    }
+                </MudTd>
+
+                <MudTd DataLabel="مبلغ" style="text-align:left">@Money(context.Value)</MudTd>
+                <MudTd DataLabel="نرخ مقصد" style="text-align:left">@Money(context.ToRate)</MudTd>
+
+                <MudTd DataLabel="سند">
+                    @if (context.HasSanad)
+                    {
+                        @* شماره‌ی سند به‌تنهایی نمی‌گوید سند درست است؛ کلیک،
+                           آرتیکل‌هایش را باز می‌کند. *@
+                        <MudLink Typo="Typo.body2" Underline="Underline.Always"
+                                 OnClick="@(() => ShowSanad(context))">
+                            @((long)context.SanadNo!.Value)
+                        </MudLink>
+                    }
+                    else
+                    {
+                        <MudText Typo="Typo.caption" Class="cc-dim">صادر نشده</MudText>
+                    }
+                </MudTd>
+
+                <MudTd>
+                    @* مبلغ صفر دیگر دکمه را قفل نمی‌کند — فقط قبلش می‌پرسد.
+                       نرخِ بعضی کالاها واقعاً صفر است و آن برگه هیچ‌وقت
+                       مبلغ‌دار نمی‌شود؛ بی‌سند ماندنش بدتر است. *@
+                    <MudIconButton Icon="@Icons.Material.Filled.ReceiptLong" Size="Size.Small"
+                                   Color="@(context.HasSanad ? Color.Default
+                                          : context.Value == 0 ? Color.Warning : Color.Primary)"
+                                   Disabled="@(_busy || !context.IsComplete)"
+                                   OnClick="@(() => IssueSanad(context))"
+                                   Title="@SanadTitle(context)" />
+
+                    <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small"
+                                   Color="Color.Error" Disabled="@(_busy || context.HasSanad)"
+                                   OnClick="@(() => Delete(context))"
+                                   Title="@(context.HasSanad ? "سند حسابداری دارد" : "حذف برگه")" />
+                </MudTd>
+            </RowTemplate>
+        </MudTable>
+    }
+</div>
+
+@code {
+    private List<ConversionRowDto> _rows = new();
+    private bool    _busy;
+    private string? _error;
+    private int     _incomplete;
+
+    protected override Task OnInitializedAsync() => Load();
+
+    private async Task Load()
+    {
+        _busy  = true;
+        _error = null;
+        try
+        {
+            _rows = await Api.ListAsync();
+            _incomplete = _rows.Count(r => !r.IsComplete);
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private async Task OpenNew()
+    {
+        var dlg = await Dialog.ShowAsync<ItemConversionDialog>(
+            "تبدیل جدید",
+            new DialogOptions { MaxWidth = MaxWidth.Large, FullWidth = true, CloseButton = true });
+
+        var res = await dlg.Result;
+        if (res is { Canceled: false })
+        {
+            // ثبت، بازسازی نرخ و صدور سند در یک حرکت انجام می‌شوند؛ کاربر
+            // باید نتیجه‌ی هر سه را ببیند، نه فقط «ثبت شد».
+            var dto = res.Data as ConversionResultDto;
+
+            Snackbar.Add(
+                dto?.SanadNumber is not null
+                    ? $"برگه ثبت شد و سند {dto.SanadNumber} صادر شد."
+                    : "برگه تبدیل ثبت شد.",
+                Severity.Success);
+
+            foreach (var step in dto?.PostSteps ?? new())
+            {
+                // هر چیزی که «نشد» را جدا و با رنگ هشدار نشان می‌دهیم.
+                var failed = step.Contains("نشد") || step.Contains("صفر");
+                if (failed) Snackbar.Add(step, Severity.Warning);
+            }
+
+            await Load();
+        }
+    }
+
+    private static string SanadTitle(ConversionRowDto r)
+        => !r.HasLine    ? "این سربرگ ردیفی ندارد — چیزی برای سند کردن نیست"
+         : !r.IsComplete ? "مقصد برگه کامل نیست"
+         : r.Value == 0  ? "مبلغ صفر است — سند بدون اثر مالی ثبت می‌شود"
+         : r.HasSanad    ? "صدور دوباره سند (سند فعلی بازنویسی می‌شود)"
+         : "صدور سند حسابداری";
+
+    private Task ShowSanad(ConversionRowDto row)
+        => Dialog.ShowAsync<ConversionSanadDialog>(
+               $"سند برگه {(long)row.Number}",
+               new DialogParameters { ["Number"] = row.Number },
+               new DialogOptions { MaxWidth = MaxWidth.Medium, FullWidth = true, CloseButton = true });
+
+    private async Task IssueSanad(ConversionRowDto row)
+    {
+        // صدور دوباره، سند قبلی را بازنویسی می‌کند — کاربر باید بداند.
+        if (row.HasSanad)
+        {
+            var go = await Dialog.ShowMessageBox(
+                "صدور دوباره سند",
+                $"سند {(long)row.SanadNo!.Value} برای این برگه هست و بازنویسی می‌شود. ادامه؟",
+                yesText: "بازنویسی کن", cancelText: "انصراف");
+
+            if (go != true) return;
+        }
+
+        // مبلغ صفر مانع نیست، ولی باید صریح گفته شود که چه چیزی ثبت می‌شود.
+        if (row.Value == 0)
+        {
+            var go = await Dialog.ShowMessageBox(
+                "مبلغ این برگه صفر است",
+                $"نرخ میانگین «{row.FromName}» در انبار مبدأ صفر است، پس سند با مبلغ صفر ثبت می‌شود "
+                + "و هیچ رقمی در دفتر جابه‌جا نمی‌کند — فقط ثبت می‌کند که این حرکت رخ داده. "
+                + "اگر انتظار مبلغ داشتید، اول «بازسازی نرخ میانگین» را اجرا کنید.",
+                yesText: "با مبلغ صفر ثبت کن", cancelText: "انصراف");
+
+            if (go != true) return;
+        }
+
+        _busy = true;
+        var res = await Api.IssueSanadAsync(row.Number, allowZero: row.Value == 0);
+        _busy = false;
+
+        if (res.Ok)
+        {
+            Snackbar.Add($"سند {res.SanadNumber} صادر شد.", Severity.Success);
+            await Load();
+        }
+        else
+        {
+            Snackbar.Add(res.Error ?? "سند صادر نشد.", Severity.Error);
+        }
+    }
+
+    private async Task Delete(ConversionRowDto row)
+    {
+        var ok = await Dialog.ShowMessageBox(
+            "حذف برگه تبدیل",
+            $"برگه تبدیل {(long)row.Number} پاک می‌شود. ادامه؟",
+            yesText: "حذف کن", cancelText: "انصراف");
+
+        if (ok != true) return;
+
+        _busy = true;
+        var (done, err) = await Api.DeleteAsync(row.Number);
+        _busy = false;
+
+        if (done) { Snackbar.Add("برگه پاک شد.", Severity.Success); await Load(); }
+        else      { Snackbar.Add(err ?? "حذف نشد.", Severity.Error); }
+    }
+
+    private static string FormatDate(long d)
+        => d <= 0 ? "" : $"{d / 10000:0000}/{d / 100 % 100:00}/{d % 100:00}";
+
+    private static string Money(double v) => Math.Round(v).ToString("N0");
+}

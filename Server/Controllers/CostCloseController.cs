@@ -1440,6 +1440,55 @@ namespace Safir.Server.Controllers
         }
 
         /// <summary>
+        /// بازسازی سند برگه‌ی تبدیل کالا (DEED_HED/DEED_DTL برای
+        /// HEAD_LST.TAG=30، NO_S=10).
+        ///
+        /// برخلاف بقیه‌ی این خانواده، بازه‌ی NUMBER نمی‌گیرد — تبدیل چند
+        /// برگه در ماه است و خودِ سرویس با بازه‌ی تاریخ کار می‌کند. همان
+        /// درسی که در MaterialIssueRebuildService مستند است هم اینجا صدق
+        /// می‌کند: شماره برگه لزوماً با تاریخ هم‌ترتیب نیست.
+        /// </summary>
+        [HttpPost("runs/{runId:int}/rebuild-conversion-docs")]
+        [Pay2Authorize(CostForms.ActRebuildDocs, Pay2Perm.Run)]
+        public async Task<ActionResult<GroupDocumentRebuildResultDto>> RebuildConversionDocs(int runId)
+        {
+            if (_queue.IsRunning(runId))
+                return Conflict("این اجرا در حال انجام است؛ ابتدا آن را متوقف کنید.");
+
+            if (!_rebuildInProgress.TryAdd(runId, 1))
+                return Conflict("بازسازی سند تبدیل برای این اجرا از قبل در حال انجام است.");
+
+            try
+            {
+                var run = await _db.DoGetDataSQLAsyncSingle<CostRunDto>(
+                    "SELECT * FROM dbo.CC_Run WHERE RunId = @runId", new { runId });
+
+                if (run is null) return NotFound();
+
+                var svc = new Safir.Server.CostClose.GroupDocuments.ConversionRebuildService(_db);
+                var res = await svc.RebuildAsync(run.DateFrom, run.DateTo);
+
+                return Ok(new GroupDocumentRebuildResultDto
+                {
+                    Success         = res.Success,
+                    SheetCount      = res.SheetCount,
+                    LastSanadNumber = res.LastSanadNumber,
+                    FirstError      = res.FirstError,
+                    Log             = res.Log
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "RebuildConversionDocs failed for run {RunId}", runId);
+                return BadRequest(ex.Message);
+            }
+            finally
+            {
+                _rebuildInProgress.TryRemove(runId, out _);
+            }
+        }
+
+        /// <summary>
         /// بازسازی سند فروش (DEED_HED/DEED_DTL برای HEAD_LST.TAG=13، NO_S=2).
         /// بدون این، CHK-02 برای هر کالایی که در همین ماه فروخته شده اما سند
         /// حسابداری‌اش قدیمی مانده، مغایرت کاذب نشان می‌دهد. عمداً فقط

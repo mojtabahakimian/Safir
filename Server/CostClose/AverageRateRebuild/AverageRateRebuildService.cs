@@ -544,6 +544,51 @@ namespace Safir.Server.CostClose.AverageRateRebuild
                         }
                         break;
                     }
+                    case 30: // تبدیل کالا — سمت خروج
+                    {
+                        // عیناً Case 5: کالا به میانگینِ جاری از انبار مبدأ
+                        // خارج می‌شود و همان مبلغ روی خودِ سطر نوشته می‌شود.
+                        // Touched هم مثل آنجا بالا می‌رود تا سمتِ ورود
+                        // (Case 31) مقدارِ زنده‌ی همین اجرا را ببیند نه عکسِ
+                        // لحظه‌ی fetch.
+                        st.MBKM -= (t.MEGHk ?? 0) * st.MIAN;
+                        st.MOGUDI -= t.MEGHk ?? 0;
+                        if (line is not null)
+                        {
+                            line.AVRAGE = st.MIAN;
+                            line.MABL   = st.MIAN;
+                            line.MABL_K = Math.Round(st.MIAN * (t.MEGHk ?? 0));
+                            line.Touched = true;
+                            pending.Add($@"UPDATE dbo.INVO_LST SET AVRAGE = {SqlNum(st.MIAN)}, MABL = {SqlNum(st.MIAN)}, MABL_K = {SqlNum(line.MABL_K)} WHERE ID = {line.id}");
+                        }
+                        break;
+                    }
+                    case 31: // تبدیل کالا — سمت ورود
+                    {
+                        // ⚠️ اینجا برخلاف Case 6 نمی‌شود روی ترتیبِ پیمایش
+                        // حساب کرد. انتقالی همان کد کالاست در دو انبار، پس
+                        // OrderAnbarsForTransferDependencies می‌تواند مبدأ را
+                        // اول ببرد. تبدیل *دو کدِ متفاوت* است و آن مکانیزم
+                        // بین کدها چیزی نمی‌داند — کالای مقصد ممکن است پیش از
+                        // کالای مبدأ پیمایش شود.
+                        //
+                        // ولی این بی‌خطر است و دلیلش ساختار است: هر دو سر یک
+                        // MABL_K دارند. بدترین حالت این است که در این دور،
+                        // مقدارِ دورِ قبل استفاده شود — و حلقه‌ی همگراییِ
+                        // S07A↔S11 همان را در دور بعد می‌بندد. چیزی که در
+                        // روشِ قدیمی ممکن بود (دو مبلغِ جدا که هیچ‌وقت به هم
+                        // نرسند) اینجا اصلاً وجود ندارد.
+                        var mablK = (line is not null && line.Touched) ? line.MABL_K : (t.MABL_K ?? 0);
+                        st.MBKM += mablK;
+                        st.MOGUDI += t.MEGHk ?? 0;
+                        Recalc(st);
+                        if (line is not null)
+                        {
+                            line.AVRAGE2 = st.MIAN;
+                            pending.Add($"UPDATE dbo.INVO_LST SET AVRAGE2 = {SqlNum(st.MIAN)} WHERE ID = {line.id}");
+                        }
+                        break;
+                    }
                     case 9: // تولید
                     {
                         double produced;
@@ -958,6 +1003,29 @@ namespace Safir.Server.CostClose.AverageRateRebuild
                   INNER JOIN dbo.HEAD_LST h ON i.NUMBER = h.NUMBER AND i.TAG = h.TAG
                   INNER JOIN dbo.TAGCOD t ON h.TAG + 1 = t.CODE
                   WHERE i.CODE = @Code AND (@Anbar IS NULL OR i.ANBARF = @Anbar) AND h.DATE_N > @SinceDate AND i.TAG = 5",
+
+                // سمتِ ورودِ تبدیل کالا (TAG=31) — از روی همان سطر TAG=30
+                // ساخته می‌شود، دقیقاً مثل شاخه‌ی بالا برای انتقالی.
+                //
+                // تفاوتش با انتقالی این است که *کد کالا* هم عوض می‌شود: سطر
+                // برای کالای مقصد بیرون می‌آید (N_RASID)، نه برای کالای مبدأ.
+                // پس یک سطر INVO_LST در دو پیمایشِ متفاوت دیده می‌شود — یک‌بار
+                // در کاردکس کالای مبدأ به‌عنوان خروج، یک‌بار در کاردکس کالای
+                // مقصد به‌عنوان ورود.
+                //
+                // MEGH_MAR روی این برگه «مقدار مرجوعی» نیست، مقدارِ ورود است؛
+                // توضیحش در 41-item-conversion.sql. اینجا MEGHk می‌شود و
+                // MEGH_MAR صفر، تا فرمولِ Case 31 همان فرمولِ یک ورودِ عادی
+                // بماند.
+                @"SELECT h.DATE_N, 31 AS TAG, i.NUMBER, CAST(i.ANBARF AS INT) AS ANBAR,
+                         i.N_RASID AS CODE, i.MEGH_MAR AS MEGH, i.MEGH_MAR AS MEGHk, 0 AS MEGH_MAR,
+                         i.MABL, i.MABL_K, i.N_KOL, i.ID AS id, t.tartib
+                  FROM dbo.INVO_LST i
+                  INNER JOIN dbo.HEAD_LST h ON i.NUMBER = h.NUMBER AND i.TAG = h.TAG
+                  INNER JOIN dbo.TAGCOD t ON t.CODE = 31
+                  WHERE i.TAG = 30 AND i.N_RASID = @Code
+                    AND (@Anbar IS NULL OR CAST(i.ANBARF AS INT) = @Anbar)
+                    AND h.DATE_N > @SinceDate",
 
                 // tartib هم اینجا هاردکد است، نه از TAGCOD خوانده می‌شود —
                 // چون TAG این شاخه (17 یا 18) واقعی نیست، خودِ همین کوئری با

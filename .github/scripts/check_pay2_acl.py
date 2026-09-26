@@ -26,7 +26,10 @@ from collections import Counter
 from pathlib import Path
 
 CONTROLLER_DIR = Path("Server/Controllers")
-CONTROLLER_GLOBS = ("Pay2*.cs", "CostClose*.cs")
+# ItemConversionController هم از همین مکانیزم استفاده می‌کند (فرمش
+# CostForms.ItemConversion است) و برگه‌ی انباری می‌سازد و پاک می‌کند —
+# یعنی دقیقاً همان چیزی که بدون مجوز نباید بشود.
+CONTROLLER_GLOBS = ("Pay2*.cs", "CostClose*.cs", "ItemConversion*.cs")
 
 # اکشن‌هایی که عمداً بدون [Pay2Authorize] هستند — هرکدام با دلیل
 ALLOWLIST = {
