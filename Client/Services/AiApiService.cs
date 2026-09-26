@@ -187,6 +187,43 @@ namespace Safir.Client.Services
                    };
         }
 
+        // ───────── فایل تشخیص ─────────
+
+        /// <summary>بدون شناسه‌ی گفتگو، آخرین رخدادهای همه‌ی گفتگوها.</summary>
+        public async Task<(byte[]? Bytes, string Name, string? Error)> GetDiagnosticsAsync(Guid? conversationId)
+        {
+            var url = $"{Base}/admin/diagnostics" + (conversationId is null ? "" : $"?conversationId={conversationId}");
+            var res = await _http.GetAsync(url);
+            if (res.StatusCode == System.Net.HttpStatusCode.Forbidden)
+                return (null, "", "فایل تشخیص فقط برای مدیر دسترسی‌ها در دسترس است.");
+            if (!res.IsSuccessStatusCode)
+                return (null, "", $"خطای سرور (کد {(int)res.StatusCode}).");
+
+            var name = res.Content.Headers.ContentDisposition?.FileNameStar
+                       ?? res.Content.Headers.ContentDisposition?.FileName?.Trim('"')
+                       ?? "safir-ai-diagnostics.json";
+            return (await res.Content.ReadAsByteArrayAsync(), name, null);
+        }
+
+        // ───────── دانش کسب‌وکار ─────────
+
+        public async Task<(List<AiKnowledgeDto> Notes, string? Error)> GetKnowledgeAsync()
+        {
+            var res = await _http.GetAsync($"{Base}/admin/knowledge");
+            return res.IsSuccessStatusCode
+                 ? (await res.Content.ReadFromJsonAsync<List<AiKnowledgeDto>>() ?? new(), null)
+                 : (new(), await res.Content.ReadAsStringAsync());
+        }
+
+        public async Task<(bool Ok, string? Error)> SaveKnowledgeAsync(AiKnowledgeDto note)
+        {
+            var res = await _http.PutAsJsonAsync($"{Base}/admin/knowledge", note);
+            return res.IsSuccessStatusCode ? (true, null) : (false, await res.Content.ReadAsStringAsync());
+        }
+
+        public async Task<bool> DeleteKnowledgeAsync(int id)
+            => (await _http.DeleteAsync($"{Base}/admin/knowledge/{id}")).IsSuccessStatusCode;
+
         /// <summary>کاربران فعال برای فهرست انتخاب.</summary>
         public async Task<List<AiUserLookupDto>> ListUsersAsync()
             => await _http.GetFromJsonAsync<List<AiUserLookupDto>>($"{Base}/admin/users") ?? new();

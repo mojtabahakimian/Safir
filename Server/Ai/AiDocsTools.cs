@@ -34,6 +34,8 @@ namespace Safir.Server.Ai
             var name = call.Str("name");
             if (string.IsNullOrWhiteSpace(name))
                 return Task.FromResult(AiToolResult.Fail("پارامتر name لازم است."));
+            if (AiSqlGuard.IsDenied(name))
+                return Task.FromResult(AiToolResult.Fail($"دسترسی دستیار به «{name}» بسته است."));
 
             var body = _docs.Section(name!);
             if (body is null)
@@ -89,7 +91,8 @@ namespace Safir.Server.Ai
                 return Task.FromResult(AiToolResult.Fail(
                     $"«{q}» در مستند نبود. عبارتِ کوتاه‌تر یا مترادفش را امتحان کن."));
 
-            var data = hits.Select(h => new { h.Name, h.Kind, Context = h.Hit }).ToList();
+            var data = hits.Where(h => !AiSqlGuard.IsDenied(h.Name))
+                           .Select(h => new { h.Name, h.Kind, Context = h.Hit }).ToList();
 
             return Task.FromResult(new AiToolResult
             {

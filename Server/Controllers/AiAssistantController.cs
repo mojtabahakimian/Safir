@@ -75,14 +75,34 @@ namespace Safir.Server.Controllers
 
             var convId = req.ConversationId ?? Guid.NewGuid();
 
-            var reply = await _chat.AskAsync(
-                CurrentUserCo, CurrentUserName, convId,
-                req.History, req.Question.Trim(),
-                req.AttachmentName, req.AttachmentText,
-                HttpContext.RequestAborted);
-
             Response.Headers["X-Conversation-Id"] = convId.ToString();
-            return Ok(reply);
+            try
+            {
+                return Ok(await _chat.AskAsync(
+                    CurrentUserCo, CurrentUserName, convId,
+                    req.History, req.Question.Trim(),
+                    req.AttachmentName, req.AttachmentText,
+                    HttpContext.RequestAborted));
+            }
+            catch (Exception ex) when (!HttpContext.RequestAborted.IsCancellationRequested)
+            {
+                // خطای پیش‌بینی‌نشده قبلاً فقط ۵۰۰ و «خطا در ارتباط با سرور» بود و در لاگِ دستیار
+                // هیچ ردی نداشت. حالا متنِ کامل در AI_ChatLog (Kind=5) می‌ماند و در فایل تشخیصی می‌آید.
+                try
+                {
+                    await _access.LogAsync(new AiLogEntry
+                    {
+                        ConversationId = convId, UserCo = CurrentUserCo, UserName = CurrentUserName,
+                        Kind = 5, Allowed = false, DenyReason = ex.Message, Payload = ex.ToString()
+                    });
+                }
+                catch { /* اگر خودِ پایگاه قطع است، چیزی برای ثبت نمی‌ماند */ }
+
+                return Ok(new AiChatReplyDto
+                {
+                    Error = "خطای داخلی در دستیار. از منوی گفتگو «دریافت فایل تشخیص» را بزنید و فایل را برای پشتیبانی بفرستید."
+                });
+            }
         }
 
         // ─────────────────── تاریخچه‌ی گفتگوها ───────────────────
@@ -402,6 +422,9 @@ namespace Safir.Server.Controllers
                 Model          = string.IsNullOrWhiteSpace(row?.Model)   ? eff.Model   : row!.Model,
                 TimeoutSeconds = row?.TimeoutSeconds > 0 ? row.TimeoutSeconds : eff.TimeoutSeconds,
                 MaxToolLoops   = row?.MaxToolLoops   > 0 ? row.MaxToolLoops   : eff.MaxToolLoops,
+                ProxyUrl       = row?.ProxyUrl,
+                FallbackModel  = row?.FallbackModel,
+                MaskNames      = row?.MaskNames ?? eff.MaskNames,
                 // ⚠ از خودِ سطر، نه از تنظیماتِ مؤثر. وقتی IsEnabled خاموش
                 // است تنظیماتِ مؤثر این سطر را نادیده می‌گیرد، و صفحه
                 // می‌نوشت «کلیدی ثبت نشده» در حالی که کلید ذخیره شده بود.
@@ -434,11 +457,17 @@ namespace Safir.Server.Controllers
                 !Uri.TryCreate(req.BaseUrl, UriKind.Absolute, out _))
                 return BadRequest("آدرس معتبر نیست. نمونه: http://localhost:20128");
 
+            if (!string.IsNullOrWhiteSpace(req.ProxyUrl) &&
+                !(Uri.TryCreate(req.ProxyUrl.Trim(), UriKind.Absolute, out var proxy) &&
+                  proxy.Scheme is "http" or "https" or "socks5"))
+                return BadRequest("آدرس پروکسی معتبر نیست. نمونه: http://127.0.0.1:10809");
+
             await _db.DoExecuteSQLAsync(@"
                 UPDATE dbo.AI_Config
                 SET IsEnabled = @IsEnabled, Provider = @Provider, BaseUrl = @BaseUrl,
                     Model = @Model, TimeoutSeconds = @TimeoutSeconds,
                     MaxToolLoops = @MaxToolLoops,
+                    ProxyUrl = @ProxyUrl, FallbackModel = @FallbackModel, MaskNames = @MaskNames,
                     -- کلید فقط وقتی عوض می‌شود که مقدارِ تازه آمده باشد یا
                     -- صراحتاً پاک‌کردن خواسته شده باشد. ذخیره‌ی ساده‌ی
                     -- تنظیماتِ دیگر نباید کلید را بی‌سروصدا بشوید.
@@ -451,6 +480,9 @@ namespace Safir.Server.Controllers
                 {
                     req.IsEnabled, req.Provider, req.BaseUrl, req.Model,
                     req.TimeoutSeconds, req.MaxToolLoops,
+                    ProxyUrl      = string.IsNullOrWhiteSpace(req.ProxyUrl)      ? null : req.ProxyUrl.Trim(),
+                    FallbackModel = string.IsNullOrWhiteSpace(req.FallbackModel) ? null : req.FallbackModel.Trim(),
+                    req.MaskNames,
                     req.ApiKey, ClearApiKey = req.ClearApiKey ? 1 : 0,
                     user = CurrentUserName
                 });
@@ -478,7 +510,10 @@ namespace Safir.Server.Controllers
             AiOptions opt;
             try
             {
-                opt = await settings.GetAsync();
+                // کپی: قبلاً مقادیرِ فرم مستقیم روی نمونه‌ی کش‌شده نوشته می‌شد و
+                // «آزمایش اتصال» با یک آدرسِ آزمایشی تا ۳۰ ثانیه دستیارِ واقعیِ
+                // همه را به همان آدرس می‌فرستاد.
+                opt = (await settings.GetAsync()).Clone();
             }
             catch (Exception ex)
             {
@@ -501,13 +536,20 @@ namespace Safir.Server.Controllers
                 if (!string.IsNullOrWhiteSpace(draft.Provider)) opt.Provider = draft.Provider;
                 if (!string.IsNullOrWhiteSpace(draft.BaseUrl))  opt.BaseUrl  = draft.BaseUrl;
                 if (!string.IsNullOrWhiteSpace(draft.ApiKey))   opt.ApiKey   = draft.ApiKey;
+                // پروکسی خالی در فرم معنی دارد (بدون پروکسی)، پس همیشه از فرم
+                opt.ProxyUrl = string.IsNullOrWhiteSpace(draft.ProxyUrl) ? null : draft.ProxyUrl.Trim();
+                // تایم‌اوتِ فرم هم، مثل بقیه‌ی فیلدها؛ وگرنه ادمینی که آن را بالا برده و پیش از
+                // ذخیره آزمایش می‌گیرد، باز با مقدارِ قبلی شکست می‌خورد.
+                if (draft.TimeoutSeconds is >= 5 and <= 900) opt.TimeoutSeconds = draft.TimeoutSeconds;
             }
 
             if (string.IsNullOrWhiteSpace(opt.BaseUrl))
                 return Ok(new AiConnectionTestDto { Ok = false, Message = "آدرس سرویس تنظیم نشده است." });
 
-            var http = httpFactory.CreateClient("ai");
-            http.Timeout = TimeSpan.FromSeconds(20);
+            var http = AiHttp.Create(httpFactory, opt.ProxyUrl);
+            // همان تایم‌اوتِ تنظیمات، نه ۲۰ ثانیه‌ی ثابت: پشت پروکسی، /v1/models در 9router
+            // حدود ۲۵ ثانیه طول کشید و آزمایش «اتصال برقرار نشد» گفت در حالی که گفتگو کار می‌کرد.
+            http.Timeout = TimeSpan.FromSeconds(opt.TimeoutSeconds > 0 ? opt.TimeoutSeconds : 120);
 
             if (!string.IsNullOrWhiteSpace(opt.ApiKey))
                 http.DefaultRequestHeaders.Authorization =
@@ -566,11 +608,42 @@ namespace Safir.Server.Controllers
                         Models = models
                     });
 
+                // مدل جایگزین هم همین‌جا سنجیده می‌شود؛ نامِ غلطش فقط روزی
+                // معلوم می‌شد که مدل اصلی از کار افتاده — بدترین زمان ممکن.
+                var fallback = draft is null ? opt.FallbackModel : draft.FallbackModel;
+                string fallbackNote = "";
+                if (!string.IsNullOrWhiteSpace(fallback))
+                {
+                    var fb = await http.PostAsJsonAsync(
+                        AiUrl.Combine(opt.BaseUrl, "/v1/chat/completions"),
+                        new
+                        {
+                            model = fallback.Trim(),
+                            max_tokens = 8,
+                            messages = new[] { new { role = "user", content = "ping" } }
+                        });
+
+                    if (!fb.IsSuccessStatusCode)
+                    {
+                        var fbRaw = await fb.Content.ReadAsStringAsync();
+                        return Ok(new AiConnectionTestDto
+                        {
+                            Ok = false,
+                            Message = $"مدل اصلی «{model}» سالم است ولی مدل جایگزین «{fallback}» جواب نداد " +
+                                      $"(کد {(int)fb.StatusCode}): " + (fbRaw.Length > 300 ? fbRaw[..300] : fbRaw),
+                            Models = models
+                        });
+                    }
+
+                    fallbackNote = $" مدل جایگزین «{fallback}» هم جواب داد.";
+                }
+
                 return Ok(new AiConnectionTestDto
                 {
                     Ok = true,
-                    Message = $"اتصال و کلید سالم است. مدل «{model}» جواب داد. " +
-                              $"{models.Count} مدل در دسترس.",
+                    Message = $"اتصال و کلید سالم است. مدل «{model}» جواب داد.{fallbackNote} " +
+                              $"{models.Count} مدل در دسترس." +
+                              (string.IsNullOrWhiteSpace(opt.ProxyUrl) ? "" : $" (از طریق پروکسی {opt.ProxyUrl})"),
                     Models = models
                 });
             }
@@ -582,6 +655,95 @@ namespace Safir.Server.Controllers
                     Message = "اتصال برقرار نشد: " + ex.Message
                 });
             }
+        }
+
+        // ───────── دانش کسب‌وکار (یادداشت‌های حسابدار) ─────────
+
+        [HttpGet("admin/knowledge")]
+        [Pay2Authorize(Pay2Forms.AdminAcl, Pay2Perm.See)]
+        public async Task<ActionResult<List<AiKnowledgeDto>>> GetKnowledge([FromServices] IAiKnowledgeStore store)
+        {
+            try { return Ok(await store.AllAsync()); }
+            catch { return BadRequest("جدول AI_Knowledge روی این پایگاه نیست؛ به‌روزرسانی پایگاه (مهاجرت ۴۰) را اجرا کنید."); }
+        }
+
+        [HttpPut("admin/knowledge")]
+        [Pay2Authorize(Pay2Forms.AdminAcl, Pay2Perm.Upd)]
+        public async Task<ActionResult<int>> SaveKnowledge(
+            [FromBody] AiKnowledgeDto note, [FromServices] IAiKnowledgeStore store)
+        {
+            note.Title = note.Title?.Trim() ?? "";
+            note.Body  = note.Body?.Trim()  ?? "";
+            if (note.Title.Length is 0 or > 200) return BadRequest("عنوان لازم است و حداکثر ۲۰۰ نویسه.");
+            if (note.Body.Length  is 0 or > 4000) return BadRequest("متن لازم است و حداکثر ۴۰۰۰ نویسه.");
+            return Ok(await store.SaveAsync(note, CurrentUserName));
+        }
+
+        [HttpDelete("admin/knowledge/{id:int}")]
+        [Pay2Authorize(Pay2Forms.AdminAcl, Pay2Perm.Del)]
+        public async Task<IActionResult> DeleteKnowledge(int id, [FromServices] IAiKnowledgeStore store)
+        {
+            await store.DeleteAsync(id);
+            return Ok();
+        }
+
+        // ───────── فایل تشخیص (برای فرستادن به پشتیبانی) ─────────
+
+        /// <summary>
+        /// همه‌چیز درباره‌ی یک گفتگو (یا اگر شناسه ندهید، آخرین رخدادها) در یک JSON: نسخه‌ی برنامه،
+        /// تنظیمات سرویس بدون کلید، دسترسیِ همان کاربر، و تک‌تک رخدادها به ترتیب — سؤال، هر
+        /// درخواست به مدل (کدام مدل، خطای خام، توکن، زمان)، هر ابزار (پارامتر، سطر، خطا، خروجی‌ای
+        /// که مدل دید) و جواب. کلید API و رمز در آن نیست؛ ولی داده‌ی مالی و نام مشتری هست.
+        /// </summary>
+        [HttpGet("admin/diagnostics")]
+        [Pay2Authorize(Pay2Forms.AdminAcl, Pay2Perm.See)]
+        public async Task<IActionResult> Diagnostics(
+            [FromServices] IAiSettingsProvider settings,
+            [FromQuery] Guid? conversationId = null, [FromQuery] int take = 300)
+        {
+            var eff = (await settings.GetAsync()).Clone();
+
+            var events = (await _db.DoGetDataSQLAsync<dynamic>(@"
+                SELECT TOP (@take) Id, ConversationId, UserCo, UserName, AtUtc,
+                       CASE Kind WHEN 0 THEN N'question' WHEN 1 THEN N'answer' WHEN 2 THEN N'tool_call'
+                                 WHEN 3 THEN N'model_call' WHEN 4 THEN N'tool_output' WHEN 5 THEN N'internal_error'
+                                 ELSE CAST(Kind AS NVARCHAR(5)) END AS Kind,
+                       ToolName, RowsReturned, Allowed, DenyReason, DurationMs, Payload
+                FROM   dbo.AI_ChatLog
+                WHERE  (@conversationId IS NULL OR ConversationId = @conversationId)
+                ORDER BY Id DESC",
+                new { take = Math.Clamp(take, 1, 2000), conversationId })).Reverse().ToList();
+
+            var users = events.Select(e => (int)e.UserCo).Distinct().ToList();
+            var access = new List<object>();
+            foreach (var u in users)
+            {
+                var a = await _access.GetEffectiveAsync(u);
+                access.Add(new { UserCo = u, a.IsEnabled, a.AllowRawSql, a.MaxRows, a.DailyMessages, a.TodayMessages,
+                                 Tools = a.Tools.Select(t => t.Name) });
+            }
+
+            var bundle = new
+            {
+                GeneratedAtUtc = DateTime.UtcNow,
+                Server         = Environment.MachineName,
+                AppVersion     = typeof(AiAssistantController).Assembly.GetName().Version?.ToString(),
+                ConversationId = conversationId,
+                // بدون کلید API؛ فقط اینکه تنظیم شده یا نه
+                Settings = new { eff.Provider, eff.BaseUrl, eff.Model, eff.FallbackModel, eff.ProxyUrl,
+                                 eff.MaskNames, eff.TimeoutSeconds, eff.MaxToolLoops,
+                                 HasApiKey = !string.IsNullOrWhiteSpace(eff.ApiKey) },
+                Access = access,
+                Events = events
+            };
+
+            var bytes = JsonSerializer.SerializeToUtf8Bytes(bundle, new JsonSerializerOptions
+            {
+                WriteIndented = true,
+                Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping
+            });
+            var name = conversationId is null ? "recent" : conversationId.Value.ToString("N")[..8];
+            return File(bytes, "application/json", $"safir-ai-diagnostics-{name}-{DateTime.Now:yyyyMMdd-HHmm}.json");
         }
 
         /// <summary>لاگ — برای بازرسی اینکه چه کسی چه چیزی از دستیار پرسید.</summary>

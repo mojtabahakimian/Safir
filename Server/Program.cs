@@ -104,6 +104,18 @@ builder.Services.AddScoped<Safir.Server.Services.DbUpgradeService>();
 builder.Services.AddScoped<Safir.Server.Ai.IAiAccessService, Safir.Server.Ai.AiAccessService>();
 builder.Services.AddScoped<Safir.Server.Ai.IAiToolRegistry, Safir.Server.Ai.AiToolRegistry>();
 builder.Services.AddScoped<Safir.Server.Ai.IAiTool, Safir.Server.Ai.ListRunsTool>();
+// ابزارهای ثابتِ مالی — عدد را Safir حساب می‌کند، نه مدل (Server/Ai/AiFinanceTools.cs)
+builder.Services.AddScoped<Safir.Server.Ai.IAiTool, Safir.Server.Ai.SalesByProductTool>();
+builder.Services.AddScoped<Safir.Server.Ai.IAiTool, Safir.Server.Ai.CompareSalesTool>();
+builder.Services.AddScoped<Safir.Server.Ai.IAiTool, Safir.Server.Ai.ProfitAndLossTool>();
+builder.Services.AddScoped<Safir.Server.Ai.IAiTool, Safir.Server.Ai.FinancialStatementsTool>();
+builder.Services.AddScoped<Safir.Server.Ai.IAiTool, Safir.Server.Ai.TrialBalanceTool>();
+builder.Services.AddScoped<Safir.Server.Ai.IAiKnowledgeStore, Safir.Server.Ai.AiKnowledgeStore>();
+builder.Services.AddScoped<Safir.Server.Ai.IAiTool, Safir.Server.Ai.BusinessNotesTool>();
+builder.Services.AddScoped<Safir.Server.Ai.IAiTool, Safir.Server.Ai.BankBalancesTool>();
+builder.Services.AddScoped<Safir.Server.Ai.IAiTool, Safir.Server.Ai.TopDebtorsTool>();
+builder.Services.AddScoped<Safir.Server.Ai.IAiTool, Safir.Server.Ai.CreditLimitTool>();
+builder.Services.AddScoped<Safir.Server.Ai.IAiTool, Safir.Server.Ai.UnsoldItemsTool>();
 builder.Services.AddScoped<Safir.Server.Ai.IAiTool, Safir.Server.Ai.SearchItemTool>();
 builder.Services.AddScoped<Safir.Server.Ai.IAiTool, Safir.Server.Ai.ItemMarginTool>();
 builder.Services.AddScoped<Safir.Server.Ai.IAiTool, Safir.Server.Ai.UnitSummaryTool>();

@@ -6,6 +6,7 @@
 @inject IAuthService AuthService
 @inject IDialogService Dialog
 @inject ISnackbar Snackbar
+@inject IJSRuntime JS
 @implements IAsyncDisposable
 @using Microsoft.AspNetCore.SignalR.Client
 @using Safir.Shared.Interfaces
@@ -39,6 +40,14 @@ else
                    StartIcon="@Icons.Material.Filled.History"
                    Disabled="_busy" OnClick="ToggleHistory">
             تاریخچه (@_conversations.Count)
+        </MudButton>
+
+        @* برای وقتی چیزی درست کار نکرد: همه‌ی رخدادهای همین گفتگو (مدل، ابزارها، خطاها) در
+           یک فایل، تا برای پشتیبانی فرستاده شود. فقط مدیر (همان مجوز تنظیمات دستیار). *@
+        <MudButton Variant="Variant.Text" Size="Size.Small"
+                   StartIcon="@Icons.Material.Filled.BugReport"
+                   Disabled="_busy" OnClick="DownloadDiagnostics">
+            دریافت فایل تشخیص
         </MudButton>
 
         @if (_renaming)
@@ -113,6 +122,21 @@ else
                     @(m.IsUser ? "شما" : "دستیار")
                 </MudText>
                 <MudText Style="white-space:pre-wrap">@m.Text</MudText>
+                @* برچسب را سرور از روی ابزارهای صدازده‌شده می‌گذارد، نه مدل *@
+                @if (m.Basis == AiAnswerBasis.Verified)
+                {
+                    <MudChip Size="Size.Small" Color="Color.Success" Variant="Variant.Outlined" Class="mt-2 ms-0"
+                             Icon="@Icons.Material.Filled.Verified">
+                        عدد از گزارش‌های ثابت Safir
+                    </MudChip>
+                }
+                else if (m.Basis == AiAnswerBasis.Exploratory)
+                {
+                    <MudChip Size="Size.Small" Color="Color.Warning" Variant="Variant.Outlined" Class="mt-2 ms-0"
+                             Icon="@Icons.Material.Filled.WarningAmber">
+                        اکتشافی — با کوئری آزاد به دست آمده؛ پیش از تصمیم با گزارش Safir تطبیق دهید
+                    </MudChip>
+                }
             </MudPaper>
         }
 
@@ -282,6 +306,15 @@ else
     {
         try   { _conversations = await Api.ListConversationsAsync(); }
         catch { /* نبودِ فهرست نباید مانع گفتگو شود */ }
+    }
+
+
+    private async Task DownloadDiagnostics()
+    {
+        var (bytes, name, error) = await Api.GetDiagnosticsAsync(_conversationId);
+        if (bytes is null) { Snackbar.Add(error ?? "فایل تشخیص دریافت نشد.", Severity.Error); return; }
+        await JS.InvokeVoidAsync("downloadFileFromBytes", name, bytes);
+        Snackbar.Add("فایل تشخیص دریافت شد. آن را برای پشتیبانی بفرستید (داده‌ی مالی دارد؛ کلید API ندارد).", Severity.Success);
     }
 
     private void ToggleHistory() => _showHistory = !_showHistory;
@@ -472,7 +505,7 @@ else
             _lastSteps = reply.Steps;
 
             if (reply.Error is not null) _error = reply.Error;
-            else _turns.Add(new AiChatTurnDto { IsUser = false, Text = reply.Text ?? "" });
+            else _turns.Add(new AiChatTurnDto { IsUser = false, Text = reply.Text ?? "", Basis = reply.Basis });
         }
         catch (Exception ex) { _error = "خطا در ارتباط با سرور: " + ex.Message; }
         finally

@@ -101,6 +101,9 @@ namespace Safir.Shared.Models.Ai
         public string? Model          { get; set; }
         public int     TimeoutSeconds { get; set; } = 120;
         public int     MaxToolLoops   { get; set; } = 4;
+        public string? ProxyUrl       { get; set; }
+        public string? FallbackModel  { get; set; }
+        public bool    MaskNames      { get; set; } = true;
 
         public bool    HasApiKey      { get; set; }
         public string? ApiKeyTail     { get; set; }
@@ -120,6 +123,15 @@ namespace Safir.Shared.Models.Ai
         public string? Model          { get; set; }
         public int     TimeoutSeconds { get; set; } = 120;
         public int     MaxToolLoops   { get; set; } = 4;
+
+        /// <summary>خالی = بدون پروکسی. نمونه: http://127.0.0.1:10809</summary>
+        public string? ProxyUrl       { get; set; }
+
+        /// <summary>خالی = بدون مدل جایگزین.</summary>
+        public string? FallbackModel  { get; set; }
+
+        /// <summary>نام مشتری/کالا پیش از ارسال به مدل با شناسه عوض شود.</summary>
+        public bool    MaskNames      { get; set; } = true;
 
         /// <summary>
         /// خالی یعنی «کلید فعلی را دست نزن». برای پاک کردن باید
@@ -143,6 +155,9 @@ namespace Safir.Shared.Models.Ai
     {
         public bool   IsUser { get; set; }
         public string Text   { get; set; } = "";
+
+        /// <summary>فقط برای نمایش برچسب کنار جواب (AiChatReplyDto.Basis)؛ سرور از تاریخچه نمی‌خواندش.</summary>
+        public string? Basis { get; set; }
     }
 
     public class AiChatRequest
@@ -197,6 +212,24 @@ namespace Safir.Shared.Models.Ai
         public string? Note       { get; set; }
     }
 
+    /// <summary>یادداشتِ دانش کسب‌وکار (AI_Knowledge) که حسابدار می‌نویسد.</summary>
+    public class AiKnowledgeDto
+    {
+        public int       Id             { get; set; }
+        public string    Title          { get; set; } = "";
+        public string    Body           { get; set; } = "";
+        public bool      AlwaysInPrompt { get; set; }
+        public bool      IsActive       { get; set; } = true;
+        public string?   UpdatedBy      { get; set; }
+        public DateTime? UpdatedAtUtc   { get; set; }
+    }
+
+    public static class AiAnswerBasis
+    {
+        public const string Verified    = "verified";
+        public const string Exploratory = "exploratory";
+    }
+
     public class AiChatReplyDto
     {
         public string? Text  { get; set; }
@@ -207,6 +240,14 @@ namespace Safir.Shared.Models.Ai
         /// می‌شود: جوابِ بدونِ منبع در گزارش مالی قابل اتکا نیست.
         /// </summary>
         public List<AiChatStepDto> Steps { get; set; } = new();
+
+        /// <summary>
+        /// مبنای عددهای جواب — سرور از روی ابزارهای صدازده‌شده تعیین می‌کند، نه مدل:
+        /// <see cref="AiAnswerBasis.Verified"/> فقط ابزارهای ثابتِ Safir؛
+        /// <see cref="AiAnswerBasis.Exploratory"/> کوئریِ آزادِ مدل (run_sql) هم در کار بوده؛
+        /// null هیچ داده‌ای از پایگاه نیامده.
+        /// </summary>
+        public string? Basis { get; set; }
 
         /// <summary>از هدر پاسخ پر می‌شود، نه از بدنه.</summary>
         public Guid? ConversationId { get; set; }

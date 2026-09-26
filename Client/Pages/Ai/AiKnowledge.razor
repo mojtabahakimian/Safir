@@ -1,0 +1,141 @@
+@page "/ai/knowledge"
+@using Safir.Shared.Models.Ai
+@using Safir.Client.Services
+@inject AiApiService Api
+@inject ISnackbar Snackbar
+@inject IDialogService Dialogs
+
+<PageTitle>دانش کسب‌وکار دستیار</PageTitle>
+
+<MudText Typo="Typo.h5" Class="mb-2">دانش کسب‌وکار دستیار</MudText>
+
+@* این صفحه برای حسابدار است، نه برنامه‌نویس: هر چیزی که در ساختار پایگاه نیست و دستیار
+   نباید حدسش بزند. «همیشه» در هر گفتگو خوانده می‌شود؛ بقیه فقط وقتی دستیار دنبالش بگردد. *@
+<MudText Typo="Typo.body2" Class="mud-text-secondary mb-3" Style="max-width:760px">
+    قاعده‌هایی را بنویسید که دستیار نباید حدس بزند؛ مثلاً «مشتری‌ها زیر حساب کل ۱۱۵اند»،
+    «حساب ۱۲۸ جاری شرکاست و جزو بدهکاران نیست» یا «گزارش فروش ویزیتور از ویو … درمی‌آید».
+    یادداشت‌های «همیشه» در هر گفتگو به دستیار داده می‌شوند (کوتاه و مهم نگهشان دارید، جمعاً تا حدود ۴۰۰۰ نویسه)؛
+    بقیه را دستیار هر وقت لازم داشت جست‌وجو می‌کند.
+</MudText>
+
+@if (_error is not null)
+{
+    <MudAlert Severity="Severity.Error" Class="mb-3" Style="max-width:760px">@_error</MudAlert>
+}
+
+<MudPaper Class="pa-4 mb-4" Elevation="1" Style="max-width:760px">
+    <MudText Typo="Typo.subtitle1" Class="mb-2">@(_edit.Id == 0 ? "یادداشت تازه" : "ویرایش یادداشت")</MudText>
+    <MudTextField T="string" @bind-Value="_edit.Title" Label="عنوان" Variant="Variant.Outlined" Dense
+                  MaxLength="200" Class="mb-2" />
+    <MudTextField T="string" @bind-Value="_edit.Body" Label="متن قاعده" Variant="Variant.Outlined"
+                  Lines="4" MaxLength="4000" Class="mb-2" />
+    <div class="d-flex align-center flex-wrap gap-4 mb-2">
+        <MudSwitch T="bool" @bind-Value="_edit.AlwaysInPrompt" Color="Color.Primary" Label="همیشه در گفتگو" />
+        <MudSwitch T="bool" @bind-Value="_edit.IsActive" Color="Color.Success" Label="فعال" />
+    </div>
+    <div class="d-flex gap-2">
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="Save" Disabled="_busy">ذخیره</MudButton>
+        @if (_edit.Id != 0)
+        {
+            <MudButton Variant="Variant.Text" OnClick="New" Disabled="_busy">انصراف</MudButton>
+        }
+    </div>
+</MudPaper>
+
+@if (_notes is null)
+{
+    <MudProgressLinear Indeterminate Color="Color.Primary" Style="max-width:760px" />
+}
+else if (_notes.Count == 0)
+{
+    <MudText Typo="Typo.body2" Class="mud-text-secondary">هنوز یادداشتی نیست.</MudText>
+}
+else
+{
+    <MudText Typo="Typo.caption" Class="mud-text-secondary d-block mb-2">
+        طول یادداشت‌های «همیشه»: @_alwaysChars از حدود ۴۰۰۰ نویسه
+    </MudText>
+    @foreach (var n in _notes)
+    {
+        <MudPaper Class="pa-3 mb-2" Elevation="0" Outlined="true" Style="max-width:760px">
+            <div class="d-flex align-center gap-2">
+                <MudText Typo="Typo.subtitle2" Class="flex-grow-1">@n.Title</MudText>
+                @if (n.AlwaysInPrompt) { <MudChip Size="Size.Small" Color="Color.Primary" Variant="Variant.Outlined">همیشه</MudChip> }
+                @if (!n.IsActive)      { <MudChip Size="Size.Small" Variant="Variant.Outlined">غیرفعال</MudChip> }
+                <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small" OnClick="@(() => Edit(n))" Disabled="_busy" />
+                <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error"
+                               OnClick="@(() => Delete(n))" Disabled="_busy" />
+            </div>
+            <MudText Typo="Typo.body2" Style="white-space:pre-wrap">@n.Body</MudText>
+            <MudText Typo="Typo.caption" Class="mud-text-secondary">@n.UpdatedBy</MudText>
+        </MudPaper>
+    }
+}
+
+@code {
+    private List<AiKnowledgeDto>? _notes;
+    private AiKnowledgeDto _edit = new();
+    private bool    _busy;
+    private string? _error;
+
+    private int _alwaysChars => _notes?.Where(n => n.IsActive && n.AlwaysInPrompt)
+                                       .Sum(n => n.Title.Length + n.Body.Length + 4) ?? 0;
+
+    protected override async Task OnInitializedAsync() => await Load();
+
+    private async Task Load()
+    {
+        _error = null;
+        try
+        {
+            var (notes, err) = await Api.GetKnowledgeAsync();
+            _notes = notes;
+            _error = err;
+        }
+        catch (Exception ex) { _error = "خطا در ارتباط با سرور: " + ex.Message; _notes = new(); }
+    }
+
+    private void New() => _edit = new();
+
+    private void Edit(AiKnowledgeDto n) => _edit = new AiKnowledgeDto
+    {
+        Id = n.Id, Title = n.Title, Body = n.Body, AlwaysInPrompt = n.AlwaysInPrompt, IsActive = n.IsActive
+    };
+
+    private async Task Save()
+    {
+        _busy = true;
+        try
+        {
+            var (ok, err) = await Api.SaveKnowledgeAsync(_edit);
+            if (ok)
+            {
+                Snackbar.Add("ذخیره شد.", Severity.Success);
+                _edit = new();
+                await Load();
+            }
+            else Snackbar.Add(string.IsNullOrWhiteSpace(err) ? "ذخیره نشد." : err, Severity.Error);
+        }
+        finally { _busy = false; }
+    }
+
+    private async Task Delete(AiKnowledgeDto n)
+    {
+        var yes = await Dialogs.ShowMessageBox("حذف یادداشت", $"«{n.Title}» حذف شود؟",
+                                               yesText: "حذف", cancelText: "انصراف");
+        if (yes != true) return;
+
+        _busy = true;
+        try
+        {
+            if (await Api.DeleteKnowledgeAsync(n.Id))
+            {
+                Snackbar.Add("حذف شد.", Severity.Success);
+                if (_edit.Id == n.Id) _edit = new();
+                await Load();
+            }
+            else Snackbar.Add("حذف نشد.", Severity.Error);
+        }
+        finally { _busy = false; }
+    }
+}

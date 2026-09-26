@@ -40,6 +40,15 @@ namespace Safir.Server.Ai
         public List<AiToolInvocation> ToolCalls { get; set; } = new();
         public string? Error { get; set; }
         public bool Ok => Error is null;
+
+        // ── فقط برای لاگ تشخیصی (AI_ChatLog، Kind=3)؛ به کاربر نشان داده نمی‌شود ──
+        /// <summary>مدلی که واقعاً جواب داد (اصلی یا جایگزین).</summary>
+        public string? Model     { get; set; }
+        /// <summary>متن خامِ خطای سرویس — Error ترجمه‌ی فارسی و کلی است.</summary>
+        public string? Detail    { get; set; }
+        public int?    Status    { get; set; }
+        public int?    TokensIn  { get; set; }
+        public int?    TokensOut { get; set; }
     }
 
     public interface IAiChatProvider
@@ -105,6 +114,62 @@ namespace Safir.Server.Ai
 
         /// <summary>سقف رفت‌وبرگشت با ابزار در یک سؤال.</summary>
         public int MaxToolLoops { get; set; } = 6;
+
+        /// <summary>
+        /// پروکسیِ فقط همین ارتباط (مثلاً v2rayN: http://127.0.0.1:10809).
+        /// خالی = مستقیم. بقیه‌ی برنامه از آن رد نمی‌شود.
+        /// </summary>
+        public string? ProxyUrl { get; set; }
+
+        /// <summary>مدلی که اگر مدل اصلی خطا داد یک بار امتحان می‌شود. خالی = هیچ.</summary>
+        public string? FallbackModel { get; set; }
+
+        /// <summary>نام مشتری/کالا/حساب پیش از رفتن به مدل با شناسه عوض شود (AiNameMasker).</summary>
+        public bool MaskNames { get; set; } = true;
+
+        /// <summary>
+        /// کپی، تا تغییرِ موقت (آزمایش اتصال با مقادیر فرم، ساختن مدل جایگزین)
+        /// به نمونه‌ای که در کش است نرسد.
+        /// </summary>
+        public AiOptions Clone() => (AiOptions)MemberwiseClone();
+    }
+
+    /// <summary>
+    /// اول مدل اصلی؛ اگر خطا داد (قطعی، ۴۰۳ حساب، تایم‌اوت) همان پیام‌ها یک بار
+    /// با مدل جایگزین. هر مرحله‌ی حلقه جدا تصمیم می‌گیرد، پس اگر مدل اصلی
+    /// وسط گفتگو برگشت، مرحله‌ی بعد دوباره با خودش می‌رود.
+    /// </summary>
+    public sealed class FallbackChatProvider : IAiChatProvider
+    {
+        private readonly IAiChatProvider _primary;
+        private readonly IAiChatProvider _fallback;
+
+        public FallbackChatProvider(IAiChatProvider primary, IAiChatProvider fallback)
+        {
+            _primary  = primary;
+            _fallback = fallback;
+        }
+
+        public string Describe => $"{_primary.Describe} → {_fallback.Describe}";
+
+        public async Task<AiModelReply> CompleteAsync(
+            IReadOnlyList<AiMessage> messages,
+            IReadOnlyList<IAiTool> tools,
+            CancellationToken ct = default)
+        {
+            var first = await _primary.CompleteAsync(messages, tools, ct);
+            if (first.Ok || ct.IsCancellationRequested) return first;
+
+            var second = await _fallback.CompleteAsync(messages, tools, ct);
+            // در لاگ معلوم باشد مدل اصلی چرا کنار رفت
+            second.Detail = $"[مدل اصلی {first.Model}: {first.Status} {first.Detail ?? first.Error}] {second.Detail}".Trim();
+
+            // اگر هر دو خطا دادند، هر دو دلیل دیده شود؛ فقط دومی گمراه‌کننده است
+            return second.Ok
+                ? second
+                : new AiModelReply { Error = $"{first.Error} — مدل جایگزین هم: {second.Error}",
+                                     Model = second.Model, Detail = second.Detail, Status = second.Status };
+        }
     }
 
 
@@ -196,7 +261,8 @@ namespace Safir.Server.Ai
                 if (!res.IsSuccessStatusCode)
                 {
                     _log.LogWarning("AI provider {Status}: {Body}", res.StatusCode, raw);
-                    return new AiModelReply { Error = FriendlyHttp((int)res.StatusCode) };
+                    return new AiModelReply { Error = FriendlyHttp((int)res.StatusCode), Model = _opt.Model,
+                                              Status = (int)res.StatusCode, Detail = Cut(raw) };
                 }
 
                 using var doc = JsonDocument.Parse(raw);
@@ -205,8 +271,16 @@ namespace Safir.Server.Ai
                 var reply = new AiModelReply
                 {
                     Text = msg.TryGetProperty("content", out var c) && c.ValueKind == JsonValueKind.String
-                         ? c.GetString() : null
+                         ? c.GetString() : null,
+                    Model  = doc.RootElement.TryGetProperty("model", out var m) && m.ValueKind == JsonValueKind.String
+                           ? m.GetString() : _opt.Model,
+                    Status = (int)res.StatusCode
                 };
+                if (doc.RootElement.TryGetProperty("usage", out var u) && u.ValueKind == JsonValueKind.Object)
+                {
+                    if (u.TryGetProperty("prompt_tokens", out var pt) && pt.TryGetInt32(out var pti)) reply.TokensIn = pti;
+                    if (u.TryGetProperty("completion_tokens", out var ctk) && ctk.TryGetInt32(out var cti)) reply.TokensOut = cti;
+                }
 
                 if (msg.TryGetProperty("tool_calls", out var calls) &&
                     calls.ValueKind == JsonValueKind.Array)
@@ -237,7 +311,8 @@ namespace Safir.Server.Ai
             {
                 return new AiModelReply
                 {
-                    Error = $"مدل در {_opt.TimeoutSeconds} ثانیه جواب نداد."
+                    Error = $"مدل در {_opt.TimeoutSeconds} ثانیه جواب نداد.", Model = _opt.Model,
+                    Detail = $"timeout {_opt.TimeoutSeconds}s at {_opt.BaseUrl}"
                 };
             }
             catch (HttpRequestException ex)
@@ -245,7 +320,8 @@ namespace Safir.Server.Ai
                 _log.LogWarning(ex, "AI provider unreachable at {Url}", _opt.BaseUrl);
                 return new AiModelReply
                 {
-                    Error = $"اتصال به سرویس هوش مصنوعی ({_opt.BaseUrl}) برقرار نشد."
+                    Error = $"اتصال به سرویس هوش مصنوعی ({_opt.BaseUrl}) برقرار نشد.", Model = _opt.Model,
+                    Detail = Cut(ex.ToString())
                 };
             }
         }
@@ -277,6 +353,10 @@ namespace Safir.Server.Ai
             try   { return JsonDocument.Parse(text).RootElement.Clone(); }
             catch { return JsonDocument.Parse("{}").RootElement.Clone(); }
         }
+
+        /// <summary>متن خام برای لاگ، با سقف طول (بدنه‌ی خطای درگاه گاهی صفحه‌ی HTML کامل است).</summary>
+        internal static string Cut(string? text, int max = 2000)
+            => string.IsNullOrEmpty(text) ? "" : text.Length <= max ? text : text[..max] + "…";
 
         internal static string FriendlyHttp(int status) => status switch
         {
@@ -391,12 +471,13 @@ namespace Safir.Server.Ai
                     _log.LogWarning("AI provider {Status}: {Body}", res.StatusCode, raw);
                     return new AiModelReply
                     {
+                        Model = _opt.Model, Status = (int)res.StatusCode, Detail = OpenAiCompatibleProvider.Cut(raw),
                         Error = OpenAiCompatibleProvider.FriendlyHttp((int)res.StatusCode)
                     };
                 }
 
                 using var doc = JsonDocument.Parse(raw);
-                var reply = new AiModelReply();
+                var reply = new AiModelReply { Model = _opt.Model, Status = (int)res.StatusCode };
                 var text  = new StringBuilder();
 
                 foreach (var block in doc.RootElement.GetProperty("content").EnumerateArray())
@@ -420,14 +501,16 @@ namespace Safir.Server.Ai
             }
             catch (TaskCanceledException) when (!ct.IsCancellationRequested)
             {
-                return new AiModelReply { Error = $"مدل در {_opt.TimeoutSeconds} ثانیه جواب نداد." };
+                return new AiModelReply { Error = $"مدل در {_opt.TimeoutSeconds} ثانیه جواب نداد.", Model = _opt.Model,
+                                          Detail = $"timeout {_opt.TimeoutSeconds}s at {_opt.BaseUrl}" };
             }
             catch (HttpRequestException ex)
             {
                 _log.LogWarning(ex, "AI provider unreachable at {Url}", _opt.BaseUrl);
                 return new AiModelReply
                 {
-                    Error = $"اتصال به سرویس هوش مصنوعی ({_opt.BaseUrl}) برقرار نشد."
+                    Error = $"اتصال به سرویس هوش مصنوعی ({_opt.BaseUrl}) برقرار نشد.", Model = _opt.Model,
+                    Detail = OpenAiCompatibleProvider.Cut(ex.ToString())
                 };
             }
         }
