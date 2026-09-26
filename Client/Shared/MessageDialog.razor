@@ -1,0 +1,46 @@
+@using MudBlazor
+
+@* پیام طولانی و کاری (مثل فهرست پرسنلِ ناقصِ لیست بیمه) که کاربر باید بخواند و بعد خودش ببندد؛
+   toast برای این‌ها بزرگ و شلوغ می‌شد و روی دکمه‌های صفحه می‌افتاد. خط اول عنوان است و بقیه متن. *@
+<MudDialog MaxWidth="MaxWidth.Small">
+    <TitleContent>
+        <div class="d-flex align-center gap-2">
+            <i class="bi bi-exclamation-triangle" style="color:#d97706; font-size:20px;"></i>
+            <MudText Typo="Typo.subtitle1" Style="font-weight:700;">@_title</MudText>
+        </div>
+    </TitleContent>
+
+    <DialogContent>
+        <div style="white-space: pre-line; font-size: 13.5px; line-height: 1.9; max-height: 60vh; overflow-y: auto;">@_body</div>
+    </DialogContent>
+
+    <DialogActions>
+        <button class="btn-primary-pay2" @onclick="() => MudDialog.Close()">متوجه شدم</button>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] MudDialogInstance MudDialog { get; set; } = default!;
+
+    [Parameter] public string Message { get; set; } = "";
+
+    string _title = "";
+    string _body = "";
+
+    protected override void OnParametersSet()
+    {
+        var i = Message.IndexOf('\n');
+        _title = i < 0 ? Message : Message[..i].Trim();
+        _body = i < 0 ? "" : Message[(i + 1)..].Trim();
+    }
+
+    /// <summary>پیام چندخطی را در پنجره نشان می‌دهد و پیام یک‌خطی را مثل قبل با snackbar</summary>
+    public static void ShowError(IDialogService dialogs, ISnackbar snackbar, string message)
+    {
+        if (message.Contains('\n'))
+            dialogs.Show<MessageDialog>("", new DialogParameters { ["Message"] = message },
+                new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true, CloseButton = true });
+        else
+            snackbar.Add(message, Severity.Error);
+    }
+}

@@ -423,9 +423,9 @@
         }
     }
 
-    // پیام چندخطی (مثل فهرست پرسنلِ ناقص برای لیست بیمه) تا کاربر نبندد نمی‌رود؛ وقت خواندن لازم دارد
+    // پیام چندخطی (مثل فهرست پرسنلِ ناقص برای لیست بیمه) در پنجره‌ای که کاربر خودش می‌بندد
     void ShowError(string message) =>
-        Snackbar.Add(message, MudBlazor.Severity.Error, c => c.RequireInteraction = message.Contains('\n'));
+        Safir.Client.Shared.MessageDialog.ShowError(DialogService, Snackbar, message);
 
     async Task GenerateInsuranceDiskette()
     {
