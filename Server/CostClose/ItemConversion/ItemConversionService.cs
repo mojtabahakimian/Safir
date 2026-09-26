@@ -129,6 +129,27 @@ namespace Safir.Server.CostClose.ItemConversion
                         "SELECT ISNULL(MAX(NUMBER), 0) + 1 FROM dbo.HEAD_LST WITH (UPDLOCK, HOLDLOCK) WHERE TAG = @Tag",
                         new { Tag = ConversionTag }, tx) ?? 1;
 
+                    // ⚠️ INVO_LST یک کلید خارجی به STUF_FSK روی (CODE, ANBAR)
+                    //    دارد (FK_INVO_LST_STUF_FSK). اگر کالا تا امروز به آن
+                    //    انبار نرفته باشد، ردیفی در STUF_FSK ندارد و درجِ سطر
+                    //    شکست می‌خورد — و این دقیقاً حالتِ عادیِ یک تبدیل است:
+                    //    کالای مقصد معمولاً بارِ اول است که به آن انبار می‌آید.
+                    //
+                    //    هر دو سر ساخته می‌شوند، نه فقط سمتی که FK می‌خواهد:
+                    //    ویوهای موجودی هم STUF_FSK را UNION می‌کنند، پس کالای
+                    //    مقصد بدون این ردیف در گزارش‌ها ناقص می‌ماند.
+                    //    مقدار و مبلغ صفر است — این ردیف «موجودی اول دوره» را
+                    //    اعلام نمی‌کند، فقط وجودِ جفتِ (کالا، انبار) را.
+                    const string ensureFskSql = @"
+IF NOT EXISTS (SELECT 1 FROM dbo.STUF_FSK WHERE CODE = @Code AND ANBAR = @Anbar)
+    INSERT INTO dbo.STUF_FSK (CODE, ANBAR, MOGODI_A, FI_A, MABL_A, MANDAH_A, MIN_M, MAX_M, CRT)
+    VALUES (@Code, @Anbar, 0, 0, 0, 0, 0, 0, GETDATE());";
+
+                    await cn.ExecuteAsync(ensureFskSql,
+                        new { Code = preview.FromCode, Anbar = req.FromAnbar }, tx);
+                    await cn.ExecuteAsync(ensureFskSql,
+                        new { Code = preview.ToCode, Anbar = req.ToAnbar }, tx);
+
                     var fromVahed = await cn.ExecuteScalarAsync<int?>(
                         "SELECT VAHED FROM dbo.STUF_DEF WHERE CODE = @Code",
                         new { Code = preview.FromCode }, tx) ?? 0;

@@ -35,8 +35,8 @@
     @if (_incomplete > 0)
     {
         <MudAlert Severity="Severity.Error" Dense Class="mb-3">
-            @_incomplete برگه مقصدش کامل نیست — کالا از انبار خارج شده و هیچ‌جا وارد نمی‌شود.
-            تا اصلاح نشوند، بستن ماه متوقف می‌ماند (CHK-24).
+            @_incomplete برگه ناقص است — یا مقصدش کامل نیست و کالا هیچ‌جا وارد نمی‌شود،
+            یا سربرگی است بدون ردیف. تا اصلاح نشوند، بستن ماه متوقف می‌ماند (CHK-24).
         </MudAlert>
     }
 
@@ -62,14 +62,29 @@
                 <MudTd DataLabel="تاریخ">@FormatDate(context.DateN)</MudTd>
 
                 <MudTd DataLabel="از">
-                    <div>@context.FromName</div>
-                    <MudText Typo="Typo.caption" Class="cc-dim">
-                        @context.FromQty.ToString("N2") @context.FromUnit — @context.FromAnbarName
-                    </MudText>
+                    @if (context.HasLine)
+                    {
+                        <div>@context.FromName</div>
+                        <MudText Typo="Typo.caption" Class="cc-dim">
+                            @context.FromQty.ToString("N2") @context.FromUnit — @context.FromAnbarName
+                        </MudText>
+                    }
+                    else
+                    {
+                        <MudTooltip Text="سربرگ برگه هست ولی هیچ ردیف کالایی رویش ثبت نشده — چیزی از انبار کم یا زیاد نمی‌کند">
+                            <MudChip T="string" Size="Size.Small" Color="Color.Error" Variant="Variant.Text">
+                                سربرگ بدون ردیف
+                            </MudChip>
+                        </MudTooltip>
+                    }
                 </MudTd>
 
                 <MudTd DataLabel="به">
-                    @if (context.IsComplete)
+                    @if (!context.HasLine)
+                    {
+                        <MudText Typo="Typo.caption" Class="cc-dim">—</MudText>
+                    }
+                    else if (context.IsComplete)
                     {
                         <div>@context.ToName</div>
                         <MudText Typo="Typo.caption" Class="cc-dim">
@@ -159,7 +174,8 @@
     }
 
     private static string SanadTitle(ConversionRowDto r)
-        => !r.IsComplete ? "مقصد برگه کامل نیست"
+        => !r.HasLine   ? "این سربرگ ردیفی ندارد — چیزی برای سند کردن نیست"
+         : !r.IsComplete ? "مقصد برگه کامل نیست"
          : r.Value == 0  ? "مبلغ صفر است — اول بازسازی نرخ میانگین را اجرا کنید"
          : r.HasSanad    ? "صدور دوباره سند (سند فعلی بازنویسی می‌شود)"
          : "صدور سند حسابداری";

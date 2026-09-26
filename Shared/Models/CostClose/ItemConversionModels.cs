@@ -97,11 +97,18 @@ namespace Safir.Shared.Models.CostClose
         public DateTime? CreatedAt   { get; set; }
 
         /// <summary>
+        /// سربرگ ردیف دارد؟ اگر نه، برگه‌ای است که فقط سربرگش مانده — مثلاً
+        /// ردیفش با نرم‌افزار قدیمی پاک شده. چیزی از انبار کم یا زیاد
+        /// نمی‌کند، ولی شماره‌ی برگه را مصرف کرده و باید دیده شود.
+        /// </summary>
+        public bool HasLine => !string.IsNullOrWhiteSpace(FromCode);
+
+        /// <summary>
         /// برگه‌ای که مقصدش مشخص نیست، کالا را از انبار می‌برد و هیچ‌جا
         /// برنمی‌گرداند. همان چیزی که CHK-24 می‌گیرد.
         /// </summary>
         public bool IsComplete =>
-            !string.IsNullOrWhiteSpace(ToCode) && ToAnbar is not null && ToQty > 0;
+            HasLine && !string.IsNullOrWhiteSpace(ToCode) && ToAnbar is not null && ToQty > 0;
 
         /// <summary>سند حسابداری خورده؟ اگر بله، ابطال ساده ممکن نیست.</summary>
         public bool HasSanad => SanadNo is > 0;
