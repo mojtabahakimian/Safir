@@ -1,13 +1,13 @@
-/* صفحه‌ی ورود — هم‌رنگ صفحه‌ی اصلی و حقوق و دستمزد (آبی #2563eb) به‌جای سبز پیش‌فرض تم MudBlazor.
+/* صفحه‌ی ورود — آبی آسمانی (#0ea5e9) به‌جای سبز پیش‌فرض تم MudBlazor.
    رنگ اصلی فقط داخل همین صفحه عوض می‌شود؛ زمینه و متن از پالت می‌آید تا تم تاریک هم درست بماند. */
 
 .safir-login {
-    --mud-palette-primary: #2563eb;
-    --mud-palette-primary-rgb: 37,99,235;
+    --mud-palette-primary: #0ea5e9;
+    --mud-palette-primary-rgb: 14,165,233;
     --mud-palette-primary-text: #ffffff;
-    --mud-palette-primary-darken: #1d4ed8;
-    --mud-palette-primary-lighten: #3b82f6;
-    --mud-palette-primary-hover: rgba(37,99,235,0.08);
+    --mud-palette-primary-darken: #0284c7;
+    --mud-palette-primary-lighten: #38bdf8;
+    --mud-palette-primary-hover: rgba(14,165,233,0.08);
 }
 
 .safir-login-logo {
@@ -18,8 +18,8 @@
     align-items: center;
     justify-content: center;
     font-size: 28px;
-    background: rgba(37, 99, 235, 0.12);
-    color: #2563eb;
+    background: rgba(14, 165, 233, 0.12);
+    color: #0ea5e9;
 }
 
 /* پرکردن خودکار مرورگر (Chrome) زمینه‌ی آبی‌روشنِ خودش را روی نیمی از فیلد می‌کشید */
