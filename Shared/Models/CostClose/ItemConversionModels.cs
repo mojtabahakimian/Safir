@@ -114,6 +114,32 @@ namespace Safir.Shared.Models.CostClose
         public bool HasSanad => SanadNo is > 0;
     }
 
+    /// <summary>یک آرتیکل سند.</summary>
+    public sealed class SanadArticleDto
+    {
+        public string  Hes   { get; set; } = "";   // کد کامل حساب
+        public string? Name  { get; set; }         // نام حساب
+        public string? Sharh { get; set; }
+        public double  Bed   { get; set; }
+        public double  Bes   { get; set; }
+    }
+
+    /// <summary>سربرگ سند به‌همراه آرتیکل‌هایش.</summary>
+    public sealed class SanadViewDto
+    {
+        public long    SanadNo   { get; set; }
+        public long    DateS     { get; set; }
+        public string? SharhS    { get; set; }
+        public string? UserName  { get; set; }
+        public List<SanadArticleDto> Articles { get; set; } = new();
+
+        public double TotalBed => Articles.Sum(a => a.Bed);
+        public double TotalBes => Articles.Sum(a => a.Bes);
+
+        /// <summary>سند متوازن است؟ اگر نه، جایی خراب است.</summary>
+        public bool IsBalanced => Math.Abs(TotalBed - TotalBes) < 0.5;
+    }
+
     public sealed class ConversionSanadResultDto
     {
         public bool    Ok          { get; set; }

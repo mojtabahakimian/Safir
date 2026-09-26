@@ -296,10 +296,22 @@ VALUES (@Number, @Tag, @FromAnbar, @ToAnbar, @FromCode, @FromQty, @FromQty, @Fro
             if (sanad is > 0)
                 return (false, $"سند حسابداری {sanad:0} برای این برگه صادر شده؛ اول سند را برگردانید.");
 
+            // ⚠️ N_S روی سربرگ تنها کافی نیست. اگر برگه‌ی دیگری با همین شماره
+            //    قبلاً سند گرفته و بعد پاک شده باشد، آرتیکل‌هایش هنوز در
+            //    DEED_DTL هستند و به NUMBER/TAG بسته‌اند — نه به N_S. آن‌ها
+            //    باید همراه برگه بروند، وگرنه رقم‌هایشان در دفتر می‌مانند
+            //    بی‌آنکه هیچ برگه‌ای پشتشان باشد.
+            //    روی همین پایگاه دو جفت آرتیکل از برگه‌های پاک‌شده پیدا شد،
+            //    یکی‌شان ۱۱٫۲ میلیارد ریال.
+
             try
             {
                 await _db.ExecuteInTransactionAsync(async (cn, tx) =>
                 {
+                    await cn.ExecuteAsync(
+                        "DELETE FROM dbo.DEED_DTL WHERE TAG = @Tag AND NUMBER = @Number",
+                        new { Tag = ConversionTag, Number = number }, tx);
+
                     await cn.ExecuteAsync(
                         "DELETE FROM dbo.INVO_LST WHERE TAG = @Tag AND NUMBER = @Number",
                         new { Tag = ConversionTag, Number = number }, tx);

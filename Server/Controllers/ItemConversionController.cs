@@ -72,6 +72,45 @@ namespace Safir.Server.Controllers
         }
 
         /// <summary>
+        /// سندِ یک برگه: سربرگ و آرتیکل‌هایش.
+        ///
+        /// آرتیکل‌ها از روی NUMBER/TAG خودِ برگه خوانده می‌شوند و نه فقط از
+        /// N_S — اگر سند سربرگ داشته باشد ولی آرتیکلی نه (یا برعکس)، همین
+        /// نما آن را لو می‌دهد.
+        /// </summary>
+        [HttpGet("{number:double}/sanad")]
+        [Pay2Authorize(CostForms.ItemConversion, Pay2Perm.See)]
+        public async Task<ActionResult<SanadViewDto>> GetSanad(double number)
+        {
+            var head = (await _db.DoGetDataSQLAsync<SanadViewDto>(@"
+SELECT  SanadNo  = CAST(d.N_S AS BIGINT),
+        DateS    = d.DATE_S,
+        SharhS   = d.SHARH_S,
+        UserName = d.USER_NAME
+FROM    dbo.DEED_HED d
+WHERE   d.NO_S = 10
+  AND   d.N_S = (SELECT TOP 1 h.N_S FROM dbo.HEAD_LST h
+                 WHERE h.TAG = 30 AND h.NUMBER = @Number)",
+                new { Number = number })).FirstOrDefault();
+
+            if (head is null) return NotFound("برای این برگه سندی صادر نشده است.");
+
+            head.Articles = (await _db.DoGetDataSQLAsync<SanadArticleDto>(@"
+SELECT  Hes   = d.HES,
+        Name  = t.NAME,
+        Sharh = d.SHARH,
+        Bed   = ISNULL(d.BED, 0),
+        Bes   = ISNULL(d.BES, 0)
+FROM    dbo.DEED_DTL d
+LEFT    JOIN dbo.TDETA_HES t ON t.N_KOL = d.HES_K AND t.NUMBER = d.HES_M AND t.TNUMBER = d.HES_T
+WHERE   d.TAG = 30 AND d.NUMBER = @Number
+ORDER BY d.BES, d.BED DESC",
+                new { Number = number })).ToList();
+
+            return Ok(head);
+        }
+
+        /// <summary>
         /// صدور (یا بازسازی) سند حسابداری همین یک برگه.
         ///
         /// ⚠️ مبلغ سند از MABL_K خودِ برگه می‌آید، و آن تا اجرای «بازسازی

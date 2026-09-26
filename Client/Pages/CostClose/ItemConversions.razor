@@ -105,11 +105,16 @@
                 <MudTd DataLabel="سند">
                     @if (context.HasSanad)
                     {
-                        <MudText Typo="Typo.caption">@((long)context.SanadNo!.Value)</MudText>
+                        @* شماره‌ی سند به‌تنهایی نمی‌گوید سند درست است؛ کلیک،
+                           آرتیکل‌هایش را باز می‌کند. *@
+                        <MudLink Typo="Typo.body2" Underline="Underline.Always"
+                                 OnClick="@(() => ShowSanad(context))">
+                            @((long)context.SanadNo!.Value)
+                        </MudLink>
                     }
                     else
                     {
-                        <MudText Typo="Typo.caption" Class="cc-dim">—</MudText>
+                        <MudText Typo="Typo.caption" Class="cc-dim">صادر نشده</MudText>
                     }
                 </MudTd>
 
@@ -199,6 +204,12 @@
          : r.Value == 0  ? "مبلغ صفر است — سند بدون اثر مالی ثبت می‌شود"
          : r.HasSanad    ? "صدور دوباره سند (سند فعلی بازنویسی می‌شود)"
          : "صدور سند حسابداری";
+
+    private Task ShowSanad(ConversionRowDto row)
+        => Dialog.ShowAsync<ConversionSanadDialog>(
+               $"سند برگه {(long)row.Number}",
+               new DialogParameters { ["Number"] = row.Number },
+               new DialogOptions { MaxWidth = MaxWidth.Medium, FullWidth = true, CloseButton = true });
 
     private async Task IssueSanad(ConversionRowDto row)
     {
