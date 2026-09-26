@@ -597,66 +597,9 @@
     </script>
 
 
-    <script>
-        // Moved Cloudflare's service worker registration here
-        // To ensure it runs AFTER your app's JS and Blazor runtime.
-        // This is crucial for controlling caching behavior.
-        if ('serviceWorker' in navigator) {
-            // Check if we are in development mode (e.g., based on hostname)
-            // In development, we force unregistration to avoid caching issues
-            const isLocalhostOrDevelopment = window.location.hostname === "localhost" ||
-                window.location.hostname === "127.0.0.1" ||
-                window.location.hostname.includes("192.168."); // For local network IPs
-
-            if (isLocalhostOrDevelopment) {
-                console.warn("Service Worker: Running in development mode. Unregistering all service workers to prevent caching issues.");
-                navigator.serviceWorker.getRegistrations().then(function (registrations) {
-                    for (let registration of registrations) {
-                        registration.unregister();
-                    }
-                }).catch(function (err) {
-                    console.error('Service Worker unregistration failed: ', err);
-                });
-            } else {
-                // In production, register the service worker
-                navigator.serviceWorker.register('service-worker.js', { updateViaCache: 'none' }).then(reg => {
-                    console.log('Service Worker: Registration successful with scope: ', reg.scope);
-
-                    const activateWorker = newWorker => {
-                        if (!newWorker) return;
-
-                        if (confirm('🎉 نسخه جدیدی از نرم‌افزار سفیر در دسترس است!\n\nآیا می‌خواهید برای اعمال تغییرات، صفحه را اکنون بروزرسانی کنید؟ (تنظیمات شما پاک نمی‌شود)')) {
-                            let refreshing = false;
-                            navigator.serviceWorker.addEventListener('controllerchange', () => {
-                                if (!refreshing) {
-                                    window.location.reload();
-                                    refreshing = true;
-                                }
-                            }, { once: true });
-
-                            newWorker.postMessage({ type: 'SKIP_WAITING' });
-                        }
-                    };
-
-                    if (reg.waiting) {
-                        activateWorker(reg.waiting);
-                    }
-
-                    reg.addEventListener('updatefound', () => {
-                        const newWorker = reg.installing;
-                        if (!newWorker) return;
-
-                        newWorker.addEventListener('statechange', () => {
-                            if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-                                activateWorker(newWorker);
-                            }
-                        });
-                    });
-
-                    reg.update().catch(err => console.error('Service Worker update check failed: ', err));
-                }).catch(err => console.error('Service Worker Registration failed: ', err));
-            }
-        }
+    <script type="module">
+        import { initialize } from './js/app-update.js';
+        initialize().catch(error => console.error('Service worker initialization failed.', error));
     </script>
 
     <div id="blazor-error-ui">

@@ -65,6 +65,26 @@ test.describe('بالا آمدن برنامه', () => {
   });
 });
 
+test('آپدیت از منو یک‌بار صفحه را بارگذاری می‌کند و تنظیمات را نگه می‌دارد', async ({ page }) => {
+  await page.goto('/login?returnUrl=payroll', { waitUntil: 'networkidle' });
+  await expect(field(page, 'نام کاربری')).toBeVisible();
+  const updateLink = page.getByText('بررسی و دریافت بروزرسانی', { exact: true });
+  if (await page.locator('.safir-drawer.mud-drawer--closed').count()) {
+    await page.locator('.safir-appbar button').first().click();
+  }
+  await page.evaluate(() => localStorage.setItem('update-test-setting', 'preserved'));
+  let navigations = 0;
+  page.on('framenavigated', frame => { if (frame === page.mainFrame()) navigations++; });
+  await updateLink.click();
+  await page.getByRole('button', { name: 'بله، آپدیت کن', exact: true }).click();
+  await page.waitForURL(url => url.searchParams.has('_appUpdate'));
+  await expect(field(page, 'نام کاربری')).toBeVisible();
+  expect(navigations).toBe(1);
+  expect(new URL(page.url()).pathname).toBe('/login');
+  expect(new URL(page.url()).searchParams.get('returnUrl')).toBe('payroll');
+  expect(await page.evaluate(() => localStorage.getItem('update-test-setting'))).toBe('preserved');
+});
+
 test.describe('کنترل دسترسی در سطح API', () => {
 
   // این‌ها به دیتابیس نیاز ندارند: رد شدن بدون توکن قبل از هر کوئری اتفاق می‌افتد.
