@@ -38,6 +38,13 @@ namespace Safir.Client.Services
             return dto ?? new ConversionResultDto { Ok = false, Error = "پاسخ نامعتبر از سرور." };
         }
 
+        public async Task<ConversionSanadResultDto> IssueSanadAsync(double number)
+        {
+            var res = await _http.PostAsync($"{Base}/{number}/sanad", null);
+            var dto = await res.Content.ReadFromJsonAsync<ConversionSanadResultDto>();
+            return dto ?? new ConversionSanadResultDto { Ok = false, Error = "پاسخ نامعتبر از سرور." };
+        }
+
         public async Task<(bool Ok, string? Error)> DeleteAsync(double number)
         {
             var res = await _http.DeleteAsync($"{Base}/{number}");

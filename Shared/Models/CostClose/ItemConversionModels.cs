@@ -107,6 +107,13 @@ namespace Safir.Shared.Models.CostClose
         public bool HasSanad => SanadNo is > 0;
     }
 
+    public sealed class ConversionSanadResultDto
+    {
+        public bool    Ok          { get; set; }
+        public long?   SanadNumber { get; set; }
+        public string? Error       { get; set; }
+    }
+
     public sealed class ConversionResultDto
     {
         public bool    Ok           { get; set; }

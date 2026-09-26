@@ -99,6 +99,14 @@
                 </MudTd>
 
                 <MudTd>
+                    @* مبلغ صفر یعنی نرخ میانگین هنوز نوشته نشده؛ سندِ صفر
+                       ساختن فقط یک سندِ بی‌اثر در دفتر می‌گذارد. *@
+                    <MudIconButton Icon="@Icons.Material.Filled.ReceiptLong" Size="Size.Small"
+                                   Color="@(context.HasSanad ? Color.Default : Color.Primary)"
+                                   Disabled="@(_busy || !context.IsComplete || context.Value == 0)"
+                                   OnClick="@(() => IssueSanad(context))"
+                                   Title="@SanadTitle(context)" />
+
                     <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small"
                                    Color="Color.Error" Disabled="@(_busy || context.HasSanad)"
                                    OnClick="@(() => Delete(context))"
@@ -147,6 +155,40 @@
         {
             Snackbar.Add("برگه تبدیل ثبت شد.", Severity.Success);
             await Load();
+        }
+    }
+
+    private static string SanadTitle(ConversionRowDto r)
+        => !r.IsComplete ? "مقصد برگه کامل نیست"
+         : r.Value == 0  ? "مبلغ صفر است — اول بازسازی نرخ میانگین را اجرا کنید"
+         : r.HasSanad    ? "صدور دوباره سند (سند فعلی بازنویسی می‌شود)"
+         : "صدور سند حسابداری";
+
+    private async Task IssueSanad(ConversionRowDto row)
+    {
+        // صدور دوباره، سند قبلی را بازنویسی می‌کند — کاربر باید بداند.
+        if (row.HasSanad)
+        {
+            var go = await Dialog.ShowMessageBox(
+                "صدور دوباره سند",
+                $"سند {(long)row.SanadNo!.Value} برای این برگه هست و بازنویسی می‌شود. ادامه؟",
+                yesText: "بازنویسی کن", cancelText: "انصراف");
+
+            if (go != true) return;
+        }
+
+        _busy = true;
+        var res = await Api.IssueSanadAsync(row.Number);
+        _busy = false;
+
+        if (res.Ok)
+        {
+            Snackbar.Add($"سند {res.SanadNumber} صادر شد.", Severity.Success);
+            await Load();
+        }
+        else
+        {
+            Snackbar.Add(res.Error ?? "سند صادر نشد.", Severity.Error);
         }
     }
 

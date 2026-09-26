@@ -72,6 +72,39 @@ namespace Safir.Server.Controllers
         }
 
         /// <summary>
+        /// صدور (یا بازسازی) سند حسابداری همین یک برگه.
+        ///
+        /// ⚠️ مبلغ سند از MABL_K خودِ برگه می‌آید، و آن تا اجرای «بازسازی
+        /// نرخ میانگین» عددِ لحظه‌ی ثبت است. صدور سند پیش از آن، سندی به
+        /// نرخِ قدیمی می‌سازد — درست، ولی نه نهایی. برای همین اگر مبلغ صفر
+        /// باشد اصلاً سند صادر نمی‌شود.
+        /// </summary>
+        [HttpPost("{number:double}/sanad")]
+        [Pay2Authorize(CostForms.ItemConversion, Pay2Perm.Inp)]
+        [Pay2Authorize(CostForms.ActRebuildDocs, Pay2Perm.Run)]
+        public async Task<ActionResult<ConversionSanadResultDto>> IssueSanad(double number)
+        {
+            var svc = new Safir.Server.CostClose.GroupDocuments.ConversionRebuildService(_db);
+            var res = await svc.RebuildOneAsync(number);
+
+            if (!res.Success)
+                return BadRequest(new ConversionSanadResultDto { Ok = false, Error = res.FirstError });
+
+            if (res.SheetCount == 0)
+                return BadRequest(new ConversionSanadResultDto
+                {
+                    Ok    = false,
+                    Error = "سندی صادر نشد — یا برگه پیدا نشد، یا مقصدش ناقص است، یا مبلغش صفر است. "
+                          + "اگر مبلغ صفر است، اول «بازسازی نرخ میانگین» را اجرا کنید."
+                });
+
+            _logger.LogInformation("سند تبدیل برگه {Number} توسط {User} صادر شد: {Sanad}",
+                number, CurrentUser, res.LastSanadNumber);
+
+            return Ok(new ConversionSanadResultDto { Ok = true, SanadNumber = res.LastSanadNumber });
+        }
+
+        /// <summary>
         /// برگه‌ی تبدیل را پاک می‌کند — با شماره‌ی برگه، نه با id سطر، چون
         /// همان چیزی است که کاربر روی کاغذ می‌بیند.
         /// </summary>

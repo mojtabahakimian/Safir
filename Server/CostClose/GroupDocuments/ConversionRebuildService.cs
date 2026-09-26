@@ -68,7 +68,15 @@ namespace Safir.Server.CostClose.GroupDocuments
         private static string LeftTrim(string s, int max) => s.Length <= max ? s : s[..max];
         private static string PersianDate(long d) => $"{d / 10000:0000}/{d / 100 % 100:00}/{d % 100:00}";
 
-        public async Task<ConversionRebuildResult> RebuildAsync(long dt1, long dt2)
+        /// <summary>
+        /// سند یک برگه‌ی مشخص — همان چیزی که دکمه‌ی «صدور سند» روی صفحه‌ی
+        /// تبدیل صدا می‌زند. بازه‌ی تاریخ باز گذاشته می‌شود چون شماره‌ی برگه
+        /// خودش یکتاست.
+        /// </summary>
+        public Task<ConversionRebuildResult> RebuildOneAsync(double number)
+            => RebuildAsync(0, 99999999, number);
+
+        public async Task<ConversionRebuildResult> RebuildAsync(long dt1, long dt2, double? onlyNumber = null)
         {
             var result = new ConversionRebuildResult();
             void Log(string m) => result.Log.Add(m);
@@ -94,7 +102,8 @@ JOIN    dbo.INVO_LST i ON i.NUMBER = h.NUMBER AND i.TAG = h.TAG
 LEFT    JOIN dbo.STUF_DEF sf ON sf.CODE = i.CODE
 LEFT    JOIN dbo.STUF_DEF st ON st.CODE = i.N_RASID
 WHERE   h.TAG = 30 AND h.DATE_N BETWEEN @DT1 AND @DT2
-ORDER BY h.DATE_N, h.NUMBER", new { DT1 = dt1, DT2 = dt2 })).ToList();
+  AND   (@OnlyNumber IS NULL OR h.NUMBER = @OnlyNumber)
+ORDER BY h.DATE_N, h.NUMBER", new { DT1 = dt1, DT2 = dt2, OnlyNumber = onlyNumber })).ToList();
 
             Log($"SANADTABDIL: {sheets.Count} برگه تبدیل در بازه.");
             if (sheets.Count == 0) return result;
