@@ -47,6 +47,9 @@ public sealed class InMemoryDatabase : IDatabaseService
     /// <summary>PAY2_WORKSHOP — همه‌ی کارگاه‌های فعال.</summary>
     public List<int> AllWorkshops { get; } = new() { 1, 2, 3 };
 
+    /// <summary>RUN_ID → کارگاهِ دوره‌ی آن (برای Pay2ScopeKind.Run).</summary>
+    public Dictionary<long, int> RunWorkshops { get; } = new();
+
     /// <summary>هر INSERT ای که در PAY2_SEC_AUDIT نوشته شده.</summary>
     public List<object?> AuditWrites { get; } = new();
 
@@ -107,6 +110,14 @@ public sealed class InMemoryDatabase : IDatabaseService
                     FormName = p.Form, Caption = p.Caption,
                     Run = p.Run, See = p.See, Inp = p.Inp, Upd = p.Upd, Del = p.Del
                 }));
+
+        // Pay2ScopeResolver: کارگاهِ یک Run
+        if (sql.Contains("FROM dbo.PAY2_RUN") && typeof(TEntity) == typeof(int?))
+        {
+            var id = (long)parameters!.GetType().GetProperty("id")!.GetValue(parameters)!;
+            return Rows<TEntity>(RunWorkshops.TryGetValue(id, out var w)
+                ? new object[] { (int?)w } : Array.Empty<object>());
+        }
 
         throw new NotSupportedException(
             $"کوئری پیش‌بینی‌نشده در دیتابیس تست:\n{sql}");
