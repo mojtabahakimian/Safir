@@ -71,7 +71,7 @@ namespace Safir.Server.Ai
             if (root is null) return json;
 
             Walk(root);
-            return root.ToJsonString();
+            return root.ToJsonString(AiText.Json);
         }
 
         private void Walk(JsonNode node)

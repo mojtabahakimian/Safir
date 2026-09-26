@@ -328,21 +328,8 @@ namespace Safir.Server.Ai
                     step, ok = r.Ok, status = r.Status, tokensIn = r.TokensIn, tokensOut = r.TokensOut,
                     toolCalls = r.ToolCalls.Select(c => c.Name), textChars = r.Text?.Length ?? 0,
                     error = r.Error, detail = r.Detail
-                })
+                }, AiText.Json)
             });
-
-        /// <summary>فارسیِ خروجی ابزار در لاگ خوانا باشد، نه «بد…».</summary>
-        private static string Readable(string json)
-        {
-            try
-            {
-                return System.Text.Json.Nodes.JsonNode.Parse(json)?.ToJsonString(new JsonSerializerOptions
-                {
-                    Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping
-                }) ?? json;
-            }
-            catch (JsonException) { return json; }   // مثلاً با پیشوندِ «⚠ فقط N سطر اول…»
-        }
 
         private async Task<(string Content, AiChatStepDto Step)> RunToolAsync(
             int userCo, string? userName, Guid conversationId,
@@ -396,8 +383,7 @@ namespace Safir.Server.Ai
                     return ($"خطا: {result.Error}",
                             new AiChatStepDto { Tool = call.Name, Ok = false, Note = result.Error });
 
-                var json = JsonSerializer.Serialize(result.Data,
-                    new JsonSerializerOptions { WriteIndented = false });
+                var json = JsonSerializer.Serialize(result.Data, AiText.Json);
 
                 // نام مشتری/کالا/حساب پیش از رفتن به مدل شناسه می‌شود (MaskNames)
                 if (masker is not null) json = masker.MaskJson(json);
@@ -412,7 +398,7 @@ namespace Safir.Server.Ai
                 {
                     ConversationId = conversationId, UserCo = userCo, UserName = userName,
                     Kind = 4, ToolName = call.Name, RowsReturned = result.Rows,
-                    Payload = Readable(json) is var log && log.Length <= 8000 ? log : log[..8000] + "…(بریده شد)"
+                    Payload = json.Length <= 8000 ? json : json[..8000] + "…(بریده شد)"
                 });
 
                 return (json, new AiChatStepDto

@@ -31,5 +31,15 @@ namespace Safir.Server.Ai
         /// <summary>عبارت SQL که ستونِ متنی را به همان شکلِ NormalizeFa درمی‌آورد (برای LIKE).</summary>
         public static string SqlFa(string column) =>
             $"REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE({column}, NCHAR(1610), NCHAR(1740)), NCHAR(1609), NCHAR(1740)), NCHAR(1603), NCHAR(1705)), NCHAR(8204), N' '), N'  ', N' '), N'  ', N' ')";
+
+        /// <summary>
+        /// JSON خروجی ابزارها برای مدل: فارسی به همان شکل، نه به‌شکلِ کدهای \uXXXX. با فرار پیش‌فرض، هر حرف
+        /// فارسی ۶ نویسه‌ی لاتین می‌شد و توکنِ خروجیِ ابزار چند برابر؛ مدل هم باید آن را رمزگشایی می‌کرد.
+        /// گیومه و نویسه‌های کنترلی همچنان درست فرار داده می‌شوند (JSON معتبر می‌ماند).
+        /// </summary>
+        public static readonly System.Text.Json.JsonSerializerOptions Json = new()
+        {
+            Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping
+        };
     }
 }
