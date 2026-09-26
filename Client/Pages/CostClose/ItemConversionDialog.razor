@@ -117,6 +117,12 @@
     </DialogContent>
 
     <DialogActions>
+        @if (_busy)
+        {
+            <MudText Typo="Typo.caption" Class="mud-text-secondary me-auto ms-3">
+                ثبت برگه، بازسازی نرخ و صدور سند…
+            </MudText>
+        }
         <MudButton OnClick="@(() => MudDialog.Cancel())" Disabled="_busy">انصراف</MudButton>
         <MudButton Color="Color.Primary" Variant="Variant.Filled" Disabled="@(!CanSubmit)" OnClick="Submit">
             ثبت تبدیل

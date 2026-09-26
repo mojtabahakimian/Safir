@@ -109,6 +109,78 @@ namespace Safir.Server.CostClose.ItemConversion
 
         // ───────────────────────── ثبت ─────────────────────────
 
+        /// <summary>
+        /// کارهایی که بعد از ثبتِ برگه باید بشوند تا برگه «تمام» باشد:
+        /// بازسازی نرخ و صدور سند.
+        ///
+        /// ── چرا خودکار ──
+        /// بدون این دو، برگه‌ای می‌ماند با مبلغِ لحظه‌ی ثبت و بدون سند —
+        /// یعنی کاربر باید دو کارِ دیگر را جداگانه به یاد بیاورد، و اگر
+        /// نیاورد کاردکس و حسابداری از هم جدا می‌مانند.
+        ///
+        /// ── چرا دو پاس ──
+        /// پاس اول روی کالای مبدأ، چون Case 30 است که MABL_K را می‌نویسد.
+        /// پاس دوم روی کالای مقصد، که Case 31 همان MABL_K را می‌خواند.
+        /// یک پاسِ مشترک هم کار می‌کرد ولی ترتیبِ پیمایشِ دو کد تضمین‌شده
+        /// نیست؛ اینجا هست.
+        ///
+        /// ── چرا خطا نمی‌دهد ──
+        /// برگه ثبت شده و درست است. اگر بازسازی یا سند نشد، همان را
+        /// می‌گوییم و کاربر از صفحه دوباره می‌زند — پاک کردنِ برگه‌ی سالم
+        /// بابتِ یک گامِ بعدی، بدتر است.
+        /// </summary>
+        private async Task FinalizeAsync(ConversionResultDto result, string fromCode, string toCode)
+        {
+            try
+            {
+                var rate = new AverageRateRebuild.AverageRateRebuildService(_db);
+
+                await rate.RebuildAsync(onlyCodes: new[] { fromCode });
+                await rate.RebuildAsync(onlyCodes: new[] { toCode });
+
+                result.Value = (await _db.DoGetDataSQLAsync<double?>(
+                    "SELECT MABL_K FROM dbo.INVO_LST WHERE TAG = @Tag AND NUMBER = @Number",
+                    new { Tag = ConversionTag, Number = result.Number })).FirstOrDefault() ?? 0;
+
+                result.PostSteps.Add(result.Value > 0
+                    ? $"نرخ بازسازی شد — ارزش برگه {result.Value:N0} ریال."
+                    : "نرخ بازسازی شد، ولی ارزش برگه صفر ماند: کالای مبدأ در این انبار نرخی ندارد.");
+            }
+            catch (Exception ex)
+            {
+                result.PostSteps.Add($"بازسازی نرخ انجام نشد: {ex.Message}");
+                return;
+            }
+
+            // سندِ صفر چیزی ثبت نمی‌کند و فقط یک سربرگ بی‌اثر در دفتر
+            // می‌گذارد؛ ConversionRebuildService هم خودش ردش می‌کند.
+            if (result.Value <= 0)
+            {
+                result.PostSteps.Add("سند صادر نشد چون مبلغ صفر است.");
+                return;
+            }
+
+            try
+            {
+                var docs = new GroupDocuments.ConversionRebuildService(_db);
+                var res = await docs.RebuildOneAsync(result.Number);
+
+                if (res.Success && res.SheetCount > 0)
+                {
+                    result.SanadNumber = res.LastSanadNumber;
+                    result.PostSteps.Add($"سند {res.LastSanadNumber} صادر شد.");
+                }
+                else
+                {
+                    result.PostSteps.Add($"سند صادر نشد: {res.FirstError ?? "دلیل نامشخص"}");
+                }
+            }
+            catch (Exception ex)
+            {
+                result.PostSteps.Add($"صدور سند انجام نشد: {ex.Message}");
+            }
+        }
+
         public async Task<ConversionResultDto> CreateAsync(CreateConversionRequest req, string user)
         {
             var preview = await PreviewAsync(req);
@@ -119,9 +191,10 @@ namespace Safir.Server.CostClose.ItemConversion
                 ? $"تبدیل {preview.FromName} به {preview.ToName}"
                 : req.Note!.Trim();
 
+            ConversionResultDto result;
             try
             {
-                return await _db.ExecuteInTransactionAsync(async (cn, tx) =>
+                result = await _db.ExecuteInTransactionAsync(async (cn, tx) =>
                 {
                     // بدون UPDLOCK/HOLDLOCK دو کاربر همزمان یک شماره می‌گیرند
                     // — همان الگوی ProformasController.
@@ -195,6 +268,13 @@ VALUES (@Number, @Tag, @FromAnbar, @ToAnbar, @FromCode, @FromQty, @FromQty, @Fro
             {
                 return new ConversionResultDto { Ok = false, Error = ex.Message };
             }
+
+            // ⚠️ بیرون از تراکنش، و عمداً. بازسازی نرخ کلِ کاردکسِ دو کالا را
+            //    می‌پیماید و ده‌ها UPDATE می‌زند؛ نگه‌داشتنِ تراکنشِ درج تا
+            //    پایانِ آن، قفل‌ها را روی جدول‌هایی می‌گذارد که بقیه‌ی برنامه
+            //    هم از آن‌ها می‌خواند. برگه تا اینجا commit شده و معتبر است.
+            await FinalizeAsync(result, preview.FromCode, preview.ToCode);
+            return result;
         }
 
         // ───────────────────────── حذف ─────────────────────────

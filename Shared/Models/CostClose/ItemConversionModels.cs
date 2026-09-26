@@ -126,7 +126,19 @@ namespace Safir.Shared.Models.CostClose
         public bool    Ok           { get; set; }
         public long    ConversionId { get; set; }
         public double  Number       { get; set; }
+
+        /// <summary>ارزش نهایی — پس از بازسازی نرخ، نه عددِ لحظه‌ی ثبت.</summary>
         public double  Value        { get; set; }
+
+        /// <summary>اگر سند صادر شده باشد، شماره‌اش.</summary>
+        public long?   SanadNumber  { get; set; }
+
+        /// <summary>
+        /// آنچه پس از ثبت اتفاق افتاد — بازسازی نرخ و صدور سند. اگر یکی‌شان
+        /// نشد، دلیلش اینجاست. برگه در هر حال ثبت شده است.
+        /// </summary>
+        public List<string> PostSteps { get; set; } = new();
+
         public string? Error        { get; set; }
     }
 }

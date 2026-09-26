@@ -168,7 +168,23 @@
         var res = await dlg.Result;
         if (res is { Canceled: false })
         {
-            Snackbar.Add("برگه تبدیل ثبت شد.", Severity.Success);
+            // ثبت، بازسازی نرخ و صدور سند در یک حرکت انجام می‌شوند؛ کاربر
+            // باید نتیجه‌ی هر سه را ببیند، نه فقط «ثبت شد».
+            var dto = res.Data as ConversionResultDto;
+
+            Snackbar.Add(
+                dto?.SanadNumber is not null
+                    ? $"برگه ثبت شد و سند {dto.SanadNumber} صادر شد."
+                    : "برگه تبدیل ثبت شد.",
+                Severity.Success);
+
+            foreach (var step in dto?.PostSteps ?? new())
+            {
+                // هر چیزی که «نشد» را جدا و با رنگ هشدار نشان می‌دهیم.
+                var failed = step.Contains("نشد") || step.Contains("صفر");
+                if (failed) Snackbar.Add(step, Severity.Warning);
+            }
+
             await Load();
         }
     }
