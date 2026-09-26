@@ -81,14 +81,22 @@ namespace Safir.Server.Ai
             "SALA_DTL", "SAL_CHEK",
             // viewهایی که همان جدول‌ها را می‌خوانند؛ SALS نام کاربری کدشده را نشان می‌دهد
             "SALS", "SALSUSER",
-            "AI_Config", "AI_UserAccess", "AI_ChatLog", "AI_Conversation"
+            "AI_Config", "AI_UserAccess", "AI_ChatLog", "AI_Conversation",
+            // حقوق و دستمزدِ قدیمیِ WPF (module_payroll). در آزمون عمیق ۱۴۰۵/۰۷/۰۴ مدل وقتی PAY2_* را
+            // بسته دید، خودش سراغ PERSONEL و PHOKM رفت و حقوقِ روزانه‌ی پنج نفر را با نام گفت.
+            "PERSONEL", "PHOKM", "PGHARAR", "WORKING", "WORKHEAD", "PVAM", "PVAM_BAZ",
+            "SALARY_BEDTT", "SALARY_BESTT", "SALARY_EYDY", "ONE_SALARY", "PMORAKH", "PLIST_MALIAT",
+            "DSKKAR00", "DSKWOR00",
+            // تابع‌هایی که همان جدول‌ها را برمی‌گردانند (sys.sql_expression_dependencies)
+            "LASTHOKM", "LASTHOK2", "SELECT_HOKM"
         };
 
         /// <summary>
         /// حقوق و دستمزد: خواندنِ مستقیمش کنترل دسترسیِ کارگاه (PAY2_USER_WS)
         /// را دور می‌زند.
         /// </summary>
-        private static readonly string[] DeniedPrefixes = { "PAY2_", "V_PAY2_" };
+        // LIST_SALARY* / listsalary_* / Q_FISH_*: تابع‌های فیش و لیست حقوق WPF
+        private static readonly string[] DeniedPrefixes = { "PAY2_", "V_PAY2_", "LIST_SALARY", "LISTSALARY", "Q_FISH_" };
 
         /// <summary>
         /// همان فهرستِ ممنوع برای ابزارهای ساختار و مستند (list_tables، describe_table،
