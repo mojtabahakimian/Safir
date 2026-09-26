@@ -209,21 +209,29 @@
         HandleConnectivityResult(status, userMsg, techMsg, "هنگام بارگذاری برنامه");
     }
 
+    // هشدار کاذب در موبایل: وقتی کاربر به برنامه‌ی دیگری می‌رود مرورگر تب را منجمد می‌کند؛ با برگشتن،
+    // اولین بررسی یا قبل از وصل شدن دوباره‌ی شبکه اجرا می‌شد یا مهلت ۷ثانیه‌ای‌اش در همان انجماد سر
+    // آمده بود، و یک شکست تنها هشدار می‌داد. هشدار هم دیگر خودکار بسته نمی‌شد چون بررسی دوره‌ای
+    // با هشدار فعال متوقف بود. حالا: تب پنهان بررسی نمی‌شود، شکست یک‌بار دیگر با فاصله تأیید
+    // می‌شود، و بررسی با هشدار فعال هم ادامه دارد تا با برگشتن اتصال هشدار خودش بسته شود.
     private async Task PeriodicConnectivityCheck()
     {
-        // فقط اگر هشدار قبلاً نمایش داده نشده یا وضعیت قبلی سالم بوده است، بررسی کنید
-        // تا از نمایش مکرر هشدار برای یک مشکل پایدار جلوگیری شود.
-        // یا اینکه همیشه بررسی کنید و فقط در صورت تغییر وضعیت، Snackbar جدید نشان دهید.
-        // در اینجا، اگر هشدار فعال است، بررسی مجدد نمی‌کنیم تا کاربر دستی Retry کند.
-        if (!showConnectivityWarning)
+        if (await IsPageHiddenAsync()) return;
+
+        var (status, userMsg, techMsg) = await Connectivity.CheckConnectivityAsync();
+        if (status != ConnectivityStatus.Healthy && !showConnectivityWarning)
         {
-            var (status, userMsg, techMsg) = await Connectivity.CheckConnectivityAsync();
-            // فقط اگر وضعیت بد است و قبلا خوب بوده، هشدار را نشان بده
-            if (status != ConnectivityStatus.Healthy)
-            {
-                HandleConnectivityResult(status, userMsg, techMsg, "بررسی دوره‌ای");
-            }
+            await Task.Delay(TimeSpan.FromSeconds(5));
+            if (await IsPageHiddenAsync()) return;
+            (status, userMsg, techMsg) = await Connectivity.CheckConnectivityAsync();
         }
+        HandleConnectivityResult(status, userMsg, techMsg, "بررسی دوره‌ای");
+    }
+
+    private async Task<bool> IsPageHiddenAsync()
+    {
+        try { return await JSRuntime.InvokeAsync<string>("eval", "document.visibilityState") == "hidden"; }
+        catch { return false; }
     }
 
     private async Task RetryConnectivityCheck()
@@ -246,10 +254,15 @@
 
     private void HandleConnectivityResult(ConnectivityStatus status, string userMessage, string? technicalMessage, string context)
     {
+        // بررسی دوره‌ای حالا هر دقیقه (حتی وقتی همه‌چیز سالم است) به اینجا می‌رسد؛ فقط وقتی هشدار
+        // واقعاً عوض شده رندر کن تا کل چیدمان بی‌دلیل هر دقیقه دوباره رسم نشود
+        var wasShown = showConnectivityWarning;
+        var oldMessage = connectivityWarningMessage;
         if (status != ConnectivityStatus.Healthy)
         {
             showConnectivityWarning = true;
-            connectivityWarningMessage = $"هشدار ({context}): {userMessage}";
+            // «بررسی دوره‌ای» و امثالش برای کاربر معنایی ندارد؛ فقط در لاگ کنسول می‌ماند
+            connectivityWarningMessage = userMessage;
 
             // یک اسنک‌بار برای جلب توجه، اما هشدار اصلی در MudAlert خواهد بود
             // Snackbar.Add(connectivityWarningMessage, Severity.Warning, config =>
@@ -275,7 +288,8 @@
             showConnectivityWarning = false;
             connectivityWarningMessage = "";
         }
-        InvokeAsync(StateHasChanged); // اطمینان از به‌روزرسانی UI
+        if (wasShown != showConnectivityWarning || oldMessage != connectivityWarningMessage)
+            InvokeAsync(StateHasChanged);
     }
 
     // متد برای بروزرسانی اطلاعات مشتری و تعداد آیتم‌ها

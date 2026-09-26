@@ -423,6 +423,10 @@
         }
     }
 
+    // پیام چندخطی (مثل فهرست پرسنلِ ناقص برای لیست بیمه) در پنجره‌ای که کاربر خودش می‌بندد
+    void ShowError(string message) =>
+        Safir.Client.Shared.MessageDialog.ShowError(DialogService, Snackbar, message);
+
     async Task GenerateInsuranceDiskette()
     {
         if (SelectedWsId <= 0 || SelectedPeriodDate <= 0) 
@@ -451,7 +455,7 @@
         }
         catch (Exception ex)
         {
-            Snackbar.Add(ex.Message, MudBlazor.Severity.Error);
+            ShowError(ex.Message);
         }
         finally
         {

@@ -2,6 +2,7 @@
 @using Safir.Client.Components.Grid
 @inject Safir.Client.Services.Pay2RunApiService RunApi
 @inject ISnackbar Snackbar
+@inject MudBlazor.IDialogService DialogService
 
 @if (IsOpen)
 {
@@ -124,7 +125,7 @@
         }
         catch (Exception ex)
         {
-            Snackbar.Add(ex.Message, MudBlazor.Severity.Error);
+            Safir.Client.Shared.MessageDialog.ShowError(DialogService, Snackbar, ex.Message);
             await Close();
         }
         finally

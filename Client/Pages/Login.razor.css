@@ -1,0 +1,48 @@
+/* صفحه‌ی ورود — آبی آسمانی به‌جای سبز پیش‌فرض تم MudBlazor.
+   رنگ اصلی فقط داخل همین صفحه عوض می‌شود؛ زمینه و متن از پالت می‌آید تا تم تاریک هم درست بماند. */
+
+.safir-login {
+    /* رنگ‌بندی موقت از روی گرادیان پیشنهادی (#4dbef5 → #0b89d0) و لوگوی جدید سفیر */
+    --safir-sky-light: #4dbef5;
+    --safir-sky: #0b89d0;
+    --mud-palette-primary: var(--safir-sky);
+    --mud-palette-primary-rgb: 11,137,208;
+    --mud-palette-primary-text: #ffffff;
+    --mud-palette-primary-darken: #0877b6;
+    --mud-palette-primary-lighten: var(--safir-sky-light);
+    --mud-palette-primary-hover: rgba(11,137,208,0.08);
+}
+
+/* دکمه‌های پر (ورود، ذخیره تنظیمات) با همان گرادیان؛ حالت غیرفعال رنگ خاکستری خودش را نگه می‌دارد */
+.safir-login ::deep .mud-button-filled-primary:not(.mud-button-disabled):not(:disabled) {
+    background: linear-gradient(135deg, var(--safir-sky-light) 0%, var(--safir-sky) 100%);
+    box-shadow: 0 4px 14px rgba(11, 137, 208, 0.28);
+}
+
+    .safir-login ::deep .mud-button-filled-primary:not(.mud-button-disabled):not(:disabled):hover {
+        background: linear-gradient(135deg, #3fb2ec 0%, #0877b6 100%);
+    }
+
+.safir-login-logo {
+    width: 72px;
+    height: 72px;
+    object-fit: contain;
+}
+
+.safir-login-title {
+    font-weight: 800;
+    font-size: 24px;
+    background: linear-gradient(135deg, var(--safir-sky-light) 0%, var(--safir-sky) 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+}
+
+/* پرکردن خودکار مرورگر (Chrome) زمینه‌ی آبی‌روشنِ خودش را روی نیمی از فیلد می‌کشید */
+.safir-login ::deep input:-webkit-autofill,
+.safir-login ::deep input:-webkit-autofill:hover,
+.safir-login ::deep input:-webkit-autofill:focus {
+    -webkit-box-shadow: 0 0 0 1000px var(--mud-palette-surface) inset;
+    -webkit-text-fill-color: var(--mud-palette-text-primary);
+    caret-color: var(--mud-palette-text-primary);
+}

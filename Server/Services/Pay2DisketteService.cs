@@ -635,16 +635,67 @@ namespace Safir.Server.Services
 
         private static void ValidateInsuranceIdentities(IEnumerable<dynamic> lines)
         {
+            var gaps = new List<InsuranceIdentityGap>();
             foreach (var line in lines)
             {
-                string employee = $"EMP_ID={(int)line.EMP_ID}، EMP_CODE={line.EMP_CODE?.ToString() ?? "-"}";
-                if (IsMissingInsuranceCode(line.INS_CODE?.ToString()))
-                    throw new InvalidOperationException($"فایل بیمه قابل تولید نیست: شماره بیمه پرسنل {employee} خالی یا صفر است. اگر این پرسنل بیمه نمی‌شود، در پرونده‌اش «نوع بیمه» را «معاف از بیمه» بگذارید.");
-                if (string.IsNullOrWhiteSpace(line.FIRST_NAME?.ToString()) || string.IsNullOrWhiteSpace(line.LAST_NAME?.ToString()))
-                    throw new InvalidOperationException($"فایل بیمه قابل تولید نیست: نام یا نام خانوادگی پرسنل {employee} خالی است.");
-                if (string.IsNullOrWhiteSpace(line.JOB_CODE?.ToString()))
-                    throw new InvalidOperationException($"فایل بیمه قابل تولید نیست: کد شغل پرسنل {employee} خالی است.");
+                string first = line.FIRST_NAME?.ToString()?.Trim() ?? "";
+                string last = line.LAST_NAME?.ToString()?.Trim() ?? "";
+                string code = line.EMP_CODE?.ToString()?.Trim() ?? "";
+                gaps.Add(new InsuranceIdentityGap(
+                    $"{first} {last}".Trim(),
+                    string.IsNullOrEmpty(code) ? $"شناسه {(int)line.EMP_ID}" : code,
+                    IsMissingInsuranceCode(line.INS_CODE?.ToString()),
+                    first.Length == 0 || last.Length == 0,
+                    string.IsNullOrWhiteSpace(line.JOB_CODE?.ToString())));
             }
+
+            var message = DescribeInsuranceIdentityGaps(gaps);
+            if (message != null)
+                throw new InvalidOperationException(message);
+        }
+
+        public sealed record InsuranceIdentityGap(string Name, string EmpCode, bool MissingInsCode, bool MissingName, bool MissingJobCode);
+
+        // همه‌ی پرسنلِ ناقص یک‌جا، با نام و کد پرسنلی و راه رفع — نه فقط اولین نفر با EMP_ID.
+        // کاربر قبلاً با هر بار اصلاح فقط نفر بعدی را می‌دید، و چون لیست از اطلاعاتِ ثبت‌شده
+        // در محاسبه‌ی همان ماه ساخته می‌شود، بدون بازمحاسبه اصلاح پرونده هم بی‌اثر به‌نظر می‌رسید.
+        public static string? DescribeInsuranceIdentityGaps(IEnumerable<InsuranceIdentityGap> gaps)
+        {
+            const int MaxNames = 10;
+            var list = gaps.ToList();
+            var groups = new (string Title, string Fix, List<InsuranceIdentityGap> People)[]
+            {
+                ("شماره بیمه ندارند (خالی یا صفر)",
+                 "اگر بیمه نمی‌شوند «نوع بیمه» را «معاف از بیمه» بگذارید؛ اگر بیمه می‌شوند «شماره بیمه» را وارد کنید.",
+                 list.Where(g => g.MissingInsCode).ToList()),
+                ("نام یا نام خانوادگی ندارند",
+                 "نام و نام خانوادگی را کامل کنید.",
+                 list.Where(g => g.MissingName).ToList()),
+                ("کد شغل ندارند",
+                 "در پرونده «شغل» را انتخاب کنید و اگر انتخاب شده، در «مدیریت مشاغل» کد شغلِ آن را وارد کنید.",
+                 list.Where(g => g.MissingJobCode).ToList()),
+            };
+
+            var people = groups.SelectMany(g => g.People).Distinct().Count();
+            if (people == 0) return null;
+
+            var sb = new StringBuilder();
+            sb.Append($"لیست بیمه ساخته نشد: اطلاعات {people} نفر ناقص است.");
+            foreach (var (title, fix, group) in groups.Where(g => g.People.Count > 0))
+            {
+                sb.Append($"\n\n{group.Count} نفر {title}:");
+                foreach (var g in group.Take(MaxNames))
+                    sb.Append(g.Name.Length > 0 ? $"\n• {g.Name} (کد پرسنلی {g.EmpCode})" : $"\n• کد پرسنلی {g.EmpCode}");
+                if (group.Count > MaxNames)
+                    sb.Append($"\n• و {group.Count - MaxNames} نفر دیگر");
+                sb.Append($"\nراه رفع: {fix}");
+            }
+            sb.Append("\n\nمراحل:");
+            sb.Append("\n۱. در «پرسنل و احکام» پرونده‌ی این افراد را طبق بالا اصلاح کنید.");
+            sb.Append("\n۲. در «محاسبه حقوق» همین ماه را دوباره محاسبه کنید؛ لیست بیمه از اطلاعات همان محاسبه ساخته می‌شود و بدون بازمحاسبه اصلاح پرونده اثر نمی‌کند.");
+            sb.Append(" اگر سند صادر شده: لغو صدور سند ← لغو تأیید ← بازمحاسبه حقوق ← تأیید نهایی ← صدور قطعی سند.");
+            sb.Append("\n۳. دوباره لیست بیمه را بگیرید.");
+            return sb.ToString();
         }
 
         internal static string DateInOccurrenceMonth(object? value, long periodDate)
