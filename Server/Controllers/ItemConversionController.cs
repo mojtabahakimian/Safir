@@ -40,8 +40,8 @@ namespace Safir.Server.Controllers
         [HttpGet]
         [Pay2Authorize(CostForms.ItemConversion, Pay2Perm.See)]
         public async Task<ActionResult<List<ConversionRowDto>>> List(
-            [FromQuery] long? dt1, [FromQuery] long? dt2, [FromQuery] bool includeVoided = false)
-            => Ok(await Service.ListAsync(dt1, dt2, includeVoided));
+            [FromQuery] long? dt1, [FromQuery] long? dt2)
+            => Ok(await Service.ListAsync(dt1, dt2));
 
         /// <summary>
         /// آنچه ثبت خواهد شد — نرخ، مبلغ، موجودی و هشدارها. هیچ چیزی
@@ -65,21 +65,24 @@ namespace Safir.Server.Controllers
             }
 
             _logger.LogInformation(
-                "تبدیل {Id}: {From} → {To} به مبلغ {Value} توسط {User} (حواله {Issue}، رسید {Receipt})",
-                res.ConversionId, req.FromCode, req.ToCode, res.Value, CurrentUser,
-                res.IssueNumber, res.ReceiptNumber);
+                "تبدیل {Number}: {From} → {To} به مبلغ {Value} توسط {User}",
+                res.Number, req.FromCode, req.ToCode, res.Value, CurrentUser);
 
             return Ok(res);
         }
 
-        [HttpDelete("{id:int}")]
+        /// <summary>
+        /// برگه‌ی تبدیل را پاک می‌کند — با شماره‌ی برگه، نه با id سطر، چون
+        /// همان چیزی است که کاربر روی کاغذ می‌بیند.
+        /// </summary>
+        [HttpDelete("{number:double}")]
         [Pay2Authorize(CostForms.ItemConversion, Pay2Perm.Del)]
-        public async Task<IActionResult> Void(int id)
+        public async Task<IActionResult> Delete(double number)
         {
-            var (ok, error) = await Service.VoidAsync(id, CurrentUser);
+            var (ok, error) = await Service.DeleteAsync(number);
             if (!ok) return BadRequest(error);
 
-            _logger.LogInformation("تبدیل {Id} توسط {User} ابطال شد", id, CurrentUser);
+            _logger.LogInformation("برگه تبدیل {Number} توسط {User} پاک شد", number, CurrentUser);
             return Ok();
         }
     }

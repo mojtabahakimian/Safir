@@ -181,7 +181,6 @@ builder.Services.AddScoped<Safir.Server.CostClose.ICostStep, Safir.Server.CostCl
 builder.Services.AddScoped<Safir.Server.CostClose.ICostStep, Safir.Server.CostClose.Steps.S09_ApplyDecisions>();
 builder.Services.AddScoped<Safir.Server.CostClose.ICostStep, Safir.Server.CostClose.Steps.S10_BalanceConversion>();
 builder.Services.AddScoped<Safir.Server.CostClose.ICostStep, Safir.Server.CostClose.Steps.S11_PropagateRates>();
-builder.Services.AddScoped<Safir.Server.CostClose.ICostStep, Safir.Server.CostClose.Steps.S11B_BalanceConversions>();
 builder.Services.AddScoped<Safir.Server.CostClose.ICostStep, Safir.Server.CostClose.Steps.S12_CalcMargin>();
 
 builder.Services.AddScoped<Safir.Server.CostClose.IBoardReportBuilder, Safir.Server.CostClose.BoardReportBuilder>();

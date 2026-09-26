@@ -10,10 +10,9 @@
     ثبت یک تبدیل.
 
     ── چرا نرخ ورودی ندارد ──
-    عمدی است. تا امروز کاربر نرخ سمت ورود را تایپ می‌کرد و همان کار،
-    مانده روی حساب واسط می‌گذاشت: بازسازی نرخ میانگین سمت خروج را
-    دوباره قیمت می‌زند و سمت ورود همان عدد تایپ‌شده می‌ماند. اینجا
-    مبلغ فقط *نمایش* داده می‌شود؛ آمدنش از کاردکس است.
+    عمدی است. برگه یک MABL_K دارد که ارزشِ هر دو سر است، و آن هم از
+    میانگین کاردکسِ کالای مبدأ می‌آید. اینجا فقط *نمایش* داده می‌شود.
+    نرخ کالای مقصد هم مشتق است: مبلغ ÷ مقدار ورود.
 *@
 
 <MudDialog>
@@ -70,17 +69,6 @@
                                  Value="_toQty" ValueChanged="OnToQtyChanged"
                                  Min="0" HideSpinButtons Class="flex-grow-1" />
             </div>
-
-            <MudText Typo="Typo.subtitle2">حساب واسط</MudText>
-            <MudDivider Class="mb-2" />
-
-            <MudTextField T="string" Label="کد حساب (کل-معین-تفصیل) *" Dense Variant="Variant.Outlined"
-                          Value="_account" ValueChanged="OnAccountChanged" Class="mb-1"
-                          Placeholder="741-3000-3000" Direction="ltr" />
-            @if (_preview?.AccountName is { Length: > 0 })
-            {
-                <MudText Typo="Typo.caption" Class="mud-text-secondary">@_preview.AccountName</MudText>
-            }
 
             <MudTextField T="string" Label="شرح" Dense Variant="Variant.Outlined"
                           @bind-Value="_note" Class="mt-3" />
@@ -146,7 +134,6 @@
     private int    _toAnbar;
     private double _fromQty;
     private double _toQty;
-    private string _account = "";
     private string? _note;
 
     private List<TCOD_ANBAR> _anbarha = new();
@@ -154,7 +141,6 @@
     private bool _busy;
     private string? _error;
 
-    private const string LastAccountKey = "CostClose_LastConversionAccount";
 
     private bool CanSubmit => !_busy && _preview is { CanSubmit: true };
 
@@ -172,7 +158,6 @@
     private async Task OnToAnbarChanged(int v)             { _toAnbar = v;   await Refresh(); }
     private async Task OnFromQtyChanged(double v)          { _fromQty = v;   await Refresh(); }
     private async Task OnToQtyChanged(double v)            { _toQty = v;     await Refresh(); }
-    private async Task OnAccountChanged(string v)          { _account = v;   await Refresh(); }
 
     private long? ParsedDate => long.TryParse(_dateStr?.Replace("/", ""), out var d) ? d : null;
 
@@ -185,7 +170,6 @@
         ToCode      = _toItem?.Code ?? "",
         ToAnbar     = _toAnbar,
         ToQty       = _toQty,
-        AccountCode = _account ?? "",
         Note        = _note
     };
 

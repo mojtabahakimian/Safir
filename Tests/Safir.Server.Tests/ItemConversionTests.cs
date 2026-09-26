@@ -4,106 +4,119 @@ using Xunit;
 namespace Safir.Server.Tests;
 
 /// <summary>
-/// تبدیل کالا به کالا.
+/// تبدیل کالا به کالا — برگه‌ی TAG=30.
 ///
-/// یک تبدیل فقط وقتی درست است که دو سرش هم‌مبلغ باشند. این تست‌ها همان
-/// قاعده و لبه‌هایش را قفل می‌کنند — به‌خصوص حالتی که روی داده‌ی واقعی
-/// اتفاق افتاده بود: مبلغِ سمت خروج بعد از بازسازی نرخ عوض می‌شود و سمت
-/// ورود جا می‌ماند.
+/// برگه یک سطر است و یک مبلغ دارد که ارزشِ هر دو سر است. پس برخلاف
+/// روشِ قدیمی (دو برگه، دو مبلغ)، «نامتوازن شدن» اصلاً حالتِ ممکنی
+/// نیست. چیزی که *هست* و باید گرفته شود، برگه‌ی ناقص است: کالا از
+/// انبار رفته و مقصدش مشخص نیست.
 /// </summary>
 public class ItemConversionTests
 {
-    private static ConversionRowDto Row(double issue, double receipt) => new()
+    private static ConversionRowDto Row(
+        string? toCode = "2044", int? toAnbar = 2, double? toQty = 142, double value = 268_154_459) => new()
     {
         ConversionId = 1,
+        Number       = 7,
         DateN        = 14050231,
-        AccountCode  = "741-3000-3000",
         FromCode     = "328",
+        FromAnbar    = 7,
         FromQty      = 331.5,
-        ToCode       = "2044",
-        ToQty        = 331.5,
-        IssueValue   = issue,
-        ReceiptValue = receipt,
-        Gap          = issue - receipt
+        ToCode       = toCode,
+        ToAnbar      = toAnbar,
+        ToQty        = toQty,
+        Value        = value,
+        ToRate       = toQty is > 0 ? value / toQty.Value : 0
     };
 
     [Fact]
-    public void Two_legs_at_the_same_amount_are_balanced()
-        => Assert.True(Row(268_154_459, 268_154_459).IsBalanced);
+    public void A_sheet_with_both_sides_filled_is_complete()
+        => Assert.True(Row().IsComplete);
 
     /// <summary>
-    /// همان عددی که روی پایگاه پودر مروارید روی حساب «تبدیل» مانده بود.
-    /// اگر روزی این تست سبز شد بدون اینکه Gap صفر شود، یعنی آستانه را
-    /// کسی باز کرده.
+    /// سه راهِ ناقص‌بودن، و هر سه یک نتیجه دارند: کالا از انبار خارج شده
+    /// و هیچ‌جا وارد نمی‌شود. CHK-24 هر سه را می‌گیرد.
     /// </summary>
     [Fact]
-    public void The_real_world_gap_is_reported_as_unbalanced()
-    {
-        var row = Row(268_154_459, 272_915_331);
+    public void A_sheet_with_no_target_item_is_incomplete()
+        => Assert.False(Row(toCode: null).IsComplete);
 
-        Assert.False(row.IsBalanced);
-        Assert.Equal(-4_760_872, row.Gap);
-    }
+    [Fact]
+    public void A_blank_target_item_counts_as_missing_not_as_a_code()
+        => Assert.False(Row(toCode: "   ").IsComplete);
 
-    /// <summary>
-    /// اختلافِ زیر نیم ریال گرد کردن است، نه مغایرت. نرخ واحد اعشاری است
-    /// و ضرب‌وتقسیمش همیشه یک دنباله‌ی کوچک می‌گذارد؛ اگر این را مغایرت
-    /// بشماریم، هر تبدیلی برای همیشه قرمز می‌ماند.
-    /// </summary>
-    [Theory]
-    [InlineData(0.0)]
-    [InlineData(0.4)]
-    [InlineData(-0.4)]
-    public void Rounding_dust_is_not_a_mismatch(double gap)
-        => Assert.True(Row(100_000 + gap, 100_000).IsBalanced);
+    [Fact]
+    public void A_sheet_with_no_target_warehouse_is_incomplete()
+        => Assert.False(Row(toAnbar: null).IsComplete);
 
     [Theory]
-    [InlineData(0.6)]
-    [InlineData(-0.6)]
-    public void Anything_above_the_threshold_is(double gap)
-        => Assert.False(Row(100_000 + gap, 100_000).IsBalanced);
+    [InlineData(0)]
+    [InlineData(-5)]
+    public void A_sheet_with_no_incoming_quantity_is_incomplete(double qty)
+        => Assert.False(Row(toQty: qty).IsComplete);
 
     /// <summary>
-    /// نرخ مقصد از *مقدار ورودی* مشتق می‌شود و نه از مقدار خروجی — این
-    /// همان چیزی است که تبدیل را از انتقال جدا می‌کند: ۳۳۱ کیلو خامه
-    /// ۲۸٪ می‌تواند ۱۴۲ کیلو خامه ۶۵٪ بدهد و ارزش هر دو یکی است.
+    /// نرخ مقصد از *مقدار ورود* مشتق می‌شود و نه از مقدار خروج — همین
+    /// تبدیل را از انتقال جدا می‌کند: ۳۳۱ کیلو خامه ۲۸٪ می‌تواند ۱۴۲
+    /// کیلو خامه ۶۵٪ بدهد و ارزشِ کل عوض نمی‌شود.
     /// </summary>
     [Fact]
     public void The_target_rate_comes_from_the_incoming_quantity()
     {
-        var value  = 268_154_459d;
-        var toQty  = 142.0;
-        var toRate = value / toQty;
+        var row = Row();
 
-        Assert.Equal(1_888_411.68, Math.Round(toRate, 2));
-
-        // و ارزش کل عوض نشده — فقط زیر نام دیگری نشسته
-        Assert.Equal(value, Math.Round(toRate * toQty, 2));
-    }
-
-    [Fact]
-    public void A_voided_conversion_is_not_counted_as_unbalanced()
-    {
-        var row = Row(268_154_459, 0);
-        row.Status = 9;
-
-        Assert.True(row.IsVoided);
-        Assert.False(row.IsBalanced);   // خودِ عدد همچنان نامتوازن است
+        Assert.Equal(1_888_411.68, Math.Round(row.ToRate, 2));
+        Assert.Equal(row.Value, Math.Round(row.ToRate * row.ToQty!.Value, 2));
     }
 
     /// <summary>
-    /// صفر بودنِ سمت خروج یعنی حواله هنوز قیمت نخورده. آن وقت *نباید*
-    /// روی رسید تحمیل شود، وگرنه کالای مقصد با ارزش صفر وارد انبار
-    /// می‌شود — همان چیزی که روی کد ۲۰۲۱ دیده شد و کاردکس را خراب کرد.
-    /// این تست همان شرط را در سطح مدل نگه می‌دارد.
+    /// و مقدارِ خروج در نرخِ مقصد هیچ نقشی ندارد. اگر روزی کسی فرمول را
+    /// به MEGHk وصل کند، این تست می‌افتد.
     /// </summary>
     [Fact]
-    public void An_unpriced_issue_is_visible_as_a_gap_not_silently_zeroed()
+    public void The_outgoing_quantity_does_not_change_the_target_rate()
     {
-        var row = Row(0, 272_915_331);
+        var a = Row();
+        var b = Row();
+        b.FromQty = 900;
 
-        Assert.False(row.IsBalanced);
-        Assert.Equal(0, row.IssueValue);
+        Assert.Equal(a.ToRate, b.ToRate);
+    }
+
+    /// <summary>
+    /// یک مبلغ، دو سر. این همان چیزی است که مسئله‌ی تراز را حذف می‌کند:
+    /// جایی برای اختلاف وجود ندارد چون عددِ دومی در کار نیست. روشِ قدیمی
+    /// دو مبلغ داشت و روی پایگاه واقعی ۴٬۷۶۰٬۸۷۲ ریال از هم فاصله
+    /// گرفتند.
+    /// </summary>
+    [Fact]
+    public void One_amount_serves_both_sides()
+    {
+        var row = Row();
+
+        var outgoingValue = row.Value;
+        var incomingValue = row.ToRate * row.ToQty!.Value;
+
+        Assert.Equal(outgoingValue, Math.Round(incomingValue, 2));
+    }
+
+    [Fact]
+    public void A_sheet_that_already_has_an_accounting_document_is_flagged()
+    {
+        var row = Row();
+        Assert.False(row.HasSanad);
+
+        row.SanadNo = 1234;
+        Assert.True(row.HasSanad);
+    }
+
+    [Fact]
+    public void A_zero_sanad_number_is_not_an_accounting_document()
+    {
+        var row = Row();
+        row.SanadNo = 0;
+
+        Assert.False(row.HasSanad);
     }
 
     [Fact]
@@ -119,13 +132,13 @@ public class ItemConversionTests
     /// <summary>
     /// هشدار جلوی ثبت را نمی‌گیرد. موجودیِ کاردکس با موجودیِ فیزیکی
     /// همیشه یکی نیست و انباردار باید بتواند واقعیت را ثبت کند؛ CHK-01
-    /// بعداً سر جای خودش هشدار می‌دهد.
+    /// سرِ جای خودش هشدار می‌دهد.
     /// </summary>
     [Fact]
     public void Warnings_do_not_block_submission()
     {
         var dto = new ConversionPreviewDto { Rate = 0 };
-        dto.Warnings.Add("نرخ میانگین صفر است.");
+        dto.Warnings.Add("نرخ میانگین این کالا در این انبار صفر است.");
 
         Assert.True(dto.CanSubmit);
         Assert.Single(dto.Warnings);

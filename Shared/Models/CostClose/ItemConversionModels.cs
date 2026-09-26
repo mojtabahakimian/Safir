@@ -1,11 +1,11 @@
 namespace Safir.Shared.Models.CostClose
 {
     // ═══════════════════════════════════════════════════════════════
-    //  تبدیل کالا به کالا
+    //  تبدیل کالا به کالا — برگه‌ی TAG=30
     //
-    //  یک تبدیل همیشه دو سر دارد و دو سرش همیشه هم‌مبلغ‌اند. هر جا در
-    //  این فایل «مبلغ» آمده، منظور مبلغِ سمتِ خروج است — سمت ورود از
-    //  روی آن مشتق می‌شود و هیچ‌وقت مستقل تایپ نمی‌شود.
+    //  یک سربرگ، یک سطر، یک مبلغ. هر جا «مبلغ» می‌بینید همان یک عدد
+    //  است که هم ارزشِ خروج است و هم ارزشِ ورود — دو تا نیست که بشود
+    //  با هم اختلاف پیدا کنند.
     // ═══════════════════════════════════════════════════════════════
 
     /// <summary>آنچه پیش از ثبت به کاربر نشان داده می‌شود.</summary>
@@ -24,7 +24,7 @@ namespace Safir.Shared.Models.CostClose
         /// <summary>میانگین متحرک کاردکس در لحظه‌ی تبدیل.</summary>
         public double  Rate          { get; set; }
 
-        /// <summary>مبلغی که از انبار مبدأ خارج می‌شود.</summary>
+        /// <summary>ارزشی که جابه‌جا می‌شود — برای هر دو سر، یکی.</summary>
         public double  Value         { get; set; }
 
         public string  ToCode        { get; set; } = "";
@@ -34,11 +34,8 @@ namespace Safir.Shared.Models.CostClose
         public string  ToAnbarName   { get; set; } = "";
         public double  ToQty         { get; set; }
 
-        /// <summary>نرخ واحدِ کالای مقصد = مبلغ ÷ مقدار ورودی.</summary>
+        /// <summary>نرخ واحدِ کالای مقصد = مبلغ ÷ مقدار ورود.</summary>
         public double  ToRate        { get; set; }
-
-        public string  AccountCode   { get; set; } = "";
-        public string  AccountName   { get; set; } = "";
 
         /// <summary>
         /// چیزهایی که مانع ثبت نیستند ولی کاربر باید ببیند — مثلاً نرخ
@@ -54,67 +51,68 @@ namespace Safir.Shared.Models.CostClose
 
     public sealed class CreateConversionRequest
     {
-        public long   DateN      { get; set; }
-        public string FromCode   { get; set; } = "";
-        public int    FromAnbar  { get; set; }
-        public double FromQty    { get; set; }
-        public string ToCode     { get; set; } = "";
-        public int    ToAnbar    { get; set; }
-        public double ToQty      { get; set; }
-        public string AccountCode{ get; set; } = "";
+        public long    DateN     { get; set; }
+        public string  FromCode  { get; set; } = "";
+        public int     FromAnbar { get; set; }
+        public double  FromQty   { get; set; }
+        public string  ToCode    { get; set; } = "";
+        public int     ToAnbar   { get; set; }
+        public double  ToQty     { get; set; }
         public string? Note      { get; set; }
     }
 
     public sealed class ConversionRowDto
     {
-        public int     ConversionId  { get; set; }
+        /// <summary>شناسه‌ی سطر INVO_LST — خودِ برگه، جدول واسطی در کار نیست.</summary>
+        public long    ConversionId  { get; set; }
+        public double  Number        { get; set; }
         public long    DateN         { get; set; }
-        public string  AccountCode   { get; set; } = "";
+
+        /// <summary>شماره سند حسابداری، اگر صادر شده باشد.</summary>
+        public double? SanadNo       { get; set; }
 
         public string  FromCode      { get; set; } = "";
         public string? FromName      { get; set; }
+        public string? FromUnit      { get; set; }
         public int     FromAnbar     { get; set; }
         public string? FromAnbarName { get; set; }
         public double  FromQty       { get; set; }
+        public double  FromRate      { get; set; }
 
-        public string  ToCode        { get; set; } = "";
+        public string? ToCode        { get; set; }
         public string? ToName        { get; set; }
-        public int     ToAnbar       { get; set; }
+        public string? ToUnit        { get; set; }
+        public int?    ToAnbar       { get; set; }
         public string? ToAnbarName   { get; set; }
-        public double  ToQty         { get; set; }
+        public double? ToQty         { get; set; }
 
-        public double  IssueNumber   { get; set; }
-        public double  ReceiptNumber { get; set; }
-        public double? InvoiceNumber { get; set; }
-
-        public double  RateAtEntry   { get; set; }
-        public double  ValueAtEntry  { get; set; }
-
-        /// <summary>مبلغ فعلی سمت خروج — پس از بازسازی نرخ میانگین.</summary>
-        public double  IssueValue    { get; set; }
-        public double  ReceiptValue  { get; set; }
-
-        /// <summary>آنچه روی حساب واسط می‌ماند. باید صفر باشد.</summary>
-        public double  Gap           { get; set; }
+        public double  Value         { get; set; }
         public double  ToRate        { get; set; }
 
-        public string? Note          { get; set; }
-        public byte    Status        { get; set; }
-        public string? CreatedBy     { get; set; }
-        public DateTime CreatedAt    { get; set; }
+        public double? FromAverage   { get; set; }
+        public double? ToAverage     { get; set; }
 
-        public bool IsBalanced => Math.Abs(Gap) <= 0.5;
-        public bool IsVoided   => Status == 9;
+        public string? Note          { get; set; }
+        public string? CreatedBy     { get; set; }
+        public DateTime? CreatedAt   { get; set; }
+
+        /// <summary>
+        /// برگه‌ای که مقصدش مشخص نیست، کالا را از انبار می‌برد و هیچ‌جا
+        /// برنمی‌گرداند. همان چیزی که CHK-24 می‌گیرد.
+        /// </summary>
+        public bool IsComplete =>
+            !string.IsNullOrWhiteSpace(ToCode) && ToAnbar is not null && ToQty > 0;
+
+        /// <summary>سند حسابداری خورده؟ اگر بله، ابطال ساده ممکن نیست.</summary>
+        public bool HasSanad => SanadNo is > 0;
     }
 
     public sealed class ConversionResultDto
     {
-        public bool    Ok            { get; set; }
-        public int     ConversionId  { get; set; }
-        public double  IssueNumber   { get; set; }
-        public double  ReceiptNumber { get; set; }
-        public double  InvoiceNumber { get; set; }
-        public double  Value         { get; set; }
-        public string? Error         { get; set; }
+        public bool    Ok           { get; set; }
+        public long    ConversionId { get; set; }
+        public double  Number       { get; set; }
+        public double  Value        { get; set; }
+        public string? Error        { get; set; }
     }
 }

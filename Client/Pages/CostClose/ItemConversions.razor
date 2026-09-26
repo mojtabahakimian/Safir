@@ -1,6 +1,5 @@
 @page "/cost-close/conversions"
 @using Safir.Shared.Models.CostClose
-@using Safir.Shared.Constants
 @using Safir.Client.Services
 @inject ItemConversionApiService Api
 @inject IDialogService Dialog
@@ -22,8 +21,8 @@
 
     <MudAlert Severity="Severity.Info" Dense Class="mb-3">
         یک کالا از انباری خارج و کالای دیگری به انبار دیگری وارد می‌شود، با همان ارزش.
-        مبلغ از میانگین کاردکس گرفته می‌شود و تایپ نمی‌شود؛ بعد از بستن ماه هم
-        گام «تراز تبدیل کالا» دو سر را دوباره برابر می‌کند.
+        برگه‌ی خودش را دارد (نوع ۳۰) و هیچ فاکتور خریدی صادر نمی‌شود.
+        مبلغ از میانگین کاردکس گرفته می‌شود و تایپ نمی‌شود.
     </MudAlert>
 
     @if (_busy) { <MudProgressLinear Indeterminate Color="Color.Primary" Class="mb-3" /> }
@@ -33,11 +32,11 @@
         <MudAlert Severity="Severity.Error" Class="mb-3">@_error</MudAlert>
     }
 
-    @if (_unbalanced > 0)
+    @if (_incomplete > 0)
     {
-        <MudAlert Severity="Severity.Warning" Dense Class="mb-3">
-            @_unbalanced تبدیل هنوز تراز نیست — روی حساب واسط مانده می‌گذارد.
-            «بازسازی نرخ میانگین» و بعد گام «تراز تبدیل کالا» را اجرا کنید.
+        <MudAlert Severity="Severity.Error" Dense Class="mb-3">
+            @_incomplete برگه مقصدش کامل نیست — کالا از انبار خارج شده و هیچ‌جا وارد نمی‌شود.
+            تا اصلاح نشوند، بستن ماه متوقف می‌ماند (CHK-24).
         </MudAlert>
     }
 
@@ -49,82 +48,72 @@
     {
         <MudTable Items="_rows" Dense Hover Breakpoint="Breakpoint.Sm" Elevation="0" Class="cc-table">
             <HeaderContent>
+                <MudTh>برگه</MudTh>
                 <MudTh>تاریخ</MudTh>
                 <MudTh>از</MudTh>
                 <MudTh>به</MudTh>
                 <MudTh style="text-align:left">مبلغ</MudTh>
                 <MudTh style="text-align:left">نرخ مقصد</MudTh>
-                <MudTh>برگه‌ها</MudTh>
-                <MudTh>وضعیت</MudTh>
+                <MudTh>سند</MudTh>
                 <MudTh></MudTh>
             </HeaderContent>
             <RowTemplate>
+                <MudTd DataLabel="برگه">@((long)context.Number)</MudTd>
                 <MudTd DataLabel="تاریخ">@FormatDate(context.DateN)</MudTd>
 
                 <MudTd DataLabel="از">
                     <div>@context.FromName</div>
                     <MudText Typo="Typo.caption" Class="cc-dim">
-                        @context.FromQty.ToString("N2") — @context.FromAnbarName
+                        @context.FromQty.ToString("N2") @context.FromUnit — @context.FromAnbarName
                     </MudText>
                 </MudTd>
 
                 <MudTd DataLabel="به">
-                    <div>@context.ToName</div>
-                    <MudText Typo="Typo.caption" Class="cc-dim">
-                        @context.ToQty.ToString("N2") — @context.ToAnbarName
-                    </MudText>
-                </MudTd>
-
-                <MudTd DataLabel="مبلغ" style="text-align:left">@Money(context.IssueValue)</MudTd>
-                <MudTd DataLabel="نرخ مقصد" style="text-align:left">@Money(context.ToRate)</MudTd>
-
-                <MudTd DataLabel="برگه‌ها">
-                    <MudText Typo="Typo.caption">
-                        حواله @((long)context.IssueNumber) · رسید @((long)context.ReceiptNumber)
-                    </MudText>
-                </MudTd>
-
-                <MudTd DataLabel="وضعیت">
-                    @if (context.IsVoided)
+                    @if (context.IsComplete)
                     {
-                        <MudChip T="string" Size="Size.Small" Variant="Variant.Text">ابطال‌شده</MudChip>
-                    }
-                    else if (context.IsBalanced)
-                    {
-                        <MudChip T="string" Size="Size.Small" Color="Color.Success" Variant="Variant.Text">تراز</MudChip>
+                        <div>@context.ToName</div>
+                        <MudText Typo="Typo.caption" Class="cc-dim">
+                            @context.ToQty?.ToString("N2") @context.ToUnit — @context.ToAnbarName
+                        </MudText>
                     }
                     else
                     {
-                        <MudTooltip Text="@($"{Money(context.Gap)} ریال روی حساب {context.AccountCode} مانده")">
-                            <MudChip T="string" Size="Size.Small" Color="Color.Warning" Variant="Variant.Text">
-                                نامتوازن @Money(context.Gap)
-                            </MudChip>
-                        </MudTooltip>
+                        <MudChip T="string" Size="Size.Small" Color="Color.Error" Variant="Variant.Text">
+                            مقصد ناقص
+                        </MudChip>
+                    }
+                </MudTd>
+
+                <MudTd DataLabel="مبلغ" style="text-align:left">@Money(context.Value)</MudTd>
+                <MudTd DataLabel="نرخ مقصد" style="text-align:left">@Money(context.ToRate)</MudTd>
+
+                <MudTd DataLabel="سند">
+                    @if (context.HasSanad)
+                    {
+                        <MudText Typo="Typo.caption">@((long)context.SanadNo!.Value)</MudText>
+                    }
+                    else
+                    {
+                        <MudText Typo="Typo.caption" Class="cc-dim">—</MudText>
                     }
                 </MudTd>
 
                 <MudTd>
-                    @if (!context.IsVoided)
-                    {
-                        <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small"
-                                       Color="Color.Error" Disabled="_busy"
-                                       OnClick="@(() => Void(context))" Title="ابطال" />
-                    }
+                    <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small"
+                                   Color="Color.Error" Disabled="@(_busy || context.HasSanad)"
+                                   OnClick="@(() => Delete(context))"
+                                   Title="@(context.HasSanad ? "سند حسابداری دارد" : "حذف برگه")" />
                 </MudTd>
             </RowTemplate>
         </MudTable>
     }
-
-    <MudSwitch T="bool" @bind-Value="_includeVoided" Color="Color.Default" Class="mt-3"
-               Label="نمایش ابطال‌شده‌ها" @bind-Value:after="Load" />
 </div>
 
 @code {
     private List<ConversionRowDto> _rows = new();
     private bool    _busy;
-    private bool    _includeVoided;
     private string? _error;
-    private int     _unbalanced;
+    private int     _incomplete;
 
     protected override Task OnInitializedAsync() => Load();
 
@@ -134,8 +123,8 @@
         _error = null;
         try
         {
-            _rows = await Api.ListAsync(includeVoided: _includeVoided);
-            _unbalanced = _rows.Count(r => !r.IsVoided && !r.IsBalanced);
+            _rows = await Api.ListAsync();
+            _incomplete = _rows.Count(r => !r.IsComplete);
         }
         catch (Exception ex)
         {
@@ -156,26 +145,26 @@
         var res = await dlg.Result;
         if (res is { Canceled: false })
         {
-            Snackbar.Add("تبدیل ثبت شد.", Severity.Success);
+            Snackbar.Add("برگه تبدیل ثبت شد.", Severity.Success);
             await Load();
         }
     }
 
-    private async Task Void(ConversionRowDto row)
+    private async Task Delete(ConversionRowDto row)
     {
         var ok = await Dialog.ShowMessageBox(
-            "ابطال تبدیل",
-            $"حواله {(long)row.IssueNumber} و رسید {(long)row.ReceiptNumber} پاک می‌شوند. ادامه؟",
-            yesText: "ابطال کن", cancelText: "انصراف");
+            "حذف برگه تبدیل",
+            $"برگه تبدیل {(long)row.Number} پاک می‌شود. ادامه؟",
+            yesText: "حذف کن", cancelText: "انصراف");
 
         if (ok != true) return;
 
         _busy = true;
-        var (done, err) = await Api.VoidAsync(row.ConversionId);
+        var (done, err) = await Api.DeleteAsync(row.Number);
         _busy = false;
 
-        if (done) { Snackbar.Add("تبدیل ابطال شد.", Severity.Success); await Load(); }
-        else      { Snackbar.Add(err ?? "ابطال نشد.", Severity.Error); }
+        if (done) { Snackbar.Add("برگه پاک شد.", Severity.Success); await Load(); }
+        else      { Snackbar.Add(err ?? "حذف نشد.", Severity.Error); }
     }
 
     private static string FormatDate(long d)

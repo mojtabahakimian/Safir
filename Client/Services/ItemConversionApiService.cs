@@ -10,13 +10,14 @@ namespace Safir.Client.Services
 
         private const string Base = "api/item-conversion";
 
-        public async Task<List<ConversionRowDto>> ListAsync(long? dt1 = null, long? dt2 = null, bool includeVoided = false)
+        public async Task<List<ConversionRowDto>> ListAsync(long? dt1 = null, long? dt2 = null)
         {
-            var q = new List<string> { $"includeVoided={includeVoided.ToString().ToLowerInvariant()}" };
+            var q = new List<string>();
             if (dt1 is not null) q.Add($"dt1={dt1}");
             if (dt2 is not null) q.Add($"dt2={dt2}");
+            var url = Base + (q.Count > 0 ? "?" + string.Join("&", q) : "");
 
-            return await _http.GetFromJsonAsync<List<ConversionRowDto>>($"{Base}?{string.Join("&", q)}") ?? new();
+            return await _http.GetFromJsonAsync<List<ConversionRowDto>>(url) ?? new();
         }
 
         public async Task<ConversionPreviewDto?> PreviewAsync(CreateConversionRequest req)
@@ -37,9 +38,9 @@ namespace Safir.Client.Services
             return dto ?? new ConversionResultDto { Ok = false, Error = "پاسخ نامعتبر از سرور." };
         }
 
-        public async Task<(bool Ok, string? Error)> VoidAsync(int id)
+        public async Task<(bool Ok, string? Error)> DeleteAsync(double number)
         {
-            var res = await _http.DeleteAsync($"{Base}/{id}");
+            var res = await _http.DeleteAsync($"{Base}/{number}");
             return res.IsSuccessStatusCode
                 ? (true, null)
                 : (false, await res.Content.ReadAsStringAsync());
