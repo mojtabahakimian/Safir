@@ -152,6 +152,60 @@ END
 
 /* ═════════ حالت ۱ : اجرا ═════════ */
 
+/* ───────── کنترلِ موجودی: عکسِ «پیش از» ─────────
+
+   مهاجرت فقط باید *شکلِ برگه* را عوض کند، نه مقدار را. اگر مقدارِ یک
+   کالا در یک انبار پیش و پس از اجرا یکی نباشد، یعنی جایی اشتباه شده و
+   باید همان‌جا متوقف شویم — نه اینکه ماه‌ها بعد در انبارگردانی پیدایش
+   کنیم.
+
+   ⚠️ عمداً از ویوهای موجودی استفاده نمی‌شود. آن‌ها خودشان بخشی از
+   همین تغییرند (اسکریپت ۴۲ تازه TAG=30 را به آن‌ها یاد داده)؛ کنترلی
+   که از چیزِ تحتِ آزمایش بخواند، چیزی را ثابت نمی‌کند. این محاسبه
+   مستقل و از روی خودِ INVO_LST است. */
+
+DECLARE @SnapSql NVARCHAR(MAX) = N'
+INSERT #Snap (Phase, CODE, ANBAR, Qty)
+SELECT @P, x.CODE, x.ANBAR, SUM(x.q)
+FROM (
+    -- ورود
+    SELECT i.CODE, i.ANBAR, q = CASE
+             WHEN i.TAG IN (1,6,9,17,22) THEN i.MEGHk
+             WHEN i.TAG IN (4,24)        THEN ISNULL(NULLIF(i.MEGH_MAR,0), i.MEGHk)
+             ELSE 0 END
+    FROM dbo.INVO_LST i
+    UNION ALL
+    -- خروج
+    SELECT i.CODE, i.ANBAR, q = CASE
+             WHEN i.TAG IN (2,5,8,10,11,18,26,30) THEN -i.MEGHk
+             WHEN i.TAG = 3                       THEN -ISNULL(NULLIF(i.MEGH_MAR,0), i.MEGHk)
+             ELSE 0 END
+    FROM dbo.INVO_LST i
+    UNION ALL
+    -- ورودِ انتقالی: همان سطر، در انبار مقصد
+    SELECT i.CODE, CAST(i.ANBARF AS INT), i.MEGHk
+    FROM dbo.INVO_LST i WHERE i.TAG = 5 AND i.ANBARF IS NOT NULL
+    UNION ALL
+    -- ورودِ تبدیل: کدِ مقصد در N_RASID و مقدارش در MEGH_MAR
+    SELECT i.N_RASID, CAST(i.ANBARF AS INT), i.MEGH_MAR
+    FROM dbo.INVO_LST i
+    WHERE i.TAG = 30 AND i.N_RASID IS NOT NULL AND i.ANBARF IS NOT NULL
+) x
+JOIN #Codes c ON c.CODE = x.CODE AND c.ANBAR = x.ANBAR
+GROUP BY x.CODE, x.ANBAR;';
+
+CREATE TABLE #Codes (CODE NVARCHAR(20), ANBAR INT);
+CREATE TABLE #Snap  (Phase CHAR(1), CODE NVARCHAR(20), ANBAR INT, Qty FLOAT);
+
+/* هر چهار جفتِ (کالا، انبار) که این مهاجرت لمسشان می‌کند */
+INSERT #Codes (CODE, ANBAR)
+SELECT DISTINCT CODE, ANBAR FROM (
+    SELECT FromCode AS CODE, FromAnbar AS ANBAR FROM #Pairs WHERE Blocker IS NULL
+    UNION SELECT ToCode, ToAnbar FROM #Pairs WHERE Blocker IS NULL
+) z WHERE CODE IS NOT NULL AND ANBAR IS NOT NULL;
+
+EXEC sp_executesql @SnapSql, N'@P CHAR(1)', @P = 'B';
+
 DECLARE @IssueNo FLOAT, @RecNo FLOAT, @Date BIGINT, @Acc NVARCHAR(50),
         @FCode NVARCHAR(20), @FAnbar INT, @FQty FLOAT, @FVal FLOAT,
         @TCode NVARCHAR(20), @TAnbar INT, @TQty FLOAT,
@@ -231,6 +285,46 @@ BEGIN
                              @FCode, @FAnbar, @FQty, @FVal, @TCode, @TAnbar, @TQty;
 END
 CLOSE cur; DEALLOCATE cur;
+
+/* ───────── کنترلِ موجودی: عکسِ «پس از» و مقایسه ───────── */
+EXEC sp_executesql @SnapSql, N'@P CHAR(1)', @P = 'A';
+
+PRINT N'';
+PRINT N'--- کنترل موجودی (پیش و پس) ---';
+
+;WITH Cmp AS (
+    SELECT  c.CODE, c.ANBAR,
+            Before_ = ISNULL(b.Qty, 0),
+            After_  = ISNULL(a.Qty, 0),
+            Diff    = ISNULL(a.Qty, 0) - ISNULL(b.Qty, 0)
+    FROM    #Codes c
+    LEFT    JOIN #Snap b ON b.Phase='B' AND b.CODE=c.CODE AND b.ANBAR=c.ANBAR
+    LEFT    JOIN #Snap a ON a.Phase='A' AND a.CODE=c.CODE AND a.ANBAR=c.ANBAR
+)
+SELECT  Cmp.CODE, ItemName = s.NAME, Cmp.ANBAR, AnbarName = ta.NAMES,
+        Cmp.Before_, Cmp.After_, Cmp.Diff,
+        Status = CASE WHEN ABS(Cmp.Diff) < 0.0005 THEN N'بدون تغییر ✓'
+                      ELSE N'⚠ تغییر کرده' END
+FROM    Cmp
+LEFT    JOIN dbo.STUF_DEF s ON s.CODE = Cmp.CODE
+LEFT    JOIN dbo.TCOD_ANBAR ta ON ta.CODE = Cmp.ANBAR
+ORDER BY CASE WHEN ABS(Cmp.Diff) < 0.0005 THEN 1 ELSE 0 END, Cmp.CODE;
+
+DECLARE @Drift INT = (
+    SELECT COUNT(*) FROM #Codes c
+    LEFT JOIN #Snap b ON b.Phase='B' AND b.CODE=c.CODE AND b.ANBAR=c.ANBAR
+    LEFT JOIN #Snap a ON a.Phase='A' AND a.CODE=c.CODE AND a.ANBAR=c.ANBAR
+    WHERE ABS(ISNULL(a.Qty,0) - ISNULL(b.Qty,0)) >= 0.0005);
+
+IF @Drift > 0
+BEGIN
+    PRINT N'';
+    RAISERROR(N'⚠ موجودی %d جفتِ (کالا، انبار) عوض شده است. مهاجرت فقط شکلِ برگه را عوض می‌کند و نباید مقدار را تکان بدهد — از نسخه پشتیبان برگردید و دلیلش را پیدا کنید.', 16, 1, @Drift);
+END
+ELSE
+    PRINT N'موجودی هیچ کالایی تغییر نکرد.';
+
+DROP TABLE #Codes; DROP TABLE #Snap;
 
 PRINT N'';
 PRINT N'انجام شد. حالا این سه کار را به ترتیب اجرا کنید:';
