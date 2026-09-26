@@ -254,6 +254,10 @@
 
     private void HandleConnectivityResult(ConnectivityStatus status, string userMessage, string? technicalMessage, string context)
     {
+        // بررسی دوره‌ای حالا هر دقیقه (حتی وقتی همه‌چیز سالم است) به اینجا می‌رسد؛ فقط وقتی هشدار
+        // واقعاً عوض شده رندر کن تا کل چیدمان بی‌دلیل هر دقیقه دوباره رسم نشود
+        var wasShown = showConnectivityWarning;
+        var oldMessage = connectivityWarningMessage;
         if (status != ConnectivityStatus.Healthy)
         {
             showConnectivityWarning = true;
@@ -284,7 +288,8 @@
             showConnectivityWarning = false;
             connectivityWarningMessage = "";
         }
-        InvokeAsync(StateHasChanged); // اطمینان از به‌روزرسانی UI
+        if (wasShown != showConnectivityWarning || oldMessage != connectivityWarningMessage)
+            InvokeAsync(StateHasChanged);
     }
 
     // متد برای بروزرسانی اطلاعات مشتری و تعداد آیتم‌ها
