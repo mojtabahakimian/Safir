@@ -17,7 +17,20 @@
 
 <MudDialog>
     <DialogContent>
-        <div dir="rtl" style="min-width:520px">
+        @*
+            چیدمان دوستونی: «خروج» سمت راست، «ورود» سمت چپ.
+
+            ── چرا ──
+            دو سرِ تبدیل قرینه‌اند و کاربر مدام بینشان مقایسه می‌کند
+            (چقدر رفت، چقدر آمد). ستونِ بلندِ قبلی آن دو را از هم دور
+            می‌کرد و روی نمایشگر کوچک اسکرول می‌خواست. کنارِ هم، خودِ
+            چیدمان می‌گوید این یک برگه است با دو طرف.
+
+            ⚠️ در RTL اولین MudItem سمت راست می‌نشیند — پس «خروج» اول
+            می‌آید. و md="6" یعنی زیر ۹۶۰ پیکسل خودبه‌خود یک‌ستونه
+            می‌شود؛ روی موبایل چیزی فشرده نمی‌ماند.
+        *@
+        <div dir="rtl" class="cc-conv-form">
 
             <div class="form-field mb-3">
                 <label>تاریخ (شمسی) *</label>
@@ -26,52 +39,58 @@
                                   Direction="ltr" />
             </div>
 
-            <MudText Typo="Typo.subtitle2" Class="mt-2">خروج</MudText>
-            <MudDivider Class="mb-2" />
+            <MudGrid Spacing="4">
 
-            <MudAutocomplete T="ItemLookupDto" Label="کالای مبدأ *" Dense Variant="Variant.Outlined"
-                             Class="mb-2" Value="_fromItem" ValueChanged="OnFromItemChanged"
-                             SearchFuncWithCancel="SearchItems" ToStringFunc="ItemText"
-                             Clearable ResetValueOnEmptyText />
+                <MudItem xs="12" md="6">
+                    <MudText Typo="Typo.subtitle2" Color="Color.Primary">خروج</MudText>
+                    <MudDivider Class="mb-3" />
 
-            <div class="d-flex gap-2 mb-3">
-                <MudSelect T="int" Label="انبار مبدأ *" Dense Variant="Variant.Outlined"
-                           Value="_fromAnbar" ValueChanged="OnFromAnbarChanged" Class="flex-grow-1">
-                    @foreach (var a in _anbarha)
-                    {
-                        <MudSelectItem T="int" Value="@a.CODE">@a.NAMES</MudSelectItem>
-                    }
-                </MudSelect>
+                    <MudAutocomplete T="ItemLookupDto" Label="کالای مبدأ *" Dense Variant="Variant.Outlined"
+                                     Class="mb-3" Value="_fromItem" ValueChanged="OnFromItemChanged"
+                                     SearchFuncWithCancel="SearchItems" ToStringFunc="ItemText"
+                                     Clearable ResetValueOnEmptyText />
 
-                <MudNumericField T="double" Label="مقدار *" Dense Variant="Variant.Outlined"
-                                 Value="_fromQty" ValueChanged="OnFromQtyChanged"
-                                 Min="0" HideSpinButtons Class="flex-grow-1" />
-            </div>
+                    <MudSelect T="int" Label="انبار مبدأ *" Dense Variant="Variant.Outlined"
+                               Class="mb-3" Value="_fromAnbar" ValueChanged="OnFromAnbarChanged">
+                        @foreach (var a in _anbarha)
+                        {
+                            <MudSelectItem T="int" Value="@a.CODE">@a.NAMES</MudSelectItem>
+                        }
+                    </MudSelect>
 
-            <MudText Typo="Typo.subtitle2">ورود</MudText>
-            <MudDivider Class="mb-2" />
+                    <MudNumericField T="double" Label="مقدار *" Dense Variant="Variant.Outlined"
+                                     Value="_fromQty" ValueChanged="OnFromQtyChanged"
+                                     Min="0" HideSpinButtons
+                                     Adornment="Adornment.End" AdornmentText="@_preview?.FromUnit" />
+                </MudItem>
 
-            <MudAutocomplete T="ItemLookupDto" Label="کالای مقصد *" Dense Variant="Variant.Outlined"
-                             Class="mb-2" Value="_toItem" ValueChanged="OnToItemChanged"
-                             SearchFuncWithCancel="SearchItems" ToStringFunc="ItemText"
-                             Clearable ResetValueOnEmptyText />
+                <MudItem xs="12" md="6">
+                    <MudText Typo="Typo.subtitle2" Color="Color.Info">ورود</MudText>
+                    <MudDivider Class="mb-3" />
 
-            <div class="d-flex gap-2 mb-3">
-                <MudSelect T="int" Label="انبار مقصد *" Dense Variant="Variant.Outlined"
-                           Value="_toAnbar" ValueChanged="OnToAnbarChanged" Class="flex-grow-1">
-                    @foreach (var a in _anbarha)
-                    {
-                        <MudSelectItem T="int" Value="@a.CODE">@a.NAMES</MudSelectItem>
-                    }
-                </MudSelect>
+                    <MudAutocomplete T="ItemLookupDto" Label="کالای مقصد *" Dense Variant="Variant.Outlined"
+                                     Class="mb-3" Value="_toItem" ValueChanged="OnToItemChanged"
+                                     SearchFuncWithCancel="SearchItems" ToStringFunc="ItemText"
+                                     Clearable ResetValueOnEmptyText />
 
-                <MudNumericField T="double" Label="مقدار *" Dense Variant="Variant.Outlined"
-                                 Value="_toQty" ValueChanged="OnToQtyChanged"
-                                 Min="0" HideSpinButtons Class="flex-grow-1" />
-            </div>
+                    <MudSelect T="int" Label="انبار مقصد *" Dense Variant="Variant.Outlined"
+                               Class="mb-3" Value="_toAnbar" ValueChanged="OnToAnbarChanged">
+                        @foreach (var a in _anbarha)
+                        {
+                            <MudSelectItem T="int" Value="@a.CODE">@a.NAMES</MudSelectItem>
+                        }
+                    </MudSelect>
+
+                    <MudNumericField T="double" Label="مقدار *" Dense Variant="Variant.Outlined"
+                                     Value="_toQty" ValueChanged="OnToQtyChanged"
+                                     Min="0" HideSpinButtons
+                                     Adornment="Adornment.End" AdornmentText="@_preview?.ToUnit" />
+                </MudItem>
+
+            </MudGrid>
 
             <MudTextField T="string" Label="شرح" Dense Variant="Variant.Outlined"
-                          @bind-Value="_note" Class="mt-3" />
+                          @bind-Value="_note" Class="mt-4" />
 
             @* ─── آنچه ثبت خواهد شد ─── *@
             @if (_preview is not null)

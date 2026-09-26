@@ -119,8 +119,6 @@
                 </MudTd>
 
                 <MudTd>
-                    @* مبلغ صفر یعنی نرخ میانگین هنوز نوشته نشده؛ سندِ صفر
-                       ساختن فقط یک سندِ بی‌اثر در دفتر می‌گذارد. *@
                     @* مبلغ صفر دیگر دکمه را قفل نمی‌کند — فقط قبلش می‌پرسد.
                        نرخِ بعضی کالاها واقعاً صفر است و آن برگه هیچ‌وقت
                        مبلغ‌دار نمی‌شود؛ بی‌سند ماندنش بدتر است. *@
@@ -172,7 +170,7 @@
     {
         var dlg = await Dialog.ShowAsync<ItemConversionDialog>(
             "تبدیل جدید",
-            new DialogOptions { MaxWidth = MaxWidth.Medium, FullWidth = true, CloseButton = true });
+            new DialogOptions { MaxWidth = MaxWidth.Large, FullWidth = true, CloseButton = true });
 
         var res = await dlg.Result;
         if (res is { Canceled: false })
