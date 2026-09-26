@@ -82,10 +82,11 @@ namespace Safir.Server.Controllers
         [HttpPost("{number:double}/sanad")]
         [Pay2Authorize(CostForms.ItemConversion, Pay2Perm.Inp)]
         [Pay2Authorize(CostForms.ActRebuildDocs, Pay2Perm.Run)]
-        public async Task<ActionResult<ConversionSanadResultDto>> IssueSanad(double number)
+        public async Task<ActionResult<ConversionSanadResultDto>> IssueSanad(
+            double number, [FromQuery] bool allowZero = false)
         {
             var svc = new Safir.Server.CostClose.GroupDocuments.ConversionRebuildService(_db);
-            var res = await svc.RebuildOneAsync(number);
+            var res = await svc.RebuildOneAsync(number, allowZero);
 
             if (!res.Success)
                 return BadRequest(new ConversionSanadResultDto { Ok = false, Error = res.FirstError });
@@ -94,8 +95,9 @@ namespace Safir.Server.Controllers
                 return BadRequest(new ConversionSanadResultDto
                 {
                     Ok    = false,
-                    Error = "سندی صادر نشد — یا برگه پیدا نشد، یا مقصدش ناقص است، یا مبلغش صفر است. "
-                          + "اگر مبلغ صفر است، اول «بازسازی نرخ میانگین» را اجرا کنید."
+                    Error = allowZero
+                        ? "سندی صادر نشد — برگه پیدا نشد یا مقصدش ناقص است."
+                        : "سندی صادر نشد — یا برگه پیدا نشد، یا مقصدش ناقص است، یا مبلغش صفر است."
                 });
 
             _logger.LogInformation("سند تبدیل برگه {Number} توسط {User} صادر شد: {Sanad}",

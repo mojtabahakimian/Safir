@@ -116,9 +116,13 @@
                 <MudTd>
                     @* مبلغ صفر یعنی نرخ میانگین هنوز نوشته نشده؛ سندِ صفر
                        ساختن فقط یک سندِ بی‌اثر در دفتر می‌گذارد. *@
+                    @* مبلغ صفر دیگر دکمه را قفل نمی‌کند — فقط قبلش می‌پرسد.
+                       نرخِ بعضی کالاها واقعاً صفر است و آن برگه هیچ‌وقت
+                       مبلغ‌دار نمی‌شود؛ بی‌سند ماندنش بدتر است. *@
                     <MudIconButton Icon="@Icons.Material.Filled.ReceiptLong" Size="Size.Small"
-                                   Color="@(context.HasSanad ? Color.Default : Color.Primary)"
-                                   Disabled="@(_busy || !context.IsComplete || context.Value == 0)"
+                                   Color="@(context.HasSanad ? Color.Default
+                                          : context.Value == 0 ? Color.Warning : Color.Primary)"
+                                   Disabled="@(_busy || !context.IsComplete)"
                                    OnClick="@(() => IssueSanad(context))"
                                    Title="@SanadTitle(context)" />
 
@@ -190,9 +194,9 @@
     }
 
     private static string SanadTitle(ConversionRowDto r)
-        => !r.HasLine   ? "این سربرگ ردیفی ندارد — چیزی برای سند کردن نیست"
+        => !r.HasLine    ? "این سربرگ ردیفی ندارد — چیزی برای سند کردن نیست"
          : !r.IsComplete ? "مقصد برگه کامل نیست"
-         : r.Value == 0  ? "مبلغ صفر است — اول بازسازی نرخ میانگین را اجرا کنید"
+         : r.Value == 0  ? "مبلغ صفر است — سند بدون اثر مالی ثبت می‌شود"
          : r.HasSanad    ? "صدور دوباره سند (سند فعلی بازنویسی می‌شود)"
          : "صدور سند حسابداری";
 
@@ -209,8 +213,21 @@
             if (go != true) return;
         }
 
+        // مبلغ صفر مانع نیست، ولی باید صریح گفته شود که چه چیزی ثبت می‌شود.
+        if (row.Value == 0)
+        {
+            var go = await Dialog.ShowMessageBox(
+                "مبلغ این برگه صفر است",
+                $"نرخ میانگین «{row.FromName}» در انبار مبدأ صفر است، پس سند با مبلغ صفر ثبت می‌شود "
+                + "و هیچ رقمی در دفتر جابه‌جا نمی‌کند — فقط ثبت می‌کند که این حرکت رخ داده. "
+                + "اگر انتظار مبلغ داشتید، اول «بازسازی نرخ میانگین» را اجرا کنید.",
+                yesText: "با مبلغ صفر ثبت کن", cancelText: "انصراف");
+
+            if (go != true) return;
+        }
+
         _busy = true;
-        var res = await Api.IssueSanadAsync(row.Number);
+        var res = await Api.IssueSanadAsync(row.Number, allowZero: row.Value == 0);
         _busy = false;
 
         if (res.Ok)

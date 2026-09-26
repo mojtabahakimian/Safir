@@ -73,10 +73,18 @@ namespace Safir.Server.CostClose.GroupDocuments
         /// تبدیل صدا می‌زند. بازه‌ی تاریخ باز گذاشته می‌شود چون شماره‌ی برگه
         /// خودش یکتاست.
         /// </summary>
-        public Task<ConversionRebuildResult> RebuildOneAsync(double number)
-            => RebuildAsync(0, 99999999, number);
+        /// <param name="allowZeroValue">
+        /// سند با مبلغ صفر هم صادر شود؟ پیش‌فرض نه — چون سندِ صفر هیچ رقمی
+        /// در دفتر نمی‌گذارد و معمولاً یعنی نرخ هنوز بازسازی نشده. ولی وقتی
+        /// نرخِ کالا *واقعاً* صفر است (کالایی که با مبلغ صفر خریده شده)،
+        /// برگه هیچ‌وقت مبلغ‌دار نمی‌شود و بی‌سند ماندنش برای تطبیق بدتر
+        /// است. آن تصمیم با کاربر است، نه با این سرویس.
+        /// </param>
+        public Task<ConversionRebuildResult> RebuildOneAsync(double number, bool allowZeroValue = false)
+            => RebuildAsync(0, 99999999, number, allowZeroValue);
 
-        public async Task<ConversionRebuildResult> RebuildAsync(long dt1, long dt2, double? onlyNumber = null)
+        public async Task<ConversionRebuildResult> RebuildAsync(
+            long dt1, long dt2, double? onlyNumber = null, bool allowZeroValue = false)
         {
             var result = new ConversionRebuildResult();
             void Log(string m) => result.Log.Add(m);
@@ -116,7 +124,7 @@ ORDER BY h.DATE_N, h.NUMBER", new { DT1 = dt1, DT2 = dt2, OnlyNumber = onlyNumbe
                 s.NUMBER is not null && s.DATE_N is > 10100 &&
                 !string.IsNullOrWhiteSpace(s.FromCode) && s.FromAnbar is not null &&
                 !string.IsNullOrWhiteSpace(s.ToCode)   && s.ToAnbar   is not null &&
-                s.MABL_K is not null and not 0).ToList();
+                (allowZeroValue ? s.MABL_K is not null : s.MABL_K is not null and not 0)).ToList();
 
             var skipped = sheets.Count - usable.Count;
             if (skipped > 0) Log($"{skipped} برگه ناقص بود و سند نگرفت — نگاه کنید CHK-24.");
