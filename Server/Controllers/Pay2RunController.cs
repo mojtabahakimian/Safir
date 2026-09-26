@@ -918,6 +918,8 @@ VALUES (@N_S, @RADIF, @HES_K, @HES_M, @HES_T, @HES_T2, @HES_T3, @HES_T4, @HES, @
 
                 return File(result.Value.ZipBytes, "application/zip", result.Value.FileName);
             }
+            // خطای داده (مثل پرونده‌ی ناقص) خودش پیام کامل و راه رفع دارد؛ پیشوند تکراری نمی‌خواهد
+            catch (InvalidOperationException ex) { return BadRequest(ex.Message); }
             catch (Exception ex)
             {
                 return StatusCode(500, "خطا در تولید فایل دیسکت: " + ex.Message);
@@ -939,6 +941,8 @@ VALUES (@N_S, @RADIF, @HES_K, @HES_M, @HES_T, @HES_T2, @HES_T3, @HES_T4, @HES, @
 
                 return Ok(result);
             }
+            // خطای داده (مثل پرونده‌ی ناقص) خودش پیام کامل و راه رفع دارد؛ پیشوند تکراری نمی‌خواهد
+            catch (InvalidOperationException ex) { return BadRequest(ex.Message); }
             catch (Exception ex)
             {
                 return StatusCode(500, "خطا در بارگذاری پیش‌نمایش دیسکت: " + ex.Message);

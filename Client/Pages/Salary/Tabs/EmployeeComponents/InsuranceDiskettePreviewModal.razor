@@ -124,7 +124,7 @@
         }
         catch (Exception ex)
         {
-            Snackbar.Add(ex.Message, MudBlazor.Severity.Error);
+            Snackbar.Add(ex.Message, MudBlazor.Severity.Error, c => c.RequireInteraction = ex.Message.Contains('\n'));
             await Close();
         }
         finally
