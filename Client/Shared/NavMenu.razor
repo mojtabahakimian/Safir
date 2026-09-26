@@ -99,6 +99,13 @@
                                 Icon="@Icons.Material.Filled.CompareArrows">
                         صورت‌های مالی چند دوره
                     </MudNavLink>
+                    @* برگه‌ی انباری می‌سازد، پس کارِ روزانه است نه گزارشِ
+                       پایان ماه — ولی ارزشش را از کاردکس می‌گیرد و ترازش
+                       را گام S11B می‌بندد، برای همین اینجا می‌نشیند. *@
+                    <MudNavLink Href="/cost-close/conversions" Match="NavLinkMatch.Prefix"
+                                Icon="@Icons.Material.Filled.SwapHoriz">
+                        تبدیل کالا
+                    </MudNavLink>
                     <MudNavLink Href="/cost-close/settings" Match="NavLinkMatch.Prefix"
                                 Icon="@Icons.Material.Filled.Settings">
                         تنظیمات

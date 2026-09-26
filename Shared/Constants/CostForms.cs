@@ -12,6 +12,13 @@ namespace Safir.Shared.Constants
         public const string Exceptions = "COST_EXCEPTIONS";
         public const string Variance   = "COST_VARIANCE";
         public const string Conversion = "COST_CONVERSION";
+
+        // ⚠️ با Conversion بالا اشتباه نشود. آن «هزینه تبدیل» است —
+        // دستمزد و سرباری که در تولید جذب می‌شود. این یکی «تبدیل کالا»
+        // است: خروج یک کالا و ورود کالای دیگر. دو مفهوم کاملاً جدا با
+        // دو مخاطب جدا؛ انباردار باید این یکی را داشته باشد بدون اینکه
+        // به تراز هزینه‌ی تولید دست بزند.
+        public const string ItemConversion = "COST_ITEM_CONV";
         public const string Margin     = "COST_MARGIN";
         public const string History    = "COST_HISTORY";
         public const string Settings   = "COST_SETTINGS";

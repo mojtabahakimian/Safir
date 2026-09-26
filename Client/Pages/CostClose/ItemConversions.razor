@@ -1,0 +1,185 @@
+@page "/cost-close/conversions"
+@using Safir.Shared.Models.CostClose
+@using Safir.Shared.Constants
+@using Safir.Client.Services
+@inject ItemConversionApiService Api
+@inject IDialogService Dialog
+@inject ISnackbar Snackbar
+
+<PageTitle>تبدیل کالا</PageTitle>
+
+<div class="cc-page" dir="rtl">
+
+    <div class="cc-toolbar">
+        <CostBackButton />
+        <MudText Typo="Typo.h6">تبدیل کالا به کالا</MudText>
+        <MudSpacer />
+        <MudButton StartIcon="@Icons.Material.Filled.Add" Color="Color.Primary"
+                   Variant="Variant.Filled" Disabled="_busy" OnClick="OpenNew">
+            تبدیل جدید
+        </MudButton>
+    </div>
+
+    <MudAlert Severity="Severity.Info" Dense Class="mb-3">
+        یک کالا از انباری خارج و کالای دیگری به انبار دیگری وارد می‌شود، با همان ارزش.
+        مبلغ از میانگین کاردکس گرفته می‌شود و تایپ نمی‌شود؛ بعد از بستن ماه هم
+        گام «تراز تبدیل کالا» دو سر را دوباره برابر می‌کند.
+    </MudAlert>
+
+    @if (_busy) { <MudProgressLinear Indeterminate Color="Color.Primary" Class="mb-3" /> }
+
+    @if (_error is not null)
+    {
+        <MudAlert Severity="Severity.Error" Class="mb-3">@_error</MudAlert>
+    }
+
+    @if (_unbalanced > 0)
+    {
+        <MudAlert Severity="Severity.Warning" Dense Class="mb-3">
+            @_unbalanced تبدیل هنوز تراز نیست — روی حساب واسط مانده می‌گذارد.
+            «بازسازی نرخ میانگین» و بعد گام «تراز تبدیل کالا» را اجرا کنید.
+        </MudAlert>
+    }
+
+    @if (!_busy && _rows.Count == 0)
+    {
+        <MudAlert Severity="Severity.Normal" Dense>هنوز تبدیلی ثبت نشده است.</MudAlert>
+    }
+    else
+    {
+        <MudTable Items="_rows" Dense Hover Breakpoint="Breakpoint.Sm" Elevation="0" Class="cc-table">
+            <HeaderContent>
+                <MudTh>تاریخ</MudTh>
+                <MudTh>از</MudTh>
+                <MudTh>به</MudTh>
+                <MudTh style="text-align:left">مبلغ</MudTh>
+                <MudTh style="text-align:left">نرخ مقصد</MudTh>
+                <MudTh>برگه‌ها</MudTh>
+                <MudTh>وضعیت</MudTh>
+                <MudTh></MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd DataLabel="تاریخ">@FormatDate(context.DateN)</MudTd>
+
+                <MudTd DataLabel="از">
+                    <div>@context.FromName</div>
+                    <MudText Typo="Typo.caption" Class="cc-dim">
+                        @context.FromQty.ToString("N2") — @context.FromAnbarName
+                    </MudText>
+                </MudTd>
+
+                <MudTd DataLabel="به">
+                    <div>@context.ToName</div>
+                    <MudText Typo="Typo.caption" Class="cc-dim">
+                        @context.ToQty.ToString("N2") — @context.ToAnbarName
+                    </MudText>
+                </MudTd>
+
+                <MudTd DataLabel="مبلغ" style="text-align:left">@Money(context.IssueValue)</MudTd>
+                <MudTd DataLabel="نرخ مقصد" style="text-align:left">@Money(context.ToRate)</MudTd>
+
+                <MudTd DataLabel="برگه‌ها">
+                    <MudText Typo="Typo.caption">
+                        حواله @((long)context.IssueNumber) · رسید @((long)context.ReceiptNumber)
+                    </MudText>
+                </MudTd>
+
+                <MudTd DataLabel="وضعیت">
+                    @if (context.IsVoided)
+                    {
+                        <MudChip T="string" Size="Size.Small" Variant="Variant.Text">ابطال‌شده</MudChip>
+                    }
+                    else if (context.IsBalanced)
+                    {
+                        <MudChip T="string" Size="Size.Small" Color="Color.Success" Variant="Variant.Text">تراز</MudChip>
+                    }
+                    else
+                    {
+                        <MudTooltip Text="@($"{Money(context.Gap)} ریال روی حساب {context.AccountCode} مانده")">
+                            <MudChip T="string" Size="Size.Small" Color="Color.Warning" Variant="Variant.Text">
+                                نامتوازن @Money(context.Gap)
+                            </MudChip>
+                        </MudTooltip>
+                    }
+                </MudTd>
+
+                <MudTd>
+                    @if (!context.IsVoided)
+                    {
+                        <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small"
+                                       Color="Color.Error" Disabled="_busy"
+                                       OnClick="@(() => Void(context))" Title="ابطال" />
+                    }
+                </MudTd>
+            </RowTemplate>
+        </MudTable>
+    }
+
+    <MudSwitch T="bool" @bind-Value="_includeVoided" Color="Color.Default" Class="mt-3"
+               Label="نمایش ابطال‌شده‌ها" @bind-Value:after="Load" />
+</div>
+
+@code {
+    private List<ConversionRowDto> _rows = new();
+    private bool    _busy;
+    private bool    _includeVoided;
+    private string? _error;
+    private int     _unbalanced;
+
+    protected override Task OnInitializedAsync() => Load();
+
+    private async Task Load()
+    {
+        _busy  = true;
+        _error = null;
+        try
+        {
+            _rows = await Api.ListAsync(includeVoided: _includeVoided);
+            _unbalanced = _rows.Count(r => !r.IsVoided && !r.IsBalanced);
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private async Task OpenNew()
+    {
+        var dlg = await Dialog.ShowAsync<ItemConversionDialog>(
+            "تبدیل جدید",
+            new DialogOptions { MaxWidth = MaxWidth.Medium, FullWidth = true, CloseButton = true });
+
+        var res = await dlg.Result;
+        if (res is { Canceled: false })
+        {
+            Snackbar.Add("تبدیل ثبت شد.", Severity.Success);
+            await Load();
+        }
+    }
+
+    private async Task Void(ConversionRowDto row)
+    {
+        var ok = await Dialog.ShowMessageBox(
+            "ابطال تبدیل",
+            $"حواله {(long)row.IssueNumber} و رسید {(long)row.ReceiptNumber} پاک می‌شوند. ادامه؟",
+            yesText: "ابطال کن", cancelText: "انصراف");
+
+        if (ok != true) return;
+
+        _busy = true;
+        var (done, err) = await Api.VoidAsync(row.ConversionId);
+        _busy = false;
+
+        if (done) { Snackbar.Add("تبدیل ابطال شد.", Severity.Success); await Load(); }
+        else      { Snackbar.Add(err ?? "ابطال نشد.", Severity.Error); }
+    }
+
+    private static string FormatDate(long d)
+        => d <= 0 ? "" : $"{d / 10000:0000}/{d / 100 % 100:00}/{d % 100:00}";
+
+    private static string Money(double v) => Math.Round(v).ToString("N0");
+}

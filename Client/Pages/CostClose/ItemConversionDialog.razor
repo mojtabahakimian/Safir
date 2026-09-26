@@ -1,0 +1,226 @@
+@using Safir.Shared.Models.CostClose
+@using Safir.Shared.Models.Kala
+@using Safir.Client.Services
+@using Safir.Client.Pages.Salary.Tabs
+@inject ItemConversionApiService Api
+@inject CostCloseApiService CostApi
+@inject LookupApiService Lookup
+
+@*
+    ثبت یک تبدیل.
+
+    ── چرا نرخ ورودی ندارد ──
+    عمدی است. تا امروز کاربر نرخ سمت ورود را تایپ می‌کرد و همان کار،
+    مانده روی حساب واسط می‌گذاشت: بازسازی نرخ میانگین سمت خروج را
+    دوباره قیمت می‌زند و سمت ورود همان عدد تایپ‌شده می‌ماند. اینجا
+    مبلغ فقط *نمایش* داده می‌شود؛ آمدنش از کاردکس است.
+*@
+
+<MudDialog>
+    <DialogContent>
+        <div dir="rtl" style="min-width:520px">
+
+            <div class="form-field mb-3">
+                <label>تاریخ (شمسی) *</label>
+                <Pay2NumericInput @bind-Value="_dateStr"
+                                  InputMode="Pay2NumericInput.NumericInputMode.PersianDate"
+                                  Direction="ltr" />
+            </div>
+
+            <MudText Typo="Typo.subtitle2" Class="mt-2">خروج</MudText>
+            <MudDivider Class="mb-2" />
+
+            <MudAutocomplete T="ItemLookupDto" Label="کالای مبدأ *" Dense Variant="Variant.Outlined"
+                             Class="mb-2" Value="_fromItem" ValueChanged="OnFromItemChanged"
+                             SearchFuncWithCancel="SearchItems" ToStringFunc="ItemText"
+                             Clearable ResetValueOnEmptyText />
+
+            <div class="d-flex gap-2 mb-3">
+                <MudSelect T="int" Label="انبار مبدأ *" Dense Variant="Variant.Outlined"
+                           Value="_fromAnbar" ValueChanged="OnFromAnbarChanged" Class="flex-grow-1">
+                    @foreach (var a in _anbarha)
+                    {
+                        <MudSelectItem T="int" Value="@a.CODE">@a.NAMES</MudSelectItem>
+                    }
+                </MudSelect>
+
+                <MudNumericField T="double" Label="مقدار *" Dense Variant="Variant.Outlined"
+                                 Value="_fromQty" ValueChanged="OnFromQtyChanged"
+                                 Min="0" HideSpinButtons Class="flex-grow-1" />
+            </div>
+
+            <MudText Typo="Typo.subtitle2">ورود</MudText>
+            <MudDivider Class="mb-2" />
+
+            <MudAutocomplete T="ItemLookupDto" Label="کالای مقصد *" Dense Variant="Variant.Outlined"
+                             Class="mb-2" Value="_toItem" ValueChanged="OnToItemChanged"
+                             SearchFuncWithCancel="SearchItems" ToStringFunc="ItemText"
+                             Clearable ResetValueOnEmptyText />
+
+            <div class="d-flex gap-2 mb-3">
+                <MudSelect T="int" Label="انبار مقصد *" Dense Variant="Variant.Outlined"
+                           Value="_toAnbar" ValueChanged="OnToAnbarChanged" Class="flex-grow-1">
+                    @foreach (var a in _anbarha)
+                    {
+                        <MudSelectItem T="int" Value="@a.CODE">@a.NAMES</MudSelectItem>
+                    }
+                </MudSelect>
+
+                <MudNumericField T="double" Label="مقدار *" Dense Variant="Variant.Outlined"
+                                 Value="_toQty" ValueChanged="OnToQtyChanged"
+                                 Min="0" HideSpinButtons Class="flex-grow-1" />
+            </div>
+
+            <MudText Typo="Typo.subtitle2">حساب واسط</MudText>
+            <MudDivider Class="mb-2" />
+
+            <MudTextField T="string" Label="کد حساب (کل-معین-تفصیل) *" Dense Variant="Variant.Outlined"
+                          Value="_account" ValueChanged="OnAccountChanged" Class="mb-1"
+                          Placeholder="741-3000-3000" Direction="ltr" />
+            @if (_preview?.AccountName is { Length: > 0 })
+            {
+                <MudText Typo="Typo.caption" Class="mud-text-secondary">@_preview.AccountName</MudText>
+            }
+
+            <MudTextField T="string" Label="شرح" Dense Variant="Variant.Outlined"
+                          @bind-Value="_note" Class="mt-3" />
+
+            @* ─── آنچه ثبت خواهد شد ─── *@
+            @if (_preview is not null)
+            {
+                <MudPaper Class="pa-3 mt-4" Elevation="0" Style="background:var(--mud-palette-background-grey)">
+                    @if (_preview.Blocker is not null)
+                    {
+                        <MudAlert Severity="Severity.Error" Dense>@_preview.Blocker</MudAlert>
+                    }
+                    else
+                    {
+                        <div class="d-flex justify-space-between mb-1">
+                            <span>موجودی کاردکس مبدأ</span>
+                            <b>@_preview.OnHand.ToString("N2") @_preview.FromUnit</b>
+                        </div>
+                        <div class="d-flex justify-space-between mb-1">
+                            <span>نرخ میانگین مبدأ</span>
+                            <b>@Money(_preview.Rate)</b>
+                        </div>
+                        <div class="d-flex justify-space-between mb-1">
+                            <span>مبلغی که جابه‌جا می‌شود</span>
+                            <b>@Money(_preview.Value) ریال</b>
+                        </div>
+                        <MudDivider Class="my-2" />
+                        <div class="d-flex justify-space-between">
+                            <span>نرخ کالای مقصد</span>
+                            <b>@Money(_preview.ToRate) @(_preview.ToUnit is { Length: > 0 } ? $"/ {_preview.ToUnit}" : "")</b>
+                        </div>
+
+                        @foreach (var w in _preview.Warnings)
+                        {
+                            <MudAlert Severity="Severity.Warning" Dense Class="mt-2">@w</MudAlert>
+                        }
+                    }
+                </MudPaper>
+            }
+
+            @if (_error is not null)
+            {
+                <MudAlert Severity="Severity.Error" Dense Class="mt-3">@_error</MudAlert>
+            }
+        </div>
+    </DialogContent>
+
+    <DialogActions>
+        <MudButton OnClick="@(() => MudDialog.Cancel())" Disabled="_busy">انصراف</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" Disabled="@(!CanSubmit)" OnClick="Submit">
+            ثبت تبدیل
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private MudDialogInstance MudDialog { get; set; } = default!;
+
+    private string? _dateStr;
+    private ItemLookupDto? _fromItem;
+    private ItemLookupDto? _toItem;
+    private int    _fromAnbar;
+    private int    _toAnbar;
+    private double _fromQty;
+    private double _toQty;
+    private string _account = "";
+    private string? _note;
+
+    private List<TCOD_ANBAR> _anbarha = new();
+    private ConversionPreviewDto? _preview;
+    private bool _busy;
+    private string? _error;
+
+    private const string LastAccountKey = "CostClose_LastConversionAccount";
+
+    private bool CanSubmit => !_busy && _preview is { CanSubmit: true };
+
+    protected override async Task OnInitializedAsync()
+    {
+        _dateStr = Safir.Shared.Utility.CL_Tarikh.GetCurrentPersianDateAsLong().ToString();
+        _anbarha = await Lookup.GetAnbarhaAsync() ?? new();
+    }
+
+    // هر تغییری پیش‌نمایش را تازه می‌کند — کاربر باید *قبل* از ثبت عدد را
+    // ببیند، نه بعدش.
+    private async Task OnFromItemChanged(ItemLookupDto? v) { _fromItem = v; await Refresh(); }
+    private async Task OnToItemChanged(ItemLookupDto? v)   { _toItem = v;   await Refresh(); }
+    private async Task OnFromAnbarChanged(int v)           { _fromAnbar = v; await Refresh(); }
+    private async Task OnToAnbarChanged(int v)             { _toAnbar = v;   await Refresh(); }
+    private async Task OnFromQtyChanged(double v)          { _fromQty = v;   await Refresh(); }
+    private async Task OnToQtyChanged(double v)            { _toQty = v;     await Refresh(); }
+    private async Task OnAccountChanged(string v)          { _account = v;   await Refresh(); }
+
+    private long? ParsedDate => long.TryParse(_dateStr?.Replace("/", ""), out var d) ? d : null;
+
+    private CreateConversionRequest BuildRequest() => new()
+    {
+        DateN       = ParsedDate ?? 0,
+        FromCode    = _fromItem?.Code ?? "",
+        FromAnbar   = _fromAnbar,
+        FromQty     = _fromQty,
+        ToCode      = _toItem?.Code ?? "",
+        ToAnbar     = _toAnbar,
+        ToQty       = _toQty,
+        AccountCode = _account ?? "",
+        Note        = _note
+    };
+
+    private async Task Refresh()
+    {
+        // تا وقتی فرم ناقص است سرور را بی‌خود صدا نمی‌زنیم؛ پیام «کالا
+        // انتخاب نشده» چیزی نیست که کاربر لازم باشد ببیند.
+        if (_fromItem is null || _toItem is null || _fromQty <= 0 || _toQty <= 0)
+        {
+            _preview = null;
+            return;
+        }
+
+        _preview = await Api.PreviewAsync(BuildRequest());
+        StateHasChanged();
+    }
+
+    private async Task Submit()
+    {
+        _busy  = true;
+        _error = null;
+
+        var res = await Api.CreateAsync(BuildRequest());
+
+        _busy = false;
+
+        if (res.Ok) MudDialog.Close(DialogResult.Ok(res));
+        else        _error = res.Error;
+    }
+
+    private async Task<IEnumerable<ItemLookupDto>> SearchItems(string? q, CancellationToken ct)
+        => await CostApi.SearchItemsAsync(q);
+
+    private static string ItemText(ItemLookupDto? i)
+        => i is null ? "" : $"{i.Code} — {i.Name}";
+
+    private static string Money(double v) => Math.Round(v).ToString("N0");
+}
