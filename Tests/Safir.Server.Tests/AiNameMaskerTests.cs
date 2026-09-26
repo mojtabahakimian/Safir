@@ -19,6 +19,16 @@ namespace Safir.Server.Tests
             Assert.Equal(3, m.Count);
         }
 
+        // فارسی به همان شکل به مدل برسد، نه کدِ یونیکدِ فرارداده (هر حرف ۶ نویسه، توکنِ چند برابر)
+        [Fact]
+        public void MaskJson_KeepsPersianUnescaped()
+        {
+            var json = new AiNameMasker().MaskJson("{\"Metric\":\"فروش خالص\",\"Note\":\"a \\\"q\\\" b\"}");
+            Assert.Contains("فروش خالص", json);
+            Assert.DoesNotContain("\\u06", json);
+            Assert.Contains("\\\"q\\\"", json);   // گیومه همچنان فرار داده می‌شود و JSON معتبر می‌ماند
+        }
+
         // run_sql ستونِ تکراری را NAME_2 می‌کند؛ نامِ دوم بدون پوشش به مدل می‌رفت
         [Fact]
         public void MaskJson_DuplicateColumnSuffix_IsStillMasked()
