@@ -16,6 +16,8 @@
 
 <PageTitle>ورود | سفیر</PageTitle>
 
+@* رنگ اصلی این صفحه در Login.razor.css به آبی سفیر (#2563eb) برگردانده شده، هم‌رنگ صفحه‌ی اصلی و حقوق و دستمزد *@
+<div class="safir-login">
 <MudContainer MaxWidth="MaxWidth.False" Class="d-flex align-center justify-center mud-width-full" Style="min-height: 100vh; background-image: linear-gradient(135deg, var(--mud-palette-background-grey) 0%, var(--mud-palette-drawer-background) 100%);">
     <MudPaper Elevation="8" Class="pa-8 rounded-xl" Style="width:100%; max-width:440px;">
 
@@ -37,7 +39,7 @@
                         <MudButton OnClick="SaveDbSettings" Variant="Variant.Filled" Color="Color.Primary" FullWidth="true">
                             ذخیره تنظیمات دیتابیس
                         </MudButton>
-                        <MudButton OnClick="TestDbConnection" Variant="Variant.Outlined" Color="Color.Info" FullWidth="true" Disabled="@isTestingConnection">
+                        <MudButton OnClick="TestDbConnection" Variant="Variant.Outlined" Color="Color.Primary" FullWidth="true" Disabled="@isTestingConnection">
                             @if (isTestingConnection)
                             {
                                 <MudProgressCircular Indeterminate="true" Size="Size.Small" Class="me-2" />
@@ -51,9 +53,7 @@
 
         @* ... (بخش لوگو و خوش آمد گویی بدون تغییر) ... *@
         <MudStack AlignItems="AlignItems.Center" Spacing="2" Class="mb-4">
-            <MudAvatar Color="Color.Primary" Variant="Variant.Outlined" Size="Size.Large">
-                <MudIcon Icon="@Icons.Material.Filled.Diamond" Size="Size.Medium" />
-            </MudAvatar>
+            <div class="safir-login-logo"><i class="bi bi-gem"></i></div>
             <MudText Typo="Typo.h5" Style="font-weight: 700; color: var(--mud-palette-primary);">سفیر</MudText>
         </MudStack>
         <MudStack AlignItems="AlignItems.Center" Spacing="1" Class="mb-6 text-center">
@@ -141,6 +141,7 @@
 
     </MudPaper>
 </MudContainer>
+</div>
 
 @code {
     private class LoginModel
