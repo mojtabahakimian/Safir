@@ -339,20 +339,15 @@
             try
             {
                 Snackbar.Add("در حال بررسی و دریافت آخرین نسخه...", MudBlazor.Severity.Info);
-                var moduleVersion = System.Reflection.Assembly
-                    .GetExecutingAssembly()
-                    .ManifestModule
-                    .ModuleVersionId
-                    .ToString("N");
                 var updateModule = await JSRuntime.InvokeAsync<IJSObjectReference>(
                     "import",
-                    $"./js/app-update.js?v={moduleVersion}");
+                    "./js/app-update.js");
                 await updateModule.InvokeVoidAsync("refresh");
             }
             catch (Exception ex)
             {
                 Console.Error.WriteLine($"Error during soft refresh: {ex.Message}");
-                Snackbar.Add("خطا در به‌روزرسانی.", MudBlazor.Severity.Error);
+                Snackbar.Add("دریافت نسخه جدید کامل نشد. اتصال اینترنت را بررسی کنید و دوباره تلاش کنید.", MudBlazor.Severity.Error);
             }
         }
     }
