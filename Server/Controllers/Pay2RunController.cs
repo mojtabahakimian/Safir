@@ -752,7 +752,12 @@ VALUES (@N_S, @RADIF, @HES_K, @HES_M, @HES_T, @HES_T2, @HES_T3, @HES_T4, @HES, @
         public async Task<IActionResult> GetInsuranceReportPdf(int runId, [FromQuery] int wsId = 0)
         {
             int __usr_scope_1 = int.Parse(User.FindFirst(BaseknowClaimTypes.IDD)?.Value ?? "0");
-            await HttpContext.RequestServices.GetRequiredService<Pay2ScopeResolver>().EnsureWorkshopAsync(__usr_scope_1, wsId);
+            // با runId، کارگاه را از خودِ Run بخوان نه از wsId: صفحه‌ی اجرای حقوق
+            // wsId نمی‌فرستد (۰) و بررسیِ کارگاه ۰ همیشه ۴۰۳ می‌داد؛ و wsIdِ دلخواه
+            // هم نباید بتواند Runِ کارگاه دیگری را باز کند.
+            var __scope_1 = HttpContext.RequestServices.GetRequiredService<Pay2ScopeResolver>();
+            if (runId > 0) await __scope_1.EnsureWorkshopAsync(__usr_scope_1, Pay2ScopeKind.Run, runId);
+            else await __scope_1.EnsureWorkshopAsync(__usr_scope_1, wsId);
             int __userCo = int.Parse(User.FindFirst(BaseknowClaimTypes.IDD)?.Value ?? "0");
             var __accessService = HttpContext.RequestServices.GetRequiredService<IPay2AccessService>();
             var allowedWsIds = await __accessService.GetAllowedWorkshopIdsAsync(__userCo);
@@ -954,7 +959,12 @@ VALUES (@N_S, @RADIF, @HES_K, @HES_M, @HES_T, @HES_T2, @HES_T3, @HES_T4, @HES, @
         public async Task<IActionResult> GetTaxReportPdf(int runId, [FromQuery] int wsId = 0)
         {
             int __usr_scope_2 = int.Parse(User.FindFirst(BaseknowClaimTypes.IDD)?.Value ?? "0");
-            await HttpContext.RequestServices.GetRequiredService<Pay2ScopeResolver>().EnsureWorkshopAsync(__usr_scope_2, wsId);
+            // با runId، کارگاه را از خودِ Run بخوان نه از wsId: صفحه‌ی اجرای حقوق
+            // wsId نمی‌فرستد (۰) و بررسیِ کارگاه ۰ همیشه ۴۰۳ می‌داد؛ و wsIdِ دلخواه
+            // هم نباید بتواند Runِ کارگاه دیگری را باز کند.
+            var __scope_2 = HttpContext.RequestServices.GetRequiredService<Pay2ScopeResolver>();
+            if (runId > 0) await __scope_2.EnsureWorkshopAsync(__usr_scope_2, Pay2ScopeKind.Run, runId);
+            else await __scope_2.EnsureWorkshopAsync(__usr_scope_2, wsId);
             try
             {
                 var reportDto = new Safir.Shared.Models.Salary.Reports.TaxReportDto();
