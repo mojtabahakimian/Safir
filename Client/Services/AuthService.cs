@@ -18,6 +18,8 @@ namespace Safir.Client.Services
         private readonly AuthenticationStateProvider _authenticationStateProvider;
         // Using Blazored.LocalStorage for easy local storage access
         private readonly ILocalStorageService _localStorage;
+        // توکن هر تب جداست (TabSession)؛ دو تب می‌توانند هم‌زمان در دو شرکت وارد باشند
+        private readonly TabSession _tab;
         private const string AuthTokenKey = "authToken"; // Key to store token in local storage
         private readonly ShoppingCartService _shoppingCartService;
 
@@ -27,8 +29,10 @@ namespace Safir.Client.Services
                            AuthenticationStateProvider authenticationStateProvider,
                            ILocalStorageService localStorage,
                            AppState appState,
-                           ShoppingCartService shoppingCartService)
+                           ShoppingCartService shoppingCartService,
+                           TabSession tab)
         {
+            _tab = tab;
             _httpClient = httpClient;
             _authenticationStateProvider = authenticationStateProvider;
             _localStorage = localStorage;
@@ -80,7 +84,7 @@ namespace Safir.Client.Services
 
 
                 // Login successful, store the token
-                await _localStorage.SetItemAsync(AuthTokenKey, loginResult.Token);
+                await _tab.SetAsync(AuthTokenKey, loginResult.Token);
 
                 // Notify the AuthenticationStateProvider that the user has logged in
                 // The cast is necessary because we know we are using our custom provider
@@ -106,7 +110,7 @@ namespace Safir.Client.Services
         public async Task Logout()
         {
             // 1. پاک کردن توکن احراز هویت از localStorage
-            await _localStorage.RemoveItemAsync(AuthTokenKey);
+            await _tab.RemoveAsync<string>(AuthTokenKey);
 
             // 2. اطلاع به AuthenticationStateProvider
             ((ApiAuthenticationStateProvider)_authenticationStateProvider).MarkUserAsLoggedOut();
@@ -142,7 +146,7 @@ namespace Safir.Client.Services
 
         public async Task<string?> GetTokenAsync()
         {
-            return await _localStorage.GetItemAsync<string>(AuthTokenKey);
+            return await _tab.GetAsync<string>(AuthTokenKey);
         }
     }
 }

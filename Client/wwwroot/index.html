@@ -44,6 +44,18 @@
                 const scheme = localStorage.getItem('themeScheme') || 'classic';
                 document.documentElement.setAttribute('data-theme-scheme', scheme);
             } catch { }
+
+            // «ورود به شرکت دیگر در تب جدید» (?newtab=1): مرورگر sessionStorage تب قبلی را در تب
+            // جدید کپی می‌کند؛ توکن آن پاک و پرچم گذاشته می‌شود تا این تب نشست خودش را بسازد (TabSession).
+            try {
+                const u = new URL(location.href);
+                if (u.searchParams.get('newtab') === '1') {
+                    sessionStorage.removeItem('authToken');
+                    sessionStorage.setItem('safir.freshTab', '1');
+                    u.searchParams.delete('newtab');
+                    history.replaceState(null, '', u.pathname + u.search + u.hash);
+                }
+            } catch { }
         })();
     </script>
 

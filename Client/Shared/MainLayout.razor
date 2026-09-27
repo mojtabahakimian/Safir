@@ -138,6 +138,15 @@
                         </MudButton>
 
                         <MudDivider /> @* <<< جداکننده اختیاری >>> *@
+                        @* مثل باز کردن EXE دوم: تب جدیدی با نشست خودش، برای کار هم‌زمان در شرکت یا سال مالی دیگر *@
+                        <MudButton Variant="Variant.Text"
+                                   OnClick="OpenOtherCompanyTab"
+                                   FullWidth="true"
+                                   Style="justify-content: start; text-transform: none; padding: 6px 16px; font-weight: normal; color: inherit;"
+                                   Class="mud-menu-item">
+                            <MudIcon Icon="@Icons.Material.Filled.OpenInNew" Class="me-3" />
+                            ورود به شرکت دیگر در تب جدید
+                        </MudButton>
                         <MudButton Variant="Variant.Text"
                                    OnClick="LogoutUser"
                                    OnClickStopPropagation="true"
@@ -237,6 +246,8 @@
 
         // اشتراک در رویداد تغییر تم
         ThemeService.ThemeChanged += OnThemeChanged;
+
+        DbMismatchHandler.Mismatch += OnDbMismatch;
 
         // دریافت وضعیت اولیه سبد
         UpdateCartState();
@@ -384,6 +395,24 @@
         InvokeAsync(StateHasChanged);
     }
 
+    private async Task OpenOtherCompanyTab() =>
+        await JSRuntime.InvokeVoidAsync("open", "login?newtab=1", "_blank");
+
+    // سرور گفته توکن این تب مال دیتابیس دیگری است؛ یک بار به صفحه‌ی ورود برو
+    private bool _dbMismatchHandled;
+    private void OnDbMismatch()
+    {
+        if (_dbMismatchHandled) return;
+        _dbMismatchHandled = true;
+        InvokeAsync(async () =>
+        {
+            await AuthService.Logout();
+            Snackbar.Add("این تب به شرکت دیگری وصل شده بود؛ لطفاً دوباره وارد شوید.", Severity.Warning);
+            NavManager.NavigateTo("/login");
+            _dbMismatchHandled = false;
+        });
+    }
+
     private async Task LogoutUser()
     {
         await AuthService.Logout();
@@ -415,6 +444,7 @@
         // لغو اشتراک رویدادها
         CartService.CartChanged -= OnCartChanged;
         ThemeService.ThemeChanged -= OnThemeChanged;
+        DbMismatchHandler.Mismatch -= OnDbMismatch;
         _connectivityCheckTimer?.Dispose();
         GC.SuppressFinalize(this); // جلوگیری از فراخوانی دوباره Finalizer
     }

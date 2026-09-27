@@ -14,16 +14,21 @@ namespace Safir.Client.Auth
         private readonly ILocalStorageService _localStorage; // Using Blazored.LocalStorage
         private const string AuthTokenKey = "authToken"; // Key to store token
 
-        public ApiAuthenticationStateProvider(HttpClient httpClient, ILocalStorageService localStorage)
+        // توکن هر تب جداست (TabSession)؛ دو تب می‌توانند هم‌زمان در دو شرکت وارد باشند
+        private readonly Safir.Client.Services.TabSession _tab;
+
+        public ApiAuthenticationStateProvider(HttpClient httpClient, ILocalStorageService localStorage,
+                                              Safir.Client.Services.TabSession tab)
         {
             _httpClient = httpClient;
             _localStorage = localStorage;
+            _tab = tab;
         }
 
         // This method is called by Blazor framework to get the initial auth state
         public override async Task<AuthenticationState> GetAuthenticationStateAsync()
         {
-            var savedToken = await _localStorage.GetItemAsync<string>(AuthTokenKey);
+            var savedToken = await _tab.GetAsync<string>(AuthTokenKey);
 
             if (string.IsNullOrWhiteSpace(savedToken))
             {
@@ -38,14 +43,14 @@ namespace Safir.Client.Auth
                 if (jwtToken.ValidTo < DateTime.UtcNow)
                 {
                     Console.WriteLine("Token expired. Logging out.");
-                    await _localStorage.RemoveItemAsync(AuthTokenKey); // Clean up expired token
+                    await _tab.RemoveAsync<string>(AuthTokenKey); // Clean up expired token
                     return new AuthenticationState(new ClaimsPrincipal(new ClaimsIdentity())); // Treat as logged out
                 }
             }
             catch (Exception ex) // Handle cases where token is invalid/malformed
             {
                 Console.WriteLine($"Error reading token: {ex.Message}. Logging out.");
-                await _localStorage.RemoveItemAsync(AuthTokenKey);
+                await _tab.RemoveAsync<string>(AuthTokenKey);
                 return new AuthenticationState(new ClaimsPrincipal(new ClaimsIdentity()));
             }
 
