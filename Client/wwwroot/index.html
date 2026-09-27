@@ -41,6 +41,8 @@
             try {
                 const isDark = localStorage.getItem('isDarkMode') === 'true';
                 document.documentElement.classList.toggle('dark-theme', isDark);
+                const scheme = localStorage.getItem('themeScheme') || 'classic';
+                document.documentElement.setAttribute('data-theme-scheme', scheme);
             } catch { }
         })();
     </script>

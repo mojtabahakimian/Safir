@@ -21,7 +21,10 @@
        با Color.Primary نوار سبز می‌شد و در تم تاریک بنفش. *@
     <MudAppBar Elevation="0" Class="safir-appbar">
         <MudIconButton Icon="@Icons.Material.Filled.Menu" Color="Color.Inherit" Edge="Edge.Start" OnClick="@((e) => DrawerToggle())" />
-        <MudText Typo="Typo.h6" Class="ml-3" Style="font-weight:800;">سفیر</MudText>
+        <div class="d-flex align-center gap-2 ml-3" style="cursor: pointer;" @onclick='() => NavManager.NavigateTo("/")'>
+            <img class="safir-appbar-logo" src="img/safir-logo.png" alt="سفیر" />
+            <MudText Typo="Typo.h6" Class="safir-appbar-title" Style="font-weight:800;">سفیر</MudText>
+        </div>
         <MudSpacer />
 
         @* نمایش نام مشتری انتخاب شده برای سفارش *@
@@ -52,9 +55,59 @@
             </MudBadge>
         </MudTooltip>
 
-        @* دکمه تغییر تم *@
-        <MudTooltip Text="@(ThemeService.IsDarkMode ? "تم روشن" : "تم تاریک")" Arrow="true">
-            @* استفاده از OnClick به جای bind-Toggled برای فراخوانی متد سرویس تم *@
+        @* منوی انتخاب تم رنگی (کلاسیک / مدرن سفیر) *@
+        <MudMenu Dense="true" AnchorOrigin="Origin.BottomLeft" TransformOrigin="Origin.TopLeft" PopoverClass="safir-rounded-menu">
+            <ActivatorContent>
+                <MudTooltip Text="انتخاب تم سفیر" Arrow="true">
+                    <MudIconButton Icon="@Icons.Material.Filled.Palette"
+                                   Color="Color.Inherit"
+                                   Class="mx-1" />
+                </MudTooltip>
+            </ActivatorContent>
+            <ChildContent>
+                <MudMenuItem OnClick="@(() => SetThemeScheme(AppThemeScheme.Classic))">
+                    <div class="d-flex align-center justify-space-between py-1" style="min-width: 210px;">
+                        <div class="d-flex align-center gap-2">
+                            <span class="theme-dot-classic"></span>
+                            <span>تم پیش‌فرض (کلاسیک)</span>
+                        </div>
+                        @if (ThemeService.CurrentScheme == AppThemeScheme.Classic)
+                        {
+                            <MudIcon Icon="@Icons.Material.Filled.Check" Size="Size.Small" Color="Color.Success" />
+                        }
+                    </div>
+                </MudMenuItem>
+
+                <MudMenuItem OnClick="@(() => SetThemeScheme(AppThemeScheme.Safir))">
+                    <div class="d-flex align-center justify-space-between py-1" style="min-width: 210px;">
+                        <div class="d-flex align-center gap-2">
+                            <span class="theme-dot-safir"></span>
+                            <span style="font-weight: 700;">تم مدرن سفیر (لوگو)</span>
+                        </div>
+                        @if (ThemeService.CurrentScheme == AppThemeScheme.Safir)
+                        {
+                            <MudIcon Icon="@Icons.Material.Filled.Check" Size="Size.Small" Color="Color.Primary" />
+                        }
+                    </div>
+                </MudMenuItem>
+
+                <MudMenuItem OnClick="@(() => SetThemeScheme(AppThemeScheme.CostClose))">
+                    <div class="d-flex align-center justify-space-between py-1" style="min-width: 210px;">
+                        <div class="d-flex align-center gap-2">
+                            <span class="theme-dot-costclose"></span>
+                            <span style="font-weight: 700;">تم بهای تمام‌شده (نئون)</span>
+                        </div>
+                        @if (ThemeService.CurrentScheme == AppThemeScheme.CostClose)
+                        {
+                            <MudIcon Icon="@Icons.Material.Filled.Check" Size="Size.Small" Color="Color.Info" />
+                        }
+                    </div>
+                </MudMenuItem>
+            </ChildContent>
+        </MudMenu>
+
+        @* دکمه تغییر حالت روز / شب *@
+        <MudTooltip Text="@(ThemeService.IsDarkMode ? "حالت روز" : "حالت شب")" Arrow="true">
             <MudIconButton Icon="@(ThemeService.IsDarkMode ? Icons.Material.Filled.WbSunny : Icons.Material.Filled.NightsStay)"
                            Color="Color.Inherit"
                            OnClick="ToggleTheme" />
@@ -63,7 +116,7 @@
 
         <AuthorizeView>
             <Authorized>
-                <MudMenu AnchorOrigin="Origin.BottomRight" TransformOrigin="Origin.TopCenter">
+                <MudMenu AnchorOrigin="Origin.BottomRight" TransformOrigin="Origin.TopCenter" PopoverClass="safir-rounded-menu">
                     <ActivatorContent>
                         <MudButton Variant="Variant.Text"
                                    Color="Color.Inherit"
@@ -115,8 +168,9 @@
                Variant="DrawerVariant.Responsive"
                Class="mud-theme-background safir-drawer">
 
-        <MudDrawerHeader>
-            <MudText Typo="Typo.h6">منو</MudText>
+        <MudDrawerHeader Class="d-flex align-center gap-3">
+            <img class="safir-drawer-logo" src="img/safir-logo.png" alt="سفیر" />
+            <MudText Typo="Typo.h6" Class="safir-drawer-title" Style="font-weight:800;">سفیر</MudText>
         </MudDrawerHeader>
 
         @* آیتم‌های منو *@
@@ -180,6 +234,9 @@
         await CartService.InitializeCartFromServerAsync();
         // اشتراک در رویداد تغییر سبد خرید
         CartService.CartChanged += OnCartChanged;
+
+        // اشتراک در رویداد تغییر تم
+        ThemeService.ThemeChanged += OnThemeChanged;
 
         // دریافت وضعیت اولیه سبد
         UpdateCartState();
@@ -314,7 +371,17 @@
     private async Task ToggleTheme()
     {
         await ThemeService.ToggleTheme();
-        // StateHasChanged(); // معمولا سرویس تم خودش UI را آپدیت می‌کند
+    }
+
+    private async Task SetThemeScheme(AppThemeScheme scheme)
+    {
+        await ThemeService.SetScheme(scheme);
+        StateHasChanged();
+    }
+
+    private void OnThemeChanged()
+    {
+        InvokeAsync(StateHasChanged);
     }
 
     private async Task LogoutUser()
@@ -345,8 +412,9 @@
     }
     public void Dispose()
     {
-        // لغو اشتراک رویداد
+        // لغو اشتراک رویدادها
         CartService.CartChanged -= OnCartChanged;
+        ThemeService.ThemeChanged -= OnThemeChanged;
         _connectivityCheckTimer?.Dispose();
         GC.SuppressFinalize(this); // جلوگیری از فراخوانی دوباره Finalizer
     }
