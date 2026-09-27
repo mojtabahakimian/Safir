@@ -30,17 +30,21 @@ namespace Safir.Server.Ai
 
     public sealed class AiSettingsProvider : IAiSettingsProvider
     {
-        private const string CacheKey = "ai_config_effective";
+        // تنظیمات دستیار (کلید API، مدل، …) در جدول AI_Config هر دیتابیس است؛ کلید کش دیتابیس را دارد
+        private string CacheKey => $"ai_config_effective:{_dbKey}";
+        private readonly string _dbKey;
 
         private readonly IDatabaseService _db;
         private readonly IMemoryCache     _cache;
         private readonly AiOptions        _fromAppSettings;
 
-        public AiSettingsProvider(IDatabaseService db, IMemoryCache cache, AiOptions fromAppSettings)
+        public AiSettingsProvider(IDatabaseService db, IMemoryCache cache, AiOptions fromAppSettings,
+                                  Safir.Server.Services.IConnectionStringProvider? connection = null)
         {
             _db              = db;
             _cache           = cache;
             _fromAppSettings = fromAppSettings;
+            _dbKey           = connection is null ? string.Empty : Safir.Server.Services.DbKey.DatabaseKey(connection);
         }
 
         public void Invalidate() => _cache.Remove(CacheKey);

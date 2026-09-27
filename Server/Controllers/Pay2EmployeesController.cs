@@ -30,6 +30,11 @@ namespace Safir.Server.Controllers
             _cache = cache;
         }
 
+        // مشاغل هر شرکت جداست؛ کش بین دیتابیس‌های این سرور مشترک است (DbKey)
+        private string AllJobsCacheKey =>
+            "AllJobsCache:" + Safir.Server.Services.DbKey.DatabaseKey(
+                HttpContext.RequestServices.GetRequiredService<Safir.Server.Services.IConnectionStringProvider>());
+
         private static readonly HashSet<string> _autoDeductionCodes = new(StringComparer.OrdinalIgnoreCase)
             { "INS_DED", "TAX_DED", "LOAN_DED", "ADVANCE_DED" };
 
@@ -1652,10 +1657,10 @@ namespace Safir.Server.Controllers
                     string lowerTerm = Safir.Shared.Utility.CL_METHODS.ToStandardSearchText(search).ToLowerInvariant();
 
                     // 2. واکشی از کش (یا دیتابیس در صورت خالی بودن کش)
-                    if (!_cache.TryGetValue("AllJobsCache", out List<Pay2JobDto>? allJobs) || allJobs == null)
+                    if (!_cache.TryGetValue(AllJobsCacheKey, out List<Pay2JobDto>? allJobs) || allJobs == null)
                     {
                         allJobs = (await _db.DoGetDataSQLAsync<Pay2JobDto>("SELECT JOB_ID, JOB_CODE, JOB_NAME, JOB_GROUP, IS_ACTIVE FROM PAY2_JOB")).ToList();
-                        _cache.Set("AllJobsCache", allJobs, TimeSpan.FromMinutes(30)); // 30 دقیقه اعتبار
+                        _cache.Set(AllJobsCacheKey, allJobs, TimeSpan.FromMinutes(30)); // 30 دقیقه اعتبار
                     }
 
                     const int MinimumScoreThreshold = 50;
@@ -1761,7 +1766,7 @@ namespace Safir.Server.Controllers
                         await conn.ExecuteAsync(updateSql, job, tran);
                     }
                 });
-                _cache.Remove("AllJobsCache"); // پاک کردن کش پس از ذخیره
+                _cache.Remove(AllJobsCacheKey); // پاک کردن کش پس از ذخیره
                 return Ok();
             }
             catch (InvalidOperationException ex) { return BadRequest(ex.Message); }
@@ -1789,7 +1794,7 @@ namespace Safir.Server.Controllers
                         await conn.ExecuteAsync("DELETE FROM PAY2_JOB WHERE JOB_ID = @Id", new { Id = id }, tran);
                     }
                 });
-                _cache.Remove("AllJobsCache"); // پاک کردن کش پس از حذف
+                _cache.Remove(AllJobsCacheKey); // پاک کردن کش پس از حذف
                 return Ok();
             }
             catch (Exception ex) { return BadRequest(ex.Message); }

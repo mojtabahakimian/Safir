@@ -78,6 +78,29 @@ builder.Services.AddAuthentication(options =>
                 context.Token = accessToken;
             }
             return Task.CompletedTask;
+        },
+
+        // توکن مال دیتابیسی است که کاربر در آن وارد شده (کد کاربر و دسترسی‌ها فقط همان‌جا
+        // معنی دارند). درخواستی که هدر X-DB-Connection آن دیتابیس دیگری را نشان بدهد، مثلاً
+        // تبی که تنظیمش در تب دیگری عوض شده، با ۴۰۱ رد می‌شود تا کاربر با هویت کس دیگری در
+        // شرکت دیگر کار نکند. هاب‌های SignalR هدر ندارند و فقط پیام می‌فرستند؛ مستثنا هستند.
+        // توکن‌های قدیمی بدون این claim تا انقضا (۸ ساعت) پذیرفته می‌شوند تا ارتقا کسی را بیرون نیندازد.
+        OnTokenValidated = context =>
+        {
+            if (context.HttpContext.Request.Path.StartsWithSegments("/hubs"))
+                return Task.CompletedTask;
+
+            var tokenDb = context.Principal?.FindFirst(Safir.Shared.Constants.BaseknowClaimTypes.DB)?.Value;
+            if (string.IsNullOrEmpty(tokenDb))
+                return Task.CompletedTask;
+
+            var provider = context.HttpContext.RequestServices.GetRequiredService<IConnectionStringProvider>();
+            if (!string.Equals(tokenDb, Safir.Server.Services.DbKey.DatabaseKey(provider), StringComparison.Ordinal))
+            {
+                context.Response.Headers["X-Safir-Db-Mismatch"] = "1";
+                context.Fail("این نشست مربوط به دیتابیس دیگری است. دوباره وارد شوید.");
+            }
+            return Task.CompletedTask;
         }
     };
 });

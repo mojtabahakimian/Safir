@@ -21,7 +21,7 @@ internal static class TestJwt
     private const string Issuer = "SafirAppIssuer";
     private const string Audience = "SafirAppAudience";
 
-    public static string For(int userCo, string userName = "testuser")
+    public static string For(int userCo, string userName = "testuser", string? db = null)
     {
         var creds = new SigningCredentials(
             new SymmetricSecurityKey(Encoding.UTF8.GetBytes(Key)),
@@ -38,7 +38,7 @@ internal static class TestJwt
             new Claim(BaseknowClaimTypes.UUSER, userName),
             new Claim(BaseknowClaimTypes.IDD, userCo.ToString()),
             new Claim(BaseknowClaimTypes.GRSAL, "1"),
-        };
+        }.Concat(db is null ? Array.Empty<Claim>() : new[] { new Claim(BaseknowClaimTypes.DB, db) }).ToArray();
 
         var tokenDescriptor = new SecurityTokenDescriptor
         {
