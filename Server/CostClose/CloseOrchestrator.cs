@@ -126,7 +126,7 @@ namespace Safir.Server.CostClose
             // بگیرند که کلیدِ توقفِ کاربر هم آن را لغو کند — وگرنه گامی مثل
             // S07A که خودش ct را چک می‌کند (و تا ۷۳ ثانیه طول می‌کشد) لغو را
             // نمی‌بیند و دکمه‌ی توقف بی‌اثر به‌نظر می‌رسد.
-            using var runCts = _queue.RegisterRun(job.RunId, appToken);
+            using var runCts = _queue.RegisterRun(job.Db, job.RunId, appToken);
             var ct = runCts.Token;
 
             var db = _dbFactory.Create(job.ConnectionString);
@@ -263,11 +263,11 @@ namespace Safir.Server.CostClose
 
                 while (pending.Count > 0)
                 {
-                    if (ct.IsCancellationRequested || _queue.IsCancelRequested(job.RunId))
+                    if (ct.IsCancellationRequested || _queue.IsCancelRequested(job.Db, job.RunId))
                     {
                         await LogAsync(db, job.RunId, null, 2, "اجرا توسط کاربر متوقف شد");
                         await SetRunStatusAsync(db, job.RunId, CostRunStatus.Paused);
-                        await _notify.RunPausedAsync(job.RunId, "cancelled");
+                        await _notify.RunPausedAsync(job.Db, job.RunId, "cancelled");
                         return;
                     }
 
@@ -286,7 +286,7 @@ namespace Safir.Server.CostClose
                         Ct         = ct,
                         NarrowToFormulaItems = !s07aNeedsFullPass && !s07aScopeUntrusted,
                         ReportProgress = (code, pct, msg) =>
-                            _notify.StepProgressAsync(job.RunId, code, pct, msg)
+                            _notify.StepProgressAsync(job.Db, job.RunId, code, pct, msg)
                     };
 
                     // ضربان: نشانه‌ی حیات، تا اگر سرور وسط کار ری‌استارت شد
@@ -303,7 +303,7 @@ namespace Safir.Server.CostClose
                         SeqNo    = step.SeqNo
                     });
 
-                    await _notify.StepProgressAsync(job.RunId, step.StepCode, 0, step.Title);
+                    await _notify.StepProgressAsync(job.Db, job.RunId, step.StepCode, 0, step.Title);
 
                     StepResult result;
 
@@ -342,7 +342,7 @@ namespace Safir.Server.CostClose
                         Error    = result.Error
                     });
 
-                    await _notify.StepFinishedAsync(job.RunId, step.StepCode, (byte)result.Status);
+                    await _notify.StepFinishedAsync(job.Db, job.RunId, step.StepCode, (byte)result.Status);
 
                     // یک پاس کاملِ S07A انجام شد؛ تا وقتی S07 دوباره اجرا نشود
                     // پاس‌های بعدی می‌توانند باریک باشند.
@@ -356,7 +356,7 @@ namespace Safir.Server.CostClose
                     if (result.Status == CostStepStatus.Failed)
                     {
                         await SetRunStatusAsync(db, job.RunId, CostRunStatus.Failed);
-                        await _notify.RunFailedAsync(job.RunId, step.StepCode, result.Error);
+                        await _notify.RunFailedAsync(job.Db, job.RunId, step.StepCode, result.Error);
                         return;
                     }
 
@@ -364,7 +364,7 @@ namespace Safir.Server.CostClose
                     if (step.IsGate && result.Status != CostStepStatus.Success)
                     {
                         await SetRunStatusAsync(db, job.RunId, CostRunStatus.Paused);
-                        await _notify.RunPausedAsync(job.RunId, step.StepCode);
+                        await _notify.RunPausedAsync(job.Db, job.RunId, step.StepCode);
                         return;
                     }
 
@@ -518,16 +518,16 @@ namespace Safir.Server.CostClose
                 // «تکمیل» علامت می‌خورد — یعنی درخواست او بی‌صدا نادیده
                 // گرفته می‌شود و وضعیتِ گزارش‌شده هم غلط است. اینجا یک بار
                 // دیگر چک می‌کنیم تا «توقف» همیشه «توقف» بماند.
-                if (ct.IsCancellationRequested || _queue.IsCancelRequested(job.RunId))
+                if (ct.IsCancellationRequested || _queue.IsCancelRequested(job.Db, job.RunId))
                 {
                     await LogAsync(db, job.RunId, null, 2, "اجرا توسط کاربر متوقف شد");
                     await SetRunStatusAsync(db, job.RunId, CostRunStatus.Paused);
-                    await _notify.RunPausedAsync(job.RunId, "cancelled");
+                    await _notify.RunPausedAsync(job.Db, job.RunId, "cancelled");
                     return;
                 }
 
                 await SetRunStatusAsync(db, job.RunId, CostRunStatus.Completed);
-                await _notify.RunCompletedAsync(job.RunId);
+                await _notify.RunCompletedAsync(job.Db, job.RunId);
             }
             catch (Exception ex)
             {
@@ -538,7 +538,7 @@ namespace Safir.Server.CostClose
                     await LogAsync(db, job.RunId, null, 2,
                         $"اجرا با خطای غیرمنتظره متوقف شد: {ex.Message}");
                     await SetRunStatusAsync(db, job.RunId, CostRunStatus.Failed);
-                    await _notify.RunFailedAsync(job.RunId, string.Empty, ex.Message);
+                    await _notify.RunFailedAsync(job.Db, job.RunId, string.Empty, ex.Message);
                 }
                 catch (Exception logEx)
                 {

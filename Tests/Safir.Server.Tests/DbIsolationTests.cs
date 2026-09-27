@@ -109,3 +109,24 @@ public class DbIsolationTests : IClassFixture<DbIsolationTests.Factory>
         Assert.NotEqual(HttpStatusCode.Unauthorized, res.StatusCode);
     }
 }
+
+/// <summary>شماره‌ی اجرای بستن ماه در هر دیتابیس از ۱ شروع می‌شود؛ صف باید آن‌ها را از هم جدا کند.</summary>
+public class CostCloseQueueDbIsolationTests
+{
+    private static Safir.Server.CostClose.CostCloseJob Job(string database, int runId) =>
+        new(runId, $"Data Source=srv;Initial Catalog={database};Integrated Security=True", "u", null);
+
+    [Fact]
+    public void Same_run_number_in_two_databases_runs_independently()
+    {
+        var queue = new Safir.Server.CostClose.CostCloseQueue();
+
+        Assert.True(queue.TryEnqueue(Job("YAZD", 7), out _));
+        Assert.True(queue.TryEnqueue(Job("POODR", 7), out _));   // قبلاً: «این اجرا هم‌اکنون در حال انجام است»
+        Assert.False(queue.TryEnqueue(Job("YAZD", 7), out _));   // همان اجرا در همان دیتابیس هنوز قفل است
+
+        queue.RequestCancel("srv|yazd", 7);
+        Assert.True(queue.IsCancelRequested("srv|yazd", 7));
+        Assert.False(queue.IsCancelRequested("srv|poodr", 7));    // لغو یزد، اجرای پودر را متوقف نمی‌کند
+    }
+}
