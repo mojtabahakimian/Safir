@@ -26,20 +26,27 @@ namespace Safir.Server.CostClose
         int      RunId,
         string   ConnectionString,
         string   UserName,
-        string[]? OnlySteps);
+        string[]? OnlySteps)
+    {
+        /// <summary>
+        /// شماره‌ی اجرا در هر دیتابیس از ۱ شروع می‌شود؛ صف و گروه SignalR بین همه‌ی
+        /// دیتابیس‌های این سرور مشترک‌اند، پس کلیدشان «دیتابیس + شماره» است، نه فقط شماره.
+        /// </summary>
+        public string Db => Safir.Server.Services.DbKey.From(ConnectionString);
+    }
 
     public interface ICostCloseQueue
     {
         bool TryEnqueue(CostCloseJob job, out string? error);
-        bool IsRunning(int runId);
-        void RequestCancel(int runId);
-        bool IsCancelRequested(int runId);
+        bool IsRunning(string db, int runId);
+        void RequestCancel(string db, int runId);
+        bool IsCancelRequested(string db, int runId);
 
         /// <summary>
         /// توکن لغوِ مخصوص این اجرا (گره‌خورده به توکنِ خاموش شدن برنامه) تا
         /// کلیدِ توقف بتواند گامِ در حال اجرا را هم قطع کند، نه فقط بینِ گام‌ها.
         /// </summary>
-        CancellationTokenSource RegisterRun(int runId, CancellationToken appToken);
+        CancellationTokenSource RegisterRun(string db, int runId, CancellationToken appToken);
     }
 
     public sealed class CostCloseQueue : ICostCloseQueue
@@ -50,28 +57,31 @@ namespace Safir.Server.CostClose
                 SingleReader = true
             });
 
-        private readonly ConcurrentDictionary<int, byte> _active  = new();
-        private readonly ConcurrentDictionary<int, byte> _cancels = new();
+        private static string Key(string db, int runId) => $"{db}#{runId}";
+
+        private readonly ConcurrentDictionary<string, byte> _active  = new();
+        private readonly ConcurrentDictionary<string, byte> _cancels = new();
 
         /// <summary>توکن لغو هر اجرای در جریان — نگاه کنید RegisterRun</summary>
-        private readonly ConcurrentDictionary<int, CancellationTokenSource> _runTokens = new();
+        private readonly ConcurrentDictionary<string, CancellationTokenSource> _runTokens = new();
 
         public ChannelReader<CostCloseJob> Reader => _channel.Reader;
 
         public bool TryEnqueue(CostCloseJob job, out string? error)
         {
-            if (_active.ContainsKey(job.RunId))
+            var key = Key(job.Db, job.RunId);
+            if (_active.ContainsKey(key))
             {
                 error = "این اجرا هم‌اکنون در حال انجام است.";
                 return false;
             }
 
-            _active[job.RunId] = 1;
-            _cancels.TryRemove(job.RunId, out _);
+            _active[key] = 1;
+            _cancels.TryRemove(key, out _);
 
             if (!_channel.Writer.TryWrite(job))
             {
-                _active.TryRemove(job.RunId, out _);
+                _active.TryRemove(key, out _);
                 error = "امکان ثبت کار در صف نبود.";
                 return false;
             }
@@ -80,7 +90,7 @@ namespace Safir.Server.CostClose
             return true;
         }
 
-        public bool IsRunning(int runId) => _active.ContainsKey(runId);
+        public bool IsRunning(string db, int runId) => _active.ContainsKey(Key(db, runId));
 
         /// <summary>
         /// توکن لغوِ مخصوص همین اجرا، گره‌خورده به توکنِ خاموش شدن برنامه.
@@ -92,37 +102,40 @@ namespace Safir.Server.CostClose
         /// کاربر را نمی‌دید و کاربر تا پایان همان گام — روی ران واقعی تا ۷۳
         /// ثانیه — فکر می‌کرد دکمه خراب است.
         /// </summary>
-        public CancellationTokenSource RegisterRun(int runId, CancellationToken appToken)
+        public CancellationTokenSource RegisterRun(string db, int runId, CancellationToken appToken)
         {
+            var key = Key(db, runId);
             var cts = CancellationTokenSource.CreateLinkedTokenSource(appToken);
-            _runTokens[runId] = cts;
+            _runTokens[key] = cts;
 
             // اگر کاربر بینِ ثبت در صف و شروعِ واقعیِ اجرا دکمه را زده باشد،
             // پرچم از قبل بالاست و این اجرا باید فوراً لغو‌شده به دنیا بیاید.
-            if (_cancels.ContainsKey(runId)) cts.Cancel();
+            if (_cancels.ContainsKey(key)) cts.Cancel();
 
             return cts;
         }
 
-        public void RequestCancel(int runId)
+        public void RequestCancel(string db, int runId)
         {
-            _cancels[runId] = 1;
+            var key = Key(db, runId);
+            _cancels[key] = 1;
 
-            if (_runTokens.TryGetValue(runId, out var cts))
+            if (_runTokens.TryGetValue(key, out var cts))
             {
                 // اجرا ممکن است دقیقاً همین لحظه تمام شده و توکن dispose شده باشد
                 try { cts.Cancel(); } catch (ObjectDisposedException) { }
             }
         }
 
-        public bool IsCancelRequested(int runId) => _cancels.ContainsKey(runId);
+        public bool IsCancelRequested(string db, int runId) => _cancels.ContainsKey(Key(db, runId));
 
-        internal void MarkFinished(int runId)
+        internal void MarkFinished(string db, int runId)
         {
-            _active .TryRemove(runId, out _);
-            _cancels.TryRemove(runId, out _);
+            var key = Key(db, runId);
+            _active .TryRemove(key, out _);
+            _cancels.TryRemove(key, out _);
 
-            if (_runTokens.TryRemove(runId, out var cts)) cts.Dispose();
+            if (_runTokens.TryRemove(key, out var cts)) cts.Dispose();
         }
     }
 
@@ -209,7 +222,7 @@ namespace Safir.Server.CostClose
                     }
                     finally
                     {
-                        _queue.MarkFinished(job.RunId);
+                        _queue.MarkFinished(job.Db, job.RunId);
                     }
                 }
             }

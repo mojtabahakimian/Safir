@@ -21,7 +21,21 @@
        با Color.Primary نوار سبز می‌شد و در تم تاریک بنفش. *@
     <MudAppBar Elevation="0" Class="safir-appbar">
         <MudIconButton Icon="@Icons.Material.Filled.Menu" Color="Color.Inherit" Edge="Edge.Start" OnClick="@((e) => DrawerToggle())" />
-        <MudText Typo="Typo.h6" Class="ml-3" Style="font-weight:800;">سفیر</MudText>
+        <div class="d-flex align-center gap-2 ml-3" style="cursor: pointer;" @onclick='() => NavManager.NavigateTo("/")'>
+            <img class="safir-appbar-logo" src="img/safir-logo.png" alt="سفیر" />
+            <MudText Typo="Typo.h6" Class="safir-appbar-title" Style="font-weight:800;">سفیر</MudText>
+        </div>
+
+        @* شرکت (دیتابیس) این تب با رنگ ثابت خودش، تا وقتی چند شرکت در چند تب باز است سند در شرکت اشتباه زده نشود *@
+        @if (!string.IsNullOrEmpty(_dbLabel))
+        {
+            <MudTooltip Text="@_dbTooltip" Arrow="true">
+                <span class="safir-db-chip" style="@_dbChipStyle">
+                    <MudIcon Icon="@Icons.Material.Filled.Storage" Size="Size.Small" />
+                    @_dbLabel
+                </span>
+            </MudTooltip>
+        }
         <MudSpacer />
 
         @* نمایش نام مشتری انتخاب شده برای سفارش *@
@@ -52,9 +66,59 @@
             </MudBadge>
         </MudTooltip>
 
-        @* دکمه تغییر تم *@
-        <MudTooltip Text="@(ThemeService.IsDarkMode ? "تم روشن" : "تم تاریک")" Arrow="true">
-            @* استفاده از OnClick به جای bind-Toggled برای فراخوانی متد سرویس تم *@
+        @* منوی انتخاب تم رنگی (کلاسیک / مدرن سفیر) *@
+        <MudMenu Dense="true" AnchorOrigin="Origin.BottomLeft" TransformOrigin="Origin.TopLeft" PopoverClass="safir-rounded-menu">
+            <ActivatorContent>
+                <MudTooltip Text="انتخاب تم سفیر" Arrow="true">
+                    <MudIconButton Icon="@Icons.Material.Filled.Palette"
+                                   Color="Color.Inherit"
+                                   Class="mx-1" />
+                </MudTooltip>
+            </ActivatorContent>
+            <ChildContent>
+                <MudMenuItem OnClick="@(() => SetThemeScheme(AppThemeScheme.Classic))">
+                    <div class="d-flex align-center justify-space-between py-1" style="min-width: 210px;">
+                        <div class="d-flex align-center gap-2">
+                            <span class="theme-dot-classic"></span>
+                            <span>تم پیش‌فرض (کلاسیک)</span>
+                        </div>
+                        @if (ThemeService.CurrentScheme == AppThemeScheme.Classic)
+                        {
+                            <MudIcon Icon="@Icons.Material.Filled.Check" Size="Size.Small" Color="Color.Success" />
+                        }
+                    </div>
+                </MudMenuItem>
+
+                <MudMenuItem OnClick="@(() => SetThemeScheme(AppThemeScheme.Safir))">
+                    <div class="d-flex align-center justify-space-between py-1" style="min-width: 210px;">
+                        <div class="d-flex align-center gap-2">
+                            <span class="theme-dot-safir"></span>
+                            <span style="font-weight: 700;">تم مدرن سفیر (لوگو)</span>
+                        </div>
+                        @if (ThemeService.CurrentScheme == AppThemeScheme.Safir)
+                        {
+                            <MudIcon Icon="@Icons.Material.Filled.Check" Size="Size.Small" Color="Color.Primary" />
+                        }
+                    </div>
+                </MudMenuItem>
+
+                <MudMenuItem OnClick="@(() => SetThemeScheme(AppThemeScheme.CostClose))">
+                    <div class="d-flex align-center justify-space-between py-1" style="min-width: 210px;">
+                        <div class="d-flex align-center gap-2">
+                            <span class="theme-dot-costclose"></span>
+                            <span style="font-weight: 700;">تم بهای تمام‌شده (نئون)</span>
+                        </div>
+                        @if (ThemeService.CurrentScheme == AppThemeScheme.CostClose)
+                        {
+                            <MudIcon Icon="@Icons.Material.Filled.Check" Size="Size.Small" Color="Color.Info" />
+                        }
+                    </div>
+                </MudMenuItem>
+            </ChildContent>
+        </MudMenu>
+
+        @* دکمه تغییر حالت روز / شب *@
+        <MudTooltip Text="@(ThemeService.IsDarkMode ? "حالت روز" : "حالت شب")" Arrow="true">
             <MudIconButton Icon="@(ThemeService.IsDarkMode ? Icons.Material.Filled.WbSunny : Icons.Material.Filled.NightsStay)"
                            Color="Color.Inherit"
                            OnClick="ToggleTheme" />
@@ -63,7 +127,7 @@
 
         <AuthorizeView>
             <Authorized>
-                <MudMenu AnchorOrigin="Origin.BottomRight" TransformOrigin="Origin.TopCenter">
+                <MudMenu AnchorOrigin="Origin.BottomRight" TransformOrigin="Origin.TopCenter" PopoverClass="safir-rounded-menu">
                     <ActivatorContent>
                         <MudButton Variant="Variant.Text"
                                    Color="Color.Inherit"
@@ -85,6 +149,15 @@
                         </MudButton>
 
                         <MudDivider /> @* <<< جداکننده اختیاری >>> *@
+                        @* مثل باز کردن EXE دوم: تب جدیدی با نشست خودش، برای کار هم‌زمان در شرکت یا سال مالی دیگر *@
+                        <MudButton Variant="Variant.Text"
+                                   OnClick="OpenOtherCompanyTab"
+                                   FullWidth="true"
+                                   Style="justify-content: start; text-transform: none; padding: 6px 16px; font-weight: normal; color: inherit;"
+                                   Class="mud-menu-item">
+                            <MudIcon Icon="@Icons.Material.Filled.OpenInNew" Class="me-3" />
+                            ورود به شرکت دیگر در تب جدید
+                        </MudButton>
                         <MudButton Variant="Variant.Text"
                                    OnClick="LogoutUser"
                                    OnClickStopPropagation="true"
@@ -115,8 +188,9 @@
                Variant="DrawerVariant.Responsive"
                Class="mud-theme-background safir-drawer">
 
-        <MudDrawerHeader>
-            <MudText Typo="Typo.h6">منو</MudText>
+        <MudDrawerHeader Class="d-flex align-center gap-3">
+            <img class="safir-drawer-logo" src="img/safir-logo.png" alt="سفیر" />
+            <MudText Typo="Typo.h6" Class="safir-drawer-title" Style="font-weight:800;">سفیر</MudText>
         </MudDrawerHeader>
 
         @* آیتم‌های منو *@
@@ -164,6 +238,7 @@
     protected override async Task OnInitializedAsync()
     {
         await ConnectionManager.LoadSettingsAsync();
+        await LoadDbLabelAsync();
         await InitialConnectivityCheck();
         // تنظیم تایمر برای بررسی دوره‌ای وضعیت اتصال (مثلاً هر ۱ دقیقه)
         _connectivityCheckTimer = new Timer(async _ => await PeriodicConnectivityCheck(), null, TimeSpan.FromMinutes(1), TimeSpan.FromMinutes(1));
@@ -180,6 +255,11 @@
         await CartService.InitializeCartFromServerAsync();
         // اشتراک در رویداد تغییر سبد خرید
         CartService.CartChanged += OnCartChanged;
+
+        // اشتراک در رویداد تغییر تم
+        ThemeService.ThemeChanged += OnThemeChanged;
+
+        DbMismatchHandler.Mismatch += OnDbMismatch;
 
         // دریافت وضعیت اولیه سبد
         UpdateCartState();
@@ -314,7 +394,54 @@
     private async Task ToggleTheme()
     {
         await ThemeService.ToggleTheme();
-        // StateHasChanged(); // معمولا سرویس تم خودش UI را آپدیت می‌کند
+    }
+
+    private async Task SetThemeScheme(AppThemeScheme scheme)
+    {
+        await ThemeService.SetScheme(scheme);
+        StateHasChanged();
+    }
+
+    private void OnThemeChanged()
+    {
+        InvokeAsync(StateHasChanged);
+    }
+
+    private string? _dbLabel, _dbTooltip, _dbChipStyle;
+
+    private async Task LoadDbLabelAsync()
+    {
+        try
+        {
+            var db = await ConnectionManager.GetEffectiveDbSettingsAsync();
+            _dbLabel = db.Database;
+            _dbTooltip = $"سرور: {db.Server} — دیتابیس: {db.Database}";
+            // رنگ از نام دیتابیس ساخته می‌شود؛ هر شرکت در هر تب و هر بار همان رنگ را دارد
+            uint h = 2166136261;
+            foreach (char c in $"{db.Server}|{db.Database}".ToLowerInvariant()) { h ^= c; h *= 16777619; }
+            int hue = (int)(h % 360);
+            _dbChipStyle = $"--db-hue:{hue};";
+            await JSRuntime.InvokeVoidAsync("safirTab.setLabel", _dbLabel);
+        }
+        catch { /* نمایش نام شرکت نباید بالا آمدن برنامه را خراب کند */ }
+    }
+
+    private async Task OpenOtherCompanyTab() =>
+        await JSRuntime.InvokeVoidAsync("open", "login?newtab=1", "_blank");
+
+    // سرور گفته توکن این تب مال دیتابیس دیگری است؛ یک بار به صفحه‌ی ورود برو
+    private bool _dbMismatchHandled;
+    private void OnDbMismatch()
+    {
+        if (_dbMismatchHandled) return;
+        _dbMismatchHandled = true;
+        InvokeAsync(async () =>
+        {
+            await AuthService.Logout();
+            Snackbar.Add("این تب به شرکت دیگری وصل شده بود؛ لطفاً دوباره وارد شوید.", Severity.Warning);
+            NavManager.NavigateTo("/login");
+            _dbMismatchHandled = false;
+        });
     }
 
     private async Task LogoutUser()
@@ -345,8 +472,10 @@
     }
     public void Dispose()
     {
-        // لغو اشتراک رویداد
+        // لغو اشتراک رویدادها
         CartService.CartChanged -= OnCartChanged;
+        ThemeService.ThemeChanged -= OnThemeChanged;
+        DbMismatchHandler.Mismatch -= OnDbMismatch;
         _connectivityCheckTimer?.Dispose();
         GC.SuppressFinalize(this); // جلوگیری از فراخوانی دوباره Finalizer
     }

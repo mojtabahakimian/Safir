@@ -32,7 +32,11 @@ namespace Safir.Server.Controllers
         // یک کنترلر جدید برای هر درخواست ساخته می‌شود؛ برای جلوگیری از دو اجرای
         // همزمان بازسازی سند برای یک runId باید در سطح فرآیند (static) نگه داشته شود —
         // مشابه الگوی _active در CostCloseQueue.
-        private static readonly ConcurrentDictionary<int, byte> _rebuildInProgress = new();
+        private static readonly ConcurrentDictionary<string, byte> _rebuildInProgress = new();
+
+        // دیتابیس این درخواست؛ شماره‌ی اجرا فقط داخل یک دیتابیس یکتاست (DbKey)
+        private string Db => _csProvider.DatabaseKey();
+        private string RebuildKey(int runId) => $"{Db}#{runId}";
 
         public CostCloseController(
             IDatabaseService db,
@@ -248,12 +252,12 @@ namespace Safir.Server.Controllers
         [Pay2Authorize(CostForms.ActStart, Pay2Perm.Run)]
         public async Task<IActionResult> CancelRun(int runId)
         {
-            if (_queue.IsRunning(runId))
+            if (_queue.IsRunning(Db, runId))
             {
                 // پردازش واقعاً روی همین پروسِس در حال اجراست — فقط پرچمِ
                 // لغو را بالا می‌بریم، ارکستریتور بینِ گام‌ها آن را می‌بیند
                 // و متوقف می‌شود (نگاه کنید CloseOrchestrator.RunAsync).
-                _queue.RequestCancel(runId);
+                _queue.RequestCancel(Db, runId);
                 return Ok();
             }
 
@@ -1274,7 +1278,7 @@ namespace Safir.Server.Controllers
         [Pay2Authorize(CostForms.ActRollup, Pay2Perm.Run)]
         public async Task<IActionResult> RebuildRates(int runId)
         {
-            if (_queue.IsRunning(runId))
+            if (_queue.IsRunning(Db, runId))
                 return Conflict("این اجرا در حال انجام است؛ ابتدا آن را متوقف کنید.");
 
             var run = await _db.DoGetDataSQLAsyncSingle<CostRunDto>(
@@ -1320,10 +1324,10 @@ namespace Safir.Server.Controllers
         [Pay2Authorize(CostForms.ActRebuildDocs, Pay2Perm.Run)]
         public async Task<ActionResult<MaterialIssueRebuildResultDto>> RebuildMaterialIssueDocs(int runId)
         {
-            if (_queue.IsRunning(runId))
+            if (_queue.IsRunning(Db, runId))
                 return Conflict("این اجرا در حال انجام است؛ ابتدا آن را متوقف کنید.");
 
-            if (!_rebuildInProgress.TryAdd(runId, 1))
+            if (!_rebuildInProgress.TryAdd(RebuildKey(runId), 1))
                 return Conflict("بازسازی سند حواله خروج مواد برای این اجرا از قبل در حال انجام است.");
 
             try
@@ -1367,7 +1371,7 @@ namespace Safir.Server.Controllers
             }
             finally
             {
-                _rebuildInProgress.TryRemove(runId, out _);
+                _rebuildInProgress.TryRemove(RebuildKey(runId), out _);
             }
         }
 
@@ -1387,10 +1391,10 @@ namespace Safir.Server.Controllers
         [Pay2Authorize(CostForms.ActRebuildDocs, Pay2Perm.Run)]
         public async Task<ActionResult<GroupDocumentRebuildResultDto>> RebuildTransferDocs(int runId)
         {
-            if (_queue.IsRunning(runId))
+            if (_queue.IsRunning(Db, runId))
                 return Conflict("این اجرا در حال انجام است؛ ابتدا آن را متوقف کنید.");
 
-            if (!_rebuildInProgress.TryAdd(runId, 1))
+            if (!_rebuildInProgress.TryAdd(RebuildKey(runId), 1))
                 return Conflict("بازسازی سند انتقالی برای این اجرا از قبل در حال انجام است.");
 
             try
@@ -1435,7 +1439,7 @@ namespace Safir.Server.Controllers
             }
             finally
             {
-                _rebuildInProgress.TryRemove(runId, out _);
+                _rebuildInProgress.TryRemove(RebuildKey(runId), out _);
             }
         }
 
@@ -1452,10 +1456,10 @@ namespace Safir.Server.Controllers
         [Pay2Authorize(CostForms.ActRebuildDocs, Pay2Perm.Run)]
         public async Task<ActionResult<GroupDocumentRebuildResultDto>> RebuildConversionDocs(int runId)
         {
-            if (_queue.IsRunning(runId))
+            if (_queue.IsRunning(Db, runId))
                 return Conflict("این اجرا در حال انجام است؛ ابتدا آن را متوقف کنید.");
 
-            if (!_rebuildInProgress.TryAdd(runId, 1))
+            if (!_rebuildInProgress.TryAdd(RebuildKey(runId), 1))
                 return Conflict("بازسازی سند تبدیل برای این اجرا از قبل در حال انجام است.");
 
             try
@@ -1484,7 +1488,7 @@ namespace Safir.Server.Controllers
             }
             finally
             {
-                _rebuildInProgress.TryRemove(runId, out _);
+                _rebuildInProgress.TryRemove(RebuildKey(runId), out _);
             }
         }
 
@@ -1498,10 +1502,10 @@ namespace Safir.Server.Controllers
         [Pay2Authorize(CostForms.ActRebuildDocs, Pay2Perm.Run)]
         public async Task<ActionResult<GroupDocumentRebuildResultDto>> RebuildSaleDocs(int runId)
         {
-            if (_queue.IsRunning(runId))
+            if (_queue.IsRunning(Db, runId))
                 return Conflict("این اجرا در حال انجام است؛ ابتدا آن را متوقف کنید.");
 
-            if (!_rebuildInProgress.TryAdd(runId, 1))
+            if (!_rebuildInProgress.TryAdd(RebuildKey(runId), 1))
                 return Conflict("بازسازی سند فروش برای این اجرا از قبل در حال انجام است.");
 
             try
@@ -1545,7 +1549,7 @@ namespace Safir.Server.Controllers
             }
             finally
             {
-                _rebuildInProgress.TryRemove(runId, out _);
+                _rebuildInProgress.TryRemove(RebuildKey(runId), out _);
             }
         }
 
@@ -1558,10 +1562,10 @@ namespace Safir.Server.Controllers
         [Pay2Authorize(CostForms.ActRebuildDocs, Pay2Perm.Run)]
         public async Task<ActionResult<GroupDocumentRebuildResultDto>> RebuildSaleReturnDocs(int runId)
         {
-            if (_queue.IsRunning(runId))
+            if (_queue.IsRunning(Db, runId))
                 return Conflict("این اجرا در حال انجام است؛ ابتدا آن را متوقف کنید.");
 
-            if (!_rebuildInProgress.TryAdd(runId, 1))
+            if (!_rebuildInProgress.TryAdd(RebuildKey(runId), 1))
                 return Conflict("بازسازی سند برگشت فروش برای این اجرا از قبل در حال انجام است.");
 
             try
@@ -1605,7 +1609,7 @@ namespace Safir.Server.Controllers
             }
             finally
             {
-                _rebuildInProgress.TryRemove(runId, out _);
+                _rebuildInProgress.TryRemove(RebuildKey(runId), out _);
             }
         }
 
@@ -1617,10 +1621,10 @@ namespace Safir.Server.Controllers
         [Pay2Authorize(CostForms.ActRebuildDocs, Pay2Perm.Run)]
         public async Task<ActionResult<GroupDocumentRebuildResultDto>> RebuildOtherIssueDocs(int runId)
         {
-            if (_queue.IsRunning(runId))
+            if (_queue.IsRunning(Db, runId))
                 return Conflict("این اجرا در حال انجام است؛ ابتدا آن را متوقف کنید.");
 
-            if (!_rebuildInProgress.TryAdd(runId, 1))
+            if (!_rebuildInProgress.TryAdd(RebuildKey(runId), 1))
                 return Conflict("بازسازی سند حواله خروج سایر مواد برای این اجرا از قبل در حال انجام است.");
 
             try
@@ -1664,7 +1668,7 @@ namespace Safir.Server.Controllers
             }
             finally
             {
-                _rebuildInProgress.TryRemove(runId, out _);
+                _rebuildInProgress.TryRemove(RebuildKey(runId), out _);
             }
         }
 
@@ -1675,10 +1679,10 @@ namespace Safir.Server.Controllers
         [Pay2Authorize(CostForms.ActRebuildDocs, Pay2Perm.Run)]
         public async Task<ActionResult<GroupDocumentRebuildResultDto>> RebuildPurchaseReturnFreeDocs(int runId)
         {
-            if (_queue.IsRunning(runId))
+            if (_queue.IsRunning(Db, runId))
                 return Conflict("این اجرا در حال انجام است؛ ابتدا آن را متوقف کنید.");
 
-            if (!_rebuildInProgress.TryAdd(runId, 1))
+            if (!_rebuildInProgress.TryAdd(RebuildKey(runId), 1))
                 return Conflict("بازسازی سند برگشت خرید آزاد برای این اجرا از قبل در حال انجام است.");
 
             try
@@ -1722,7 +1726,7 @@ namespace Safir.Server.Controllers
             }
             finally
             {
-                _rebuildInProgress.TryRemove(runId, out _);
+                _rebuildInProgress.TryRemove(RebuildKey(runId), out _);
             }
         }
 
@@ -1734,10 +1738,10 @@ namespace Safir.Server.Controllers
         [Pay2Authorize(CostForms.ActRebuildDocs, Pay2Perm.Run)]
         public async Task<ActionResult<GroupDocumentRebuildResultDto>> RebuildProductionReceiptDocs(int runId)
         {
-            if (_queue.IsRunning(runId))
+            if (_queue.IsRunning(Db, runId))
                 return Conflict("این اجرا در حال انجام است؛ ابتدا آن را متوقف کنید.");
 
-            if (!_rebuildInProgress.TryAdd(runId, 1))
+            if (!_rebuildInProgress.TryAdd(RebuildKey(runId), 1))
                 return Conflict("بازسازی سند ورود کالای ساخته‌شده برای این اجرا از قبل در حال انجام است.");
 
             try
@@ -1781,7 +1785,7 @@ namespace Safir.Server.Controllers
             }
             finally
             {
-                _rebuildInProgress.TryRemove(runId, out _);
+                _rebuildInProgress.TryRemove(RebuildKey(runId), out _);
             }
         }
 
@@ -1794,10 +1798,10 @@ namespace Safir.Server.Controllers
         [Pay2Authorize(CostForms.ActRebuildDocs, Pay2Perm.Run)]
         public async Task<ActionResult<GroupDocumentRebuildResultDto>> RebuildStockCountDocs(int runId)
         {
-            if (_queue.IsRunning(runId))
+            if (_queue.IsRunning(Db, runId))
                 return Conflict("این اجرا در حال انجام است؛ ابتدا آن را متوقف کنید.");
 
-            if (!_rebuildInProgress.TryAdd(runId, 1))
+            if (!_rebuildInProgress.TryAdd(RebuildKey(runId), 1))
                 return Conflict("بازسازی سند انبارگردانی برای این اجرا از قبل در حال انجام است.");
 
             try
@@ -1841,7 +1845,7 @@ namespace Safir.Server.Controllers
             }
             finally
             {
-                _rebuildInProgress.TryRemove(runId, out _);
+                _rebuildInProgress.TryRemove(RebuildKey(runId), out _);
             }
         }
 
@@ -2862,7 +2866,7 @@ IF NOT EXISTS (SELECT 1 FROM dbo.CC_RebalancePref
         [Pay2Authorize(CostForms.ActRollback, Pay2Perm.Run)]
         public async Task<IActionResult> Rollback(int runId, [FromBody] RollbackRequest req)
         {
-            if (_queue.IsRunning(runId))
+            if (_queue.IsRunning(Db, runId))
                 return Conflict("این اجرا در حال انجام است؛ ابتدا آن را متوقف کنید.");
 
             try

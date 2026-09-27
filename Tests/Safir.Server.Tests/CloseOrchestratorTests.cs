@@ -383,7 +383,7 @@ public sealed class CloseOrchestratorTests
         var step = Step("S07", 70, onExecute: ctx =>
         {
             // کاربر دقیقاً وسطِ اجرای گام دکمه‌ی توقف را می‌زند
-            queue.RequestCancel(db.Run.RunId);
+            queue.RequestCancel("", db.Run.RunId);
             seenByStep = ctx.Ct.IsCancellationRequested;
         });
 
@@ -498,16 +498,16 @@ public sealed class CloseOrchestratorTests
 
         public bool CancelRequested { get; set; }
         public bool TryEnqueue(CostCloseJob job, out string? error) { error = null; return true; }
-        public bool IsRunning(int runId) => false;
-        public bool IsCancelRequested(int runId) => CancelRequested;
+        public bool IsRunning(string db, int runId) => false;
+        public bool IsCancelRequested(string db, int runId) => CancelRequested;
 
-        public void RequestCancel(int runId)
+        public void RequestCancel(string db, int runId)
         {
             CancelRequested = true;
             try { _cts?.Cancel(); } catch (ObjectDisposedException) { }
         }
 
-        public CancellationTokenSource RegisterRun(int runId, CancellationToken appToken)
+        public CancellationTokenSource RegisterRun(string db, int runId, CancellationToken appToken)
         {
             _cts = CancellationTokenSource.CreateLinkedTokenSource(appToken);
             if (CancelRequested) _cts.Cancel();
@@ -517,11 +517,11 @@ public sealed class CloseOrchestratorTests
 
     private sealed class FakeNotifier : ICostCloseNotifier
     {
-        public Task StepProgressAsync(int r, string s, int p, string m) => Task.CompletedTask;
-        public Task StepFinishedAsync(int r, string s, byte st) => Task.CompletedTask;
-        public Task RunPausedAsync(int r, string reason) => Task.CompletedTask;
-        public Task RunFailedAsync(int r, string s, string? e) => Task.CompletedTask;
-        public Task RunCompletedAsync(int r) => Task.CompletedTask;
+        public Task StepProgressAsync(string d, int r, string s, int p, string m) => Task.CompletedTask;
+        public Task StepFinishedAsync(string d, int r, string s, byte st) => Task.CompletedTask;
+        public Task RunPausedAsync(string d, int r, string reason) => Task.CompletedTask;
+        public Task RunFailedAsync(string d, int r, string s, string? e) => Task.CompletedTask;
+        public Task RunCompletedAsync(string d, int r) => Task.CompletedTask;
     }
 
     private sealed class FakeDbFactory : IDatabaseServiceFactory

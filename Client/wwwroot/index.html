@@ -8,7 +8,7 @@
     <base href="/" />
 
     <link href="css/bootstrap/bootstrap.min.css" rel="stylesheet" />
-    <link href="css/app.css" rel="stylesheet" />
+    <link href="css/app.css?v=14050705-1" rel="stylesheet" />
     <link href="FNT/stylesheet.css" rel="stylesheet" />
     <link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@300;400;500;700&family=Roboto:wght@300;400;500;700&display=swap" rel="stylesheet" />
     <link href="_content/MudBlazor/MudBlazor.min.css" rel="stylesheet" />
@@ -41,6 +41,20 @@
             try {
                 const isDark = localStorage.getItem('isDarkMode') === 'true';
                 document.documentElement.classList.toggle('dark-theme', isDark);
+                const scheme = localStorage.getItem('themeScheme') || 'classic';
+                document.documentElement.setAttribute('data-theme-scheme', scheme);
+            } catch { }
+
+            // «ورود به شرکت دیگر در تب جدید» (?newtab=1): مرورگر sessionStorage تب قبلی را در تب
+            // جدید کپی می‌کند؛ توکن آن پاک و پرچم گذاشته می‌شود تا این تب نشست خودش را بسازد (TabSession).
+            try {
+                const u = new URL(location.href);
+                if (u.searchParams.get('newtab') === '1') {
+                    sessionStorage.removeItem('authToken');
+                    sessionStorage.setItem('safir.freshTab', '1');
+                    u.searchParams.delete('newtab');
+                    history.replaceState(null, '', u.pathname + u.search + u.hash);
+                }
             } catch { }
         })();
     </script>
@@ -616,6 +630,7 @@
     <script src="_content/Syncfusion.Blazor.Core/scripts/syncfusion-blazor.min.js" type="text/javascript"></script>
 
     <script src="js/theme-storage.js?v=2"></script>
+    <script src="js/tab-label.js?v=2"></script>
     <script src="js/geolocation.js?v=2"></script>
     <script src="js/downloadHelper.js?v=2"></script>
     <script src="js/cleanup.js?v=2"></script>

@@ -20,12 +20,15 @@ public class AuthController : ControllerBase
     private readonly IUserService _userService; // رابط کاربری برای سرویس کاربر
     private readonly IDatabaseService _dbService; // رابط کاربری برای سرویس دیتابیس
     private readonly IConfiguration _configuration;
+    private readonly Safir.Server.Services.IConnectionStringProvider _connection;
 
-    public AuthController(IUserService userService, IDatabaseService dbService, IConfiguration configuration)
+    public AuthController(IUserService userService, IDatabaseService dbService, IConfiguration configuration,
+                          Safir.Server.Services.IConnectionStringProvider connection)
     {
         _userService = userService;
         _dbService = dbService; // تزریق سرویس دیتابیس
         _configuration = configuration;
+        _connection = connection;
     }
 
 
@@ -120,6 +123,8 @@ public class AuthController : ControllerBase
             new Claim(BaseknowClaimTypes.USER_HES, user.HES ?? string.Empty), // معین معادل یا همون کد حسابداری این کاربر در سیستم
             new Claim(BaseknowClaimTypes.PORID, _PORID_ ?? string.Empty), // معین معادل یا همون کد حسابداری این کاربر در سیستم
             new Claim(BaseknowClaimTypes.erjabe, _erjabe_ ?? string.Empty), //توی اتوماسیون فاکتور برای چه کاربری ارسال بشه : کد اون کاربر
+            // توکن فقط برای همین دیتابیس معتبر است؛ Program.cs درخواستِ دیتابیس دیگر را با آن رد می‌کند
+            new Claim(BaseknowClaimTypes.DB, Safir.Server.Services.DbKey.DatabaseKey(_connection)),
         };
 
         // اضافه کردن Claim های جدید اگر مقادیر آنها موجود باشد

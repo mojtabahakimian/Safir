@@ -11,16 +11,19 @@ namespace Safir.Client.Services
         const string ConnectionSettingsKey = "dbConnectionSettings";
         readonly ILocalStorageService _localStorage;
         readonly HttpClient _httpClient;
+        // دیتابیس هر تب جداست (TabSession)؛ تغییر آن در یک تب، تب دیگر را جابه‌جا نمی‌کند
+        readonly TabSession _tab;
 
-        public ConnectionManagerService(ILocalStorageService localStorage, HttpClient httpClient)
+        public ConnectionManagerService(ILocalStorageService localStorage, HttpClient httpClient, TabSession tab)
         {
             _localStorage = localStorage;
             _httpClient = httpClient;
+            _tab = tab;
         }
 
         public async Task<DbConnectionSettings?> GetSettingsAsync()
         {
-            return await _localStorage.GetItemAsync<DbConnectionSettings>(ConnectionSettingsKey);
+            return await _tab.GetAsync<DbConnectionSettings>(ConnectionSettingsKey);
         }
 
         // 🚀 متد جدید: دریافت تنظیمات موثر (یا از لوکال استوریج یا از پیش‌فرض سرور)
@@ -56,13 +59,13 @@ namespace Safir.Client.Services
 
         public async Task SaveSettingsAsync(DbConnectionSettings settings)
         {
-            await _localStorage.SetItemAsync(ConnectionSettingsKey, settings);
+            await _tab.SetAsync(ConnectionSettingsKey, settings);
             ApplySettingsToHttpClient(settings);
         }
 
         public async Task ClearSettingsAsync()
         {
-            await _localStorage.RemoveItemAsync(ConnectionSettingsKey);
+            await _tab.RemoveAsync<DbConnectionSettings>(ConnectionSettingsKey);
             _httpClient.DefaultRequestHeaders.Remove("X-DB-Connection");
         }
 

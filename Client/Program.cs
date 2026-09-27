@@ -28,7 +28,10 @@ builder.Services.AddScoped<LookupApiService>();
 // Configure HttpClient to talk to the Server project's base address
 // Pay2ForbiddenHandler متنِ فارسیِ پاسخ ۴۰۳ را بالا می‌دهد؛ بدون آن کاربر فقط
 // «Response status code does not indicate success: 403 (Forbidden).» می‌دید.
-builder.Services.AddScoped(sp => new HttpClient(new Safir.Client.Services.Pay2ForbiddenHandler())
+// DbMismatchHandler: سرور درخواستی را که دیتابیسش با توکن ورود نخواند ۴۰۱ می‌کند؛ این Handler
+// به MainLayout خبر می‌دهد تا کاربر به‌جای خطاهای پراکنده، به صفحه‌ی ورود برود.
+builder.Services.AddScoped(sp => new HttpClient(new Safir.Client.Services.DbMismatchHandler(
+    new Safir.Client.Services.Pay2ForbiddenHandler()))
 {
     BaseAddress = new Uri(builder.HostEnvironment.BaseAddress)
 });
@@ -130,6 +133,7 @@ builder.Services.AddSingleton(typeof(Syncfusion.Blazor.ISyncfusionStringLocalize
 builder.Services.AddBlazoredLocalStorage();
 // --- End Blazored.LocalStorage ---
 
+builder.Services.AddScoped<TabSession>();
 builder.Services.AddScoped<ConnectionManagerService>();
 
 #if DEBUG

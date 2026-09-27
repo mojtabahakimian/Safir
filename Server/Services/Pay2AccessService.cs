@@ -13,13 +13,19 @@ namespace Safir.Server.Services
         private readonly IDatabaseService _db;
         private readonly IMemoryCache _cache;
 
-        private const string ConfigCacheKey = "pay2acl:cfg";
         private static readonly TimeSpan ConfigCacheTtl = TimeSpan.FromSeconds(30);
 
-        public Pay2AccessService(IDatabaseService db, IMemoryCache cache)
+        // کش بین همه‌ی دیتابیس‌های این سرور مشترک است و کد کاربر ۱۵۲ در یک شرکت ممکن است
+        // آدم دیگری در شرکت دیگر باشد؛ پس همه‌ی کلیدها دیتابیس را دارند (DbKey).
+        private readonly string _dbKey;
+        private string ConfigCacheKey => $"pay2acl:{_dbKey}:cfg";
+        private string UserCacheKey(int userCo, string state) => $"pay2acl:{_dbKey}:{userCo}:{state}";
+
+        public Pay2AccessService(IDatabaseService db, IMemoryCache cache, IConnectionStringProvider? connection = null)
         {
             _db = db;
             _cache = cache;
+            _dbKey = connection?.DatabaseKey() ?? string.Empty;
         }
 
         /// <summary>تنظیمات کنترل دسترسی — جدا از دسترسی هر کاربر کش می‌شود</summary>
@@ -73,7 +79,7 @@ WHERE CFG_KEY IN ('ACL_ENFORCE','ACL_WS_SCOPE_ENFORCE','ACL_CACHE_SECONDS','ACL_
 
             // کلید کش شامل وضعیت enforce است تا با تغییر کلید اصلی،
             // نتیجه‌های کش‌شده‌ی حالت قبل دیگر برگردانده نشوند.
-            string cacheKey = $"pay2acl:{userCo}:{(cfg.Enforce ? 1 : 0)}{(cfg.WsScope ? 1 : 0)}";
+            string cacheKey = UserCacheKey(userCo, $"{(cfg.Enforce ? 1 : 0)}{(cfg.WsScope ? 1 : 0)}");
             if (_cache.TryGetValue(cacheKey, out Pay2AccessDto? cached) && cached != null)
                 return cached;
 
@@ -154,7 +160,7 @@ WHERE F.FORMNAME LIKE N'PAY2!_%' ESCAPE N'!'
         {
             // هر دو حالت ممکنِ کلید کش پاک می‌شوند
             foreach (var e in new[] { "00", "01", "10", "11" })
-                _cache.Remove($"pay2acl:{userCo}:{e}");
+                _cache.Remove(UserCacheKey(userCo, e));
             return Task.CompletedTask;
         }
 

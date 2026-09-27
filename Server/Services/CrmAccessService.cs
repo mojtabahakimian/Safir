@@ -29,15 +29,19 @@ namespace Safir.Server.Services
         /// <summary>نام فرمِ مجازیِ «مشاهده CRM همه کاربران» در TFORMS</summary>
         public const string SeeAllUsersForm = "CRMALL";
 
-        private const string ConfigCacheKey = "crmacl:cfg";
+        // کلیدها دیتابیس را دارند: کش بین شرکت‌های این سرور مشترک است (DbKey)
+        private readonly string _dbKey;
+        private string ConfigCacheKey => $"crmacl:{_dbKey}:cfg";
         private static readonly TimeSpan ConfigCacheTtl = TimeSpan.FromSeconds(30);
         private static readonly TimeSpan UserCacheTtl = TimeSpan.FromSeconds(120);
 
-        public CrmAccessService(IDatabaseService db, IMemoryCache cache, ILogger<CrmAccessService> logger)
+        public CrmAccessService(IDatabaseService db, IMemoryCache cache, ILogger<CrmAccessService> logger,
+                                IConnectionStringProvider? connection = null)
         {
             _db = db;
             _cache = cache;
             _logger = logger;
+            _dbKey = connection?.DatabaseKey() ?? string.Empty;
         }
 
         public void InvalidateConfig() => _cache.Remove(ConfigCacheKey);
@@ -89,7 +93,7 @@ WHERE CFG_KEY = N'CRM_ACL_ENFORCE';";
             // RestrictToOwn در هر حالت false می‌شود.
             if (!dto.Enforced) return dto;
 
-            string cacheKey = $"crmacl:user:{userId}";
+            string cacheKey = $"crmacl:{_dbKey}:user:{userId}";
             if (_cache.TryGetValue(cacheKey, out bool cachedSeeAll))
             {
                 dto.CanSeeAllUsers = cachedSeeAll;

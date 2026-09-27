@@ -45,11 +45,11 @@ namespace Safir.Server.CostClose
 
     public interface ICostCloseNotifier
     {
-        Task StepProgressAsync(int runId, string stepCode, int percent, string message);
-        Task StepFinishedAsync(int runId, string stepCode, byte status);
-        Task RunPausedAsync   (int runId, string reason);
-        Task RunFailedAsync   (int runId, string stepCode, string? error);
-        Task RunCompletedAsync(int runId);
+        Task StepProgressAsync(string db, int runId, string stepCode, int percent, string message);
+        Task StepFinishedAsync(string db, int runId, string stepCode, byte status);
+        Task RunPausedAsync   (string db, int runId, string reason);
+        Task RunFailedAsync   (string db, int runId, string stepCode, string? error);
+        Task RunCompletedAsync(string db, int runId);
     }
 
     public sealed class CostCloseNotifier : ICostCloseNotifier
@@ -57,34 +57,52 @@ namespace Safir.Server.CostClose
         private readonly IHubContext<CostCloseHub> _hub;
         public CostCloseNotifier(IHubContext<CostCloseHub> hub) => _hub = hub;
 
-        private IClientProxy Group(int runId) => _hub.Clients.Group(Key(runId));
-        private static string Key(int runId) => $"cost-run-{runId}";
+        // گروه قدیمی (بدون دیتابیس) هم پیام می‌گیرد تا توکن‌های صادرشده پیش از ارتقا، که claim
+        // دیتابیس ندارند، تا انقضا (۸ ساعت) پیشرفت را مثل قبل ببینند؛ بعد از آن این گروه خالی است.
+        private IClientProxy Group(string db, int runId) =>
+            _hub.Clients.Groups(Key(db, runId), LegacyKey(runId));
 
-        public Task StepProgressAsync(int runId, string code, int pct, string msg)
-            => Group(runId).SendAsync("StepProgress",
+        internal static string LegacyKey(int runId) => $"cost-run-{runId}";
+
+        /// <summary>
+        /// شماره‌ی اجرا در هر دیتابیس از ۱ شروع می‌شود؛ بدون دیتابیس در نام گروه، تبی که اجرای ۷
+        /// یک شرکت را نگاه می‌کند پیشرفت اجرای ۷ شرکت دیگر را هم می‌گرفت.
+        /// </summary>
+        internal static string Key(string db, int runId) => $"cost-run-{db}-{runId}";
+
+        public Task StepProgressAsync(string db, int runId, string code, int pct, string msg)
+            => Group(db, runId).SendAsync("StepProgress",
                    new { stepCode = code, percent = pct, message = msg });
 
-        public Task StepFinishedAsync(int runId, string code, byte status)
-            => Group(runId).SendAsync("StepFinished",
+        public Task StepFinishedAsync(string db, int runId, string code, byte status)
+            => Group(db, runId).SendAsync("StepFinished",
                    new { stepCode = code, status });
 
-        public Task RunPausedAsync(int runId, string reason)
-            => Group(runId).SendAsync("RunPaused", reason);
+        public Task RunPausedAsync(string db, int runId, string reason)
+            => Group(db, runId).SendAsync("RunPaused", reason);
 
-        public Task RunFailedAsync(int runId, string code, string? error)
-            => Group(runId).SendAsync("RunFailed", new { stepCode = code, error });
+        public Task RunFailedAsync(string db, int runId, string code, string? error)
+            => Group(db, runId).SendAsync("RunFailed", new { stepCode = code, error });
 
-        public Task RunCompletedAsync(int runId)
-            => Group(runId).SendAsync("RunCompleted", runId);
+        public Task RunCompletedAsync(string db, int runId)
+            => Group(db, runId).SendAsync("RunCompleted", runId);
     }
 
     [Authorize]
     public sealed class CostCloseHub : Hub
     {
+        // WebSocket هدر X-DB-Connection ندارد؛ دیتابیس از توکن ورود خوانده می‌شود. توکن‌های
+        // قدیمیِ بدون این claim به گروه قدیمی (فقط شماره‌ی اجرا) می‌روند، یعنی همان رفتار قبل.
+        private string GroupFor(int runId)
+        {
+            var db = Context.User?.FindFirst(Safir.Shared.Constants.BaseknowClaimTypes.DB)?.Value;
+            return string.IsNullOrEmpty(db) ? CostCloseNotifier.LegacyKey(runId) : CostCloseNotifier.Key(db, runId);
+        }
+
         public Task Subscribe(int runId)
-            => Groups.AddToGroupAsync(Context.ConnectionId, $"cost-run-{runId}");
+            => Groups.AddToGroupAsync(Context.ConnectionId, GroupFor(runId));
 
         public Task Unsubscribe(int runId)
-            => Groups.RemoveFromGroupAsync(Context.ConnectionId, $"cost-run-{runId}");
+            => Groups.RemoveFromGroupAsync(Context.ConnectionId, GroupFor(runId));
     }
 }

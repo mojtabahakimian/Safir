@@ -42,6 +42,7 @@ namespace Safir.Server.Services
                 .Where(x => (byte)x.INS_TYPE != 3).ToList();
             ValidateLegalInsuranceSnapshots(lines);
             ValidateInsuranceIdentities(lines);
+            bool subjectPlusChild = await Pay2InsuranceListTotal.SubjectPlusChildAsync(_db);
 
             // ─── آماده‌سازی لیست‌های DBF ───
             // ساختار (نام، ترتیب و طول ستون‌ها) و مقادیر ثابت، مو‌به‌مو مطابق دیسکتی است که نرم‌افزار دیگرِ
@@ -63,7 +64,7 @@ namespace Safir.Server.Services
                 long monthlyWage = (long)Math.Round((dailyWage + seniorityBase) * workDays, MidpointRounding.AwayFromZero);
                 long benefits = (long)line.DBF_GENERAL_BENEFITS + (long)line.MARITAL_ALLOWANCE;
                 long insBase = (long)line.INS_BASE;
-                long grossPay = (long)line.NOMINAL_GROSS;
+                long grossPay = Pay2InsuranceListTotal.Total((long)line.NOMINAL_GROSS, (long)line.SUBJECT_PLUS_CHILD_GROSS, subjectPlusChild);
                 long workerIns = (long)line.INS_WORKER;
 
                 // جمع‌زن‌ها برای هدر کارگاه
@@ -256,6 +257,7 @@ namespace Safir.Server.Services
                 .Where(x => (byte)x.INS_TYPE != 3).ToList();
             ValidateLegalInsuranceSnapshots(lines);
             ValidateInsuranceIdentities(lines);
+            bool subjectPlusChild = await Pay2InsuranceListTotal.SubjectPlusChildAsync(_db);
 
             long totalMash = 0, totalTotl = 0, totalWorkerIns = 0;
             long totalMarital = 0, totalSeniority = 0;
@@ -272,9 +274,10 @@ namespace Safir.Server.Services
                 long maritalAllowance = (long)line.MARITAL_ALLOWANCE;
                 long otherBenefits = (long)line.DBF_GENERAL_BENEFITS;
                 long insBase = (long)line.INS_BASE;
+                long grossPay = Pay2InsuranceListTotal.Total((long)line.NOMINAL_GROSS, (long)line.SUBJECT_PLUS_CHILD_GROSS, subjectPlusChild);
 
                 totalMash += insBase;
-                totalTotl += (long)line.NOMINAL_GROSS;
+                totalTotl += grossPay;
                 totalWorkerIns += (long)line.INS_WORKER;
                 totalMarital += maritalAllowance;
                 totalSeniority += seniorityBase;
@@ -292,7 +295,7 @@ namespace Safir.Server.Services
                     DSW_MAH = monthlyWage,
                     DSW_MAZ = otherBenefits,
                     DSW_MASH = insBase,
-                    DSW_TOTL = (long)line.NOMINAL_GROSS,
+                    DSW_TOTL = grossPay,
                     DSW_BIME = (long)line.INS_WORKER,
                     DSW_INC = seniorityBase,
                     DSW_SPOUS = maritalAllowance.ToString(),
