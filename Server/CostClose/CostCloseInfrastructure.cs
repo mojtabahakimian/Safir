@@ -57,7 +57,12 @@ namespace Safir.Server.CostClose
         private readonly IHubContext<CostCloseHub> _hub;
         public CostCloseNotifier(IHubContext<CostCloseHub> hub) => _hub = hub;
 
-        private IClientProxy Group(string db, int runId) => _hub.Clients.Group(Key(db, runId));
+        // گروه قدیمی (بدون دیتابیس) هم پیام می‌گیرد تا توکن‌های صادرشده پیش از ارتقا، که claim
+        // دیتابیس ندارند، تا انقضا (۸ ساعت) پیشرفت را مثل قبل ببینند؛ بعد از آن این گروه خالی است.
+        private IClientProxy Group(string db, int runId) =>
+            _hub.Clients.Groups(Key(db, runId), LegacyKey(runId));
+
+        internal static string LegacyKey(int runId) => $"cost-run-{runId}";
 
         /// <summary>
         /// شماره‌ی اجرا در هر دیتابیس از ۱ شروع می‌شود؛ بدون دیتابیس در نام گروه، تبی که اجرای ۷
@@ -86,19 +91,18 @@ namespace Safir.Server.CostClose
     [Authorize]
     public sealed class CostCloseHub : Hub
     {
-        private readonly Safir.Server.Services.IConnectionStringProvider _connection;
-        public CostCloseHub(Safir.Server.Services.IConnectionStringProvider connection) => _connection = connection;
-
         // WebSocket هدر X-DB-Connection ندارد؛ دیتابیس از توکن ورود خوانده می‌شود. توکن‌های
-        // قدیمیِ بدون این claim همان رفتار قبل را دارند: دیتابیس پیش‌فرض سرور.
-        private string Db =>
-            Context.User?.FindFirst(Safir.Shared.Constants.BaseknowClaimTypes.DB)?.Value
-            ?? Safir.Server.Services.DbKey.DatabaseKey(_connection);
+        // قدیمیِ بدون این claim به گروه قدیمی (فقط شماره‌ی اجرا) می‌روند، یعنی همان رفتار قبل.
+        private string GroupFor(int runId)
+        {
+            var db = Context.User?.FindFirst(Safir.Shared.Constants.BaseknowClaimTypes.DB)?.Value;
+            return string.IsNullOrEmpty(db) ? CostCloseNotifier.LegacyKey(runId) : CostCloseNotifier.Key(db, runId);
+        }
 
         public Task Subscribe(int runId)
-            => Groups.AddToGroupAsync(Context.ConnectionId, CostCloseNotifier.Key(Db, runId));
+            => Groups.AddToGroupAsync(Context.ConnectionId, GroupFor(runId));
 
         public Task Unsubscribe(int runId)
-            => Groups.RemoveFromGroupAsync(Context.ConnectionId, CostCloseNotifier.Key(Db, runId));
+            => Groups.RemoveFromGroupAsync(Context.ConnectionId, GroupFor(runId));
     }
 }
