@@ -836,6 +836,7 @@ VALUES (@N_S, @RADIF, @HES_K, @HES_M, @HES_T, @HES_T2, @HES_T3, @HES_T4, @HES, @
                     Safir.Server.Services.Pay2PayrollSnapshotQuery.SqlMultiple, new { runIds = targetRunIds }))
                     .Where(x => (byte)x.INS_TYPE != 3).ToList();
                 var groupedLines = allLines.GroupBy(x => (int)x.RUN_ID).ToDictionary(g => g.Key, g => g.ToList());
+                bool subjectPlusChild = await Safir.Server.Services.Pay2InsuranceListTotal.SubjectPlusChildAsync(_db);
 
                 foreach (var currentRunId in targetRunIds)
                 {
@@ -866,6 +867,8 @@ VALUES (@N_S, @RADIF, @HES_K, @HES_M, @HES_T, @HES_T2, @HES_T3, @HES_T4, @HES, @
                         long seniorityDaily = workDays > 0 ? (long)Math.Round(seniorityMonthly / workDays, MidpointRounding.AwayFromZero) : 0;
                         long monthlyWage = baseMonthly + seniorityMonthly;
                         long otherBenefits = (long)line.DISPLAY_OTHER_BENEFITS;
+                        long grossPay = Safir.Server.Services.Pay2InsuranceListTotal.Total(
+                            (long)line.NOMINAL_GROSS, (long)line.SUBJECT_PLUS_CHILD_GROSS, subjectPlusChild);
 
                         reportDto.Rows.Add(new InsuranceEmployeeRowDto
                         {
@@ -885,12 +888,14 @@ VALUES (@N_S, @RADIF, @HES_K, @HES_M, @HES_T, @HES_T2, @HES_T3, @HES_T4, @HES, @
                             MonthlyWage = monthlyWage,
                             OtherSubjectBenefits = otherBenefits,
                             TotalSubjectToInsurance = (long)line.INS_BASE,
-                            TotalGrossPay = (long)line.NOMINAL_GROSS,
+                            TotalGrossPay = grossPay,
                             WorkerPremium = (long)line.INS_WORKER,
                             EmployerPremium = (bool)line.PREMIUM_SNAPSHOT_AVAILABLE ? (long)line.INS_EMPLOYER_BASE : 0,
                             UnemploymentPremium = (bool)line.PREMIUM_SNAPSHOT_AVAILABLE ? (long)line.INS_UNEMPLOYMENT : 0,
                             TaxAmount = (long)line.TAX_AMOUNT,
-                            NetPayable = (long)line.NOMINAL_NET_PAYABLE
+                            // در حالت «مشمول + حق اولاد» مانده از همان جمعِ نمایش‌داده‌شده حساب می‌شود
+                            // تا هر ردیف در خودش جمع بخورد (مثل نرم‌افزار قبلی)
+                            NetPayable = subjectPlusChild ? grossPay - (long)line.TOTAL_DED : (long)line.NOMINAL_NET_PAYABLE
                         });
                     }
                 }
