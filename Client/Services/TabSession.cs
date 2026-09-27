@@ -56,6 +56,22 @@ namespace Safir.Client.Services
         }
 
         /// <summary>
+        /// مقدار این تب را «آخرین ورود» می‌کند (یا اگر این تب مقداری ندارد، آخرین ورود را پاک می‌کند).
+        /// بعد از هر ورود موفق برای تنظیم دیتابیس صدا زده می‌شود تا توکن و دیتابیسِ «آخرین ورود»
+        /// همیشه از یک تب باشند؛ وگرنه اگر تنظیم پودر در تبی ذخیره شده بود و ورود بعدی در تب
+        /// یزدسپار بود، با بستن و باز کردن مرورگر توکن یزدسپار با دیتابیس پودر می‌رفت و رد می‌شد.
+        /// </summary>
+        public async Task PromoteToLastAsync<T>(string key)
+        {
+            var raw = await _js.InvokeAsync<string?>("sessionStorage.getItem", key);
+            var value = raw == null ? default : Deserialize<T>(raw);
+            if (value != null)
+                await _local.SetItemAsync(key, value);
+            else
+                await _local.RemoveItemAsync(key);
+        }
+
+        /// <summary>
         /// از این تب پاک می‌کند. «آخرین ورود» فقط وقتی پاک می‌شود که مال همین تب باشد، تا خروج
         /// از یزدسپار، شروعِ تب‌های جدیدِ پودر را خراب نکند.
         /// </summary>
