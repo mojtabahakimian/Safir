@@ -25,6 +25,17 @@
             <img class="safir-appbar-logo" src="img/safir-logo.png" alt="سفیر" />
             <MudText Typo="Typo.h6" Class="safir-appbar-title" Style="font-weight:800;">سفیر</MudText>
         </div>
+
+        @* شرکت (دیتابیس) این تب با رنگ ثابت خودش، تا وقتی چند شرکت در چند تب باز است سند در شرکت اشتباه زده نشود *@
+        @if (!string.IsNullOrEmpty(_dbLabel))
+        {
+            <MudTooltip Text="@_dbTooltip" Arrow="true">
+                <span class="safir-db-chip" style="@_dbChipStyle">
+                    <MudIcon Icon="@Icons.Material.Filled.Storage" Size="Size.Small" />
+                    @_dbLabel
+                </span>
+            </MudTooltip>
+        }
         <MudSpacer />
 
         @* نمایش نام مشتری انتخاب شده برای سفارش *@
@@ -227,6 +238,7 @@
     protected override async Task OnInitializedAsync()
     {
         await ConnectionManager.LoadSettingsAsync();
+        await LoadDbLabelAsync();
         await InitialConnectivityCheck();
         // تنظیم تایمر برای بررسی دوره‌ای وضعیت اتصال (مثلاً هر ۱ دقیقه)
         _connectivityCheckTimer = new Timer(async _ => await PeriodicConnectivityCheck(), null, TimeSpan.FromMinutes(1), TimeSpan.FromMinutes(1));
@@ -393,6 +405,25 @@
     private void OnThemeChanged()
     {
         InvokeAsync(StateHasChanged);
+    }
+
+    private string? _dbLabel, _dbTooltip, _dbChipStyle;
+
+    private async Task LoadDbLabelAsync()
+    {
+        try
+        {
+            var db = await ConnectionManager.GetEffectiveDbSettingsAsync();
+            _dbLabel = db.Database;
+            _dbTooltip = $"سرور: {db.Server} — دیتابیس: {db.Database}";
+            // رنگ از نام دیتابیس ساخته می‌شود؛ هر شرکت در هر تب و هر بار همان رنگ را دارد
+            uint h = 2166136261;
+            foreach (char c in $"{db.Server}|{db.Database}".ToLowerInvariant()) { h ^= c; h *= 16777619; }
+            int hue = (int)(h % 360);
+            _dbChipStyle = $"--db-hue:{hue};";
+            await JSRuntime.InvokeVoidAsync("safirTab.setLabel", _dbLabel);
+        }
+        catch { /* نمایش نام شرکت نباید بالا آمدن برنامه را خراب کند */ }
     }
 
     private async Task OpenOtherCompanyTab() =>

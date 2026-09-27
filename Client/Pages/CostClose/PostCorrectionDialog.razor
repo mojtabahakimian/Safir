@@ -4,6 +4,7 @@
 @inject CostCloseApiService Api
 @inject ISnackbar Snackbar
 @inject ILocalStorageService LocalStorage
+@inject ConnectionManagerService ConnectionManager
 
 <MudDialog>
     <DialogContent>
@@ -123,7 +124,8 @@
 
     private PostCorrectionResultDto? _preview;
 
-    private const string LastAccountKey = "CostClose_LastCorrectionAccount";
+    // حساب‌ها مال هر شرکت‌اند؛ آخرین حسابِ یک دیتابیس در دیتابیس دیگر پیشنهاد نشود
+    private string _lastAccountKey = "CostClose_LastCorrectionAccount";
 
     private sealed class LastAccount
     {
@@ -140,8 +142,11 @@
     {
         _dateStr = (DateS ?? Safir.Shared.Utility.CL_Tarikh.GetCurrentPersianDateAsLong()).ToString();
 
+        var db = await ConnectionManager.GetEffectiveDbSettingsAsync();
+        _lastAccountKey = $"CostClose_LastCorrectionAccount:{db.Server}|{db.Database}".ToLowerInvariant();
+
         // آخرین حسابِ استفاده‌شده را پیش‌فرض بگذار — کاربر همچنان می‌تواند عوضش کند.
-        var last = await LocalStorage.GetItemAsync<LastAccount>(LastAccountKey);
+        var last = await LocalStorage.GetItemAsync<LastAccount>(_lastAccountKey);
         if (last is not null)
         {
             _manualMode = last.ManualMode;
@@ -154,7 +159,7 @@
         }
     }
 
-    private async Task SaveLastAccount() => await LocalStorage.SetItemAsync(LastAccountKey, new LastAccount
+    private async Task SaveLastAccount() => await LocalStorage.SetItemAsync(_lastAccountKey, new LastAccount
     {
         ManualMode = _manualMode,
         Kol = _kol,

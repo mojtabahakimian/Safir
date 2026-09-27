@@ -235,3 +235,29 @@ html.dark-theme[data-theme-scheme="costclose"] .mud-button-filled.mud-button-fil
     filter: brightness(1.08);
 }
 
+
+/* نام شرکت (دیتابیس) این تب در نوار بالا؛ رنگ از نام دیتابیس (--db-hue در MainLayout) */
+.safir-db-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin-inline-start: 12px;
+    padding: 3px 12px;
+    border-radius: 999px;
+    font-size: 13px;
+    font-weight: 700;
+    direction: ltr;
+    white-space: nowrap;
+    color: hsl(var(--db-hue, 200), 65%, 30%);
+    background: hsla(var(--db-hue, 200), 80%, 55%, 0.14);
+    border: 1px solid hsla(var(--db-hue, 200), 70%, 45%, 0.35);
+}
+
+.dark-theme .safir-db-chip {
+    color: hsl(var(--db-hue, 200), 85%, 78%);
+    background: hsla(var(--db-hue, 200), 80%, 60%, 0.16);
+}
+
+@media (max-width: 600px) {
+    .safir-db-chip { margin-inline-start: 6px; padding: 2px 8px; font-size: 11px; }
+}
