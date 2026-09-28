@@ -59,8 +59,17 @@ test('هر تب شرکت خودش را نگه می‌دارد و رفرش آن �
   const hue = p => chip(p).evaluate(el => el.getAttribute('style'));
   expect(await hue(yazd)).not.toBe(await hue(poodr));
 
-  // تب کاملاً جدید (نه از منو) با آخرین شرکت ذخیره‌شده شروع می‌شود
+  // «تست اتصال» دیتابیس دیگر، شرکتِ این تب را عوض نمی‌کند (قبلاً تنظیم را ذخیره می‌کرد)
+  await yazd.getByText('تنظیمات سرور و دیتابیس').click();
+  await field(yazd, 'نام دیتابیس').fill('SOME_OTHER_DB');
+  await yazd.getByRole('button', { name: 'تست اتصال' }).click();
+  await yazd.waitForTimeout(1500);
+  await yazd.reload();
+  await expect(chip(yazd)).toHaveText(/YAZDSEPAR1405/);
+
+  // تب کاملاً جدید (نه از منو) فقط از «آخرین ورود» شروع می‌کند؛ ذخیره‌ی بدون ورودِ پودر آن را عوض نمی‌کند
   const third = await context.newPage();
   await third.goto('/login');
-  await expect(chip(third)).toHaveText(/NEWPOODR1405/);
+  await expect(chip(third)).toBeVisible();
+  await expect(chip(third)).not.toHaveText(/NEWPOODR1405/);
 });

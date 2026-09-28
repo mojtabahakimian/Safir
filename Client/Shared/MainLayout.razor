@@ -237,6 +237,9 @@
 
     protected override async Task OnInitializedAsync()
     {
+        // قبل از اولین درخواست، تا ردِ «دیتابیس دیگر» در همان بالا آمدن هم به صفحه‌ی ورود ببرد
+        DbMismatchHandler.Mismatch += OnDbMismatch;
+
         await ConnectionManager.LoadSettingsAsync();
         await LoadDbLabelAsync();
         await InitialConnectivityCheck();
@@ -259,7 +262,6 @@
         // اشتراک در رویداد تغییر تم
         ThemeService.ThemeChanged += OnThemeChanged;
 
-        DbMismatchHandler.Mismatch += OnDbMismatch;
 
         // دریافت وضعیت اولیه سبد
         UpdateCartState();
@@ -414,6 +416,8 @@
         try
         {
             var db = await ConnectionManager.GetEffectiveDbSettingsAsync();
+            // وقتی سرور جواب نداده («نامشخص»)، برچسبی که شبیه نام یک شرکت است نشان نده
+            if (string.IsNullOrWhiteSpace(db.Database) || db.Database == "نامشخص") return;
             _dbLabel = db.Database;
             _dbTooltip = $"سرور: {db.Server} — دیتابیس: {db.Database}";
             // رنگ از نام دیتابیس ساخته می‌شود؛ هر شرکت در هر تب و هر بار همان رنگ را دارد

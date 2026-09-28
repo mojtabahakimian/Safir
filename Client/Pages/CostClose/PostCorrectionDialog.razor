@@ -146,7 +146,9 @@
         _lastAccountKey = $"CostClose_LastCorrectionAccount:{db.Server}|{db.Database}".ToLowerInvariant();
 
         // آخرین حسابِ استفاده‌شده را پیش‌فرض بگذار — کاربر همچنان می‌تواند عوضش کند.
-        var last = await LocalStorage.GetItemAsync<LastAccount>(_lastAccountKey);
+        var last = await LocalStorage.GetItemAsync<LastAccount>(_lastAccountKey)
+                   // حسابی که پیش از جدا شدن کلید به ازای هر دیتابیس ذخیره شده بود از دست نرود
+                   ?? await LocalStorage.GetItemAsync<LastAccount>("CostClose_LastCorrectionAccount");
         if (last is not null)
         {
             _manualMode = last.ManualMode;

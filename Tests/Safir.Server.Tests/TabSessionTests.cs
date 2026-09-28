@@ -27,13 +27,15 @@ public class TabSessionTests
         { Items.Remove(key); return ValueTask.CompletedTask; }
 
         public ValueTask ClearAsync(CancellationToken ct = default) => throw new NotSupportedException();
-        public ValueTask<string?> GetItemAsStringAsync(string key, CancellationToken ct = default) => throw new NotSupportedException();
+        public ValueTask<string?> GetItemAsStringAsync(string key, CancellationToken ct = default) =>
+            ValueTask.FromResult(Items.TryGetValue(key, out var v) ? v : null);
         public ValueTask<string?> KeyAsync(int index, CancellationToken ct = default) => throw new NotSupportedException();
         public ValueTask<IEnumerable<string>> KeysAsync(CancellationToken ct = default) => throw new NotSupportedException();
         public ValueTask<bool> ContainKeyAsync(string key, CancellationToken ct = default) => throw new NotSupportedException();
         public ValueTask<int> LengthAsync(CancellationToken ct = default) => throw new NotSupportedException();
         public ValueTask RemoveItemsAsync(IEnumerable<string> keys, CancellationToken ct = default) => throw new NotSupportedException();
-        public ValueTask SetItemAsStringAsync(string key, string data, CancellationToken ct = default) => throw new NotSupportedException();
+        public ValueTask SetItemAsStringAsync(string key, string data, CancellationToken ct = default)
+        { Items[key] = data; return ValueTask.CompletedTask; }
     }
 
     /// <summary>sessionStorage یک تب</summary>
@@ -65,7 +67,7 @@ public class TabSessionTests
     private static async Task LoginAsync(TabSession tab, string token)
     {
         await tab.SetAsync(TabSession.AuthTokenKey, token);
-        await tab.PromoteToLastAsync<DbConnectionSettings>(TabSession.DbSettingsKey);
+        await tab.SaveAsLastLoginAsync();
     }
 
     [Fact]
@@ -92,16 +94,17 @@ public class TabSessionTests
     public async Task Tab_without_own_database_clears_last_database_on_login()
     {
         var local = new FakeLocal();
-        await new TabSession(new FakeTab(), local).SetAsync(TabSession.DbSettingsKey, Db("NEWPOODR1405"));
+        var poodr = new TabSession(new FakeTab(), local);
+        await poodr.SetAsync(TabSession.DbSettingsKey, Db("NEWPOODR1405"));
+        await LoginAsync(poodr, "token-poodr");
 
-        // تبی که با «ورود به شرکت دیگر» باز شده و تنظیمی ندارد (دیتابیس پیش‌فرض سرور)
-        var js = new FakeTab();
-        js.Session["safir.freshTab"] = "1";
-        var tab = new TabSession(js, local);
-        js.Session.Remove(TabSession.DbSettingsKey);
+        // تبی که تنظیمش را پاک کرده و با دیتابیس پیش‌فرض سرور وارد می‌شود (ClearSettingsAsync)
+        var tab = new TabSession(new FakeTab(), local);
+        await tab.RemoveAsync<DbConnectionSettings>(TabSession.DbSettingsKey);
         await LoginAsync(tab, "token-default");
 
         Assert.False(local.Items.ContainsKey(TabSession.DbSettingsKey));
+        Assert.Equal("token-default", await local.GetItemAsync<string>(TabSession.AuthTokenKey));
     }
 
     [Fact]
@@ -145,5 +148,62 @@ public class TabSessionTests
         await yazd.RemoveAsync<string>(TabSession.AuthTokenKey);   // خروج از یزدسپار
 
         Assert.Equal("token-poodr", await local.GetItemAsync<string>(TabSession.AuthTokenKey));
+    }
+
+    // خروج از یک تب و رفرش نباید توکنِ تبی را که بعداً وارد شده جایگزین کند
+    [Fact]
+    public async Task Logout_then_refresh_stays_logged_out_even_if_another_tab_logged_in_later()
+    {
+        var local = new FakeLocal();
+        var yazdJs = new FakeTab();
+        var yazd = new TabSession(yazdJs, local);
+        await yazd.SetAsync(TabSession.DbSettingsKey, Db("YAZDSEPAR1405"));
+        await LoginAsync(yazd, "token-yazd");
+
+        var poodr = new TabSession(new FakeTab(), local);
+        await poodr.SetAsync(TabSession.DbSettingsKey, Db("YAZDSEPAR1405"));
+        await LoginAsync(poodr, "token-other-user");
+
+        await yazd.RemoveAsync<string>(TabSession.AuthTokenKey);   // خروج
+        var afterReload = new TabSession(yazdJs, local);           // LogoutUser با forceLoad رفرش می‌کند
+
+        Assert.Null(await afterReload.GetAsync<string>(TabSession.AuthTokenKey));
+        Assert.Equal("token-other-user", await local.GetItemAsync<string>(TabSession.AuthTokenKey));
+    }
+
+    // ذخیره‌ی تنظیم دیتابیس بدون ورود، «آخرین ورود» را خراب نمی‌کند
+    [Fact]
+    public async Task Saving_settings_without_login_keeps_last_login_pair()
+    {
+        var local = new FakeLocal();
+        var yazd = new TabSession(new FakeTab(), local);
+        await yazd.SetAsync(TabSession.DbSettingsKey, Db("YAZDSEPAR1405"));
+        await LoginAsync(yazd, "token-yazd");
+
+        await new TabSession(new FakeTab(), local).SetAsync(TabSession.DbSettingsKey, Db("NEWPOODR1405"));
+
+        var reopened = new TabSession(new FakeTab(), local);
+        Assert.Equal("token-yazd", await reopened.GetAsync<string>(TabSession.AuthTokenKey));
+        Assert.Equal("YAZDSEPAR1405", (await reopened.GetAsync<DbConnectionSettings>(TabSession.DbSettingsKey))!.Database);
+    }
+
+    // تب جدید توکن و دیتابیس را با هم برمی‌دارد، حتی اگر بین دو خواندن تب دیگری وارد شود
+    [Fact]
+    public async Task New_tab_takes_token_and_database_of_the_same_login()
+    {
+        var local = new FakeLocal();
+        var yazd = new TabSession(new FakeTab(), local);
+        await yazd.SetAsync(TabSession.DbSettingsKey, Db("YAZDSEPAR1405"));
+        await LoginAsync(yazd, "token-yazd");
+
+        var newTab = new TabSession(new FakeTab(), local);
+        var db = await newTab.GetAsync<DbConnectionSettings>(TabSession.DbSettingsKey);   // Program.cs: اول تنظیم
+
+        var poodr = new TabSession(new FakeTab(), local);                                // هم‌زمان تب دیگری وارد پودر می‌شود
+        await poodr.SetAsync(TabSession.DbSettingsKey, Db("NEWPOODR1405"));
+        await LoginAsync(poodr, "token-poodr");
+
+        Assert.Equal("YAZDSEPAR1405", db!.Database);
+        Assert.Equal("token-yazd", await newTab.GetAsync<string>(TabSession.AuthTokenKey)); // بعد توکن: همان ورود
     }
 }

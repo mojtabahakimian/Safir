@@ -11,21 +11,28 @@ namespace Safir.Client.Services
     /// هر تب برنامه‌ی جدای خودش را در حافظه دارد، ولی localStorage بین تب‌ها مشترک است: ورود
     /// در تب دوم، توکن و دیتابیس تب اول را عوض می‌کرد و تب اول با اولین رفرش بی‌صدا به شرکت
     /// دیگر وصل می‌شد. پس هر تب مقدار خودش را در sessionStorage همان تب نگه می‌دارد (با رفرش
-    /// می‌ماند، به تب دیگر نمی‌رسد) و localStorage فقط «آخرین ورود» است برای شروع تب‌های جدید.
+    /// می‌ماند، به تب دیگر نمی‌رسد).
+    ///
+    /// localStorage فقط «آخرین ورود» است: توکن و دیتابیسِ آخرین ورود موفق، همیشه با هم.
+    /// تب فقط یک بار، در اولین بالا آمدنش، هر دو را با هم از آن برمی‌دارد (پرچم safir.tabInit)؛
+    /// بعد از آن هرگز. پس خروج از یک تب و رفرش، توکنِ تب دیگری را جایگزین نمی‌کند، و تب نمی‌تواند
+    /// توکن یک ورود و دیتابیس ورود دیگری داشته باشد.
     ///
     /// تبی که با «ورود به شرکت دیگر در تب جدید» باز شود (پرچم safir.freshTab که index.html
-    /// می‌گذارد) توکن را از آخرین ورود برنمی‌دارد؛ فقط تنظیم دیتابیس برای پر کردن فرم ورود.
+    /// می‌گذارد) توکن برنمی‌دارد؛ فقط تنظیم دیتابیس برای پر کردن فرم ورود.
     /// </summary>
     public class TabSession
     {
         public const string AuthTokenKey = "authToken";
         public const string DbSettingsKey = "dbConnectionSettings";
         private const string FreshTabFlag = "safir.freshTab";
+        private const string InitFlag = "safir.tabInit";
 
         private static readonly JsonSerializerOptions Json = new() { PropertyNameCaseInsensitive = true };
 
         private readonly IJSRuntime _js;
         private readonly ILocalStorageService _local;
+        private bool _initialized;
 
         public TabSession(IJSRuntime js, ILocalStorageService local)
         {
@@ -35,40 +42,32 @@ namespace Safir.Client.Services
 
         public async Task<T?> GetAsync<T>(string key)
         {
-            var raw = await _js.InvokeAsync<string?>("sessionStorage.getItem", key);
-            if (raw != null)
-                return Deserialize<T>(raw);
-
-            if (key == AuthTokenKey && await IsFreshTabAsync())
-                return default;
-
-            // شروع تب جدید از آخرین ورود؛ از این به بعد این تب مقدار خودش را دارد
-            var last = await _local.GetItemAsync<T>(key);
-            if (last != null)
-                await _js.InvokeVoidAsync("sessionStorage.setItem", key, JsonSerializer.Serialize(last));
-            return last;
+            await EnsureInitializedAsync();
+            var raw = await SessionGetAsync(key);
+            return raw == null ? default : Deserialize<T>(raw);
         }
 
+        /// <summary>فقط برای همین تب؛ «آخرین ورود» را عوض نمی‌کند.</summary>
         public async Task SetAsync<T>(string key, T value)
         {
+            await EnsureInitializedAsync();
             await _js.InvokeVoidAsync("sessionStorage.setItem", key, JsonSerializer.Serialize(value));
-            await _local.SetItemAsync(key, value);
         }
 
         /// <summary>
-        /// مقدار این تب را «آخرین ورود» می‌کند (یا اگر این تب مقداری ندارد، آخرین ورود را پاک می‌کند).
-        /// بعد از هر ورود موفق برای تنظیم دیتابیس صدا زده می‌شود تا توکن و دیتابیسِ «آخرین ورود»
-        /// همیشه از یک تب باشند؛ وگرنه اگر تنظیم پودر در تبی ذخیره شده بود و ورود بعدی در تب
-        /// یزدسپار بود، با بستن و باز کردن مرورگر توکن یزدسپار با دیتابیس پودر می‌رفت و رد می‌شد.
+        /// بعد از ورود موفق: توکن و دیتابیسِ همین تب، با هم «آخرین ورود» می‌شوند (برای تب جدید یا
+        /// باز کردن دوباره‌ی مرورگر). دیتابیسی که این تب ندارد (پیش‌فرض سرور) از آخرین ورود پاک می‌شود.
         /// </summary>
-        public async Task PromoteToLastAsync<T>(string key)
+        public async Task SaveAsLastLoginAsync()
         {
-            var raw = await _js.InvokeAsync<string?>("sessionStorage.getItem", key);
-            var value = raw == null ? default : Deserialize<T>(raw);
-            if (value != null)
-                await _local.SetItemAsync(key, value);
-            else
-                await _local.RemoveItemAsync(key);
+            foreach (var key in new[] { AuthTokenKey, DbSettingsKey })
+            {
+                var raw = await SessionGetAsync(key);
+                if (raw != null)
+                    await _local.SetItemAsStringAsync(key, raw);
+                else
+                    await _local.RemoveItemAsync(key);
+            }
         }
 
         /// <summary>
@@ -77,7 +76,8 @@ namespace Safir.Client.Services
         /// </summary>
         public async Task RemoveAsync<T>(string key)
         {
-            var raw = await _js.InvokeAsync<string?>("sessionStorage.getItem", key);
+            await EnsureInitializedAsync();
+            var raw = await SessionGetAsync(key);
             await _js.InvokeVoidAsync("sessionStorage.removeItem", key);
             if (raw == null) return;
 
@@ -86,8 +86,33 @@ namespace Safir.Client.Services
                 await _local.RemoveItemAsync(key);
         }
 
-        private async Task<bool> IsFreshTabAsync() =>
-            await _js.InvokeAsync<string?>("sessionStorage.getItem", FreshTabFlag) == "1";
+        /// <summary>
+        /// اولین بالا آمدن تب: توکن و دیتابیس را با هم از «آخرین ورود» برمی‌دارد. رفرش، تب
+        /// تکثیرشده یا تب «شرکت دیگر» پرچم را از قبل دارند (مرورگر sessionStorage را کپی می‌کند)
+        /// و چیزی برنمی‌دارند.
+        /// </summary>
+        private async Task EnsureInitializedAsync()
+        {
+            if (_initialized) return;
+            _initialized = true;
+
+            if (await SessionGetAsync(InitFlag) != null) return;
+            await _js.InvokeVoidAsync("sessionStorage.setItem", InitFlag, "1");
+
+            bool fresh = await SessionGetAsync(FreshTabFlag) == "1";
+            foreach (var key in new[] { DbSettingsKey, AuthTokenKey })
+            {
+                if (key == AuthTokenKey && fresh) continue;
+                if (await SessionGetAsync(key) != null) continue;
+
+                var last = await _local.GetItemAsStringAsync(key);
+                if (last != null)
+                    await _js.InvokeVoidAsync("sessionStorage.setItem", key, last);
+            }
+        }
+
+        private ValueTask<string?> SessionGetAsync(string key) =>
+            _js.InvokeAsync<string?>("sessionStorage.getItem", key);
 
         private static T? Deserialize<T>(string raw)
         {
