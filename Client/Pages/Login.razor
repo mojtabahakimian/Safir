@@ -220,12 +220,11 @@
                 isTestingConnection = true;
                 StateHasChanged();
 
-                // ذخیره تنظیمات و اعمال هدر X-DB-Connection برای تست اتصال
-                await ConnectionManager.SaveSettingsAsync(dbSettings);
-
                 try
                 {
-                    var response = await HttpClient.GetAsync("api/Settings/test-connection");
+                    // فقط برای همین آزمون؛ تنظیم این تب عوض نمی‌شود (WithTemporarySettingsAsync)
+                    var response = await ConnectionManager.WithTemporarySettingsAsync(dbSettings,
+                        () => HttpClient.GetAsync("api/Settings/test-connection"));
                     if (response.IsSuccessStatusCode)
                     {
                         var result = await response.Content.ReadFromJsonAsync<TestConnectionResult>();
@@ -322,6 +321,10 @@
 
         try
         {
+            // ورود دقیقاً به دیتابیسی که فرم نشان می‌دهد، حتی اگر کاربر «ذخیره» را نزده باشد
+            if (!string.IsNullOrWhiteSpace(dbSettings.Server) && !string.IsNullOrWhiteSpace(dbSettings.Database))
+                await ConnectionManager.SaveSettingsAsync(dbSettings);
+
             var result = await AuthService.Login(request);
             if (result.Successful)
             {

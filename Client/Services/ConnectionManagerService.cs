@@ -69,6 +69,23 @@ namespace Safir.Client.Services
             _httpClient.DefaultRequestHeaders.Remove("X-DB-Connection");
         }
 
+        /// <summary>
+        /// «تست اتصال»: هدر را فقط برای همین آزمون عوض می‌کند و بعد به تنظیم ذخیره‌شده‌ی تب
+        /// برمی‌گرداند. قبلاً تست تنظیم را ذخیره می‌کرد و آزمودنِ دیتابیس دیگر در تبی که وارد
+        /// شده بود، آن تب را به شرکت دیگر می‌برد (و حالا که توکن به دیتابیس گره خورده، بیرونش می‌انداخت).
+        /// </summary>
+        public async Task<T> WithTemporarySettingsAsync<T>(DbConnectionSettings settings, Func<Task<T>> action)
+        {
+            ApplySettingsToHttpClient(settings);
+            try { return await action(); }
+            finally
+            {
+                var saved = await GetSettingsAsync();
+                if (saved != null) ApplySettingsToHttpClient(saved);
+                else _httpClient.DefaultRequestHeaders.Remove("X-DB-Connection");
+            }
+        }
+
         public async Task LoadSettingsAsync()
         {
             var settings = await GetSettingsAsync();

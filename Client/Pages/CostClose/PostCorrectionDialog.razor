@@ -146,6 +146,8 @@
         _lastAccountKey = $"CostClose_LastCorrectionAccount:{db.Server}|{db.Database}".ToLowerInvariant();
 
         // آخرین حسابِ استفاده‌شده را پیش‌فرض بگذار — کاربر همچنان می‌تواند عوضش کند.
+        // عمداً کلید قدیمیِ مشترک (CostClose_LastCorrectionAccount) خوانده نمی‌شود: معلوم نیست مال کدام
+        // شرکت است و کد حساب شرکت دیگر اینجا با همان کد سند می‌خورد. کاربر یک بار دوباره انتخاب می‌کند.
         var last = await LocalStorage.GetItemAsync<LastAccount>(_lastAccountKey);
         if (last is not null)
         {

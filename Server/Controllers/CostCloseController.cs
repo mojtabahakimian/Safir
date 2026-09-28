@@ -91,11 +91,34 @@ namespace Safir.Server.Controllers
 
         // ═══════════════════════ اجراها ═══════════════════════
 
+        // CostCloseWorker اجراهای یخ‌زده را بعد از ری‌استارت فقط در دیتابیس پیش‌فرض آزاد می‌کند (کار
+        // پس‌زمینه هدر ندارد و دیتابیس‌های دیگر را نمی‌شناسد). اجرای یخ‌زده‌ی شرکت دیگر تا «توقف» دستی
+        // «در حال اجرا» می‌ماند؛ پس اولین باری که فهرست اجراهای هر دیتابیس خوانده می‌شود، همان رویه
+        // آنجا هم اجرا می‌شود — فقط وقتی اجرایی از آن دیتابیس روی همین سرور در جریان نیست.
+        private static readonly ConcurrentDictionary<string, byte> _staleReleased = new();
+
+        private async Task ReleaseStaleRunsOnceAsync()
+        {
+            var db = Db;
+            if (_queue.AnyRunning(db) || !_staleReleased.TryAdd(db, 1)) return;
+            try
+            {
+                await _db.DoGetDataSQLAsync<int>("EXEC dbo.CC_sp_ReleaseStaleRuns @StaleMinutes = 15");
+            }
+            catch (Exception ex)
+            {
+                // دیتابیسی که هنوز 34-run-heartbeat را نگرفته؛ فهرست اجراها نباید به‌خاطرش خراب شود
+                _logger.LogWarning(ex, "آزادسازی اجراهای یخ‌زده انجام نشد");
+            }
+        }
+
         [HttpGet("runs")]
         [Pay2Authorize(CostForms.History, Pay2Perm.See)]
         public async Task<ActionResult<IEnumerable<CostRunDto>>> GetRuns(
             [FromQuery] short? year = null, [FromQuery] byte? month = null)
         {
+            await ReleaseStaleRunsOnceAsync();
+
             const string sql = @"
                 SELECT TOP 200 *
                 FROM   dbo.CC_Run

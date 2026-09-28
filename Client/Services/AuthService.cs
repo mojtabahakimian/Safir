@@ -86,7 +86,7 @@ namespace Safir.Client.Services
                 // Login successful, store the token
                 await _tab.SetAsync(AuthTokenKey, loginResult.Token);
                 // «آخرین ورود» = توکن و دیتابیسِ همین تب، با هم (برای تب جدید یا باز کردن دوباره‌ی مرورگر)
-                await _tab.PromoteToLastAsync<Safir.Shared.Models.DbConnectionSettings>(TabSession.DbSettingsKey);
+                await _tab.SaveAsLastLoginAsync();
 
                 // Notify the AuthenticationStateProvider that the user has logged in
                 // The cast is necessary because we know we are using our custom provider

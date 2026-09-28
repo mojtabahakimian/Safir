@@ -35,9 +35,12 @@ test('هر تب شرکت خودش را نگه می‌دارد و رفرش آن �
   const fakeToken = `${b64({ alg: 'HS256', typ: 'JWT' })}.${b64({ unique_name: 'yazd', exp: 4102444800 })}.sig`;
   await yazd.evaluate(t => sessionStorage.setItem('authToken', JSON.stringify(t)), fakeToken);
 
+  // همان مسیر کاربر: منوی کاربر ← «ورود به شرکت دیگر در تب جدید» (نه window.open مستقیم)
+  await yazd.goto('/');
+  await yazd.locator('.mud-appbar .mud-menu-activator button.pa-1').click();   // آیکون کاربر
   const [poodr] = await Promise.all([
     context.waitForEvent('page'),
-    yazd.evaluate(() => window.open('/login?newtab=1', '_blank')),
+    yazd.getByText('ورود به شرکت دیگر در تب جدید').click(),
   ]);
   await poodr.waitForLoadState();
   await expect(chip(poodr)).toBeVisible();
@@ -59,8 +62,49 @@ test('هر تب شرکت خودش را نگه می‌دارد و رفرش آن �
   const hue = p => chip(p).evaluate(el => el.getAttribute('style'));
   expect(await hue(yazd)).not.toBe(await hue(poodr));
 
-  // تب کاملاً جدید (نه از منو) با آخرین شرکت ذخیره‌شده شروع می‌شود
+  // «تست اتصال» دیتابیس دیگر، شرکتِ این تب را عوض نمی‌کند (قبلاً تنظیم را ذخیره می‌کرد)
+  await yazd.goto('/login');
+  await yazd.getByText('تنظیمات سرور و دیتابیس').click();
+  await field(yazd, 'نام دیتابیس').fill('SOME_OTHER_DB');
+  await yazd.getByRole('button', { name: 'تست اتصال' }).click();
+  await yazd.waitForTimeout(1500);
+  await yazd.reload();
+  await expect(chip(yazd)).toHaveText(/YAZDSEPAR1405/);
+
+  // تب کاملاً جدید (نه از منو) فقط از «آخرین ورود» شروع می‌کند؛ ذخیره‌ی بدون ورودِ پودر آن را عوض نمی‌کند
   const third = await context.newPage();
   await third.goto('/login');
-  await expect(chip(third)).toHaveText(/NEWPOODR1405/);
+  await expect(chip(third)).toBeVisible();
+  await expect(chip(third)).not.toHaveText(/NEWPOODR1405/);
+});
+
+// Ctrl+کلیک (یا کلیک وسط) روی منو تب جدیدی باز می‌کند که sessionStorage تب فعلی را ندارد و از «آخرین
+// ورود» شروع می‌کند. اگر آخرین ورود مال تب دیگری (پودر) بود، منوی یزدسپار صفحه‌ی پودر را باز می‌کرد.
+test('Ctrl+کلیک روی منو، شرکت همان تب را باز می‌کند نه آخرین ورود تب دیگر را', async ({ context }) => {
+  const b64 = o => Buffer.from(JSON.stringify(o)).toString('base64url');
+  const token = name => `${b64({ alg: 'HS256', typ: 'JWT' })}.${b64({ unique_name: name, exp: 4102444800 })}.sig`;
+
+  const yazd = await context.newPage();
+  await yazd.goto('/login');
+  await saveDatabase(yazd, 'SRV-A', 'YAZDSEPAR1405');
+  await yazd.evaluate(t => sessionStorage.setItem('authToken', JSON.stringify(t)), token('yazd'));
+
+  // تب دیگری بعداً در پودر وارد شده (همان کاری که SaveAsLastLoginAsync می‌کند)
+  await yazd.evaluate(t => {
+    localStorage.setItem('authToken', JSON.stringify(t));
+    localStorage.setItem('dbConnectionSettings',
+      JSON.stringify({ Server: 'SRV-A', Database: 'NEWPOODR1405', IsWindowsAuthentication: true }));
+  }, token('poodr'));
+
+  await yazd.goto('/');
+  await expect(chip(yazd)).toHaveText(/YAZDSEPAR1405/);
+  await yazd.bringToFront();
+  await yazd.locator('.mud-appbar button.mud-icon-button-edge-start').click();   // باز کردن منوی کناری
+
+  const [opened] = await Promise.all([
+    context.waitForEvent('page'),
+    yazd.locator('a.mud-nav-link[href="/"]').first().click({ modifiers: ['Control'] }),
+  ]);
+  await opened.waitForLoadState();
+  await expect(chip(opened)).toHaveText(/YAZDSEPAR1405/);
 });
