@@ -77,3 +77,33 @@ test('هر تب شرکت خودش را نگه می‌دارد و رفرش آن �
   await expect(chip(third)).toBeVisible();
   await expect(chip(third)).not.toHaveText(/NEWPOODR1405/);
 });
+
+// Ctrl+کلیک (یا کلیک وسط) روی منو تب جدیدی باز می‌کند که sessionStorage تب فعلی را ندارد و از «آخرین
+// ورود» شروع می‌کند. اگر آخرین ورود مال تب دیگری (پودر) بود، منوی یزدسپار صفحه‌ی پودر را باز می‌کرد.
+test('Ctrl+کلیک روی منو، شرکت همان تب را باز می‌کند نه آخرین ورود تب دیگر را', async ({ context }) => {
+  const b64 = o => Buffer.from(JSON.stringify(o)).toString('base64url');
+  const token = name => `${b64({ alg: 'HS256', typ: 'JWT' })}.${b64({ unique_name: name, exp: 4102444800 })}.sig`;
+
+  const yazd = await context.newPage();
+  await yazd.goto('/login');
+  await saveDatabase(yazd, 'SRV-A', 'YAZDSEPAR1405');
+  await yazd.evaluate(t => sessionStorage.setItem('authToken', JSON.stringify(t)), token('yazd'));
+
+  // تب دیگری بعداً در پودر وارد شده (همان کاری که SaveAsLastLoginAsync می‌کند)
+  await yazd.evaluate(t => {
+    localStorage.setItem('authToken', JSON.stringify(t));
+    localStorage.setItem('dbConnectionSettings',
+      JSON.stringify({ Server: 'SRV-A', Database: 'NEWPOODR1405', IsWindowsAuthentication: true }));
+  }, token('poodr'));
+
+  await yazd.goto('/');
+  await expect(chip(yazd)).toHaveText(/YAZDSEPAR1405/);
+  await yazd.bringToFront();
+
+  const [opened] = await Promise.all([
+    context.waitForEvent('page'),
+    yazd.locator('a.mud-nav-link[href="/"]').first().click({ modifiers: ['Control'] }),
+  ]);
+  await opened.waitForLoadState();
+  await expect(chip(opened)).toHaveText(/YAZDSEPAR1405/);
+});
