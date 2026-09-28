@@ -499,6 +499,7 @@ public sealed class CloseOrchestratorTests
         public bool CancelRequested { get; set; }
         public bool TryEnqueue(CostCloseJob job, out string? error) { error = null; return true; }
         public bool IsRunning(string db, int runId) => false;
+        public bool AnyRunning(string db) => false;
         public bool IsCancelRequested(string db, int runId) => CancelRequested;
 
         public void RequestCancel(string db, int runId)

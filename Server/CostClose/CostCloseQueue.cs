@@ -39,6 +39,7 @@ namespace Safir.Server.CostClose
     {
         bool TryEnqueue(CostCloseJob job, out string? error);
         bool IsRunning(string db, int runId);
+        bool AnyRunning(string db);
         void RequestCancel(string db, int runId);
         bool IsCancelRequested(string db, int runId);
 
@@ -91,6 +92,9 @@ namespace Safir.Server.CostClose
         }
 
         public bool IsRunning(string db, int runId) => _active.ContainsKey(Key(db, runId));
+
+        /// <summary>اجرایی از این دیتابیس در صف یا در حال اجرا روی همین سرور هست؟</summary>
+        public bool AnyRunning(string db) => _active.Keys.Any(k => k.StartsWith(db + "#", StringComparison.Ordinal));
 
         /// <summary>
         /// توکن لغوِ مخصوص همین اجرا، گره‌خورده به توکنِ خاموش شدن برنامه.

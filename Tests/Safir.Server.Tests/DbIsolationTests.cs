@@ -27,6 +27,30 @@ public class DbIsolationTests : IClassFixture<DbIsolationTests.Factory>
     public void DbKey_is_server_and_database_lowercase(string cs, string expected) =>
         Assert.Equal(expected, DbKey.From(cs));
 
+    // یک دیتابیس با نوشتارهای مختلف سرور یک کلید دارد؛ وگرنه قفل «این اجرا در حال انجام است»
+    // کاربری با «.\SQL2022» و کاربری با «MERCEDES\SQL2022» را دو دیتابیس می‌دید
+    [Theory]
+    [InlineData(@".\SQL2022")]
+    [InlineData(@"(local)\SQL2022")]
+    [InlineData(@"localhost\SQL2022")]
+    [InlineData(@"tcp:127.0.0.1\SQL2022,1433")]
+    public void Local_server_aliases_share_one_key(string server)
+    {
+        string Cs(string s) => $@"Data Source={s};Initial Catalog=YAZDSEPAR1405;Integrated Security=True";
+        Assert.Equal(DbKey.From(Cs($@"{Environment.MachineName}\SQL2022")), DbKey.From(Cs(server)));
+    }
+
+    [Fact]
+    public void Domain_suffix_and_default_port_do_not_change_the_key()
+    {
+        Assert.Equal(DbKey.From("Data Source=MERCEDES;Initial Catalog=A"),
+                     DbKey.From("Data Source=mercedes.corp.local,1433;Initial Catalog=A"));
+        Assert.NotEqual(DbKey.From("Data Source=MERCEDES;Initial Catalog=A"),
+                        DbKey.From("Data Source=MERCEDES,1500;Initial Catalog=A"));
+        Assert.NotEqual(DbKey.From("Data Source=MERCEDES;Initial Catalog=A"),
+                        DbKey.From("Data Source=OTHERPC;Initial Catalog=A"));
+    }
+
     private sealed class FixedDb : IConnectionStringProvider
     {
         private readonly string _cs;
@@ -128,5 +152,17 @@ public class CostCloseQueueDbIsolationTests
         queue.RequestCancel("srv|yazd", 7);
         Assert.True(queue.IsCancelRequested("srv|yazd", 7));
         Assert.False(queue.IsCancelRequested("srv|poodr", 7));    // لغو یزد، اجرای پودر را متوقف نمی‌کند
+    }
+
+    // آزادسازی اجراهای یخ‌زده‌ی یک دیتابیس فقط وقتی مجاز است که اجرایی از همان دیتابیس در جریان نباشد
+    [Fact]
+    public void AnyRunning_is_per_database()
+    {
+        var queue = new Safir.Server.CostClose.CostCloseQueue();
+        Assert.True(queue.TryEnqueue(Job("YAZD", 7), out _));
+
+        Assert.True(queue.AnyRunning("srv|yazd"));
+        Assert.False(queue.AnyRunning("srv|poodr"));
+        Assert.False(queue.AnyRunning("srv|yaz"));   // پیشوند نام دیتابیس دیگر نیست
     }
 }
