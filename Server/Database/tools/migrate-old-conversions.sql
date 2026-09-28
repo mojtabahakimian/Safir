@@ -123,13 +123,13 @@ SELECT
         END
 INTO    #Pairs
 FROM    IssueSide i
-JOIN    BuySide  r ON r.Account = i.Account
+JOIN    BuySide  r ON r.Account = i.Account COLLATE DATABASE_DEFAULT
 JOIN    dbo.HEAD_LST hi ON hi.TAG=11 AND hi.NUMBER=i.Num
 JOIN    dbo.HEAD_LST hr ON hr.TAG=1  AND hr.NUMBER=r.Num AND hr.DATE_N = hi.DATE_N
 LEFT    JOIN dbo.INVO_LST li ON li.TAG=11 AND li.NUMBER=i.Num
 LEFT    JOIN dbo.INVO_LST lr ON lr.TAG=1  AND lr.NUMBER=r.Num
-LEFT    JOIN dbo.STUF_DEF sf ON sf.CODE=li.CODE
-LEFT    JOIN dbo.STUF_DEF st ON st.CODE=lr.CODE
+LEFT    JOIN dbo.STUF_DEF sf ON sf.CODE=li.CODE COLLATE DATABASE_DEFAULT
+LEFT    JOIN dbo.STUF_DEF st ON st.CODE=lr.CODE COLLATE DATABASE_DEFAULT
 WHERE   hi.DATE_N BETWEEN @DT1 AND @DT2
   AND   NOT EXISTS (SELECT 1 FROM dbo.CC_ConversionMigration m
                     WHERE m.IssueNumber=i.Num AND m.Status='migrated');
@@ -191,11 +191,11 @@ FROM (
     FROM dbo.INVO_LST i
     WHERE i.TAG = 30 AND i.N_RASID IS NOT NULL AND i.ANBARF IS NOT NULL
 ) x
-JOIN #Codes c ON c.CODE = x.CODE AND c.ANBAR = x.ANBAR
+JOIN #Codes c ON c.CODE = x.CODE COLLATE DATABASE_DEFAULT AND c.ANBAR = x.ANBAR
 GROUP BY x.CODE, x.ANBAR;';
 
-CREATE TABLE #Codes (CODE NVARCHAR(20), ANBAR INT);
-CREATE TABLE #Snap  (Phase CHAR(1), CODE NVARCHAR(20), ANBAR INT, Qty FLOAT);
+CREATE TABLE #Codes (CODE NVARCHAR(20) COLLATE DATABASE_DEFAULT, ANBAR INT);
+CREATE TABLE #Snap  (Phase CHAR(1), CODE NVARCHAR(20) COLLATE DATABASE_DEFAULT, ANBAR INT, Qty FLOAT);
 
 /* هر چهار جفتِ (کالا، انبار) که این مهاجرت لمسشان می‌کند */
 INSERT #Codes (CODE, ANBAR)
@@ -298,22 +298,22 @@ PRINT N'--- کنترل موجودی (پیش و پس) ---';
             After_  = ISNULL(a.Qty, 0),
             Diff    = ISNULL(a.Qty, 0) - ISNULL(b.Qty, 0)
     FROM    #Codes c
-    LEFT    JOIN #Snap b ON b.Phase='B' AND b.CODE=c.CODE AND b.ANBAR=c.ANBAR
-    LEFT    JOIN #Snap a ON a.Phase='A' AND a.CODE=c.CODE AND a.ANBAR=c.ANBAR
+    LEFT    JOIN #Snap b ON b.Phase='B' AND b.CODE=c.CODE COLLATE DATABASE_DEFAULT AND b.ANBAR=c.ANBAR
+    LEFT    JOIN #Snap a ON a.Phase='A' AND a.CODE=c.CODE COLLATE DATABASE_DEFAULT AND a.ANBAR=c.ANBAR
 )
 SELECT  Cmp.CODE, ItemName = s.NAME, Cmp.ANBAR, AnbarName = ta.NAMES,
         Cmp.Before_, Cmp.After_, Cmp.Diff,
         Status = CASE WHEN ABS(Cmp.Diff) < 0.0005 THEN N'بدون تغییر ✓'
                       ELSE N'⚠ تغییر کرده' END
 FROM    Cmp
-LEFT    JOIN dbo.STUF_DEF s ON s.CODE = Cmp.CODE
+LEFT    JOIN dbo.STUF_DEF s ON s.CODE = Cmp.CODE COLLATE DATABASE_DEFAULT
 LEFT    JOIN dbo.TCOD_ANBAR ta ON ta.CODE = Cmp.ANBAR
 ORDER BY CASE WHEN ABS(Cmp.Diff) < 0.0005 THEN 1 ELSE 0 END, Cmp.CODE;
 
 DECLARE @Drift INT = (
     SELECT COUNT(*) FROM #Codes c
-    LEFT JOIN #Snap b ON b.Phase='B' AND b.CODE=c.CODE AND b.ANBAR=c.ANBAR
-    LEFT JOIN #Snap a ON a.Phase='A' AND a.CODE=c.CODE AND a.ANBAR=c.ANBAR
+    LEFT JOIN #Snap b ON b.Phase='B' AND b.CODE=c.CODE COLLATE DATABASE_DEFAULT AND b.ANBAR=c.ANBAR
+    LEFT JOIN #Snap a ON a.Phase='A' AND a.CODE=c.CODE COLLATE DATABASE_DEFAULT AND a.ANBAR=c.ANBAR
     WHERE ABS(ISNULL(a.Qty,0) - ISNULL(b.Qty,0)) >= 0.0005);
 
 IF @Drift > 0
