@@ -56,6 +56,24 @@
                     history.replaceState(null, '', u.pathname + u.search + u.hash);
                 }
             } catch { }
+
+            // تبی که کاربر همین حالا در آن کار می‌کند «آخرین ورود» می‌شود (توکن و دیتابیس با هم). تب
+            // جدیدی که sessionStorage این تب را نمی‌گیرد (Ctrl+کلیک یا کلیک وسط روی منو، باز کردن دوباره‌ی
+            // مرورگر) از آخرین ورود شروع می‌کند؛ بدون این، منوی تب یزدسپار صفحه‌ی پودر را باز می‌کرد اگر
+            // آخرین ورود در تب پودر بود. تبی که وارد نشده چیزی را عوض نمی‌کند.
+            function markActiveTab() {
+                try {
+                    const token = sessionStorage.getItem('authToken');
+                    if (!token) return;
+                    localStorage.setItem('authToken', token);
+                    const db = sessionStorage.getItem('dbConnectionSettings');
+                    if (db) localStorage.setItem('dbConnectionSettings', db);
+                    else localStorage.removeItem('dbConnectionSettings');
+                } catch { }
+            }
+            window.addEventListener('focus', markActiveTab);
+            window.addEventListener('pointerdown', markActiveTab, true);
+            window.addEventListener('keydown', markActiveTab, true);
         })();
     </script>
 

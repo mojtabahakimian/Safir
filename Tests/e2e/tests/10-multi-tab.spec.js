@@ -99,6 +99,7 @@ test('Ctrl+کلیک روی منو، شرکت همان تب را باز می‌ک
   await yazd.goto('/');
   await expect(chip(yazd)).toHaveText(/YAZDSEPAR1405/);
   await yazd.bringToFront();
+  await yazd.locator('.mud-appbar button.mud-icon-button-edge-start').click();   // باز کردن منوی کناری
 
   const [opened] = await Promise.all([
     context.waitForEvent('page'),
