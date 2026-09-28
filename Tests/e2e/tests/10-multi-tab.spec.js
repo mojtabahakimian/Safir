@@ -35,9 +35,12 @@ test('هر تب شرکت خودش را نگه می‌دارد و رفرش آن �
   const fakeToken = `${b64({ alg: 'HS256', typ: 'JWT' })}.${b64({ unique_name: 'yazd', exp: 4102444800 })}.sig`;
   await yazd.evaluate(t => sessionStorage.setItem('authToken', JSON.stringify(t)), fakeToken);
 
+  // همان مسیر کاربر: منوی کاربر ← «ورود به شرکت دیگر در تب جدید» (نه window.open مستقیم)
+  await yazd.goto('/');
+  await yazd.locator('.mud-appbar .mud-menu-activator button.pa-1').click();   // آیکون کاربر
   const [poodr] = await Promise.all([
     context.waitForEvent('page'),
-    yazd.evaluate(() => window.open('/login?newtab=1', '_blank')),
+    yazd.getByText('ورود به شرکت دیگر در تب جدید').click(),
   ]);
   await poodr.waitForLoadState();
   await expect(chip(poodr)).toBeVisible();
@@ -60,6 +63,7 @@ test('هر تب شرکت خودش را نگه می‌دارد و رفرش آن �
   expect(await hue(yazd)).not.toBe(await hue(poodr));
 
   // «تست اتصال» دیتابیس دیگر، شرکتِ این تب را عوض نمی‌کند (قبلاً تنظیم را ذخیره می‌کرد)
+  await yazd.goto('/login');
   await yazd.getByText('تنظیمات سرور و دیتابیس').click();
   await field(yazd, 'نام دیتابیس').fill('SOME_OTHER_DB');
   await yazd.getByRole('button', { name: 'تست اتصال' }).click();
