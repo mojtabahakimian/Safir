@@ -127,7 +127,8 @@
 
         <AuthorizeView>
             <Authorized>
-                <MudMenu AnchorOrigin="Origin.BottomRight" TransformOrigin="Origin.TopCenter" PopoverClass="safir-rounded-menu">
+                @* هم‌تراز با منوی تم؛ با TopCenter نیمی از منو از لبه‌ی چپ صفحه بیرون می‌زد و «خروج» دیده نمی‌شد *@
+                <MudMenu AnchorOrigin="Origin.BottomLeft" TransformOrigin="Origin.TopLeft" PopoverClass="safir-rounded-menu">
                     <ActivatorContent>
                         <MudButton Variant="Variant.Text"
                                    Color="Color.Inherit"
