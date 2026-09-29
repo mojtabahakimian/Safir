@@ -1141,6 +1141,7 @@ CREATE TABLE [dbo].[PAY2_PERIOD](
 	[HOLIDAY_DAYS] [tinyint] NOT NULL,
 	[TENDAR_APPLY] [bit] NOT NULL,
 	[DEED_N_S_PAY] [float] NULL,
+	[DEED_BASE] [int] NULL,
 	[STATUS] [tinyint] NOT NULL,
 	[OPENED_AT] [datetime] NOT NULL,
 	[CLOSED_AT] [datetime] NULL,

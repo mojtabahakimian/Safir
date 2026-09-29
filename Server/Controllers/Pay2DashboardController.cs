@@ -45,10 +45,10 @@ namespace Safir.Server.Controllers
 
                 // 3. پیدا کردن آخرین دوره
                 var periodSql = @"
-                    SELECT TOP 1 PER_ID, PERIOD_DATE, STATUS, DEED_N_S_PAY
-                    FROM PAY2_PERIOD WITH (NOLOCK)
-                    WHERE WS_ID = @wsId 
-                    ORDER BY PERIOD_DATE DESC";
+                    SELECT TOP 1 P.PER_ID, P.PERIOD_DATE, P.STATUS, P.DEED_BASE
+                    FROM PAY2_PERIOD P WITH (NOLOCK)
+                    WHERE P.WS_ID = @wsId
+                    ORDER BY P.PERIOD_DATE DESC";
 
                 var latestPeriod = await _db.DoGetDataSQLAsyncSingle<PeriodInfoRow>(periodSql, new { wsId });
                 int currentPerId = 0;
@@ -66,9 +66,15 @@ namespace Safir.Server.Controllers
                     string month = ((pDate / 100) % 100).ToString("D2");
                     data.PeriodTitle = $"{year}/{month}";
 
-                    if (latestPeriod.DEED_N_S_PAY != null && latestPeriod.DEED_N_S_PAY > 0)
+                    // DEED_HED فقط وقتی خوانده می‌شود که دوره به سندی وصل باشد؛ دیتابیسِ
+                    // فقط‌حقوق (بدون حسابداری) این جدول را ندارد.
+                    double? deedNs = latestPeriod.DEED_BASE == null ? null
+                        : await _db.DoGetDataSQLAsyncSingle<double?>(
+                            "SELECT N_S FROM DEED_HED WITH (NOLOCK) WHERE base = @b", new { b = latestPeriod.DEED_BASE });
+
+                    if (deedNs != null && deedNs > 0)
                     {
-                        payrollNs = (double)latestPeriod.DEED_N_S_PAY;
+                        payrollNs = (double)deedNs;
                     }
                 }
 
@@ -120,7 +126,7 @@ namespace Safir.Server.Controllers
             public int PER_ID { get; set; }
             public long PERIOD_DATE { get; set; }
             public byte STATUS { get; set; }
-            public double? DEED_N_S_PAY { get; set; }
+            public int? DEED_BASE { get; set; }
         }
     }
 }
