@@ -41,6 +41,14 @@ namespace Safir.Server.Controllers
             await HttpContext.RequestServices.GetRequiredService<Pay2ScopeResolver>().EnsureWorkshopAsync(__usr_scope_latest, Pay2ScopeKind.Period, perId);
             var sql = "SELECT TOP 1 * FROM PAY2_RUN WHERE PER_ID = @perId AND IS_LATEST = 1 ORDER BY RUN_NO DESC";
             var run = await _db.DoGetDataSQLAsyncSingle<Pay2RunDto>(sql, new { perId });
+
+            // شماره‌ی سندِ نمایش‌داده‌شده همان شماره‌ی «فعلیِ» سند در دفتر باشد؛ عددِ
+            // ذخیره‌شده در PAY2_RUN بعد از بازشماره‌گذاریِ WPF کهنه می‌شود.
+            if (run?.STATUS == 3)
+            {
+                var ns = await _db.DoGetDataSQLAsyncSingle<double?>(Safir.Server.Services.Pay2DeedLink.LinkedNsSql, new { perId });
+                if (ns.HasValue) run.DEED_ID_SAL = (int)ns.Value;
+            }
             return Ok(run);
         }
 
@@ -556,11 +564,8 @@ namespace Safir.Server.Controllers
                 // روشی ساخته شد» است، نه تعیین‌کننده‌ی صدورهای بعدی.
                 byte effectiveMode = runInfo.DEFAULT_DEED_MODE;
 
-                var periodInfo = await _db.DoGetDataSQLAsyncSingle<dynamic>(
-                    "SELECT PERIOD_DATE, DEED_N_S_PAY FROM PAY2_PERIOD WHERE PER_ID = @perId", new { perId });
-
-                long periodDate = (long)periodInfo.PERIOD_DATE;
-                double? existingNs = (double?)periodInfo.DEED_N_S_PAY;
+                long periodDate = await _db.DoGetDataSQLAsyncSingle<long>(
+                    "SELECT PERIOD_DATE FROM PAY2_PERIOD WHERE PER_ID = @perId", new { perId });
 
                 var articles = (await _db.DoGetDataSQLAsync<Pay2DeedArticleDto>(
                     "EXEC SP_PAY2_GEN_DEED @RUN_ID = @runId, @CALC_BY = @userCod, @DEED_MODE = @mode",
@@ -591,7 +596,7 @@ namespace Safir.Server.Controllers
                 }
 
                 long deedDate = Safir.Shared.Utility.CL_Tarikh.GetPersianMonthEndAsLong(periodDate);
-                string hedSharh = $"سند حقوق و دستمزد دوره {periodDate}";
+                string hedSharh = Safir.Server.Services.Pay2DeedLink.Title(periodDate);
 
                 await _db.ExecuteInTransactionAsync(async (conn, tran) =>
                 {
@@ -601,9 +606,14 @@ namespace Safir.Server.Controllers
                     if (lockCheck != 2 && lockCheck != 3)
                         throw new InvalidOperationException("وضعیت اجرا در حین پردازش تغییر کرده است.");
 
+                    // سندِ همین دوره را با base پیدا کن (نه شماره‌ی ذخیره‌شده؛ WPF شماره‌ها را
+                    // بازشماره‌گذاری می‌کند). اگر از قبل سندی برای این دوره هست، همان بازنویسی
+                    // می‌شود و سندِ دوم ساخته نمی‌شود.
+                    double? existingNs = await Safir.Server.Services.Pay2DeedLink.FindAsync(conn, tran, perId, periodDate);
+
                     double targetNs;
 
-                    if (status == 3 && existingNs.HasValue && existingNs.Value > 0)
+                    if (existingNs.HasValue)
                     {
                         targetNs = existingNs.Value;
 
@@ -653,10 +663,13 @@ VALUES (@N_S, @RADIF, @HES_K, @HES_M, @HES_T, @HES_T2, @HES_T3, @HES_T4, @HES, @
 
                     await conn.ExecuteAsync(insertSql, finalDetailsToInsert, tran);
 
+                    int deedBase = await conn.QuerySingleAsync<int>(
+                        "SELECT base FROM DEED_HED WHERE N_S = @targetNs", new { targetNs }, tran);
+
                     await conn.ExecuteAsync(@"
                         UPDATE PAY2_RUN SET STATUS = 3, DEED_ID_SAL = @deedId, DEED_MODE = @mode, DEED_GENERATOR_VERSION = 1 WHERE RUN_ID = @runId;
-                        UPDATE PAY2_PERIOD SET STATUS = 4, DEED_N_S_PAY = @targetNs WHERE PER_ID = @perId;",
-                        new { runId, deedId = (int)targetNs, targetNs, perId, mode = effectiveMode }, tran);
+                        UPDATE PAY2_PERIOD SET STATUS = 4, DEED_N_S_PAY = @targetNs, DEED_BASE = @deedBase WHERE PER_ID = @perId;",
+                        new { runId, deedId = (int)targetNs, targetNs, deedBase, perId, mode = effectiveMode }, tran);
                 });
 
                 return Ok();
@@ -697,12 +710,15 @@ VALUES (@N_S, @RADIF, @HES_K, @HES_M, @HES_T, @HES_T2, @HES_T3, @HES_T4, @HES, @
                     if (status != 3)
                         throw new InvalidOperationException("این عملیات فقط برای اجراهایی که سند صادر کرده‌اند مجاز است.");
 
-                    var periodInfo = await conn.QuerySingleOrDefaultAsync<dynamic>(
-                        "SELECT DEED_N_S_PAY FROM PAY2_PERIOD WHERE PER_ID = @perId", new { perId = runInfo.PER_ID }, tran);
+                    // سند را با base پیدا کن؛ شماره‌ی ذخیره‌شده ممکن بود بعد از
+                    // بازشماره‌گذاریِ WPF به سندِ دیگری (یا هیچ سندی) اشاره کند و سندِ
+                    // حقوق در دفتر می‌ماند.
+                    long periodDate = await conn.QuerySingleAsync<long>(
+                        "SELECT PERIOD_DATE FROM PAY2_PERIOD WHERE PER_ID = @perId", new { perId = runInfo.PER_ID }, tran);
 
-                    double? deedNs = (double?)periodInfo.DEED_N_S_PAY;
+                    double? deedNs = await Safir.Server.Services.Pay2DeedLink.FindAsync(conn, tran, runInfo.PER_ID, periodDate);
 
-                    if (deedNs.HasValue && deedNs.Value > 0)
+                    if (deedNs.HasValue)
                     {
                         var okfStatus = await conn.QuerySingleOrDefaultAsync<byte?>(
                             "SELECT OKF FROM DEED_HED WITH (UPDLOCK) WHERE N_S = @N_S",
@@ -727,7 +743,7 @@ VALUES (@N_S, @RADIF, @HES_K, @HES_M, @HES_T, @HES_T2, @HES_T3, @HES_T4, @HES, @
                         WHERE RUN_ID = @runId;
 
                         UPDATE PAY2_PERIOD
-                        SET STATUS = 3, DEED_N_S_PAY = NULL
+                        SET STATUS = 3, DEED_N_S_PAY = NULL, DEED_BASE = NULL
                         WHERE PER_ID = @perId;",
                         new { runId, perId, userCod }, tran);
                 });

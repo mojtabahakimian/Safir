@@ -57,6 +57,10 @@ namespace Safir.Server.Services
 
         private static readonly Probe[] Probes =
         {
+            new(ProbeKind.Column, "dbo.PAY2_PERIOD", "DEED_BASE",
+                "PAY2_PERIOD.DEED_BASE", "ستون",
+                "بدون آن صدور و لغو صدور سند حقوق کار نمی‌کند؛ پیوند دوره به سند باید با شناسه‌ی ثابتِ سند باشد، نه شماره‌ی سند که WPF عوضش می‌کند"),
+
             new(ProbeKind.Column, "dbo.CC_Run", "LastHeartbeatUtc",
                 "CC_Run.LastHeartbeatUtc", "ستون",
                 "بدون آن، اجرایی که مرده تا ابد «در حال اجرا» می‌ماند (۳۴)"),

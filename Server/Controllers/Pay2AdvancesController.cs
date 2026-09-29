@@ -150,11 +150,17 @@ WHERE WS_ID = @WS_ID
 
                 if (payrollNs <= 0)
                 {
-                    var periodPayrollNs = await _db.DoGetDataSQLAsyncSingle<double?>(@"
-                        SELECT DEED_N_S_PAY
+                    var deedBase = await _db.DoGetDataSQLAsyncSingle<int?>(@"
+                        SELECT DEED_BASE
                         FROM PAY2_PERIOD
                         WHERE WS_ID = @WS_ID AND PERIOD_DATE = @PERIOD_DATE;",
                         new { request.WS_ID, request.PERIOD_DATE });
+
+                    // DEED_HED فقط وقتی خوانده می‌شود که دوره به سندی وصل باشد؛ دیتابیسِ
+                    // فقط‌حقوق (بدون حسابداری) این جدول را ندارد.
+                    double? periodPayrollNs = deedBase == null ? null
+                        : await _db.DoGetDataSQLAsyncSingle<double?>(
+                            "SELECT N_S FROM DEED_HED WHERE base = @deedBase", new { deedBase });
 
                     payrollNs = periodPayrollNs.GetValueOrDefault();
 
