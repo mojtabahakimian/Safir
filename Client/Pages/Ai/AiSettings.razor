@@ -99,6 +99,7 @@ else
         <MudTextField T="string" @bind-Value="_cfg.ProxyUrl" Label="پروکسی (اختیاری)"
                       Variant="Variant.Outlined" Dense Clearable Class="mb-3"
                       Placeholder="http://127.0.0.1:10809"
+                      UserAttributes="@_noAutofill"
                       HelperText="برای سرویس‌های خارجی از پشت v2rayN و مانند آن. خالی = اتصال مستقیم." />
 
         @* پیش‌فرض روشن: سرویس خارجی نام مشتری‌ها را نبیند. برای مدلِ محلی
@@ -111,9 +112,13 @@ else
 
         @* ── کلید ──
            هیچ‌وقت مقدار فعلی نمایش داده نمی‌شود. خالی گذاشتن یعنی «دست
-           نزن»، وگرنه هر ذخیره‌ی ساده‌ای کلید را پاک می‌کرد. *@
+           نزن»، وگرنه هر ذخیره‌ی ساده‌ای کلید را پاک می‌کرد.
+           ⚠ new-password: بدون آن Chrome این صفحه را فرم ورود می‌پندارد، رمز
+           ورودِ کاربر را در کلید و نام کاربری را در پروکسی پر می‌کند، و یک
+           «ذخیره» کلید واقعی را با رمز ورود جایگزین می‌کرد. *@
         <MudTextField T="string" @bind-Value="_newKey" Label="کلید API"
                       Variant="Variant.Outlined" Dense InputType="InputType.Password"
+                      UserAttributes="@_newPassword"
                       Class="mb-1"
                       HelperText="خالی بگذارید تا کلید فعلی دست‌نخورده بماند." />
 
@@ -201,6 +206,10 @@ else
     private List<string>         _models = new();
 
     private string  _newKey = "";
+
+    // جلوی پر شدنِ خودکار نام کاربری/رمز ورود توسط مرورگر (توضیح کنار فیلد کلید)
+    private static readonly Dictionary<string, object> _noAutofill  = new() { ["autocomplete"] = "off" };
+    private static readonly Dictionary<string, object> _newPassword = new() { ["autocomplete"] = "new-password" };
     private bool    _clearKey;
     private bool    _busy;
     private string? _error;
