@@ -143,4 +143,23 @@ public class ItemConversionTests
         Assert.True(dto.CanSubmit);
         Assert.Single(dto.Warnings);
     }
+
+    /// <summary>
+    /// همه‌ی مسیرهای ItemConversionController پشت مجوز خودِ تبدیل کالا‌اند.
+    /// جستجوی کالای فرم قبلاً از /api/cost-close/items/search می‌آمد که مجوز
+    /// «تنظیمات بهای تمام‌شده» می‌خواهد؛ کاربری که فقط تبدیل کالا داشت
+    /// ۴۰۳ می‌گرفت و فهرست کالا خالی می‌دید.
+    /// </summary>
+    [Fact]
+    public void SearchItems_needs_only_the_conversion_form()
+    {
+        var attr = typeof(Safir.Server.Controllers.ItemConversionController)
+            .GetMethod(nameof(Safir.Server.Controllers.ItemConversionController.SearchItems))!
+            .GetCustomAttributes(typeof(Safir.Server.Security.Pay2AuthorizeAttribute), false)
+            .Cast<Safir.Server.Security.Pay2AuthorizeAttribute>()
+            .Single();
+
+        Assert.Equal(Safir.Shared.Constants.CostForms.ItemConversion, attr.Form);
+        Assert.Equal(Safir.Server.Security.Pay2Perm.See, attr.Perm);
+    }
 }

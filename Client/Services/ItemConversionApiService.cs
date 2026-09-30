@@ -20,6 +20,10 @@ namespace Safir.Client.Services
             return await _http.GetFromJsonAsync<List<ConversionRowDto>>(url) ?? new();
         }
 
+        public async Task<List<ItemLookupDto>> SearchItemsAsync(string? q)
+            => await _http.GetFromJsonAsync<List<ItemLookupDto>>(
+                   $"{Base}/items" + (string.IsNullOrEmpty(q) ? "" : $"?q={Uri.EscapeDataString(q)}")) ?? new();
+
         public async Task<ConversionPreviewDto?> PreviewAsync(CreateConversionRequest req)
         {
             var res = await _http.PostAsJsonAsync($"{Base}/preview", req);
