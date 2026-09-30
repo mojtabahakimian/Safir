@@ -1,0 +1,730 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="utf-8">
+<title>آموزش کارتابل اتوماسیون</title>
+<link rel="stylesheet" href="../../../Client/wwwroot/css/bootstrap-icons/bootstrap-icons.min.css">
+<style>
+/* ═══════════════════════════════════════════════════════════════════
+   فیلمِ آموزشیِ کارتابل اتوماسیون — صحنه‌ها تابعِ خالصِ زمان‌اند.
+
+   window.render(t) هر عنصر را برای ثانیه‌ی t می‌چیند؛ هیچ transition یا
+   animationِ CSS در کار نیست، پس render.cjs می‌تواند هر فریم را دقیق و
+   تکرارپذیر بگیرد. داده‌ها ساختگی‌اند (نه اطلاعاتِ مشتری).
+   ═══════════════════════════════════════════════════════════════════ */
+@font-face { font-family: 'Yekan'; src: url('../../../Client/wwwroot/FNT/IRANYekanFN.woff2') format('woff2'); font-weight: 100 900; }
+
+:root {
+  --p: #0284c7; --p2: #6366f1; --v: #8b5cf6; --ok: #10b981; --ur: #f43f5e; --wa: #f59e0b; --mu: #64748b;
+  --tx: #0f172a; --bg: #f8fafc; --sf: #ffffff; --ln: rgba(15, 23, 42, .09); --soft: rgba(15, 23, 42, .045);
+}
+* { box-sizing: border-box; margin: 0; }
+html, body { width: 1920px; height: 1080px; overflow: hidden; background: #050814; }
+body { font-family: 'Yekan', sans-serif; color: var(--tx); }
+
+#stage { position: relative; width: 1920px; height: 1080px; overflow: hidden;
+  background: radial-gradient(1200px 700px at 85% -10%, #1e3a8a 0%, transparent 60%),
+              radial-gradient(900px 600px at 0% 110%, #4c1d95 0%, transparent 60%), #070b1a; }
+#cam { position: absolute; inset: 0; transform-origin: 0 0; }
+
+/* ── پنجره‌ی برنامه ── */
+#win { position: absolute; left: 90px; top: 58px; width: 1740px; height: 930px; border-radius: 22px; overflow: hidden;
+  background: var(--bg); box-shadow: 0 60px 140px -40px rgba(0,0,0,.8), 0 0 0 1px rgba(255,255,255,.06); }
+.chrome { height: 40px; background: #e2e8f0; display: flex; align-items: center; gap: 10px; padding: 0 16px; direction: ltr; }
+.chrome i { width: 12px; height: 12px; border-radius: 50%; display: inline-block; }
+.chrome .url { margin-left: 14px; flex: 0 0 520px; height: 26px; border-radius: 8px; background: #fff; font: 13px sans-serif; color: #475569; display: flex; align-items: center; padding: 0 12px; }
+.appbar { height: 58px; background: #fff; border-bottom: 1px solid var(--ln); display: flex; align-items: center; gap: 12px; padding: 0 22px; }
+.appbar .logo { width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center; color: #fff; font-weight: 900; background: linear-gradient(135deg, #0284c7, #10b981); }
+.appbar b { font-size: 20px; }
+.appbar .db { margin-inline-start: 10px; padding: 3px 12px; border-radius: 999px; font-size: 12px; color: #a21caf; background: #fae8ff; border: 1px solid #f5d0fe; }
+.page { padding: 20px 26px; }
+
+.hero { position: relative; border-radius: 24px; padding: 24px 28px; color: #fff; overflow: hidden;
+  background: radial-gradient(640px 300px at 92% -30%, rgba(2,132,199,.75), transparent 70%),
+              radial-gradient(520px 300px at 8% 130%, rgba(139,92,246,.45), transparent 70%),
+              linear-gradient(135deg, #0b1224, #111a33 45%, #1b1640); }
+.hero .grid { position: absolute; inset: 0; background-image: radial-gradient(rgba(255,255,255,.14) 1px, transparent 1.2px); background-size: 22px 22px; -webkit-mask-image: linear-gradient(to left, #000, transparent 75%); }
+.hero .top { position: relative; display: flex; justify-content: space-between; gap: 20px; }
+.pill { display: inline-flex; align-items: center; gap: 7px; font-size: 13px; padding: 4px 12px; border-radius: 999px; background: rgba(255,255,255,.13); border: 1px solid rgba(255,255,255,.18); }
+.hero h1 { font-size: 30px; font-weight: 800; margin: 12px 0 4px; }
+.hero .sub { opacity: .88; font-size: 15px; }
+.ins { display: flex; gap: 8px; margin-top: 12px; }
+.ins span { display: inline-flex; gap: 6px; align-items: center; font-size: 13px; padding: 6px 12px; border-radius: 11px; background: rgba(255,255,255,.12); border: 1px solid rgba(255,255,255,.16); }
+.acts { display: flex; gap: 10px; align-items: flex-start; }
+.btn { position: relative; display: inline-flex; align-items: center; gap: 8px; height: 42px; padding: 0 17px; border-radius: 13px; font-size: 15px; font-weight: 700; white-space: nowrap; }
+.btn.light { background: #fff; color: #0b1224; }
+.btn.glass { background: rgba(255,255,255,.13); border: 1px solid rgba(255,255,255,.22); color: #fff; }
+.badge { position: absolute; top: -7px; inset-inline-start: -7px; min-width: 21px; height: 21px; padding: 0 5px; border-radius: 999px; display: grid; place-items: center; font-size: 11px; font-weight: 800; color: #fff; background: var(--ur); border: 2px solid #fff; }
+.ring { display: flex; align-items: center; gap: 12px; margin-top: 16px; justify-content: flex-end; font-size: 12px; opacity: .9; }
+.ring svg { width: 84px; height: 84px; transform: rotate(-90deg); }
+.ring circle { fill: none; stroke-width: 9; }
+.focus { position: relative; margin-top: 16px; display: flex; gap: 14px; align-items: center; padding: 12px 14px; border-radius: 16px; background: rgba(255,255,255,.1); border: 1px solid rgba(255,255,255,.18); }
+.focus .ic { width: 44px; height: 44px; border-radius: 13px; display: grid; place-items: center; font-size: 22px; background: rgba(255,255,255,.2); }
+.focus small { opacity: .8; font-size: 12px; }
+.focus .t { font-weight: 700; font-size: 15px; }
+.focus .sp { flex: 1; }
+
+.kpis { display: grid; grid-template-columns: repeat(5, 1fr); gap: 14px; margin: 16px 0; }
+.kpi { position: relative; display: flex; align-items: center; gap: 13px; padding: 14px 16px; border-radius: 18px; background: #fff; border: 1px solid var(--ln); box-shadow: 0 10px 30px -20px rgba(15,23,42,.4); }
+.kpi .i { width: 46px; height: 46px; border-radius: 14px; display: grid; place-items: center; font-size: 21px; }
+.kpi .n { font-size: 27px; font-weight: 800; line-height: 1.1; }
+.kpi .l { font-size: 12.5px; color: var(--mu); }
+
+.tool { display: flex; align-items: center; gap: 10px; padding: 10px; border-radius: 18px; background: #fff; border: 1px solid var(--ln); margin-bottom: 14px; }
+.seg { display: flex; gap: 2px; padding: 4px; border-radius: 14px; background: var(--soft); }
+.seg span { display: inline-flex; align-items: center; gap: 7px; height: 34px; padding: 0 12px; border-radius: 11px; font-size: 13.5px; font-weight: 700; color: var(--mu); }
+.seg span.on { background: #fff; color: var(--tx); box-shadow: 0 6px 14px -8px rgba(15,23,42,.45); }
+.seg em { font-style: normal; min-width: 22px; height: 20px; padding: 0 6px; border-radius: 999px; display: grid; place-items: center; font-size: 11px; background: var(--soft); }
+.seg span.on em { background: rgba(2,132,199,.14); color: var(--p); }
+.search { position: relative; flex: 1; height: 42px; border-radius: 13px; border: 1px solid var(--ln); display: flex; align-items: center; padding: 0 14px; gap: 10px; color: var(--mu); font-size: 14px; }
+.search .q { color: var(--tx); }
+.search .caret { display: inline-block; width: 2px; height: 20px; background: var(--p); margin-inline-start: -8px; }
+.tg { display: inline-flex; align-items: center; gap: 7px; height: 42px; padding: 0 14px; border-radius: 13px; border: 1px solid var(--ln); font-size: 13.5px; font-weight: 700; color: var(--mu); }
+.view { display: flex; padding: 4px; border-radius: 13px; background: var(--soft); }
+.view span { width: 38px; height: 34px; border-radius: 10px; display: grid; place-items: center; font-size: 17px; color: var(--mu); }
+.view span.on { background: #fff; color: var(--p); box-shadow: 0 2px 8px -4px rgba(15,23,42,.4); }
+
+.list { position: relative; }
+.task { position: relative; display: flex; align-items: center; gap: 14px; padding: 0 18px 0 12px; border-radius: 16px; background: #fff; border: 1px solid var(--ln); overflow: hidden; }
+.task .rail { position: absolute; inset-inline-start: 0; top: 14px; bottom: 14px; width: 4px; border-radius: 0 4px 4px 0; }
+.chk { width: 18px; height: 18px; border-radius: 6px; border: 2px solid rgba(100,116,139,.45); flex: none; }
+.done { width: 30px; height: 30px; flex: none; border-radius: 50%; border: 2px solid rgba(100,116,139,.55); display: grid; place-items: center; color: transparent; font-size: 16px; }
+.task .b { flex: 1; min-width: 0; }
+.task .ti { font-size: 15.5px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.meta { display: flex; gap: 14px; align-items: center; margin-top: 5px; font-size: 12.5px; color: var(--mu); }
+.meta > span { display: inline-flex; align-items: center; gap: 5px; }
+.chip { display: inline-flex; align-items: center; gap: 5px; height: 22px; padding: 0 9px; border-radius: 999px; font-size: 11.5px; font-weight: 700; }
+.chip.ur { color: var(--ur); background: rgba(244,63,94,.11); }
+.chip.doc { color: var(--p2); background: rgba(99,102,241,.1); }
+.chip.ok { color: var(--ok); background: rgba(16,185,129,.11); }
+.av { width: 22px; height: 22px; border-radius: 50%; display: inline-grid; place-items: center; font-size: 10px; font-weight: 800; }
+.av.lg { width: 40px; height: 40px; font-size: 14px; }
+.age-a { color: var(--wa); } .age-s { color: var(--ur); font-weight: 700; }
+.acts2 { display: flex; gap: 4px; color: var(--mu); font-size: 16px; opacity: .6; }
+
+.board { position: absolute; inset: 0; display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+.col { border-radius: 20px; padding: 12px; border: 1px solid var(--ln); height: 520px; }
+.col h4 { display: flex; align-items: center; gap: 9px; font-size: 15px; padding: 4px 6px 12px; }
+.col h4 i { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+.col h4 small { margin-inline-start: auto; color: var(--mu); font-weight: 600; }
+.bcard { position: relative; display: flex; gap: 12px; align-items: flex-start; padding: 12px; border-radius: 15px; background: #fff; border: 1px solid var(--ln); margin-bottom: 10px; overflow: hidden; }
+.bcard .ti { font-size: 14px; font-weight: 700; line-height: 1.7; }
+
+/* ── پنل کشویی ── */
+.scrim { position: absolute; inset: 0; background: rgba(8,12,24,.38); }
+.sheet { position: absolute; top: 108px; bottom: 12px; left: 12px; width: 500px; border-radius: 24px; background: #fff; box-shadow: 0 30px 80px -20px rgba(0,0,0,.45); overflow: hidden; }
+.sheet .h { display: flex; align-items: center; gap: 12px; padding: 20px 22px 16px; border-bottom: 1px solid var(--ln); }
+.gly { width: 42px; height: 42px; border-radius: 13px; display: grid; place-items: center; font-size: 19px; color: #fff; background: linear-gradient(135deg, var(--p), #0ea5a0); }
+.sheet .h b { font-size: 18px; } .sheet .h small { display: block; color: var(--mu); font-size: 12.5px; }
+.sheet .bd { padding: 18px 22px; }
+.fl { font-size: 13px; font-weight: 700; color: var(--mu); margin: 0 0 8px; display: flex; gap: 6px; align-items: center; }
+.ta { min-height: 118px; border-radius: 16px; border: 1px solid rgba(2,132,199,.55); box-shadow: 0 0 0 4px rgba(2,132,199,.12); padding: 13px 15px; font-size: 16px; line-height: 1.9; margin-bottom: 16px; }
+.fld { height: 46px; border-radius: 14px; border: 1px solid rgba(15,23,42,.14); display: flex; align-items: center; gap: 9px; padding: 0 14px; font-size: 14.5px; margin-bottom: 16px; }
+.dd { position: absolute; left: 22px; right: 22px; border-radius: 14px; background: #fff; box-shadow: 0 20px 40px -14px rgba(0,0,0,.35); padding: 6px; }
+.dd div { display: flex; align-items: center; gap: 9px; padding: 9px 10px; border-radius: 10px; font-size: 14px; }
+.chs { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 14px; }
+.ch { display: flex; align-items: center; gap: 10px; padding: 11px 13px; border-radius: 14px; border: 1.5px solid rgba(15,23,42,.1); font-size: 14px; font-weight: 700; }
+.ch small { display: block; font-weight: 400; font-size: 11.5px; color: var(--mu); }
+.sheet .ft { position: absolute; bottom: 0; left: 0; right: 0; display: flex; align-items: center; gap: 10px; padding: 14px 22px 18px; border-top: 1px solid var(--ln); }
+.pbtn { display: inline-flex; align-items: center; gap: 8px; height: 42px; padding: 0 18px; border-radius: 13px; color: #fff; font-weight: 700; font-size: 14.5px; background: linear-gradient(135deg, var(--p), #0ea5a0); }
+.gbtn { display: inline-flex; align-items: center; gap: 8px; height: 42px; padding: 0 16px; border-radius: 13px; border: 1px solid var(--ln); color: var(--mu); font-weight: 700; font-size: 14px; }
+
+.snack { position: absolute; top: 112px; right: 22px; display: flex; align-items: center; gap: 12px; min-width: 340px; padding: 13px 16px; border-radius: 14px; background: #ecfdf5; border: 1px solid #a7f3d0; color: #047857; font-weight: 700; font-size: 14.5px; box-shadow: 0 20px 40px -20px rgba(0,0,0,.35); }
+.snack .ac { margin-inline-start: auto; color: var(--p); background: rgba(2,132,199,.1); padding: 5px 12px; border-radius: 9px; }
+
+/* ── چت ── */
+.cscrim { position: absolute; inset: 0; background: radial-gradient(circle at 20% 10%, rgba(2,132,199,.18), transparent 55%), rgba(6,10,22,.5); }
+.chat { position: absolute; left: 150px; top: 90px; width: 1440px; height: 800px; border-radius: 28px; overflow: hidden; background: #fff; display: grid; grid-template-columns: 360px 1fr; box-shadow: 0 50px 120px -30px rgba(0,0,0,.6); }
+.cside { background: #f8fafc; border-inline-end: 1px solid var(--ln); padding-top: 6px; }
+.csh { display: flex; align-items: center; gap: 10px; padding: 16px; font-size: 19px; font-weight: 800; }
+.csh .lg { width: 38px; height: 38px; border-radius: 12px; display: grid; place-items: center; color: #fff; background: linear-gradient(135deg, var(--p), var(--v)); font-size: 17px; }
+.csh .sp { flex: 1; }
+.csh .ib { width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center; font-size: 16px; color: var(--mu); }
+.csrch { margin: 0 14px 10px; height: 40px; border-radius: 12px; background: rgba(15,23,42,.06); display: flex; align-items: center; gap: 8px; padding: 0 12px; color: var(--mu); font-size: 13.5px; }
+.conv { display: flex; align-items: center; gap: 12px; margin: 2px 8px; padding: 10px; border-radius: 16px; }
+.conv .bd { flex: 1; min-width: 0; }
+.conv .r1 { display: flex; justify-content: space-between; font-size: 15px; font-weight: 700; }
+.conv .r1 small { font-weight: 400; font-size: 11.5px; color: var(--mu); }
+.conv .r2 { display: flex; gap: 6px; align-items: center; margin-top: 3px; font-size: 13px; color: var(--mu); }
+.conv .r2 span { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.unr { min-width: 22px; height: 22px; border-radius: 999px; display: grid; place-items: center; font-size: 11.5px; font-weight: 800; color: #fff; background: linear-gradient(135deg, var(--p), var(--v)); }
+.cmain { position: relative; display: flex; flex-direction: column;
+  background: radial-gradient(circle at 12% 18%, rgba(2,132,199,.1), transparent 34%), radial-gradient(circle at 88% 82%, rgba(139,92,246,.1), transparent 38%),
+              radial-gradient(rgba(15,23,42,.07) 1px, transparent 1.3px) 0 0 / 22px 22px, #f4f6fa; }
+.chd { display: flex; align-items: center; gap: 12px; padding: 14px 20px; background: rgba(255,255,255,.9); border-bottom: 1px solid var(--ln); }
+.chd b { display: block; font-size: 16px; } .chd small { color: var(--mu); font-size: 12px; }
+.msgs { flex: 1; position: relative; padding: 18px 48px; display: flex; flex-direction: column; justify-content: flex-end; gap: 8px; }
+.day { align-self: center; padding: 4px 14px; border-radius: 999px; font-size: 12px; color: var(--mu); background: #fff; margin-bottom: 6px; }
+.msg { max-width: 60%; }
+.msg.me { align-self: flex-start; } .msg.th { align-self: flex-end; }
+.bub { padding: 8px 14px 6px; border-radius: 20px; font-size: 15px; line-height: 1.85; box-shadow: 0 2px 6px -3px rgba(0,0,0,.25); }
+.me .bub { color: #fff; background: linear-gradient(135deg, var(--p), #4f6fd6); border-start-start-radius: 6px; }
+.th .bub { background: #fff; border-start-end-radius: 6px; }
+.bub .mt { display: flex; justify-content: flex-end; gap: 5px; font-size: 11px; opacity: .75; }
+.comp { padding: 10px 36px 18px; }
+.crow { display: flex; align-items: center; gap: 8px; padding: 6px; border-radius: 24px; background: #fff; border: 1px solid rgba(2,132,199,.4); box-shadow: 0 0 0 4px rgba(2,132,199,.1); }
+.crow .ta2 { flex: 1; font-size: 15px; padding: 7px 6px; color: var(--tx); min-height: 40px; display: flex; align-items: center; }
+.crow .ph { color: var(--mu); }
+.cust { display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 12px; border-radius: 999px; border: 1px dashed rgba(15,23,42,.2); color: var(--mu); font-size: 12.5px; }
+.send { width: 44px; height: 44px; border-radius: 50%; display: grid; place-items: center; color: #fff; font-size: 18px; }
+.picker { position: absolute; inset: 70px 36px 90px; }
+.pchips { display: flex; gap: 6px; align-items: center; min-height: 48px; padding: 6px; border-radius: 16px; background: #fff; border: 1px solid var(--ln); margin-bottom: 12px; }
+.pchip { display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 10px 0 6px; border-radius: 999px; font-size: 13px; background: rgba(2,132,199,.12); }
+.pgrid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.per { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 16px; background: #fff; border: 1.5px solid transparent; font-size: 14px; }
+.per .ck { margin-inline-start: auto; width: 24px; height: 24px; border-radius: 50%; border: 2px solid rgba(15,23,42,.18); display: grid; place-items: center; color: transparent; font-size: 13px; }
+.note { font-size: 13px; color: #b45309; margin: 12px 4px 0; display: flex; gap: 6px; align-items: center; }
+
+/* ── یادآوری ── */
+.rdlg { position: absolute; left: 510px; top: 150px; width: 720px; border-radius: 24px; background: #fff; box-shadow: 0 40px 100px -30px rgba(0,0,0,.55); padding: 20px 22px; }
+.rhd { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
+.rhd .bl { width: 40px; height: 40px; border-radius: 12px; display: grid; place-items: center; color: #f59e0b; background: rgba(245,158,11,.14); font-size: 18px; }
+.rhd b { display: block; font-size: 17px; } .rhd small { color: var(--mu); font-size: 12px; }
+.rbox { padding: 14px; border-radius: 18px; border: 1px solid rgba(245,158,11,.3); background: linear-gradient(135deg, rgba(245,158,11,.08), #fff); }
+.rta { min-height: 70px; border-radius: 14px; border: 1px solid rgba(2,132,199,.5); padding: 10px 13px; font-size: 15px; background: #fff; }
+.pres { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; }
+.pres span { display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 12px; border-radius: 999px; border: 1px solid rgba(15,23,42,.12); font-size: 13px; background: #fff; }
+.rsum { display: flex; align-items: center; gap: 8px; font-size: 13px; color: #b45309; }
+.rsave { margin-inline-start: auto; display: inline-flex; align-items: center; gap: 8px; height: 40px; padding: 0 16px; border-radius: 12px; color: #fff; font-weight: 700; background: linear-gradient(135deg, #f59e0b, #f97316); }
+.ritem { display: flex; gap: 12px; align-items: center; margin-top: 12px; padding: 12px 14px; border-radius: 16px; border: 1px solid var(--ln); }
+.ritem .bl { width: 38px; height: 38px; border-radius: 12px; display: grid; place-items: center; color: #f59e0b; background: rgba(245,158,11,.13); }
+.ritem small { display: block; color: #b45309; font-size: 12px; font-weight: 700; }
+
+/* ── نشانگر، کلید، زیرنویس ── */
+#cur { position: absolute; left: 0; top: 0; width: 34px; height: 34px; z-index: 50; pointer-events: none; }
+#cur svg { width: 34px; height: 34px; filter: drop-shadow(0 4px 6px rgba(0,0,0,.35)); }
+#rip { position: absolute; width: 64px; height: 64px; border-radius: 50%; border: 3px solid var(--p); z-index: 49; }
+#glow { position: absolute; border-radius: 22px; border: 3px solid #fbbf24; box-shadow: 0 0 0 6px rgba(251,191,36,.25), 0 0 40px rgba(251,191,36,.5); z-index: 45; }
+#drag { position: absolute; width: 460px; z-index: 48; box-shadow: 0 30px 60px -20px rgba(0,0,0,.5); }
+
+#keys { position: absolute; left: 50%; bottom: 150px; display: flex; gap: 12px; align-items: center; z-index: 60; }
+.key { min-width: 96px; height: 96px; padding: 0 26px; border-radius: 22px; display: grid; place-items: center; font: 800 40px/1 'Segoe UI', sans-serif; color: #0f172a;
+  background: linear-gradient(#fff, #e2e8f0); box-shadow: 0 10px 0 #94a3b8, 0 30px 50px -10px rgba(0,0,0,.6); direction: ltr; }
+.plus { font: 800 40px 'Segoe UI', sans-serif; color: #fff; }
+
+#cap { position: absolute; left: 50%; bottom: 34px; display: flex; align-items: center; gap: 18px; padding: 16px 26px 16px 30px; border-radius: 24px; z-index: 70;
+  background: rgba(8,12,28,.86); border: 1px solid rgba(255,255,255,.12); color: #fff; box-shadow: 0 30px 60px -20px rgba(0,0,0,.7); backdrop-filter: blur(12px); }
+#cap .no { width: 50px; height: 50px; border-radius: 16px; display: grid; place-items: center; font-size: 22px; font-weight: 900; background: linear-gradient(135deg, var(--p), var(--v)); flex: none; }
+#cap b { display: block; font-size: 24px; margin-bottom: 2px; }
+#cap span { font-size: 18px; opacity: .88; }
+#prog { position: absolute; left: 0; right: 0; bottom: 0; height: 6px; background: rgba(255,255,255,.08); z-index: 80; }
+#prog div { height: 100%; background: linear-gradient(90deg, var(--p), var(--v)); }
+
+/* ── شروع و پایان ── */
+.over { position: absolute; inset: 0; z-index: 90; display: grid; place-items: center; text-align: center; color: #fff;
+  background: radial-gradient(900px 600px at 80% 0%, #1d4ed8 0%, transparent 60%), radial-gradient(900px 600px at 10% 100%, #6d28d9 0%, transparent 60%), #060a18; }
+.over .logo { width: 150px; height: 150px; margin: 0 auto 30px; border-radius: 42px; display: grid; place-items: center; font-size: 76px; font-weight: 900;
+  background: linear-gradient(135deg, #0284c7, #10b981); box-shadow: 0 40px 80px -20px rgba(2,132,199,.8); }
+.over h1 { font-size: 72px; font-weight: 900; }
+.over p { font-size: 30px; opacity: .8; margin-top: 12px; }
+.chap { display: flex; gap: 14px; justify-content: center; margin-top: 40px; flex-wrap: wrap; max-width: 1300px; }
+.chap span { padding: 10px 20px; border-radius: 14px; font-size: 20px; background: rgba(255,255,255,.1); border: 1px solid rgba(255,255,255,.15); }
+.sc { display: grid; grid-template-columns: repeat(5, 230px); gap: 22px; margin-top: 50px; }
+.sc > div { padding: 26px 10px 22px; border-radius: 26px; background: rgba(255,255,255,.07); border: 1px solid rgba(255,255,255,.12); }
+.sc .key { margin: 0 auto 18px; height: 80px; min-width: 80px; font-size: 30px; }
+.sc span { font-size: 22px; }
+</style>
+</head>
+<body>
+<div id="stage">
+ <div id="cam">
+  <div id="win">
+   <div class="chrome"><i style="background:#f87171"></i><i style="background:#fbbf24"></i><i style="background:#34d399"></i><div class="url">safir.local/automation/tasks</div></div>
+   <div class="appbar"><span class="logo">S</span><b>سفیر</b><span class="db">شرکت نمونه ۱۴۰۵</span></div>
+
+   <div class="page" id="page">
+    <section class="hero" id="hero">
+     <div class="grid"></div>
+     <div class="top">
+      <div>
+       <span class="pill"><i class="bi bi-calendar3"></i>شنبه، ۱۲ مهر ۱۴۰۵</span>
+       <h1>صبح بخیر، آقای احمدی 👋</h1>
+       <div class="sub" id="heroSub">۵ کار در انتظار شماست؛ ۲ مورد فوری است.</div>
+       <div class="ins"><span><i class="bi bi-lightning-charge-fill" style="color:#fecdd3"></i><b id="insU" style="font-weight:400">۲ کار فوری منتظر شماست</b></span><span><i class="bi bi-hourglass-bottom" style="color:#fde68a"></i>۱ کار بیش از ۳۰ روز باز مانده</span><span><i class="bi bi-trophy-fill" style="color:#a7f3d0"></i>این هفته ۳ کار را به سرانجام رساندید</span></div>
+      </div>
+      <div>
+       <div class="acts">
+        <span class="btn light" id="bNew"><i class="bi bi-plus-lg"></i>وظیفه‌ی جدید</span>
+        <span class="btn glass" id="bMsg"><i class="bi bi-chat-dots-fill"></i>پیام‌ها<span class="badge" id="msgBadge">۲</span></span>
+        <span class="btn glass" id="bRem"><i class="bi bi-bell-fill"></i>یادآوری‌ها<span class="badge" style="background:#f59e0b">۱</span></span>
+       </div>
+       <div class="ring"><div style="text-align:end;line-height:1.7"><div id="rDone">۴۲ انجام‌شده</div><div id="rOpen">۵ در انتظار</div></div>
+        <svg viewBox="0 0 92 92"><circle cx="46" cy="46" r="38" style="stroke:rgba(255,255,255,.16)"/><circle id="ringBar" cx="46" cy="46" r="38" style="stroke:#7dd3fc;stroke-linecap:round" stroke-dasharray="238.76" stroke-dashoffset="238.76"/></svg></div>
+      </div>
+     </div>
+     <div class="focus" id="focus"><span class="ic">🔥</span><div><small>پیشنهاد برای شروع — فوری‌ترین کار باز</small><div class="t">پیگیری وصول چک شرکت آریا پخش</div></div><span class="sp"></span><span class="btn glass" style="height:36px"><i class="bi bi-box-arrow-up-left"></i>باز کردن</span><span class="btn light" style="height:36px"><i class="bi bi-check2-circle"></i>انجام شد</span></div>
+    </section>
+
+    <section class="kpis">
+     <div class="kpi" id="kOpen"><span class="i" style="color:#0284c7;background:rgba(2,132,199,.12)"><i class="bi bi-inbox"></i></span><div><div class="n" id="nOpen">۵</div><div class="l">در انتظار انجام</div></div></div>
+     <div class="kpi" id="kUrg"><span class="i" style="color:#f43f5e;background:rgba(244,63,94,.12)"><i class="bi bi-lightning-charge"></i></span><div><div class="n" id="nUrg">۲</div><div class="l">فوری</div></div></div>
+     <div class="kpi"><span class="i" style="color:#f59e0b;background:rgba(245,158,11,.13)"><i class="bi bi-hourglass-split"></i></span><div><div class="n">۱</div><div class="l">معوق (بیش از ۳۰ روز)</div></div></div>
+     <div class="kpi"><span class="i" style="color:#10b981;background:rgba(16,185,129,.12)"><i class="bi bi-check2-circle"></i></span><div><div class="n" id="nDone">۳</div><div class="l">انجام‌شده‌ی این هفته</div></div></div>
+     <div class="kpi"><span class="i" style="color:#94a3b8;background:rgba(148,163,184,.15)"><i class="bi bi-slash-circle"></i></span><div><div class="n">۱</div><div class="l">لغو شده</div></div></div>
+    </section>
+
+    <section class="tool">
+     <div class="seg"><span class="on"><i class="bi bi-circle-fill" style="font-size:8px;color:#0284c7"></i>انجام نشده<em id="segOpen">۵</em></span><span>انجام شده<em>۴۲</em></span><span>لغو شده<em>۱</em></span><span>همه<em>۴۸</em></span></div>
+     <div class="search" id="search"><i class="bi bi-search"></i><span id="sq" class="ph">جستجو در شرح، گیرنده، شماره…</span><span class="caret" id="caret"></span></div>
+     <span class="tg"><i class="bi bi-lightning-charge"></i>فوری‌ها</span>
+     <span class="tg"><i class="bi bi-sort-down"></i>هوشمند</span>
+     <div class="view"><span id="vList" class="on"><i class="bi bi-list-task"></i></span><span id="vBoard"><i class="bi bi-kanban"></i></span></div>
+    </section>
+
+    <div class="list" id="list"></div>
+   </div>
+
+   <div class="scrim" id="scrim"></div>
+   <aside class="sheet" id="sheet">
+    <div class="h"><span class="gly"><i class="bi bi-plus-lg"></i></span><div><b>وظیفه‌ی جدید</b><small>کار را بنویسید، مجری و گیرنده را انتخاب کنید.</small></div></div>
+    <div class="bd">
+     <div class="fl">شرح وظیفه <span style="color:#f43f5e">*</span></div>
+     <div class="ta" id="sTa"></div>
+     <div class="fl"><i class="bi bi-person-check"></i>مجری</div>
+     <div class="fld"><span class="av" style="color:#0369a1;background:#e0f2fe">اح</span>آقای احمدی <small style="color:#94a3b8">(خودم)</small></div>
+     <div class="fl"><i class="bi bi-building"></i>گیرنده (مشتری)</div>
+     <div class="fld" id="sCust"><i class="bi bi-search" style="color:#0284c7"></i><span id="sCustTx"></span></div>
+     <div class="dd" id="sDd"><div style="background:rgba(2,132,199,.08)"><span class="av" style="color:#7c3aed;background:#ede9fe">پس</span>شرکت پارس سازه <small style="color:#94a3b8">۱۱۵-۱-۲۴</small></div><div><span class="av" style="color:#b45309;background:#fef3c7">پا</span>پارسیان تجارت <small style="color:#94a3b8">۱۱۵-۱-۳۱</small></div></div>
+     <div class="fl"><i class="bi bi-flag"></i>اولویت</div>
+     <div class="chs"><div class="ch" id="chN"><i class="bi bi-circle" style="color:#0284c7"></i><span>معمولی<small>در نوبت انجام شود</small></span></div><div class="ch" id="chU"><i class="bi bi-lightning-charge-fill" style="color:#f43f5e"></i><span>فوری<small>بالای کارتابل می‌نشیند</small></span></div></div>
+    </div>
+    <div class="ft"><span style="margin-inline-end:auto;font-size:12px;color:#64748b">Ctrl+Enter ذخیره</span><span class="gbtn"><i class="bi bi-plus-circle"></i>ذخیره و بعدی</span><span class="pbtn"><i class="bi bi-check2"></i>ثبت وظیفه</span></div>
+   </aside>
+
+   <div class="cscrim" id="cscrim"></div>
+   <section class="chat" id="chat">
+    <aside class="cside">
+     <div class="csh"><span class="lg"><i class="bi bi-chat-heart-fill"></i></span>پیام‌ها<span class="unr" id="cUnr">۲</span><span class="sp"></span><span class="ib" id="cNew"><i class="bi bi-pencil-square"></i></span><span class="ib"><i class="bi bi-x-lg"></i></span></div>
+     <div class="csrch"><i class="bi bi-search"></i>جستجوی همکار…</div>
+     <div id="convs"></div>
+    </aside>
+    <main class="cmain">
+     <div id="cWel" style="position:absolute;inset:0;display:grid;place-items:center;text-align:center;color:#64748b"><div><div style="width:84px;height:84px;margin:0 auto 14px;border-radius:28px;display:grid;place-items:center;font-size:38px;color:#fff;background:linear-gradient(135deg,#0284c7,#8b5cf6)"><i class="bi bi-chat-dots-fill"></i></div><b style="color:#0f172a;font-size:20px">پیام‌های داخلی</b><div style="margin-top:6px">یک گفتگو را انتخاب کنید یا پیام جدید بفرستید.</div></div></div>
+     <div id="cPane" style="position:absolute;inset:0;display:flex;flex-direction:column">
+      <div class="chd"><span class="av lg" style="color:#7c3aed;background:#ede9fe">مم</span><div><b>مدیر مالی</b><small>۴ پیام · آخرین همین حالا</small></div></div>
+      <div class="msgs" id="msgs">
+       <div class="day">امروز</div>
+       <div class="msg th" id="m1"><div class="bub">سلام، لاشه‌ی چک آریا پخش رسید؟<div class="mt">۰۹:۴۱</div></div></div>
+       <div class="msg th" id="m2"><div class="bub">اگر رسیده امروز تحویل حسابداری بدید 🙏<div class="mt">۰۹:۴۲</div></div></div>
+       <div class="msg me" id="m3"><div class="bub"><span id="m3t">بله، امروز تحویل حسابداری شد 👍</span><div class="mt">۱۰:۰۵ <i class="bi bi-check2" id="m3k"></i></div></div></div>
+       <div class="msg th" id="m4"><div class="bub">عالی، ممنون 🙏<div class="mt">۱۰:۰۶</div></div></div>
+      </div>
+      <div class="comp"><div class="crow"><span style="width:34px;height:34px;display:grid;place-items:center;color:#64748b;font-size:18px"><i class="bi bi-emoji-smile"></i></span><span class="cust"><i class="bi bi-building"></i>آقای احمدی</span><span class="ta2" id="cTa"></span><span class="send" id="cSend"><i class="bi bi-send-fill" style="transform:scaleX(-1)"></i></span></div></div>
+     </div>
+     <div id="cPick" style="position:absolute;inset:0">
+      <div class="chd"><span class="av lg" style="color:#fff;background:linear-gradient(135deg,#f59e0b,#f43f5e)"><i class="bi bi-pencil-square"></i></span><div><b>پیام جدید</b><small>یک نفر = گفتگوی خصوصی · چند نفر = ارسال گروهی</small></div></div>
+      <div class="picker">
+       <div class="pchips" id="pchips"><span style="color:#94a3b8;font-size:13px;padding:0 8px" id="pph">گیرنده‌ها را از فهرست زیر انتخاب کنید</span></div>
+       <div class="pgrid" id="pgrid"></div>
+       <div class="note" id="pnote"><i class="bi bi-megaphone"></i>برای ۳ نفر جداگانه فرستاده می‌شود؛ هر کس در گفتگوی خصوصیِ خودش می‌بیند.</div>
+      </div>
+     </div>
+    </main>
+   </section>
+
+   <div class="cscrim" id="rscrim"></div>
+   <div class="rdlg" id="rdlg">
+    <div class="rhd"><span class="bl"><i class="bi bi-bell-fill"></i></span><div><b>یادآوری‌ها</b><small>یادداشتی برای خودتان یا همکاران، در زمانی که تعیین می‌کنید.</small></div></div>
+    <div class="rbox">
+     <div class="rta" id="rTa"></div>
+     <div class="pres" id="pres"><span><i class="bi bi-hourglass-split"></i>یک ساعت دیگر</span><span><i class="bi bi-sunset"></i>امروز ساعت ۱۷</span><span id="pTom"><i class="bi bi-sunrise"></i>فردا ساعت ۹</span><span id="pSat"><i class="bi bi-calendar-week"></i>شنبه ساعت ۹</span><span><i class="bi bi-calendar-plus"></i>یک هفته دیگر</span></div>
+     <div style="display:flex;align-items:center"><span class="rsum"><i class="bi bi-alarm"></i><span id="rSum">یکشنبه، ۱۳ مهر ۱۴۰۵ — ساعت ۰۹:۰۰ (فردا ۰۹:۰۰)</span></span><span class="rsave" id="rSave"><i class="bi bi-bell"></i>ثبت یادآوری</span></div>
+    </div>
+    <div class="ritem" id="rItem"><span class="bl"><i class="bi bi-bell-fill"></i></span><div><div style="font-size:15px">تماس با شرکت نوین برای تسویه‌ی حساب</div><small>شنبه ۰۹:۰۰ · ۷ روز دیگر</small></div></div>
+   </div>
+
+   <div id="snacks"></div>
+   <div id="glow"></div>
+   <div id="drag"></div>
+   <div id="rip"></div>
+   <div id="cur"><svg viewBox="0 0 24 24"><path d="M4 2l15 10.5-6.6 1.2 3.9 7.3-3.1 1.6-3.8-7.4L4 20z" fill="#0f172a" stroke="#fff" stroke-width="1.6" stroke-linejoin="round"/></svg></div>
+  </div>
+ </div>
+
+ <div id="keys"></div>
+ <div id="cap"><span class="no" id="capNo">۱</span><div><b id="capT"></b><span id="capX"></span></div></div>
+ <div id="prog"><div id="progBar"></div></div>
+
+ <div class="over" id="intro"><div>
+  <div class="logo" id="iLogo">S</div>
+  <h1 id="iT">کارتابل اتوماسیون سفیر</h1>
+  <p id="iP">آموزش کامل در یک دقیقه</p>
+  <div class="chap" id="iC"><span>نمای کلی</span><span>وظیفه‌ی جدید</span><span>انجام با یک کلیک</span><span>بُرد کانبان</span><span>جستجو</span><span>پیام‌ها</span><span>یادآوری</span></div>
+ </div></div>
+
+ <div class="over" id="outro"><div>
+  <h1 id="oT">میان‌بُرهای صفحه‌کلید</h1>
+  <div class="sc" id="oSc">
+   <div><div class="key">N</div><span>وظیفه‌ی جدید</span></div>
+   <div><div class="key">/</div><span>جستجو</span></div>
+   <div><div class="key">R</div><span>بروزرسانی</span></div>
+   <div><div class="key" style="font-size:22px">Ctrl+Enter</div><span>ذخیره‌ی وظیفه</span></div>
+   <div><div class="key">Esc</div><span>بستن پنجره</span></div>
+  </div>
+  <p id="oP" style="margin-top:56px;font-size:34px;opacity:1">همین حالا امتحان کنید ✨ — <b>کارتابل اتوماسیون</b></p>
+ </div></div>
+</div>
+
+<script>
+/* ═════════════════ ابزار ═════════════════ */
+const $ = s => document.querySelector(s);
+const clamp = (x, a = 0, b = 1) => Math.max(a, Math.min(b, x));
+const seg = (t, a, b) => clamp((t - a) / (b - a));
+const lerp = (a, b, p) => a + (b - a) * p;
+const eio = p => p < .5 ? 4 * p * p * p : 1 - Math.pow(-2 * p + 2, 3) / 2;
+const eout = p => 1 - Math.pow(1 - p, 3);
+const back = p => { const c1 = 1.9, c3 = c1 + 1; return 1 + c3 * Math.pow(p - 1, 3) + c1 * Math.pow(p - 1, 2); };
+const spring = p => p <= 0 ? 0 : p >= 1 ? 1 : 1 - Math.exp(-6.5 * p) * Math.cos(11 * p);
+const fade = (t, a, b, c, d) => Math.min(seg(t, a, b), 1 - seg(t, c, d));
+const typed = (s, t, a, b) => { const ch = Array.from(s); return ch.slice(0, Math.round(ch.length * seg(t, a, b))).join(''); };
+const fa = n => String(n).replace(/\d/g, d => '۰۱۲۳۴۵۶۷۸۹'[d]);
+function st(el, o) { for (const k in o) el.style[k] = o[k]; }
+function show(el, o, tr = '') { el.style.opacity = o; el.style.visibility = o <= 0.001 ? 'hidden' : 'visible'; if (tr !== null) el.style.transform = tr; }
+
+const WIN = $('#win');
+/** مرکزِ یک عنصر در مختصاتِ پنجره (بدونِ transformها). */
+function at(el, dx = 0, dy = 0) {
+  let x = 0, y = 0, e = el;
+  while (e && e !== WIN) { x += e.offsetLeft; y += e.offsetTop; e = e.offsetParent; }
+  return { x: x + el.offsetWidth / 2 + dx, y: y + el.offsetHeight / 2 + dy };
+}
+
+/* ═════════════════ داده‌ی ساختگی ═════════════════ */
+const AV = { 'آریا پخش': ['آپ', '#b91c1c', '#fee2e2'], 'فروشگاه ستاره': ['فس', '#047857', '#d1fae5'], 'آقای کریمی': ['کر', '#7c3aed', '#ede9fe'], 'شرکت نوین': ['نو', '#b45309', '#fef3c7'], 'مواد اولیه‌ی البرز': ['اب', '#0369a1', '#e0f2fe'], 'شرکت پارس سازه': ['پس', '#7c3aed', '#ede9fe'] };
+const TASKS = [
+  { id: 'n', t: 'پیگیری وصول چک شرکت پارس سازه تا پایان هفته', u: 1, c: 'شرکت پارس سازه', doc: '', age: 'همین حالا', ac: '', no: '۱۲۴۵۰' },
+  { id: 'a', t: 'پیگیری وصول چک شرکت آریا پخش', u: 1, c: 'آریا پخش', doc: 'فاکتور فروش ۷۴۱۲', age: '۲ روز پیش', ac: '', no: '۱۲۴۱۸' },
+  { id: 'b', t: 'ارسال پیش‌فاکتور به فروشگاه ستاره', u: 0, c: 'فروشگاه ستاره', doc: 'پیش فاکتور ۶۷۱۰', age: '۵ ساعت پیش', ac: '', no: '۱۲۴۴۱' },
+  { id: 'c', t: 'تماس با آقای کریمی درباره‌ی کالای مرجوعی', u: 1, c: 'آقای کریمی', doc: '', age: '۱۲ روز پیش', ac: 'age-a', no: '۱۲۳۷۶' },
+  { id: 'd', t: 'هماهنگی بارگیری سفارش شرکت نوین', u: 0, c: 'شرکت نوین', doc: 'حواله فروش ۳۲۱۸', age: '۴۰ روز پیش', ac: 'age-s', no: '۱۲۲۰۴' },
+  { id: 'e', t: 'تأیید فاکتور خرید مواد اولیه', u: 0, c: 'مواد اولیه‌ی البرز', doc: 'فاکتور خرید ۴۰۹۱', age: 'دیروز', ac: '', no: '۱۲۴۳۰' },
+];
+const CARD_H = 78, GAP = 10;
+function avatar(name, lg) { const [i, c, b] = AV[name] || ['؟', '#334155', '#e2e8f0']; return `<span class="av${lg ? ' lg' : ''}" style="color:${c};background:${b}">${i}</span>`; }
+function cardHtml(x) {
+  return `<span class="rail" style="background:${x.u ? '#f43f5e' : 'transparent'}"></span><span class="chk"></span>
+  <span class="done" data-done><i class="bi bi-check-lg"></i></span>
+  <div class="b"><div class="ti">${x.t}</div><div class="meta"><span>#${x.no}</span>${x.u ? '<span class="chip ur"><i class="bi bi-lightning-charge-fill"></i>فوری</span>' : ''}
+  <span>${avatar(x.c)}${x.c}</span>${x.doc ? `<span class="chip doc"><i class="bi bi-file-earmark-text"></i>${x.doc}</span>` : ''}
+  <span class="${x.ac}"><i class="bi bi-clock"></i>${x.age}</span></div></div><div class="acts2"><i class="bi bi-clock-history"></i><i class="bi bi-three-dots-vertical"></i></div>`;
+}
+const LIST = $('#list');
+const CARDS = {};
+for (const x of TASKS) { const d = document.createElement('div'); d.className = 'task'; d.innerHTML = cardHtml(x); LIST.appendChild(d); CARDS[x.id] = d; }
+
+// بُرد
+const BOARD = document.createElement('div'); BOARD.className = 'board'; LIST.appendChild(BOARD);
+const COLS = [['انجام نشده', '#0284c7', ['a', 'b', 'c', 'd']], ['انجام شده', '#10b981', ['z1', 'z2']], ['لغو شده', '#94a3b8', ['z3']]];
+const DONE_EXTRA = { z1: { t: 'ارسال صورت‌حساب شهریور به نمایندگی‌ها', c: 'فروشگاه ستاره', age: 'دیروز' }, z2: { t: 'تمدید قرارداد حمل با باربری', c: 'شرکت نوین', age: '۳ روز پیش' }, z3: { t: 'بازدید از انبار قدیمی', c: 'آقای کریمی', age: 'هفته‌ی پیش' } };
+const BCARDS = {}; const COLEL = [];
+COLS.forEach(([name, color, ids], ci) => {
+  const col = document.createElement('div'); col.className = 'col'; col.style.background = `color-mix(in srgb, ${color} 5%, #f1f5f9)`;
+  col.innerHTML = `<h4><i style="background:${color};box-shadow:0 0 0 4px ${color}33"></i>${name}<small data-cnt>${fa(ids.length)}</small></h4>`;
+  const drop = document.createElement('div'); col.appendChild(drop);
+  if (ci === 1) { const nb = bcard('bD', TASKS[2], true); drop.appendChild(nb); BCARDS.bD = nb; }
+  for (const id of ids) {
+    const x = TASKS.find(q => q.id === id) || { ...DONE_EXTRA[id], u: 0 };
+    const b = bcard(id, x, ci === 1); drop.appendChild(b); BCARDS[id] = b;
+  }
+  BOARD.appendChild(col); COLEL.push(col);
+});
+function bcard(id, x, done) {
+  const b = document.createElement('div'); b.className = 'bcard';
+  b.innerHTML = `<span class="rail" style="position:absolute;inset-inline-start:0;top:12px;bottom:12px;width:4px;border-radius:0 4px 4px 0;background:${x.u ? '#f43f5e' : 'transparent'}"></span>
+   <span class="done" style="${done ? 'background:#10b981;border-color:#10b981;color:#fff' : ''}"><i class="bi bi-check-lg"></i></span>
+   <div style="flex:1;min-width:0"><div class="ti" style="${done ? 'color:#64748b;text-decoration:line-through' : ''}">${x.t}</div>
+   <div class="meta" style="margin-top:4px">${x.u ? '<span class="chip ur">فوری</span>' : ''}<span>${avatar(x.c)}${x.c}</span><span><i class="bi bi-clock"></i>${x.age}</span></div></div>`;
+  return b;
+}
+
+// گفتگوها
+const CONVS = [['مدیر مالی', 'مم', '#7c3aed', '#ede9fe', 'اگر رسیده امروز تحویل حسابداری بدید 🙏', '۰۹:۴۲', 2], ['انبار مرکزی', 'ام', '#b45309', '#fef3c7', 'شما: بارگیری ساعت ۱۴ انجام می‌شود', 'دیروز', 0], ['واحد فروش', 'وف', '#047857', '#d1fae5', 'پیش‌فاکتور ستاره ارسال شد ✅', 'دوشنبه', 0], ['آقای رضایی', 'ری', '#0369a1', '#e0f2fe', 'شما: ممنون', '۱۴۰۵/۰۶/۲۸', 0]];
+const CV = [];
+for (const [n, i, c, b, pv, tm, u] of CONVS) {
+  const d = document.createElement('div'); d.className = 'conv';
+  d.innerHTML = `<span class="av lg" style="color:${c};background:${b}">${i}</span><div class="bd"><div class="r1">${n}<small>${tm}</small></div><div class="r2"><span data-pv>${pv}</span>${u ? `<span class="unr" data-u style="flex:none">${fa(u)}</span>` : ''}</div></div>`;
+  $('#convs').appendChild(d); CV.push(d);
+}
+const PEOPLE = [['مدیر مالی', 'مم', '#7c3aed', '#ede9fe'], ['انبار مرکزی', 'ام', '#b45309', '#fef3c7'], ['واحد فروش', 'وف', '#047857', '#d1fae5'], ['آقای رضایی', 'ری', '#0369a1', '#e0f2fe'], ['خانم کاظمی', 'کا', '#be123c', '#ffe4e6'], ['حسابداری', 'حس', '#4338ca', '#e0e7ff'], ['آقای صادقی', 'صا', '#0f766e', '#ccfbf1'], ['کنترل کیفیت', 'کک', '#a16207', '#fef9c3'], ['خانم هاشمی', 'ها', '#9333ea', '#f3e8ff']];
+const PER = [], PCH = [];
+for (const [n, i, c, b] of PEOPLE) {
+  const d = document.createElement('div'); d.className = 'per'; d.innerHTML = `<span class="av lg" style="color:${c};background:${b}">${i}</span>${n}<span class="ck"><i class="bi bi-check-lg"></i></span>`;
+  $('#pgrid').appendChild(d); PER.push(d);
+  const ch = document.createElement('span'); ch.className = 'pchip'; ch.innerHTML = `<span class="av" style="color:${c};background:${b}">${i}</span>${n}`;
+  $('#pchips').appendChild(ch); PCH.push(ch);
+}
+const PICKED = [0, 2, 5]; // مدیر مالی، واحد فروش، حسابداری
+
+// اعلان‌ها
+const SN = [
+  { a: 23.1, b: 25.0, h: '<i class="bi bi-check-circle-fill"></i>وظیفه‌ی ۱۲۴۵۰ ثبت شد.' },
+  { a: 26.4, b: 28.5, h: '<i class="bi bi-check-circle-fill"></i>#۱۲۴۵۰ — انجام شد ✓<span class="ac" id="undo">بازگردانی</span>' },
+  { a: 28.6, b: 30.6, h: '<i class="bi bi-arrow-counterclockwise"></i>#۱۲۴۵۰ به حالت قبل برگشت.' },
+  { a: 58.7, b: 60.4, h: '<i class="bi bi-bell-fill"></i>یادآوری برای شنبه ۰۹:۰۰ ثبت شد.' },
+];
+for (const s of SN) { const d = document.createElement('div'); d.className = 'snack'; d.innerHTML = s.h; $('#snacks').appendChild(d); s.el = d; }
+
+/* ═════════════════ زمان‌بندی ═════════════════ */
+const DUR = 66;
+const SCENES = [
+  { a: 4, b: 10, t: 'نمای کلی', x: 'سربرگ خلاصه‌ی کارِ امروز را می‌گوید و «پیشنهاد برای شروع» فوری‌ترین کار را جلوی چشم می‌گذارد.' },
+  { a: 10, b: 15, t: 'کارت‌های شاخص', x: 'روی هر شاخص بزنید تا فهرست فقط همان‌ها را نشان دهد — مثلاً کارهای فوری.' },
+  { a: 15, b: 25, t: 'وظیفه‌ی جدید', x: 'کلید N یا دکمه‌ی «وظیفه‌ی جدید»؛ بنویسید، گیرنده و اولویت را بزنید و Ctrl+Enter.' },
+  { a: 25, b: 31, t: 'انجام شد با یک کلیک', x: 'دایره‌ی کنارِ کار را بزنید. اشتباه شد؟ «بازگردانی» در اعلان.' },
+  { a: 31, b: 38, t: 'نمای بُرد (کانبان)', x: 'کارها را بین ستون‌ها بکشید تا وضعیتشان عوض شود.' },
+  { a: 38, b: 42.5, t: 'جستجوی فوری', x: 'کلید / را بزنید و بنویسید؛ فهرست همان لحظه فیلتر می‌شود.' },
+  { a: 42.5, b: 54, t: 'پیام‌ها مثل تلگرام', x: 'گفتگوی خصوصی یا ارسالِ گروهی؛ تیکِ دوتاییِ آبی یعنی خوانده شد.' },
+  { a: 54, b: 60, t: 'یادآوری', x: 'متن را بنویسید و زمان را با یک کلیک انتخاب کنید: «فردا ساعت ۹»، «شنبه»…' },
+];
+
+// مسیرِ نشانگر: [زمانِ رسیدن، هدف، کلیک؟] — هدف تابعی است که مختصات می‌دهد.
+const P = {
+  mid: () => ({ x: 900, y: 470 }),
+  focusDone: () => at($('#focus .btn.light')),
+  ins: () => at($('.ins span')),
+  kUrg: () => at($('#kUrg')), kOpen: () => at($('#kOpen')),
+  chU: () => at($('#chU')), cust: () => at($('#sCust')), dd1: () => at($('#sDd div')),
+  doneN: () => at(CARDS.n.querySelector('[data-done]')),
+  undo: () => at($('#undo')),
+  vBoard: () => at($('#vBoard')), vList: () => at($('#vList')),
+  bB: () => at(BCARDS.b, 0, -6), colDone: () => { const c = at(COLEL[1]); return { x: c.x, y: c.y - 150 }; },
+  bMsg: () => at($('#bMsg')), conv0: () => at(CV[0]), cTa: () => at($('#cTa')), cNew: () => at($('#cNew')),
+  per: i => () => at(PER[i]),
+  bRem: () => at($('#bRem')), rTa: () => at($('#rTa')), pSat: () => at($('#pSat')), rSave: () => at($('#rSave')),
+};
+const PATH = [
+  [4.8, P.mid], [7.0, P.ins], [8.6, P.focusDone],
+  [11.3, P.kUrg, 1], [13.8, P.kOpen, 1],
+  [16.2, P.mid], [19.5, P.chU, 1], [20.4, P.cust, 1], [21.3, P.dd1, 1],
+  [25.9, P.doneN, 1], [28.2, P.undo, 1],
+  [31.8, P.vBoard, 1], [33.6, P.bB], [35.5, P.colDone, 1], [36.9, P.vList, 1],
+  [39.0, P.mid],
+  [43.2, P.bMsg, 1], [44.9, P.conv0, 1], [46.1, P.cTa], [50.4, P.cNew, 1], [51.2, P.per(0), 1], [51.7, P.per(2), 1], [52.2, P.per(5), 1],
+  [54.6, P.bRem, 1], [55.5, P.rTa], [57.4, P.pSat, 1], [58.4, P.rSave, 1], [59.6, P.mid],
+];
+const KEYS = [[15.5, 16.8, ['N']], [22.2, 23.4, ['Ctrl', '+', 'Enter']], [38.3, 39.4, ['/']], [47.7, 48.8, ['Enter']]];
+
+// رویدادهای صدا برای render.cjs → audio.py
+window.SFX = [];
+PATH.forEach(([t, , c]) => c && SFX.push({ t, k: 'click' }));
+KEYS.forEach(([a]) => SFX.push({ t: a, k: 'key' }));
+[[15.9, 'whoosh'], [22.6, 'whoosh'], [31.9, 'whoosh'], [43.4, 'whoosh'], [53.4, 'whoosh'], [54.8, 'whoosh'], [59.5, 'whoosh'], [60.2, 'whoosh'],
+ [23.1, 'chime'], [26.1, 'pop'], [28.5, 'pop'], [35.6, 'pop'], [45.3, 'pop'], [45.5, 'pop'], [47.9, 'pop'], [49.2, 'pop'], [58.5, 'chime'], [0.3, 'rise']]
+  .forEach(([t, k]) => SFX.push({ t, k }));
+[[16.8, 19.0], [20.0, 20.4], [39.0, 40.0], [46.2, 47.6], [55.6, 57.0]].forEach(([a, b]) => SFX.push({ t: a, k: 'type', until: b }));
+window.DURATION = DUR;
+
+/* ═════════════════ رسم ═════════════════ */
+function cursorAt(t) {
+  let i = PATH.findIndex(p => p[0] > t);
+  if (i === -1) i = PATH.length;
+  const cur = PATH[Math.max(0, i - 1)], nxt = PATH[i];
+  const p0 = cur[1](); if (!nxt || i === 0) return p0;
+  const leave = cur[0] + (cur[2] ? .35 : .15), travel = Math.max(.35, Math.min(1.1, nxt[0] - leave));
+  const p = eio(seg(t, nxt[0] - travel, nxt[0]));
+  const p1 = nxt[1]();
+  return { x: lerp(p0.x, p1.x, p), y: lerp(p0.y, p1.y, p) - Math.sin(p * Math.PI) * 30 };
+}
+
+window.render = function (t) {
+  /* شروع */
+  const iO = 1 - seg(t, 3.4, 4.1);
+  show($('#intro'), iO, '');
+  st($('#iLogo'), { transform: `scale(${spring(seg(t, .15, 1.3))}) rotate(${lerp(-30, 0, eout(seg(t, .15, 1)))}deg)` });
+  show($('#iT'), seg(t, .6, 1.3), `translateY(${lerp(30, 0, eout(seg(t, .6, 1.4)))}px)`);
+  show($('#iP'), seg(t, 1.0, 1.7), `translateY(${lerp(24, 0, eout(seg(t, 1.0, 1.8)))}px)`);
+  [...$('#iC').children].forEach((c, i) => show(c, seg(t, 1.5 + i * .12, 1.9 + i * .12), `translateY(${lerp(18, 0, back(seg(t, 1.5 + i * .12, 2.0 + i * .12)))}px)`));
+
+  /* دوربین */
+  // زوم‌ها ملایم‌اند تا پنجره هیچ‌وقت از کادر بیرون نزند
+  const CAM = [[3.6, 1, 960, 530], [4.6, 1, 960, 530], [5.6, 1.08, 960, 330], [9.0, 1.08, 960, 330], [10.0, 1.05, 960, 560], [14.8, 1.05, 960, 560], [15.6, 1, 960, 530],
+               [38.0, 1, 960, 530], [38.6, 1.05, 960, 520], [42.2, 1.05, 960, 520], [42.8, 1, 960, 530], [66, 1, 960, 530]];
+  let k = CAM.findIndex(c => c[0] > t); if (k <= 0) k = k === 0 ? 1 : CAM.length - 1;
+  const A = CAM[k - 1], B = CAM[k], cp = eio(seg(t, A[0], B[0]));
+  const s = lerp(A[1], B[1], cp), fx = lerp(A[2], B[2], cp), fy = lerp(A[3], B[3], cp);
+  const appIn = spring(seg(t, 3.5, 4.6));
+  $('#cam').style.transform = `translate(${960 - fx * s}px, ${540 - fy * s}px) scale(${s})`;
+  show(WIN, clamp(seg(t, 3.5, 4.1)), `scale(${lerp(.9, 1, appIn)})`);
+
+  /* حلقه‌ی نرخ انجام */
+  $('#ringBar').setAttribute('stroke-dashoffset', (238.76 * (1 - .89 * eout(seg(t, 4.2, 5.8)))).toFixed(2));
+
+  /* شمارش‌ها */
+  const added = t >= 23.2 && !(t >= 26.9 && t < 28.6);
+  const moved = t >= 35.6;
+  const open = 5 + (added ? 1 : 0) - (moved ? 1 : 0);
+  $('#nOpen').textContent = fa(open); $('#segOpen').textContent = fa(open);
+  $('#nUrg').textContent = fa(2 + (added ? 1 : 0));
+  $('#nDone').textContent = fa(3 + (moved ? 1 : 0) + (t >= 26.9 && t < 28.6 ? 1 : 0));
+  $('#rOpen').textContent = `${fa(open)} در انتظار`; $('#rDone').textContent = `${fa(42 + (moved ? 1 : 0) + (t >= 26.9 && t < 28.6 ? 1 : 0))} انجام‌شده`;
+  $('#insU').textContent = `${fa(2 + (added ? 1 : 0))} کار فوری منتظر شماست`;
+  $('#heroSub').textContent = `${fa(open)} کار در انتظار شماست؛ ${fa(2 + (added ? 1 : 0))} مورد فوری است.`;
+
+  /* کارت‌های شاخص */
+  const urgOn = t >= 11.4 && t < 13.9;
+  st($('#kUrg'), { borderColor: urgOn ? 'rgba(244,63,94,.6)' : '', boxShadow: urgOn ? '0 0 0 4px rgba(244,63,94,.14), 0 24px 48px -24px rgba(15,23,42,.45)' : '', transform: `translateY(${urgOn ? -3 : 0}px)` });
+  const openOn = t >= 13.9 && t < 15;
+  st($('#kOpen'), { borderColor: openOn ? 'rgba(2,132,199,.6)' : '', boxShadow: openOn ? '0 0 0 4px rgba(2,132,199,.14)' : '' });
+
+  /* فهرست */
+  const boardP = eio(seg(t, 32.0, 32.6)) * (1 - eio(seg(t, 37.1, 37.7)));
+  const urgF = eio(seg(t, 11.6, 12.3)) * (1 - eio(seg(t, 14.0, 14.6)));
+  const q = typed('فاکتور', t, 39.0, 40.0), qClear = seg(t, 41.8, 42.3);
+  const srchF = eio(seg(t, 40.1, 40.6)) * (1 - eio(seg(t, 41.9, 42.4)));
+  for (const x of TASKS) {
+    const el = CARDS[x.id];
+    let h = 1, o = 1, tx = 0;
+    if (x.id === 'n') { h = eout(seg(t, 23.15, 23.6)) * (1 - eio(seg(t, 26.8, 27.3))) + (t >= 28.5 ? eout(seg(t, 28.5, 29.0)) : 0); if (t >= 28.5) h = Math.min(1, h); o = h; tx = -24 * seg(t, 26.6, 27.1) * (t < 28.5 ? 1 : 0); }
+    if (!x.u) h *= 1 - urgF;
+    if (!/فاکتور/.test(x.t)) h *= 1 - srchF;
+    o = Math.min(o, h);
+    st(el, { height: `${CARD_H * h}px`, marginBottom: `${GAP * h}px`, opacity: o * (1 - boardP), transform: `translateX(${tx}px)`, borderWidth: h < .05 ? '0' : '1px' });
+  }
+  // انجام شدن و بازگردانی
+  const dn = CARDS.n.querySelector('[data-done]'), isDone = t >= 26.1 && t < 28.5;
+  st(dn, { background: isDone ? '#10b981' : '', borderColor: isDone ? '#10b981' : '', color: isDone ? '#fff' : 'transparent', transform: `scale(${isDone ? spring(seg(t, 26.1, 26.6)) * .2 + .9 : 1})` });
+  st(CARDS.n.querySelector('.ti'), { textDecoration: isDone ? 'line-through' : '', color: isDone ? '#64748b' : '' });
+  const hl = seg(t, 23.6, 23.9) * (1 - seg(t, 24.6, 25.2));
+  CARDS.n.style.boxShadow = hl > 0 ? `0 0 0 ${3 * hl}px rgba(2,132,199,.5), 0 20px 40px -20px rgba(2,132,199,.6)` : '';
+  CARDS.n.style.background = hl > 0 ? `color-mix(in srgb, #0284c7 ${6 * hl}%, #fff)` : '#fff';
+
+  /* بُرد */
+  show(BOARD, boardP, `translateY(${lerp(18, 0, boardP)}px)`);
+  COLEL.forEach((c, i) => show(c, seg(t, 32.0 + i * .12, 32.5 + i * .12) * (1 - seg(t, 37.1, 37.5)), `translateY(${lerp(24, 0, back(seg(t, 32.0 + i * .12, 32.6 + i * .12)))}px)`));
+  $('#vBoard').className = boardP > .5 ? 'on' : ''; $('#vList').className = boardP > .5 ? '' : 'on';
+  const dragging = t >= 33.8 && t < 35.6;
+  const bb = BCARDS.b, bH = bb.scrollHeight;
+  st(bb, { opacity: dragging || moved ? .0 : 1, height: moved ? `${Math.max(0, 1 - eio(seg(t, 35.6, 36.0))) * 88}px` : '', marginBottom: moved ? `${10 * (1 - seg(t, 35.6, 36.0))}px` : '', padding: moved && seg(t, 35.6, 36.0) >= 1 ? '0' : '' });
+  if (!moved) { bb.style.height = ''; }
+  const dD = BCARDS.bD; const dh = moved ? eout(seg(t, 35.6, 36.1)) : 0;
+  st(dD, { height: `${dh * 96}px`, opacity: dh, marginBottom: `${10 * dh}px`, padding: dh < .05 ? '0 12px' : '', borderWidth: dh < .05 ? '0' : '1px' });
+  COLEL[0].querySelector('[data-cnt]').textContent = fa(moved ? 3 : 4); COLEL[1].querySelector('[data-cnt]').textContent = fa(moved ? 3 : 2);
+  const over = dragging && t > 34.6;
+  COLEL[1].style.boxShadow = over ? 'inset 0 0 0 2px rgba(16,185,129,.6)' : '';
+  COLEL[1].style.background = over ? 'color-mix(in srgb, #10b981 12%, #f1f5f9)' : 'color-mix(in srgb, #10b981 5%, #f1f5f9)';
+  const DR = $('#drag');
+  if (dragging) {
+    if (!DR.firstChild) DR.appendChild(bcard('drag', TASKS[2], false));
+    const c = cursorAt(t); show(DR, 1, `rotate(${lerp(0, 3, seg(t, 33.8, 34.1))}deg)`); st(DR, { left: `${c.x - 230}px`, top: `${c.y - 36}px` });
+  } else show(DR, 0, '');
+
+  /* جستجو */
+  const focusS = t >= 38.4 && t < 42.4;
+  st($('#search'), { borderColor: focusS ? 'rgba(2,132,199,.6)' : '', boxShadow: focusS ? '0 0 0 4px rgba(2,132,199,.13)' : '' });
+  const qs = qClear > 0 ? Array.from(q).slice(0, Math.round(6 * (1 - qClear))).join('') : q;
+  $('#sq').textContent = qs || 'جستجو در شرح، گیرنده، شماره…'; $('#sq').className = qs ? 'q' : 'ph';
+  $('#caret').style.opacity = focusS && Math.floor(t * 2.2) % 2 === 0 ? 1 : 0;
+
+  /* پنل وظیفه‌ی جدید */
+  const shIn = spring(seg(t, 15.9, 16.7)), shOut = eio(seg(t, 22.6, 23.1)), shP = t < 22.6 ? shIn : 1 - shOut;
+  show($('#scrim'), clamp(shP), '');
+  show($('#sheet'), shP > .001 ? 1 : 0, `translateX(${lerp(-540, 0, shP)}px)`);
+  $('#sTa').innerHTML = typed('پیگیری وصول چک شرکت پارس سازه تا پایان هفته', t, 16.8, 19.0) + (t < 22.6 && Math.floor(t * 2.2) % 2 === 0 ? '<span style="color:#0284c7">|</span>' : '');
+  const urgC = t >= 19.7;
+  st($('#chU'), { borderColor: urgC ? '#f43f5e' : '', background: urgC ? 'rgba(244,63,94,.07)' : '', boxShadow: urgC ? '0 0 0 3px rgba(244,63,94,.14)' : '' });
+  st($('#chN'), { borderColor: urgC ? '' : '#0284c7', background: urgC ? '' : 'rgba(2,132,199,.06)' });
+  $('#sCustTx').textContent = t >= 21.3 ? 'شرکت پارس سازه' : typed('پارس', t, 20.5, 20.8);
+  $('#sDd').style.top = `${$('#sCust').offsetTop + $('#sCust').offsetHeight + 6}px`;
+  show($('#sDd'), fade(t, 20.8, 21.0, 21.3, 21.45), `translateY(${lerp(-6, 0, seg(t, 20.8, 21.0))}px)`);
+
+  /* اعلان‌ها */
+  for (const s of SN) { const o = fade(t, s.a, s.a + .3, s.b - .3, s.b); show(s.el, o, `translateX(${lerp(40, 0, back(seg(t, s.a, s.a + .45)))}px)`); }
+
+  /* پیام‌ها */
+  const chIn = spring(seg(t, 43.4, 44.3)), chOut = eio(seg(t, 53.4, 53.8)), chP = t < 53.4 ? chIn : 1 - chOut;
+  show($('#cscrim'), clamp(t < 53.4 ? seg(t, 43.4, 43.8) : 1 - chOut), '');
+  show($('#chat'), clamp(chP * 1.2), `translateY(${lerp(40, 0, chP)}px) scale(${lerp(.86, 1, chP)})`);
+  st($('#chat'), { filter: `blur(${(1 - clamp(chP)) * 10}px)` });
+  CV.forEach((c, i) => {
+    show(c, seg(t, 43.8 + i * .08, 44.2 + i * .08), `translateX(${lerp(-18, 0, back(seg(t, 43.8 + i * .08, 44.3 + i * .08)))}px)`);
+    const on = i === 0 && t >= 44.9 && t < 50.4;
+    st(c, { background: on ? 'linear-gradient(135deg,#0284c7,#6d6fe6)' : '', color: on ? '#fff' : '' });
+    c.querySelectorAll('small, .r2 span').forEach(e => e.style.color = on ? 'rgba(255,255,255,.85)' : '');
+  });
+  const u0 = CV[0].querySelector('[data-u]'); if (u0) show(u0, t < 45.1 ? 1 : 0, '');
+  $('#cUnr').style.display = t < 45.1 ? '' : 'none';
+  if (t >= 48.0) CV[0].querySelector('[data-pv]').textContent = t >= 49.2 ? 'عالی، ممنون 🙏' : 'شما: بله، امروز تحویل حسابداری شد 👍';
+  const inConv = t >= 45.0 && t < 50.6, inPick = t >= 50.6;
+  show($('#cWel'), inConv || inPick ? 0 : 1, '');
+  show($('#cPane'), inConv ? seg(t, 45.0, 45.35) : 0, `translateX(${lerp(-26, 0, eout(seg(t, 45.0, 45.4)))}px)`);
+  show($('#cPick'), inPick ? seg(t, 50.6, 50.95) : 0, `translateX(${lerp(-26, 0, eout(seg(t, 50.6, 51.0)))}px)`);
+  const bub = (id, a) => { const p = seg(t, a, a + .5); const el = $(id); show(el, p > 0 ? clamp(p * 2) : 0, `translateY(${lerp(16, 0, spring(p))}px) scale(${lerp(.8, 1, spring(p))})`); st(el, { display: p > 0 ? '' : 'none' }); };
+  bub('#m1', 45.25); bub('#m2', 45.45); bub('#m3', 47.9); bub('#m4', 49.2);
+  $('#m3k').className = t >= 49.3 ? 'bi bi-check2-all' : 'bi bi-check2'; $('#m3k').style.color = t >= 49.3 ? '#bae6fd' : '';
+  const ct = t < 47.8 ? typed('بله، امروز تحویل حسابداری شد 👍', t, 46.2, 47.6) : '';
+  $('#cTa').innerHTML = ct ? ct : '<span class="ph">پیام بنویسید…</span>';
+  const ready = !!ct;
+  st($('#cSend'), { background: ready ? 'linear-gradient(135deg,#0284c7,#8b5cf6)' : 'rgba(15,23,42,.18)', transform: `scale(${ready ? 1 : .86})` });
+  const fly = seg(t, 47.8, 48.35);
+  $('#cSend').firstChild.style.transform = fly > 0 && fly < 1 ? `scaleX(-1) translate(${fly < .45 ? lerp(0, 26, fly / .45) : lerp(-26, 0, (fly - .46) / .54)}px, ${fly < .45 ? lerp(0, -26, fly / .45) : lerp(26, 0, (fly - .46) / .54)}px)` : 'scaleX(-1)';
+  PER.forEach((p, i) => {
+    show(p, seg(t, 50.7 + i * .05, 51.0 + i * .05), `translateX(${lerp(-18, 0, back(seg(t, 50.7 + i * .05, 51.1 + i * .05)))}px)`);
+    const k = PICKED.indexOf(i), on = k >= 0 && t >= 51.2 + k * .5;
+    st(p, { borderColor: on ? '#0284c7' : 'transparent' });
+    st(p.querySelector('.ck'), { background: on ? '#0284c7' : '', borderColor: on ? '#0284c7' : '', color: on ? '#fff' : 'transparent', transform: `scale(${on ? 1.1 : 1})` });
+  });
+  PCH.forEach((c, i) => { const k = PICKED.indexOf(i); const p = k >= 0 ? seg(t, 51.2 + k * .5, 51.55 + k * .5) : 0; st(c, { display: p > 0 ? '' : 'none', transform: `scale(${spring(p)})` }); });
+  $('#pph').style.display = t >= 51.2 ? 'none' : '';
+  show($('#pnote'), seg(t, 52.3, 52.6), '');
+
+  /* یادآوری */
+  const rIn = spring(seg(t, 54.8, 55.5)), rOut = eio(seg(t, 59.5, 59.9)), rP = t < 59.5 ? rIn : 1 - rOut;
+  show($('#rscrim'), clamp(t < 59.5 ? seg(t, 54.8, 55.1) : 1 - rOut), '');
+  show($('#rdlg'), clamp(rP * 1.2), `translateY(${lerp(40, 0, rP)}px) scale(${lerp(.86, 1, rP)})`);
+  $('#rTa').innerHTML = typed('تماس با شرکت نوین برای تسویه‌ی حساب', t, 55.6, 57.0) || '<span style="color:#94a3b8">چه چیزی را یادآوری کنم؟</span>';
+  const sat = t >= 57.5;
+  for (const [id, on] of [['#pTom', !sat], ['#pSat', sat]]) st($(id), { background: on ? '#f59e0b' : '#fff', borderColor: on ? '#f59e0b' : '', color: on ? '#fff' : '' });
+  $('#rSum').textContent = sat ? 'شنبه، ۱۹ مهر ۱۴۰۵ — ساعت ۰۹:۰۰ (شنبه ۰۹:۰۰)' : 'یکشنبه، ۱۳ مهر ۱۴۰۵ — ساعت ۰۹:۰۰ (فردا ۰۹:۰۰)';
+  const ri = seg(t, 58.5, 59.0); st($('#rItem'), { display: ri > 0 ? '' : 'none', opacity: ri, transform: `translateY(${lerp(14, 0, spring(ri))}px)` });
+
+  /* هاله‌ی راهنما روی «پیشنهاد برای شروع» */
+  const g = fade(t, 6.4, 6.8, 8.9, 9.3);
+  if (g > 0) { const f = $('#focus'), p = at(f); const pulse = 1 + .015 * Math.sin(t * 7); show($('#glow'), g, `scale(${pulse})`); st($('#glow'), { left: `${p.x - f.offsetWidth / 2 - 8}px`, top: `${p.y - f.offsetHeight / 2 - 8}px`, width: `${f.offsetWidth + 16}px`, height: `${f.offsetHeight + 16}px` }); }
+  else show($('#glow'), 0, '');
+
+  /* نشانگر و کلیک */
+  const c = cursorAt(t);
+  const curO = fade(t, 4.6, 5.0, 59.7, 60.1);
+  const click = PATH.find(p => p[2] && t >= p[0] && t < p[0] + .45);
+  const cs = click ? 1 - .18 * Math.sin(seg(t, click[0], click[0] + .25) * Math.PI) : 1;
+  show($('#cur'), curO, `translate(${c.x - 6}px, ${c.y - 4}px) scale(${cs})`);
+  if (click) { const rp = seg(t, click[0], click[0] + .45); show($('#rip'), (1 - rp) * curO, `translate(${c.x - 32}px, ${c.y - 32}px) scale(${lerp(.2, 1.3, eout(rp))})`); }
+  else show($('#rip'), 0, '');
+
+  /* کلیدها */
+  const K = KEYS.find(([a, b]) => t >= a && t < b), KE = $('#keys');
+  if (K) {
+    const html = K[2].map(x => x === '+' ? '<span class="plus">+</span>' : `<span class="key">${x}</span>`).join('');
+    if (KE.dataset.k !== html) { KE.innerHTML = html; KE.dataset.k = html; }
+    const p = fade(t, K[0], K[0] + .25, K[1] - .25, K[1]);
+    const press = seg(t, K[0] + .3, K[0] + .45) * (1 - seg(t, K[0] + .5, K[0] + .65));
+    show(KE, p, `translateX(-50%) translateY(${lerp(30, 0, back(seg(t, K[0], K[0] + .35))) + press * 8}px)`);
+  } else show(KE, 0, 'translateX(-50%)');
+
+  /* زیرنویس */
+  const si = SCENES.findIndex(x => t >= x.a && t < x.b);
+  if (si >= 0) {
+    const S = SCENES[si];
+    if ($('#cap').dataset.s !== String(si)) { $('#capNo').textContent = fa(si + 1); $('#capT').textContent = S.t; $('#capX').textContent = S.x; $('#cap').dataset.s = si; }
+    const p = fade(t, S.a + .1, S.a + .5, S.b - .35, S.b - .02);
+    show($('#cap'), p, `translateX(-50%) translateY(${lerp(24, 0, eout(seg(t, S.a + .1, S.a + .6)))}px)`);
+  } else show($('#cap'), 0, 'translateX(-50%)');
+  $('#progBar').style.width = `${(t / DUR * 100).toFixed(2)}%`;
+
+  /* پایان */
+  const oO = seg(t, 60.1, 60.8) * (1 - seg(t, 65.3, 66));
+  show($('#outro'), oO, '');
+  show($('#oT'), seg(t, 60.4, 61.0), `translateY(${lerp(30, 0, eout(seg(t, 60.4, 61.1)))}px)`);
+  [...$('#oSc').children].forEach((c, i) => show(c, seg(t, 60.8 + i * .18, 61.2 + i * .18), `translateY(${lerp(40, 0, back(seg(t, 60.8 + i * .18, 61.4 + i * .18)))}px)`));
+  show($('#oP'), seg(t, 63.0, 63.6), `scale(${lerp(.9, 1, back(seg(t, 63.0, 63.7)))})`);
+};
+
+// پیش‌نمایش در مرورگر: ?t=ثانیه برای یک فریمِ ثابت، وگرنه پخشِ زنده.
+const qs = new URLSearchParams(location.search);
+if (!qs.has('capture')) {
+  if (qs.has('t')) render(+qs.get('t'));
+  else { const t0 = performance.now(); (function loop() { const t = ((performance.now() - t0) / 1000) % DUR; render(t); requestAnimationFrame(loop); })(); }
+}
+</script>
+</body>
+</html>

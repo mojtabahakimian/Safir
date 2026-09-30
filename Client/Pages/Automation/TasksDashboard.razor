@@ -83,6 +83,9 @@
                             <span class="atm-badge" style="background:#f59e0b">@_activeReminderCount</span>
                         }
                     </button>
+                    <button type="button" class="atm-btn atm-btn--glass" @onclick="() => _guideOpen = true" title="فیلم آموزشِ یک‌دقیقه‌ای">
+                        <i class="bi bi-play-circle-fill"></i>آموزش
+                    </button>
                     <button type="button" class="atm-btn atm-btn--glass atm-btn--icon" @onclick="() => ReloadAsync()" disabled="@_loading" title="بروزرسانی (R)">
                         <i class="bi bi-arrow-clockwise"></i>
                     </button>
@@ -355,6 +358,23 @@
         </div>
     }
 
+    @if (_guideOpen)
+    {
+        @* فیلمِ آموزشی — ساخته‌شده از docs/guides/automation-video (README همان‌جا) *@
+        <div class="atm-guide" @onclick="() => _guideOpen = false">
+            <div class="atm-guide__box" @onclick:stopPropagation="true" role="dialog" aria-label="آموزش کارتابل اتوماسیون">
+                <header>
+                    <span class="gl"><i class="bi bi-play-circle-fill"></i></span>
+                    <b>آموزش کارتابل اتوماسیون</b>
+                    <small>یک دقیقه — همه‌ی امکانات</small>
+                    <span style="flex:1"></span>
+                    <button type="button" class="atm-icon-btn" title="بستن (Esc)" @onclick="() => _guideOpen = false"><i class="bi bi-x-lg"></i></button>
+                </header>
+                <video src="media/automation-guide.mp4" poster="media/automation-guide.jpg" controls autoplay playsinline preload="metadata"></video>
+            </div>
+        </div>
+    }
+
     <ChatWindow @ref="_chat" CurrentUserId="Userid" CurrentUserName="@UserNameDisplay" Personel="_personel"
                 DefaultCustomer="_defaultCustomer" OnChanged="OnChatChanged" />
 
@@ -419,6 +439,7 @@
 
     private TaskComposer? _composer;
     private ChatWindow? _chat;
+    private bool _guideOpen;
     private MudDropContainer<TaskModel>? _drop;
     private System.Threading.Timer? _timer;
     private DotNetObjectReference<TasksDashboard>? _selfRef;
@@ -924,12 +945,13 @@
 
     private async Task OnComposerSaved((TaskModel Task, bool IsNew) e) => await ReloadAsync();
 
-    [JSInvokable] public void HotkeyNew() { if (_composer?.IsOpen != true && _chat?.IsOpen != true) { NewTask(); } }
-    [JSInvokable] public async Task HotkeyRefresh() { if (_composer?.IsOpen != true && _chat?.IsOpen != true) await ReloadAsync(); }
+    [JSInvokable] public void HotkeyNew() { if (_composer?.IsOpen != true && _chat?.IsOpen != true && !_guideOpen) { NewTask(); } }
+    [JSInvokable] public async Task HotkeyRefresh() { if (_composer?.IsOpen != true && _chat?.IsOpen != true && !_guideOpen) await ReloadAsync(); }
     [JSInvokable]
     public async Task HotkeyEscape()
     {
-        if (_chat?.IsOpen == true) await _chat.Close();
+        if (_guideOpen) { _guideOpen = false; StateHasChanged(); }
+        else if (_chat?.IsOpen == true) await _chat.Close();
         else _composer?.Close();
     }
 
