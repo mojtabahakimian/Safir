@@ -8,7 +8,8 @@ namespace Safir.Shared.Interfaces
     public interface IAutomationApiService
     {
         // --- Tasks ---
-        Task<IEnumerable<TaskModel>?> GetTasksAsync(int statusFilter = 1, int? assignedUserId = null, string? taskTypes = "1000");
+        Task<IEnumerable<TaskModel>?> GetTasksAsync(int statusFilter = 1, int? assignedUserId = null, string? taskTypes = "1000", int? top = null);
+        Task<TaskSummaryModel?> GetTaskSummaryAsync(int? assignedUserId = null, string? taskTypes = "1000");
         Task<TaskModel?> CreateTaskAsync(TaskModel task);
         // UPDATED: Added Stream? fileStream and string? fileName parameters to CreateEventAsync
         Task<EventModel?> CreateEventAsync(long taskId, EventModel newEvent, Stream? fileStream = null, string? fileName = null);

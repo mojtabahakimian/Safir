@@ -1,3 +1,4 @@
+using System.Dynamic;
 using System.Security.Claims;
 using System.Text.RegularExpressions;
 using Microsoft.AspNetCore.Http;
@@ -19,6 +20,42 @@ namespace Safir.Server.Tests;
 /// </summary>
 public class TasksControllerTests
 {
+    private static object Row(object? see, object? seet)
+    {
+        dynamic r = new ExpandoObject();
+        r.IDNUM = 123L; r.NAME = "مشتری"; r.GR = null; r.PERSONEL = 114; r.TASK = "پیگیری";
+        r.PERIORITY = 2; r.STATUS = 1; r.USERNAME = "admin"; r.COMP_COD = "128-3-1";
+        r.skid = 13; r.num = 7368L; r.tg = 13L; r.CTIM = DateTime.Now; r.USERCO = 114;
+        r.SEE = see; r.SEET_DB = seet;
+        r.STDATE_DB = 14050708L; r.STTIME_DB = 1530; r.ENDATE_DB = null; r.ENTIME_DB = null; r.SUMTIME_DB = null;
+        return r;
+    }
+
+    [Theory]
+    [InlineData(1, true)]
+    [InlineData(0, false)]
+    [InlineData(null, null)]
+    public void MapTask_reads_int_SEE_column(int? see, bool? expected)
+        => Assert.Equal(expected, TasksController.MapTask(Row(see, null)).SEE);
+
+    [Fact]
+    public void MapTask_keeps_datetime_SEET()
+    {
+        var seen = new DateTime(2026, 9, 29, 10, 15, 0);
+        Assert.Equal(seen, TasksController.MapTask(Row(1, seen)).SEET);
+    }
+
+    [Fact]
+    public void MapTask_still_maps_the_other_fields()
+    {
+        var t = TasksController.MapTask(Row(0, null));
+        Assert.Equal(123, t.IDNUM);
+        Assert.Equal(13, t.skid);
+        Assert.Equal(7368, t.num);
+        Assert.Equal(new TimeSpan(15, 30, 0), t.STTIME);
+        Assert.NotNull(t.STDATE);
+    }
+
     [Fact]
     public async Task UpdateTask_never_writes_SEE_or_SEET()
     {
