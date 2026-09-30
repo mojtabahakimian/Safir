@@ -3,7 +3,6 @@
 @using Safir.Client.Services
 @using Safir.Client.Pages.Salary.Tabs
 @inject ItemConversionApiService Api
-@inject CostCloseApiService CostApi
 @inject LookupApiService Lookup
 
 @*
@@ -226,7 +225,7 @@
     }
 
     private async Task<IEnumerable<ItemLookupDto>> SearchItems(string? q, CancellationToken ct)
-        => await CostApi.SearchItemsAsync(q);
+        => await Api.SearchItemsAsync(q);
 
     private static string ItemText(ItemLookupDto? i)
         => i is null ? "" : $"{i.Code} — {i.Name}";

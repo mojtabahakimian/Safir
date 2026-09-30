@@ -44,6 +44,20 @@ namespace Safir.Server.Controllers
             => Ok(await Service.ListAsync(dt1, dt2));
 
         /// <summary>
+        /// جستجوی کالا برای فرم تبدیل. عمداً اینجا و نه /api/cost-close/items/search:
+        /// آن یکی مجوز «تنظیمات بهای تمام‌شده» می‌خواهد و کاربری که فقط
+        /// تبدیل کالا دارد، ۴۰۳ می‌گرفت و فهرست کالا خالی می‌ماند.
+        /// </summary>
+        [HttpGet("items")]
+        [Pay2Authorize(CostForms.ItemConversion, Pay2Perm.See)]
+        public async Task<ActionResult<IEnumerable<ItemLookupDto>>> SearchItems([FromQuery] string? q = null)
+            => Ok(await _db.DoGetDataSQLAsync<ItemLookupDto>(@"
+                SELECT TOP 30 CODE AS Code, NAME AS Name
+                FROM   dbo.STUF_DEF
+                WHERE  @q IS NULL OR CODE LIKE @q + '%' OR NAME LIKE '%' + @q + '%'
+                ORDER BY CODE", new { q }));
+
+        /// <summary>
         /// آنچه ثبت خواهد شد — نرخ، مبلغ، موجودی و هشدارها. هیچ چیزی
         /// نمی‌نویسد، پس صفحه می‌تواند با هر تغییرِ فرم صدایش بزند.
         /// </summary>
