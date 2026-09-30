@@ -223,6 +223,11 @@ test.describe('سلامت کلاینت', () => {
       return sheet ? sheet.cssRules.length : 0;
     });
     expect(cssRules, 'css/automation.css بارگذاری نشده یا خالی است').toBeGreaterThan(50);
+
+    // فیلمِ آموزشیِ دکمه‌ی «آموزش» باید همراهِ برنامه منتشر شود
+    const video = await page.request.get('/media/automation-guide.mp4', { headers: { Range: 'bytes=0-1023' } });
+    expect(video.status(), 'media/automation-guide.mp4 سرو نمی‌شود').toBeLessThan(300);
+    expect(video.headers()['content-type']).toContain('video/mp4');
   });
 
   /**
