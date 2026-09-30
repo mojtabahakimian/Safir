@@ -355,6 +355,9 @@
         </div>
     }
 
+    <ChatWindow @ref="_chat" CurrentUserId="Userid" CurrentUserName="@UserNameDisplay" Personel="_personel"
+                DefaultCustomer="_defaultCustomer" OnChanged="OnChatChanged" />
+
     <TaskComposer @ref="_composer" Personel="_personel" CurrentUserId="Userid" DefaultCustomer="_defaultCustomer"
                   DocTypes="_docTypes" OnSaved="OnComposerSaved" OnShowEvents="ShowEventsDialog" />
 </div>
@@ -415,6 +418,7 @@
     private readonly HashSet<long> _leaving = new();
 
     private TaskComposer? _composer;
+    private ChatWindow? _chat;
     private MudDropContainer<TaskModel>? _drop;
     private System.Threading.Timer? _timer;
     private DotNetObjectReference<TasksDashboard>? _selfRef;
@@ -920,15 +924,20 @@
 
     private async Task OnComposerSaved((TaskModel Task, bool IsNew) e) => await ReloadAsync();
 
-    [JSInvokable] public void HotkeyNew() { if (_composer?.IsOpen != true) { NewTask(); } }
-    [JSInvokable] public async Task HotkeyRefresh() { if (_composer?.IsOpen != true) await ReloadAsync(); }
-    [JSInvokable] public void HotkeyEscape() => _composer?.Close();
+    [JSInvokable] public void HotkeyNew() { if (_composer?.IsOpen != true && _chat?.IsOpen != true) { NewTask(); } }
+    [JSInvokable] public async Task HotkeyRefresh() { if (_composer?.IsOpen != true && _chat?.IsOpen != true) await ReloadAsync(); }
+    [JSInvokable]
+    public async Task HotkeyEscape()
+    {
+        if (_chat?.IsOpen == true) await _chat.Close();
+        else _composer?.Close();
+    }
 
     private async Task ShowBulkUpdateDialog()
     {
         if (_selected.Count == 0) return;
         var parameters = new DialogParameters<BulkUpdateTasksDialog> { { x => x.SelectedTaskIds, _selected.ToList() } };
-        var options = new DialogOptions { CloseOnEscapeKey = true, MaxWidth = MaxWidth.Small, FullWidth = true };
+        var options = new DialogOptions { ClassBackground = "atm-dialog-bg", CloseOnEscapeKey = true, MaxWidth = MaxWidth.Small, FullWidth = true };
         var dialog = await DialogService.ShowAsync<BulkUpdateTasksDialog>("ویرایش گروهی وظایف", parameters, options);
         var result = await dialog.Result;
         if (result is { Canceled: false, Data: true })
@@ -943,15 +952,17 @@
     {
         if (taskId <= 0) return;
         var parameters = new DialogParameters<TaskEventsDialog> { { x => x.TaskId, taskId } };
-        var options = new DialogOptions { CloseOnEscapeKey = true, MaxWidth = MaxWidth.Medium, FullWidth = true };
+        var options = new DialogOptions { ClassBackground = "atm-dialog-bg", CloseOnEscapeKey = true, MaxWidth = MaxWidth.Medium, FullWidth = true };
         await DialogService.ShowAsync<TaskEventsDialog>($"رویدادهای وظیفه {taskId}", parameters, options);
     }
 
     private async Task ShowMessagesDialog()
     {
-        var options = new DialogOptions { CloseOnEscapeKey = true, MaxWidth = MaxWidth.Medium, FullWidth = true };
-        var dialog = await DialogService.ShowAsync<MessagesDialog>("پیام‌های داخلی", options);
-        await dialog.Result;
+        if (_chat is not null) await _chat.ShowAsync();
+    }
+
+    private async Task OnChatChanged()
+    {
         await LoadNotificationCountsAsync();
         StateHasChanged();
     }
@@ -963,7 +974,7 @@
             { x => x.CurrentUserId, Userid },
             { x => x.Personel, _personel }
         };
-        var options = new DialogOptions { CloseOnEscapeKey = true, MaxWidth = MaxWidth.Small, FullWidth = true };
+        var options = new DialogOptions { ClassBackground = "atm-dialog-bg", CloseOnEscapeKey = true, MaxWidth = MaxWidth.Small, FullWidth = true };
         var dialog = await DialogService.ShowAsync<RemindersDialog>("یادآوری‌ها", parameters, options);
         await dialog.Result;
         await LoadNotificationCountsAsync();

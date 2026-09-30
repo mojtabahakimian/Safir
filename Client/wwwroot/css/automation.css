@@ -30,12 +30,16 @@
     --atm-ease: cubic-bezier(.2, .8, .2, 1);
 }
 
+/* MainLayout همه‌ی صفحه‌ها را در MudContainer با MaxWidth.Large (۱۲۸۰px)
+   می‌گذارد؛ روی مانیتورِ پهن دو طرفِ کارتابل خالی می‌ماند. فقط برای همین
+   صفحه (ظرفی که .atm را مستقیم دارد) سقف برداشته می‌شود — بقیه‌ی صفحه‌ها
+   دست نمی‌خورند. */
+.mud-container:has(> .atm) { max-width: none; }
+
 .atm {
     direction: rtl;
     color: var(--atm-text);
-    max-width: 1480px;
-    margin: 0 auto;
-    padding: 18px 20px 120px;
+    padding: 18px clamp(4px, 1vw, 20px) 120px;
     font-family: 'Vazirmatn', 'Roboto', sans-serif;
 }
 
@@ -977,4 +981,410 @@
 @media (prefers-reduced-motion: reduce) {
     .atm *, .atm *::before, .atm *::after,
     .atm-sheet, .atm-bulkbar, .atm-rem__item { animation-duration: .01ms; animation-iteration-count: 1; transition-duration: .01ms; }
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   پیام‌های داخلی — پنجره‌ی چت (ChatWindow)
+
+   z-index: بالای appbar (۱۳۰۰) و زیرِ snackbar (۱۵۰۰). فهرستِ کشوییِ
+   «مشتری» با PopoverClass="atm-pop-top" بالاتر از پنجره می‌آید.
+   ═══════════════════════════════════════════════════════════════════ */
+
+.atm-chat-root { --atm-spring: cubic-bezier(.16, 1.18, .3, 1); direction: rtl; font-family: 'Vazirmatn', 'Roboto', sans-serif; }
+
+.mud-popover.atm-pop-top { z-index: 1450; }
+
+.atm-chat-scrim {
+    position: fixed; inset: 0; z-index: 1340;
+    background: radial-gradient(circle at 20% 10%, color-mix(in srgb, var(--mud-palette-primary) 18%, transparent), transparent 55%),
+                rgb(6 10 22 / .52);
+    backdrop-filter: blur(10px) saturate(1.3);
+    -webkit-backdrop-filter: blur(10px) saturate(1.3);
+    animation: atm-fade-in .35s ease both;
+}
+.atm-chat-scrim.is-closing { animation: atm-fade-out .22s ease both; }
+@keyframes atm-fade-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes atm-fade-out { to { opacity: 0; } }
+
+.atm-chat {
+    position: fixed; z-index: 1350;
+    inset: 0; margin: auto;
+    /* متناسب با رزولوشن: روی ۱۰۸۰p حدود ۱۴۸۰×۹۴۰، روی لپ‌تاپ تقریباً کلِ صفحه */
+    width: min(1480px, calc(100vw - 64px));
+    height: min(940px, calc(100vh - 56px));
+    display: grid;
+    grid-template-columns: clamp(290px, 24vw, 380px) minmax(0, 1fr);
+    border-radius: 28px;
+    overflow: hidden;
+    background: var(--mud-palette-surface);
+    color: var(--mud-palette-text-primary);
+    border: 1px solid color-mix(in srgb, var(--mud-palette-text-primary) 8%, transparent);
+    box-shadow: 0 50px 120px -30px rgb(0 0 0 / .6), 0 0 0 1px rgb(255 255 255 / .04) inset;
+    transform-origin: 18% 12%;
+    animation: atm-win-in .62s var(--atm-spring) both;
+}
+.atm-chat.is-closing { animation: atm-win-out .23s cubic-bezier(.4, 0, 1, 1) both; }
+@keyframes atm-win-in {
+    0%   { opacity: 0; transform: translateY(40px) scale(.86); filter: blur(14px); }
+    55%  { opacity: 1; filter: blur(0); }
+    100% { opacity: 1; transform: none; filter: none; }
+}
+@keyframes atm-win-out { to { opacity: 0; transform: translateY(24px) scale(.94); filter: blur(8px); } }
+
+/* ── ستونِ گفتگوها ── */
+.atm-chat__side {
+    display: flex; flex-direction: column; min-height: 0;
+    background: color-mix(in srgb, var(--mud-palette-text-primary) 2.5%, var(--mud-palette-surface));
+    border-inline-end: 1px solid color-mix(in srgb, var(--mud-palette-text-primary) 7%, transparent);
+}
+.atm-chat__sidehead {
+    display: flex; align-items: center; gap: 10px;
+    padding: 18px 16px 12px;
+    font-size: 1.1rem;
+}
+.atm-chat__sidehead .logo {
+    width: 38px; height: 38px; border-radius: 12px; display: grid; place-items: center; color: #fff;
+    background: linear-gradient(135deg, var(--mud-palette-primary), #8b5cf6);
+    box-shadow: 0 10px 22px -10px var(--mud-palette-primary);
+    animation: atm-logo 1s var(--atm-spring) .15s both;
+}
+@keyframes atm-logo { from { transform: scale(0) rotate(-40deg); } to { transform: none; } }
+
+.atm-chat__search { position: relative; margin: 0 14px 10px; }
+.atm-chat__search i { position: absolute; inset-inline-start: 12px; top: 50%; transform: translateY(-50%); opacity: .5; }
+.atm-chat__search input {
+    width: 100%; height: 40px; padding: 0 38px 0 12px;
+    border-radius: 12px;
+    border: 1px solid transparent;
+    background: color-mix(in srgb, var(--mud-palette-text-primary) 6%, transparent);
+    color: inherit; font: inherit; font-size: .88rem; outline: none;
+    transition: border-color .2s, background .2s, box-shadow .2s;
+}
+.atm-chat__search input:focus {
+    background: var(--mud-palette-surface);
+    border-color: color-mix(in srgb, var(--mud-palette-primary) 55%, transparent);
+    box-shadow: 0 0 0 4px color-mix(in srgb, var(--mud-palette-primary) 13%, transparent);
+}
+
+.atm-chat__list { flex: 1; overflow-y: auto; overflow-x: hidden; padding: 4px 8px 14px; }
+
+.atm-conv {
+    width: 100%;
+    display: flex; align-items: center; gap: 12px;
+    padding: 10px 10px;
+    margin-bottom: 2px;
+    border: 0; border-radius: 16px;
+    background: transparent; color: inherit; font: inherit; text-align: start;
+    cursor: pointer;
+    position: relative;
+    transition: background .2s, transform .2s var(--atm-spring);
+    animation: atm-conv-in .45s var(--atm-spring) both;
+    animation-delay: calc(var(--i, 0) * 35ms);
+}
+@keyframes atm-conv-in { from { opacity: 0; transform: translateX(-18px); } to { opacity: 1; transform: none; } }
+.atm-conv:hover { background: color-mix(in srgb, var(--mud-palette-text-primary) 5%, transparent); }
+.atm-conv:active { transform: scale(.98); }
+.atm-conv.is-active {
+    background: linear-gradient(135deg, var(--mud-palette-primary), color-mix(in srgb, var(--mud-palette-primary) 70%, #8b5cf6));
+    color: #fff;
+    box-shadow: 0 12px 24px -14px var(--mud-palette-primary);
+}
+.atm-conv.is-active .atm-av { box-shadow: 0 0 0 2px rgb(255 255 255 / .6); }
+.atm-conv.is-active .r2, .atm-conv.is-active time { color: rgb(255 255 255 / .8); }
+.atm-conv__body { flex: 1; min-width: 0; }
+.atm-conv .r1, .atm-conv .r2 { display: flex; align-items: center; gap: 6px; }
+.atm-conv .r1 b { flex: 1; font-size: .92rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.atm-conv time { font-size: .7rem; color: var(--mud-palette-text-secondary); flex: none; }
+.atm-conv .r2 { margin-top: 3px; font-size: .8rem; color: var(--mud-palette-text-secondary); }
+.atm-conv .pv { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.atm-conv.has-unread .r1 b, .atm-conv.has-unread .pv { font-weight: 700; color: var(--mud-palette-text-primary); }
+.atm-conv.is-active.has-unread .pv, .atm-conv.is-active.has-unread .r1 b { color: #fff; }
+.atm-conv .tick { font-size: .9rem; }
+.tick.is-read { color: #0ea5e9; }
+.atm-conv.is-active .tick.is-read { color: #fff; }
+
+.atm-unread {
+    min-width: 22px; height: 22px; padding: 0 7px;
+    border-radius: 999px; display: inline-grid; place-items: center;
+    font-size: .72rem; font-weight: 800; color: #fff;
+    background: linear-gradient(135deg, var(--mud-palette-primary), #8b5cf6);
+    box-shadow: 0 6px 14px -6px var(--mud-palette-primary);
+    animation: atm-pop .5s var(--atm-spring, ease);
+    flex: none;
+}
+.atm-conv.is-active .atm-unread { background: #fff; color: var(--mud-palette-primary); }
+
+.atm-av--bc { color: #fff; background: linear-gradient(135deg, #f59e0b, #f43f5e); font-size: 1rem; }
+.atm-chat__hint { display: grid; justify-items: center; gap: 12px; padding: 30px 10px; text-align: center; color: var(--mud-palette-text-secondary); font-size: .86rem; }
+
+/* ── بخشِ گفتگو ── */
+.atm-chat__main {
+    position: relative; min-width: 0; min-height: 0;
+    display: flex; flex-direction: column;
+    /* «کاغذ دیواری»ِ ملایم مثل تلگرام، از رنگ‌های تم */
+    background:
+        radial-gradient(circle at 12% 18%, color-mix(in srgb, var(--mud-palette-primary) 10%, transparent), transparent 34%),
+        radial-gradient(circle at 88% 82%, rgb(139 92 246 / .10), transparent 38%),
+        radial-gradient(color-mix(in srgb, var(--mud-palette-text-primary) 7%, transparent) 1px, transparent 1.3px) 0 0 / 22px 22px,
+        color-mix(in srgb, var(--mud-palette-text-primary) 1.5%, var(--mud-palette-background));
+}
+.atm-chat__pane { flex: 1; min-height: 0; display: flex; flex-direction: column; animation: atm-pane-in .42s var(--atm-spring) both; }
+@keyframes atm-pane-in { from { opacity: 0; transform: translateX(-26px); } to { opacity: 1; transform: none; } }
+
+.atm-chat__head {
+    display: flex; align-items: center; gap: 12px;
+    padding: 14px 20px;
+    background: color-mix(in srgb, var(--mud-palette-surface) 86%, transparent);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    border-bottom: 1px solid color-mix(in srgb, var(--mud-palette-text-primary) 7%, transparent);
+    z-index: 2;
+}
+.atm-chat__head b { display: block; font-size: 1rem; }
+.atm-chat__head small { color: var(--mud-palette-text-secondary); font-size: .76rem; }
+.atm-chat__head .back { display: none; }
+
+.atm-chat__msgs {
+    flex: 1; overflow-y: auto;
+    padding: 18px clamp(14px, 4vw, 48px) 10px;
+    display: flex; flex-direction: column; gap: 4px;
+}
+.atm-chat__start { margin: auto; padding: 14px 20px; border-radius: 16px; background: color-mix(in srgb, var(--mud-palette-surface) 80%, transparent); color: var(--mud-palette-text-secondary); }
+
+.atm-day { display: flex; justify-content: center; margin: 14px 0 8px; position: sticky; top: 4px; z-index: 1; }
+.atm-day span {
+    padding: 4px 14px; border-radius: 999px; font-size: .72rem; font-weight: 600;
+    color: var(--mud-palette-text-secondary);
+    background: color-mix(in srgb, var(--mud-palette-surface) 88%, transparent);
+    backdrop-filter: blur(8px);
+    box-shadow: 0 4px 12px -8px rgb(0 0 0 / .35);
+}
+
+.atm-msg { display: flex; flex-direction: column; max-width: min(78%, 620px); }
+.atm-msg.mine { align-self: flex-start; align-items: flex-start; }
+.atm-msg.theirs { align-self: flex-end; align-items: flex-end; }
+.atm-msg.is-new { animation: atm-bubble-in .55s var(--atm-spring) both; animation-delay: calc(var(--i, 0) * 45ms); }
+.atm-msg.mine.is-new { transform-origin: 100% 100%; }
+.atm-msg.theirs.is-new { transform-origin: 0% 100%; }
+@keyframes atm-bubble-in {
+    0%   { opacity: 0; transform: translateY(16px) scale(.8); }
+    60%  { opacity: 1; transform: translateY(-3px) scale(1.02); }
+    100% { opacity: 1; transform: none; }
+}
+
+.atm-bubble {
+    position: relative;
+    padding: 8px 14px 6px;
+    border-radius: 20px;
+    font-size: .93rem; line-height: 1.85;
+    box-shadow: 0 2px 6px -3px rgb(0 0 0 / .25);
+}
+.atm-msg.mine .atm-bubble {
+    color: #fff;
+    background: linear-gradient(135deg, var(--mud-palette-primary), color-mix(in srgb, var(--mud-palette-primary) 62%, #8b5cf6));
+    border-start-start-radius: 6px;
+}
+.atm-msg.theirs .atm-bubble {
+    background: var(--mud-palette-surface);
+    border-start-end-radius: 6px;
+}
+.atm-bubble .txt { white-space: pre-wrap; word-break: break-word; }
+.atm-bubble .meta {
+    display: flex; align-items: center; justify-content: flex-end; gap: 5px;
+    margin-top: 2px;
+    font-size: .68rem; opacity: .72;
+}
+.atm-msg.mine .tick.is-read { color: #bae6fd; opacity: 1; }
+.atm-msg.is-failed .atm-bubble { background: linear-gradient(135deg, #f43f5e, #e11d48); }
+.atm-retry {
+    margin-top: 4px; border: 0; background: transparent; cursor: pointer;
+    color: #f43f5e; font: inherit; font-size: .75rem; display: inline-flex; gap: 4px; align-items: center;
+}
+.atm-msg .bi-clock { animation: atm-spin 1.2s linear infinite; display: inline-block; }
+@keyframes atm-spin { to { transform: rotate(360deg); } }
+
+/* ارسالِ گروهی */
+.atm-bubble--bc { min-width: 260px; }
+.atm-bc__to { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0 4px; }
+.atm-bc__to span {
+    display: inline-flex; align-items: center; gap: 4px;
+    padding: 2px 10px; border-radius: 999px; font-size: .72rem;
+    background: rgb(255 255 255 / .16);
+}
+.atm-bc__to span.is-read { background: rgb(255 255 255 / .32); }
+.atm-bubble .bc-count { margin-inline-end: auto; font-weight: 600; }
+
+/* ── نوشتن ── */
+.atm-composer {
+    padding: 10px clamp(12px, 3vw, 36px) 16px;
+    background: linear-gradient(to top, color-mix(in srgb, var(--mud-palette-surface) 92%, transparent), transparent);
+}
+.atm-composer__row {
+    display: flex; align-items: flex-end; gap: 8px;
+    padding: 6px;
+    border-radius: 24px;
+    background: var(--mud-palette-surface);
+    border: 1px solid color-mix(in srgb, var(--mud-palette-text-primary) 9%, transparent);
+    box-shadow: 0 16px 40px -22px rgb(0 0 0 / .45);
+    transition: border-color .2s, box-shadow .2s;
+}
+.atm-composer__row:focus-within {
+    border-color: color-mix(in srgb, var(--mud-palette-primary) 45%, transparent);
+    box-shadow: 0 0 0 4px color-mix(in srgb, var(--mud-palette-primary) 12%, transparent), 0 16px 40px -22px rgb(0 0 0 / .45);
+}
+.atm-composer textarea {
+    flex: 1; resize: none; border: 0; outline: none; background: transparent;
+    color: inherit; font: inherit; font-size: .95rem; line-height: 1.8;
+    padding: 7px 6px;
+    min-height: 40px; max-height: 170px;
+    field-sizing: content;
+}
+.atm-composer.is-disabled .atm-composer__row { opacity: .6; }
+.atm-icon-btn.is-on { color: var(--mud-palette-primary); background: color-mix(in srgb, var(--mud-palette-primary) 12%, transparent); }
+
+.atm-custchip {
+    display: inline-flex; align-items: center; gap: 6px;
+    max-width: 170px; height: 34px; padding: 0 12px; margin-bottom: 3px;
+    border-radius: 999px; border: 1px dashed color-mix(in srgb, var(--mud-palette-text-primary) 18%, transparent);
+    background: transparent; color: var(--mud-palette-text-secondary);
+    font: inherit; font-size: .74rem; cursor: pointer;
+    transition: color .2s, border-color .2s;
+}
+.atm-custchip span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.atm-custchip:hover, .atm-custchip.is-on { color: var(--mud-palette-primary); border-color: var(--mud-palette-primary); border-style: solid; }
+
+.atm-send {
+    width: 44px; height: 44px; flex: none;
+    border: 0; border-radius: 50%;
+    display: grid; place-items: center;
+    color: #fff; font-size: 1.1rem; cursor: pointer;
+    background: color-mix(in srgb, var(--mud-palette-text-primary) 18%, transparent);
+    transform: scale(.86);
+    transition: transform .35s var(--atm-spring, ease), background .25s, box-shadow .25s;
+    overflow: hidden;
+}
+.atm-send i { transform: scaleX(-1); display: inline-block; }
+.atm-send.is-ready {
+    transform: scale(1);
+    background: linear-gradient(135deg, var(--mud-palette-primary), #8b5cf6);
+    box-shadow: 0 10px 22px -10px var(--mud-palette-primary);
+}
+.atm-send.is-ready:hover { transform: scale(1.07) rotate(-8deg); }
+.atm-send:disabled { cursor: default; }
+.atm-send.is-flying i { animation: atm-fly .55s cubic-bezier(.5, 0, .75, 0) both; }
+@keyframes atm-fly {
+    0%   { transform: scaleX(-1); opacity: 1; }
+    45%  { transform: scaleX(-1) translate(26px, -26px) rotate(-12deg); opacity: 0; }
+    46%  { transform: scaleX(-1) translate(-26px, 26px); opacity: 0; }
+    100% { transform: scaleX(-1); opacity: 1; }
+}
+
+.atm-emoji {
+    display: flex; flex-wrap: wrap; gap: 2px;
+    padding: 8px; margin-bottom: 8px;
+    border-radius: 18px;
+    background: var(--mud-palette-surface);
+    box-shadow: 0 16px 40px -20px rgb(0 0 0 / .45);
+    animation: atm-pop-up .35s var(--atm-spring, ease) both;
+    transform-origin: 90% 100%;
+}
+.atm-emoji button {
+    width: 38px; height: 38px; border: 0; border-radius: 10px; background: transparent;
+    font-size: 1.3rem; cursor: pointer; transition: transform .15s, background .15s;
+}
+.atm-emoji button:hover { transform: scale(1.25); background: color-mix(in srgb, var(--mud-palette-text-primary) 6%, transparent); }
+@keyframes atm-pop-up { from { opacity: 0; transform: translateY(10px) scale(.9); } to { opacity: 1; transform: none; } }
+
+.atm-composer__cust { margin-bottom: 8px; padding: 10px; border-radius: 16px; background: var(--mud-palette-surface); animation: atm-pop-up .3s ease both; }
+.atm-composer__note { margin-top: 8px; font-size: .74rem; color: #b45309; display: flex; align-items: center; gap: 6px; }
+
+/* ── انتخابِ گیرنده ── */
+.atm-picker { flex: 1; min-height: 0; display: flex; flex-direction: column; padding: 14px clamp(12px, 3vw, 36px) 0; gap: 10px; }
+.atm-picker__chips {
+    display: flex; flex-wrap: wrap; gap: 6px; align-items: center;
+    min-height: 46px; max-height: 110px; overflow-y: auto; padding: 6px;
+    border-radius: 16px; background: var(--mud-palette-surface);
+    border: 1px solid color-mix(in srgb, var(--mud-palette-text-primary) 8%, transparent);
+}
+.atm-picker__chips .ph { color: var(--mud-palette-text-secondary); font-size: .82rem; padding: 0 8px; }
+.atm-pchip {
+    display: inline-flex; align-items: center; gap: 6px;
+    height: 32px; padding: 0 4px 0 6px;
+    border-radius: 999px; font-size: .8rem;
+    background: color-mix(in srgb, var(--mud-palette-primary) 12%, var(--mud-palette-surface));
+    animation: atm-pop .4s var(--atm-spring, ease) both;
+}
+.atm-pchip button { width: 22px; height: 22px; border: 0; border-radius: 50%; background: transparent; color: inherit; cursor: pointer; display: grid; place-items: center; }
+.atm-pchip button:hover { background: rgb(0 0 0 / .1); }
+.atm-picker__bar { display: flex; gap: 8px; align-items: center; }
+.atm-picker__list {
+    flex: 1; overflow-y: auto; overflow-x: hidden;
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 8px;
+    align-content: start;
+    padding: 2px 2px 10px;
+}
+.atm-person {
+    display: flex; align-items: center; gap: 10px;
+    padding: 10px 12px; border-radius: 16px; cursor: pointer;
+    background: var(--mud-palette-surface);
+    border: 1.5px solid transparent;
+    transition: border-color .2s, transform .2s var(--atm-spring, ease), box-shadow .2s;
+    animation: atm-conv-in .4s var(--atm-spring, ease) both;
+    animation-delay: calc(var(--i, 0) * 22ms);
+    position: relative;
+}
+.atm-person input { position: absolute; opacity: 0; pointer-events: none; }
+.atm-person:hover { transform: translateY(-2px); box-shadow: 0 10px 20px -14px rgb(0 0 0 / .4); }
+.atm-person .nm { flex: 1; font-size: .86rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.atm-person .ck {
+    width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center;
+    border: 2px solid color-mix(in srgb, var(--mud-palette-text-primary) 18%, transparent);
+    color: transparent; transition: background .25s, border-color .25s, color .25s, transform .25s var(--atm-spring, ease);
+}
+.atm-person.is-on { border-color: var(--mud-palette-primary); }
+.atm-person.is-on .ck { background: var(--mud-palette-primary); border-color: var(--mud-palette-primary); color: #fff; transform: scale(1.1); }
+
+/* ── خوشامد ── */
+.atm-chat__welcome { margin: auto; display: grid; justify-items: center; text-align: center; gap: 10px; padding: 30px; animation: atm-pane-in .5s ease both; }
+.atm-chat__welcome h3 { margin: 6px 0 0; font-size: 1.25rem; font-weight: 800; }
+.atm-chat__welcome p { margin: 0 0 8px; color: var(--mud-palette-text-secondary); max-width: 340px; font-size: .9rem; line-height: 1.9; }
+.atm-chat__welcome .art { position: relative; width: 150px; height: 120px; }
+.atm-chat__welcome .art > i {
+    position: absolute; inset: 0; margin: auto; width: 84px; height: 84px; border-radius: 28px;
+    display: grid; place-items: center; font-size: 2.4rem; color: #fff;
+    background: linear-gradient(135deg, var(--mud-palette-primary), #8b5cf6);
+    box-shadow: 0 24px 40px -18px var(--mud-palette-primary);
+    animation: atm-bob 3.2s ease-in-out 3 alternate;
+}
+.atm-chat__welcome .b { position: absolute; border-radius: 14px; background: var(--mud-palette-surface); box-shadow: 0 10px 20px -12px rgb(0 0 0 / .35); animation: atm-bob 2.6s ease-in-out 3 alternate; }
+.atm-chat__welcome .b1 { width: 44px; height: 24px; top: 4px; right: 0; animation-delay: .3s; }
+.atm-chat__welcome .b2 { width: 34px; height: 20px; bottom: 6px; left: 2px; animation-delay: .8s; }
+.atm-chat__welcome .b3 { width: 22px; height: 14px; top: 18px; left: 18px; animation-delay: 1.2s; }
+@keyframes atm-bob { from { transform: translateY(0); } to { transform: translateY(-10px); } }
+
+/* ── موبایل: یک ستون، گفتگو روی فهرست می‌لغزد ── */
+@media (max-width: 760px) {
+    /* minmax(0,…) نه 1fr: وگرنه ستون به اندازه‌ی پیش‌نمایشِ بلندِ پیام‌ها کش می‌آید و از صفحه بیرون می‌زند */
+    .atm-chat { width: 100vw; height: 100dvh; border-radius: 0; grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); }
+    .atm-chat__side, .atm-chat__main { grid-area: 1 / 1; }
+    .atm-chat__main { transform: translateX(-100%); transition: transform .38s var(--atm-spring); }
+    .atm-chat.has-pane .atm-chat__main { transform: none; }
+    .atm-chat__head .back { display: grid; }
+    .atm-msg { max-width: 88%; }
+    .atm-custchip { max-width: 110px; }
+}
+
+/* ═══════════════ دیالوگ‌های MudBlazorِ این صفحه ═══════════════
+   فقط انیمیشنِ «باز شدن» جایگزین می‌شود؛ MudBlazor 6 برای بسته شدن
+   انیمیشنی ندارد، پس چیزی از رفتارش خنثی نمی‌شود (برخلافِ تله‌ی Snackbar
+   در AGENTS.md). بدون !important — فقط انتخابگرِ دقیق‌تر. */
+.mud-dialog.atm-dialog {
+    border-radius: 24px;
+    box-shadow: 0 40px 100px -30px rgb(0 0 0 / .55);
+    animation: atm-win-in .55s cubic-bezier(.16, 1.18, .3, 1) both;
+}
+.mud-overlay.atm-dialog-bg .mud-overlay-scrim { backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); }
+
+@media (prefers-reduced-motion: reduce) {
+    .atm-chat, .atm-chat *, .atm-chat-scrim, .mud-dialog.atm-dialog { animation-duration: .01ms; animation-iteration-count: 1; transition-duration: .01ms; }
 }

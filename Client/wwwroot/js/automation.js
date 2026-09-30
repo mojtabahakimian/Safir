@@ -13,7 +13,11 @@ window.atmKeys = (function () {
 
     function onKey(e) {
         if (!dotnet || e.ctrlKey || e.metaKey || e.altKey) return;
+        // پنجره‌ی چت Esc و کلیدهای خودش را خودش مدیریت می‌کند.
+        const chat = document.querySelector('.atm-chat');
+        if (chat && chat.contains(e.target)) return;
         if (e.key === 'Escape') { dotnet.invokeMethodAsync('HotkeyEscape'); return; }
+        if (chat) return;
         if (typing(document.activeElement)) return;
         // وقتی یک دیالوگِ MudBlazor باز است، میان‌بُرهای صفحه خاموش‌اند.
         if (document.querySelector('.mud-dialog-container')) return;
@@ -35,3 +39,25 @@ window.atmKeys = (function () {
         detach() { document.removeEventListener('keydown', onKey); dotnet = null; }
     };
 })();
+
+// پنجره‌ی چتِ پیام‌های داخلی.
+window.atmChat = {
+    // Enter = ارسال، Shift+Enter = خط جدید. isComposing برای IME (تایپِ ترکیبی).
+    // روی خودِ عنصر علامت می‌خورد تا با هر رندر دوباره وصل نشود.
+    bindComposer(el, dotnet) {
+        if (!el || el._atmBound) return;
+        el._atmBound = true;
+        el.addEventListener('keydown', e => {
+            if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
+                e.preventDefault();
+                dotnet.invokeMethodAsync('SendFromKeyboard');
+            }
+        });
+    },
+    // اگر نزدیکِ پایین است نرم، وگرنه (باز کردنِ گفتگو) یک‌جا.
+    scrollToBottom(el) {
+        if (!el) return;
+        const far = el.scrollHeight - el.scrollTop - el.clientHeight > 900;
+        requestAnimationFrame(() => el.scrollTo({ top: el.scrollHeight, behavior: far ? 'auto' : 'smooth' }));
+    }
+};
