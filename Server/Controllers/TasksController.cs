@@ -97,7 +97,7 @@ namespace Safir.Server.Controllers
                     try { task.tg = (int?)t.tg; } catch { /* Log or handle */ }           // ***** کست صریح long به int? *****
                     try { task.CTIM = (DateTime?)t.CTIM; } catch { /* Log or handle */ }   // احتمالاً datetime است
                     try { task.USERCO = (int?)t.USERCO; } catch { /* Log or handle */ }     // ***** کست صریح long به int? *****
-                    try { task.SEE = (bool?)t.SEE; } catch { /* Log or handle */ }         // کست به bool? (بسته به نوع bit در SQL)
+                    try { task.SEE = t.SEE is null ? null : Convert.ToInt32(t.SEE) != 0; } catch { /* Log or handle */ } // در پایگاه int است، نه bit
 
                     // تبدیل تاریخ و زمان
                     try { task.STDATE = CL_Tarikh.ConvertToDateTimeFromPersianLong((long?)t.STDATE_DB); } catch { /* Log or handle */ }
@@ -105,7 +105,7 @@ namespace Safir.Server.Controllers
                     try { task.ENDATE = CL_Tarikh.ConvertToDateTimeFromPersianLong((long?)t.ENDATE_DB); } catch { /* Log or handle */ }
                     try { task.ENTIME = CL_Tarikh.ConvertToTimeSpanFromTimeInt((int?)t.ENTIME_DB); } catch { /* Log or handle */ }
                     try { task.SUMTIME = CL_Tarikh.ConvertToTimeSpanFromTimeInt((int?)t.SUMTIME_DB); } catch { /* Log or handle */ }
-                    try { task.SEET = CL_Tarikh.ConvertToDateTimeFromPersianLong((long?)t.SEET_DB); } catch { /* Log or handle */ }
+                    try { task.SEET = t.SEET_DB is DateTime seet ? seet : CL_Tarikh.ConvertToDateTimeFromPersianLong((long?)t.SEET_DB); } catch { /* Log or handle */ } // در پایگاه datetime است
 
                     return task;
 
@@ -188,14 +188,18 @@ namespace Safir.Server.Controllers
 
             long? enDateLong = CL_Tarikh.ConvertToPersianDateLong(updatedTask.ENDATE);
             int? enTimeInt = CL_Tarikh.ConvertTimeToInt(updatedTask.ENTIME);
-            long? seetLong = CL_Tarikh.ConvertToPersianDateLong(updatedTask.SEET);
 
             try
             {
+                // ⚠ SEE و SEET («مجری دیده است» و زمانش) عمداً اینجا نیستند: آن‌ها را
+                // نرم‌افزار WPF موقعِ دیدنِ کار می‌نویسد و فرمِ ویرایش مقدارِ درستی از
+                // آن‌ها ندارد. قبلاً هر ویرایش هر دو را NULL می‌کرد (SEE در پایگاه int
+                // است و تبدیلش به bool? بی‌صدا شکست می‌خورد؛ SEET هم datetime است نه
+                // تاریخ شمسی).
                 string sql = @"UPDATE dbo.TASKS SET
                                    PERSONEL = @PERSONEL, TASK = @TASK, PERIORITY = @PERIORITY, STATUS = @STATUS,
                                    ENDATE = @ENDATE, ENTIME = @ENTIME, COMP_COD = @COMP_COD, skid = @skid,
-                                   num = @num, SEE = @SEE, SEET = @SEET
+                                   num = @num
                                WHERE IDNUM = @IDNUM";
 
                 var parameters = new
@@ -209,8 +213,6 @@ namespace Safir.Server.Controllers
                     updatedTask.COMP_COD,
                     updatedTask.skid,
                     updatedTask.num,
-                    updatedTask.SEE,
-                    SEET = seetLong,
                     IDNUM = idnum
                 };
 
