@@ -1,609 +1,944 @@
 @page "/automation/tasks"
 @using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Web.Virtualization
 @using Safir.Shared.Constants
+@using Safir.Shared.Models
 @using Safir.Shared.Models.Automation
 @using Safir.Shared.Interfaces
+@using Safir.Client.Components.Automation
 @using MudBlazor
-@using System.Timers
-@using System.Threading
-@using Safir.Shared.Models
-@using Safir.Shared.Utility
-@using System.Globalization
-@using Safir.Shared.Models
 
-@inject LookupApiService LookupService
 @inject IAutomationApiService AutomationService
+@inject LookupApiService LookupService
 @inject ISnackbar Snackbar
 @inject IDialogService DialogService
-@inject NavigationManager NavManager
-@inject LookupApiService LookupService
 @inject AuthenticationStateProvider AuthenticationStateProvider
-@using Safir.Client.Components.Automation
-@implements IDisposable
+@inject ConnectionManagerService ConnectionManager
+@inject IJSRuntime JS
+@implements IAsyncDisposable
 
 @attribute [Authorize]
 
-<MudContainer MaxWidth="MaxWidth.False" Class="pa-2 mt-4">
-    @* بخش HTML بدون تغییر باقی می‌ماند *@
-    @* نمایش عنوان و دکمه‌ها *@
-    <MudPaper Elevation="2" Class="pa-4 mb-4">
-        <MudGrid Justify="Justify.SpaceBetween" AlignItems="Align.Center">
-            <MudItem>
-                <MudText Typo="Typo.h5">کارتابل اتوماسیون</MudText>
-            </MudItem>
-            <MudItem>
-                <MudStack Row="true" Spacing="2" Class="flex-wrap">
-                    <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="LoadTasksAsync" StartIcon="@Icons.Material.Filled.Refresh" Disabled="_isLoading" Class="ma-1">بروزرسانی</MudButton>
-                    <MudButton Variant="Variant.Filled" Color="Color.Success" OnClick="ShowBulkUpdateDialog" StartIcon="@Icons.Material.Filled.EditNote" Disabled="!_selectedTasks.Any()" Class="ma-1">ویرایش گروهی</MudButton>
-                    <MudButton Variant="Variant.Filled" Color="Color.Info" OnClick="ShowMessagesDialog" StartIcon="@Icons.Material.Filled.Message" Class="ma-1">پیام‌ها (@_unreadMessageCount)</MudButton>
-                    <MudButton Variant="Variant.Filled" Color="Color.Warning" OnClick="ShowRemindersDialog" StartIcon="@Icons.Material.Filled.NotificationsActive" Class="ma-1">یادآوری‌ها (@_activeReminderCount)</MudButton>
-                </MudStack>
-            </MudItem>
-        </MudGrid>
-    </MudPaper>
+<PageTitle>کارتابل اتوماسیون</PageTitle>
 
-    @* گرید اصلی *@
-    <MudGrid Spacing="2" Style="flex-grow: 1;">
-        @* --- بخش فیلترها --- *@
-        <MudItem xs="12" md="2">
-            <MudPaper Elevation="2" Class="pa-3" Style="height: 100%;">
-                <MudText Typo="Typo.h6" GutterBottom="true">فیلترها</MudText>
-                <MudStack Spacing="2">
-                    @* فیلتر وضعیت *@
-                    <MudRadioGroup T="int" Value="_filterStatus" ValueChanged="((int newValue) => OnStatusFilterChanged(newValue))">
-                        <MudRadio Option="1" Color="Color.Primary" Size="Size.Small">انجام نشده (@_countStatus1)</MudRadio>
-                        <MudRadio Option="2" Color="Color.Primary" Size="Size.Small">انجام شده (@_countStatus2)</MudRadio>
-                        <MudRadio Option="3" Color="Color.Primary" Size="Size.Small">لغو شده (@_countStatus3)</MudRadio>
-                        <MudRadio Option="0" Color="Color.Primary" Size="Size.Small">همه (@_countStatus0)</MudRadio>
-                    </MudRadioGroup>
-                    <MudDivider Class="my-2" />
-                    @* فیلتر کاربر مجری *@
-                    @if (_canFilterByUser)
-                    {
-                        <MudSelect T="int?" Label="وظایف کاربر" Value="_filterAssignedUserId" ValueChanged="((int? newValue) => OnUserFilterChanged(newValue))" Dense="true" Variant="Variant.Outlined" Clearable="true" Placeholder="-- انتخاب کاربر --">
-                            @* آیتم کاربر فعلی باید با Userid (عددی) و UserNameDisplay مقداردهی شود *@
-                            @if (Userid != 0)
-                            {
-                                <MudSelectItem T="int?" Value="Userid">@($"{UserNameDisplay ?? "شما"} ({Userid})")</MudSelectItem>
-                            }
-                            @if (_subordinatePersonnelLookup != null)
-                            {
-                                foreach (var p in _subordinatePersonnelLookup)
-                                {
-                                    <MudSelectItem T="int?" Value="@p.USERCO">@p.SAL_NAME</MudSelectItem>
-                                }
-                            }
-                            else
-                            {
-                                <MudSelectItem T="int?" Value="null" Disabled="true">...</MudSelectItem>
-                            }
-                        </MudSelect>
-                    }
-                    @* فیلتر نوع سند *@
-                    <MudTextField T="string" Label="انواع سند (skid با کاما)" @bind-Value="_filterTaskTypes" Variant="Variant.Outlined" Dense="true" OnDebounceIntervalElapsed="OnFilterChangedDebounced" DebounceInterval="500" />
-                </MudStack>
-            </MudPaper>
-        </MudItem>
+<div class="atm">
 
-        @* --- بخش اصلی (فرم و جدول) --- *@
-        <MudItem xs="12" md="10" Class="d-flex flex-column">
-            @* --- فرم ورود/ویرایش وظیفه --- *@
-            <MudPaper Elevation="2" Class="pa-3 mb-3">
-                <EditForm Model="@_currentTask">
-                    <DataAnnotationsValidator />
-                    <MudForm @ref="_form">
-                        <MudGrid Spacing="2">
-                            <MudItem xs="12">
-                                <MudTextField Label="شرح وظیفه" @bind-Value="_currentTask.TASK" For="@(() => _currentTask.TASK)" Lines="2" Variant="Variant.Outlined" Required="true" />
-                            </MudItem>
-                            <MudItem xs="12" sm="6" md="3">
-                                <MudSelect T="int" Label="کاربر مجری" @bind-Value="_currentTask.PERSONEL" For="@(() => _currentTask.PERSONEL)" Variant="Variant.Outlined" Required="true" Dense="true">
-                                    @if (_personelLookup != null)
-                                    {
-                                        foreach (var p in _personelLookup)
-                                        {
-                                            <MudSelectItem T="int" Value="@p.USERCO">@p.SAL_NAME</MudSelectItem>
-                                        }
-                                    }
-                                    else
-                                    {
-                                        <MudSelectItem T="int" Value="0" Disabled="true">...</MudSelectItem>
-                                    }
-                                </MudSelect>
-                            </MudItem>
-                            <MudItem xs="6" sm="3" md="2">
-                                <MudSelect T="int" Label="اولویت" @bind-Value="_currentTask.PERIORITY" For="@(() => _currentTask.PERIORITY)" Variant="Variant.Outlined" Required="true" Dense="true">
-                                    <MudSelectItem T="int" Value="1">فوری</MudSelectItem> <MudSelectItem T="int" Value="2">معمولی</MudSelectItem>
-                                </MudSelect>
-                            </MudItem>
-                            <MudItem xs="6" sm="3" md="2">
-                                <MudSelect T="int" Label="وضعیت" @bind-Value="_currentTask.STATUS" For="@(() => _currentTask.STATUS)" Variant="Variant.Outlined" Required="true" Dense="true">
-                                    <MudSelectItem T="int" Value="1">انجام نشده</MudSelectItem> <MudSelectItem T="int" Value="2">انجام شده</MudSelectItem> <MudSelectItem T="int" Value="3">لغو شده</MudSelectItem>
-                                </MudSelect>
-                            </MudItem>
-                            <MudItem xs="12" sm="8" md="2">
-                                <MudAutocomplete T="LookupDto<string>" Label="گیرنده (مشتری)"
-                                                 @bind-Value="SelectedCustomerForTask"
-                                                 SearchFunc="SearchCustomersAsync"
-                                                 ToStringFunc="@(c => c?.Name ?? string.Empty)"
-                                                 ResetValueOnEmptyText="true"
-                                                 CoerceText="false"
-                                                 Variant="Variant.Outlined" Dense="true" Clearable="true"
-                                                 Required="true"
-                                                 RequiredError="انتخاب گیرنده الزامی است."
-                                                 AdornmentIcon="@Icons.Material.Filled.Search" AdornmentColor="Color.Primary">
-                                    <ItemTemplate Context="customerCtx">
-                                        <MudText>@customerCtx.Name (@customerCtx.Id)</MudText>
-                                    </ItemTemplate>
-                                    <NoItemsTemplate>
-                                        <MudText>مشتری یافت نشد.</MudText>
-                                    </NoItemsTemplate>
-                                    <MoreItemsTemplate>
-                                        <MudText>نتایج بیشتر موجود است...</MudText>
-                                    </MoreItemsTemplate>
-                                </MudAutocomplete>
-                            </MudItem>
-                            <MudItem xs="12" sm="4" md="3" Class="d-flex justify-end align-self-center">
-                                <MudStack Row="true" Spacing="2">
-                                    <MudButton ButtonType="ButtonType.Button" @onclick="SaveTaskAsync" Variant="Variant.Filled" Color="Color.Success" Disabled="_isSaving" StartIcon="@Icons.Material.Filled.Save" Size="Size.Small">ذخیره وظیفه</MudButton>
-                                    <MudButton Variant="Variant.Filled" Color="Color.Default" OnClick="ClearFormAsync" Disabled="_isSaving" StartIcon="@Icons.Material.Filled.Clear" Size="Size.Small">جدید</MudButton>
-                                </MudStack>
-                            </MudItem>
-                        </MudGrid>
-                        <ValidationSummary />
-                    </MudForm>
-                </EditForm>
-            </MudPaper>
+    @* ═════════════ سربرگ ═════════════ *@
+    <section class="atm-hero">
+        <div class="atm-hero__grid"></div>
 
-            @* --- جدول وظایف --- *@
-            <MudPaper Elevation="2" Class="pa-1" Style="flex: 1; overflow-y: auto; min-height: 400px;">
-                <MudTable ServerData="@(new Func<TableState, Task<TableData<TaskModel>>>(ServerReload))"
-                          Dense="true" Hover="true" @ref="_table" MultiSelection="true" @bind-SelectedItems="_selectedTasks"
-                          Elevation="0" Breakpoint="Breakpoint.Sm" Loading="_isLoading" LoadingProgressColor="Color.Info">
-                    <HeaderContent>
-                        <MudTh><MudTableSortLabel SortLabel="idnum_field" T="TaskModel">ID</MudTableSortLabel></MudTh>
-                        <MudTh><MudTableSortLabel SortLabel="task_field" T="TaskModel">شرح وظیفه</MudTableSortLabel></MudTh>
-                        <MudTh>مجری</MudTh>
-                        <MudTh>اولویت</MudTh>
-                        <MudTh><MudTableSortLabel SortLabel="status_field" T="TaskModel">وضعیت</MudTableSortLabel></MudTh>
-                        <MudTh><MudTableSortLabel SortLabel="stdate_field" T="TaskModel">تاریخ ارجاع</MudTableSortLabel></MudTh>
-                        <MudTh><MudTableSortLabel SortLabel="endate_field" T="TaskModel">تاریخ انجام</MudTableSortLabel></MudTh>
-                        <MudTh>نام گیرنده</MudTh>
-                        <MudTh>عملیات</MudTh>
-                    </HeaderContent>
-                    <RowTemplate>
-                        <MudTd DataLabel="ID">@context.IDNUM</MudTd>
-                        <MudTd DataLabel="شرح وظیفه" Style="white-space: normal; word-break: break-word;">@context.TASK</MudTd>
-                        <MudTd DataLabel="مجری">@GetPersonelName(context.PERSONEL)</MudTd>
-                        <MudTd DataLabel="اولویت">
-                            @if (context.PERIORITY == 1)
-                            {
-                                <MudChip Label="true" Color="Color.Error" Size="Size.Small">فوری</MudChip>
-                            }
-                            else
-                            {
-                                <MudChip Label="true" Color="Color.Default" Size="Size.Small">معمولی</MudChip>
-                            }
-                        </MudTd>
-                        <MudTd DataLabel="وضعیت">@GetStatusName(context.STATUS)</MudTd>
-                        <MudTd DataLabel="تاریخ ارجاع">@FormatShamsiDateFromDateTime(context.STDATE) @context.STTIME?.ToString("hh\\:mm")</MudTd>
-                        <MudTd DataLabel="تاریخ انجام">@FormatShamsiDateFromDateTime(context.ENDATE) @context.ENTIME?.ToString("hh\\:mm")</MudTd>
-                        <MudTd DataLabel="نام گیرنده">@(context.NAME ?? GetCustomerName(context.COMP_COD))</MudTd>
-                        <MudTd DataLabel="عملیات">
-                            <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small" Variant="Variant.Outlined" Color="Color.Primary" OnClick="@(() => SelectTaskForEdit(context))" Title="ویرایش" />
-                            <MudIconButton Icon="@Icons.Material.Filled.ListAlt" Size="Size.Small" Variant="Variant.Outlined" Color="Color.Secondary" OnClick="@(() => ShowEventsDialog(context.IDNUM))" Title="رویدادها" />
-                        </MudTd>
-                    </RowTemplate>
-                    <NoRecordsContent> <MudText>وظیفه‌ای یافت نشد.</MudText> </NoRecordsContent>
-                    <LoadingContent> <MudText>در حال بارگذاری...</MudText> </LoadingContent>
-                    <PagerContent>
-                        <MudTablePager RowsPerPageString="تعداد در صفحه" InfoFormat="{first_item}-{last_item} از {all_items}" />
-                        <MudSpacer />
-                        <MudText Typo="Typo.body2" Class="mr-4">تعداد کل: @_totalItems</MudText>
-                    </PagerContent>
-                </MudTable>
-            </MudPaper>
-        </MudItem>
-    </MudGrid>
-</MudContainer>
+        <div class="atm-hero__top">
+            <div style="min-width:0;flex:1 1 420px">
+                <span class="atm-hero__date"><i class="bi bi-calendar3"></i>@AutomationUi.LongDate(_now)</span>
+                <h1>@AutomationUi.Greeting(_now)، @(string.IsNullOrWhiteSpace(UserNameDisplay) ? "همکار عزیز" : UserNameDisplay) <span class="atm-wave">👋</span></h1>
+                <p class="atm-hero__sub">@HeroSentence</p>
 
-@inject IAutomationApiService AutomationService
-@inject ISnackbar Snackbar
-@inject IDialogService DialogService
-@inject NavigationManager NavManager
-@inject LookupApiService LookupService // <-- تزریق مستقیم کلاس سرویس
-@inject AuthenticationStateProvider AuthenticationStateProvider
-@inject ConnectionManagerService ConnectionManager
-@code {
-    private MudTable<TaskModel>? _table;
-    private MudForm? _form;
-    private IEnumerable<TaskModel> _tasks = new List<TaskModel>();
-    private TaskModel _currentTask = new TaskModel { PERIORITY = 2, STATUS = 1 };
-    private HashSet<TaskModel> _selectedTasks = new HashSet<TaskModel>();
-    private int _filterStatus = 1;
-    private int? _filterAssignedUserId;
-    private string? _filterTaskTypes = "1000";
-    // private string _searchString = ""; // حذف شد اگر استفاده نمی‌شود
-    private List<PersonelLookupModel>? _personelLookup;
-    private List<PersonelLookupModel>? _subordinatePersonnelLookup;
-    private bool _isLoading = false;
-    private bool _isSaving = false;
-    private int _totalItems = 0;
-    private bool _canFilterByUser = true;
-    private int _unreadMessageCount = 0;
-    private int _activeReminderCount = 0;
-    private int _countStatus0 = 0;
-    private int _countStatus1 = 0;
-    private int _countStatus2 = 0;
-    private int _countStatus3 = 0;
-    private System.Threading.Timer? _notificationTimer;
-    private System.Timers.Timer? _debounceTimer;
-    private int Userid = 0;
-    private string UserNameDisplay = string.Empty;
-    private string UserHES = string.Empty;
-    private bool _isInitialized = false;
-    private List<LookupDto<string>>? _customerLookup; // این لیست با داده‌های واقعی پر خواهد شد
-    private LookupDto<string>? _selectedCustomerForTask;
-    protected override async Task OnInitializedAsync()
-    {
-        await ConnectionManager.LoadSettingsAsync();
-        var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
-        var currentUserPrincipal = authState.User;
-        if (currentUserPrincipal?.Identity?.IsAuthenticated == true)
+                @if (_summary is not null && IsOwnInbox)
+                {
+                    <div class="atm-insights">
+                        @if (_summary.OpenUrgent > 0)
+                        {
+                            <button type="button" class="atm-insight atm-insight--urgent" @onclick="() => ApplyKpi(Kpi.Urgent)">
+                                <i class="bi bi-lightning-charge-fill"></i>@_summary.OpenUrgent کار فوری منتظر شماست
+                            </button>
+                        }
+                        @if (_summary.OpenStale > 0)
+                        {
+                            <button type="button" class="atm-insight atm-insight--stale" @onclick="() => ApplyKpi(Kpi.Stale)">
+                                <i class="bi bi-hourglass-bottom"></i>@_summary.OpenStale کار بیش از @_summary.StaleDays روز باز مانده
+                            </button>
+                        }
+                        @if (_summary.NewToday > 0)
+                        {
+                            <button type="button" class="atm-insight" @onclick="ShowNewest">
+                                <i class="bi bi-inbox-fill"></i>@_summary.NewToday ارجاعِ تازه‌ی امروز
+                            </button>
+                        }
+                        @if (_summary.DoneThisWeek > 0)
+                        {
+                            <button type="button" class="atm-insight atm-insight--good" @onclick="() => ApplyKpi(Kpi.Done)">
+                                <i class="bi bi-trophy-fill"></i>این هفته @_summary.DoneThisWeek کار را به سرانجام رساندید
+                            </button>
+                        }
+                    </div>
+                }
+            </div>
+
+            <div class="atm-hero__side">
+                <div class="atm-hero__actions">
+                    <button type="button" class="atm-btn atm-btn--light" @onclick="() => NewTask()" title="وظیفه‌ی جدید (N)">
+                        <i class="bi bi-plus-lg"></i>وظیفه‌ی جدید
+                    </button>
+                    <button type="button" class="atm-btn atm-btn--glass" @onclick="ShowMessagesDialog" title="پیام‌های داخلی">
+                        <i class="bi bi-chat-dots-fill"></i>پیام‌ها
+                        @if (_unreadMessageCount > 0)
+                        {
+                            <span class="atm-badge atm-badge--pulse">@_unreadMessageCount</span>
+                        }
+                    </button>
+                    <button type="button" class="atm-btn atm-btn--glass" @onclick="ShowRemindersDialog" title="یادآوری‌ها">
+                        <i class="bi bi-bell-fill"></i>یادآوری‌ها
+                        @if (_activeReminderCount > 0)
+                        {
+                            <span class="atm-badge" style="background:#f59e0b">@_activeReminderCount</span>
+                        }
+                    </button>
+                    <button type="button" class="atm-btn atm-btn--glass atm-btn--icon" @onclick="() => ReloadAsync()" disabled="@_loading" title="بروزرسانی (R)">
+                        <i class="bi bi-arrow-clockwise"></i>
+                    </button>
+                </div>
+
+                @if (_summary is not null && _summary.Open + _summary.Done > 0)
+                {
+                    var rate = (double)_summary.Done / (_summary.Open + _summary.Done);
+                    const double circ = 2 * Math.PI * 38;
+                    <div class="atm-ringbox" title="نسبتِ کارهای انجام‌شده به کلِ کارهای ارجاع‌شده">
+                        <div style="text-align:end;font-size:.78rem;opacity:.85;line-height:1.7">
+                            <div>@_summary.Done انجام‌شده</div>
+                            <div>@_summary.Open در انتظار</div>
+                        </div>
+                        <div class="atm-ring">
+                            <svg viewBox="0 0 92 92">
+                                <circle class="track" cx="46" cy="46" r="38" />
+                                <circle class="bar" cx="46" cy="46" r="38"
+                                        stroke-dasharray="@circ.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)"
+                                        stroke-dashoffset="@((circ * (1 - rate)).ToString("0.##", System.Globalization.CultureInfo.InvariantCulture))" />
+                            </svg>
+                            <div class="atm-ring__label"><b>@Math.Round(rate * 100)٪</b><small>نرخ انجام</small></div>
+                        </div>
+                    </div>
+                }
+            </div>
+        </div>
+
+        @if (_summary?.Focus is { } focus && focus.STATUS == 1)
         {
-            var userIdClaim = currentUserPrincipal.FindFirst(BaseknowClaimTypes.IDD)?.Value;
-            UserNameDisplay = currentUserPrincipal.FindFirst(BaseknowClaimTypes.UUSER)?.Value ?? string.Empty;
-            UserHES = currentUserPrincipal.FindFirst(BaseknowClaimTypes.USER_HES)?.Value ?? string.Empty;
-            if (string.IsNullOrEmpty(userIdClaim) || !int.TryParse(userIdClaim, out Userid) || Userid == 0)
-            {
-                Snackbar.Add("اطلاعات کاربر برای بارگذاری کارتابل ناقص یا نامعتبر است.", Severity.Error, config => { config.RequireInteraction = true; });
-                _isInitialized = false;
-                return;
-            }
-            _filterAssignedUserId = Userid;
-            _currentTask.PERSONEL = Userid;
-            if (!string.IsNullOrWhiteSpace(UserHES))
-            {
-                _currentTask.COMP_COD = UserHES;
-            }
+            <div class="atm-focus">
+                <div class="atm-focus__icon">@(focus.PERIORITY == 1 ? "🔥" : "🎯")</div>
+                <div style="min-width:0">
+                    <div class="atm-focus__eyebrow">پیشنهاد برای شروع — @(focus.PERIORITY == 1 ? "فوری‌ترین کار باز" : "قدیمی‌ترین کار باز")</div>
+                    <div class="atm-focus__text">@focus.TASK</div>
+                    <div class="atm-focus__meta">
+                        #@focus.IDNUM
+                        @if (!string.IsNullOrWhiteSpace(focus.NAME)) { <span> · @focus.NAME</span> }
+                        · @AutomationUi.Ago(focus.STDATE, focus.STTIME, _now)
+                    </div>
+                </div>
+                <div class="atm-focus__actions">
+                    <button type="button" class="atm-btn atm-btn--glass" @onclick="() => OpenTask(focus)"><i class="bi bi-box-arrow-up-left"></i>باز کردن</button>
+                    <button type="button" class="atm-btn atm-btn--light" disabled="@_busy.Contains(focus.IDNUM)" @onclick="() => SetStatusAsync(focus, 2)"><i class="bi bi-check2-circle"></i>انجام شد</button>
+                </div>
+            </div>
+        }
+    </section>
+
+    @* ═════════════ کارت‌های شاخص ═════════════ *@
+    <section class="atm-kpis">
+        <button type="button" class="atm-kpi atm-kpi--open @(ActiveKpi == Kpi.Open ? "is-active" : "")" style="--i:0" @onclick="() => ApplyKpi(Kpi.Open)">
+            <span class="atm-kpi__icon"><i class="bi bi-inbox"></i></span>
+            <span><span class="atm-kpi__num">@(_summary?.Open.ToString() ?? "—")</span><span class="atm-kpi__label d-block">در انتظار انجام</span></span>
+        </button>
+        <button type="button" class="atm-kpi atm-kpi--urgent @(ActiveKpi == Kpi.Urgent ? "is-active" : "")" style="--i:1" @onclick="() => ApplyKpi(Kpi.Urgent)">
+            <span class="atm-kpi__icon"><i class="bi bi-lightning-charge"></i></span>
+            <span><span class="atm-kpi__num">@(_summary?.OpenUrgent.ToString() ?? "—")</span><span class="atm-kpi__label d-block">فوری</span></span>
+        </button>
+        <button type="button" class="atm-kpi atm-kpi--stale @(ActiveKpi == Kpi.Stale ? "is-active" : "")" style="--i:2" @onclick="() => ApplyKpi(Kpi.Stale)">
+            <span class="atm-kpi__icon"><i class="bi bi-hourglass-split"></i></span>
+            <span><span class="atm-kpi__num">@(_summary?.OpenStale.ToString() ?? "—")</span><span class="atm-kpi__label d-block">معوق (بیش از @(_summary?.StaleDays ?? 30) روز)</span></span>
+        </button>
+        <button type="button" class="atm-kpi atm-kpi--done @(ActiveKpi == Kpi.Done ? "is-active" : "")" style="--i:3" @onclick="() => ApplyKpi(Kpi.Done)">
+            <span class="atm-kpi__icon"><i class="bi bi-check2-circle"></i></span>
+            <span><span class="atm-kpi__num">@(_summary?.DoneThisWeek.ToString() ?? "—")</span><span class="atm-kpi__label d-block">انجام‌شده‌ی این هفته</span></span>
+        </button>
+        <button type="button" class="atm-kpi atm-kpi--cancel @(ActiveKpi == Kpi.Cancelled ? "is-active" : "")" style="--i:4" @onclick="() => ApplyKpi(Kpi.Cancelled)">
+            <span class="atm-kpi__icon"><i class="bi bi-slash-circle"></i></span>
+            <span><span class="atm-kpi__num">@(_summary?.Cancelled.ToString() ?? "—")</span><span class="atm-kpi__label d-block">لغو شده</span></span>
+        </button>
+    </section>
+
+    @* ═════════════ نوار ابزار ═════════════ *@
+    <section class="atm-toolbar">
+        @if (_view == View.List)
+        {
+            <div class="atm-seg" role="tablist" aria-label="وضعیت">
+                @foreach (var (s, label, color) in StatusTabs)
+                {
+                    <button type="button" role="tab" aria-selected="@(_status == s)" class="@(_status == s ? "is-active" : "")"
+                            @onclick="() => SetStatusFilter(s)">
+                        <span class="dot" style="color:@color"></span>@label
+                        <span class="count">@CountFor(s)</span>
+                    </button>
+                }
+            </div>
+        }
+
+        <div class="atm-search">
+            <i class="bi bi-search"></i>
+            <input id="atm-search" type="search" placeholder="جستجو در شرح، گیرنده، شماره…" autocomplete="off"
+                   value="@_search" @oninput="OnSearch" />
+            @if (string.IsNullOrEmpty(_search)) { <kbd>/</kbd> }
+        </div>
+
+        <button type="button" class="atm-toggle @(_urgentOnly ? "is-on" : "")" @onclick="ToggleUrgentOnly" title="فقط کارهای فوری">
+            <i class="bi @(_urgentOnly ? "bi-lightning-charge-fill" : "bi-lightning-charge")"></i>فوری‌ها
+        </button>
+
+        @if (_canFilterByUser)
+        {
+            <div class="atm-field">
+                <MudSelect T="int?" Value="_userId" ValueChanged="OnUserChanged" Dense="true" Variant="Variant.Outlined"
+                           Margin="Margin.Dense" AnchorOrigin="Origin.BottomCenter" Placeholder="کارتابلِ…"
+                           AdornmentIcon="@Icons.Material.Outlined.People">
+                    <MudSelectItem T="int?" Value="@((int?)Userid)">کارتابل خودم</MudSelectItem>
+                    @foreach (var p in _subordinates)
+                    {
+                        <MudSelectItem T="int?" Value="@((int?)p.USERCO)">@p.SAL_NAME</MudSelectItem>
+                    }
+                </MudSelect>
+            </div>
+        }
+
+        <div class="atm-field">
+            <MudSelect T="int?" MultiSelection="true" SelectedValues="_docFilter" SelectedValuesChanged="OnDocFilterChanged"
+                       Dense="true" Variant="Variant.Outlined" Margin="Margin.Dense" AnchorOrigin="Origin.BottomCenter"
+                       Placeholder="همه‌ی انواع سند" MultiSelectionTextFunc="DocFilterText"
+                       AdornmentIcon="@Icons.Material.Outlined.Description">
+                @foreach (var d in _docTypes)
+                {
+                    <MudSelectItem T="int?" Value="@((int?)d.ID)">@d.NAME</MudSelectItem>
+                }
+            </MudSelect>
+        </div>
+
+        @if (_view == View.List)
+        {
+            <MudMenu AnchorOrigin="Origin.BottomLeft" TransformOrigin="Origin.TopLeft" Dense="true" Class="atm-push">
+                <ActivatorContent>
+                    <button type="button" class="atm-toggle" title="مرتب‌سازی"><i class="bi bi-sort-down"></i>@SortLabel(_sort)</button>
+                </ActivatorContent>
+                <ChildContent>
+                    @foreach (var s in Enum.GetValues<Sort>())
+                    {
+                        <MudMenuItem OnClick="() => SetSort(s)">
+                            <i class="bi @(s == _sort ? "bi-check2" : "bi-dot") ml-2"></i>@SortLabel(s)
+                        </MudMenuItem>
+                    }
+                </ChildContent>
+            </MudMenu>
+        }
+
+        <div class="atm-view @(_view == View.Board ? "atm-push" : "")" role="group" aria-label="نما">
+            <button type="button" class="@(_view == View.List ? "is-active" : "")" title="فهرست" @onclick="() => SetView(View.List)"><i class="bi bi-list-task"></i></button>
+            <button type="button" class="@(_view == View.Board ? "is-active" : "")" title="بُرد (کانبان)" @onclick="() => SetView(View.Board)"><i class="bi bi-kanban"></i></button>
+        </div>
+    </section>
+
+    @if (_loading)
+    {
+        <div class="atm-progress" aria-hidden="true"></div>
+    }
+
+    @if (!IsOwnInbox)
+    {
+        <div class="atm-viewing">
+            <i class="bi bi-person-badge"></i>
+            در حال مشاهده‌ی کارتابلِ <b>@PersonelName(_userId ?? 0)</b>
+            <button type="button" class="atm-btn atm-btn--ghost" style="height:32px" @onclick="() => OnUserChanged(Userid)">
+                <i class="bi bi-arrow-return-right"></i>کارتابل خودم
+            </button>
+        </div>
+    }
+
+    @* ═════════════ محتوا ═════════════ *@
+    @if (!_loadedOnce)
+    {
+        <div class="atm-list">
+            @for (int i = 0; i < 6; i++) { <div class="atm-skel" style="margin-bottom:10px;animation-delay:@(i * 90)ms"></div> }
+        </div>
+    }
+    else if (_view == View.List)
+    {
+        @if (_visible.Count > 0)
+        {
+            <div class="atm-listhead">
+                <label class="atm-check" title="انتخاب همه‌ی موارد نمایش‌داده‌شده">
+                    <input type="checkbox" checked="@AllVisibleSelected" @onchange="ToggleSelectAll" />
+                    <span></span>
+                </label>
+                <span>@_visible.Count وظیفه@(_visible.Count != _tasks.Count ? $" از {_tasks.Count}" : "")</span>
+                @if (_staleOnly)
+                {
+                    <button type="button" class="atm-pill atm-pill--urgent" style="border:0;cursor:pointer" @onclick="ClearStale">
+                        معوق‌ها <i class="bi bi-x"></i>
+                    </button>
+                }
+                <span class="spacer"></span>
+                @if (_selected.Count > 0) { <span>@_selected.Count انتخاب‌شده</span> }
+            </div>
+
+            <div class="atm-list">
+                <Virtualize Items="_visible" Context="t" ItemSize="96" OverscanCount="6">
+                    <div style="padding-bottom:10px" @key="t.IDNUM">
+                        <TaskCard Item="t" Selectable="true" Selected="_selected.Contains(t.IDNUM)"
+                                  Busy="_busy.Contains(t.IDNUM)" Leaving="_leaving.Contains(t.IDNUM)"
+                                  Index="IndexOf(t)" Now="_now" StaleDays="StaleDays" DocTypes="_docTypes"
+                                  OnOpen="OpenTask" OnEvents="t2 => ShowEventsDialog(t2.IDNUM)"
+                                  OnToggleDone="ToggleDoneAsync" OnToggleSelect="ToggleSelect"
+                                  OnTogglePriority="TogglePriorityAsync" OnSetStatus="x => SetStatusAsync(x.Item, x.Status)" />
+                    </div>
+                </Virtualize>
+            </div>
         }
         else
         {
+            <EmptyState Title="@EmptyTitle" Text="@EmptyText">
+                @if (HasClientFilters)
+                {
+                    <button type="button" class="atm-btn atm-btn--ghost" @onclick="ClearFilters"><i class="bi bi-funnel"></i>پاک کردن فیلترها</button>
+                }
+                else if (_status == 1 && IsOwnInbox)
+                {
+                    <button type="button" class="atm-btn atm-btn--primary" @onclick="() => NewTask()"><i class="bi bi-plus-lg"></i>وظیفه‌ی جدید</button>
+                }
+            </EmptyState>
+        }
+    }
+    else
+    {
+        <MudDropContainer T="TaskModel" @ref="_drop" Items="_visible" ItemsSelector="@((item, zone) => item.STATUS.ToString() == zone)"
+                          ItemDropped="OnDropAsync" Class="atm-board" ItemDraggingClass="atm-dragging">
+            <ChildContent>
+                @foreach (var (s, label, _) in StatusTabs.Where(x => x.Status != 0))
+                {
+                    var count = _boardTotal.GetValueOrDefault(s);
+                    var hidden = count - _visible.Count(x => x.STATUS == s);
+                    <div class="atm-col atm-col--@s">
+                        <div class="atm-col__head">
+                            <span class="dot"></span>@label
+                            <span class="count">@count@(s != 1 && CountFor(s) > count && !HasClientFilters ? $" از {CountFor(s)}" : "")</span>
+                            @if (s == 1 && IsOwnInbox)
+                            {
+                                <button type="button" class="atm-icon-btn" style="width:28px;height:28px" title="وظیفه‌ی جدید" @onclick="() => NewTask()"><i class="bi bi-plus-lg"></i></button>
+                            }
+                        </div>
+                        <MudDropZone T="TaskModel" Identifier="@s.ToString()" Class="@($"atm-dropzone {(count == 0 ? "is-empty" : "")}")" />
+                        @if (hidden > 0)
+                        {
+                            <button type="button" class="atm-btn atm-btn--ghost" style="margin-top:10px;width:100%" @onclick="() => ShowMoreInColumn(s)">
+                                <i class="bi bi-chevron-down"></i>نمایش @Math.Min(hidden, BoardPage) موردِ دیگر (@hidden مانده)
+                            </button>
+                        }
+                        @if (s != 1 && CountFor(s) > count && !HasClientFilters)
+                        {
+                            <div class="atm-col__note">@BoardTop(s) موردِ آخر نمایش داده شده — برای همه، نمای فهرست را باز کنید.</div>
+                        }
+                    </div>
+                }
+            </ChildContent>
+            <ItemRenderer>
+                <TaskCard Item="context" Compact="true" Busy="_busy.Contains(context.IDNUM)"
+                          Now="_now" StaleDays="StaleDays" DocTypes="_docTypes"
+                          OnOpen="OpenTask" OnEvents="t2 => ShowEventsDialog(t2.IDNUM)"
+                          OnToggleDone="ToggleDoneAsync" OnTogglePriority="TogglePriorityAsync"
+                          OnSetStatus="x => SetStatusAsync(x.Item, x.Status)" />
+            </ItemRenderer>
+        </MudDropContainer>
+    }
+
+    @* ═════════════ نوار انتخاب گروهی ═════════════ *@
+    @if (_selected.Count > 0 && _view == View.List)
+    {
+        <div class="atm-bulkbar">
+            <b>@_selected.Count مورد انتخاب شد</b>
+            <button type="button" class="atm-btn atm-btn--light" style="height:38px" @onclick="ShowBulkUpdateDialog"><i class="bi bi-pencil-square"></i>ویرایش گروهی</button>
+            <button type="button" class="atm-btn atm-btn--glass" style="height:38px" @onclick="ClearSelection"><i class="bi bi-x-lg"></i>لغو انتخاب</button>
+        </div>
+    }
+
+    <TaskComposer @ref="_composer" Personel="_personel" CurrentUserId="Userid" DefaultCustomer="_defaultCustomer"
+                  DocTypes="_docTypes" OnSaved="OnComposerSaved" OnShowEvents="ShowEventsDialog" />
+</div>
+
+@code {
+    private enum View { List, Board }
+    private enum Sort { Smart, Newest, Oldest, Number }
+    private enum Kpi { None, Open, Urgent, Stale, Done, Cancelled }
+
+    private const int StaleDaysDefault = 30;
+    private int StaleDays => _summary?.StaleDays > 0 ? _summary.StaleDays : StaleDaysDefault;
+
+    private static readonly (int Status, string Label, string Color)[] StatusTabs =
+    {
+        (1, "انجام نشده", "var(--atm-primary)"),
+        (2, "انجام شده", "var(--atm-done)"),
+        (3, "لغو شده", "var(--atm-cancel)"),
+        (0, "همه", "var(--atm-muted)")
+    };
+
+    // ── کاربر ──
+    private int Userid;
+    private string UserNameDisplay = "";
+    private string UserHES = "";
+    private bool _ready;
+
+    // ── داده ──
+    private List<PersonelLookupModel> _personel = new();
+    private List<PersonelLookupModel> _subordinates = new();
+    private List<DocumentTypeLookupModel> _docTypes = new();
+    private LookupDto<string>? _defaultCustomer;
+    private bool _canFilterByUser;
+    private TaskSummaryModel? _summary;
+    private List<TaskModel> _tasks = new();
+    private List<TaskModel> _visible = new();
+    private Dictionary<long, int> _indexOf = new();
+    private int _unreadMessageCount;
+    private int _activeReminderCount;
+
+    // ── فیلتر و نما ──
+    private View _view = View.List;
+    private Sort _sort = Sort.Smart;
+    private int _status = 1;
+    private int? _userId;
+    // int? و نه int: کدِ «سند حسابداری» صفر است و با مقدارِ پیش‌فرضِ int قاطی می‌شد.
+    private IEnumerable<int?> _docFilter = new HashSet<int?>();
+    private string _search = "";
+    private bool _urgentOnly;
+    private bool _staleOnly;
+
+    // ── وضعیت رابط ──
+    private bool _loading;
+    private bool _loadedOnce;
+    private int _loadVersion;
+    private DateTime _now = DateTime.Now;
+    private readonly HashSet<long> _selected = new();
+    private readonly HashSet<long> _busy = new();
+    private readonly HashSet<long> _leaving = new();
+
+    private TaskComposer? _composer;
+    private MudDropContainer<TaskModel>? _drop;
+    private System.Threading.Timer? _timer;
+    private DotNetObjectReference<TasksDashboard>? _selfRef;
+
+    private bool IsOwnInbox => _userId is null || _userId == Userid;
+    private string TaskTypesParam => _docFilter.Any(d => d.HasValue) ? string.Join(",", _docFilter.Where(d => d.HasValue)) : "1000";
+    private bool HasClientFilters => !string.IsNullOrWhiteSpace(_search) || _urgentOnly || _staleOnly;
+
+    // ─────────────────────────── راه‌اندازی ───────────────────────────
+
+    protected override async Task OnInitializedAsync()
+    {
+        await ConnectionManager.LoadSettingsAsync();
+        var user = (await AuthenticationStateProvider.GetAuthenticationStateAsync()).User;
+        if (user?.Identity?.IsAuthenticated != true)
+        {
             Snackbar.Add("کاربر احراز هویت نشده است.", Severity.Warning);
-            _isInitialized = false;
-            // NavManager.NavigateTo("/login"); // یا مسیر لاگین شما
             return;
         }
-        _isLoading = true; // برای بارگذاری اولیه کل صفحه
+
+        if (!int.TryParse(user.FindFirst(BaseknowClaimTypes.IDD)?.Value, out Userid) || Userid == 0)
+        {
+            Snackbar.Add("اطلاعات کاربر برای بارگذاری کارتابل ناقص یا نامعتبر است.", Severity.Error, c => c.RequireInteraction = true);
+            return;
+        }
+        UserNameDisplay = user.FindFirst(BaseknowClaimTypes.UUSER)?.Value ?? "";
+        UserHES = user.FindFirst(BaseknowClaimTypes.USER_HES)?.Value ?? "";
+        _userId = Userid;
+        _view = await LoadViewPreferenceAsync();
+
         try
         {
             _canFilterByUser = await AutomationService.CanViewSubordinateTasksAsync();
-            // حالا LoadLookupsAsync را فراخوانی می‌کنیم که شامل بارگذاری مشتریان هم می‌شود
-            await LoadLookupsAsync(); // این متد شامل بارگذاری مشتریان خواهد بود
-            await LoadNotificationCountsAsync(); // این را هم می‌توان همزمان یا بعد از lookups انجام داد
-            SetupNotificationTimer();
-            _debounceTimer = new System.Timers.Timer(500);
-            _debounceTimer.Elapsed += HandleDebounceTimerElapsed;
-            _debounceTimer.AutoReset = false;
-            _isInitialized = true;
-        }
-        catch (Exception ex)
-        {
-            Snackbar.Add($"خطا در مقداردهی اولیه صفحه: {ex.Message}", Severity.Error);
-            _isInitialized = false;
-        }
-        finally
-        {
-            // _isLoading توسط ServerReload مدیریت خواهد شد.
-            // اما برای بارگذاری اولیه، می‌توانیم اینجا false کنیم اگر ServerReload بلافاصله اجرا نشود.
-            // اگر MudTable بلافاصله ServerReload را صدا می‌زند، این خط می‌تواند حذف شود.
-            _isLoading = false;
-            await InvokeAsync(StateHasChanged);
-        }
-    }
-    private string FormatShamsiDateFromDateTime(DateTime? dt)
-    {
-        if (!dt.HasValue) return string.Empty;
-        try
-        {
-            PersianCalendar pc = new PersianCalendar();
-            return $"{pc.GetYear(dt.Value):D4}/{pc.GetMonth(dt.Value):D2}/{pc.GetDayOfMonth(dt.Value):D2}";
-        }
-        catch { return dt.Value.ToString("yyyy/MM/dd"); }
-    }
-    private async Task LoadLookupsAsync()
-    {
-        //_isLoadingLookups = true; // برای نمایش وضعیت لودینگ (اگر UI جداگانه‌ای برایش دارید)
-        // await InvokeAsync(StateHasChanged); // اگر می‌خواهید وضعیت لودینگ فوراً نمایش داده شود
-        try
-        {
             var personelTask = AutomationService.GetPersonelLookupAsync();
-            // --- فراخوانی متد جدید برای دریافت لیست مشتریان ---
-            var customerTask = LookupService.GetCustomerLookupAsync();
-            // اگر می‌خواهید در ابتدا جستجوی خالی ارسال شود، می‌توانید searchTerm را null بگذارید
-            // یا اگر می‌خواهید با یک مقدار پیش‌فرض (مثل UserHES) شروع شود، آن را ارسال کنید.
-            var subordinateTask = _canFilterByUser ? LookupService.GetSubordinatesAsync() : Task.FromResult<List<PersonelLookupModel>?>(new List<PersonelLookupModel>());
-            await Task.WhenAll(personelTask, customerTask, subordinateTask);
-            _personelLookup = (await personelTask)?.ToList() ?? new List<PersonelLookupModel>();
-            // --- ذخیره لیست مشتریان واقعی ---
-            _customerLookup = (await customerTask)?.ToList() ?? new List<LookupDto<string>>();
-            _subordinatePersonnelLookup = (await subordinateTask)?.ToList() ?? new List<PersonelLookupModel>();
-            // اضافه کردن مشتری پیش‌فرض کاربر (UserHES) به لیست اگر وجود نداشت و لیست مشتریان خالی نیست
-            if (!string.IsNullOrWhiteSpace(UserHES) && _customerLookup != null && _customerLookup.All(c => c.Id != UserHES))
+            var subsTask = _canFilterByUser ? LookupService.GetSubordinatesAsync() : Task.FromResult<List<PersonelLookupModel>?>(new());
+            var docTask = AutomationService.GetDocumentTypeLookupAsync();
+            var custTask = string.IsNullOrWhiteSpace(UserHES) ? Task.FromResult<List<LookupDto<string>>?>(null) : LookupService.GetCustomerLookupAsync(UserHES);
+            await Task.WhenAll(personelTask, subsTask, docTask, custTask);
+
+            _personel = (await personelTask)?.OrderBy(p => p.USERCO == Userid ? 0 : 1).ThenBy(p => p.SAL_NAME).ToList() ?? new();
+            _subordinates = (await subsTask)?.Where(p => p.USERCO != Userid).ToList() ?? new();
+            _docTypes = (await docTask)?.ToList() ?? new();
+            if (!string.IsNullOrWhiteSpace(UserHES))
             {
-                // تلاش برای یافتن نام واقعی مشتری از لیست بارگذاری شده
-                var foundUserHesCustomer = _customerLookup.FirstOrDefault(c => c.Id == UserHES);
-                if (foundUserHesCustomer != null)
-                {
-                    // اگر از قبل در لیست بود (که با All چک کردیم نیست)، این بخش اجرا نمی‌شود
-                    // اما اگر به نحوی فقط نامش فرق داشت و خواستیم آپدیت کنیم، اینجا می‌آمد
-                }
-                else
-                {
-                    // اگر در لیست اولیه نبود، جداگانه با کدش از سرور درخواست بده (برای دریافت نام صحیح)
-                    var specificCustomerList = await LookupService.GetCustomerLookupAsync(UserHES);
-                    if (specificCustomerList != null && specificCustomerList.Any())
-                    {
-                        _customerLookup.Insert(0, specificCustomerList.First());
-                    }
-                    else
-                    {
-                        // اگر باز هم پیدا نشد، با نام پیش‌فرض اضافه کن
-                        _customerLookup.Insert(0, new LookupDto<string> { Id = UserHES, Name = $"مشتری پیشفرض ({UserHES})" });
-                    }
-                }
+                _defaultCustomer = (await custTask)?.FirstOrDefault(c => c.Id == UserHES)
+                                   ?? new LookupDto<string>(UserHES, $"حساب پیش‌فرض ({UserHES})");
             }
-            // اگر _currentTask.COMP_COD از قبل UserHES بود و UserHES در لیست نبود، حالا اضافه شده است.
         }
         catch (Exception ex)
         {
-            Snackbar.Add($"خطا در بارگذاری لیست‌های پایه: {ex.Message}", Severity.Error);
-            _personelLookup ??= new List<PersonelLookupModel>();
-            _subordinatePersonnelLookup ??= new List<PersonelLookupModel>();
-            _customerLookup ??= new List<LookupDto<string>>();
+            Snackbar.Add($"خطا در بارگذاری فهرست‌های پایه: {ex.Message}", Severity.Error);
         }
-        finally
+
+        _ready = true;
+        await ReloadAsync();
+        await LoadNotificationCountsAsync();
+
+        _timer = new System.Threading.Timer(async _ =>
         {
-            //_isLoadingLookups = false;
-            // await InvokeAsync(StateHasChanged); // ServerReload این کار را انجام می‌دهد
+            await InvokeAsync(async () =>
+            {
+                _now = DateTime.Now;
+                await LoadNotificationCountsAsync();
+                StateHasChanged();
+            });
+        }, null, TimeSpan.FromMinutes(1), TimeSpan.FromMinutes(1));
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            _selfRef = DotNetObjectReference.Create(this);
+            try { await JS.InvokeVoidAsync("atmKeys.attach", _selfRef); } catch { /* میان‌بُرها اختیاری‌اند */ }
         }
     }
+
+    public async ValueTask DisposeAsync()
+    {
+        _timer?.Dispose();
+        try { await JS.InvokeVoidAsync("atmKeys.detach"); } catch { }
+        _selfRef?.Dispose();
+    }
+
+    // ─────────────────────────── بارگذاری ───────────────────────────
+
+    private async Task ReloadAsync(bool withSummary = true)
+    {
+        if (!_ready) return;
+        var version = ++_loadVersion;
+        _loading = true;
+        StateHasChanged();
+
+        var user = _userId ?? Userid;
+        var types = TaskTypesParam;
+        var summaryTask = withSummary ? AutomationService.GetTaskSummaryAsync(user, types) : null;
+
+        List<TaskModel>? loaded;
+        if (_view == View.List)
+        {
+            loaded = (await AutomationService.GetTasksAsync(_status, user, types))?.ToList();
+        }
+        else
+        {
+            var open = AutomationService.GetTasksAsync(1, user, types);
+            var done = AutomationService.GetTasksAsync(2, user, types, BoardTop(2));
+            var canc = AutomationService.GetTasksAsync(3, user, types, BoardTop(3));
+            await Task.WhenAll(open, done, canc);
+            loaded = open.Result is null || done.Result is null || canc.Result is null
+                ? null
+                : open.Result.Concat(done.Result).Concat(canc.Result).ToList();
+        }
+        var summary = summaryTask is null ? _summary : await summaryTask;
+
+        if (version != _loadVersion) return; // درخواستِ تازه‌تری در راه است
+
+        if (loaded is null) Snackbar.Add("فهرست وظایف دریافت نشد. اتصال به سرور را بررسی کنید.", Severity.Error);
+        _tasks = loaded ?? new();
+        _summary = summary;
+        _now = DateTime.Now;
+        _selected.IntersectWith(_tasks.Select(t => t.IDNUM));
+        Recompute();
+        _loading = false;
+        _loadedOnce = true;
+        StateHasChanged();
+        _drop?.Refresh();
+    }
+
+    private async Task RefreshSummaryAsync()
+    {
+        var s = await AutomationService.GetTaskSummaryAsync(_userId ?? Userid, TaskTypesParam);
+        if (s is not null) { _summary = s; StateHasChanged(); }
+    }
+
     private async Task LoadNotificationCountsAsync()
     {
         try
         {
-            _unreadMessageCount = await AutomationService.GetUnreadMessageCountAsync();
-            _activeReminderCount = await AutomationService.GetActiveReminderCountAsync();
+            var m = AutomationService.GetUnreadMessageCountAsync();
+            var r = AutomationService.GetActiveReminderCountAsync();
+            await Task.WhenAll(m, r);
+            _unreadMessageCount = m.Result;
+            _activeReminderCount = r.Result;
         }
-        catch (Exception ex) { Snackbar.Add($"خطا در دریافت تعداد اعلان‌ها: {ex.Message}", Severity.Warning); }
-        // StateHasChanged در اینجا معمولا توسط OnInitializedAsync یا ServerReload مدیریت می‌شود.
+        catch { /* شمارنده‌ها اختیاری‌اند؛ خطا نباید صفحه را بشکند */ }
     }
-    private void SetupNotificationTimer()
+
+    private static int BoardTop(int status) => status == 2 ? 60 : 30;
+
+    // بُرد بدون Virtualize است؛ صدها کارت با منوی هرکدام مرورگر را کُند می‌کند.
+    // پس هر ستون اول BoardPage کارت را نشان می‌دهد و بقیه با «نمایش بیشتر».
+    private const int BoardPage = 60;
+    private readonly Dictionary<int, int> _boardShow = new() { [1] = BoardPage, [2] = BoardPage, [3] = BoardPage };
+    private Dictionary<int, int> _boardTotal = new();
+
+    private void ShowMoreInColumn(int status)
     {
-        _notificationTimer = new System.Threading.Timer(async _ =>
-        {
-            await InvokeAsync(LoadNotificationCountsAsync);
-            await InvokeAsync(StateHasChanged);
-        }, null, TimeSpan.FromMinutes(1), TimeSpan.FromMinutes(1));
+        _boardShow[status] = _boardShow.GetValueOrDefault(status, BoardPage) + BoardPage;
+        Recompute();
+        _drop?.Refresh();
     }
-    private async Task HandleTimerCallback() // این متد دیگر مستقیماً توسط تایمر فراخوانی نمی‌شود
+
+    // ─────────────────────────── فیلتر و مرتب‌سازی (سمت مرورگر) ───────────────────────────
+
+    private void Recompute()
     {
-        // منطق این متد به داخل لامبدای SetupNotificationTimer منتقل شد
-    }
-    private async Task<TableData<TaskModel>> ServerReload(TableState state)
-    {
-        if (!_isInitialized)
+        IEnumerable<TaskModel> q = _tasks;
+        if (_urgentOnly) q = q.Where(t => t.PERIORITY == 1);
+        if (_staleOnly) q = q.Where(t => t.STATUS == 1 && AutomationUi.AgeDays(t, _now) >= StaleDays);
+
+        var terms = Normalize(_search).Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        if (terms.Length > 0)
         {
-            return new TableData<TaskModel>() { TotalItems = 0, Items = Enumerable.Empty<TaskModel>() };
-        }
-        _isLoading = true;
-        await InvokeAsync(StateHasChanged);
-        IEnumerable<TaskModel> pagedData = Enumerable.Empty<TaskModel>();
-        _totalItems = 0;
-        try
-        {
-            int? userIdForApi = (_filterAssignedUserId == null || _filterAssignedUserId == 0) ? Userid : _filterAssignedUserId;
-            var allTasks = await AutomationService.GetTasksAsync(
-            statusFilter: _filterStatus,
-            assignedUserId: userIdForApi,
-            taskTypes: string.IsNullOrWhiteSpace(_filterTaskTypes) || _filterTaskTypes.Trim() == "1000" ? "1000" : _filterTaskTypes);
-            _tasks = allTasks?.ToList() ?? new List<TaskModel>(); // تبدیل به لیست برای شمارش و مرتب سازی
-            _totalItems = _tasks.Count();
-            UpdateStatusCounts();
-            var sortedData = _tasks.AsEnumerable(); // برای استفاده از OrderByDirection
-            if (!string.IsNullOrEmpty(state.SortLabel))
+            q = q.Where(t =>
             {
-                // ... (بخش مرتب‌سازی بدون تغییر) ...
-                switch (state.SortLabel)
-                {
-                    case "idnum_field": sortedData = sortedData.OrderByDirection(state.SortDirection, t => t.IDNUM); break;
-                    case "task_field": sortedData = sortedData.OrderByDirection(state.SortDirection, t => t.TASK); break;
-                    case "status_field": sortedData = sortedData.OrderByDirection(state.SortDirection, t => t.STATUS); break;
-                    case "stdate_field": sortedData = sortedData.OrderByDirection(state.SortDirection, t => t.STDATE); break;
-                    case "endate_field": sortedData = sortedData.OrderByDirection(state.SortDirection, t => t.ENDATE); break;
-                }
-            }
-            pagedData = sortedData.Skip(state.Page * state.PageSize).Take(state.PageSize).ToList();
+                var hay = Normalize($"{t.TASK} {t.NAME} {t.COMP_COD} {t.IDNUM} {t.num} {t.USERNAME}");
+                return terms.All(hay.Contains);
+            });
         }
-        catch (Exception ex)
+
+        q = _sort switch
         {
-            Snackbar.Add($"خطا در بارگذاری وظایف: {ex.Message}", Severity.Error);
-            _tasks = Enumerable.Empty<TaskModel>();
-            pagedData = Enumerable.Empty<TaskModel>();
-            _totalItems = 0;
-            UpdateStatusCounts();
-        }
-        finally
-        {
-            _isLoading = false;
-            await InvokeAsync(StateHasChanged);
-        }
-        return new TableData<TaskModel>() { TotalItems = _totalItems, Items = pagedData };
-    }
-    private async Task LoadTasksAsync()
-    {
-        if (_table != null)
-        {
-            await _table.ReloadServerData();
-        }
-    }
-    private void UpdateStatusCounts()
-    {
-        // این متد باید از _tasks که کل وظایف (قبل از صفحه‌بندی) است، استفاده کند.
-        var tasksForCount = _tasks ?? Enumerable.Empty<TaskModel>(); // اطمینان از null نبودن
-        _countStatus1 = tasksForCount.Count(t => t.STATUS == 1);
-        _countStatus2 = tasksForCount.Count(t => t.STATUS == 2);
-        _countStatus3 = tasksForCount.Count(t => t.STATUS == 3);
-        _countStatus0 = _totalItems;
-    }
-    private async Task SaveTaskAsync()
-    {
-        if (_form == null) return;
-        await _form.Validate();
-        if (!_form.IsValid) { Snackbar.Add("لطفاً اطلاعات الزامی فرم را تکمیل کنید.", Severity.Warning); return; }
-        _isSaving = true;
-        await InvokeAsync(StateHasChanged); // نمایش وضعیت ذخیره‌سازی
-        bool success = false;
-        string successMessage = string.Empty;
-        try
-        {
-            if (_currentTask.IDNUM > 0)
-            {
-                success = await AutomationService.UpdateTaskAsync(_currentTask.IDNUM, _currentTask);
-                successMessage = "وظیفه با موفقیت بروزرسانی شد.";
-            }
-            else
-            {
-                if (_currentTask.PERSONEL == 0 && Userid != 0) _currentTask.PERSONEL = Userid;
-                // COMP_COD باید از MudSelect مقدار گرفته باشد
-                // if (string.IsNullOrEmpty(_currentTask.COMP_COD) && !string.IsNullOrEmpty(UserHES)) _currentTask.COMP_COD = UserHES; // این خط دیگر لازم نیست
-                var createdTask = await AutomationService.CreateTaskAsync(_currentTask);
-                success = createdTask != null;
-                if (success && createdTask != null) _currentTask.IDNUM = createdTask.IDNUM;
-                successMessage = "وظیفه با موفقیت ایجاد شد.";
-            }
-            if (success)
-            {
-                Snackbar.Add(successMessage, Severity.Success);
-                await ClearFormAsync();
-                await LoadTasksAsync();
-            }
-            else
-            {
-                Snackbar.Add("خطا در ذخیره سازی وظیفه.", Severity.Error);
-            }
-        }
-        catch (Exception ex)
-        {
-            Snackbar.Add($"خطا در ذخیره سازی: {ex.Message}", Severity.Error);
-        }
-        finally
-        {
-            _isSaving = false;
-            await InvokeAsync(StateHasChanged);
-        }
-    }
-    private async Task ClearFormAsync()
-    {
-        _currentTask = new TaskModel { PERIORITY = 2, STATUS = 1 };
-        if (Userid != 0)
-        {
-            _currentTask.PERSONEL = Userid;
-        }
-        // مقداردهی اولیه مشتری پیش‌فرض برای وظیفه جدید
-        if (!string.IsNullOrWhiteSpace(UserHES) && _customerLookup != null)
-        {
-            SelectedCustomerForTask = _customerLookup.FirstOrDefault(c => c.Id == UserHES);
-            // اگر SelectedCustomerForTask مقدار گرفت، COMP_COD هم در setter آن آپدیت می‌شود.
-            if (SelectedCustomerForTask == null) // اگر UserHES در لیست نبود (بعید است با منطق LoadLookupsAsync)
-            {
-                _currentTask.COMP_COD = UserHES; // مستقیماً کد را قرار بده
-            }
-        }
-        else
-        {
-            SelectedCustomerForTask = null; // پاک کردن انتخاب قبلی
-            _currentTask.COMP_COD = null;
-        }
-        if (_form != null)
-        {
-            await _form.ResetAsync();
-        }
-        await InvokeAsync(StateHasChanged);
-    }
-    private void SelectTaskForEdit(TaskModel task)
-    {
-        _currentTask = new TaskModel // ایجاد یک نمونه جدید برای جلوگیری از تغییر ناخواسته آیتم در جدول
-        {
-            IDNUM = task.IDNUM,
-            PERSONEL = task.PERSONEL,
-            TASK = task.TASK,
-            PERIORITY = task.PERIORITY,
-            STATUS = task.STATUS,
-            STDATE = task.STDATE,
-            STTIME = task.STTIME,
-            ENDATE = task.ENDATE,
-            ENTIME = task.ENTIME,
-            COMP_COD = task.COMP_COD, // این مقدار مهم است
-            NAME = task.NAME,
-            skid = task.skid,
-            num = task.num
+            Sort.Newest => q.OrderByDescending(t => AutomationUi.At(t.STDATE, t.STTIME)).ThenByDescending(t => t.IDNUM),
+            Sort.Oldest => q.OrderBy(t => AutomationUi.At(t.STDATE, t.STTIME)).ThenBy(t => t.IDNUM),
+            Sort.Number => q.OrderByDescending(t => t.IDNUM),
+            // هوشمند: کارهای بازِ فوری بالا، بعد جدیدترین‌ها
+            _ => q.OrderBy(t => t.STATUS == 1 && t.PERIORITY == 1 ? 0 : 1).ThenByDescending(t => t.IDNUM)
         };
-        // --- مقداردهی اولیه SelectedCustomerForTask بر اساس COMP_COD وظیفه انتخاب شده ---
-        if (!string.IsNullOrWhiteSpace(_currentTask.COMP_COD) && _customerLookup != null)
+
+        _visible = q.ToList();
+        if (_view == View.Board)
         {
-            SelectedCustomerForTask = _customerLookup.FirstOrDefault(c => c.Id == _currentTask.COMP_COD);
+            _boardTotal = _visible.GroupBy(t => t.STATUS).ToDictionary(g => g.Key, g => g.Count());
+            _visible = _visible.GroupBy(t => t.STATUS)
+                               .SelectMany(g => g.Take(_boardShow.GetValueOrDefault(g.Key, BoardPage)))
+                               .ToList();
+        }
+        _indexOf = new Dictionary<long, int>(Math.Min(_visible.Count, 16));
+        for (int i = 0; i < Math.Min(_visible.Count, 14); i++) _indexOf[_visible[i].IDNUM] = i;
+    }
+
+    private int IndexOf(TaskModel t) => _indexOf.TryGetValue(t.IDNUM, out var i) ? i : -1;
+
+    /// <summary>ی/ک عربی و فارسی یکی، نیم‌فاصله = فاصله — تا جستجو به صفحه‌کلید حساس نباشد.</summary>
+    private static string Normalize(string? s) => (s ?? "")
+        .Replace('ي', 'ی').Replace('ك', 'ک').Replace('‌', ' ').Replace('ة', 'ه')
+        .ToLowerInvariant();
+
+    private void OnSearch(ChangeEventArgs e)
+    {
+        _search = e.Value?.ToString() ?? "";
+        Recompute();
+    }
+
+    private void ToggleUrgentOnly() { _urgentOnly = !_urgentOnly; Recompute(); _drop?.Refresh(); }
+    private void ClearStale() { _staleOnly = false; Recompute(); }
+
+    private void ClearFilters()
+    {
+        _search = "";
+        _urgentOnly = false;
+        _staleOnly = false;
+        Recompute();
+        _drop?.Refresh();
+    }
+
+    private async Task SetStatusFilter(int s)
+    {
+        if (_status == s) return;
+        _status = s;
+        _staleOnly = false;
+        _selected.Clear();
+        await ReloadAsync(withSummary: false);
+    }
+
+    private void SetSort(Sort s) { _sort = s; Recompute(); }
+
+    private static string SortLabel(Sort s) => s switch
+    {
+        Sort.Newest => "جدیدترین",
+        Sort.Oldest => "قدیمی‌ترین",
+        Sort.Number => "شماره",
+        _ => "هوشمند"
+    };
+
+    private async Task OnUserChanged(int? id)
+    {
+        _userId = id ?? Userid;
+        _selected.Clear();
+        await ReloadAsync();
+    }
+
+    private async Task OnDocFilterChanged(IEnumerable<int?> values)
+    {
+        _docFilter = values.Where(v => v.HasValue).ToHashSet();
+        await ReloadAsync();
+    }
+
+    private string DocFilterText(List<string> names)
+        => names.Count switch { 0 => "", 1 => names[0], _ => $"{names.Count} نوع سند" };
+
+    private async Task SetView(View v)
+    {
+        if (_view == v) return;
+        _view = v;
+        foreach (var k in _boardShow.Keys.ToList()) _boardShow[k] = BoardPage;
+        _selected.Clear();
+        try { await JS.InvokeVoidAsync("localStorage.setItem", "atm.view", v.ToString()); } catch { }
+        await ReloadAsync(withSummary: false);
+    }
+
+    private async Task<View> LoadViewPreferenceAsync()
+    {
+        try
+        {
+            var v = await JS.InvokeAsync<string?>("localStorage.getItem", "atm.view");
+            return Enum.TryParse<View>(v, out var parsed) ? parsed : View.List;
+        }
+        catch { return View.List; }
+    }
+
+    // ─────────────────────────── کارت‌های شاخص ───────────────────────────
+
+    private Kpi ActiveKpi =>
+        _view == View.Board ? Kpi.None :
+        _status == 1 && _urgentOnly && !_staleOnly ? Kpi.Urgent :
+        _status == 1 && _staleOnly ? Kpi.Stale :
+        _status == 1 && !_urgentOnly ? Kpi.Open :
+        _status == 2 ? Kpi.Done :
+        _status == 3 ? Kpi.Cancelled : Kpi.None;
+
+    private async Task ApplyKpi(Kpi k)
+    {
+        _urgentOnly = k == Kpi.Urgent;
+        _staleOnly = k == Kpi.Stale;
+        var status = k switch { Kpi.Done => 2, Kpi.Cancelled => 3, _ => 1 };
+        if (k == Kpi.Done) _sort = Sort.Newest;
+        else if (k == Kpi.Stale) _sort = Sort.Oldest;
+        else if (_sort == Sort.Oldest) _sort = Sort.Smart;
+
+        if (_view != View.List || _status != status)
+        {
+            _view = View.List;
+            _status = status;
+            _selected.Clear();
+            await ReloadAsync(withSummary: false);
         }
         else
         {
-            SelectedCustomerForTask = null;
+            Recompute();
         }
-        // --- پایان مقداردهی اولیه ---
-        _form?.ResetValidation(); // پاک کردن وضعیت ولیدیشن فرم قبلی
-        StateHasChanged(); // بروزرسانی UI برای نمایش داده‌های تسک انتخاب شده در فرم
     }
-    private async Task OnStatusFilterChanged(int newValue)
+
+    private async Task ShowNewest()
     {
-        _filterStatus = newValue;
-        await LoadTasksAsync();
+        _urgentOnly = false;
+        _staleOnly = false;
+        _sort = Sort.Newest;
+        if (_view != View.List || _status != 1)
+        {
+            _view = View.List;
+            _status = 1;
+            _selected.Clear();
+            await ReloadAsync(withSummary: false);
+        }
+        else
+        {
+            Recompute();
+        }
     }
-    private async Task OnUserFilterChanged(int? newValue)
+
+    private int CountFor(int status) => _summary is null ? 0 : status switch
     {
-        _filterAssignedUserId = newValue;
-        await LoadTasksAsync();
-    }
-    private void OnFilterChangedDebounced(string? value) // 'value' is the bound _filterTaskTypes
+        1 => _summary.Open,
+        2 => _summary.Done,
+        3 => _summary.Cancelled,
+        _ => _summary.All
+    };
+
+    // ─────────────────────────── متن‌ها ───────────────────────────
+
+    private string HeroSentence
     {
-        // _filterTaskTypes = value; // No need to set it again, it's already bound
-        _debounceTimer?.Stop();
-        _debounceTimer?.Start();
+        get
+        {
+            if (_summary is null) return "در حال آماده کردن کارتابل…";
+            var who = IsOwnInbox ? "شما" : PersonelName(_userId ?? 0);
+            if (_summary.Open == 0)
+                return IsOwnInbox ? "کارتابل شما خالی است — همه‌ی کارها به سرانجام رسیده‌اند. ✨" : $"کارتابلِ {who} کارِ بازی ندارد.";
+            return IsOwnInbox
+                ? $"{_summary.Open} کار در انتظار شماست{(_summary.OpenUrgent > 0 ? $"؛ {_summary.OpenUrgent} مورد فوری است" : "")}."
+                : $"{_summary.Open} کارِ باز در کارتابلِ {who}.";
+        }
     }
-    private async void HandleDebounceTimerElapsed(object? sender, ElapsedEventArgs e)
+
+    private string EmptyTitle =>
+        HasClientFilters ? "چیزی با این فیلترها پیدا نشد" :
+        _status switch
+        {
+            1 => IsOwnInbox ? "هیچ کار بازی ندارید 🎉" : "کارِ بازی نیست",
+            2 => "هنوز کاری انجام نشده",
+            3 => "هیچ کارِ لغوشده‌ای نیست",
+            _ => "کارتابل خالی است"
+        };
+
+    private string EmptyText =>
+        HasClientFilters ? "جستجو یا فیلترها را تغییر دهید." :
+        _status == 1 && IsOwnInbox ? "همه‌ی کارها انجام شده‌اند. وقت خوبی برای برنامه‌ریزیِ کار بعدی است." :
+        "وقتی موردی باشد، اینجا نمایش داده می‌شود.";
+
+    private string PersonelName(int id)
+        => _personel.FirstOrDefault(p => p.USERCO == id)?.SAL_NAME
+           ?? _subordinates.FirstOrDefault(p => p.USERCO == id)?.SAL_NAME
+           ?? $"کاربر {id}";
+
+    // ─────────────────────────── انتخاب ───────────────────────────
+
+    private bool AllVisibleSelected => _visible.Count > 0 && _visible.All(t => _selected.Contains(t.IDNUM));
+
+    private void ToggleSelect(TaskModel t)
     {
-        await InvokeAsync(LoadTasksAsync);
+        if (!_selected.Remove(t.IDNUM)) _selected.Add(t.IDNUM);
     }
-    private string GetPersonelName(int personelId) => _personelLookup?.FirstOrDefault(p => p.USERCO == personelId)?.SAL_NAME ?? personelId.ToString();
-    private string GetStatusName(int statusId) => statusId switch { 1 => "انجام نشده", 2 => "انجام شده", 3 => "لغو شده", _ => "نامشخص" };
-    // --- متد GetCustomerName به‌روز شده برای استفاده از _customerLookup ---
-    private string GetCustomerName(string? customerCode)
+
+    private void ToggleSelectAll()
     {
-        if (string.IsNullOrEmpty(customerCode)) return string.Empty;
-        return _customerLookup?.FirstOrDefault(c => c.Id == customerCode)?.Name ?? customerCode;
+        if (AllVisibleSelected) _selected.ExceptWith(_visible.Select(t => t.IDNUM));
+        else _selected.UnionWith(_visible.Select(t => t.IDNUM));
     }
+
+    private void ClearSelection() => _selected.Clear();
+
+    // ─────────────────────────── عملیات سریع ───────────────────────────
+
+    private Task ToggleDoneAsync(TaskModel t) => SetStatusAsync(t, t.STATUS == 1 ? 2 : 1);
+
+    private async Task SetStatusAsync(TaskModel t, int status)
+    {
+        if (t.STATUS == status) return;
+        var before = TaskComposer.Copy(t);
+        var updated = TaskComposer.Copy(t);
+        updated.STATUS = status;
+        TaskComposer.StampDoneDate(updated, t.STATUS);
+
+        if (!await SaveQuickAsync(t, updated)) return;
+
+        // کارتِ «پیشنهاد برای شروع» از خلاصه می‌آید و نمونه‌ی جدایی از همان
+        // وظیفه است؛ تغییر باید روی نمونه‌ی داخلِ فهرست هم بنشیند.
+        var local = _tasks.FirstOrDefault(x => x.IDNUM == t.IDNUM);
+        foreach (var item in new[] { t, local })
+        {
+            if (item is null) continue;
+            item.STATUS = updated.STATUS;
+            item.ENDATE = updated.ENDATE;
+            item.ENTIME = updated.ENTIME;
+        }
+        t = local ?? t;
+
+        var msg = status switch { 2 => "انجام شد ✓", 3 => "وظیفه لغو شد.", _ => "وظیفه دوباره باز شد." };
+        Snackbar.Add($"#{t.IDNUM} — {msg}", status == 2 ? Severity.Success : Severity.Info, c =>
+        {
+            c.Action = "بازگردانی";
+            c.ActionColor = Color.Primary;
+            c.VisibleStateDuration = 8000; // فرصتِ کافی برای پشیمان شدن
+            c.Onclick = _ => InvokeAsync(() => UndoAsync(before));
+        });
+
+        // از فهرستِ فیلترشده خارج می‌شود — با یک محوِ کوتاه، نه پرشِ ناگهانی.
+        if (_view == View.List && _status != 0 && _status != status)
+        {
+            _leaving.Add(t.IDNUM);
+            StateHasChanged();
+            await Task.Delay(360);
+            _leaving.Remove(t.IDNUM);
+            _tasks.Remove(t);
+            _selected.Remove(t.IDNUM);
+        }
+        Recompute();
+        _drop?.Refresh();
+        StateHasChanged();
+        await RefreshSummaryAsync();
+    }
+
+    private async Task TogglePriorityAsync(TaskModel t)
+    {
+        var updated = TaskComposer.Copy(t);
+        updated.PERIORITY = t.PERIORITY == 1 ? 2 : 1;
+        if (!await SaveQuickAsync(t, updated)) return;
+        t.PERIORITY = updated.PERIORITY;
+        if (_tasks.FirstOrDefault(x => x.IDNUM == t.IDNUM) is { } local) local.PERIORITY = updated.PERIORITY;
+        Snackbar.Add(t.PERIORITY == 1 ? $"#{t.IDNUM} فوری شد." : $"#{t.IDNUM} معمولی شد.", Severity.Info);
+        Recompute();
+        _drop?.Refresh();
+        await RefreshSummaryAsync();
+    }
+
+    private async Task<bool> SaveQuickAsync(TaskModel original, TaskModel updated)
+    {
+        if (string.IsNullOrWhiteSpace(updated.COMP_COD) || string.IsNullOrWhiteSpace(updated.TASK))
+        {
+            Snackbar.Add("این وظیفه گیرنده یا شرح ندارد؛ اول آن را از «ویرایش» کامل کنید.", Severity.Warning);
+            OpenTask(original);
+            return false;
+        }
+        if (!_busy.Add(original.IDNUM)) return false;
+        StateHasChanged();
+        try
+        {
+            var ok = await AutomationService.UpdateTaskAsync(updated.IDNUM, updated);
+            if (!ok) Snackbar.Add("تغییر ذخیره نشد. دوباره تلاش کنید.", Severity.Error);
+            return ok;
+        }
+        finally
+        {
+            _busy.Remove(original.IDNUM);
+        }
+    }
+
+    private async Task UndoAsync(TaskModel before)
+    {
+        if (await AutomationService.UpdateTaskAsync(before.IDNUM, before))
+        {
+            Snackbar.Add($"#{before.IDNUM} به حالت قبل برگشت.", Severity.Normal);
+            await ReloadAsync();
+        }
+        else
+        {
+            Snackbar.Add("بازگردانی انجام نشد.", Severity.Error);
+        }
+    }
+
+    private async Task OnDropAsync(MudItemDropInfo<TaskModel> info)
+    {
+        if (info.Item is null || !int.TryParse(info.DropzoneIdentifier, out var status)) return;
+        if (info.Item.STATUS == status) return;
+        await SetStatusAsync(info.Item, status);
+    }
+
+    // ─────────────────────────── پنل و دیالوگ‌ها ───────────────────────────
+
+    private void NewTask(string? text = null) => _composer?.Show(null, text);
+    private void OpenTask(TaskModel t) => _composer?.Show(t);
+
+    private async Task OnComposerSaved((TaskModel Task, bool IsNew) e) => await ReloadAsync();
+
+    [JSInvokable] public void HotkeyNew() { if (_composer?.IsOpen != true) { NewTask(); } }
+    [JSInvokable] public async Task HotkeyRefresh() { if (_composer?.IsOpen != true) await ReloadAsync(); }
+    [JSInvokable] public void HotkeyEscape() => _composer?.Close();
+
     private async Task ShowBulkUpdateDialog()
     {
-        if (!_selectedTasks.Any()) { Snackbar.Add("لطفاً ابتدا وظایف مورد نظر را از جدول انتخاب کنید.", Severity.Warning); return; }
-        var parameters = new DialogParameters<BulkUpdateTasksDialog> { { x => x.SelectedTaskIds, _selectedTasks.Select(t => t.IDNUM).ToList() } };
+        if (_selected.Count == 0) return;
+        var parameters = new DialogParameters<BulkUpdateTasksDialog> { { x => x.SelectedTaskIds, _selected.ToList() } };
         var options = new DialogOptions { CloseOnEscapeKey = true, MaxWidth = MaxWidth.Small, FullWidth = true };
         var dialog = await DialogService.ShowAsync<BulkUpdateTasksDialog>("ویرایش گروهی وظایف", parameters, options);
         var result = await dialog.Result;
-        if (result != null && !result.Cancelled && result.Data is bool updated && updated)
+        if (result is { Canceled: false, Data: true })
         {
-            _selectedTasks.Clear();
-            await LoadTasksAsync();
+            _selected.Clear();
             Snackbar.Add("تغییرات گروهی اعمال شد.", Severity.Success);
+            await ReloadAsync();
         }
     }
+
     private async Task ShowEventsDialog(long taskId)
     {
         if (taskId <= 0) return;
@@ -611,52 +946,27 @@
         var options = new DialogOptions { CloseOnEscapeKey = true, MaxWidth = MaxWidth.Medium, FullWidth = true };
         await DialogService.ShowAsync<TaskEventsDialog>($"رویدادهای وظیفه {taskId}", parameters, options);
     }
+
     private async Task ShowMessagesDialog()
     {
         var options = new DialogOptions { CloseOnEscapeKey = true, MaxWidth = MaxWidth.Medium, FullWidth = true };
         var dialog = await DialogService.ShowAsync<MessagesDialog>("پیام‌های داخلی", options);
+        await dialog.Result;
         await LoadNotificationCountsAsync();
-        await InvokeAsync(StateHasChanged);
+        StateHasChanged();
     }
-    private void ShowRemindersDialog() { Snackbar.Add("نمایش یادآوری‌ها هنوز پیاده‌سازی نشده است.", Severity.Info); }
-    public void Dispose()
+
+    private async Task ShowRemindersDialog()
     {
-        _notificationTimer?.Dispose();
-        _debounceTimer?.Dispose();
-    }
-    private LookupDto<string>? SelectedCustomerForTask
-    {
-        get => _selectedCustomerForTask;
-        set
+        var parameters = new DialogParameters<RemindersDialog>
         {
-            _selectedCustomerForTask = value;
-            // وقتی یک مشتری از Autocomplete انتخاب می‌شود، COMP_COD در _currentTask را آپدیت کن
-            if (value != null)
-            {
-                _currentTask.COMP_COD = value.Id;
-            }
-            else
-            {
-                // اگر مقدار Autocomplete پاک شد، COMP_COD را هم پاک کن
-                // یا بر اساس منطق خودتان رفتار دیگری تعریف کنید (مثلاً مقدار پیش‌فرض)
-                _currentTask.COMP_COD = null;
-            }
-            // StateHasChanged(); // معمولاً لازم نیست چون بایندینگ خودکار انجام می‌شود
-        }
-    }
-    // --- متد جدید برای جستجوی مشتریان در MudAutocomplete ---
-    private async Task<IEnumerable<LookupDto<string>>> SearchCustomersAsync(string value)
-    {
-        // اگر _customerLookup هنوز بارگذاری نشده یا خالی است، لیست خالی برگردان
-        if (_customerLookup == null || !_customerLookup.Any())
-            return Enumerable.Empty<LookupDto<string>>();
-        // اگر ورودی جستجو خالی است، می‌توانیم یک تعداد محدود از ابتدای لیست را برگردانیم
-        // یا لیست خالی (بستگی به تجربه کاربری مورد نظر دارد)
-        if (string.IsNullOrEmpty(value))
-            return await Task.FromResult(_customerLookup.Take(10)); // نمایش ۱۰ مشتری اول یا همه اگر کمتر است
-                                                                    // فیلتر کردن لیست مشتریان بر اساس نام یا کد (Id)
-                                                                    // StringComparison.OrdinalIgnoreCase برای جستجوی غیر حساس به حروف بزرگ و کوچک
-        // جستجو سمت سرور: لیست اولیه فقط ۵۰ حساب اول الفبایی است و مشتریان بعدی در آن نیستند
-        return await LookupService.GetCustomerLookupAsync(value) ?? Enumerable.Empty<LookupDto<string>>();
+            { x => x.CurrentUserId, Userid },
+            { x => x.Personel, _personel }
+        };
+        var options = new DialogOptions { CloseOnEscapeKey = true, MaxWidth = MaxWidth.Small, FullWidth = true };
+        var dialog = await DialogService.ShowAsync<RemindersDialog>("یادآوری‌ها", parameters, options);
+        await dialog.Result;
+        await LoadNotificationCountsAsync();
+        StateHasChanged();
     }
 }

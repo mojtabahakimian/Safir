@@ -1,0 +1,28 @@
+@* حالتِ خالیِ کارتابل — تصویرِ SVG با رنگ‌های تمِ جاری. *@
+<div class="atm-empty">
+    <div>
+        <svg viewBox="0 0 160 160" fill="none" aria-hidden="true">
+            <circle cx="80" cy="84" r="62" style="fill:color-mix(in srgb, var(--atm-primary) 9%, transparent)" />
+            <rect x="46" y="40" width="68" height="86" rx="12"
+                  style="fill:var(--atm-surface);stroke:color-mix(in srgb, var(--atm-primary) 35%, transparent)" stroke-width="2" />
+            <rect x="62" y="32" width="36" height="14" rx="7" style="fill:var(--atm-primary)" />
+            <rect x="58" y="62" width="34" height="6" rx="3" style="fill:color-mix(in srgb, var(--atm-text) 14%, transparent)" />
+            <rect x="58" y="76" width="44" height="6" rx="3" style="fill:color-mix(in srgb, var(--atm-text) 10%, transparent)" />
+            <rect x="58" y="90" width="26" height="6" rx="3" style="fill:color-mix(in srgb, var(--atm-text) 10%, transparent)" />
+            <circle cx="108" cy="112" r="18" style="fill:var(--atm-done)" />
+            <path d="M100 112l6 6 10-11" stroke="#fff" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" />
+            <path class="sparkle" d="M30 50l3-8 3 8 8 3-8 3-3 8-3-8-8-3z" style="fill:var(--atm-warn)" />
+            <path class="sparkle" d="M130 38l2-6 2 6 6 2-6 2-2 6-2-6-6-2z" style="fill:var(--atm-primary)" />
+            <path class="sparkle" d="M136 84l2-5 2 5 5 2-5 2-2 5-2-5-5-2z" style="fill:var(--atm-urgent)" />
+        </svg>
+        <h3>@Title</h3>
+        <p>@Text</p>
+        @ChildContent
+    </div>
+</div>
+
+@code {
+    [Parameter] public string? Title { get; set; }
+    [Parameter] public string? Text { get; set; }
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+}

@@ -1,0 +1,176 @@
+@using Safir.Shared.Models.Automation
+
+@* کارتِ یک وظیفه — هم در فهرست و هم در بُرد. کلیک روی کارت = ویرایش. *@
+<div class="atm-task @CssClass" style="@Style" @onclick="() => OnOpen.InvokeAsync(Item)"
+     role="button" tabindex="0" @onkeydown="OnKey" aria-label="@($"وظیفه {Item.IDNUM}")">
+
+    @if (Selectable)
+    {
+        <label class="atm-check" @onclick:stopPropagation="true" title="انتخاب">
+            <input type="checkbox" checked="@Selected" @onchange="() => OnToggleSelect.InvokeAsync(Item)" />
+            <span></span>
+        </label>
+    }
+
+    <button type="button" class="atm-done-btn @DoneClass" disabled="@Busy"
+            title="@DoneTitle" aria-label="@DoneTitle"
+            @onclick="() => OnToggleDone.InvokeAsync(Item)" @onclick:stopPropagation="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+            @if (Item.STATUS == 3)
+            {
+                <path d="M6 6l12 12M18 6L6 18" />
+            }
+            else
+            {
+                <path d="M4 12.5l5 5L20 7" />
+            }
+        </svg>
+    </button>
+
+    <div class="atm-task__body">
+        <div class="atm-task__title">@Item.TASK</div>
+        <div class="atm-task__meta">
+            <span class="atm-id">#@Item.IDNUM</span>
+
+            @if (Item.PERIORITY == 1)
+            {
+                <span class="atm-pill atm-pill--urgent"><i class="bi bi-lightning-charge-fill"></i>فوری</span>
+            }
+
+            @if (!string.IsNullOrWhiteSpace(Item.NAME) || !string.IsNullOrWhiteSpace(Item.COMP_COD))
+            {
+                var customer = string.IsNullOrWhiteSpace(Item.NAME) ? Item.COMP_COD : Item.NAME;
+                <span title="@($"گیرنده: {customer} ({Item.COMP_COD})")">
+                    <span class="atm-av" style="@AutomationUi.AvatarStyle(customer)">@AutomationUi.Initials(customer)</span>
+                    @customer
+                </span>
+            }
+
+            @if (Item.skid.HasValue && Item.num is > 0)
+            {
+                <span class="atm-pill atm-pill--doc" title="سند مرتبط">
+                    <i class="bi bi-file-earmark-text"></i>@AutomationUi.DocTypeName(Item.skid, DocTypes) @Item.num
+                </span>
+            }
+
+            @if (Item.STATUS == 2 && Item.ENDATE.HasValue)
+            {
+                <span class="atm-pill atm-pill--done" title="@($"انجام: {AutomationUi.ShortDate(Item.ENDATE)} {AutomationUi.Time(Item.ENTIME)}")">
+                    <i class="bi bi-check2-all"></i>@AutomationUi.Ago(Item.ENDATE, Item.ENTIME, Now)
+                </span>
+            }
+            else if (Item.STATUS == 3)
+            {
+                <span class="atm-pill atm-pill--cancel"><i class="bi bi-slash-circle"></i>لغو شده</span>
+            }
+
+            <span class="atm-age @AutomationUi.AgeClass(Item, Now, StaleDays)"
+                  title="@($"ارجاع: {AutomationUi.ShortDate(Item.STDATE)} {AutomationUi.Time(Item.STTIME)}")">
+                <i class="bi bi-clock"></i>@AutomationUi.Ago(Item.STDATE, Item.STTIME, Now)
+            </span>
+
+            @if (!string.IsNullOrWhiteSpace(Item.USERNAME) && !Compact)
+            {
+                <span title="ارجاع‌دهنده"><i class="bi bi-person-up"></i>@Item.USERNAME</span>
+            }
+
+            @if (!string.IsNullOrWhiteSpace(ExecutorName))
+            {
+                <span title="مجری">
+                    <span class="atm-av" style="@AutomationUi.AvatarStyle(ExecutorName)">@AutomationUi.Initials(ExecutorName)</span>
+                    @ExecutorName
+                </span>
+            }
+        </div>
+    </div>
+
+    <div class="atm-task__actions" @onclick:stopPropagation="true">
+        <button type="button" class="atm-icon-btn" title="رویدادها و پیگیری‌ها" @onclick="() => OnEvents.InvokeAsync(Item)">
+            <i class="bi bi-clock-history"></i>
+        </button>
+        <MudMenu AnchorOrigin="Origin.BottomLeft" TransformOrigin="Origin.TopLeft" Dense="true">
+            <ActivatorContent>
+                <button type="button" class="atm-icon-btn" title="بیشتر"><i class="bi bi-three-dots-vertical"></i></button>
+            </ActivatorContent>
+            <ChildContent>
+                <MudMenuItem OnClick="() => OnOpen.InvokeAsync(Item)">
+                    <i class="bi bi-pencil-square ml-2"></i> ویرایش
+                </MudMenuItem>
+                <MudMenuItem OnClick="() => OnEvents.InvokeAsync(Item)">
+                    <i class="bi bi-clock-history ml-2"></i> رویدادها
+                </MudMenuItem>
+                <MudMenuItem OnClick="() => OnTogglePriority.InvokeAsync(Item)" Disabled="Busy">
+                    @if (Item.PERIORITY == 1)
+                    {
+                        <span><i class="bi bi-lightning-charge ml-2"></i> تبدیل به معمولی</span>
+                    }
+                    else
+                    {
+                        <span><i class="bi bi-lightning-charge-fill ml-2" style="color:#f43f5e"></i> فوری کن</span>
+                    }
+                </MudMenuItem>
+                <MudDivider />
+                @if (Item.STATUS == 3)
+                {
+                    <MudMenuItem OnClick="() => OnSetStatus.InvokeAsync((Item, 1))" Disabled="Busy">
+                        <i class="bi bi-arrow-counterclockwise ml-2"></i> بازگشایی
+                    </MudMenuItem>
+                }
+                else
+                {
+                    <MudMenuItem OnClick="() => OnSetStatus.InvokeAsync((Item, 3))" Disabled="Busy">
+                        <i class="bi bi-slash-circle ml-2" style="color:#94a3b8"></i> لغو وظیفه
+                    </MudMenuItem>
+                }
+            </ChildContent>
+        </MudMenu>
+    </div>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public TaskModel Item { get; set; } = default!;
+    [Parameter] public bool Compact { get; set; }
+    [Parameter] public bool Selectable { get; set; }
+    [Parameter] public bool Selected { get; set; }
+    [Parameter] public bool Busy { get; set; }
+    [Parameter] public bool Leaving { get; set; }
+    [Parameter] public string? ExecutorName { get; set; }
+    [Parameter] public IEnumerable<DocumentTypeLookupModel>? DocTypes { get; set; }
+    [Parameter] public DateTime Now { get; set; } = DateTime.Now;
+    [Parameter] public int StaleDays { get; set; } = 30;
+
+    /// <summary>ترتیب ورود برای انیمیشنِ پلکانی؛ منفی = بدون انیمیشن.</summary>
+    [Parameter] public int Index { get; set; } = -1;
+
+    [Parameter] public EventCallback<TaskModel> OnOpen { get; set; }
+    [Parameter] public EventCallback<TaskModel> OnEvents { get; set; }
+    [Parameter] public EventCallback<TaskModel> OnToggleDone { get; set; }
+    [Parameter] public EventCallback<TaskModel> OnToggleSelect { get; set; }
+    [Parameter] public EventCallback<TaskModel> OnTogglePriority { get; set; }
+    [Parameter] public EventCallback<(TaskModel Item, int Status)> OnSetStatus { get; set; }
+
+    private string CssClass => string.Join(' ', new[]
+    {
+        Item.PERIORITY == 1 ? "is-urgent" : "",
+        Item.STATUS switch { 1 => "is-open", 2 => "is-done", 3 => "is-cancelled", _ => "" },
+        Selected ? "is-selected" : "",
+        Leaving ? "is-leaving" : "",
+        Index is >= 0 and < 14 ? "is-animated" : ""
+    }.Where(c => c.Length > 0));
+
+    private string? Style => Index is >= 0 and < 14 ? $"--i:{Index}" : null;
+
+    private string DoneClass => Item.STATUS switch { 2 => "is-done", 3 => "is-cancelled", _ => "" };
+
+    private string DoneTitle => Item.STATUS switch
+    {
+        2 => "برگرداندن به «انجام نشده»",
+        3 => "بازگشایی",
+        _ => "علامت «انجام شد»"
+    };
+
+    private async Task OnKey(KeyboardEventArgs e)
+    {
+        if (e.Key is "Enter" or " ") await OnOpen.InvokeAsync(Item);
+    }
+}

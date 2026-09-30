@@ -206,6 +206,26 @@ test.describe('سلامت کلاینت', () => {
   });
 
   /**
+   * کارتابل اتوماسیون (/automation/tasks) کلِ ظاهرش را از css/automation.css
+   * و میان‌بُرهای صفحه‌کلید را از js/automation.js می‌گیرد. خودِ صفحه
+   * [Authorize] است و بدون ورود رندر نمی‌شود، پس اینجا دست‌کم سیم‌کشیِ
+   * index.html سنجیده می‌شود: اگر یکی از این دو جا بیفتد، صفحه بی‌استایل
+   * یا میان‌بُرها بی‌صدا از کار می‌افتند.
+   */
+  test('فایل‌های کارتابل اتوماسیون بارگذاری می‌شوند', async ({ page }) => {
+    await page.goto('/', { waitUntil: 'networkidle' });
+
+    const hasKeys = await page.evaluate(() => typeof window.atmKeys?.attach === 'function');
+    expect(hasKeys, 'js/automation.js بارگذاری نشده').toBe(true);
+
+    const cssRules = await page.evaluate(() => {
+      const sheet = [...document.styleSheets].find(s => (s.href || '').includes('css/automation.css'));
+      return sheet ? sheet.cssRules.length : 0;
+    });
+    expect(cssRules, 'css/automation.css بارگذاری نشده یا خالی است').toBeGreaterThan(50);
+  });
+
+  /**
    * رگرسیون: صفحه‌ی مغایرت‌های بهای تمام‌شده نباید با ۴۰۱/۴۰۳ بشکند.
    *
    * نسخه‌ی اول این صفحه در Load() هیچ catch نداشت، پس یک ۴۰۱ ساده از
