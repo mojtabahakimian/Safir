@@ -29,6 +29,7 @@ namespace Safir.Shared.Interfaces
         Task<bool> SendMessageAsync(MessageSendRequest request);
         Task<int> GetUnreadMessageCountAsync();
         Task<bool> MarkMessageAsReadAsync(long idnum);
+        Task<int> MarkConversationReadAsync(int senderId);
 
         // --- Reminders ---
         Task<IEnumerable<ReminderModel>?> GetRemindersAsync(int? statusFilter = null);

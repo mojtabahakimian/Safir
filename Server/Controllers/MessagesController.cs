@@ -47,7 +47,10 @@ namespace Safir.Server.Controllers
                 parameters.Add("UserId", currentUserId);
                 parameters.Add("Username", currentUsername);
                 if (includeReceived) conditions.Add("M.PERSONEL = @UserId");
-                if (includeSent) conditions.Add("M.USERNAME = @Username");
+                // فرستنده با UID (کد کاربر) شناخته می‌شود؛ USERNAME فقط برای ردیف‌های
+                // قدیمیِ بدون UID. قبلاً فقط با نام بود و اگر نامِ نمایشیِ کاربر عوض
+                // می‌شد، پیام‌های ارسالی‌اش از فهرست گم می‌شدند.
+                if (includeSent) conditions.Add("(M.UID = @UserId OR (M.UID IS NULL AND M.USERNAME = @Username))");
                 string filterClause = $"WHERE ({string.Join(" OR ", conditions)})";
 
                 // Fetch raw date/time
@@ -200,6 +203,29 @@ namespace Safir.Server.Controllers
                 return Ok(count);
             }
             catch (Exception ex) { _logger.LogError(ex, "API: Error getting unread message count for UserID: {UserId}", currentUserId); return StatusCode(500, "Internal server error."); }
+        }
+
+        /// <summary>
+        /// همه‌ی پیام‌های خوانده‌نشده‌ای که یک فرستنده برای کاربرِ جاری فرستاده
+        /// «خوانده شد» می‌شوند — وقتی گفتگو با او در پنجره‌ی چت باز می‌شود.
+        /// تعدادِ ردیف‌های تغییرکرده برمی‌گردد.
+        /// </summary>
+        [HttpPut("read-from/{senderId:int}")]
+        public async Task<ActionResult<int>> MarkConversationRead(int senderId)
+        {
+            var currentUserIdClaim = User.FindFirstValue(ClaimTypes.NameIdentifier);
+            if (!int.TryParse(currentUserIdClaim, out int currentUserId)) return Unauthorized("Invalid user token.");
+            try
+            {
+                const string sql = "UPDATE MESAGEP SET STATUS = 2 WHERE PERSONEL = @UserId AND UID = @SenderId AND STATUS = 1";
+                int rows = await _dbService.DoExecuteSQLAsync(sql, new { UserId = currentUserId, SenderId = senderId });
+                return Ok(rows);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "API: Error marking conversation from {SenderId} as read for {UserId}", senderId, currentUserId);
+                return StatusCode(500, "خطا در ثبتِ خوانده شدنِ پیام‌ها.");
+            }
         }
 
         [HttpPut("{idnum}/mark-read")]

@@ -320,6 +320,20 @@ namespace Safir.Client.Services
         }
 
 
+        public async Task<int> MarkConversationReadAsync(int senderId)
+        {
+            try
+            {
+                var response = await _httpClient.PutAsync($"api/messages/read-from/{senderId}", null);
+                return response.IsSuccessStatusCode ? await response.Content.ReadFromJsonAsync<int>() : 0;
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogError(ex, "Exception marking conversation from {SenderId} as read.", senderId);
+                return 0;
+            }
+        }
+
         // --- Reminders ---
         public async Task<IEnumerable<ReminderModel>?> GetRemindersAsync(int? statusFilter = null)
         {
