@@ -1,0 +1,358 @@
+@using Safir.Shared.Models
+@using Safir.Shared.Models.Automation
+@using Safir.Shared.Interfaces
+@inject IAutomationApiService AutomationService
+@inject LookupApiService LookupService
+@inject ISnackbar Snackbar
+
+@*
+    پنل کشوییِ ساخت/ویرایش وظیفه. صفحه با Show(task) بازش می‌کند (null = جدید)
+    و بعد از ذخیره OnSaved را صدا می‌زند. خودش ذخیره می‌کند تا منطق
+    اعتبارسنجی و «تاریخ انجام» فقط یک جا باشد.
+*@
+
+<div class="atm-scrim @(_open ? "is-open" : "")" @onclick="Close"></div>
+
+<aside class="atm-sheet @(_open ? "is-open" : "")" aria-hidden="@(!_open)" role="dialog" aria-label="@Title">
+    @if (_model is not null)
+    {
+        <header class="atm-sheet__head">
+            <div class="glyph"><i class="bi @(IsNew ? "bi-plus-lg" : "bi-pencil-square")"></i></div>
+            <div>
+                <h2>@Title</h2>
+                <small>@(IsNew ? "کار را بنویسید، مجری و گیرنده را انتخاب کنید." : $"شماره‌ی {_model.IDNUM}")</small>
+            </div>
+            <button type="button" class="atm-icon-btn close" title="بستن (Esc)" @onclick="Close"><i class="bi bi-x-lg"></i></button>
+        </header>
+
+        <div class="atm-sheet__body" @onkeydown="OnSheetKey">
+            <div class="atm-f">
+                <label>شرح وظیفه <span class="req">*</span></label>
+                <textarea @ref="_textRef" class="atm-textarea @(_errors.ContainsKey("TASK") ? "has-error" : "")"
+                          placeholder="چه کاری باید انجام شود؟"
+                          maxlength="4000"
+                          @bind="_model.TASK" @bind:event="oninput"></textarea>
+                <div class="atm-counter">@(_model.TASK?.Length ?? 0) / ۴۰۰۰</div>
+                @if (_errors.TryGetValue("TASK", out var e1))
+                {
+                    <div class="err"><i class="bi bi-exclamation-circle"></i>@e1</div>
+                }
+            </div>
+
+            <div class="atm-f">
+                <label><i class="bi bi-person-check"></i> مجری <span class="req">*</span></label>
+                <MudSelect T="int" @bind-Value="_model.PERSONEL" Variant="Variant.Outlined" Dense="true"
+                           AnchorOrigin="Origin.BottomCenter" Placeholder="انتخاب مجری"
+                           Error="_errors.ContainsKey(nameof(TaskModel.PERSONEL))">
+                    @foreach (var p in Personel)
+                    {
+                        <MudSelectItem T="int" Value="@p.USERCO">
+                            <span style="display:inline-flex;align-items:center;gap:8px">
+                                <span class="atm-av" style="@AutomationUi.AvatarStyle(p.SAL_NAME)">@AutomationUi.Initials(p.SAL_NAME)</span>
+                                @p.SAL_NAME
+                                @if (p.USERCO == CurrentUserId)
+                                {
+                                    <small style="opacity:.6">(خودم)</small>
+                                }
+                            </span>
+                        </MudSelectItem>
+                    }
+                </MudSelect>
+                @if (_errors.TryGetValue(nameof(TaskModel.PERSONEL), out var e2))
+                {
+                    <div class="err"><i class="bi bi-exclamation-circle"></i>@e2</div>
+                }
+            </div>
+
+            <div class="atm-f">
+                <label><i class="bi bi-building"></i> گیرنده (مشتری) <span class="req">*</span></label>
+                <MudAutocomplete T="LookupDto<string>" @bind-Value="_customer"
+                                 SearchFunc="SearchCustomersAsync"
+                                 ToStringFunc="@(c => c == null ? string.Empty : c.Name)"
+                                 ResetValueOnEmptyText="true" CoerceText="false"
+                                 Variant="Variant.Outlined" Dense="true" Clearable="true"
+                                 Placeholder="نام یا کد حساب را جستجو کنید"
+                                 Error="_errors.ContainsKey(nameof(TaskModel.COMP_COD))"
+                                 AdornmentIcon="@Icons.Material.Filled.Search" AdornmentColor="Color.Primary">
+                    <ItemTemplate Context="c">
+                        <span style="display:inline-flex;align-items:center;gap:8px">
+                            <span class="atm-av" style="@AutomationUi.AvatarStyle(c.Name)">@AutomationUi.Initials(c.Name)</span>
+                            @c.Name <small style="opacity:.55">@c.Id</small>
+                        </span>
+                    </ItemTemplate>
+                    <NoItemsTemplate><MudText Class="pa-2">مشتری‌ای پیدا نشد.</MudText></NoItemsTemplate>
+                </MudAutocomplete>
+                @if (_errors.TryGetValue(nameof(TaskModel.COMP_COD), out var e3))
+                {
+                    <div class="err"><i class="bi bi-exclamation-circle"></i>@e3</div>
+                }
+            </div>
+
+            <div class="atm-f">
+                <label><i class="bi bi-flag"></i> اولویت</label>
+                <div class="atm-choices">
+                    <button type="button" class="atm-choice @(_model.PERIORITY != 1 ? "is-active" : "")" @onclick="() => _model.PERIORITY = 2">
+                        <i class="bi bi-circle"></i>
+                        <span>معمولی<small>در نوبت انجام شود</small></span>
+                    </button>
+                    <button type="button" class="atm-choice atm-choice--urgent @(_model.PERIORITY == 1 ? "is-active" : "")" @onclick="() => _model.PERIORITY = 1">
+                        <i class="bi bi-lightning-charge-fill"></i>
+                        <span>فوری<small>بالای کارتابل می‌نشیند</small></span>
+                    </button>
+                </div>
+            </div>
+
+            @if (!IsNew)
+            {
+                <div class="atm-f">
+                    <label><i class="bi bi-activity"></i> وضعیت</label>
+                    <div class="atm-choices" style="--n:3">
+                        <button type="button" class="atm-choice @(_model.STATUS == 1 ? "is-active" : "")" @onclick="() => _model.STATUS = 1">
+                            <i class="bi bi-hourglass-split"></i><span>انجام نشده</span>
+                        </button>
+                        <button type="button" class="atm-choice atm-choice--done @(_model.STATUS == 2 ? "is-active" : "")" @onclick="() => _model.STATUS = 2">
+                            <i class="bi bi-check2-circle"></i><span>انجام شده</span>
+                        </button>
+                        <button type="button" class="atm-choice atm-choice--cancel @(_model.STATUS == 3 ? "is-active" : "")" @onclick="() => _model.STATUS = 3">
+                            <i class="bi bi-slash-circle"></i><span>لغو شده</span>
+                        </button>
+                    </div>
+                </div>
+
+                @if (_model.skid.HasValue && _model.num is > 0)
+                {
+                    <div class="atm-f">
+                        <div class="atm-docref">
+                            <i class="bi bi-file-earmark-text"></i>
+                            مرتبط با @AutomationUi.DocTypeName(_model.skid, DocTypes) شماره‌ی @_model.num
+                        </div>
+                    </div>
+                }
+
+                <div class="atm-metaline">
+                    @if (!string.IsNullOrWhiteSpace(_model.USERNAME))
+                    {
+                        <span><i class="bi bi-person-up"></i>ارجاع از @_model.USERNAME</span>
+                    }
+                    @if (_model.STDATE.HasValue)
+                    {
+                        <span><i class="bi bi-calendar-event"></i>@AutomationUi.ShortDate(_model.STDATE) @AutomationUi.Time(_model.STTIME)</span>
+                    }
+                    @if (_model.ENDATE.HasValue)
+                    {
+                        <span><i class="bi bi-check2-all"></i>انجام: @AutomationUi.ShortDate(_model.ENDATE) @AutomationUi.Time(_model.ENTIME)</span>
+                    }
+                    @if (_model.SEE == true)
+                    {
+                        <span><i class="bi bi-eye"></i>مجری دیده است</span>
+                    }
+                </div>
+            }
+        </div>
+
+        <footer class="atm-sheet__foot">
+            <span class="hint" title="Esc = بستن"><kbd>Ctrl+Enter</kbd> ذخیره</span>
+            @if (!IsNew)
+            {
+                <button type="button" class="atm-btn atm-btn--ghost" @onclick="ShowEvents" disabled="@_saving">
+                    <i class="bi bi-clock-history"></i>رویدادها
+                </button>
+            }
+            else
+            {
+                <button type="button" class="atm-btn atm-btn--ghost" @onclick="() => SaveAsync(keepOpen: true)" disabled="@_saving" title="ذخیره و نوشتن وظیفه‌ی بعدی">
+                    <i class="bi bi-plus-circle"></i>ذخیره و بعدی
+                </button>
+            }
+            <button type="button" class="atm-btn atm-btn--primary" @onclick="() => SaveAsync(keepOpen: false)" disabled="@_saving">
+                @if (_saving)
+                {
+                    <MudProgressCircular Size="Size.Small" Indeterminate="true" Style="color:#fff;width:18px;height:18px" />
+                }
+                else
+                {
+                    <i class="bi bi-check2"></i>
+                }
+                @(IsNew ? "ثبت وظیفه" : "ذخیره تغییرات")
+            </button>
+        </footer>
+    }
+</aside>
+
+@code {
+    [Parameter] public List<PersonelLookupModel> Personel { get; set; } = new();
+    [Parameter] public int CurrentUserId { get; set; }
+    [Parameter] public LookupDto<string>? DefaultCustomer { get; set; }
+    [Parameter] public IEnumerable<DocumentTypeLookupModel>? DocTypes { get; set; }
+
+    /// <summary>بعد از ذخیره‌ی موفق: (وظیفه، جدید بود؟)</summary>
+    [Parameter] public EventCallback<(TaskModel Task, bool IsNew)> OnSaved { get; set; }
+    [Parameter] public EventCallback<long> OnShowEvents { get; set; }
+
+    private bool _open;
+    private bool _saving;
+    private bool _focusPending;
+    private TaskModel? _model;
+    private TaskModel? _original;
+    private LookupDto<string>? _customer;
+    private ElementReference _textRef;
+    private readonly Dictionary<string, string> _errors = new();
+
+    public bool IsOpen => _open;
+    private bool IsNew => _model is null || _model.IDNUM <= 0;
+    private string Title => IsNew ? "وظیفه‌ی جدید" : "ویرایش وظیفه";
+
+    /// <summary>باز کردن پنل. task = null یعنی وظیفه‌ی جدید؛ متنِ اولیه اختیاری است.</summary>
+    public void Show(TaskModel? task, string? initialText = null)
+    {
+        _errors.Clear();
+        _original = task;
+        if (task is null)
+        {
+            _model = new TaskModel { PERIORITY = 2, STATUS = 1, PERSONEL = CurrentUserId, TASK = initialText };
+            _customer = DefaultCustomer;
+        }
+        else
+        {
+            _model = Copy(task);
+            _customer = string.IsNullOrWhiteSpace(task.COMP_COD)
+                ? null
+                : new LookupDto<string>(task.COMP_COD, string.IsNullOrWhiteSpace(task.NAME) ? task.COMP_COD : task.NAME);
+        }
+        _open = true;
+        _focusPending = true;
+        StateHasChanged();
+    }
+
+    public void Close()
+    {
+        if (_saving) return;
+        _open = false;
+        StateHasChanged();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_focusPending && _open)
+        {
+            _focusPending = false;
+            try { await _textRef.FocusAsync(); } catch { /* عنصر هنوز رندر نشده */ }
+        }
+    }
+
+    private async Task OnSheetKey(KeyboardEventArgs e)
+    {
+        if (e.Key == "Escape") Close();
+        else if (e.Key == "Enter" && (e.CtrlKey || e.MetaKey)) await SaveAsync(keepOpen: false);
+    }
+
+    private async Task<IEnumerable<LookupDto<string>>> SearchCustomersAsync(string value)
+    {
+        var list = await LookupService.GetCustomerLookupAsync(string.IsNullOrWhiteSpace(value) ? null : value);
+        return string.IsNullOrWhiteSpace(value)
+            ? (list ?? new()).Take(10)
+            : list ?? Enumerable.Empty<LookupDto<string>>();
+    }
+
+    private bool Validate()
+    {
+        _errors.Clear();
+        if (string.IsNullOrWhiteSpace(_model!.TASK)) _errors["TASK"] = "شرح وظیفه را بنویسید.";
+        if (_model.PERSONEL <= 0) _errors[nameof(TaskModel.PERSONEL)] = "مجری را انتخاب کنید.";
+        if (_customer is null || string.IsNullOrWhiteSpace(_customer.Id))
+            _errors[nameof(TaskModel.COMP_COD)] = "گیرنده را انتخاب کنید — وظیفه بدون گیرنده ذخیره نمی‌شود.";
+        return _errors.Count == 0;
+    }
+
+    private async Task SaveAsync(bool keepOpen)
+    {
+        if (_model is null || _saving) return;
+        if (!Validate()) { StateHasChanged(); return; }
+
+        _model.TASK = _model.TASK!.Trim();
+        _model.COMP_COD = _customer!.Id;
+        _model.NAME = _customer.Name;
+
+        // «تاریخ انجام» مثل نرم‌افزار WPF: موقعِ انجام شدن پر و موقعِ بازگشایی پاک می‌شود.
+        StampDoneDate(_model, _original?.STATUS ?? 1);
+
+        _saving = true;
+        StateHasChanged();
+        try
+        {
+            bool isNew = IsNew;
+            bool ok;
+            if (isNew)
+            {
+                var created = await AutomationService.CreateTaskAsync(_model);
+                ok = created is not null;
+                if (created is not null) _model.IDNUM = created.IDNUM;
+            }
+            else
+            {
+                ok = await AutomationService.UpdateTaskAsync(_model.IDNUM, _model);
+            }
+
+            if (!ok)
+            {
+                Snackbar.Add("ذخیره نشد. اتصال به سرور را بررسی کنید و دوباره تلاش کنید.", Severity.Error);
+                return;
+            }
+
+            Snackbar.Add(isNew ? $"وظیفه‌ی {_model.IDNUM} ثبت شد." : "تغییرات ذخیره شد.", Severity.Success);
+            var saved = _model;
+            if (keepOpen && isNew)
+            {
+                // همان مجری و گیرنده برای وظیفه‌ی بعدی می‌ماند — معمولاً چند کار پشت‌سرهم برای یک نفر است.
+                var next = new TaskModel { PERIORITY = saved.PERIORITY, STATUS = 1, PERSONEL = saved.PERSONEL };
+                _model = next;
+                _original = null;
+                _focusPending = true;
+            }
+            else
+            {
+                _open = false;
+            }
+            await OnSaved.InvokeAsync((saved, isNew));
+        }
+        finally
+        {
+            _saving = false;
+            StateHasChanged();
+        }
+    }
+
+    /// <summary>
+    /// «انجام شد» ← تاریخ و ساعتِ انجام اگر خالی است پر می‌شود.
+    /// برگشت از «انجام شد» ← پاک می‌شود. در داده‌ی واقعی تقریباً همه‌ی
+    /// کارهای انجام‌شده ENDATE دارند و کارهای باز ندارند.
+    /// </summary>
+    public static void StampDoneDate(TaskModel t, int previousStatus)
+    {
+        if (t.STATUS == 2 && !t.ENDATE.HasValue)
+        {
+            var now = DateTime.Now;
+            t.ENDATE = now.Date;
+            t.ENTIME = new TimeSpan(now.Hour, now.Minute, 0);
+        }
+        else if (t.STATUS != 2 && previousStatus == 2)
+        {
+            t.ENDATE = null;
+            t.ENTIME = null;
+        }
+    }
+
+    public static TaskModel Copy(TaskModel t) => new()
+    {
+        IDNUM = t.IDNUM, GR = t.GR, PERSONEL = t.PERSONEL, TASK = t.TASK,
+        PERIORITY = t.PERIORITY, STATUS = t.STATUS,
+        STDATE = t.STDATE, STTIME = t.STTIME, ENDATE = t.ENDATE, ENTIME = t.ENTIME, CTIM = t.CTIM,
+        COMP_COD = t.COMP_COD, NAME = t.NAME, USERNAME = t.USERNAME, USERCO = t.USERCO,
+        skid = t.skid, num = t.num, tg = t.tg, SUMTIME = t.SUMTIME, SEE = t.SEE, SEET = t.SEET
+    };
+
+    private async Task ShowEvents()
+    {
+        if (_model is { IDNUM: > 0 }) await OnShowEvents.InvokeAsync(_model.IDNUM);
+    }
+}

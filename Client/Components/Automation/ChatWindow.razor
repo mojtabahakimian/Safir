@@ -1,0 +1,817 @@
+@using Safir.Shared.Models
+@using Safir.Shared.Models.Automation
+@using Safir.Shared.Interfaces
+@inject IAutomationApiService AutomationService
+@inject LookupApiService LookupService
+@inject ISnackbar Snackbar
+@inject IJSRuntime JS
+@implements IAsyncDisposable
+
+@*
+    پیام‌های داخلی به شکل چت — جدول MESAGEP.
+
+    هر پیام برای هر گیرنده یک ردیف است (نرم‌افزار WPF هم همین را می‌خواند)،
+    پس «گروه» جدولی ندارد: ارسالِ گروهی یعنی یک متن در یک لحظه برای چند
+    نفر، که در گفتگوی خصوصیِ هر کدام می‌نشیند — مثل «لیست پخش» تلگرام.
+    ارسال‌های گروهیِ کاربر جدا هم با وضعیتِ «دیده شد» هر گیرنده نشان
+    داده می‌شوند.
+*@
+
+@if (_open)
+{
+    <div class="atm-tokens atm-chat-root">
+        <div class="atm-chat-scrim @(_closing ? "is-closing" : "")" @onclick="Close"></div>
+
+        <section class="atm-chat @(_closing ? "is-closing" : "") @(_mode != Mode.None ? "has-pane" : "")"
+                 role="dialog" aria-label="پیام‌های داخلی" @onkeydown="OnKey">
+
+            @* ─────────── فهرست گفتگوها ─────────── *@
+            <aside class="atm-chat__side">
+                <header class="atm-chat__sidehead">
+                    <span class="logo"><i class="bi bi-chat-heart-fill"></i></span>
+                    <b>پیام‌ها</b>
+                    @if (TotalUnread > 0)
+                    {
+                        <span class="atm-unread">@TotalUnread</span>
+                    }
+                    <span style="flex:1"></span>
+                    <button type="button" class="atm-icon-btn" title="پیام جدید (تکی یا گروهی)" @onclick="StartNew"><i class="bi bi-pencil-square"></i></button>
+                    <button type="button" class="atm-icon-btn" title="بستن (Esc)" @onclick="Close"><i class="bi bi-x-lg"></i></button>
+                </header>
+
+                <div class="atm-chat__search">
+                    <i class="bi bi-search"></i>
+                    <input type="search" placeholder="جستجوی همکار…" value="@_q" @oninput="e => _q = e.Value?.ToString() ?? string.Empty" />
+                </div>
+
+                <div class="atm-chat__list">
+                    @if (_loading && _convs.Count == 0)
+                    {
+                        @for (int i = 0; i < 5; i++) { <div class="atm-skel" style="height:62px;margin:6px 10px;border-radius:14px"></div> }
+                    }
+                    else
+                    {
+                        @if (_broadcasts.Count > 0 && string.IsNullOrWhiteSpace(_q))
+                        {
+                            <button type="button" class="atm-conv @(_mode == Mode.Broadcasts ? "is-active" : "")" style="--i:0" @onclick="OpenBroadcasts">
+                                <span class="atm-av atm-av--lg atm-av--bc"><i class="bi bi-megaphone-fill"></i></span>
+                                <span class="atm-conv__body">
+                                    <span class="r1"><b>ارسال‌های گروهی</b><time>@ListTime(_broadcasts[^1].At)</time></span>
+                                    <span class="r2"><span class="pv">@_broadcasts.Count پیام برای چند نفر</span></span>
+                                </span>
+                            </button>
+                        }
+                        int idx = 1;
+                        @foreach (var c in FilteredConvs)
+                        {
+                            var last = c.Msgs[^1];
+                            <button type="button" class="atm-conv @(_mode == Mode.Chat && _peer == c.Peer ? "is-active" : "") @(c.Unread > 0 ? "has-unread" : "")"
+                                    style="--i:@(Math.Min(idx++, 12))" @onclick="() => OpenConv(c.Peer)" @key="c.Peer">
+                                <span class="atm-av atm-av--lg" style="@AutomationUi.AvatarStyle(c.Name)">@AutomationUi.Initials(c.Name)</span>
+                                <span class="atm-conv__body">
+                                    <span class="r1"><b>@c.Name</b><time>@ListTime(last.At)</time></span>
+                                    <span class="r2">
+                                        @if (last.Mine)
+                                        {
+                                            <i class="bi @Tick(last) tick @(last.Read ? "is-read" : "")"></i>
+                                        }
+                                        <span class="pv">@(last.Mine ? "شما: " : "")@Preview(last.Text)</span>
+                                        @if (c.Unread > 0)
+                                        {
+                                            <span class="atm-unread">@c.Unread</span>
+                                        }
+                                    </span>
+                                </span>
+                            </button>
+                        }
+                        @if (!FilteredConvs.Any())
+                        {
+                            <div class="atm-chat__hint">
+                                @if (string.IsNullOrWhiteSpace(_q))
+                                {
+                                    <span>هنوز گفتگویی ندارید.</span>
+                                    <button type="button" class="atm-btn atm-btn--primary" style="height:36px" @onclick="StartNew"><i class="bi bi-pencil-square"></i>اولین پیام</button>
+                                }
+                                else
+                                {
+                                    <span>گفتگویی با «@_q» نیست.</span>
+                                    <button type="button" class="atm-btn atm-btn--ghost" style="height:36px" @onclick="() => StartNewWith(_q)"><i class="bi bi-person-plus"></i>پیام جدید</button>
+                                }
+                            </div>
+                        }
+                    }
+                </div>
+            </aside>
+
+            @* ─────────── پنجره‌ی گفتگو ─────────── *@
+            <main class="atm-chat__main">
+                @switch (_mode)
+                {
+                    case Mode.None:
+                        <div class="atm-chat__welcome">
+                            <div class="art">
+                                <span class="b b1"></span><span class="b b2"></span><span class="b b3"></span>
+                                <i class="bi bi-chat-dots-fill"></i>
+                            </div>
+                            <h3>پیام‌های داخلی</h3>
+                            <p>یک گفتگو را از فهرست انتخاب کنید، یا برای یک نفر یا چند نفر پیام بفرستید.</p>
+                            <button type="button" class="atm-btn atm-btn--primary" @onclick="StartNew"><i class="bi bi-pencil-square"></i>پیام جدید</button>
+                        </div>
+                        break;
+
+                    case Mode.Chat:
+                        var conv = Current;
+                        <div class="atm-chat__pane" @key="@($"c{_peer}")">
+                            <header class="atm-chat__head">
+                                <button type="button" class="atm-icon-btn back" title="بازگشت" @onclick="Back"><i class="bi bi-arrow-right"></i></button>
+                                <span class="atm-av atm-av--lg" style="@AutomationUi.AvatarStyle(PeerName)">@AutomationUi.Initials(PeerName)</span>
+                                <div>
+                                    <b>@PeerName</b>
+                                    <small>@(conv is null ? "گفتگوی تازه" : $"{conv.Msgs.Count} پیام · آخرین {AutomationUi.Ago(conv.Msgs[^1].At.Date, conv.Msgs[^1].At.TimeOfDay, DateTime.Now)}")</small>
+                                </div>
+                            </header>
+
+                            <div class="atm-chat__msgs" @ref="_scrollRef">
+                                @if (conv is null)
+                                {
+                                    <div class="atm-chat__start">اولین پیام را برای <b>@PeerName</b> بنویسید 👋</div>
+                                }
+                                else
+                                {
+                                    DateTime? day = null;
+                                    int n = 0;
+                                    foreach (var m in conv.Msgs)
+                                    {
+                                        if (day != m.At.Date)
+                                        {
+                                            day = m.At.Date;
+                                            <div class="atm-day"><span>@DayLabel(m.At)</span></div>
+                                        }
+                                        var anim = _animate.Contains(m.Key);
+                                        <div class="atm-msg @(m.Mine ? "mine" : "theirs") @(anim ? "is-new" : "") @(m.Failed ? "is-failed" : "")"
+                                             style="@(anim ? $"--i:{n++}" : null)" @key="m.Key">
+                                            <div class="atm-bubble">
+                                                <div class="txt">@m.Text</div>
+                                                <div class="meta" title="@(string.IsNullOrWhiteSpace(m.Customer) ? null : $"مربوط به: {m.Customer}")">
+                                                    @if (m.BroadcastCount > 1)
+                                                    {
+                                                        <i class="bi bi-megaphone" title="@($"ارسال گروهی به {m.BroadcastCount} نفر")"></i>
+                                                    }
+                                                    @if (!string.IsNullOrWhiteSpace(m.Customer))
+                                                    {
+                                                        <i class="bi bi-building"></i>
+                                                    }
+                                                    <time>@m.At.ToString("HH:mm")</time>
+                                                    @if (m.Mine)
+                                                    {
+                                                        <i class="bi @Tick(m) tick @(m.Read ? "is-read" : "")" title="@(m.Failed ? "ارسال نشد" : m.Pending ? "در حال ارسال" : m.Read ? "خوانده شد" : "ارسال شد")"></i>
+                                                    }
+                                                </div>
+                                            </div>
+                                            @if (m.Failed)
+                                            {
+                                                <button type="button" class="atm-retry" @onclick="() => RetryAsync(m)"><i class="bi bi-arrow-clockwise"></i>ارسال دوباره</button>
+                                            }
+                                        </div>
+                                    }
+                                }
+                            </div>
+
+                            @Composer(PeerIsReachable)
+                        </div>
+                        break;
+
+                    case Mode.New:
+                        <div class="atm-chat__pane" @key="@("new")">
+                            <header class="atm-chat__head">
+                                <button type="button" class="atm-icon-btn back" title="بازگشت" @onclick="Back"><i class="bi bi-arrow-right"></i></button>
+                                <span class="atm-av atm-av--lg atm-av--bc"><i class="bi bi-pencil-square"></i></span>
+                                <div>
+                                    <b>پیام جدید</b>
+                                    <small>یک نفر = گفتگوی خصوصی · چند نفر = ارسال گروهی</small>
+                                </div>
+                            </header>
+                            <div class="atm-picker">
+                                <div class="atm-picker__chips">
+                                    @if (_picked.Count == 0)
+                                    {
+                                        <span class="ph">گیرنده‌ها را از فهرست زیر انتخاب کنید</span>
+                                    }
+                                    @foreach (var id in _picked)
+                                    {
+                                        var nm = NameOf(id);
+                                        <span class="atm-pchip" @key="id">
+                                            <span class="atm-av" style="@AutomationUi.AvatarStyle(nm)">@AutomationUi.Initials(nm)</span>@nm
+                                            <button type="button" title="حذف" @onclick="() => _picked.Remove(id)"><i class="bi bi-x"></i></button>
+                                        </span>
+                                    }
+                                </div>
+                                <div class="atm-picker__bar">
+                                    <div class="atm-chat__search" style="margin:0;flex:1">
+                                        <i class="bi bi-search"></i>
+                                        <input @ref="_pickSearchRef" type="search" placeholder="جستجوی همکار…" value="@_pq" @oninput="e => _pq = e.Value?.ToString() ?? string.Empty" />
+                                    </div>
+                                    <button type="button" class="atm-btn atm-btn--ghost" style="height:40px" @onclick="PickAllVisible">
+                                        <i class="bi bi-check2-all"></i>همه (@PickCandidates.Count())
+                                    </button>
+                                    @if (_picked.Count > 0)
+                                    {
+                                        <button type="button" class="atm-btn atm-btn--ghost" style="height:40px" @onclick="() => _picked.Clear()"><i class="bi bi-eraser"></i></button>
+                                    }
+                                </div>
+                                <div class="atm-picker__list">
+                                    @{ int pi = 0; }
+                                    @foreach (var p in PickCandidates)
+                                    {
+                                        var on = _picked.Contains(p.USERCO);
+                                        <label class="atm-person @(on ? "is-on" : "")" style="--i:@(Math.Min(pi++, 14))" @key="p.USERCO">
+                                            <input type="checkbox" checked="@on" @onchange="() => TogglePick(p.USERCO)" />
+                                            <span class="atm-av atm-av--lg" style="@AutomationUi.AvatarStyle(p.SAL_NAME)">@AutomationUi.Initials(p.SAL_NAME)</span>
+                                            <span class="nm">@p.SAL_NAME</span>
+                                            <span class="ck"><i class="bi bi-check-lg"></i></span>
+                                        </label>
+                                    }
+                                </div>
+                            </div>
+                            @Composer(_picked.Count > 0)
+                        </div>
+                        break;
+
+                    case Mode.Broadcasts:
+                        <div class="atm-chat__pane" @key="@("bc")">
+                            <header class="atm-chat__head">
+                                <button type="button" class="atm-icon-btn back" title="بازگشت" @onclick="Back"><i class="bi bi-arrow-right"></i></button>
+                                <span class="atm-av atm-av--lg atm-av--bc"><i class="bi bi-megaphone-fill"></i></span>
+                                <div>
+                                    <b>ارسال‌های گروهی</b>
+                                    <small>پیام‌هایی که یک‌جا برای چند نفر فرستاده‌اید، با وضعیتِ دیده‌شدن</small>
+                                </div>
+                                <span style="flex:1"></span>
+                                <button type="button" class="atm-btn atm-btn--primary" style="height:36px" @onclick="StartNew"><i class="bi bi-megaphone"></i>ارسال گروهی تازه</button>
+                            </header>
+                            <div class="atm-chat__msgs" @ref="_scrollRef">
+                                @{ DateTime? bday = null; int bn = 0; }
+                                @foreach (var b in _broadcasts)
+                                {
+                                    if (bday != b.At.Date)
+                                    {
+                                        bday = b.At.Date;
+                                        <div class="atm-day"><span>@DayLabel(b.At)</span></div>
+                                    }
+                                    var anim = _animate.Contains(b.Key);
+                                    <div class="atm-msg mine @(anim ? "is-new" : "")" style="@(anim ? $"--i:{bn++}" : null)" @key="b.Key">
+                                        <div class="atm-bubble atm-bubble--bc">
+                                            <div class="txt">@b.Text</div>
+                                            <div class="atm-bc__to">
+                                                @foreach (var r in b.Recipients)
+                                                {
+                                                    var nm = NameOf(r.Peer);
+                                                    <span class="@(r.Read ? "is-read" : "")" title="@(r.Read ? "دیده شد" : "هنوز ندیده")">
+                                                        <i class="bi @(r.Read ? "bi-check2-all" : "bi-check2")"></i>@nm
+                                                    </span>
+                                                }
+                                            </div>
+                                            <div class="meta">
+                                                <span class="bc-count">دیده‌شده @b.Recipients.Count(r => r.Read) از @b.Recipients.Count</span>
+                                                <time>@b.At.ToString("HH:mm")</time>
+                                            </div>
+                                        </div>
+                                    </div>
+                                }
+                            </div>
+                        </div>
+                        break;
+                }
+            </main>
+        </section>
+    </div>
+}
+
+@code {
+    [Parameter] public int CurrentUserId { get; set; }
+    [Parameter] public string? CurrentUserName { get; set; }
+    [Parameter] public List<PersonelLookupModel> Personel { get; set; } = new();
+    [Parameter] public LookupDto<string>? DefaultCustomer { get; set; }
+
+    /// <summary>بعد از خواندن یا ارسال — صفحه شمارنده‌ی پیام‌ها را تازه کند.</summary>
+    [Parameter] public EventCallback OnChanged { get; set; }
+
+    private enum Mode { None, Chat, New, Broadcasts }
+
+    /// <summary>یک پیام از دیدِ کاربرِ جاری.</summary>
+    private sealed class Msg
+    {
+        public long Key { get; init; }
+        public long Id { get; init; }
+        public int Peer { get; init; }
+        public bool Mine { get; init; }
+        public string Text { get; init; } = "";
+        public DateTime At { get; init; }
+        public bool Read { get; set; }
+        public bool Pending { get; set; }
+        public bool Failed { get; set; }
+        public string? Customer { get; init; }
+        public string? CustomerCode { get; init; }
+        public int BroadcastCount { get; set; } = 1;
+    }
+
+    private sealed class Conv
+    {
+        public int Peer { get; init; }
+        public string Name { get; set; } = "";
+        public List<Msg> Msgs { get; } = new();
+        public int Unread => Msgs.Count(m => !m.Mine && !m.Read);
+    }
+
+    private sealed class Broadcast
+    {
+        public long Key { get; init; }
+        public string Text { get; init; } = "";
+        public DateTime At { get; init; }
+        public List<Msg> Recipients { get; } = new();
+    }
+
+    private bool _open;
+    private bool _closing;
+    private bool _loading;
+    private Mode _mode = Mode.None;
+    private int _peer;
+    private string _q = "";
+    private string _pq = "";
+    private string _text = "";
+    private bool _sending;
+    private bool _fly;
+    private bool _showEmoji;
+    private bool _showCustomer;
+    private LookupDto<string>? _customer;
+    private readonly HashSet<int> _picked = new();
+    private readonly HashSet<long> _animate = new();
+    private HashSet<long> _knownIds = new();
+    private List<Conv> _convs = new();
+    private List<Broadcast> _broadcasts = new();
+    private readonly List<Msg> _pending = new();
+    private long _tempKey = -1;
+
+    private ElementReference _scrollRef;
+    private ElementReference _inputRef;
+    private ElementReference _pickSearchRef;
+    private bool _scrollPending;
+    private bool _bindPending;
+    private bool _focusPending;
+    private System.Threading.Timer? _poll;
+    private DotNetObjectReference<ChatWindow>? _self;
+
+    private static readonly string[] Emojis =
+        { "👍", "🙏", "✅", "👌", "🙂", "😂", "❤️", "🔥", "👏", "🤝", "⏰", "📌", "📎", "💰", "📦", "🚚", "📞", "📝", "❗", "❓" };
+
+    public bool IsOpen => _open;
+    private int TotalUnread => _convs.Sum(c => c.Unread);
+    private Conv? Current => _convs.FirstOrDefault(c => c.Peer == _peer);
+    private string PeerName => NameOf(_peer);
+    private bool PeerIsReachable => _peer > 0;
+
+    private IEnumerable<Conv> FilteredConvs => string.IsNullOrWhiteSpace(_q)
+        ? _convs
+        : _convs.Where(c => Norm(c.Name).Contains(Norm(_q)));
+
+    private IEnumerable<PersonelLookupModel> PickCandidates => Personel
+        .Where(p => p.USERCO != CurrentUserId && p.USERCO > 0)
+        .Where(p => string.IsNullOrWhiteSpace(_pq) || Norm(p.SAL_NAME).Contains(Norm(_pq)));
+
+    // ─────────────────────────── باز و بسته ───────────────────────────
+
+    public async Task ShowAsync()
+    {
+        _open = true;
+        _closing = false;
+        _customer = DefaultCustomer;
+        StateHasChanged();
+        await ReloadAsync(animateAll: false);
+        _poll ??= new System.Threading.Timer(async _ => await InvokeAsync(() => ReloadAsync(animateAll: false, silent: true)),
+                                             null, TimeSpan.FromSeconds(6), TimeSpan.FromSeconds(6));
+    }
+
+    public async Task Close()
+    {
+        if (!_open || _closing) return;
+        _closing = true;
+        StateHasChanged();
+        _poll?.Dispose();
+        _poll = null;
+        await Task.Delay(230); // انیمیشنِ بسته شدن
+        _open = false;
+        _closing = false;
+        _mode = Mode.None;
+        _showEmoji = _showCustomer = false;
+        StateHasChanged();
+        await OnChanged.InvokeAsync();
+    }
+
+    private async Task OnKey(KeyboardEventArgs e)
+    {
+        if (e.Key == "Escape")
+        {
+            if (_showEmoji || _showCustomer) { _showEmoji = _showCustomer = false; }
+            else if (_mode != Mode.None) Back();
+            else await Close();
+        }
+    }
+
+    // ─────────────────────────── داده ───────────────────────────
+
+    private async Task ReloadAsync(bool animateAll, bool silent = false)
+    {
+        if (!_open) return;
+        if (!silent) { _loading = true; StateHasChanged(); }
+
+        var list = await AutomationService.GetMessagesAsync(includeSent: true, includeReceived: true);
+        _loading = false;
+        if (list is null)
+        {
+            if (!silent) Snackbar.Add("پیام‌ها دریافت نشد. اتصال به سرور را بررسی کنید.", Severity.Warning);
+            StateHasChanged();
+            return;
+        }
+
+        var rows = list.ToList();
+        var fresh = rows.Where(r => !_knownIds.Contains(r.IDNUM)).Select(r => r.IDNUM).ToHashSet();
+        bool firstLoad = _knownIds.Count == 0;
+        _knownIds = rows.Select(r => r.IDNUM).ToHashSet();
+
+        Build(rows);
+
+        // پیامِ تازه در گفتگوی باز: متحرک وارد شود، خوانده شود، و پایینِ گفتگو نمایش داده شود.
+        if (!firstLoad && fresh.Count > 0)
+        {
+            // فقط پیام‌های دریافتی؛ پیامِ خودِ کاربر قبلاً به شکلِ حبابِ «در حال ارسال» وارد شده.
+            foreach (var r in rows.Where(r => fresh.Contains(r.IDNUM) && !IsMine(r))) _animate.Add(r.IDNUM);
+            if (_mode == Mode.Chat && Current is { } c && c.Msgs.Any(m => fresh.Contains(m.Id)))
+            {
+                _scrollPending = true;
+                await MarkReadAsync(c);
+            }
+        }
+
+        StateHasChanged();
+        if (!silent || fresh.Count > 0) await OnChanged.InvokeAsync();
+    }
+
+    private void Build(List<MessageModel> rows)
+    {
+        // ارسال‌های گروهی: یک متن، یک فرستنده، یک لحظه (همه در یک INSERT و با یک GETDATE()).
+        var mineRows = rows.Where(r => IsMine(r)).ToList();
+        var groups = mineRows
+            .GroupBy(r => (r.PAYAM ?? "", r.CRT?.ToString("yyyyMMddHHmmss") ?? $"{r.STDATE:d}{r.STTIME}"))
+            .ToList();
+        var bcCount = new Dictionary<long, int>();
+        foreach (var g in groups)
+            foreach (var r in g) bcCount[r.IDNUM] = g.Count();
+
+        var convs = new Dictionary<int, Conv>();
+        foreach (var r in rows)
+        {
+            bool mine = IsMine(r);
+            int peer = mine ? r.PERSONEL : (r.UID ?? 0);
+            if (peer == CurrentUserId && mine) continue; // پیام به خود
+            var msg = new Msg
+            {
+                Key = r.IDNUM,
+                Id = r.IDNUM,
+                Peer = peer,
+                Mine = mine,
+                Text = r.PAYAM ?? "",
+                At = r.CRT ?? AutomationUi.At(r.STDATE, r.STTIME) ?? DateTime.MinValue,
+                Read = r.STATUS == 2,
+                Customer = r.NAME,
+                CustomerCode = r.COMP_COD,
+                BroadcastCount = mine && bcCount.TryGetValue(r.IDNUM, out var n) ? n : 1
+            };
+            if (!convs.TryGetValue(peer, out var conv))
+            {
+                conv = new Conv { Peer = peer, Name = peer > 0 ? NameOf(peer, mine ? null : r.USERNAME) : (r.USERNAME ?? "نامشخص") };
+                convs[peer] = conv;
+            }
+            conv.Msgs.Add(msg);
+        }
+
+        // پیام‌های در حالِ ارسال یا ناموفق تا وقتی ردیفِ واقعی‌شان برسد
+        _pending.RemoveAll(p => !p.Failed && rows.Any(r => IsMine(r) && r.PERSONEL == p.Peer && r.PAYAM == p.Text && r.CRT >= p.At.AddMinutes(-2)));
+        foreach (var p in _pending)
+        {
+            if (!convs.TryGetValue(p.Peer, out var conv))
+                convs[p.Peer] = conv = new Conv { Peer = p.Peer, Name = NameOf(p.Peer) };
+            conv.Msgs.Add(p);
+        }
+
+        foreach (var c in convs.Values) c.Msgs.Sort((a, b) => a.At != b.At ? a.At.CompareTo(b.At) : a.Key.CompareTo(b.Key));
+        _convs = convs.Values.OrderByDescending(c => c.Msgs[^1].At).ToList();
+
+        _broadcasts = groups.Where(g => g.Count() > 1)
+            .Select(g =>
+            {
+                var first = g.First();
+                var b = new Broadcast
+                {
+                    Key = -g.Min(r => r.IDNUM),
+                    Text = first.PAYAM ?? "",
+                    At = first.CRT ?? AutomationUi.At(first.STDATE, first.STTIME) ?? DateTime.MinValue
+                };
+                b.Recipients.AddRange(g.Select(r => new Msg { Key = r.IDNUM, Id = r.IDNUM, Peer = r.PERSONEL, Mine = true, Read = r.STATUS == 2 }));
+                return b;
+            })
+            .OrderBy(b => b.At)
+            .ToList();
+    }
+
+    private bool IsMine(MessageModel r)
+        => r.UID == CurrentUserId || (r.UID is null && r.USERNAME == CurrentUserName && r.PERSONEL != CurrentUserId);
+
+    private async Task MarkReadAsync(Conv c)
+    {
+        if (c.Peer <= 0 || c.Unread == 0) return;
+        foreach (var m in c.Msgs.Where(m => !m.Mine)) m.Read = true;
+        await AutomationService.MarkConversationReadAsync(c.Peer);
+        await OnChanged.InvokeAsync();
+    }
+
+    // ─────────────────────────── ناوبری ───────────────────────────
+
+    private async Task OpenConv(int peer)
+    {
+        _mode = Mode.Chat;
+        _peer = peer;
+        _showEmoji = _showCustomer = false;
+        _animate.Clear();
+        if (Current is { } c)
+        {
+            // ده پیامِ آخر با تأخیرِ پلکانی وارد می‌شوند
+            foreach (var m in c.Msgs.TakeLast(10)) _animate.Add(m.Key);
+            await MarkReadAsync(c);
+        }
+        _scrollPending = _bindPending = _focusPending = true;
+    }
+
+    private void OpenBroadcasts()
+    {
+        _mode = Mode.Broadcasts;
+        _animate.Clear();
+        foreach (var b in _broadcasts.TakeLast(8)) _animate.Add(b.Key);
+        _scrollPending = true;
+    }
+
+    private void StartNew()
+    {
+        _mode = Mode.New;
+        _pq = "";
+        _picked.Clear();
+        _bindPending = true;
+        _showEmoji = _showCustomer = false;
+    }
+
+    private void StartNewWith(string q)
+    {
+        StartNew();
+        _pq = q;
+    }
+
+    private void Back()
+    {
+        _mode = Mode.None;
+        _showEmoji = _showCustomer = false;
+    }
+
+    private void TogglePick(int id)
+    {
+        if (!_picked.Remove(id)) _picked.Add(id);
+    }
+
+    private void PickAllVisible()
+    {
+        foreach (var p in PickCandidates) _picked.Add(p.USERCO);
+    }
+
+    // ─────────────────────────── ارسال ───────────────────────────
+
+    [JSInvokable] public Task SendFromKeyboard() => SendAsync();
+
+    private async Task SendAsync()
+    {
+        var text = _text.Trim();
+        if (text.Length == 0 || _sending) return;
+
+        List<int> recipients = _mode switch
+        {
+            Mode.Chat when PeerIsReachable => new() { _peer },
+            Mode.New => _picked.ToList(),
+            _ => new()
+        };
+        if (recipients.Count == 0)
+        {
+            Snackbar.Add("اول گیرنده را انتخاب کنید.", Severity.Warning);
+            return;
+        }
+
+        var comp = _customer?.Id ?? DefaultCustomer?.Id;
+        if (string.IsNullOrWhiteSpace(comp))
+        {
+            _showCustomer = true;
+            Snackbar.Add("مشتریِ مرتبط را انتخاب کنید — پیام بدون آن ذخیره نمی‌شود.", Severity.Warning);
+            return;
+        }
+
+        _sending = true;
+        _fly = true;
+        _text = "";
+        _showEmoji = false;
+
+        // حبابِ «در حال ارسال» فوراً نشان داده می‌شود
+        var now = DateTime.Now;
+        var pendings = recipients.Select(r => new Msg
+        {
+            Key = _tempKey--, Id = 0, Peer = r, Mine = true, Text = text, At = now, Pending = true,
+            Customer = _customer?.Name, CustomerCode = comp, BroadcastCount = recipients.Count
+        }).ToList();
+        _pending.AddRange(pendings);
+        foreach (var p in pendings) _animate.Add(p.Key);
+
+        if (_mode == Mode.New)
+        {
+            if (recipients.Count == 1) { _mode = Mode.Chat; _peer = recipients[0]; _bindPending = _focusPending = true; }
+            else _mode = Mode.Broadcasts;
+        }
+        RebuildWithPending();
+        _scrollPending = true;
+        StateHasChanged();
+
+        var ok = await AutomationService.SendMessageAsync(new MessageSendRequest
+        {
+            RecipientUserIds = recipients,
+            MessageText = text,
+            CompCod = comp
+        });
+
+        _sending = false;
+        _ = Task.Delay(550).ContinueWith(_ => InvokeAsync(() => { _fly = false; StateHasChanged(); }));
+
+        if (!ok)
+        {
+            foreach (var p in pendings) { p.Pending = false; p.Failed = true; }
+            Snackbar.Add("پیام ارسال نشد. «ارسال دوباره» را بزنید.", Severity.Error);
+            RebuildWithPending();
+            StateHasChanged();
+            return;
+        }
+
+        if (recipients.Count > 1)
+            Snackbar.Add($"پیام برای {recipients.Count} نفر فرستاده شد.", Severity.Success);
+
+        await ReloadAsync(animateAll: false, silent: true);
+        _scrollPending = true;
+        StateHasChanged();
+    }
+
+    private async Task RetryAsync(Msg m)
+    {
+        _pending.Remove(m);
+        _text = m.Text;
+        var peer = m.Peer;
+        if (_mode != Mode.Chat || _peer != peer) { _mode = Mode.Chat; _peer = peer; }
+        RebuildWithPending();
+        await SendAsync();
+    }
+
+    private void RebuildWithPending()
+    {
+        // بدون تماس با سرور: حباب‌های موقت را به گفتگوها اضافه/به‌روز کن
+        foreach (var c in _convs) c.Msgs.RemoveAll(m => m.Key < 0);
+        _convs.RemoveAll(c => c.Msgs.Count == 0);
+        foreach (var p in _pending)
+        {
+            var conv = _convs.FirstOrDefault(c => c.Peer == p.Peer);
+            if (conv is null) { conv = new Conv { Peer = p.Peer, Name = NameOf(p.Peer) }; _convs.Insert(0, conv); }
+            conv.Msgs.Add(p);
+        }
+        _convs = _convs.OrderByDescending(c => c.Msgs.Count > 0 ? c.Msgs[^1].At : DateTime.MinValue).ToList();
+    }
+
+    private void AddEmoji(string e)
+    {
+        _text += e;
+        _focusPending = true;
+    }
+
+    private async Task<IEnumerable<LookupDto<string>>> SearchCustomersAsync(string value)
+        => await LookupService.GetCustomerLookupAsync(string.IsNullOrWhiteSpace(value) ? null : value)
+           ?? Enumerable.Empty<LookupDto<string>>();
+
+    // ─────────────────────────── بعد از رندر ───────────────────────────
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!_open) return;
+        try
+        {
+            if (_bindPending)
+            {
+                _bindPending = false;
+                _self ??= DotNetObjectReference.Create(this);
+                await JS.InvokeVoidAsync("atmChat.bindComposer", _inputRef, _self);
+                if (_mode == Mode.New) await _pickSearchRef.FocusAsync();
+            }
+            if (_scrollPending)
+            {
+                _scrollPending = false;
+                await JS.InvokeVoidAsync("atmChat.scrollToBottom", _scrollRef);
+            }
+            if (_focusPending)
+            {
+                _focusPending = false;
+                await _inputRef.FocusAsync();
+            }
+        }
+        catch { /* عنصر هنوز در DOM نیست — در رندرِ بعدی دوباره */ }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        _poll?.Dispose();
+        _self?.Dispose();
+        await Task.CompletedTask;
+    }
+
+    // ─────────────────────────── نمایش ───────────────────────────
+
+    private RenderFragment Composer(bool enabled) => __builder =>
+    {
+        <div class="atm-composer @(enabled ? "" : "is-disabled")">
+            @if (_showEmoji)
+            {
+                <div class="atm-emoji">
+                    @foreach (var e in Emojis)
+                    {
+                        <button type="button" @onclick="() => AddEmoji(e)">@e</button>
+                    }
+                </div>
+            }
+            @if (_showCustomer)
+            {
+                <div class="atm-composer__cust">
+                    <MudAutocomplete T="LookupDto<string>" @bind-Value="_customer" Label="مربوط به (مشتری)"
+                                     SearchFunc="SearchCustomersAsync" PopoverClass="atm-pop-top"
+                                     ToStringFunc="@(c => c == null ? string.Empty : c.Name)"
+                                     ResetValueOnEmptyText="true" CoerceText="false" Clearable="true"
+                                     Variant="Variant.Outlined" Dense="true" />
+                </div>
+            }
+            <div class="atm-composer__row">
+                <button type="button" class="atm-icon-btn @(_showEmoji ? "is-on" : "")" title="شکلک" @onclick="() => { _showEmoji = !_showEmoji; _showCustomer = false; }"><i class="bi bi-emoji-smile"></i></button>
+                <button type="button" class="atm-custchip @(_showCustomer ? "is-on" : "")" title="مشتریِ مرتبط با پیام" @onclick="() => { _showCustomer = !_showCustomer; _showEmoji = false; }">
+                    <i class="bi bi-building"></i><span>@(_customer?.Name ?? DefaultCustomer?.Name ?? "مشتری؟")</span>
+                </button>
+                <textarea @ref="_inputRef" rows="1" maxlength="2047" disabled="@(!enabled)"
+                          title="Enter = ارسال · Shift+Enter = خط جدید"
+                          placeholder="@(enabled ? "پیام بنویسید…" : _mode == Mode.New ? "اول گیرنده را انتخاب کنید" : "به این کاربر نمی‌شود پیام داد")"
+                          @bind="_text" @bind:event="oninput"></textarea>
+                <button type="button" class="atm-send @(string.IsNullOrWhiteSpace(_text) ? "" : "is-ready") @(_fly ? "is-flying" : "")"
+                        disabled="@(!enabled || _sending || string.IsNullOrWhiteSpace(_text))" title="ارسال" @onclick="SendAsync">
+                    <i class="bi bi-send-fill"></i>
+                </button>
+            </div>
+            @if (_mode == Mode.New && _picked.Count > 1)
+            {
+                <div class="atm-composer__note"><i class="bi bi-megaphone"></i>برای @_picked.Count نفر جداگانه فرستاده می‌شود؛ هر کس در گفتگوی خصوصیِ خودش می‌بیند.</div>
+            }
+        </div>
+    };
+
+    private string NameOf(int id, string? fallback = null)
+        => id == CurrentUserId ? (CurrentUserName ?? "من")
+           : Personel.FirstOrDefault(p => p.USERCO == id)?.SAL_NAME ?? fallback ?? $"کاربر {id}";
+
+    private static string Tick(Msg m) => m.Failed ? "bi-exclamation-circle-fill" : m.Pending ? "bi-clock" : m.Read ? "bi-check2-all" : "bi-check2";
+
+    private static string Preview(string s)
+    {
+        var one = s.Replace('\n', ' ').Replace('\r', ' ');
+        return one.Length > 60 ? one[..60] + "…" : one;
+    }
+
+    private static string ListTime(DateTime at)
+    {
+        var now = DateTime.Now;
+        if (at.Date == now.Date) return at.ToString("HH:mm");
+        if (at.Date == now.Date.AddDays(-1)) return "دیروز";
+        if ((now.Date - at.Date).TotalDays < 7) return AutomationUi.WeekDay(at.DayOfWeek);
+        return AutomationUi.ShortDate(at);
+    }
+
+    private static string DayLabel(DateTime at)
+    {
+        var today = DateTime.Now.Date;
+        if (at.Date == today) return "امروز";
+        if (at.Date == today.AddDays(-1)) return "دیروز";
+        return AutomationUi.LongDate(at);
+    }
+
+    private static string Norm(string? s) => (s ?? "").Replace('ي', 'ی').Replace('ك', 'ک').Replace('‌', ' ').ToLowerInvariant();
+}

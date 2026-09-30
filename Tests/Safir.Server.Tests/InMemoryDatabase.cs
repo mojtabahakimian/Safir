@@ -137,8 +137,14 @@ public sealed class InMemoryDatabase : IDatabaseService
         return row;
     }
 
+    /// <summary>متن و پارامترهای هر دستورِ نوشتنی — برای تست‌هایی که شکلِ INSERT/UPDATE را می‌سنجند.</summary>
+    public List<string> ExecutedSql { get; } = new();
+    public List<object?> ExecutedParams { get; } = new();
+
     public Task<int> DoExecuteSQLAsync(string sql, object? parameters = null, int? commandTimeout = null)
     {
+        ExecutedSql.Add(sql);
+        ExecutedParams.Add(parameters);
         if (sql.Contains("PAY2_SEC_AUDIT")) AuditWrites.Add(parameters);
         return Task.FromResult(1);
     }

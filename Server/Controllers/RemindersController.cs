@@ -69,15 +69,30 @@ namespace Safir.Server.Controllers
                     UID = r.UID,
                     NAME = r.NAME,
                     CTDATE = CL_Tarikh.ConvertToDateTimeFromPersianLong(r.CTDATE_DB),
-                    CTTIME = CL_Tarikh.ConvertToTimeSpanFromTimeInt(r.CTTIME_DB != null ? (int?)Convert.ToInt32(r.CTTIME_DB) : null),
+                    CTTIME = TimeOf((object?)r.CTTIME_DB),
                     STDATE = CL_Tarikh.ConvertToDateTimeFromPersianLong(r.STDATE_DB),
-                    STTIME = CL_Tarikh.ConvertToTimeSpanFromTimeInt(r.STTIME_DB)
+                    STTIME = TimeOf((object?)r.STTIME_DB)
                 }).ToList();
 
                 return Ok(reminders);
             }
             catch (Exception ex) { _logger.LogError(ex, "API: Error fetching reminders for UserID: {UserId}", currentUserId); return StatusCode(500, "Internal server error while fetching reminders."); }
         }
+
+        /// <summary>مبنای ساعت‌های datetimeِ WPF (تاریخِ صفرِ OLE).</summary>
+        private static readonly DateTime WpfTimeBase = new(1899, 12, 30);
+
+        /// <summary>
+        /// ساعت از ستونِ datetime (روالِ WPF) یا عددِ HHmm (ردیف‌های قدیمیِ این API).
+        /// </summary>
+        [NonAction]
+        public static TimeSpan? TimeOf(object? value) => value switch
+        {
+            DateTime d => new TimeSpan(d.Hour, d.Minute, 0),
+            int i      => CL_Tarikh.ConvertToTimeSpanFromTimeInt(i),
+            long l     => CL_Tarikh.ConvertToTimeSpanFromTimeInt((int)l),
+            _          => null
+        };
 
         [HttpPost]
         public async Task<ActionResult> CreateReminder([FromBody] ReminderCreateRequest request)
@@ -92,10 +107,14 @@ namespace Safir.Server.Controllers
 
             long? reminderDateLong = CL_Tarikh.ConvertToPersianDateLong(request.ReminderDate);
             if (!reminderDateLong.HasValue) return BadRequest("فرمت تاریخ یادآوری نامعتبر است.");
-            int? reminderTimeInt = CL_Tarikh.ConvertTimeToInt(request.ReminderTime); // Use helper
+            // STTIME و CTTIME در REMAINDER از نوع datetime‌اند، نه عدد HHmm. قبلاً
+            // عدد (مثلاً ۹۰۰) نوشته می‌شد و SQL آن را «۹۰۰ روز بعد از ۱۹۰۰»
+            // می‌فهمید — ساعتِ یادآوری گم می‌شد. روالِ WPF: STTIME = ۱۸۹۹/۱۲/۳۰ +
+            // ساعت، CTTIME = زمانِ کاملِ ثبت.
+            DateTime reminderTime = WpfTimeBase + new TimeSpan(request.ReminderTime.Value.Hours, request.ReminderTime.Value.Minutes, 0);
 
             long currentCtDate = CL_Tarikh.GetCurrentPersianDateAsLong();
-            int currentCtTimeInt = int.Parse(DateTime.Now.ToString("HHmm"));
+            DateTime currentCtTime = DateTime.Now;
 
             try
             {
@@ -120,10 +139,10 @@ namespace Safir.Server.Controllers
                     dParams.Add("Payam", request.ReminderText.Trim());
                     dParams.Add("Status", 1);
                     dParams.Add("StDate", reminderDateLong.Value);
-                    dParams.Add("StTime", reminderTimeInt);
+                    dParams.Add("StTime", reminderTime);
                     dParams.Add("SenderUsername", senderUsername);
                     dParams.Add("CtDate", currentCtDate);
-                    dParams.Add("CtTime", currentCtTimeInt);
+                    dParams.Add("CtTime", currentCtTime);
                     dParams.Add("SenderUserCod", senderUserCod);
 
                     var valueClauses = new List<string>();
@@ -153,10 +172,10 @@ namespace Safir.Server.Controllers
                                 Payam = request.ReminderText.Trim(),
                                 Status = 1,
                                 StDate = reminderDateLong.Value,
-                                StTime = reminderTimeInt,
+                                StTime = reminderTime,
                                 SenderUsername = senderUsername,
                                 CtDate = currentCtDate,
-                                CtTime = currentCtTimeInt,
+                                CtTime = currentCtTime,
                                 SenderUserCod = senderUserCod
                             };
                             try

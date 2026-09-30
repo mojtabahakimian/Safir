@@ -1,0 +1,1390 @@
+/* ═══════════════════════════════════════════════════════════════════
+   کارتابل اتوماسیون — /automation/tasks
+
+   همه‌ی رنگ‌ها از متغیرهای تمِ MudBlazor (--mud-palette-*) مشتق
+   می‌شوند، پس هر چهار تمِ برنامه و حالت شب بدون قاعده‌ی جدا درست‌اند.
+   همه‌چیز زیر پیشوندِ .atm است تا به صفحه‌های دیگر نشت نکند.
+
+   ⚠ روی انیمیشن/opacityِ عناصرِ MudBlazor هیچ !important نیست — همان
+   تله‌ای که Snackbar را خراب کرده بود (AGENTS.md بخش ۲). انیمیشن‌ها فقط
+   روی عناصرِ خودِ این صفحه‌اند.
+   ═══════════════════════════════════════════════════════════════════ */
+
+.atm, .atm-tokens {
+    --atm-primary: var(--mud-palette-primary);
+    --atm-secondary: var(--mud-palette-secondary);
+    --atm-surface: var(--mud-palette-surface);
+    --atm-bg: var(--mud-palette-background);
+    --atm-text: var(--mud-palette-text-primary);
+    --atm-muted: var(--mud-palette-text-secondary);
+    --atm-line: color-mix(in srgb, var(--mud-palette-text-primary) 9%, transparent);
+    --atm-soft: color-mix(in srgb, var(--mud-palette-text-primary) 4%, transparent);
+    --atm-urgent: #f43f5e;
+    --atm-done: #10b981;
+    --atm-cancel: #94a3b8;
+    --atm-warn: #f59e0b;
+    --atm-info: #6366f1;
+    --atm-radius: 18px;
+    --atm-shadow: 0 1px 2px rgb(15 23 42 / .05), 0 10px 30px -18px rgb(15 23 42 / .35);
+    --atm-shadow-lg: 0 2px 4px rgb(15 23 42 / .06), 0 24px 48px -24px rgb(15 23 42 / .45);
+    --atm-ease: cubic-bezier(.2, .8, .2, 1);
+}
+
+/* MainLayout همه‌ی صفحه‌ها را در MudContainer با MaxWidth.Large (۱۲۸۰px)
+   می‌گذارد؛ روی مانیتورِ پهن دو طرفِ کارتابل خالی می‌ماند. فقط برای همین
+   صفحه (ظرفی که .atm را مستقیم دارد) سقف برداشته می‌شود — بقیه‌ی صفحه‌ها
+   دست نمی‌خورند. */
+.mud-container:has(> .atm) { max-width: none; }
+
+.atm {
+    direction: rtl;
+    color: var(--atm-text);
+    padding: 18px clamp(4px, 1vw, 20px) 120px;
+    font-family: 'Vazirmatn', 'Roboto', sans-serif;
+}
+
+.atm *, .atm *::before, .atm *::after { box-sizing: border-box; }
+
+/* ─────────────────────────── سربرگ ─────────────────────────── */
+
+.atm-hero {
+    position: relative;
+    overflow: hidden;
+    border-radius: 26px;
+    padding: 28px 32px;
+    color: #fff;
+    isolation: isolate;
+    /* پایه‌ی سرمه‌ایِ عمیق + تابشِ رنگِ اصلیِ تم. رنگِ فرعی عمداً استفاده
+       نمی‌شود: در بعضی تم‌ها صورتیِ پیش‌فرضِ MudBlazor است و ترکیبش با رنگ
+       اصلی گِل‌آلود می‌شود. */
+    background:
+        radial-gradient(700px 320px at 92% -30%, color-mix(in srgb, var(--atm-primary) 70%, transparent) 0%, transparent 70%),
+        radial-gradient(520px 300px at 8% 130%, rgb(139 92 246 / .45) 0%, transparent 70%),
+        linear-gradient(135deg, #0b1224 0%, #111a33 45%, #1b1640 100%);
+    border: 1px solid rgb(255 255 255 / .06);
+    box-shadow: 0 30px 60px -34px rgb(2 6 23 / .8), inset 0 1px 0 rgb(255 255 255 / .06);
+}
+
+/* گوی‌های نورانیِ شناور و شبکه‌ی نقطه‌ای — فقط تزئین */
+.atm-hero::before,
+.atm-hero::after {
+    content: "";
+    position: absolute;
+    z-index: -1;
+    border-radius: 50%;
+    filter: blur(40px);
+    opacity: .55;
+    /* محدود، نه بی‌پایان: انیمیشنِ همیشگی مرورگر را مدام مشغولِ رسم نگه
+       می‌دارد و روی لپ‌تاپ باتری می‌خورد. دو رفت‌وبرگشتِ آرام کافی است. */
+    animation: atm-float 12s ease-in-out 2 alternate;
+}
+.atm-hero::before {
+    width: 340px; height: 340px;
+    inset-inline-end: -80px; top: -140px;
+    background: color-mix(in srgb, var(--atm-primary) 75%, #fff);
+    opacity: .35;
+}
+.atm-hero::after {
+    width: 260px; height: 260px;
+    inset-inline-start: 18%; bottom: -170px;
+    background: #8b5cf6;
+    opacity: .3;
+    animation-duration: 18s;
+    animation-direction: alternate-reverse;
+}
+.atm-hero__grid {
+    position: absolute; inset: 0; z-index: -1;
+    background-image: radial-gradient(rgb(255 255 255 / .16) 1px, transparent 1.2px);
+    background-size: 22px 22px;
+    mask-image: linear-gradient(to left, #000 0%, transparent 75%);
+    -webkit-mask-image: linear-gradient(to left, #000 0%, transparent 75%);
+}
+
+@keyframes atm-float {
+    from { transform: translate3d(0, 0, 0) scale(1); }
+    to   { transform: translate3d(-30px, 24px, 0) scale(1.12); }
+}
+
+.atm-hero__top {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 24px;
+    flex-wrap: wrap;
+}
+
+.atm-hero__date {
+    display: inline-flex; align-items: center; gap: 8px;
+    font-size: .82rem;
+    padding: 5px 12px;
+    border-radius: 999px;
+    background: rgb(255 255 255 / .14);
+    border: 1px solid rgb(255 255 255 / .18);
+    backdrop-filter: blur(8px);
+}
+
+.atm-hero h1 {
+    margin: 14px 0 6px;
+    font-size: clamp(1.45rem, 2.4vw, 2.05rem);
+    font-weight: 800;
+    letter-spacing: -.01em;
+    line-height: 1.35;
+}
+.atm-hero h1 .atm-wave { display: inline-block; transform-origin: 70% 70%; animation: atm-wave 2.4s ease-in-out 1s 2; }
+@keyframes atm-wave {
+    0%, 60%, 100% { transform: rotate(0); }
+    10%, 30% { transform: rotate(14deg); }
+    20% { transform: rotate(-8deg); }
+    40% { transform: rotate(-4deg); }
+    50% { transform: rotate(10deg); }
+}
+
+.atm-hero__sub { margin: 0; opacity: .88; font-size: .95rem; }
+
+.atm-insights { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
+.atm-insight {
+    display: inline-flex; align-items: center; gap: 7px;
+    padding: 7px 13px;
+    border-radius: 12px;
+    font-size: .84rem;
+    background: rgb(255 255 255 / .12);
+    border: 1px solid rgb(255 255 255 / .16);
+    backdrop-filter: blur(10px);
+    cursor: pointer;
+    color: inherit;
+    font-family: inherit;
+    transition: background .2s, transform .2s var(--atm-ease);
+}
+.atm-insight:hover { background: rgb(255 255 255 / .22); transform: translateY(-1px); }
+.atm-insight i { font-size: 1rem; }
+.atm-insight--urgent i { color: #fecdd3; }
+.atm-insight--stale i { color: #fde68a; }
+.atm-insight--good i { color: #a7f3d0; }
+
+.atm-hero__side { display: flex; flex-direction: column; align-items: flex-end; gap: 16px; }
+.atm-hero__actions { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+.atm-ringbox { display: flex; align-items: center; gap: 12px; }
+
+.atm-btn {
+    display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+    height: 42px;
+    padding: 0 18px;
+    border-radius: 13px;
+    border: 1px solid transparent;
+    font-family: inherit;
+    font-size: .9rem;
+    font-weight: 600;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: transform .18s var(--atm-ease), box-shadow .2s, background .2s, opacity .2s;
+    position: relative;
+}
+.atm-btn:active { transform: scale(.97); }
+.atm-btn:disabled { opacity: .5; cursor: not-allowed; transform: none; }
+.atm-btn i { font-size: 1.05rem; }
+
+.atm-btn--light {
+    background: #fff;
+    color: #0b1224;
+    box-shadow: 0 10px 24px -12px rgb(0 0 0 / .6);
+}
+.atm-btn--light:hover { transform: translateY(-2px); box-shadow: 0 16px 30px -14px rgb(0 0 0 / .55); }
+
+.atm-btn--glass {
+    background: rgb(255 255 255 / .13);
+    border-color: rgb(255 255 255 / .22);
+    color: #fff;
+    backdrop-filter: blur(10px);
+}
+.atm-btn--glass:hover { background: rgb(255 255 255 / .22); }
+.atm-btn--icon { width: 42px; padding: 0; }
+
+.atm-btn--primary {
+    color: #fff;
+    background: linear-gradient(135deg, var(--atm-primary), color-mix(in srgb, var(--atm-primary) 60%, var(--atm-secondary)));
+    box-shadow: 0 12px 24px -14px color-mix(in srgb, var(--atm-primary) 90%, #000);
+}
+.atm-btn--primary:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 16px 30px -14px color-mix(in srgb, var(--atm-primary) 90%, #000); }
+
+.atm-btn--ghost { background: transparent; color: var(--atm-muted); border-color: var(--atm-line); }
+.atm-btn--ghost:hover:not(:disabled) { background: var(--atm-soft); color: var(--atm-text); }
+
+.atm-btn--danger { background: color-mix(in srgb, var(--atm-urgent) 12%, transparent); color: var(--atm-urgent); }
+.atm-btn--danger:hover:not(:disabled) { background: color-mix(in srgb, var(--atm-urgent) 20%, transparent); }
+
+.atm-badge {
+    position: absolute;
+    top: -6px; inset-inline-start: -6px;
+    min-width: 20px; height: 20px;
+    padding: 0 5px;
+    border-radius: 999px;
+    display: grid; place-items: center;
+    font-size: .7rem; font-weight: 700;
+    color: #fff;
+    background: var(--atm-urgent);
+    border: 2px solid #fff;
+    animation: atm-pop .5s var(--atm-ease);
+}
+.atm-badge--pulse::after {
+    content: ""; position: absolute; inset: -2px; border-radius: inherit;
+    border: 2px solid var(--atm-urgent);
+    animation: atm-ping 1.8s cubic-bezier(0, 0, .2, 1) 4;
+}
+@keyframes atm-ping { 75%, 100% { transform: scale(1.9); opacity: 0; } }
+@keyframes atm-pop { 0% { transform: scale(.4); } 70% { transform: scale(1.15); } 100% { transform: scale(1); } }
+
+/* حلقه‌ی پیشرفت */
+.atm-ring { position: relative; width: 92px; height: 92px; flex: none; }
+.atm-ring svg { width: 100%; height: 100%; transform: rotate(-90deg); }
+.atm-ring circle { fill: none; stroke-width: 9; }
+.atm-ring .track { stroke: rgb(255 255 255 / .16); }
+.atm-ring .bar {
+    stroke: color-mix(in srgb, var(--atm-primary) 55%, #fff);
+    stroke-linecap: round;
+    transition: stroke-dashoffset 1.2s var(--atm-ease);
+    filter: drop-shadow(0 0 6px rgb(255 255 255 / .45));
+}
+.atm-ring__label { position: absolute; inset: 0; display: grid; place-content: center; text-align: center; line-height: 1.1; }
+.atm-ring__label b { font-size: 1.3rem; font-weight: 800; }
+.atm-ring__label small { font-size: .66rem; opacity: .8; }
+
+/* کار پیشنهادی */
+.atm-focus {
+    margin-top: 22px;
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    gap: 16px;
+    align-items: center;
+    padding: 14px 16px;
+    border-radius: 18px;
+    background: rgb(255 255 255 / .1);
+    border: 1px solid rgb(255 255 255 / .18);
+    backdrop-filter: blur(14px);
+}
+.atm-focus__icon {
+    width: 46px; height: 46px; border-radius: 14px;
+    display: grid; place-items: center;
+    font-size: 1.35rem;
+    background: linear-gradient(135deg, rgb(255 255 255 / .28), rgb(255 255 255 / .08));
+}
+.atm-focus__eyebrow { font-size: .72rem; opacity: .8; letter-spacing: .02em; }
+.atm-focus__text {
+    font-weight: 600; font-size: .95rem; margin-top: 2px;
+    display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vertical; overflow: hidden;
+}
+.atm-focus__meta { font-size: .76rem; opacity: .8; margin-top: 3px; }
+.atm-focus__actions { display: flex; gap: 8px; }
+
+/* ─────────────────────────── کارت‌های شاخص ─────────────────────────── */
+
+.atm { container-type: inline-size; container-name: atm; }
+
+.atm-kpis {
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 14px;
+    margin: 18px 0;
+}
+
+.atm-kpi {
+    --k: var(--atm-primary);
+    position: relative;
+    overflow: hidden;
+    text-align: start;
+    display: flex; align-items: center; gap: 14px;
+    padding: 16px 18px;
+    border-radius: var(--atm-radius);
+    background: var(--atm-surface);
+    border: 1px solid var(--atm-line);
+    box-shadow: var(--atm-shadow);
+    cursor: pointer;
+    font-family: inherit;
+    color: inherit;
+    transition: transform .25s var(--atm-ease), box-shadow .25s, border-color .25s;
+    animation: atm-rise .6s var(--atm-ease) both;
+    animation-delay: calc(var(--i, 0) * 60ms);
+}
+.atm-kpi::after {
+    content: "";
+    position: absolute;
+    inset-inline-end: -30px; bottom: -40px;
+    width: 120px; height: 120px;
+    border-radius: 50%;
+    background: radial-gradient(circle, color-mix(in srgb, var(--k) 10%, transparent), transparent 68%);
+    transition: transform .4s var(--atm-ease);
+}
+.atm-kpi:hover { transform: translateY(-4px); box-shadow: var(--atm-shadow-lg); }
+.atm-kpi:hover::after { transform: scale(1.4); }
+.atm-kpi.is-active {
+    border-color: color-mix(in srgb, var(--k) 55%, transparent);
+    box-shadow: 0 0 0 4px color-mix(in srgb, var(--k) 14%, transparent), var(--atm-shadow-lg);
+}
+
+.atm-kpi__icon {
+    width: 48px; height: 48px; flex: none;
+    border-radius: 15px;
+    display: grid; place-items: center;
+    font-size: 1.3rem;
+    color: var(--k);
+    background: color-mix(in srgb, var(--k) 13%, transparent);
+    transition: transform .3s var(--atm-ease);
+}
+.atm-kpi:hover .atm-kpi__icon { transform: rotate(-8deg) scale(1.06); }
+.atm-kpi__num { font-size: 1.75rem; font-weight: 800; line-height: 1.1; letter-spacing: -.02em; }
+.atm-kpi__label { font-size: .8rem; color: var(--atm-muted); margin-top: 3px; }
+
+.atm-kpi--open    { --k: var(--atm-primary); }
+.atm-kpi--urgent  { --k: var(--atm-urgent); }
+.atm-kpi--stale   { --k: var(--atm-warn); }
+.atm-kpi--done    { --k: var(--atm-done); }
+.atm-kpi--cancel  { --k: var(--atm-cancel); }
+
+@keyframes atm-rise {
+    from { opacity: 0; transform: translateY(14px) scale(.985); }
+    to   { opacity: 1; transform: none; }
+}
+
+/* ─────────────────────────── نوار ابزار ─────────────────────────── */
+
+.atm-toolbar {
+    position: sticky;
+    top: 64px;
+    z-index: 20;
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+    padding: 10px;
+    margin-bottom: 14px;
+    border-radius: 18px;
+    /* بدون backdrop-filter: روی نوارِ چسبان با فهرستِ بلند، هر اسکرول کلِ
+       زیرش را دوباره مات می‌کرد و اسکرول کُند می‌شد. */
+    background: color-mix(in srgb, var(--atm-surface) 96%, transparent);
+    border: 1px solid var(--atm-line);
+    box-shadow: var(--atm-shadow);
+}
+
+.atm-seg {
+    display: inline-flex;
+    padding: 4px;
+    gap: 2px;
+    border-radius: 14px;
+    background: var(--atm-soft);
+}
+.atm-seg button {
+    display: inline-flex; align-items: center; gap: 7px;
+    height: 36px;
+    padding: 0 13px;
+    border: 0;
+    border-radius: 11px;
+    background: transparent;
+    color: var(--atm-muted);
+    font-family: inherit;
+    font-size: .85rem;
+    font-weight: 600;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background .2s, color .2s, box-shadow .2s;
+}
+.atm-seg button:hover { color: var(--atm-text); }
+.atm-seg button.is-active {
+    background: var(--atm-surface);
+    color: var(--atm-text);
+    box-shadow: 0 1px 2px rgb(15 23 42 / .08), 0 6px 14px -8px rgb(15 23 42 / .35);
+}
+.atm-seg .dot { width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
+.atm-seg .count {
+    min-width: 22px; height: 20px; padding: 0 6px;
+    border-radius: 999px;
+    display: grid; place-items: center;
+    font-size: .72rem;
+    color: color-mix(in srgb, var(--atm-text) 75%, transparent);
+    background: var(--atm-soft);
+}
+.atm-seg button.is-active .count { background: color-mix(in srgb, var(--atm-primary) 14%, transparent); color: var(--atm-primary); }
+
+.atm-search {
+    flex: 1 1 220px;
+    min-width: 180px;
+    position: relative;
+}
+.atm-search i {
+    position: absolute; inset-inline-start: 13px; top: 50%; transform: translateY(-50%);
+    color: var(--atm-muted); pointer-events: none;
+}
+.atm-search input, .atm-input {
+    width: 100%;
+    height: 44px;
+    padding: 0 40px 0 14px;
+    border-radius: 13px;
+    border: 1px solid var(--atm-line);
+    background: var(--atm-surface);
+    color: var(--atm-text);
+    font-family: inherit;
+    font-size: .9rem;
+    outline: none;
+    transition: border-color .2s, box-shadow .2s;
+}
+.atm-input { padding: 0 14px; }
+.atm-search input:focus, .atm-input:focus {
+    border-color: color-mix(in srgb, var(--atm-primary) 60%, transparent);
+    box-shadow: 0 0 0 4px color-mix(in srgb, var(--atm-primary) 14%, transparent);
+}
+.atm-search kbd {
+    position: absolute; inset-inline-end: 10px; top: 50%; transform: translateY(-50%);
+    font-family: inherit; font-size: .7rem;
+    padding: 2px 7px; border-radius: 6px;
+    border: 1px solid var(--atm-line); color: var(--atm-muted); background: var(--atm-soft);
+}
+
+.atm-toggle {
+    display: inline-flex; align-items: center; gap: 7px;
+    height: 44px; padding: 0 14px;
+    border-radius: 13px;
+    border: 1px solid var(--atm-line);
+    background: var(--atm-surface);
+    color: var(--atm-muted);
+    font-family: inherit; font-size: .85rem; font-weight: 600;
+    cursor: pointer;
+    transition: all .2s;
+}
+.atm-toggle:hover { color: var(--atm-text); }
+.atm-toggle.is-on {
+    color: var(--atm-urgent);
+    border-color: color-mix(in srgb, var(--atm-urgent) 45%, transparent);
+    background: color-mix(in srgb, var(--atm-urgent) 8%, var(--atm-surface));
+}
+
+.atm-toolbar .atm-field { width: 210px; }
+.atm-toolbar > .atm-push { margin-inline-start: auto; }
+.atm-toolbar .mud-input-control { margin: 0; }
+.atm-toolbar .mud-input.mud-input-outlined { border-radius: 13px; background: var(--atm-surface); }
+.atm-toolbar .mud-input-outlined-border { border-radius: 13px; border-color: var(--atm-line); }
+
+.atm-view {
+    display: inline-flex; padding: 4px; border-radius: 13px; background: var(--atm-soft);
+}
+.atm-view button {
+    width: 38px; height: 36px; border: 0; border-radius: 10px; cursor: pointer;
+    background: transparent; color: var(--atm-muted); font-size: 1.05rem;
+    transition: background .2s, color .2s;
+}
+.atm-view button.is-active { background: var(--atm-surface); color: var(--atm-primary); box-shadow: 0 2px 8px -4px rgb(15 23 42 / .4); }
+
+.atm-viewing {
+    display: flex; align-items: center; gap: 10px;
+    padding: 10px 14px;
+    margin-bottom: 12px;
+    border-radius: 14px;
+    font-size: .86rem;
+    color: color-mix(in srgb, var(--atm-info) 80%, var(--atm-text));
+    background: color-mix(in srgb, var(--atm-info) 9%, transparent);
+    border: 1px dashed color-mix(in srgb, var(--atm-info) 40%, transparent);
+}
+.atm-viewing button { margin-inline-start: auto; }
+
+.atm-listhead {
+    display: flex; align-items: center; gap: 12px;
+    padding: 0 6px 10px;
+    font-size: .8rem;
+    color: var(--atm-muted);
+}
+.atm-listhead .atm-check { margin-inline-end: 2px; }
+.atm-listhead .spacer { flex: 1; }
+
+/* ─────────────────────────── کارت وظیفه ─────────────────────────── */
+
+.atm-list { display: flex; flex-direction: column; gap: 10px; }
+
+.atm-task {
+    --rail: transparent;
+    position: relative;
+    display: grid;
+    grid-template-columns: auto auto minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 14px;
+    padding: 14px 18px 14px 12px;
+    border-radius: 16px;
+    background: var(--atm-surface);
+    border: 1px solid var(--atm-line);
+    box-shadow: 0 1px 2px rgb(15 23 42 / .04);
+    cursor: pointer;
+    transition: transform .22s var(--atm-ease), box-shadow .22s, border-color .22s, opacity .35s, background .3s;
+}
+.atm-task.is-animated { animation: atm-rise .5s var(--atm-ease) both; animation-delay: calc(var(--i, 0) * 35ms); }
+.atm-task:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--atm-shadow-lg);
+    border-color: color-mix(in srgb, var(--atm-primary) 28%, transparent);
+}
+.atm-task::before {
+    content: "";
+    position: absolute;
+    inset-inline-start: 0; top: 14px; bottom: 14px;
+    width: 4px;
+    border-radius: 0 4px 4px 0;
+    background: var(--rail);
+}
+.atm-task.is-urgent { --rail: var(--atm-urgent); }
+.atm-task.is-urgent.is-open {
+    background: linear-gradient(to left, color-mix(in srgb, var(--atm-urgent) 5%, var(--atm-surface)), var(--atm-surface) 40%);
+}
+.atm-task.is-selected {
+    border-color: color-mix(in srgb, var(--atm-primary) 55%, transparent);
+    background: color-mix(in srgb, var(--atm-primary) 5%, var(--atm-surface));
+}
+.atm-task.is-done .atm-task__title { color: var(--atm-muted); text-decoration: line-through; text-decoration-color: color-mix(in srgb, var(--atm-muted) 60%, transparent); }
+.atm-task.is-cancelled { opacity: .72; }
+.atm-task.is-leaving { opacity: 0; transform: translateX(-24px) scale(.98); pointer-events: none; }
+
+.atm-task__body { min-width: 0; }
+.atm-task__title {
+    font-size: .95rem;
+    font-weight: 600;
+    line-height: 1.75;
+    white-space: pre-line;
+    word-break: break-word;
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+    transition: color .3s;
+}
+.atm-task__meta {
+    display: flex; flex-wrap: wrap; align-items: center;
+    gap: 6px 12px;
+    margin-top: 6px;
+    font-size: .78rem;
+    color: var(--atm-muted);
+}
+.atm-task__meta > span { display: inline-flex; align-items: center; gap: 5px; }
+.atm-task__meta i { font-size: .85rem; }
+.atm-id { font-variant-numeric: tabular-nums; opacity: .8; }
+
+.atm-task__actions { display: flex; gap: 4px; opacity: .55; transition: opacity .2s; }
+.atm-task:hover .atm-task__actions, .atm-task:focus-within .atm-task__actions { opacity: 1; }
+
+.atm-icon-btn {
+    width: 34px; height: 34px;
+    display: grid; place-items: center;
+    border: 0; border-radius: 10px;
+    background: transparent;
+    color: var(--atm-muted);
+    font-size: 1rem;
+    cursor: pointer;
+    transition: background .2s, color .2s;
+}
+.atm-icon-btn:hover { background: var(--atm-soft); color: var(--atm-primary); }
+
+.atm-pill {
+    display: inline-flex; align-items: center; gap: 5px;
+    height: 22px; padding: 0 9px;
+    border-radius: 999px;
+    font-size: .72rem; font-weight: 600;
+    white-space: nowrap;
+}
+.atm-pill--urgent { color: var(--atm-urgent); background: color-mix(in srgb, var(--atm-urgent) 11%, transparent); }
+.atm-pill--doc    { color: var(--atm-info);   background: color-mix(in srgb, var(--atm-info) 10%, transparent); }
+.atm-pill--done   { color: var(--atm-done);   background: color-mix(in srgb, var(--atm-done) 11%, transparent); }
+.atm-pill--cancel { color: var(--atm-cancel); background: color-mix(in srgb, var(--atm-cancel) 14%, transparent); }
+
+.atm-age.aging { color: var(--atm-warn); }
+.atm-age.stale { color: var(--atm-urgent); font-weight: 600; }
+
+/* آواتار — رنگِ ثابتِ هر نام از --atm-av-h */
+.atm-av {
+    --atm-av-h: 210;
+    width: 22px; height: 22px; flex: none;
+    border-radius: 50%;
+    display: inline-grid; place-items: center;
+    font-size: .64rem; font-weight: 700;
+    /* ترکیب با رنگِ متن/سطحِ تم: در حالت روز تیره روی روشن، در حالت شب
+       روشن روی تیره — بدون کلاسِ جدا. متغیرهای --mud مستقیم‌اند تا داخلِ
+       popoverهای MudBlazor (بیرون از .atm) هم درست باشد. */
+    color: color-mix(in srgb, hsl(var(--atm-av-h) 72% 46%) 72%, var(--mud-palette-text-primary));
+    background: color-mix(in srgb, hsl(var(--atm-av-h) 80% 56%) 20%, var(--mud-palette-surface));
+    box-shadow: 0 0 0 2px var(--mud-palette-surface);
+}
+.atm-av--lg { width: 36px; height: 36px; font-size: .82rem; }
+
+/* دکمه‌ی «انجام شد» */
+.atm-done-btn {
+    width: 30px; height: 30px; flex: none;
+    border-radius: 50%;
+    border: 2px solid color-mix(in srgb, var(--atm-muted) 55%, transparent);
+    background: transparent;
+    display: grid; place-items: center;
+    cursor: pointer;
+    color: transparent;
+    transition: border-color .2s, background .25s, color .2s, transform .2s var(--atm-ease);
+}
+.atm-done-btn svg { width: 15px; height: 15px; stroke-dasharray: 24; stroke-dashoffset: 24; transition: stroke-dashoffset .35s var(--atm-ease); }
+.atm-done-btn:hover { border-color: var(--atm-done); color: var(--atm-done); transform: scale(1.08); }
+.atm-done-btn:hover svg { stroke-dashoffset: 8; }
+.atm-done-btn.is-done { background: var(--atm-done); border-color: var(--atm-done); color: #fff; animation: atm-pop .45s var(--atm-ease); }
+.atm-done-btn.is-done svg { stroke-dashoffset: 0; }
+.atm-done-btn.is-cancelled { border-style: dashed; }
+.atm-done-btn:disabled { cursor: progress; opacity: .6; }
+
+/* چک‌باکسِ انتخاب */
+.atm-check { position: relative; display: inline-grid; place-items: center; width: 20px; height: 20px; cursor: pointer; }
+.atm-check input { position: absolute; inset: 0; opacity: 0; margin: 0; cursor: pointer; }
+.atm-check span {
+    width: 18px; height: 18px; border-radius: 6px;
+    border: 2px solid color-mix(in srgb, var(--atm-muted) 50%, transparent);
+    transition: all .15s;
+    display: grid; place-items: center;
+}
+.atm-check input:checked + span { background: var(--atm-primary); border-color: var(--atm-primary); }
+.atm-check input:checked + span::after { content: ""; width: 5px; height: 9px; border: solid #fff; border-width: 0 2px 2px 0; transform: rotate(45deg) translate(-1px, -1px); }
+.atm-check input:indeterminate + span { background: var(--atm-primary); border-color: var(--atm-primary); }
+.atm-check input:indeterminate + span::after { content: ""; width: 8px; height: 2px; background: #fff; border-radius: 2px; }
+.atm-check input:focus-visible + span { box-shadow: 0 0 0 3px color-mix(in srgb, var(--atm-primary) 30%, transparent); }
+
+/* ─────────────────────────── بُرد ─────────────────────────── */
+
+.atm-board {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 16px;
+    align-items: start;
+}
+.atm-col {
+    --c: var(--atm-primary);
+    border-radius: 20px;
+    background: color-mix(in srgb, var(--c) 4%, var(--atm-soft));
+    border: 1px solid var(--atm-line);
+    padding: 12px;
+    min-height: 320px;
+    display: flex; flex-direction: column;
+}
+.atm-col--1 { --c: var(--atm-primary); }
+.atm-col--2 { --c: var(--atm-done); }
+.atm-col--3 { --c: var(--atm-cancel); }
+.atm-col__head {
+    display: flex; align-items: center; gap: 9px;
+    padding: 4px 6px 12px;
+    font-weight: 700; font-size: .92rem;
+}
+.atm-col__head .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--c); box-shadow: 0 0 0 4px color-mix(in srgb, var(--c) 18%, transparent); }
+.atm-col__head .count { margin-inline-start: auto; font-size: .75rem; color: var(--atm-muted); font-weight: 600; }
+.atm-col__note { font-size: .72rem; color: var(--atm-muted); padding: 8px 6px 0; text-align: center; }
+
+.atm-dropzone {
+    flex: 1;
+    display: flex; flex-direction: column; gap: 10px;
+    min-height: 240px;
+    border-radius: 14px;
+    padding: 2px;
+    transition: background .2s, box-shadow .2s;
+}
+.atm-dropzone.is-empty {
+    border: 2px dashed color-mix(in srgb, var(--c) 28%, var(--atm-line));
+    display: grid; place-items: center;
+}
+.atm-dropzone.is-empty::after {
+    content: "کارت را اینجا رها کنید";
+    font-size: .8rem;
+    color: var(--atm-muted);
+    opacity: .8;
+}
+.atm-dropzone.mud-drop-zone-drag-block,
+.atm-dropzone.atm-drop-over { background: color-mix(in srgb, var(--c) 10%, transparent); box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--c) 45%, transparent); }
+
+.atm-board .atm-task {
+    grid-template-columns: auto minmax(0, 1fr);
+    padding: 13px 14px 12px 12px;
+    align-items: start;
+    cursor: grab;
+}
+.atm-board .atm-task:active { cursor: grabbing; }
+.atm-board .atm-task__title { -webkit-line-clamp: 3; font-size: .9rem; }
+.atm-board .atm-task__actions { grid-column: 1 / -1; justify-content: flex-end; margin-top: -4px; opacity: 0; }
+.atm-board .atm-task:hover .atm-task__actions { opacity: 1; }
+.atm-board .atm-done-btn { margin-top: 2px; }
+.mud-drop-item-preview-start .atm-task, .mud-drop-item-dragging .atm-task { opacity: .5; }
+
+/* ─────────────────────────── حالت خالی و اسکلت ─────────────────────────── */
+
+.atm-empty {
+    display: grid; place-items: center; text-align: center;
+    padding: 56px 20px 64px;
+    border-radius: 22px;
+    background: var(--atm-surface);
+    border: 1px dashed var(--atm-line);
+}
+.atm-empty svg { width: 150px; height: 150px; margin-bottom: 14px; }
+.atm-empty h3 { margin: 0 0 6px; font-size: 1.15rem; font-weight: 800; }
+.atm-empty p { margin: 0 0 18px; color: var(--atm-muted); font-size: .9rem; }
+.atm-empty .sparkle { animation: atm-twinkle 2.2s ease-in-out 3; transform-origin: center; transform-box: fill-box; }
+.atm-empty .sparkle:nth-of-type(2) { animation-delay: .6s; }
+.atm-empty .sparkle:nth-of-type(3) { animation-delay: 1.2s; }
+@keyframes atm-twinkle { 0%, 100% { opacity: .25; transform: scale(.7); } 50% { opacity: 1; transform: scale(1.15); } }
+
+.atm-skel {
+    height: 78px;
+    border-radius: 16px;
+    border: 1px solid var(--atm-line);
+    background:
+        linear-gradient(90deg, transparent, color-mix(in srgb, var(--atm-text) 6%, transparent), transparent) 0 0 / 40% 100% no-repeat,
+        var(--atm-surface);
+    animation: atm-shimmer 1.3s linear infinite;
+}
+@keyframes atm-shimmer { from { background-position: 160% 0, 0 0; } to { background-position: -60% 0, 0 0; } }
+
+.atm-progress {
+    height: 3px; border-radius: 3px; overflow: hidden; margin: -8px 0 10px;
+    background: color-mix(in srgb, var(--atm-primary) 12%, transparent);
+}
+.atm-progress::after {
+    content: ""; display: block; height: 100%; width: 35%;
+    background: linear-gradient(90deg, transparent, var(--atm-primary), transparent);
+    animation: atm-indeterminate 1.1s ease-in-out infinite;
+}
+@keyframes atm-indeterminate { from { transform: translateX(260%); } to { transform: translateX(-120%); } }
+
+/* ─────────────────────────── نوارِ انتخاب گروهی ─────────────────────────── */
+
+.atm-bulkbar {
+    position: fixed;
+    bottom: 26px; left: 50%;
+    transform: translateX(-50%);
+    z-index: 1000;
+    display: flex; align-items: center; gap: 10px;
+    padding: 8px 8px 8px 16px;
+    border-radius: 18px;
+    color: #fff;
+    background: color-mix(in srgb, #0b1220 88%, var(--atm-primary));
+    box-shadow: 0 24px 48px -16px rgb(0 0 0 / .55);
+    animation: atm-slideup .35s var(--atm-ease);
+    direction: rtl;
+    font-family: 'Vazirmatn', sans-serif;
+}
+.atm-bulkbar b { font-size: .95rem; padding-inline: 8px 6px; }
+.atm-bulkbar .atm-btn { height: 38px; }
+@keyframes atm-slideup { from { opacity: 0; transform: translate(-50%, 20px); } to { opacity: 1; transform: translate(-50%, 0); } }
+
+/* ─────────────────────────── پنل کشویی (ساخت/ویرایش) ─────────────────────────── */
+
+/* z-index زیرِ popoverِ MudBlazor (۱۲۰۰) تا فهرستِ کشوییِ Select و
+   Autocomplete داخلِ پنل رویِ آن باز شود. appbar (۱۳۰۰) بالاتر است، پس
+   پنل زیرِ آن شروع می‌شود و نوار بالای برنامه همیشه در دسترس می‌ماند. */
+.atm-scrim {
+    position: fixed; inset: 0;
+    z-index: 1140;
+    background: rgb(8 12 24 / .38);
+    backdrop-filter: blur(3px);
+    -webkit-backdrop-filter: blur(3px);
+    opacity: 0; pointer-events: none;
+    transition: opacity .3s;
+}
+.atm-scrim.is-open { opacity: 1; pointer-events: auto; }
+
+.atm-sheet {
+    position: fixed;
+    top: 76px; bottom: 12px;
+    left: 12px;
+    width: min(500px, calc(100vw - 24px));
+    z-index: 1150;
+    display: flex; flex-direction: column;
+    border-radius: 24px;
+    background: var(--mud-palette-surface);
+    color: var(--mud-palette-text-primary);
+    box-shadow: 0 30px 80px -20px rgb(0 0 0 / .45);
+    transform: translateX(calc(-100% - 24px));
+    transition: transform .42s var(--atm-ease);
+    direction: rtl;
+    font-family: 'Vazirmatn', 'Roboto', sans-serif;
+    overflow: hidden;
+}
+.atm-sheet.is-open { transform: none; }
+
+.atm-sheet__head {
+    display: flex; align-items: center; gap: 12px;
+    padding: 20px 22px 16px;
+    border-bottom: 1px solid color-mix(in srgb, var(--mud-palette-text-primary) 8%, transparent);
+}
+.atm-sheet__head .glyph {
+    width: 42px; height: 42px; border-radius: 13px; flex: none;
+    display: grid; place-items: center; font-size: 1.2rem; color: #fff;
+    background: linear-gradient(135deg, var(--mud-palette-primary), color-mix(in srgb, var(--mud-palette-primary) 55%, var(--mud-palette-secondary)));
+    box-shadow: 0 10px 20px -10px var(--mud-palette-primary);
+}
+.atm-sheet__head h2 { margin: 0; font-size: 1.1rem; font-weight: 800; }
+.atm-sheet__head small { color: var(--mud-palette-text-secondary); font-size: .78rem; }
+.atm-sheet__head .close { margin-inline-start: auto; }
+
+.atm-sheet__body { flex: 1; overflow-y: auto; padding: 18px 22px 8px; }
+.atm-sheet__foot {
+    display: flex; align-items: center; gap: 10px;
+    padding: 14px 22px 18px;
+    border-top: 1px solid color-mix(in srgb, var(--mud-palette-text-primary) 8%, transparent);
+}
+.atm-sheet__foot .hint { font-size: .72rem; color: var(--mud-palette-text-secondary); margin-inline-end: auto; white-space: nowrap; }
+.atm-sheet__foot .hint kbd { font-family: inherit; padding: 1px 6px; border-radius: 5px; border: 1px solid color-mix(in srgb, var(--mud-palette-text-primary) 15%, transparent); }
+
+.atm-f { margin-bottom: 18px; }
+.atm-f > label {
+    display: flex; align-items: center; gap: 6px;
+    font-size: .8rem; font-weight: 700;
+    color: var(--mud-palette-text-secondary);
+    margin-bottom: 8px;
+}
+.atm-f > label .req { color: #f43f5e; }
+.atm-f .err { color: #f43f5e; font-size: .74rem; margin-top: 6px; display: flex; align-items: center; gap: 5px; }
+
+.atm-textarea {
+    width: 100%;
+    min-height: 130px;
+    resize: vertical;
+    padding: 14px 16px;
+    border-radius: 16px;
+    border: 1px solid color-mix(in srgb, var(--mud-palette-text-primary) 12%, transparent);
+    background: color-mix(in srgb, var(--mud-palette-text-primary) 2.5%, var(--mud-palette-surface));
+    color: var(--mud-palette-text-primary);
+    font-family: inherit; font-size: 1rem; line-height: 1.9;
+    outline: none;
+    transition: border-color .2s, box-shadow .2s;
+}
+.atm-textarea:focus {
+    border-color: color-mix(in srgb, var(--mud-palette-primary) 60%, transparent);
+    box-shadow: 0 0 0 4px color-mix(in srgb, var(--mud-palette-primary) 14%, transparent);
+}
+.atm-textarea.has-error { border-color: #f43f5e; }
+.atm-counter { text-align: end; font-size: .7rem; color: var(--mud-palette-text-secondary); margin-top: 4px; }
+
+.atm-choices { display: grid; grid-template-columns: repeat(var(--n, 2), minmax(0, 1fr)); gap: 10px; }
+.atm-choice {
+    --c: var(--mud-palette-primary);
+    display: flex; align-items: center; gap: 10px;
+    padding: 12px 14px;
+    border-radius: 14px;
+    border: 1.5px solid color-mix(in srgb, var(--mud-palette-text-primary) 10%, transparent);
+    background: var(--mud-palette-surface);
+    color: var(--mud-palette-text-primary);
+    font-family: inherit; font-size: .88rem; font-weight: 600;
+    cursor: pointer; text-align: start;
+    transition: all .2s var(--atm-ease);
+}
+.atm-choice i { font-size: 1.15rem; color: var(--c); }
+.atm-choice small { display: block; font-size: .7rem; font-weight: 400; color: var(--mud-palette-text-secondary); }
+.atm-choice:hover { border-color: color-mix(in srgb, var(--c) 45%, transparent); }
+.atm-choice.is-active {
+    border-color: var(--c);
+    background: color-mix(in srgb, var(--c) 8%, var(--mud-palette-surface));
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--c) 14%, transparent);
+}
+.atm-choice--urgent { --c: #f43f5e; }
+.atm-choice--done { --c: #10b981; }
+.atm-choice--cancel { --c: #94a3b8; }
+
+.atm-sheet .mud-input.mud-input-outlined { border-radius: 14px; }
+.atm-sheet .mud-input-outlined-border { border-radius: 14px; }
+
+.atm-docref {
+    display: flex; align-items: center; gap: 10px;
+    padding: 12px 14px; border-radius: 14px;
+    font-size: .85rem;
+    color: #6366f1;
+    background: color-mix(in srgb, #6366f1 8%, transparent);
+}
+.atm-metaline { display: flex; flex-wrap: wrap; gap: 8px 16px; font-size: .78rem; color: var(--mud-palette-text-secondary); }
+.atm-metaline span { display: inline-flex; align-items: center; gap: 5px; }
+
+/* ─────────────────────────── یادآوری‌ها ─────────────────────────── */
+
+.atm-rem { direction: rtl; font-family: 'Vazirmatn', 'Roboto', sans-serif; }
+.atm-rem__compose {
+    padding: 16px;
+    border-radius: 18px;
+    background: linear-gradient(135deg, color-mix(in srgb, #f59e0b 9%, var(--mud-palette-surface)), var(--mud-palette-surface));
+    border: 1px solid color-mix(in srgb, #f59e0b 25%, transparent);
+    margin-bottom: 16px;
+}
+.atm-rem__presets { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; }
+.atm-chipbtn {
+    display: inline-flex; align-items: center; gap: 6px;
+    height: 32px; padding: 0 12px;
+    border-radius: 999px;
+    border: 1px solid color-mix(in srgb, var(--mud-palette-text-primary) 12%, transparent);
+    background: var(--mud-palette-surface);
+    color: var(--mud-palette-text-primary);
+    font-family: inherit; font-size: .8rem;
+    cursor: pointer;
+    transition: all .2s;
+}
+.atm-chipbtn:hover { border-color: #f59e0b; }
+.atm-chipbtn.is-active { background: #f59e0b; border-color: #f59e0b; color: #fff; }
+.atm-rem__when { display: grid; grid-template-columns: 1fr 130px; gap: 10px; align-items: end; }
+.atm-rem__when label { font-size: .75rem; color: var(--mud-palette-text-secondary); display: block; margin-bottom: 5px; }
+.atm-rem__when .atm-input { height: 40px; border: 1px solid color-mix(in srgb, var(--mud-palette-text-primary) 14%, transparent); background: var(--mud-palette-surface); color: var(--mud-palette-text-primary); border-radius: 10px; width: 100%; font-family: inherit; }
+.atm-rem__summary { margin-top: 10px; font-size: .8rem; color: #b45309; display: flex; align-items: center; gap: 6px; }
+
+.atm-rem__list { display: flex; flex-direction: column; gap: 10px; max-height: 46vh; overflow-y: auto; padding: 2px; }
+.atm-rem__item {
+    display: grid; grid-template-columns: auto 1fr auto; gap: 12px; align-items: start;
+    padding: 12px 14px;
+    border-radius: 16px;
+    border: 1px solid color-mix(in srgb, var(--mud-palette-text-primary) 9%, transparent);
+    background: var(--mud-palette-surface);
+    animation: atm-rise .4s var(--atm-ease, ease) both;
+}
+.atm-rem__bell {
+    width: 38px; height: 38px; border-radius: 12px; display: grid; place-items: center; font-size: 1.1rem;
+    color: #f59e0b; background: color-mix(in srgb, #f59e0b 13%, transparent);
+}
+.atm-rem__item.is-past .atm-rem__bell { color: #f43f5e; background: color-mix(in srgb, #f43f5e 12%, transparent); }
+.atm-rem__item.is-closed { opacity: .6; }
+.atm-rem__item.is-closed .atm-rem__bell { color: #94a3b8; background: color-mix(in srgb, #94a3b8 14%, transparent); }
+.atm-rem__text { font-size: .9rem; line-height: 1.8; white-space: pre-line; word-break: break-word; }
+.atm-rem__meta { display: flex; flex-wrap: wrap; gap: 6px 12px; margin-top: 4px; font-size: .74rem; color: var(--mud-palette-text-secondary); }
+.atm-rem__meta span { display: inline-flex; align-items: center; gap: 4px; }
+
+/* ─────────────────────────── واکنش‌گرا ─────────────────────────── */
+
+/* بر اساس عرضِ خودِ صفحه نه پنجره — منوی کناری عرض را کم می‌کند. */
+@container atm (max-width: 1060px) {
+    .atm-kpi { padding: 14px; gap: 11px; }
+    .atm-kpi__icon { width: 42px; height: 42px; border-radius: 13px; font-size: 1.15rem; }
+    .atm-kpi__num { font-size: 1.5rem; }
+    .atm-kpi__label { font-size: .74rem; }
+}
+@container atm (max-width: 780px) {
+    .atm-kpis { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+    .atm-kpi { grid-column: span 2; }
+    .atm-kpi:nth-child(n+4) { grid-column: span 3; }
+}
+@media (max-width: 960px) {
+    .atm { padding: 12px 12px 110px; }
+    .atm-hero { padding: 22px 20px; border-radius: 22px; }
+    .atm-board { grid-template-columns: 1fr; }
+    /* روی صفحه‌ی کوچک نوارِ ابزار چند ردیف است؛ چسبان بماند نصفِ صفحه را می‌گیرد. */
+    .atm-toolbar { position: static; }
+    .atm-toolbar .atm-field { width: 100%; flex: 1 1 180px; }
+}
+@media (max-width: 640px) {
+    .atm-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+    .atm-kpis .atm-kpi, .atm-kpis .atm-kpi:nth-child(n+4) { grid-column: auto; }
+    .atm-kpis .atm-kpi:first-child { grid-column: 1 / -1; }
+    .atm-kpi { padding: 12px; gap: 10px; }
+    .atm-kpi__icon { width: 40px; height: 40px; border-radius: 12px; }
+    .atm-kpi__num { font-size: 1.35rem; }
+    .atm-ringbox { display: none; }
+    .atm-hero__side { align-items: stretch; width: 100%; }
+    .atm-hero__actions .atm-btn--light { flex: 1 1 100%; }
+    .atm-focus { grid-template-columns: 1fr; }
+    .atm-focus__icon { display: none; }
+    .atm-task { grid-template-columns: auto minmax(0, 1fr); padding: 12px; }
+    .atm-task > .atm-check { display: none; }
+    .atm-task__actions { grid-column: 1 / -1; justify-content: flex-end; opacity: 1; }
+    .atm-seg { width: 100%; overflow-x: auto; }
+    .atm-sheet { top: auto; left: 0; right: 0; bottom: 0; width: 100%; max-height: calc(100vh - 64px); border-radius: 24px 24px 0 0; transform: translateY(100%); }
+    .atm-sheet__foot .hint { display: none; }
+    .atm-sheet.is-open { transform: none; }
+    .atm-rem__when { grid-template-columns: 1fr; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .atm *, .atm *::before, .atm *::after,
+    .atm-sheet, .atm-bulkbar, .atm-rem__item { animation-duration: .01ms; animation-iteration-count: 1; transition-duration: .01ms; }
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   پیام‌های داخلی — پنجره‌ی چت (ChatWindow)
+
+   z-index: بالای appbar (۱۳۰۰) و زیرِ snackbar (۱۵۰۰). فهرستِ کشوییِ
+   «مشتری» با PopoverClass="atm-pop-top" بالاتر از پنجره می‌آید.
+   ═══════════════════════════════════════════════════════════════════ */
+
+.atm-chat-root { --atm-spring: cubic-bezier(.16, 1.18, .3, 1); direction: rtl; font-family: 'Vazirmatn', 'Roboto', sans-serif; }
+
+.mud-popover.atm-pop-top { z-index: 1450; }
+
+.atm-chat-scrim {
+    position: fixed; inset: 0; z-index: 1340;
+    background: radial-gradient(circle at 20% 10%, color-mix(in srgb, var(--mud-palette-primary) 18%, transparent), transparent 55%),
+                rgb(6 10 22 / .52);
+    backdrop-filter: blur(10px) saturate(1.3);
+    -webkit-backdrop-filter: blur(10px) saturate(1.3);
+    animation: atm-fade-in .35s ease both;
+}
+.atm-chat-scrim.is-closing { animation: atm-fade-out .22s ease both; }
+@keyframes atm-fade-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes atm-fade-out { to { opacity: 0; } }
+
+.atm-chat {
+    position: fixed; z-index: 1350;
+    inset: 0; margin: auto;
+    /* متناسب با رزولوشن: روی ۱۰۸۰p حدود ۱۴۸۰×۹۴۰، روی لپ‌تاپ تقریباً کلِ صفحه */
+    width: min(1480px, calc(100vw - 64px));
+    height: min(940px, calc(100vh - 56px));
+    display: grid;
+    grid-template-columns: clamp(290px, 24vw, 380px) minmax(0, 1fr);
+    border-radius: 28px;
+    overflow: hidden;
+    background: var(--mud-palette-surface);
+    color: var(--mud-palette-text-primary);
+    border: 1px solid color-mix(in srgb, var(--mud-palette-text-primary) 8%, transparent);
+    box-shadow: 0 50px 120px -30px rgb(0 0 0 / .6), 0 0 0 1px rgb(255 255 255 / .04) inset;
+    transform-origin: 18% 12%;
+    animation: atm-win-in .62s var(--atm-spring) both;
+}
+.atm-chat.is-closing { animation: atm-win-out .23s cubic-bezier(.4, 0, 1, 1) both; }
+@keyframes atm-win-in {
+    0%   { opacity: 0; transform: translateY(40px) scale(.86); filter: blur(14px); }
+    55%  { opacity: 1; filter: blur(0); }
+    100% { opacity: 1; transform: none; filter: none; }
+}
+@keyframes atm-win-out { to { opacity: 0; transform: translateY(24px) scale(.94); filter: blur(8px); } }
+
+/* ── ستونِ گفتگوها ── */
+.atm-chat__side {
+    display: flex; flex-direction: column; min-height: 0;
+    background: color-mix(in srgb, var(--mud-palette-text-primary) 2.5%, var(--mud-palette-surface));
+    border-inline-end: 1px solid color-mix(in srgb, var(--mud-palette-text-primary) 7%, transparent);
+}
+.atm-chat__sidehead {
+    display: flex; align-items: center; gap: 10px;
+    padding: 18px 16px 12px;
+    font-size: 1.1rem;
+}
+.atm-chat__sidehead .logo {
+    width: 38px; height: 38px; border-radius: 12px; display: grid; place-items: center; color: #fff;
+    background: linear-gradient(135deg, var(--mud-palette-primary), #8b5cf6);
+    box-shadow: 0 10px 22px -10px var(--mud-palette-primary);
+    animation: atm-logo 1s var(--atm-spring) .15s both;
+}
+@keyframes atm-logo { from { transform: scale(0) rotate(-40deg); } to { transform: none; } }
+
+.atm-chat__search { position: relative; margin: 0 14px 10px; }
+.atm-chat__search i { position: absolute; inset-inline-start: 12px; top: 50%; transform: translateY(-50%); opacity: .5; }
+.atm-chat__search input {
+    width: 100%; height: 40px; padding: 0 38px 0 12px;
+    border-radius: 12px;
+    border: 1px solid transparent;
+    background: color-mix(in srgb, var(--mud-palette-text-primary) 6%, transparent);
+    color: inherit; font: inherit; font-size: .88rem; outline: none;
+    transition: border-color .2s, background .2s, box-shadow .2s;
+}
+.atm-chat__search input:focus {
+    background: var(--mud-palette-surface);
+    border-color: color-mix(in srgb, var(--mud-palette-primary) 55%, transparent);
+    box-shadow: 0 0 0 4px color-mix(in srgb, var(--mud-palette-primary) 13%, transparent);
+}
+
+.atm-chat__list { flex: 1; overflow-y: auto; overflow-x: hidden; padding: 4px 8px 14px; }
+
+.atm-conv {
+    width: 100%;
+    display: flex; align-items: center; gap: 12px;
+    padding: 10px 10px;
+    margin-bottom: 2px;
+    border: 0; border-radius: 16px;
+    background: transparent; color: inherit; font: inherit; text-align: start;
+    cursor: pointer;
+    position: relative;
+    transition: background .2s, transform .2s var(--atm-spring);
+    animation: atm-conv-in .45s var(--atm-spring) both;
+    animation-delay: calc(var(--i, 0) * 35ms);
+}
+@keyframes atm-conv-in { from { opacity: 0; transform: translateX(-18px); } to { opacity: 1; transform: none; } }
+.atm-conv:hover { background: color-mix(in srgb, var(--mud-palette-text-primary) 5%, transparent); }
+.atm-conv:active { transform: scale(.98); }
+.atm-conv.is-active {
+    background: linear-gradient(135deg, var(--mud-palette-primary), color-mix(in srgb, var(--mud-palette-primary) 70%, #8b5cf6));
+    color: #fff;
+    box-shadow: 0 12px 24px -14px var(--mud-palette-primary);
+}
+.atm-conv.is-active .atm-av { box-shadow: 0 0 0 2px rgb(255 255 255 / .6); }
+.atm-conv.is-active .r2, .atm-conv.is-active time { color: rgb(255 255 255 / .8); }
+.atm-conv__body { flex: 1; min-width: 0; }
+.atm-conv .r1, .atm-conv .r2 { display: flex; align-items: center; gap: 6px; }
+.atm-conv .r1 b { flex: 1; font-size: .92rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.atm-conv time { font-size: .7rem; color: var(--mud-palette-text-secondary); flex: none; }
+.atm-conv .r2 { margin-top: 3px; font-size: .8rem; color: var(--mud-palette-text-secondary); }
+.atm-conv .pv { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.atm-conv.has-unread .r1 b, .atm-conv.has-unread .pv { font-weight: 700; color: var(--mud-palette-text-primary); }
+.atm-conv.is-active.has-unread .pv, .atm-conv.is-active.has-unread .r1 b { color: #fff; }
+.atm-conv .tick { font-size: .9rem; }
+.tick.is-read { color: #0ea5e9; }
+.atm-conv.is-active .tick.is-read { color: #fff; }
+
+.atm-unread {
+    min-width: 22px; height: 22px; padding: 0 7px;
+    border-radius: 999px; display: inline-grid; place-items: center;
+    font-size: .72rem; font-weight: 800; color: #fff;
+    background: linear-gradient(135deg, var(--mud-palette-primary), #8b5cf6);
+    box-shadow: 0 6px 14px -6px var(--mud-palette-primary);
+    animation: atm-pop .5s var(--atm-spring, ease);
+    flex: none;
+}
+.atm-conv.is-active .atm-unread { background: #fff; color: var(--mud-palette-primary); }
+
+.atm-av--bc { color: #fff; background: linear-gradient(135deg, #f59e0b, #f43f5e); font-size: 1rem; }
+.atm-chat__hint { display: grid; justify-items: center; gap: 12px; padding: 30px 10px; text-align: center; color: var(--mud-palette-text-secondary); font-size: .86rem; }
+
+/* ── بخشِ گفتگو ── */
+.atm-chat__main {
+    position: relative; min-width: 0; min-height: 0;
+    display: flex; flex-direction: column;
+    /* «کاغذ دیواری»ِ ملایم مثل تلگرام، از رنگ‌های تم */
+    background:
+        radial-gradient(circle at 12% 18%, color-mix(in srgb, var(--mud-palette-primary) 10%, transparent), transparent 34%),
+        radial-gradient(circle at 88% 82%, rgb(139 92 246 / .10), transparent 38%),
+        radial-gradient(color-mix(in srgb, var(--mud-palette-text-primary) 7%, transparent) 1px, transparent 1.3px) 0 0 / 22px 22px,
+        color-mix(in srgb, var(--mud-palette-text-primary) 1.5%, var(--mud-palette-background));
+}
+.atm-chat__pane { flex: 1; min-height: 0; display: flex; flex-direction: column; animation: atm-pane-in .42s var(--atm-spring) both; }
+@keyframes atm-pane-in { from { opacity: 0; transform: translateX(-26px); } to { opacity: 1; transform: none; } }
+
+.atm-chat__head {
+    display: flex; align-items: center; gap: 12px;
+    padding: 14px 20px;
+    background: color-mix(in srgb, var(--mud-palette-surface) 86%, transparent);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    border-bottom: 1px solid color-mix(in srgb, var(--mud-palette-text-primary) 7%, transparent);
+    z-index: 2;
+}
+.atm-chat__head b { display: block; font-size: 1rem; }
+.atm-chat__head small { color: var(--mud-palette-text-secondary); font-size: .76rem; }
+.atm-chat__head .back { display: none; }
+
+.atm-chat__msgs {
+    flex: 1; overflow-y: auto;
+    padding: 18px clamp(14px, 4vw, 48px) 10px;
+    display: flex; flex-direction: column; gap: 4px;
+}
+.atm-chat__start { margin: auto; padding: 14px 20px; border-radius: 16px; background: color-mix(in srgb, var(--mud-palette-surface) 80%, transparent); color: var(--mud-palette-text-secondary); }
+
+.atm-day { display: flex; justify-content: center; margin: 14px 0 8px; position: sticky; top: 4px; z-index: 1; }
+.atm-day span {
+    padding: 4px 14px; border-radius: 999px; font-size: .72rem; font-weight: 600;
+    color: var(--mud-palette-text-secondary);
+    background: color-mix(in srgb, var(--mud-palette-surface) 88%, transparent);
+    backdrop-filter: blur(8px);
+    box-shadow: 0 4px 12px -8px rgb(0 0 0 / .35);
+}
+
+.atm-msg { display: flex; flex-direction: column; max-width: min(78%, 620px); }
+.atm-msg.mine { align-self: flex-start; align-items: flex-start; }
+.atm-msg.theirs { align-self: flex-end; align-items: flex-end; }
+.atm-msg.is-new { animation: atm-bubble-in .55s var(--atm-spring) both; animation-delay: calc(var(--i, 0) * 45ms); }
+.atm-msg.mine.is-new { transform-origin: 100% 100%; }
+.atm-msg.theirs.is-new { transform-origin: 0% 100%; }
+@keyframes atm-bubble-in {
+    0%   { opacity: 0; transform: translateY(16px) scale(.8); }
+    60%  { opacity: 1; transform: translateY(-3px) scale(1.02); }
+    100% { opacity: 1; transform: none; }
+}
+
+.atm-bubble {
+    position: relative;
+    padding: 8px 14px 6px;
+    border-radius: 20px;
+    font-size: .93rem; line-height: 1.85;
+    box-shadow: 0 2px 6px -3px rgb(0 0 0 / .25);
+}
+.atm-msg.mine .atm-bubble {
+    color: #fff;
+    background: linear-gradient(135deg, var(--mud-palette-primary), color-mix(in srgb, var(--mud-palette-primary) 62%, #8b5cf6));
+    border-start-start-radius: 6px;
+}
+.atm-msg.theirs .atm-bubble {
+    background: var(--mud-palette-surface);
+    border-start-end-radius: 6px;
+}
+.atm-bubble .txt { white-space: pre-wrap; word-break: break-word; }
+.atm-bubble .meta {
+    display: flex; align-items: center; justify-content: flex-end; gap: 5px;
+    margin-top: 2px;
+    font-size: .68rem; opacity: .72;
+}
+.atm-msg.mine .tick.is-read { color: #bae6fd; opacity: 1; }
+.atm-msg.is-failed .atm-bubble { background: linear-gradient(135deg, #f43f5e, #e11d48); }
+.atm-retry {
+    margin-top: 4px; border: 0; background: transparent; cursor: pointer;
+    color: #f43f5e; font: inherit; font-size: .75rem; display: inline-flex; gap: 4px; align-items: center;
+}
+.atm-msg .bi-clock { animation: atm-spin 1.2s linear infinite; display: inline-block; }
+@keyframes atm-spin { to { transform: rotate(360deg); } }
+
+/* ارسالِ گروهی */
+.atm-bubble--bc { min-width: 260px; }
+.atm-bc__to { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0 4px; }
+.atm-bc__to span {
+    display: inline-flex; align-items: center; gap: 4px;
+    padding: 2px 10px; border-radius: 999px; font-size: .72rem;
+    background: rgb(255 255 255 / .16);
+}
+.atm-bc__to span.is-read { background: rgb(255 255 255 / .32); }
+.atm-bubble .bc-count { margin-inline-end: auto; font-weight: 600; }
+
+/* ── نوشتن ── */
+.atm-composer {
+    padding: 10px clamp(12px, 3vw, 36px) 16px;
+    background: linear-gradient(to top, color-mix(in srgb, var(--mud-palette-surface) 92%, transparent), transparent);
+}
+.atm-composer__row {
+    display: flex; align-items: flex-end; gap: 8px;
+    padding: 6px;
+    border-radius: 24px;
+    background: var(--mud-palette-surface);
+    border: 1px solid color-mix(in srgb, var(--mud-palette-text-primary) 9%, transparent);
+    box-shadow: 0 16px 40px -22px rgb(0 0 0 / .45);
+    transition: border-color .2s, box-shadow .2s;
+}
+.atm-composer__row:focus-within {
+    border-color: color-mix(in srgb, var(--mud-palette-primary) 45%, transparent);
+    box-shadow: 0 0 0 4px color-mix(in srgb, var(--mud-palette-primary) 12%, transparent), 0 16px 40px -22px rgb(0 0 0 / .45);
+}
+.atm-composer textarea {
+    flex: 1; resize: none; border: 0; outline: none; background: transparent;
+    color: inherit; font: inherit; font-size: .95rem; line-height: 1.8;
+    padding: 7px 6px;
+    min-height: 40px; max-height: 170px;
+    field-sizing: content;
+}
+.atm-composer.is-disabled .atm-composer__row { opacity: .6; }
+.atm-icon-btn.is-on { color: var(--mud-palette-primary); background: color-mix(in srgb, var(--mud-palette-primary) 12%, transparent); }
+
+.atm-custchip {
+    display: inline-flex; align-items: center; gap: 6px;
+    max-width: 170px; height: 34px; padding: 0 12px; margin-bottom: 3px;
+    border-radius: 999px; border: 1px dashed color-mix(in srgb, var(--mud-palette-text-primary) 18%, transparent);
+    background: transparent; color: var(--mud-palette-text-secondary);
+    font: inherit; font-size: .74rem; cursor: pointer;
+    transition: color .2s, border-color .2s;
+}
+.atm-custchip span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.atm-custchip:hover, .atm-custchip.is-on { color: var(--mud-palette-primary); border-color: var(--mud-palette-primary); border-style: solid; }
+
+.atm-send {
+    width: 44px; height: 44px; flex: none;
+    border: 0; border-radius: 50%;
+    display: grid; place-items: center;
+    color: #fff; font-size: 1.1rem; cursor: pointer;
+    background: color-mix(in srgb, var(--mud-palette-text-primary) 18%, transparent);
+    transform: scale(.86);
+    transition: transform .35s var(--atm-spring, ease), background .25s, box-shadow .25s;
+    overflow: hidden;
+}
+.atm-send i { transform: scaleX(-1); display: inline-block; }
+.atm-send.is-ready {
+    transform: scale(1);
+    background: linear-gradient(135deg, var(--mud-palette-primary), #8b5cf6);
+    box-shadow: 0 10px 22px -10px var(--mud-palette-primary);
+}
+.atm-send.is-ready:hover { transform: scale(1.07) rotate(-8deg); }
+.atm-send:disabled { cursor: default; }
+.atm-send.is-flying i { animation: atm-fly .55s cubic-bezier(.5, 0, .75, 0) both; }
+@keyframes atm-fly {
+    0%   { transform: scaleX(-1); opacity: 1; }
+    45%  { transform: scaleX(-1) translate(26px, -26px) rotate(-12deg); opacity: 0; }
+    46%  { transform: scaleX(-1) translate(-26px, 26px); opacity: 0; }
+    100% { transform: scaleX(-1); opacity: 1; }
+}
+
+.atm-emoji {
+    display: flex; flex-wrap: wrap; gap: 2px;
+    padding: 8px; margin-bottom: 8px;
+    border-radius: 18px;
+    background: var(--mud-palette-surface);
+    box-shadow: 0 16px 40px -20px rgb(0 0 0 / .45);
+    animation: atm-pop-up .35s var(--atm-spring, ease) both;
+    transform-origin: 90% 100%;
+}
+.atm-emoji button {
+    width: 38px; height: 38px; border: 0; border-radius: 10px; background: transparent;
+    font-size: 1.3rem; cursor: pointer; transition: transform .15s, background .15s;
+}
+.atm-emoji button:hover { transform: scale(1.25); background: color-mix(in srgb, var(--mud-palette-text-primary) 6%, transparent); }
+@keyframes atm-pop-up { from { opacity: 0; transform: translateY(10px) scale(.9); } to { opacity: 1; transform: none; } }
+
+.atm-composer__cust { margin-bottom: 8px; padding: 10px; border-radius: 16px; background: var(--mud-palette-surface); animation: atm-pop-up .3s ease both; }
+.atm-composer__note { margin-top: 8px; font-size: .74rem; color: #b45309; display: flex; align-items: center; gap: 6px; }
+
+/* ── انتخابِ گیرنده ── */
+.atm-picker { flex: 1; min-height: 0; display: flex; flex-direction: column; padding: 14px clamp(12px, 3vw, 36px) 0; gap: 10px; }
+.atm-picker__chips {
+    display: flex; flex-wrap: wrap; gap: 6px; align-items: center;
+    min-height: 46px; max-height: 110px; overflow-y: auto; padding: 6px;
+    border-radius: 16px; background: var(--mud-palette-surface);
+    border: 1px solid color-mix(in srgb, var(--mud-palette-text-primary) 8%, transparent);
+}
+.atm-picker__chips .ph { color: var(--mud-palette-text-secondary); font-size: .82rem; padding: 0 8px; }
+.atm-pchip {
+    display: inline-flex; align-items: center; gap: 6px;
+    height: 32px; padding: 0 4px 0 6px;
+    border-radius: 999px; font-size: .8rem;
+    background: color-mix(in srgb, var(--mud-palette-primary) 12%, var(--mud-palette-surface));
+    animation: atm-pop .4s var(--atm-spring, ease) both;
+}
+.atm-pchip button { width: 22px; height: 22px; border: 0; border-radius: 50%; background: transparent; color: inherit; cursor: pointer; display: grid; place-items: center; }
+.atm-pchip button:hover { background: rgb(0 0 0 / .1); }
+.atm-picker__bar { display: flex; gap: 8px; align-items: center; }
+.atm-picker__list {
+    flex: 1; overflow-y: auto; overflow-x: hidden;
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 8px;
+    align-content: start;
+    padding: 2px 2px 10px;
+}
+.atm-person {
+    display: flex; align-items: center; gap: 10px;
+    padding: 10px 12px; border-radius: 16px; cursor: pointer;
+    background: var(--mud-palette-surface);
+    border: 1.5px solid transparent;
+    transition: border-color .2s, transform .2s var(--atm-spring, ease), box-shadow .2s;
+    animation: atm-conv-in .4s var(--atm-spring, ease) both;
+    animation-delay: calc(var(--i, 0) * 22ms);
+    position: relative;
+}
+.atm-person input { position: absolute; opacity: 0; pointer-events: none; }
+.atm-person:hover { transform: translateY(-2px); box-shadow: 0 10px 20px -14px rgb(0 0 0 / .4); }
+.atm-person .nm { flex: 1; font-size: .86rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.atm-person .ck {
+    width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center;
+    border: 2px solid color-mix(in srgb, var(--mud-palette-text-primary) 18%, transparent);
+    color: transparent; transition: background .25s, border-color .25s, color .25s, transform .25s var(--atm-spring, ease);
+}
+.atm-person.is-on { border-color: var(--mud-palette-primary); }
+.atm-person.is-on .ck { background: var(--mud-palette-primary); border-color: var(--mud-palette-primary); color: #fff; transform: scale(1.1); }
+
+/* ── خوشامد ── */
+.atm-chat__welcome { margin: auto; display: grid; justify-items: center; text-align: center; gap: 10px; padding: 30px; animation: atm-pane-in .5s ease both; }
+.atm-chat__welcome h3 { margin: 6px 0 0; font-size: 1.25rem; font-weight: 800; }
+.atm-chat__welcome p { margin: 0 0 8px; color: var(--mud-palette-text-secondary); max-width: 340px; font-size: .9rem; line-height: 1.9; }
+.atm-chat__welcome .art { position: relative; width: 150px; height: 120px; }
+.atm-chat__welcome .art > i {
+    position: absolute; inset: 0; margin: auto; width: 84px; height: 84px; border-radius: 28px;
+    display: grid; place-items: center; font-size: 2.4rem; color: #fff;
+    background: linear-gradient(135deg, var(--mud-palette-primary), #8b5cf6);
+    box-shadow: 0 24px 40px -18px var(--mud-palette-primary);
+    animation: atm-bob 3.2s ease-in-out 3 alternate;
+}
+.atm-chat__welcome .b { position: absolute; border-radius: 14px; background: var(--mud-palette-surface); box-shadow: 0 10px 20px -12px rgb(0 0 0 / .35); animation: atm-bob 2.6s ease-in-out 3 alternate; }
+.atm-chat__welcome .b1 { width: 44px; height: 24px; top: 4px; right: 0; animation-delay: .3s; }
+.atm-chat__welcome .b2 { width: 34px; height: 20px; bottom: 6px; left: 2px; animation-delay: .8s; }
+.atm-chat__welcome .b3 { width: 22px; height: 14px; top: 18px; left: 18px; animation-delay: 1.2s; }
+@keyframes atm-bob { from { transform: translateY(0); } to { transform: translateY(-10px); } }
+
+/* ── موبایل: یک ستون، گفتگو روی فهرست می‌لغزد ── */
+@media (max-width: 760px) {
+    /* minmax(0,…) نه 1fr: وگرنه ستون به اندازه‌ی پیش‌نمایشِ بلندِ پیام‌ها کش می‌آید و از صفحه بیرون می‌زند */
+    .atm-chat { width: 100vw; height: 100dvh; border-radius: 0; grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); }
+    .atm-chat__side, .atm-chat__main { grid-area: 1 / 1; }
+    .atm-chat__main { transform: translateX(-100%); transition: transform .38s var(--atm-spring); }
+    .atm-chat.has-pane .atm-chat__main { transform: none; }
+    .atm-chat__head .back { display: grid; }
+    .atm-msg { max-width: 88%; }
+    .atm-custchip { max-width: 110px; }
+}
+
+/* ═══════════════ دیالوگ‌های MudBlazorِ این صفحه ═══════════════
+   فقط انیمیشنِ «باز شدن» جایگزین می‌شود؛ MudBlazor 6 برای بسته شدن
+   انیمیشنی ندارد، پس چیزی از رفتارش خنثی نمی‌شود (برخلافِ تله‌ی Snackbar
+   در AGENTS.md). بدون !important — فقط انتخابگرِ دقیق‌تر. */
+.mud-dialog.atm-dialog {
+    border-radius: 24px;
+    box-shadow: 0 40px 100px -30px rgb(0 0 0 / .55);
+    animation: atm-win-in .55s cubic-bezier(.16, 1.18, .3, 1) both;
+}
+.mud-overlay.atm-dialog-bg .mud-overlay-scrim { backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); }
+
+@media (prefers-reduced-motion: reduce) {
+    .atm-chat, .atm-chat *, .atm-chat-scrim, .mud-dialog.atm-dialog { animation-duration: .01ms; animation-iteration-count: 1; transition-duration: .01ms; }
+}

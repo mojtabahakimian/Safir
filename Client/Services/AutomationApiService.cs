@@ -23,13 +23,14 @@ namespace Safir.Client.Services
         }
 
         // --- Tasks ---
-        public async Task<IEnumerable<TaskModel>?> GetTasksAsync(int statusFilter = 1, int? assignedUserId = null, string? taskTypes = "1000")
+        public async Task<IEnumerable<TaskModel>?> GetTasksAsync(int statusFilter = 1, int? assignedUserId = null, string? taskTypes = "1000", int? top = null)
         {
             // Build query string based on parameters
             var query = System.Web.HttpUtility.ParseQueryString(string.Empty);
             query["statusFilter"] = statusFilter.ToString();
             if (assignedUserId.HasValue) query["assignedUserId"] = assignedUserId.Value.ToString();
             if (!string.IsNullOrWhiteSpace(taskTypes)) query["taskTypes"] = taskTypes;
+            if (top is > 0) query["top"] = top.Value.ToString();
 
             string requestUri = $"api/tasks?{query}";
             try
@@ -39,6 +40,24 @@ namespace Safir.Client.Services
             catch (Exception ex)
             {
                 _logger?.LogError(ex, "Error fetching tasks from {RequestUri}", requestUri);
+                return null;
+            }
+        }
+
+        public async Task<TaskSummaryModel?> GetTaskSummaryAsync(int? assignedUserId = null, string? taskTypes = "1000")
+        {
+            var query = System.Web.HttpUtility.ParseQueryString(string.Empty);
+            if (assignedUserId.HasValue) query["assignedUserId"] = assignedUserId.Value.ToString();
+            if (!string.IsNullOrWhiteSpace(taskTypes)) query["taskTypes"] = taskTypes;
+
+            string requestUri = $"api/tasks/summary?{query}";
+            try
+            {
+                return await _httpClient.GetFromJsonAsync<TaskSummaryModel>(requestUri);
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogError(ex, "Error fetching task summary from {RequestUri}", requestUri);
                 return null;
             }
         }
@@ -301,6 +320,20 @@ namespace Safir.Client.Services
         }
 
 
+        public async Task<int> MarkConversationReadAsync(int senderId)
+        {
+            try
+            {
+                var response = await _httpClient.PutAsync($"api/messages/read-from/{senderId}", null);
+                return response.IsSuccessStatusCode ? await response.Content.ReadFromJsonAsync<int>() : 0;
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogError(ex, "Exception marking conversation from {SenderId} as read.", senderId);
+                return 0;
+            }
+        }
+
         // --- Reminders ---
         public async Task<IEnumerable<ReminderModel>?> GetRemindersAsync(int? statusFilter = null)
         {
@@ -402,22 +435,31 @@ namespace Safir.Client.Services
 
         public Task<IEnumerable<DocumentTypeLookupModel>?> GetDocumentTypeLookupAsync()
         {
-            // TODO: پیاده سازی دریافت انواع سند (skid) از API یا تعریف استاتیک
-            _logger?.LogWarning("GetDocumentTypeLookupAsync is not fully implemented yet.");
-            // مثال داده استاتیک
+            // نام‌ها از متنی است که خودِ نرم‌افزار WPF برای هر وظیفه‌ی سنددار
+            // می‌سازد («فاکتور فروش شماره: ...») — روی داده‌ی واقعیِ YAZDSEPAR1405
+            // برای هر skid بررسی شد. skid همان TAG برگه نیست (۰ اینجا سند
+            // حسابداری است، در TAGCOD ابتدای دوره).
             var docTypes = new List<DocumentTypeLookupModel> {
-                new DocumentTypeLookupModel { ID=0, NAME="سند حسابداری" },
-                new DocumentTypeLookupModel { ID=1, NAME="رسید خرید" },
-                new DocumentTypeLookupModel { ID=2, NAME="حواله فروش" },
-                 new DocumentTypeLookupModel { ID=12, NAME="فاکتور خرید" },
-                 new DocumentTypeLookupModel { ID=13, NAME="فاکتور فروش" },
-                 new DocumentTypeLookupModel { ID=20, NAME="پیش فاکتور" },
-                 new DocumentTypeLookupModel { ID=100, NAME="درخواست پرداخت" },
-                 new DocumentTypeLookupModel { ID=34, NAME="خزانه داری" },
-                // ... سایر انواع سند بر اساس کد WPF ...
+                new DocumentTypeLookupModel { ID = 0,   NAME = "سند حسابداری" },
+                new DocumentTypeLookupModel { ID = 1,   NAME = "رسید انبار" },
+                new DocumentTypeLookupModel { ID = 2,   NAME = "حواله فروش" },
+                new DocumentTypeLookupModel { ID = 3,   NAME = "فاکتور برگشت خرید" },
+                new DocumentTypeLookupModel { ID = 4,   NAME = "فاکتور برگشت فروش" },
+                new DocumentTypeLookupModel { ID = 6,   NAME = "انتقالی" },
+                new DocumentTypeLookupModel { ID = 12,  NAME = "فاکتور خرید" },
+                new DocumentTypeLookupModel { ID = 13,  NAME = "فاکتور فروش" },
+                new DocumentTypeLookupModel { ID = 20,  NAME = "پیش فاکتور" },
+                new DocumentTypeLookupModel { ID = 24,  NAME = "سایر رسید انبار" },
+                new DocumentTypeLookupModel { ID = 25,  NAME = "فاکتور برگشت فروش آزاد" },
+                new DocumentTypeLookupModel { ID = 27,  NAME = "فاکتور برگشت خرید آزاد" },
+                new DocumentTypeLookupModel { ID = 34,  NAME = "خزانه داری" },
+                new DocumentTypeLookupModel { ID = 36,  NAME = "درخواست خرید" },
+                new DocumentTypeLookupModel { ID = 37,  NAME = "برگه مرخصی" },
+                new DocumentTypeLookupModel { ID = 38,  NAME = "حواله خروج" },
+                new DocumentTypeLookupModel { ID = 39,  NAME = "حواله خروج (۳۹)" },
+                new DocumentTypeLookupModel { ID = 100, NAME = "درخواست پرداخت" },
             };
             return Task.FromResult<IEnumerable<DocumentTypeLookupModel>?>(docTypes);
-            // throw new NotImplementedException();
         }
 
         public async Task<bool> CanViewSubordinateTasksAsync()

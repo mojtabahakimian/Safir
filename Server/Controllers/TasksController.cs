@@ -32,7 +32,11 @@ namespace Safir.Server.Controllers
         public async Task<ActionResult<IEnumerable<TaskModel>>> GetTasks(
             [FromQuery] int statusFilter = 1,
             [FromQuery] int? assignedUserId = null,
-            [FromQuery] string? taskTypes = "1000"
+            [FromQuery] string? taskTypes = "1000",
+            // فقط n ردیفِ آخر (جدیدترین). بُردِ کارتابل برای ستون‌های «انجام شده» و
+            // «لغو شده» از آن استفاده می‌کند — بعضی کاربران بیش از ۱۰ هزار کار
+            // انجام‌شده دارند و بُرد نباید همه را بکشد. خالی = همه، مثل قبل.
+            [FromQuery] int? top = null
         )
         {
             var currentUserIdClaim = User.FindFirstValue(ClaimTypes.NameIdentifier);
@@ -46,15 +50,7 @@ namespace Safir.Server.Controllers
 
                 if (statusFilter >= 1 && statusFilter <= 3) { conditions.Add("T.STATUS = @Status"); parameters.Add("Status", statusFilter); }
 
-                List<int> validSkids = new List<int>();
-                if (!string.IsNullOrWhiteSpace(taskTypes) && taskTypes != "1000")
-                {
-                    var skidStrings = taskTypes.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-                    foreach (var skidStr in skidStrings)
-                    {
-                        if (int.TryParse(skidStr, out int skid)) validSkids.Add(skid);
-                    }
-                }
+                List<int> validSkids = ParseSkids(taskTypes);
                 if (validSkids.Any()) { conditions.Add("T.skid IN @Skids"); parameters.Add("Skids", validSkids); }
 
                 conditions.Add("T.PERSONEL = @PersonelId");
@@ -63,7 +59,9 @@ namespace Safir.Server.Controllers
                 string whereClause = conditions.Any() ? $"WHERE {string.Join(" AND ", conditions)}" : "";
 
                 // Fetch raw date/time fields
-                string sql = $@"SELECT
+                if (top is > 0) parameters.Add("Top", top.Value);
+
+                string sql = $@"SELECT {(top is > 0 ? "TOP (@Top)" : "")}
                                     T.IDNUM, CH.NAME, T.GR, T.PERSONEL, T.TASK, T.PERIORITY, T.STATUS,
                                     T.STDATE as STDATE_DB, T.STTIME as STTIME_DB,
                                     T.ENDATE as ENDATE_DB, T.ENTIME as ENTIME_DB,
@@ -79,37 +77,7 @@ namespace Safir.Server.Controllers
                 if (tasksRaw == null) return Ok(Enumerable.Empty<TaskModel>());
 
                 // Convert in C#
-                List<TaskModel> tasks = tasksRaw.Select(t =>
-                {
-                    // برای جلوگیری از خطای احتمالی اگر فیلدی در یک ردیف وجود نداشت
-                    var task = new TaskModel();
-                    try { task.IDNUM = (long)t.IDNUM; } catch { /* Log or handle */ }
-                    try { task.NAME = (string?)t.NAME; } catch { /* Log or handle */ }
-                    try { task.GR = (int?)t.GR; } catch { /* Log or handle */ } // کست به int?
-                    try { task.PERSONEL = (int)t.PERSONEL; } catch { /* Log or handle */ } // احتمالاً int است
-                    try { task.TASK = (string?)t.TASK; } catch { /* Log or handle */ }
-                    try { task.PERIORITY = (int)t.PERIORITY; } catch { /* Log or handle */ } // احتمالاً int است
-                    try { task.STATUS = (int)t.STATUS; } catch { /* Log or handle */ } // احتمالاً int است
-                    try { task.USERNAME = (string?)t.USERNAME; } catch { /* Log or handle */ }
-                    try { task.COMP_COD = (string?)t.COMP_COD; } catch { /* Log or handle */ }
-                    try { task.skid = (int?)t.skid; } catch { /* Log or handle */ }       // ***** کست صریح long به int? *****
-                    try { task.num = (long?)t.num; } catch { /* Log or handle */ }         // کست به long? (برای اطمینان)
-                    try { task.tg = (int?)t.tg; } catch { /* Log or handle */ }           // ***** کست صریح long به int? *****
-                    try { task.CTIM = (DateTime?)t.CTIM; } catch { /* Log or handle */ }   // احتمالاً datetime است
-                    try { task.USERCO = (int?)t.USERCO; } catch { /* Log or handle */ }     // ***** کست صریح long به int? *****
-                    try { task.SEE = (bool?)t.SEE; } catch { /* Log or handle */ }         // کست به bool? (بسته به نوع bit در SQL)
-
-                    // تبدیل تاریخ و زمان
-                    try { task.STDATE = CL_Tarikh.ConvertToDateTimeFromPersianLong((long?)t.STDATE_DB); } catch { /* Log or handle */ }
-                    try { task.STTIME = CL_Tarikh.ConvertToTimeSpanFromTimeInt((int?)t.STTIME_DB); } catch { /* Log or handle */ }
-                    try { task.ENDATE = CL_Tarikh.ConvertToDateTimeFromPersianLong((long?)t.ENDATE_DB); } catch { /* Log or handle */ }
-                    try { task.ENTIME = CL_Tarikh.ConvertToTimeSpanFromTimeInt((int?)t.ENTIME_DB); } catch { /* Log or handle */ }
-                    try { task.SUMTIME = CL_Tarikh.ConvertToTimeSpanFromTimeInt((int?)t.SUMTIME_DB); } catch { /* Log or handle */ }
-                    try { task.SEET = CL_Tarikh.ConvertToDateTimeFromPersianLong((long?)t.SEET_DB); } catch { /* Log or handle */ }
-
-                    return task;
-
-                }).ToList();
+                List<TaskModel> tasks = tasksRaw.Select(t => MapTask((object)t)).ToList();
 
                 return Ok(tasks);
             }
@@ -117,6 +85,121 @@ namespace Safir.Server.Controllers
             {
                 _logger.LogError(ex, "API: Error fetching tasks for UserId: {UserIdToQuery}", userIdToQuery);
                 return StatusCode(500, "Internal server error while fetching tasks.");
+            }
+        }
+
+        /// <summary>کدهای نوع سند (skid) از رشته‌ی «13,20»؛ «1000» یعنی همه.</summary>
+        private static List<int> ParseSkids(string? taskTypes)
+        {
+            var skids = new List<int>();
+            if (string.IsNullOrWhiteSpace(taskTypes) || taskTypes == "1000") return skids;
+            foreach (var skidStr in taskTypes.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+            {
+                if (int.TryParse(skidStr, out int skid)) skids.Add(skid);
+            }
+            return skids;
+        }
+
+        /// <summary>یک ردیفِ خامِ TASKS (با ستون‌های *_DB) → TaskModel.</summary>
+        [NonAction]
+        public static TaskModel MapTask(object row)
+        {
+            dynamic t = row;
+            // برای جلوگیری از خطای احتمالی اگر فیلدی در یک ردیف وجود نداشت
+            var task = new TaskModel();
+            try { task.IDNUM = (long)t.IDNUM; } catch { /* Log or handle */ }
+            try { task.NAME = (string?)t.NAME; } catch { /* Log or handle */ }
+            try { task.GR = (int?)t.GR; } catch { /* Log or handle */ } // کست به int?
+            try { task.PERSONEL = (int)t.PERSONEL; } catch { /* Log or handle */ } // احتمالاً int است
+            try { task.TASK = (string?)t.TASK; } catch { /* Log or handle */ }
+            try { task.PERIORITY = (int)t.PERIORITY; } catch { /* Log or handle */ } // احتمالاً int است
+            try { task.STATUS = (int)t.STATUS; } catch { /* Log or handle */ } // احتمالاً int است
+            try { task.USERNAME = (string?)t.USERNAME; } catch { /* Log or handle */ }
+            try { task.COMP_COD = (string?)t.COMP_COD; } catch { /* Log or handle */ }
+            try { task.skid = (int?)t.skid; } catch { /* Log or handle */ }       // ***** کست صریح long به int? *****
+            try { task.num = (long?)t.num; } catch { /* Log or handle */ }         // کست به long? (برای اطمینان)
+            try { task.tg = (int?)t.tg; } catch { /* Log or handle */ }           // ***** کست صریح long به int? *****
+            try { task.CTIM = (DateTime?)t.CTIM; } catch { /* Log or handle */ }   // احتمالاً datetime است
+            try { task.USERCO = (int?)t.USERCO; } catch { /* Log or handle */ }     // ***** کست صریح long به int? *****
+            try { task.SEE = t.SEE is null ? null : Convert.ToInt32(t.SEE) != 0; } catch { /* Log or handle */ } // در پایگاه int است، نه bit
+
+            // تبدیل تاریخ و زمان
+            try { task.STDATE = CL_Tarikh.ConvertToDateTimeFromPersianLong((long?)t.STDATE_DB); } catch { /* Log or handle */ }
+            try { task.STTIME = CL_Tarikh.ConvertToTimeSpanFromTimeInt((int?)t.STTIME_DB); } catch { /* Log or handle */ }
+            try { task.ENDATE = CL_Tarikh.ConvertToDateTimeFromPersianLong((long?)t.ENDATE_DB); } catch { /* Log or handle */ }
+            try { task.ENTIME = CL_Tarikh.ConvertToTimeSpanFromTimeInt((int?)t.ENTIME_DB); } catch { /* Log or handle */ }
+            try { task.SUMTIME = CL_Tarikh.ConvertToTimeSpanFromTimeInt((int?)t.SUMTIME_DB); } catch { /* Log or handle */ }
+            try { task.SEET = t.SEET_DB is DateTime seet ? seet : CL_Tarikh.ConvertToDateTimeFromPersianLong((long?)t.SEET_DB); } catch { /* Log or handle */ } // در پایگاه datetime است
+
+            return task;
+        }
+
+        /// <summary>کار بازی که بیش از این تعداد روز از ارجاعش گذشته «معوق» است.</summary>
+        private const int StaleDays = 30;
+
+        /// <summary>
+        /// خلاصه‌ی کارتابل برای سربرگ و کارت‌های شاخص: تعداد هر وضعیت، کارهای
+        /// فوری و معوق، و «کار پیشنهادی بعدی». یک کوئریِ تجمیعی است، پس
+        /// شمارش‌ها بدون کشیدنِ هزاران ردیفِ انجام‌شده به مرورگر درست‌اند.
+        /// فیلترِ کاربر و نوع سند عیناً همانِ GetTasks است.
+        /// </summary>
+        [HttpGet("summary")]
+        public async Task<ActionResult<TaskSummaryModel>> GetSummary(
+            [FromQuery] int? assignedUserId = null,
+            [FromQuery] string? taskTypes = "1000")
+        {
+            var currentUserIdClaim = User.FindFirstValue(ClaimTypes.NameIdentifier);
+            if (!int.TryParse(currentUserIdClaim, out int currentUserId)) return Unauthorized("User ID not found in token.");
+            int userIdToQuery = assignedUserId ?? currentUserId;
+
+            try
+            {
+                var parameters = new DynamicParameters();
+                parameters.Add("PersonelId", userIdToQuery);
+                var where = "T.PERSONEL = @PersonelId";
+                var skids = ParseSkids(taskTypes);
+                if (skids.Any()) { where += " AND T.skid IN @Skids"; parameters.Add("Skids", skids); }
+
+                // تاریخ‌ها در TASKS عددِ شمسیِ yyyyMMdd‌اند. هفته از شنبه شروع می‌شود.
+                var now = DateTime.Now;
+                int daysSinceSaturday = ((int)now.DayOfWeek + 1) % 7;
+                parameters.Add("Today",     CL_Tarikh.ConvertToPersianDateLong(now));
+                parameters.Add("StaleDate", CL_Tarikh.ConvertToPersianDateLong(now.AddDays(-StaleDays)));
+                parameters.Add("WeekStart", CL_Tarikh.ConvertToPersianDateLong(now.AddDays(-daysSinceSaturday)));
+
+                var summary = await _dbService.DoGetDataSQLAsyncSingle<TaskSummaryModel>($@"
+                    SELECT  [Open]       = ISNULL(SUM(CASE WHEN T.STATUS = 1 THEN 1 ELSE 0 END), 0),
+                            Done         = ISNULL(SUM(CASE WHEN T.STATUS = 2 THEN 1 ELSE 0 END), 0),
+                            Cancelled    = ISNULL(SUM(CASE WHEN T.STATUS = 3 THEN 1 ELSE 0 END), 0),
+                            OpenUrgent   = ISNULL(SUM(CASE WHEN T.STATUS = 1 AND T.PERIORITY = 1 THEN 1 ELSE 0 END), 0),
+                            OpenStale    = ISNULL(SUM(CASE WHEN T.STATUS = 1 AND T.STDATE < @StaleDate THEN 1 ELSE 0 END), 0),
+                            NewToday     = ISNULL(SUM(CASE WHEN T.STDATE = @Today THEN 1 ELSE 0 END), 0),
+                            DoneThisWeek = ISNULL(SUM(CASE WHEN T.STATUS = 2 AND T.ENDATE >= @WeekStart THEN 1 ELSE 0 END), 0)
+                    FROM    dbo.TASKS T
+                    WHERE   {where}", parameters) ?? new TaskSummaryModel();
+
+                // کار پیشنهادی: اول فوری‌ها، و بین هم‌اولویت‌ها قدیمی‌ترین.
+                var focusRaw = await _dbService.DoGetDataSQLAsyncSingle<dynamic>($@"
+                    SELECT TOP 1
+                           T.IDNUM, CH.NAME, T.GR, T.PERSONEL, T.TASK, T.PERIORITY, T.STATUS,
+                           T.STDATE as STDATE_DB, T.STTIME as STTIME_DB,
+                           T.ENDATE as ENDATE_DB, T.ENTIME as ENTIME_DB,
+                           T.USERNAME, T.COMP_COD,
+                           T.SUMTIME as SUMTIME_DB, T.skid, T.num, T.tg, T.CTIM, T.USERCO, T.SEE,
+                           T.SEET as SEET_DB
+                    FROM   dbo.TASKS T
+                    LEFT OUTER JOIN dbo.CUST_HESAB CH ON T.COMP_COD = CH.hes
+                    WHERE  {where} AND T.STATUS = 1
+                    ORDER BY T.PERIORITY, T.STDATE, T.STTIME, T.IDNUM", parameters);
+                if (focusRaw != null) summary.Focus = MapTask((object)focusRaw);
+
+                summary.StaleDays = StaleDays;
+                return Ok(summary);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "API: Error fetching task summary for UserId: {UserIdToQuery}", userIdToQuery);
+                return StatusCode(500, "خطا در دریافت خلاصه‌ی کارتابل.");
             }
         }
 
@@ -188,14 +271,18 @@ namespace Safir.Server.Controllers
 
             long? enDateLong = CL_Tarikh.ConvertToPersianDateLong(updatedTask.ENDATE);
             int? enTimeInt = CL_Tarikh.ConvertTimeToInt(updatedTask.ENTIME);
-            long? seetLong = CL_Tarikh.ConvertToPersianDateLong(updatedTask.SEET);
 
             try
             {
+                // ⚠ SEE و SEET («مجری دیده است» و زمانش) عمداً اینجا نیستند: آن‌ها را
+                // نرم‌افزار WPF موقعِ دیدنِ کار می‌نویسد و فرمِ ویرایش مقدارِ درستی از
+                // آن‌ها ندارد. قبلاً هر ویرایش هر دو را NULL می‌کرد (SEE در پایگاه int
+                // است و تبدیلش به bool? بی‌صدا شکست می‌خورد؛ SEET هم datetime است نه
+                // تاریخ شمسی).
                 string sql = @"UPDATE dbo.TASKS SET
                                    PERSONEL = @PERSONEL, TASK = @TASK, PERIORITY = @PERIORITY, STATUS = @STATUS,
                                    ENDATE = @ENDATE, ENTIME = @ENTIME, COMP_COD = @COMP_COD, skid = @skid,
-                                   num = @num, SEE = @SEE, SEET = @SEET
+                                   num = @num
                                WHERE IDNUM = @IDNUM";
 
                 var parameters = new
@@ -209,8 +296,6 @@ namespace Safir.Server.Controllers
                     updatedTask.COMP_COD,
                     updatedTask.skid,
                     updatedTask.num,
-                    updatedTask.SEE,
-                    SEET = seetLong,
                     IDNUM = idnum
                 };
 

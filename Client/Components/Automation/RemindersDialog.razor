@@ -1,0 +1,307 @@
+@using Safir.Shared.Models
+@using Safir.Shared.Models.Automation
+@using Safir.Shared.Interfaces
+@using Safir.Shared.Utility
+@using Safir.Client.Pages.Salary.Tabs
+@inject IAutomationApiService AutomationService
+@inject LookupApiService LookupService
+@inject ISnackbar Snackbar
+
+@*
+    یادآوری‌ها — REMAINDER. سرویسِ سرور (ایجاد، فهرست، لغو) از قبل بود ولی
+    دکمه‌ی کارتابل فقط «هنوز پیاده‌سازی نشده» نشان می‌داد.
+*@
+
+<MudDialog DisableSidePadding="false" Class="atm-dialog">
+    <TitleContent>
+        <div class="atm-tokens" style="display:flex;align-items:center;gap:10px;direction:rtl">
+            <span style="width:38px;height:38px;border-radius:12px;display:grid;place-items:center;background:color-mix(in srgb,#f59e0b 15%,transparent);color:#f59e0b;font-size:1.15rem">
+                <i class="bi bi-bell-fill"></i>
+            </span>
+            <div>
+                <div style="font-weight:800;font-size:1.05rem">یادآوری‌ها</div>
+                <div style="font-size:.75rem;opacity:.65">یادداشتی برای خودتان یا همکاران، در زمانی که تعیین می‌کنید.</div>
+            </div>
+        </div>
+    </TitleContent>
+    <DialogContent>
+        <div class="atm-tokens atm-rem">
+            <div class="atm-rem__compose">
+                <textarea class="atm-textarea" style="min-height:84px" maxlength="2047"
+                          placeholder="چه چیزی را یادآوری کنم؟ مثلاً: تماس با آقای رضایی درباره‌ی پیش‌فاکتور"
+                          @bind="_text" @bind:event="oninput"></textarea>
+
+                <div class="atm-rem__presets">
+                    @foreach (var p in Presets())
+                    {
+                        <button type="button" class="atm-chipbtn @(_presetKey == p.Key ? "is-active" : "")" @onclick="() => ApplyPreset(p)">
+                            <i class="bi @p.Icon"></i>@p.Label
+                        </button>
+                    }
+                </div>
+
+                <div class="atm-rem__when">
+                    <div>
+                        <label>تاریخ (شمسی)</label>
+                        <Pay2NumericInput Value="@_dateStr" ValueChanged="@(v => { _dateStr = v; _presetKey = null; })"
+                                          InputMode="Pay2NumericInput.NumericInputMode.PersianDate" Direction="ltr" />
+                    </div>
+                    <div>
+                        <label>ساعت</label>
+                        <input type="time" class="atm-input" value="@_timeStr"
+                               @onchange="@(e => { _timeStr = e.Value?.ToString(); _presetKey = null; })" />
+                    </div>
+                </div>
+
+                <MudGrid Spacing="2" Class="mt-2">
+                    <MudItem xs="12" sm="6">
+                        <MudSelect T="int" Label="برای" MultiSelection="true" Dense="true" Variant="Variant.Outlined"
+                                   @bind-SelectedValues="_recipients"
+                                   ToStringFunc="PersonName"
+                                   MultiSelectionTextFunc="RecipientsText">
+                            @foreach (var p in Personel)
+                            {
+                                <MudSelectItem T="int" Value="@p.USERCO">@(p.USERCO == CurrentUserId ? $"{p.SAL_NAME} (خودم)" : p.SAL_NAME)</MudSelectItem>
+                            }
+                        </MudSelect>
+                    </MudItem>
+                    <MudItem xs="12" sm="6">
+                        <MudAutocomplete T="LookupDto<string>" Label="مشتری مرتبط (اختیاری)" @bind-Value="_customer"
+                                         SearchFunc="SearchCustomersAsync"
+                                         ToStringFunc="@(c => c == null ? string.Empty : c.Name)"
+                                         ResetValueOnEmptyText="true" CoerceText="false" Clearable="true"
+                                         Variant="Variant.Outlined" Dense="true" />
+                    </MudItem>
+                </MudGrid>
+
+                <div style="display:flex;align-items:center;gap:10px;margin-top:12px;flex-wrap:wrap">
+                    @if (When is { } w)
+                    {
+                        <span class="atm-rem__summary">
+                            <i class="bi bi-alarm"></i>
+                            @AutomationUi.LongDate(w) — ساعت @w.ToString("HH:mm") (@AutomationUi.Until(w.Date, w.TimeOfDay, DateTime.Now))
+                        </span>
+                    }
+                    else if (!string.IsNullOrEmpty(_dateStr))
+                    {
+                        <span class="atm-rem__summary" style="color:#f43f5e"><i class="bi bi-exclamation-circle"></i>تاریخ معتبر نیست.</span>
+                    }
+                    <span style="flex:1"></span>
+                    <button type="button" class="atm-btn atm-btn--primary" style="background:linear-gradient(135deg,#f59e0b,#f97316)"
+                            disabled="@(!CanSave || _saving)" @onclick="SaveAsync">
+                        <i class="bi bi-bell"></i>ثبت یادآوری
+                    </button>
+                </div>
+            </div>
+
+            <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+                <div class="atm-seg" style="--atm-soft:color-mix(in srgb,var(--mud-palette-text-primary) 5%,transparent)">
+                    <button type="button" class="@(_onlyActive ? "is-active" : "")" @onclick="() => SetFilter(true)">در جریان</button>
+                    <button type="button" class="@(!_onlyActive ? "is-active" : "")" @onclick="() => SetFilter(false)">همه</button>
+                </div>
+                <span style="font-size:.78rem;opacity:.65">@_items.Count یادآوری</span>
+            </div>
+
+            @if (_loading)
+            {
+                <div class="atm-rem__list">
+                    @for (int i = 0; i < 3; i++) { <div class="atm-skel" style="height:64px"></div> }
+                </div>
+            }
+            else if (_items.Count == 0)
+            {
+                <div style="text-align:center;padding:30px 10px;opacity:.7">
+                    <i class="bi bi-bell-slash" style="font-size:2rem;color:#f59e0b"></i>
+                    <div style="margin-top:8px">@(_onlyActive ? "یادآوریِ در جریانی ندارید." : "هنوز یادآوری‌ای ثبت نشده.")</div>
+                </div>
+            }
+            else
+            {
+                <div class="atm-rem__list">
+                    @foreach (var r in _items)
+                    {
+                        var at = AutomationUi.At(r.STDATE, r.STTIME);
+                        var past = r.STATUS == 1 && at < DateTime.Now;
+                        <div class="atm-rem__item @(r.STATUS != 1 ? "is-closed" : past ? "is-past" : "")">
+                            <div class="atm-rem__bell"><i class="bi @(r.STATUS == 3 ? "bi-bell-slash" : r.STATUS == 2 ? "bi-check2" : "bi-bell-fill")"></i></div>
+                            <div style="min-width:0">
+                                <div class="atm-rem__text">@r.PAYAM</div>
+                                <div class="atm-rem__meta">
+                                    <span><i class="bi bi-alarm"></i>@AutomationUi.ShortDate(r.STDATE) @AutomationUi.Time(r.STTIME)</span>
+                                    @if (r.STATUS == 1)
+                                    {
+                                        <span style="font-weight:600;color:@(past ? "#f43f5e" : "#b45309")">@AutomationUi.Until(r.STDATE, r.STTIME, DateTime.Now)</span>
+                                    }
+                                    else
+                                    {
+                                        <span>@(r.STATUS == 2 ? "تمام شده" : "لغو شده")</span>
+                                    }
+                                    @if (!string.IsNullOrWhiteSpace(r.NAME))
+                                    {
+                                        <span><i class="bi bi-building"></i>@r.NAME</span>
+                                    }
+                                    @if (!string.IsNullOrWhiteSpace(r.USERNAME))
+                                    {
+                                        <span><i class="bi bi-person"></i>از @r.USERNAME</span>
+                                    }
+                                </div>
+                            </div>
+                            @if (r.STATUS == 1)
+                            {
+                                <button type="button" class="atm-icon-btn" title="لغو یادآوری" @onclick="() => CancelAsync(r)">
+                                    <i class="bi bi-x-circle"></i>
+                                </button>
+                            }
+                        </div>
+                    }
+                </div>
+            }
+        </div>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Close" Variant="Variant.Text">بستن</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] MudDialogInstance MudDialog { get; set; } = default!;
+    [Parameter] public int CurrentUserId { get; set; }
+    [Parameter] public List<PersonelLookupModel> Personel { get; set; } = new();
+
+    private List<ReminderModel> _items = new();
+    private bool _loading = true;
+    private bool _saving;
+    private bool _onlyActive = true;
+    private bool _changed;
+
+    private string? _text;
+    private string? _dateStr;
+    private string? _timeStr;
+    private string? _presetKey;
+    private IEnumerable<int> _recipients = new HashSet<int>();
+    private LookupDto<string>? _customer;
+
+    private record Preset(string Key, string Label, string Icon, DateTime At);
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (CurrentUserId > 0) _recipients = new HashSet<int> { CurrentUserId };
+        ApplyPreset(Presets().First(p => p.Key == "tomorrow"));
+        await LoadAsync();
+    }
+
+    private IEnumerable<Preset> Presets()
+    {
+        var now = DateTime.Now;
+        var h = now.AddHours(1);
+        var inHour = new DateTime(h.Year, h.Month, h.Day, h.Hour, h.Minute / 5 * 5, 0);
+        yield return new("hour", "یک ساعت دیگر", "bi-hourglass-split", inHour);
+        if (now.Hour < 16)
+            yield return new("evening", "امروز ساعت ۱۷", "bi-sunset", now.Date.AddHours(17));
+        yield return new("tomorrow", "فردا ساعت ۹", "bi-sunrise", now.Date.AddDays(1).AddHours(9));
+        int toSat = ((int)DayOfWeek.Saturday - (int)now.DayOfWeek + 7) % 7;
+        if (toSat <= 1) toSat += 7;
+        yield return new("saturday", "شنبه ساعت ۹", "bi-calendar-week", now.Date.AddDays(toSat).AddHours(9));
+        yield return new("nextweek", "یک هفته دیگر", "bi-calendar-plus", now.Date.AddDays(7).AddHours(9));
+    }
+
+    private void ApplyPreset(Preset p)
+    {
+        _presetKey = p.Key;
+        _dateStr = CL_Tarikh.ConvertToPersianDateLong(p.At)?.ToString();
+        _timeStr = p.At.ToString("HH:mm");
+    }
+
+    private DateTime? When
+    {
+        get
+        {
+            var digits = new string((_dateStr ?? "").Where(char.IsDigit).ToArray());
+            if (digits.Length != 8 || !long.TryParse(digits, out var d)) return null;
+            var date = CL_Tarikh.ConvertToDateTimeFromPersianLong(d);
+            if (date is null || !TimeSpan.TryParse(_timeStr, out var t)) return null;
+            return date.Value.Date + t;
+        }
+    }
+
+    private bool CanSave => !string.IsNullOrWhiteSpace(_text) && When.HasValue && _recipients.Any();
+
+    // بدون این، MudSelect قبل از رندرِ گزینه‌ها کدِ کاربر (۱۱۴) را نشان می‌داد نه نامش.
+    private string PersonName(int id)
+    {
+        var name = Personel.FirstOrDefault(p => p.USERCO == id)?.SAL_NAME ?? id.ToString();
+        return id == CurrentUserId ? $"{name} (خودم)" : name;
+    }
+
+    private string RecipientsText(List<string> names)
+        => names.Count switch { 0 => "", 1 => names[0], _ => $"{names.Count} نفر" };
+
+    private async Task<IEnumerable<LookupDto<string>>> SearchCustomersAsync(string value)
+        => await LookupService.GetCustomerLookupAsync(string.IsNullOrWhiteSpace(value) ? null : value)
+           ?? Enumerable.Empty<LookupDto<string>>();
+
+    private async Task SetFilter(bool onlyActive)
+    {
+        _onlyActive = onlyActive;
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        StateHasChanged();
+        var list = await AutomationService.GetRemindersAsync(_onlyActive ? 1 : null);
+        _items = (list ?? Enumerable.Empty<ReminderModel>())
+            .OrderBy(r => r.STATUS == 1 ? 0 : 1)
+            .ThenBy(r => r.STATUS == 1 ? AutomationUi.At(r.STDATE, r.STTIME) : null)
+            .ThenByDescending(r => AutomationUi.At(r.STDATE, r.STTIME))
+            .ToList();
+        if (list is null) Snackbar.Add("فهرست یادآوری‌ها دریافت نشد.", Severity.Warning);
+        _loading = false;
+    }
+
+    private async Task SaveAsync()
+    {
+        if (!CanSave || _saving) return;
+        var when = When!.Value;
+        _saving = true;
+        try
+        {
+            var ok = await AutomationService.CreateReminderAsync(new ReminderCreateRequest
+            {
+                RecipientUserIds = _recipients.ToList(),
+                ReminderText = _text!.Trim(),
+                CompCod = _customer?.Id,
+                ReminderDate = when.Date,
+                ReminderTime = when.TimeOfDay
+            });
+            if (!ok)
+            {
+                Snackbar.Add("یادآوری ثبت نشد. دوباره تلاش کنید.", Severity.Error);
+                return;
+            }
+            Snackbar.Add($"یادآوری برای {AutomationUi.Until(when.Date, when.TimeOfDay, DateTime.Now)} ثبت شد.", Severity.Success);
+            _text = null;
+            _customer = null;
+            _changed = true;
+            await LoadAsync();
+        }
+        finally { _saving = false; }
+    }
+
+    private async Task CancelAsync(ReminderModel r)
+    {
+        if (await AutomationService.CancelReminderAsync(r.IDNUM))
+        {
+            _changed = true;
+            Snackbar.Add("یادآوری لغو شد.", Severity.Info);
+            await LoadAsync();
+        }
+        else
+        {
+            Snackbar.Add("لغو نشد — فقط یادآوری‌های در جریانِ خودتان لغوشدنی‌اند.", Severity.Warning);
+        }
+    }
+
+    private void Close() => MudDialog.Close(DialogResult.Ok(_changed));
+}
