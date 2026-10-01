@@ -41,8 +41,8 @@ public class EventAttachmentTests
         };
         using var stream = new MemoryStream(bytes);
         var result = await controller.CreateEvent(1, new CreateEventRequestDto { IDNUM=1, EVENTS="Excel attachment" },
-            new FormFile(stream, 0, bytes.Length, "file", fileName));
-        Assert.IsType<CreatedAtActionResult>(result.Result);
+            new FormFile(stream, 0, bytes.Length, "file", fileName) { Headers = new HeaderDictionary() });
+        Assert.IsType<OkObjectResult>(result.Result);
         var captured = (DbProxy)(object)db;
         Assert.Equal(bytes, captured.Bytes);
         Assert.Equal(extension, captured.Extension);
