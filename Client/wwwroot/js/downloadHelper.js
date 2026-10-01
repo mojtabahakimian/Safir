@@ -1,7 +1,7 @@
 // wwwroot/js/downloadHelper.js
-window.downloadFileFromBytes = (fileName, byteArray) => {
+window.downloadFileFromBytes = (fileName, byteArray, contentType = "application/pdf") => {
     // Create a Blob object from the byte array
-    const blob = new Blob([byteArray], { type: "application/pdf" }); // Set MIME type for PDF
+    const blob = new Blob([byteArray], { type: contentType || "application/pdf" });
 
     // Create a link element
     const link = document.createElement('a');
