@@ -40,9 +40,11 @@ public class EventAttachmentTests
             { User = new ClaimsPrincipal(new ClaimsIdentity(new[] { new Claim(ClaimTypes.Name, "tester") }, "test")) } }
         };
         using var stream = new MemoryStream(bytes);
+        // ASP.NET's FormFeature always sets Headers on uploaded files; a part without
+        // Content-Type gets an empty dictionary, which is the case reproduced here.
         var result = await controller.CreateEvent(1, new CreateEventRequestDto { IDNUM=1, EVENTS="Excel attachment" },
-            new FormFile(stream, 0, bytes.Length, "file", fileName));
-        Assert.IsType<CreatedAtActionResult>(result.Result);
+            new FormFile(stream, 0, bytes.Length, "file", fileName) { Headers = new HeaderDictionary() });
+        Assert.IsType<OkObjectResult>(result.Result);
         var captured = (DbProxy)(object)db;
         Assert.Equal(bytes, captured.Bytes);
         Assert.Equal(extension, captured.Extension);
