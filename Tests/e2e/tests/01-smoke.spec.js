@@ -231,6 +231,35 @@ test.describe('سلامت کلاینت', () => {
   });
 
   /**
+   * خزانه‌داری (/treasury) ظاهرش را از automation.css + css/treasury.css می‌گیرد
+   * و خودش [Authorize] است. بدون ورود: استایل سیم‌کشی شده باشد، API بدون توکن
+   * ۴۰۱ بدهد (نه داده)، و صفحه نشکند.
+   */
+  test('خزانه‌داری سیم‌کشی شده و بدون ورود نمی‌شکند', async ({ page }) => {
+    const errors = collectPageErrors(page);
+    await page.goto('/treasury', { waitUntil: 'networkidle' });
+    await page.waitForTimeout(3000);
+
+    const cssRules = await page.evaluate(() => {
+      const sheet = [...document.styleSheets].find(s => (s.href || '').includes('css/treasury.css'));
+      return sheet ? sheet.cssRules.length : 0;
+    });
+    expect(cssRules, 'css/treasury.css بارگذاری نشده یا خالی است').toBeGreaterThan(50);
+
+    const meta = await page.request.get('/api/treasury/meta');
+    expect(meta.status(), 'API خزانه‌داری بدون توکن باز است').toBe(401);
+    // چک‌ها، چاپ، تصویرِ امضا و اکسل هم داده‌ی مالی/امضا برمی‌گردانند
+    for (const url of ['/api/treasury/cheques?mode=assign', '/api/treasury/1/print', '/api/treasury/1/signature/1', '/api/treasury/1/excel']) {
+      expect((await page.request.get(url)).status(), `${url} بدون توکن باز است`).toBe(401);
+    }
+
+    const crashed = errors.filter(e => /Unhandled exception rendering component/i.test(e));
+    expect(crashed, `کامپوننت کرش کرد:\n${crashed.join('\n')}`).toHaveLength(0);
+    const trsErrors = errors.filter(e => /TreasuryApiService|Treasury\.TreasuryPage/i.test(e));
+    expect(trsErrors, `خطای مدیریت‌نشده در خزانه‌داری:\n${trsErrors.join('\n')}`).toHaveLength(0);
+  });
+
+  /**
    * رگرسیون: صفحه‌ی مغایرت‌های بهای تمام‌شده نباید با ۴۰۱/۴۰۳ بشکند.
    *
    * نسخه‌ی اول این صفحه در Load() هیچ catch نداشت، پس یک ۴۰۱ ساده از

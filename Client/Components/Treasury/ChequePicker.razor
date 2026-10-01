@@ -1,0 +1,141 @@
+@using Safir.Shared.Models.Treasury
+@inject TreasuryApiService Api
+@implements IDisposable
+
+@*
+    انتخابِ چکی که قبلاً ثبت شده — جای FOR_CHK_SERCH (واگذاری)، و فهرستِ سریال‌های BAKCHEK
+    (برگشتِ چکِ دریافتی) و BAKCHEKP (برگشتِ چکِ پرداختی). جستجو در سریال، نام، مبلغ و صیادی.
+*@
+<div class="trs-pick">
+    <div class="trs-pick__bar">
+        <div class="atm-search">
+            <i class="bi bi-search"></i>
+            <input type="search" placeholder="سریال، نام صاحب چک، مبلغ یا صیادی…" value="@_q" @oninput="OnSearch" disabled="@Disabled" autocomplete="off" />
+        </div>
+        <span class="trs-pick__count">@(_loading ? "در حال جستجو…" : $"{_list.Count} چک")</span>
+    </div>
+
+    @if (Selected is { } s)
+    {
+        <div class="trs-pick__sel">
+            <i class="bi bi-check-circle-fill"></i>
+            <span class="srl">چک <bdi>@Serial(s.NSeri)</bdi></span>
+            <span>@s.BankName</span>
+            <span>سررسید <bdi>@ChequeForm.FormatDate(s.DateS)</bdi></span>
+            <b>@AccountPicker.Money(s.Mabl) ریال</b>
+            <span class="nm">@s.NameTah</span>
+            @if (!Disabled)
+            {
+                <button type="button" class="atm-icon-btn" title="انتخابِ چکِ دیگر" @onclick="Clear"><i class="bi bi-x-lg"></i></button>
+            }
+        </div>
+    }
+
+    @if (Selected is null || _open)
+    {
+        <div class="trs-pick__list">
+            @if (_list.Count == 0 && !_loading)
+            {
+                <div class="trs-pick__empty"><i class="bi bi-inbox"></i>@EmptyText</div>
+            }
+            @foreach (var c in _list)
+            {
+                <button type="button" class="trs-pick__item @(c.Id == Selected?.Id ? "is-on" : "")" @onclick="() => Pick(c)" disabled="@Disabled" @key="c.Id">
+                    <span class="srl"><i class="bi bi-credit-card-2-front"></i><bdi>@Serial(c.NSeri)</bdi></span>
+                    <span class="bk">@c.BankName @(string.IsNullOrWhiteSpace(c.Shobeh) ? "" : $"· {c.Shobeh}")</span>
+                    <span class="due @(DueClass(c.DateS))"><bdi>@ChequeForm.FormatDate(c.DateS)</bdi></span>
+                    <span class="nm">@c.NameTah</span>
+                    <span class="st">@TreasuryChequeState.NameOf(c.Vaz, c.Payable)</span>
+                    <b class="amt">@AccountPicker.Money(c.Mabl)</b>
+                </button>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    /// <summary>assign | return-received | return-paid</summary>
+    [Parameter, EditorRequired] public string Mode { get; set; } = "assign";
+    [Parameter] public TreasuryChequeDto? Selected { get; set; }
+    [Parameter] public EventCallback<TreasuryChequeDto?> SelectedChanged { get; set; }
+    /// <summary>چکی که سطرِ در حالِ اصلاح الان به آن اشاره دارد — همیشه در فهرست.</summary>
+    [Parameter] public TreasuryChequeDto? Current { get; set; }
+    [Parameter] public bool Disabled { get; set; }
+
+    private List<TreasuryChequeDto> _list = new();
+    private string _q = "";
+    private bool _loading;
+    private bool _open;
+    private string? _loadedMode;
+    private CancellationTokenSource? _cts;
+
+    private string EmptyText => Mode switch
+    {
+        "assign" => "چکِ دریافتیِ آزادی (نزد صندوق) پیدا نشد.",
+        "return-received" => "چکِ دریافتیِ قابلِ برگشتی پیدا نشد.",
+        _ => "چکِ پرداختیِ قابلِ برگشتی پیدا نشد."
+    };
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (_loadedMode != Mode)
+        {
+            _loadedMode = Mode;
+            _q = "";
+            await LoadAsync();
+        }
+    }
+
+    private async Task OnSearch(ChangeEventArgs e)
+    {
+        _q = e.Value?.ToString() ?? "";
+        _open = true;
+        await LoadAsync(250);
+    }
+
+    private async Task LoadAsync(int delay = 0)
+    {
+        _cts?.Cancel();
+        var cts = _cts = new CancellationTokenSource();
+        try
+        {
+            if (delay > 0) await Task.Delay(delay, cts.Token);
+            _loading = true;
+            StateHasChanged();
+            var list = await Api.ChequesAsync(Mode, _q, cts.Token);
+            if (Current is { } cur && list.All(x => x.Id != cur.Id)) list.Insert(0, cur);
+            _list = list;
+        }
+        catch (OperationCanceledException) { return; }
+        catch { _list = new(); }
+        _loading = false;
+        StateHasChanged();
+    }
+
+    private async Task Pick(TreasuryChequeDto c)
+    {
+        _open = false;
+        await SelectedChanged.InvokeAsync(c);
+    }
+
+    private async Task Clear()
+    {
+        _open = true;
+        await SelectedChanged.InvokeAsync(null);
+    }
+
+    private static string Serial(double s) => s.ToString("0", System.Globalization.CultureInfo.InvariantCulture);
+
+    private static string DueClass(long dateS)
+    {
+        try
+        {
+            var due = new System.Globalization.PersianCalendar().ToDateTime((int)(dateS / 10000), (int)(dateS / 100 % 100), (int)(dateS % 100), 0, 0, 0, 0);
+            var days = (due - DateTime.Today).TotalDays;
+            return days < 0 ? "past" : days < 7 ? "soon" : "";
+        }
+        catch { return ""; }
+    }
+
+    public void Dispose() => _cts?.Cancel();
+}
