@@ -130,4 +130,8 @@ def main() -> int:
 
 
 if __name__ == "__main__":
+    # روی ویندوز، خروجی پایپ‌شده با کدپیج محلی (مثلاً cp1256) باز می‌شود که «✓»
+    # را ندارد و اسکریپت با UnicodeEncodeError و کد خروج ۱ می‌شکند — یعنی قرمزِ دروغین.
+    sys.stdout.reconfigure(encoding="utf-8")
+    sys.stderr.reconfigure(encoding="utf-8")
     sys.exit(main())

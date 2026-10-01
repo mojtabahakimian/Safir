@@ -121,4 +121,7 @@ def main() -> int:
 
 
 if __name__ == "__main__":
+    # همان دلیل check_pay2_acl.py: کدپیج محلی ویندوز «✓» را ندارد.
+    sys.stdout.reconfigure(encoding="utf-8")
+    sys.stderr.reconfigure(encoding="utf-8")
     sys.exit(main())
