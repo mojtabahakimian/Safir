@@ -150,6 +150,37 @@ public class TreasuryServiceTests
         Assert.Null(TreasuryService.ExtractImage(new byte[] { 1, 2, 3 }));
     }
 
+    /// <summary>
+    /// اصلاحِ سطر: کِی همان چک و همان نقش می‌ماند و کِی چکِ قبلی (مثلِ حذفِ سطر) آزاد می‌شود.
+    /// سطرِ نقد هر نوعی می‌تواند بشود — قبلاً زدنِ «چک» روی سطرِ نقد همه‌ی دکمه‌های نوع را قفل می‌کرد.
+    /// </summary>
+    [Theory]
+    [InlineData(1, 1, 2, 4, true)]    // نقد → واگذاری: چکی برای آزاد کردن نیست
+    [InlineData(2, 3, 1, 2, true)]    // سایر → چکِ دریافتی
+    [InlineData(1, 2, 1, 6, true)]    // چک ↔ غیرتجاری با همان نوعِ عملیات: همان ردیفِ PAY_GETD
+    [InlineData(2, 6, 2, 2, true)]
+    [InlineData(2, 4, 2, 4, true)]    // واگذاری، فقط چک یا گیرنده عوض شده
+    [InlineData(1, 2, 2, 2, false)]   // چکِ دریافتی → پرداختی: جدولِ دیگر
+    [InlineData(2, 4, 2, 5, false)]   // واگذاری → برگشت
+    [InlineData(2, 4, 2, 1, false)]   // واگذاری → نقد
+    [InlineData(1, 5, 1, 1, false)]   // برگشتِ چکِ پرداختی → نقد
+    public void Row_edit_keeps_or_releases_the_cheque(int oldNoAm, int oldNahva, int newNoAm, int newNahva, bool same)
+        => Assert.Equal(same, TreasuryMethod.SameChequeRole(oldNoAm, oldNahva, newNoAm, newNahva));
+
+    /// <summary>چکی که دیگر دستِ ما نیست نه سطرش حذف می‌شود نه نوعش عوض؛ واگذاری و برگشت همیشه برمی‌گردند.</summary>
+    [Fact]
+    public void Cheque_out_of_our_hands_locks_its_row()
+    {
+        const int bankha = 112;
+        var assigned = new TreasuryChequeDto { Vaz = 4, NKol = 115 };
+        Assert.NotNull(TreasuryService.ChequeLockedReason(TreasuryOp.Receipt, TreasuryMethod.Cheque, assigned, bankha));
+        Assert.Null(TreasuryService.ChequeLockedReason(TreasuryOp.Receipt, TreasuryMethod.Cheque, new TreasuryChequeDto { Vaz = 1 }, bankha));
+        Assert.Null(TreasuryService.ChequeLockedReason(TreasuryOp.Payment, TreasuryMethod.ChequeAssign, assigned, bankha));
+        Assert.NotNull(TreasuryService.ChequeLockedReason(TreasuryOp.Payment, TreasuryMethod.Cheque, new TreasuryChequeDto { Payable = true, NKol3 = 112 }, bankha));
+        Assert.Null(TreasuryService.ChequeLockedReason(TreasuryOp.Payment, TreasuryMethod.Cheque, new TreasuryChequeDto { Payable = true, NKol2 = 911 }, bankha));
+        Assert.Null(TreasuryService.ChequeLockedReason(TreasuryOp.Receipt, TreasuryMethod.Cheque, null, bankha));
+    }
+
     [Theory]
     [InlineData(2, true)]
     [InlineData(4, true)]

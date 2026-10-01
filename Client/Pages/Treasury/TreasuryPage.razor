@@ -306,141 +306,17 @@
                                         }
                                     </span>
                                 </div>
+                                @if (_rowEditIdh == r.Idh)
+                                {
+                                    @EntryPanel()
+                                }
                             }
                         </div>
 
-                        @* ───── ورودِ سطر ───── *@
-                        @if (_editing && (_meta?.CanCreate == true || _rowEditIdh is not null))
+                        @* ───── سطرِ تازه (پایینِ جدول) — سطرِ در حالِ اصلاح زیرِ خودِ همان سطر باز می‌شود ───── *@
+                        @if (_editing && _rowEditIdh is null && _meta?.CanCreate == true)
                         {
-                            var auto = AutoSides;
-                            var picks = TreasuryMethod.PicksCheque(_e.Method);
-                            var newChq = _e.Method == TreasuryMethod.Cheque;
-                            <div class="trs-entry @(_rowEditIdh is not null ? "is-editing" : "")">
-                                <div class="trs-entry__title">
-                                    <i class="bi @(_rowEditIdh is null ? "bi-plus-circle-fill" : "bi-pencil-square")"></i>
-                                    @(_rowEditIdh is null ? "سطر جدید" : "ویرایش سطر")
-                                    <small>Enter در شرح یا مبلغ = ثبت · Esc = انصراف</small>
-                                </div>
-                                <div class="trs-entry__ops">
-                                    <div class="trs-seg2">
-                                        <button type="button" class="rec @(_e.NoAm == 1 ? "is-on" : "")" @onclick="() => SetOp(1)" disabled="@LockKind"><i class="bi bi-arrow-down-left"></i>دریافت</button>
-                                        <button type="button" class="pay @(_e.NoAm == 2 ? "is-on" : "")" @onclick="() => SetOp(2)" disabled="@LockKind"><i class="bi bi-arrow-up-right"></i>پرداخت</button>
-                                    </div>
-                                    <div class="trs-seg2 trs-seg2--methods">
-                                        @foreach (var (m, label, icon) in MethodButtons)
-                                        {
-                                            if (m == TreasuryMethod.ChequeAssign && _e.NoAm == TreasuryOp.Receipt) continue;
-                                            <button type="button" class="@(_e.Method == m ? "is-on" : "")" @onclick="() => SetMethod(m)" disabled="@LockKind"><i class="bi @icon"></i>@label</button>
-                                        }
-                                    </div>
-                                    @if (newChq)
-                                    {
-                                        <label class="trs-check" title="چکِ غیرتجاری (ضمانت) — حساب‌های ADV/APV">
-                                            <input type="checkbox" checked="@_e.NonTrade" @onchange="e => { _e.NonTrade = (bool)(e.Value ?? false); ApplyAuto(); }" disabled="@LockKind" />
-                                            <span>غیرتجاری</span>
-                                        </label>
-                                    }
-                                </div>
-
-                                @if (picks)
-                                {
-                                    <div class="trs-entry__pick">
-                                        <label class="trs-entry__lbl"><i class="bi bi-search"></i>@PickTitle</label>
-                                        <ChequePicker Mode="@PickMode" Selected="_e.Picked" SelectedChanged="OnPicked" Current="_e.Current" />
-                                    </div>
-                                }
-
-                                <div class="trs-entry__grid">
-                                    <AccountPicker Label="از حساب" Value="@_e.Fhes" Name="@_e.FhesName" OnChange="OnFromChanged"
-                                                   Disabled="@auto.From" AutoHint="@AutoHint(true)" />
-                                    <AccountPicker Label="به حساب" Value="@_e.Thes" Name="@_e.ThesName" OnChange="OnToChanged"
-                                                   Disabled="@auto.To" AutoHint="@AutoHint(false)" />
-                                    @if (_e.Method is TreasuryMethod.Cash or TreasuryMethod.Other)
-                                    {
-                                        @* Enter/Esc فقط روی شرح و مبلغ — در انتخابگرِ حساب، Enter یعنی انتخابِ حساب نه ثبتِ سطر *@
-                                        <div class="trs-f trs-f--wide" @onkeydown="OnEntryKey">
-                                            <label>شرح</label>
-                                            <input class="atm-input" maxlength="255" placeholder="مثلاً: بابت فاکتور ۱۲۳۴" @bind="_e.Sharh" @bind:event="oninput" />
-                                        </div>
-                                    }
-                                    @if (!picks)
-                                    {
-                                        <div class="trs-f" @onkeydown="OnEntryKey">
-                                            <label>مبلغ (ریال) <span class="req">*</span> @(newChq && _e.Chq.Group && _rowEditIdh is null ? "— هر فقره" : "")</label>
-                                            @* Pay2NumericInput تا فوکوس دارد مقدارِ تازه‌ی والد را نمی‌پذیرد؛ با کلیدِ تازه بعد از ثبت/ویرایش از نو ساخته می‌شود *@
-                                            <Pay2NumericInput @key="_entryKey" @bind-Value="_e.Mabl" IsDigitGroupActive="true" ThreeTwoZero="true"
-                                                              MaxLength="20" Direction="ltr" CssClass="trs-amount" />
-                                            @if (ParseMoney(_e.Mabl) is > 0 and var m)
-                                            {
-                                                <small class="trs-words">@Money(m) ریال</small>
-                                            }
-                                        </div>
-                                    }
-                                    else
-                                    {
-                                        <div class="trs-f">
-                                            <label>مبلغ (از چک)</label>
-                                            <div class="trs-ro trs-ro--amt">@(_e.Picked is { } pk ? Money(pk.Mabl) : "—")</div>
-                                        </div>
-                                    }
-                                    @if (_e.Method == TreasuryMethod.ChequeAssign || (_e.Method == TreasuryMethod.ChequeReturn && _e.NoAm == TreasuryOp.Payment))
-                                    {
-                                        <div class="trs-f">
-                                            <label>موقعیت چک</label>
-                                            <select class="atm-input" @bind="_e.Sandugh">
-                                                <option value="">—</option>
-                                                @foreach (var f in _meta!.ChequeFunds) { <option value="@f.Id">@f.Name</option> }
-                                            </select>
-                                        </div>
-                                    }
-                                    @if (_e.Method == TreasuryMethod.ChequeReturn)
-                                    {
-                                        <div class="trs-f">
-                                            <label>وضعیتِ چک <span class="req">*</span></label>
-                                            <select class="atm-input" @bind="_e.Vaz">
-                                                <option value="">—</option>
-                                                @foreach (var (vid, vname) in _e.NoAm == TreasuryOp.Payment ? TreasuryChequeState.Received : TreasuryChequeState.PaidReturn)
-                                                {
-                                                    <option value="@vid">@vname</option>
-                                                }
-                                            </select>
-                                        </div>
-                                    }
-                                    @if (_meta?.MarkazEnabled == true)
-                                    {
-                                        <div class="trs-f">
-                                            <label>مرکز هزینه</label>
-                                            <select class="atm-input" @bind="_e.MhazNo">
-                                                <option value="">—</option>
-                                                @foreach (var c in _meta.CostCenters) { <option value="@c.Id">@c.Name</option> }
-                                            </select>
-                                        </div>
-                                    }
-                                </div>
-
-                                @if (newChq)
-                                {
-                                    <ChequeFields Form="_e.Chq" Meta="_meta!" Receive="@(_e.NoAm == TreasuryOp.Receipt)" AllowGroup="@(_rowEditIdh is null)"
-                                                  LockAssign="@(_e.Current?.InCirculation(_meta!.Bankha) == true)" />
-                                }
-                                @if (TreasuryMethod.IsCheque(_e.Nahva))
-                                {
-                                    <div class="trs-entry__hint"><i class="bi bi-magic"></i>شرحِ سطر از روی مشخصاتِ چک ساخته می‌شود (مثل نرم‌افزار ویندوزی).</div>
-                                }
-
-                                <div class="trs-entry__foot">
-                                    @if (_rowEditIdh is not null)
-                                    {
-                                        <button type="button" class="atm-btn atm-btn--ghost" @onclick="ResetEntry" disabled="@_busy">انصراف</button>
-                                    }
-                                    <span style="flex:1"></span>
-                                    <button type="button" class="atm-btn atm-btn--primary" @onclick="SaveRowAsync" disabled="@_busy">
-                                        @if (_busy) { <MudProgressCircular Size="Size.Small" Indeterminate="true" Style="width:18px;height:18px;color:#fff" /> }
-                                        else { <i class="bi bi-check2"></i> }
-                                        @(_rowEditIdh is null ? (newChq && _e.Chq.Group ? $"ثبت {_e.Chq.Count} فقره" : "ثبت سطر") : "ذخیره‌ی تغییرات")
-                                    </button>
-                                </div>
-                            </div>
+                            @EntryPanel()
                         }
 
                         @if (_detail.Rows.Count > 0)
@@ -568,6 +444,13 @@
     private bool _showSanad;
     private bool _printOpen;
     private int? _rowEditIdh;
+    /// <summary>نوع و نحوه‌ی سطرِ در حالِ اصلاح، همان‌طور که در دیتابیس است.</summary>
+    private (int NoAm, int Nahva)? _editOrig;
+    private string? _editRadif;
+    private ElementReference _entryRef;
+    private bool _revealEntry;
+    /// <summary>نوعِ فرمِ سطرِ تازه پیش از شروعِ اصلاح.</summary>
+    private (int NoAm, int Method) _newKind = (TreasuryOp.Receipt, TreasuryMethod.Cash);
     private int? _flash;
     private HeaderForm _hf = new();
     private HeaderForm _hfOriginal = new();
@@ -602,6 +485,11 @@
             _selfRef = DotNetObjectReference.Create(this);
             try { await JS.InvokeVoidAsync("atmKeys.attach", _selfRef); } catch { }
             await RefreshClipAsync();
+        }
+        if (_revealEntry && _rowEditIdh is not null)
+        {
+            _revealEntry = false;
+            try { await JS.InvokeVoidAsync("trsReveal", _entryRef); } catch { }
         }
     }
 
@@ -989,6 +877,156 @@
         if (!res.Canceled && res.Data is true) await LoadDetailAsync(_detail.Header.Id);
     }
 
+    /// <summary>
+    /// فرمِ سطر — برای سطرِ تازه پایینِ جدول، و برای اصلاح درست زیرِ همان سطر تا جلوی چشمِ کاربر باز شود.
+    /// </summary>
+    private RenderFragment EntryPanel() => __builder =>
+    {
+        var auto = AutoSides;
+        var picks = TreasuryMethod.PicksCheque(_e.Method);
+        var newChq = _e.Method == TreasuryMethod.Cheque;
+        <div class="trs-entry @(_rowEditIdh is not null ? "is-editing trs-entry--inline" : "")" @ref="_entryRef">
+            <div class="trs-entry__title">
+                <i class="bi @(_rowEditIdh is null ? "bi-plus-circle-fill" : "bi-pencil-square")"></i>
+                @(_rowEditIdh is null ? "سطر جدید" : $"ویرایشِ سطرِ {_editRadif}")
+                <small>Enter در شرح یا مبلغ = ثبت · Esc = انصراف</small>
+            </div>
+            <div class="trs-entry__ops">
+                <div class="trs-seg2">
+                    <button type="button" class="rec @(_e.NoAm == 1 ? "is-on" : "")" @onclick="() => SetOp(1)" disabled="@LockKind"><i class="bi bi-arrow-down-left"></i>دریافت</button>
+                    <button type="button" class="pay @(_e.NoAm == 2 ? "is-on" : "")" @onclick="() => SetOp(2)" disabled="@LockKind"><i class="bi bi-arrow-up-right"></i>پرداخت</button>
+                </div>
+                <div class="trs-seg2 trs-seg2--methods">
+                    @foreach (var (m, label, icon) in MethodButtons)
+                    {
+                        if (m == TreasuryMethod.ChequeAssign && _e.NoAm == TreasuryOp.Receipt) continue;
+                        <button type="button" class="@(_e.Method == m ? "is-on" : "")" @onclick="() => SetMethod(m)" disabled="@LockKind"><i class="bi @icon"></i>@label</button>
+                    }
+                </div>
+                @if (newChq)
+                {
+                    <label class="trs-check" title="چکِ غیرتجاری (ضمانت) — حساب‌های ADV/APV">
+                        <input type="checkbox" checked="@_e.NonTrade" @onchange="e => { _e.NonTrade = (bool)(e.Value ?? false); ApplyAuto(); }" disabled="@LockKind" />
+                        <span>غیرتجاری</span>
+                    </label>
+                }
+            </div>
+            @if (LockKind)
+            {
+                <div class="trs-entry__note"><i class="bi bi-lock-fill"></i>چکِ این سطر وصول، واگذار یا برگشت شده؛ نوع و نحوه‌ی سطر دیگر عوض نمی‌شود (سطر هم حذف نمی‌شود).</div>
+            }
+            else if (KindChanging)
+            {
+                <div class="trs-entry__note is-warn">
+                    <i class="bi bi-arrow-repeat"></i>
+                    <span>نوعِ سطر عوض می‌شود: با ذخیره، چکِ قبلیِ این سطر @(_e.Current is { } oc ? $"(سریال {oc.NSeri:0})" : "") همان‌طور برمی‌گردد که با حذفِ سطر،
+                        و سطر با نوعِ تازه در همان ردیف ثبت می‌شود.</span>
+                </div>
+            }
+
+            @if (picks)
+            {
+                <div class="trs-entry__pick">
+                    <label class="trs-entry__lbl"><i class="bi bi-search"></i>@PickTitle</label>
+                    @* کلید: با عوض شدنِ نوع یا سطر، فهرست و حالتِ باز/بسته‌اش از نو *@
+                    <ChequePicker @key="@($"{PickMode}:{_rowEditIdh}")" Mode="@PickMode" Selected="_e.Picked" SelectedChanged="OnPicked"
+                                  Current="@(SameKind ? _e.Current : null)" />
+                </div>
+            }
+
+            <div class="trs-entry__grid">
+                <AccountPicker Label="از حساب" Value="@_e.Fhes" Name="@_e.FhesName" OnChange="OnFromChanged"
+                               Disabled="@auto.From" AutoHint="@AutoHint(true)" />
+                <AccountPicker Label="به حساب" Value="@_e.Thes" Name="@_e.ThesName" OnChange="OnToChanged"
+                               Disabled="@auto.To" AutoHint="@AutoHint(false)" />
+                @if (_e.Method is TreasuryMethod.Cash or TreasuryMethod.Other)
+                {
+                    @* Enter/Esc فقط روی شرح و مبلغ — در انتخابگرِ حساب، Enter یعنی انتخابِ حساب نه ثبتِ سطر *@
+                    <div class="trs-f trs-f--wide" @onkeydown="OnEntryKey">
+                        <label>شرح</label>
+                        <input class="atm-input" maxlength="255" placeholder="مثلاً: بابت فاکتور ۱۲۳۴" @bind="_e.Sharh" @bind:event="oninput" />
+                    </div>
+                }
+                @if (!picks)
+                {
+                    <div class="trs-f" @onkeydown="OnEntryKey">
+                        <label>مبلغ (ریال) <span class="req">*</span> @(newChq && _e.Chq.Group && _rowEditIdh is null ? "— هر فقره" : "")</label>
+                        @* Pay2NumericInput تا فوکوس دارد مقدارِ تازه‌ی والد را نمی‌پذیرد؛ با کلیدِ تازه بعد از ثبت/ویرایش از نو ساخته می‌شود *@
+                        <Pay2NumericInput @key="_entryKey" @bind-Value="_e.Mabl" IsDigitGroupActive="true" ThreeTwoZero="true"
+                                          MaxLength="20" Direction="ltr" CssClass="trs-amount" />
+                        @if (ParseMoney(_e.Mabl) is > 0 and var m)
+                        {
+                            <small class="trs-words">@Money(m) ریال</small>
+                        }
+                    </div>
+                }
+                else
+                {
+                    <div class="trs-f">
+                        <label>مبلغ (از چک)</label>
+                        <div class="trs-ro trs-ro--amt">@(_e.Picked is { } pk ? Money(pk.Mabl) : "—")</div>
+                    </div>
+                }
+                @if (_e.Method == TreasuryMethod.ChequeAssign || (_e.Method == TreasuryMethod.ChequeReturn && _e.NoAm == TreasuryOp.Payment))
+                {
+                    <div class="trs-f">
+                        <label>موقعیت چک</label>
+                        <select class="atm-input" @bind="_e.Sandugh">
+                            <option value="">—</option>
+                            @foreach (var f in _meta!.ChequeFunds) { <option value="@f.Id">@f.Name</option> }
+                        </select>
+                    </div>
+                }
+                @if (_e.Method == TreasuryMethod.ChequeReturn)
+                {
+                    <div class="trs-f">
+                        <label>وضعیتِ چک <span class="req">*</span></label>
+                        <select class="atm-input" @bind="_e.Vaz">
+                            <option value="">—</option>
+                            @foreach (var (vid, vname) in _e.NoAm == TreasuryOp.Payment ? TreasuryChequeState.Received : TreasuryChequeState.PaidReturn)
+                            {
+                                <option value="@vid">@vname</option>
+                            }
+                        </select>
+                    </div>
+                }
+                @if (_meta?.MarkazEnabled == true)
+                {
+                    <div class="trs-f">
+                        <label>مرکز هزینه</label>
+                        <select class="atm-input" @bind="_e.MhazNo">
+                            <option value="">—</option>
+                            @foreach (var c in _meta.CostCenters) { <option value="@c.Id">@c.Name</option> }
+                        </select>
+                    </div>
+                }
+            </div>
+
+            @if (newChq)
+            {
+                <ChequeFields Form="_e.Chq" Meta="_meta!" Receive="@(_e.NoAm == TreasuryOp.Receipt)" AllowGroup="@(_rowEditIdh is null)"
+                              LockAssign="@(SameKind && _e.Current?.InCirculation(_meta!.Bankha) == true)" />
+            }
+            @if (TreasuryMethod.IsCheque(_e.Nahva))
+            {
+                <div class="trs-entry__hint"><i class="bi bi-magic"></i>شرحِ سطر از روی مشخصاتِ چک ساخته می‌شود (مثل نرم‌افزار ویندوزی).</div>
+            }
+
+            <div class="trs-entry__foot">
+                @if (_rowEditIdh is not null)
+                {
+                    <button type="button" class="atm-btn atm-btn--ghost" @onclick="ResetEntry" disabled="@_busy">انصراف</button>
+                }
+                <span style="flex:1"></span>
+                <button type="button" class="atm-btn atm-btn--primary" @onclick="SaveRowAsync" disabled="@_busy">
+                    @if (_busy) { <MudProgressCircular Size="Size.Small" Indeterminate="true" Style="width:18px;height:18px;color:#fff" /> }
+                    else { <i class="bi bi-check2"></i> }
+                    @(_rowEditIdh is null ? (newChq && _e.Chq.Group ? $"ثبت {_e.Chq.Count} فقره" : "ثبت سطر") : "ذخیره‌ی تغییرات")
+                </button>
+            </div>
+        </div>
+    };
+
     // ─────────────────────────── سطرها ───────────────────────────
 
     /// <summary>کدام سمت خودکار است — NAHVA_AfterUpdate در WPF.</summary>
@@ -999,8 +1037,17 @@
         _ => (false, false)
     };
 
-    /// <summary>واگذاری/برگشت: سطر را نمی‌شود به نوعِ دیگری برد (چکش گره خورده).</summary>
-    private bool LockKind => _rowEditIdh is not null && TreasuryMethod.IsCheque(_e.Nahva);
+    /// <summary>
+    /// نوع و نحوه فقط وقتی قفل‌اند که چکِ دریافتی/پرداختیِ خودِ سطر دیگر دستِ ما نیست (همان قاعده‌ی حذفِ سطر).
+    /// بر اساسِ سطرِ ذخیره‌شده، نه انتخابِ فعلیِ فرم — وگرنه زدنِ «چک» روی سطرِ نقد همه‌ی دکمه‌ها را قفل می‌کرد.
+    /// </summary>
+    private bool LockKind => _editOrig is { } o && TreasuryMethod.IsNewCheque(o.Nahva) && _e.Current?.InCirculation(_meta?.Bankha) == true;
+
+    /// <summary>فرم هنوز همان چک و همان نقشِ سطرِ ذخیره‌شده را دارد (یا سطرِ تازه است).</summary>
+    private bool SameKind => _editOrig is not { } o || TreasuryMethod.SameChequeRole(o.NoAm, o.Nahva, _e.NoAm, _e.Nahva);
+
+    /// <summary>سطرِ چکی به نوعِ دیگری می‌رود — چکِ قبلی با ذخیره آزاد می‌شود.</summary>
+    private bool KindChanging => _editOrig is not null && !SameKind;
 
     private string PickMode => (_e.NoAm, _e.Method) switch
     {
@@ -1028,13 +1075,16 @@
 
     private void ResetEntry()
     {
-        var keepOp = _e.NoAm;
-        var keepMethod = _e.Method;
+        // بعد از اصلاح، فرمِ سطرِ تازه همان نوعی را می‌گیرد که پیش از اصلاح داشت — نه نوعِ سطرِ اصلاح‌شده
+        // (وگرنه بعد از اصلاحِ یک واگذاری، پایینِ جدول فهرستِ همه‌ی چک‌های قابلِ واگذاری باز می‌ماند)
+        var (keepOp, keepMethod) = _editOrig is null ? (_e.NoAm, _e.Method) : _newKind;
         _e = new Entry { NoAm = keepOp, Method = keepMethod };
         if (!TreasuryMethod.Allowed(_e.NoAm, _e.Method)) _e.Method = TreasuryMethod.Cash;
         DefaultsForMethod();
         _entryKey++;
         _rowEditIdh = null;
+        _editOrig = null;
+        _editRadif = null;
         ApplyAuto();
     }
 
@@ -1046,6 +1096,7 @@
         if (!TreasuryMethod.Allowed(op, _e.Method)) _e.Method = TreasuryMethod.Cash;
         _e.Picked = null;
         DefaultsForMethod();
+        RestoreOriginalPick();
         ApplyAuto();
     }
 
@@ -1056,7 +1107,14 @@
         _e.Method = m;
         _e.Picked = null;
         DefaultsForMethod();
+        RestoreOriginalPick();
         ApplyAuto();
+    }
+
+    /// <summary>برگشت به همان نوعِ سطرِ ذخیره‌شده: چکِ خودِ سطر دوباره انتخاب شود، نه فهرستِ خالی.</summary>
+    private void RestoreOriginalPick()
+    {
+        if (_editOrig is { } o && SameKind && TreasuryMethod.PicksCheque(o.Nahva)) _e.Picked = _e.Current;
     }
 
     private void DefaultsForMethod()
@@ -1170,7 +1228,11 @@
 
     private void EditRow(TreasuryRowDto r)
     {
+        if (_rowEditIdh is null) _newKind = (_e.NoAm, _e.Method);
         _rowEditIdh = r.Idh;
+        _editOrig = (r.NoAm, r.Nahva);
+        _editRadif = r.Radif?.ToString("0") ?? (_detail!.Rows.IndexOf(r) + 1).ToString();
+        _revealEntry = true;
         _entryKey++;
         _e = new Entry
         {

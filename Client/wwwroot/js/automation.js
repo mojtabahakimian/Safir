@@ -61,3 +61,15 @@ window.atmChat = {
         requestAnimationFrame(() => el.scrollTo({ top: el.scrollHeight, behavior: far ? 'auto' : 'smooth' }));
     }
 };
+
+// Treasury: when a row is edited, bring the edit form under that same row into view.
+// If the row + form fit on screen, scroll only as much as needed; otherwise put the row
+// itself at the top (under the app bar — scroll-margin in CSS) so it's clear which row is being edited.
+window.trsReveal = function (el) {
+    if (!el || !el.getBoundingClientRect) return;
+    const row = el.previousElementSibling;
+    const top = (row || el).getBoundingClientRect().top;
+    const fits = el.getBoundingClientRect().bottom - top <= window.innerHeight - 100;
+    if (fits) el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    else (row || el).scrollIntoView({ behavior: 'smooth', block: 'start' });
+};

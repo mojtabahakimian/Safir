@@ -387,6 +387,24 @@
 .trs-entry__pick { display: grid; gap: 8px; margin-bottom: 12px; }
 .trs-entry__lbl { font-size: .8rem; font-weight: 800; color: var(--atm-primary); display: inline-flex; gap: 6px; align-items: center; }
 .trs-entry__hint { margin-top: 10px; font-size: .74rem; color: var(--atm-muted); display: flex; gap: 6px; align-items: center; }
+
+/* اصلاحِ سطر: فرم درست زیرِ همان سطر باز می‌شود (نه تهِ جدول) */
+.trs-tr.is-editing { scroll-margin-top: 84px; }
+.trs-entry--inline {
+    margin-top: 0;
+    scroll-margin: 84px 0 16px;
+    box-shadow: 0 18px 40px -30px color-mix(in srgb, var(--atm-primary) 80%, transparent);
+    animation: atm-rise .25s var(--atm-ease) both;
+}
+.trs-entry__note {
+    display: flex; gap: 8px; align-items: flex-start;
+    margin: -4px 0 12px; padding: 8px 12px; border-radius: 12px;
+    font-size: .78rem; line-height: 1.7;
+    background: var(--atm-soft); color: var(--atm-muted);
+}
+.trs-entry__note > i { margin-top: 3px; }
+.trs-entry__note.is-warn { background: color-mix(in srgb, var(--atm-warn) 12%, var(--atm-surface)); color: var(--atm-text); }
+.trs-entry__note.is-warn > i { color: var(--atm-warn); }
 .trs-ro--amt { font-size: 1.15rem; font-weight: 800; font-variant-numeric: tabular-nums; direction: ltr; justify-content: flex-end; }
 
 /* مشخصاتِ چک (GETCHEK / PAYCHEK) */
