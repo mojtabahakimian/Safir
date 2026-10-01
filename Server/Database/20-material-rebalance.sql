@@ -103,9 +103,12 @@ BEGIN
       AND   TRY_CAST(hm.CODE AS BIGINT) IN (@FromParentCode, @ToParentCode)
       AND   p.ProdQty > 0
       AND   (@SelectedFNUMBs IS NULL
-             OR d.FNUMB IN (SELECT TRY_CAST(value AS INT)
-                            FROM   STRING_SPLIT(@SelectedFNUMBs, ',')
-                            WHERE  TRY_CAST(value AS INT) IS NOT NULL));
+             OR d.FNUMB IN (SELECT TRY_CAST(x.Item.value('.', 'nvarchar(4000)') AS INT)
+                FROM (SELECT CAST(N'<i>' + REPLACE(
+                    (SELECT @SelectedFNUMBs AS [text()] FOR XML PATH('')),
+                    N',', N'</i><i>') + N'</i>' AS XML) AS XmlValues) v
+                CROSS APPLY v.XmlValues.nodes('/i') x(Item)
+                WHERE TRY_CAST(x.Item.value('.', 'nvarchar(4000)') AS INT) IS NOT NULL));
 
     IF NOT EXISTS (SELECT 1 FROM #Sel WHERE Dir = -1)
        OR NOT EXISTS (SELECT 1 FROM #Sel WHERE Dir = 1)

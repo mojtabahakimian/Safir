@@ -193,9 +193,7 @@
 
             if (fileBytes != null && fileBytes.Length > 0 && contentType != null)
             {
-                // Use the downloadFileFromBytes JS helper from wwwroot/js/downloadHelper.js
-                // This JS function expects fileName, and byteArray.
-                await JSRuntime.InvokeVoidAsync("downloadFileFromBytes", fileName, fileBytes);
+                await JSRuntime.InvokeVoidAsync("downloadFileFromBytes", fileName, fileBytes, contentType);
                 Snackbar.Add("دانلود فایل آغاز شد.", Severity.Success);
             }
             else

@@ -18,11 +18,11 @@ namespace Safir.Client.Services
         private readonly HttpClient _slow;
 
         private const string Base = "api/dbadmin";
-        public async Task<DbUpgradeExecution?> GetExecutionAsync()
+        public async Task<DbUpgradeExecution?> GetExecutionAsync(CancellationToken ct = default)
         {
-            using var response = await _http.GetAsync($"{Base}/execution");
+            using var response = await _http.GetAsync($"{Base}/execution", ct);
             response.EnsureSuccessStatusCode();
-            return await response.Content.ReadFromJsonAsync<DbUpgradeExecution>();
+            return await response.Content.ReadFromJsonAsync<DbUpgradeExecution>(cancellationToken: ct);
         }
 
         public DbAdminApiService(HttpClient http)
