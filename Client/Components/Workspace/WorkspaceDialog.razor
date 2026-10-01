@@ -1,0 +1,64 @@
+@using Safir.Shared.Models.User_Model
+@inject WorkspaceApiService Api
+
+@* تغییرِ واحد و شیفت در میانه‌ی کار — همان دکمه‌ی پنجره‌ی DEFAULT در منوی اصلیِ WPF *@
+<MudDialog>
+    <TitleContent>
+        <MudText Typo="Typo.h6">واحد و شیفت کاری</MudText>
+    </TitleContent>
+    <DialogContent>
+        @if (_options is null)
+        {
+            <div class="d-flex justify-center pa-6"><MudProgressCircular Indeterminate="true" Color="Color.Primary" /></div>
+        }
+        else
+        {
+            <MudText Typo="Typo.body2" Class="mb-4" Style="opacity:.8">
+                خزانه و فرم‌هایی که به واحد و شیفت وابسته‌اند، از این به بعد با این انتخاب کار می‌کنند.
+            </MudText>
+            @if (!_options.CanChange)
+            {
+                <MudAlert Severity="Severity.Info" Dense="true" Class="mb-4">اجازه‌ی تغییر واحد و شیفت را ندارید (فرم DEFAULT).</MudAlert>
+            }
+            <WorkspacePicker Options="_options" @bind-Depatman="_dep" @bind-Shift="_shift" Disabled="@(!_options.CanChange || _busy)" />
+            @if (!string.IsNullOrEmpty(_error))
+            {
+                <MudAlert Severity="Severity.Error" Dense="true" Class="mt-4">@_error</MudAlert>
+            }
+        }
+    </DialogContent>
+    <DialogActions>
+        <MudButton Variant="Variant.Text" OnClick="() => MudDialog.Cancel()">انصراف</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SaveAsync"
+                   Disabled="@(_options is null || !_options.CanChange || _busy)">
+            ذخیره
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] MudDialogInstance MudDialog { get; set; } = default!;
+
+    private WorkspaceOptionsDto? _options;
+    private int? _dep, _shift;
+    private bool _busy;
+    private string? _error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _options = await Api.OptionsAsync();
+        if (_options is null) { _error = "فهرستِ واحدها دریافت نشد."; _options = new WorkspaceOptionsDto(); return; }
+        _dep = _options.Depatman;
+        _shift = _options.Shift;
+    }
+
+    private async Task SaveAsync()
+    {
+        _busy = true;
+        _error = null;
+        var r = await Api.SaveAsync(_dep, _shift);
+        _busy = false;
+        if (!r.Ok) { _error = r.Error; return; }
+        MudDialog.Close(DialogResult.Ok(r.Workspace));
+    }
+}

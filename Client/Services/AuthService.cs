@@ -58,43 +58,7 @@ namespace Safir.Client.Services
                     return new LoginResult { Successful = false, Error = loginResult.Error ?? "Login failed." };
                 }
 
-                #region Mine
-                var token = loginResult.Token;
-
-                // پارس کردن توکن
-                var handler = new JwtSecurityTokenHandler();
-                var jwtToken = handler.ReadJwtToken(token);
-
-                var username = jwtToken.Claims.FirstOrDefault(c => c.Type == System.Security.Claims.ClaimTypes.Name)?.Value;
-                var userIdStr = jwtToken.Claims.FirstOrDefault(c => c.Type == System.Security.Claims.ClaimTypes.NameIdentifier)?.Value; // Or BaseknowClaimTypes.IDD
-                var roleStr = jwtToken.Claims.FirstOrDefault(c => c.Type == System.Security.Claims.ClaimTypes.Role)?.Value; // Or BaseknowClaimTypes.GRSAL
-                var userHes = jwtToken.Claims.FirstOrDefault(c => c.Type == Safir.Shared.Constants.BaseknowClaimTypes.USER_HES)?.Value; // *** ADDED ***
-
-                if (!string.IsNullOrEmpty(username))
-                    _appState.SetUUSER(username);
-
-                if (int.TryParse(userIdStr, out var userId))
-                    _appState.SetUSERCOD(userId);
-
-                if (int.TryParse(roleStr, out var roleId))
-                    _appState.SetUGRP(roleId);
-
-                _appState.SetUSER_HES(userHes);
-                #endregion
-
-
-                // Login successful, store the token
-                await _tab.SetAsync(AuthTokenKey, loginResult.Token);
-                // «آخرین ورود» = توکن و دیتابیسِ همین تب، با هم (برای تب جدید یا باز کردن دوباره‌ی مرورگر)
-                await _tab.SaveAsLastLoginAsync();
-
-                // Notify the AuthenticationStateProvider that the user has logged in
-                // The cast is necessary because we know we are using our custom provider
-                ((ApiAuthenticationStateProvider)_authenticationStateProvider).MarkUserAsAuthenticated(loginResult.Token);
-
-                // Set default authorization header for subsequent requests
-                _httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("bearer", loginResult.Token);
-
+                await ApplyTokenAsync(loginResult.Token);
                 return loginResult;
             }
             catch (HttpRequestException ex)
@@ -107,6 +71,45 @@ namespace Safir.Client.Services
                 Console.WriteLine($"Error during login: {ex.Message}");
                 return new LoginResult { Successful = false, Error = "An unexpected error occurred during login." };
             }
+        }
+
+        public async Task ApplyTokenAsync(string token)
+        {
+            #region Mine
+
+            // پارس کردن توکن
+            var handler = new JwtSecurityTokenHandler();
+            var jwtToken = handler.ReadJwtToken(token);
+
+            var username = jwtToken.Claims.FirstOrDefault(c => c.Type == System.Security.Claims.ClaimTypes.Name)?.Value;
+            var userIdStr = jwtToken.Claims.FirstOrDefault(c => c.Type == System.Security.Claims.ClaimTypes.NameIdentifier)?.Value; // Or BaseknowClaimTypes.IDD
+            var roleStr = jwtToken.Claims.FirstOrDefault(c => c.Type == System.Security.Claims.ClaimTypes.Role)?.Value; // Or BaseknowClaimTypes.GRSAL
+            var userHes = jwtToken.Claims.FirstOrDefault(c => c.Type == Safir.Shared.Constants.BaseknowClaimTypes.USER_HES)?.Value; // *** ADDED ***
+
+            if (!string.IsNullOrEmpty(username))
+                _appState.SetUUSER(username);
+
+            if (int.TryParse(userIdStr, out var userId))
+                _appState.SetUSERCOD(userId);
+
+            if (int.TryParse(roleStr, out var roleId))
+                _appState.SetUGRP(roleId);
+
+            _appState.SetUSER_HES(userHes);
+            #endregion
+
+
+            // Login successful, store the token
+            await _tab.SetAsync(AuthTokenKey, token);
+            // «آخرین ورود» = توکن و دیتابیسِ همین تب، با هم (برای تب جدید یا باز کردن دوباره‌ی مرورگر)
+            await _tab.SaveAsLastLoginAsync();
+
+            // Notify the AuthenticationStateProvider that the user has logged in
+            // The cast is necessary because we know we are using our custom provider
+            ((ApiAuthenticationStateProvider)_authenticationStateProvider).MarkUserAsAuthenticated(token);
+
+            // Set default authorization header for subsequent requests
+            _httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("bearer", token);
         }
 
         public async Task Logout()

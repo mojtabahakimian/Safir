@@ -260,6 +260,16 @@ test.describe('سلامت کلاینت', () => {
   });
 
   /**
+   * واحد و شیفتِ کاری (پنجره‌ی DEFAULT ِ WPF) توکنِ تازه صادر می‌کند؛ هیچ‌کدام از
+   * سه مسیرش نباید بدونِ توکن کار کند.
+   */
+  test('API واحد و شیفت بدون توکن بسته است', async ({ request }) => {
+    expect((await request.get('/api/auth/workspace')).status()).toBe(401);
+    expect((await request.get('/api/auth/workspace/options')).status()).toBe(401);
+    expect((await request.post('/api/auth/workspace', { data: { Depatman: 1, Shift: 1 } })).status()).toBe(401);
+  });
+
+  /**
    * رگرسیون: صفحه‌ی مغایرت‌های بهای تمام‌شده نباید با ۴۰۱/۴۰۳ بشکند.
    *
    * نسخه‌ی اول این صفحه در Load() هیچ catch نداشت، پس یک ۴۰۱ ساده از

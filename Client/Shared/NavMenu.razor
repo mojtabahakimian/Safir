@@ -11,6 +11,7 @@
 @inject UserStateApiService UserStateApiService
 @inject ConnectionManagerService ConnectionManager
 @inject ClientAppSettingsService ClientAppSettings
+@inject WorkspaceApiService WorkspaceApi
 
 <div class="safir-nav">
     @if (activeDbSettings != null)
@@ -30,6 +31,22 @@
                 }
             </div>
         </div>
+    }
+    @if (workspace is not null)
+    {
+        @* واحد و شیفتِ جاری — VAHED_OF_USER / SHIFT_OF_USER ِ WPF؛ کلیک = پنجره‌ی DEFAULT *@
+        <button type="button" class="safir-nav-unit" @onclick="ChangeWorkspace"
+                title="@(workspace.CanChange ? "تغییر واحد و شیفت کاری" : "واحد و شیفت کاری (اجازه‌ی تغییر ندارید)")">
+            <i class="bi bi-diagram-3"></i>
+            <span class="safir-nav-unit-text">
+                <b>@(workspace.DepName ?? "واحد تعیین نشده")</b>
+                <small>شیفت @(workspace.ShiftName ?? "—")</small>
+            </span>
+            @if (workspace.CanChange)
+            {
+                <i class="bi bi-pencil safir-nav-unit-edit"></i>
+            }
+        </button>
     }
 
     <MudNavMenu>
@@ -229,6 +246,9 @@
     private bool _isCustomerSelected = false;
     private Safir.Shared.Models.DbConnectionSettings? activeDbSettings;
     private Safir.Shared.Models.SAZMAN? activeSazmanSettings;
+    private Safir.Shared.Models.User_Model.WorkspaceDto? workspace;
+
+    [CascadingParameter] private Task<AuthenticationState>? AuthState { get; set; }
 
     // --- Lifecycle and Event Handling ---
     protected override async Task OnInitializedAsync()
@@ -245,6 +265,9 @@
         catch
         {
         }
+
+        if (AuthState is not null && (await AuthState).User.Identity?.IsAuthenticated == true)
+            workspace = await WorkspaceApi.CurrentAsync();
 
         // Set initial state based on current cart status
         _isCustomerSelected = CartService.CurrentCustomer != null;
@@ -312,6 +335,17 @@
     private void ToggleNavMenu()
     {
         collapseNavMenu = !collapseNavMenu;
+    }
+
+    private async Task ChangeWorkspace()
+    {
+        if (workspace is null) return;
+        var dialog = DialogService.Show<Safir.Client.Components.Workspace.WorkspaceDialog>("واحد و شیفت کاری",
+            new DialogOptions { MaxWidth = MaxWidth.ExtraSmall, FullWidth = true, CloseButton = false });
+        var result = await dialog.Result;
+        if (result.Canceled) return;
+        // توکنِ تازه ثبت شده؛ صفحه دوباره بار می‌شود تا هر فرمی واحد و شیفتِ جدید را بخواند
+        NavigationManager.NavigateTo(NavigationManager.Uri, forceLoad: true);
     }
 
     // Handles the logout process

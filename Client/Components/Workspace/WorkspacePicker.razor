@@ -1,0 +1,79 @@
+@using Safir.Shared.Models.User_Model
+@using Safir.Shared.Utility
+
+@*
+    انتخابِ «واحد جاری» و «شیفت» — همان دو کمبوی پنجره‌ی DEFAULT ِ WPF. DEPART بیش از هزار
+    شعبه‌ی مشتری هم دارد، پس واحد با جستجو انتخاب می‌شود (پرکاربردها اول، با ستاره).
+*@
+<div class="safir-ws-picker">
+    <MudAutocomplete T="WorkspaceLookupItem" Label="واحد جاری" Value="_dep" ValueChanged="OnDepChanged"
+                     SearchFuncWithCancel="SearchDep" ToStringFunc="@(d => d is null ? string.Empty : Display(d))"
+                     Variant="Variant.Outlined" Margin="Margin.Dense" MaxItems="MaxItems" DebounceInterval="150"
+                     ResetValueOnEmptyText="true" CoerceText="true" Disabled="Disabled"
+                     Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Outlined.Apartment"
+                     Class="mb-4">
+        <ItemTemplate Context="d">
+            <div class="d-flex align-center gap-2" style="width:100%">
+                @if (d.Frequent)
+                {
+                    <MudIcon Icon="@Icons.Material.Filled.Star" Size="Size.Small" Color="Color.Warning" />
+                }
+                <span>@Display(d)</span>
+                <span class="ms-auto" style="opacity:.5; font-size:.8em">@d.Id</span>
+            </div>
+        </ItemTemplate>
+        <NoItemsTemplate><div class="pa-2" style="opacity:.7">واحدی پیدا نشد.</div></NoItemsTemplate>
+    </MudAutocomplete>
+
+    <MudSelect T="int?" Label="شیفت" Value="Shift" ValueChanged="OnShiftChanged"
+               Variant="Variant.Outlined" Margin="Margin.Dense" Disabled="Disabled"
+               Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Outlined.Schedule"
+               AnchorOrigin="Origin.BottomCenter">
+        @foreach (var s in Options.Shifts)
+        {
+            <MudSelectItem T="int?" Value="@((int?)s.Id)">@s.Name</MudSelectItem>
+        }
+    </MudSelect>
+</div>
+
+@code {
+    private const int MaxItems = 80;
+
+    [Parameter, EditorRequired] public WorkspaceOptionsDto Options { get; set; } = new();
+    [Parameter] public int? Depatman { get; set; }
+    [Parameter] public EventCallback<int?> DepatmanChanged { get; set; }
+    [Parameter] public int? Shift { get; set; }
+    [Parameter] public EventCallback<int?> ShiftChanged { get; set; }
+    [Parameter] public bool Disabled { get; set; }
+
+    private WorkspaceLookupItem? _dep;
+
+    protected override void OnParametersSet()
+    {
+        if (_dep?.Id != Depatman)
+            _dep = Depatman is null ? null : Options.Departments.FirstOrDefault(d => d.Id == Depatman);
+    }
+
+    public static string Display(WorkspaceLookupItem d) => string.IsNullOrWhiteSpace(d.Name) ? $"(بدون نام) {d.Id}" : d.Name;
+
+    private Task<IEnumerable<WorkspaceLookupItem>> SearchDep(string? q, CancellationToken ct)
+    {
+        var all = Options.Departments;
+        // باز کردنِ فهرست با واحدِ انتخاب‌شده = همه (پرکاربردها اول — سرور مرتب کرده)
+        if (string.IsNullOrWhiteSpace(q) || (_dep is not null && q == Display(_dep)))
+            return Task.FromResult(all.Take(MaxItems));
+
+        var t = q.FixPersianChars().Trim();
+        return Task.FromResult(all.Where(d => Display(d).Contains(t, StringComparison.OrdinalIgnoreCase)
+                                              || d.Id.ToString().StartsWith(t, StringComparison.Ordinal))
+                                  .Take(MaxItems));
+    }
+
+    private async Task OnDepChanged(WorkspaceLookupItem? d)
+    {
+        _dep = d;
+        await DepatmanChanged.InvokeAsync(d?.Id);
+    }
+
+    private Task OnShiftChanged(int? s) => ShiftChanged.InvokeAsync(s);
+}
