@@ -1,8 +1,8 @@
 /* ═══════════════════════════════════════════════════════════════════
    فاز ۱ — فایل ۱ از ۳ : ساختار جداول
 
-   هیچ جدول موجودی تغییر نمی‌کند. همه چیز با پیشوند CC_ اضافه می‌شود.
-   قابل اجرای مکرر: اگر جدولی از قبل باشد، دست‌نخورده می‌ماند.
+   زیرساخت CC_ و پیش‌نیاز شناسهٔ ثابت سطر فرمول نصب می‌شود.
+   قابل اجرای مکرر: ستون‌های موجود و داده‌های قبلی حفظ می‌شوند.
 
    نکته: عمداً هیچ «USE <database>» اینجا نیست — نام پایگاه در هر
    نصب فرق می‌کند. اسکریپت را روی پایگاه هدف اجرا کنید.
@@ -14,6 +14,13 @@
 SET ANSI_NULLS ON
 GO
 SET QUOTED_IDENTIFIER ON
+GO
+
+-- روی دیتابیس‌های قدیمی، این ستون قبلاً در انتهای آپدیت اضافه می‌شد؛
+-- رویه‌های CC زودتر نصب می‌شوند و از همان ابتدا به آن نیاز دارند.
+IF OBJECT_ID(N'dbo.DTL_MANF',N'U') IS NOT NULL
+    AND COL_LENGTH(N'dbo.DTL_MANF',N'ID') IS NULL
+    ALTER TABLE dbo.DTL_MANF ADD ID BIGINT IDENTITY(1,1) NOT NULL;
 GO
 
 /* ───────────────────────── اجرا و گام‌ها ───────────────────────── */
@@ -140,6 +147,10 @@ CREATE TABLE dbo.CC_Exception (
 GO
 IF COL_LENGTH('dbo.CC_Exception','RuleCode') IS NULL
     ALTER TABLE dbo.CC_Exception ADD RuleCode VARCHAR(12) NULL;
+GO
+-- نسخهٔ جاری S00 این ستون را قبل از اجرای فایل 13 مصرف می‌کند.
+IF COL_LENGTH('dbo.CC_Exception','RefList') IS NULL
+    ALTER TABLE dbo.CC_Exception ADD RefList NVARCHAR(2000) NULL;
 GO
 /* جهتِ مغایرتِ افتتاحیه، وقتی S05 تشخیصش داده — NULL يعني اين مغايرت
    ربطي به افتتاحيه ندارد و از گردشِ خودِ ماه است.

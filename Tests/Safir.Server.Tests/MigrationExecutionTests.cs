@@ -47,6 +47,31 @@ public class MigrationExecutionTests
         @"^[ \t]*GO[ \t]*;?[ \t]*\r?$", RegexOptions.Multiline | RegexOptions.IgnoreCase)
         .Select(x => x.Trim()).Where(x => x.Length > 0).ToArray();
 
+    [SqlRepairFact]
+    public void MissingLocalProcedureCanBeInstalledDespiteSameNameInMaster()
+    {
+        var cs = Connection();
+        using var db = new SqlConnection(cs);
+        db.Open();
+        const string name = "dbo.SP_PAY2_CALC_RUN";
+        Assert.Null(db.ExecuteScalar<int?>("SELECT OBJECT_ID(@name)", new { name }));
+        var masterBefore = db.ExecuteScalar<string?>("SELECT definition FROM master.sys.sql_modules WHERE object_id=(SELECT object_id FROM master.sys.objects WHERE name=N'SP_PAY2_CALC_RUN' AND schema_id=1)");
+        try
+        {
+            var sql = "-- CREATE OR ALTER in a comment must stay untouched.\nCREATE OR ALTER PROCEDURE dbo.SP_PAY2_CALC_RUN AS SELECT N'first version' AS Value;";
+            Assert.True(Engine.RunSqlTracked(cs, sql).Success);
+            Assert.NotNull(db.ExecuteScalar<int?>("SELECT OBJECT_ID(@name,N'P')", new { name }));
+            Assert.True(Engine.RunSqlTracked(cs, sql.Replace("first version", "second version")).Success);
+            Assert.Contains("second version", db.ExecuteScalar<string>("SELECT OBJECT_DEFINITION(OBJECT_ID(@name))", new { name }));
+            Assert.Equal(1, Engine.RunSqlTracked(cs, sql.Replace("first version", "second version")).Skipped);
+            Assert.Equal(masterBefore, db.ExecuteScalar<string?>("SELECT definition FROM master.sys.sql_modules WHERE object_id=(SELECT object_id FROM master.sys.objects WHERE name=N'SP_PAY2_CALC_RUN' AND schema_id=1)"));
+        }
+        finally
+        {
+            db.Execute("IF OBJECT_ID(N'dbo.SP_PAY2_CALC_RUN',N'P') IS NOT NULL DROP PROCEDURE dbo.SP_PAY2_CALC_RUN;");
+        }
+    }
+
     private static string[] StandaloneLegacyBatches()
     {
         var script = File.ReadAllText(Path.Combine(RepositoryRoot(), "Server", "Database", "legacy_upgrade_repeat_safe.sql"));

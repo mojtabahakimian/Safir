@@ -62,8 +62,17 @@ BEGIN
             MIN(h.NUMBER),                       -- اولين برگه
             MIN(h.DATE_N),
             SUM(pl.MEGHK),                       -- جمع مقدار توليد متأثر
-            STRING_AGG(CAST(h.NUMBER AS VARCHAR(12)), ', ')
-                WITHIN GROUP (ORDER BY h.NUMBER),
+            -- WITHIN GROUP نیازمند compatibility >= 110 است؛ همان فهرست
+            -- مرتب و با حفظ تکرارها را برای دیتابیس‌های قدیمی نیز می‌سازیم.
+            STUFF((SELECT ', ' + CAST(h2.NUMBER AS VARCHAR(12))
+                FROM dbo.HEAD_LST h2
+                JOIN dbo.INVO_LST pl2 ON pl2.NUMBER = h2.NUMBER AND pl2.TAG = 9
+                WHERE h2.TAG = 9 AND h2.DATE_N BETWEEN @DT1 AND @DT2
+                  AND CAST(pl2.CODE AS BIGINT) = CAST(pl.CODE AS BIGINT)
+                  AND NOT EXISTS (SELECT 1 FROM dbo.HEAD_MANF hm2
+                      WHERE hm2.FNUMB = TRY_CAST(pl2.N_KOL AS INT) AND hm2.GHEYMAT = @Month)
+                ORDER BY h2.NUMBER
+                FOR XML PATH(''), TYPE).value('.', 'varchar(max)'), 1, 2, ''),
             -- اصلاح خودکار فقط وقتي ممکن است که فرمول ماه واقعاً وجود داشته باشد
             CASE WHEN EXISTS (SELECT 1 FROM dbo.HEAD_MANF hm
                               WHERE CAST(hm.CODE AS BIGINT) = CAST(pl.CODE AS BIGINT)
