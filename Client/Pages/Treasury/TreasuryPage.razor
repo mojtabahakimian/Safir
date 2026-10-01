@@ -1,0 +1,1307 @@
+@page "/treasury"
+@page "/treasury/{Id:int}"
+@using System.Globalization
+@using System.Text.Json
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Web.Virtualization
+@using Safir.Shared.Models.Treasury
+@using Safir.Client.Components.Automation
+@using Safir.Client.Components.Treasury
+@using Safir.Client.Pages.Salary.Tabs
+@inject TreasuryApiService Api
+@inject ISnackbar Snackbar
+@inject IDialogService DialogService
+@inject NavigationManager Nav
+@inject IJSRuntime JS
+@implements IAsyncDisposable
+@attribute [Authorize]
+
+<PageTitle>خزانه‌داری</PageTitle>
+
+<div class="atm trs">
+
+    @* ═════════════ نوارِ بالا — کم‌ارتفاع تا فرمِ خزانه جا داشته باشد ═════════════ *@
+    <header class="trs-bar">
+        <div class="trs-bar__title">
+            <span class="ic"><i class="bi bi-safe2"></i></span>
+            <div>
+                <b>خزانه‌داری</b>
+                <small>@AutomationUi.LongDate(DateTime.Now) · @RangeLabel</small>
+            </div>
+        </div>
+        <div class="trs-bar__stats">
+            <span class="rec" title="جمع دریافت‌های این بازه"><i class="bi bi-arrow-down-left"></i>دریافت <b>@Money(SumRec)</b></span>
+            <span class="pay" title="جمع پرداخت‌های این بازه"><i class="bi bi-arrow-up-right"></i>پرداخت <b>@Money(SumPay)</b></span>
+            <span title="@(_meta?.SeesAll == true ? "همه‌ی خزانه‌ها" : "خزانه‌هایی که اجازه‌ی دیدنشان را دارید")"><i class="bi bi-safe"></i><b>@_filtered.Count</b> خزانه</span>
+            @if (ChequeRows > 0) { <span class="chq"><i class="bi bi-credit-card-2-front"></i><b>@ChequeRows</b> سطر چکی</span> }
+            @if (_cashBalance is { } cb && _cashAcc is not null)
+            {
+                <a class="cash" href="@($"/customer-statement/{_cashAcc.Hes}")" target="_blank" title="مانده‌ی صندوقِ واحد و شیفتِ ورود — صورت‌حساب">
+                    <i class="bi bi-cash-stack"></i>صندوق <bdi>@_cashAcc.Hes</bdi> <b>@Money(Math.Abs(cb))</b><small>@(cb >= 0 ? "بد" : "بس")</small>
+                </a>
+            }
+        </div>
+        <div class="trs-bar__actions">
+            @if (_meta?.CanCreate == true)
+            {
+                <button type="button" class="atm-btn atm-btn--light" @onclick="StartNew" title="خزانه‌ی جدید (N)"><i class="bi bi-plus-lg"></i>خزانه‌ی جدید</button>
+            }
+            <button type="button" class="atm-btn atm-btn--glass atm-btn--icon" @onclick="ReloadListAsync" title="بروزرسانی (R)"><i class="bi bi-arrow-clockwise"></i></button>
+        </div>
+    </header>
+
+    @if (_meta is not null && !_meta.CanSee)
+    {
+        <EmptyState Title="اجازه‌ی دیدن خزانه‌داری را ندارید" Text="دسترسی فرم «خزانه‌داری» را از نرم‌افزار ویندوزی به کاربر شما بدهند." />
+    }
+    else
+    {
+        <div class="trs-layout">
+            @* ═════════════ فهرست ═════════════ *@
+            <aside class="trs-list">
+                <div class="trs-list__bar">
+                    <div class="atm-search">
+                        <i class="bi bi-search"></i>
+                        <input id="atm-search" type="search" placeholder="شماره، ملاحظات، کاربر…" value="@_q" @oninput="OnSearch" autocomplete="off" />
+                    </div>
+                    <div class="atm-seg">
+                        @foreach (var (key, label) in Ranges)
+                        {
+                            <button type="button" class="@(_range == key ? "is-active" : "")" @onclick="() => SetRange(key)">@label</button>
+                        }
+                    </div>
+                </div>
+                @if (_loadingList && _items.Count == 0)
+                {
+                    @for (int i = 0; i < 6; i++) { <div class="atm-skel" style="height:84px;margin-bottom:8px"></div> }
+                }
+                else if (_filtered.Count == 0)
+                {
+                    <div class="trs-list__empty"><i class="bi bi-inbox"></i>خزانه‌ای در این بازه نیست.</div>
+                }
+                else
+                {
+                    <div class="trs-list__items">
+                        <Virtualize Items="_filtered" Context="x" ItemSize="92" OverscanCount="6">
+                            <div style="padding-bottom:8px" @key="x.Id">
+                                <button type="button" class="trs-item @(x.Id == _selectedId ? "is-active" : "")" @onclick="() => SelectAsync(x.Id)">
+                                    <div class="trs-item__top">
+                                        <b>#@x.Id</b>
+                                        <span class="kind k@(x.Kind)">@KindName(x.Kind)</span>
+                                        <span class="dt">@DateLabel(x.Date)</span>
+                                    </div>
+                                    <div class="trs-item__amts">
+                                        @if (x.SumReceipt > 0) { <span class="rec"><i class="bi bi-arrow-down-left"></i>@Money(x.SumReceipt)</span> }
+                                        @if (x.SumPayment > 0) { <span class="pay"><i class="bi bi-arrow-up-right"></i>@Money(x.SumPayment)</span> }
+                                        @if (x.RowCount == 0) { <span class="none">بدون سطر</span> }
+                                    </div>
+                                    <div class="trs-item__meta">
+                                        <span><i class="bi bi-list-ol"></i>@x.RowCount</span>
+                                        @if (!string.IsNullOrWhiteSpace(x.UserName)) { <span><i class="bi bi-person"></i>@x.UserName</span> }
+                                        @if (!string.IsNullOrWhiteSpace(x.Molah)) { <span class="molah">@x.Molah</span> }
+                                        <span class="flags">
+                                            @if (x.ChequeRows > 0) { <i class="bi bi-credit-card-2-front" title="@($"{x.ChequeRows} سطر چکی")"></i> }
+                                            @if (x.Signed) { <i class="bi bi-pen-fill" title="امضا شده"></i> }
+                                            @if (x.Final) { <i class="bi bi-lock-fill" title="سند قطعی"></i> }
+                                        </span>
+                                    </div>
+                                </button>
+                            </div>
+                        </Virtualize>
+                    </div>
+                }
+            </aside>
+
+            @* ═════════════ جزئیات ═════════════ *@
+            <section class="trs-detail">
+                @if (_draft)
+                {
+                    <div class="trs-card trs-head is-new" @key="@("draft")">
+                        <div class="trs-head__title">
+                            <span class="gl"><i class="bi bi-plus-lg"></i></span>
+                            <div><b>خزانه‌ی جدید</b><small>سربرگ را کامل کنید؛ با ثبت، سند حسابداری‌اش هم ساخته می‌شود.</small></div>
+                        </div>
+                        @HeaderFields(true)
+                        <div class="trs-head__actions">
+                            <button type="button" class="atm-btn atm-btn--ghost" @onclick="CancelNew" disabled="@_busy">انصراف</button>
+                            <button type="button" class="atm-btn atm-btn--primary" @onclick="CreateAsync" disabled="@_busy"><i class="bi bi-check2"></i>ایجاد خزانه</button>
+                        </div>
+                    </div>
+                }
+                else if (_detail is null)
+                {
+                    @if (_loadingDetail)
+                    {
+                        <div class="atm-skel" style="height:180px;margin-bottom:12px"></div>
+                        <div class="atm-skel" style="height:360px"></div>
+                    }
+                    else
+                    {
+                        <EmptyState Title="یک خزانه را انتخاب کنید" Text="از فهرست یک خزانه را باز کنید یا خزانه‌ی جدید بسازید.">
+                            @if (_meta?.CanCreate == true)
+                            {
+                                <button type="button" class="atm-btn atm-btn--primary" @onclick="StartNew"><i class="bi bi-plus-lg"></i>خزانه‌ی جدید</button>
+                            }
+                        </EmptyState>
+                    }
+                }
+                else
+                {
+                    var h = _detail.Header;
+                    var lockMsg = _detail.LockReason ?? _detail.UnlockBlock;
+                    <div class="trs-card trs-head" @key="@($"h{h.Id}")">
+                        <div class="trs-head__title">
+                            <span class="gl"><i class="bi bi-safe2"></i></span>
+                            <div>
+                                <b>خزانه‌ی شماره @h.Id</b>
+                                <small>@AutomationUi.LongDate(FromLong(h.Date) ?? DateTime.Now)</small>
+                            </div>
+                            <div class="trs-chips">
+                                <span class="chip k@(h.Kind)">@KindName(h.Kind) @(h.Idk is > 0 ? $"#{h.Idk}" : "")</span>
+                                @if (h.Ns is > 0)
+                                {
+                                    <button type="button" class="chip doc" title="آرتیکل‌های سند حسابداری" @onclick="() => _showSanad = !_showSanad">
+                                        <i class="bi bi-journal-text"></i>سند @h.Ns @(_detail.SanadBase is > 0 ? $"(مبنا {_detail.SanadBase})" : "")
+                                    </button>
+                                }
+                                @if (h.Final) { <span class="chip lock"><i class="bi bi-lock-fill"></i>سند قطعی</span> }
+                                @if (h.Signed) { <span class="chip sign"><i class="bi bi-pen-fill"></i>امضا شده</span> }
+                                @if (!string.IsNullOrWhiteSpace(h.UserName)) { <span class="chip"><i class="bi bi-person"></i>@h.UserName</span> }
+                            </div>
+
+                            @* ───── ابزارها ───── *@
+                            <div class="trs-tools">
+                                @if (!_editing && _meta?.CanUpdate == true)
+                                {
+                                    <button type="button" class="atm-btn atm-btn--primary" @onclick="UnlockAsync" disabled="@(_busy || lockMsg is not null)"
+                                            title="@(lockMsg ?? "نسخه‌ی فعلی در سابقه‌ی اصلاحات نگه داشته می‌شود")">
+                                        <i class="bi bi-pencil-square"></i>اصلاح خزانه
+                                    </button>
+                                }
+                                @if (_editing)
+                                {
+                                    <button type="button" class="atm-btn atm-btn--ghost" @onclick="FinishEditing" disabled="@_busy"><i class="bi bi-check2-all"></i>پایان اصلاح</button>
+                                }
+                                <div class="trs-menu @(_printOpen ? "is-open" : "")">
+                                    <button type="button" class="atm-btn atm-btn--ghost" @onclick="() => _printOpen = !_printOpen"
+                                            title="@(PrintBlocked ? "چاپ بعد از دستِ‌کم یک امضا (تنظیماتِ سازمان)" : "چاپ")">
+                                        <i class="bi bi-printer"></i>چاپ<i class="bi bi-chevron-down" style="font-size:.7em"></i>
+                                    </button>
+                                    @if (_printOpen)
+                                    {
+                                        <div class="trs-menu__pop" @onclick="() => _printOpen = false">
+                                            @if (PrintBlocked)
+                                            {
+                                                <div class="trs-menu__note"><i class="bi bi-pen"></i>چاپ بعد از دستِ‌کم یک امضا مجاز است.</div>
+                                            }
+                                            <button type="button" disabled="@PrintBlocked" @onclick='() => PrintAsync("amalkard")'><i class="bi bi-list-columns"></i>عملکرد خزانه</button>
+                                            <button type="button" disabled="@PrintBlocked" @onclick='() => PrintAsync("daryaft")'><i class="bi bi-arrow-down-left"></i>سند دریافت (چک‌ها)</button>
+                                            <button type="button" disabled="@PrintBlocked" @onclick='() => PrintAsync("pardakht")'><i class="bi bi-arrow-up-right"></i>سند پرداخت (چک‌ها)</button>
+                                        </div>
+                                    }
+                                </div>
+                                <button type="button" class="atm-btn atm-btn--ghost atm-btn--icon" title="خروجی اکسل" @onclick="ExcelAsync" disabled="@_busy"><i class="bi bi-file-earmark-spreadsheet"></i></button>
+                                @if (_detail.Rows.Any(r => !TreasuryMethod.IsCheque(r.Nahva)))
+                                {
+                                    <button type="button" class="atm-btn atm-btn--ghost atm-btn--icon" title="کپیِ سطرها (نقد و سایر) برای جای‌گذاری در خزانه‌ی دیگر" @onclick="CopyRowsAsync"><i class="bi bi-copy"></i></button>
+                                }
+                                @if (_editing && _clipCount > 0 && _meta?.CanCreate == true)
+                                {
+                                    <button type="button" class="atm-btn atm-btn--ghost" title="جای‌گذاریِ سطرهای کپی‌شده" @onclick="PasteRowsAsync" disabled="@_busy"><i class="bi bi-clipboard-plus"></i>جای‌گذاری @_clipCount</button>
+                                }
+                                @if (_editing && h.RowCount == 0 && _meta?.CanDelete == true)
+                                {
+                                    <button type="button" class="atm-btn atm-btn--danger atm-btn--icon" title="حذف خزانه" @onclick="DeleteTreasuryAsync" disabled="@_busy"><i class="bi bi-trash"></i></button>
+                                }
+                            </div>
+                        </div>
+
+                        @if (lockMsg is not null)
+                        {
+                            <div class="trs-lock"><i class="bi bi-shield-lock-fill"></i>@lockMsg</div>
+                        }
+
+                        @HeaderFields(_editing && _meta?.CanUpdate == true)
+
+                        @if (_editing && HeaderDirty && _meta?.CanUpdate == true)
+                        {
+                            <div class="trs-head__actions">
+                                <span style="flex:1"></span>
+                                <button type="button" class="atm-btn atm-btn--ghost" @onclick="() => { _hf = Clone(_hfOriginal); }" disabled="@_busy">بازگردانی</button>
+                                <button type="button" class="atm-btn atm-btn--primary" @onclick="SaveHeaderAsync" disabled="@_busy"><i class="bi bi-check2"></i>ذخیره‌ی سربرگ</button>
+                            </div>
+                        }
+                    </div>
+
+                    @* ───── سطرها ───── *@
+                    <div class="trs-card trs-rows" @key="@($"r{h.Id}")">
+                        <div class="trs-rows__head">
+                            <b><i class="bi bi-list-ol"></i> عملیات</b>
+                            <span class="count">@_detail.Rows.Count سطر</span>
+                            <span style="flex:1"></span>
+                            <button type="button" class="atm-toggle @(_showSanad ? "is-on" : "")" style="height:34px" @onclick="() => _showSanad = !_showSanad">
+                                <i class="bi bi-journal-text"></i>پیش‌نمایش سند
+                            </button>
+                        </div>
+
+                        @if (_detail.Rows.Count == 0 && !_editing)
+                        {
+                            <div class="trs-rows__empty"><i class="bi bi-inbox"></i>این خزانه هنوز سطری ندارد.</div>
+                        }
+
+                        <div class="trs-table">
+                            @if (_detail.Rows.Count > 0)
+                            {
+                                <div class="trs-tr trs-th">
+                                    <span>#</span><span>عملیات</span><span>از حساب</span><span>به حساب</span><span>شرح</span><span class="amt">مبلغ</span><span></span>
+                                </div>
+                            }
+                            @{ int n = 0; }
+                            @foreach (var r in _detail.Rows)
+                            {
+                                n++;
+                                var cheque = TreasuryMethod.IsCheque(r.Nahva);
+                                <div class="trs-tr @(r.NoAm == 1 ? "rec" : "pay") @(_rowEditIdh == r.Idh ? "is-editing" : "") @(_flash == r.Idh ? "is-flash" : "")" @key="r.Idh">
+                                    <span class="no">@(r.Radif?.ToString("0") ?? n.ToString())</span>
+                                    <span class="op">
+                                        <span class="pill @(r.NoAm == 1 ? "rec" : "pay")"><i class="bi @(r.NoAm == 1 ? "bi-arrow-down-left" : "bi-arrow-up-right")"></i>@OpName(r.NoAm)</span>
+                                        <span class="how @(cheque ? "chq" : "")">@if (cheque) { <i class="bi bi-credit-card-2-front"></i> }@MethodName(r.Nahva)</span>
+                                    </span>
+                                    <span class="acc">
+                                        <a href="@StatementUrl(r.Fhes)" target="_blank" title="صورت‌حسابِ این حساب"><b>@(r.FhesName ?? "—")</b></a>
+                                        <small>@r.Fhes</small>
+                                    </span>
+                                    <span class="acc">
+                                        <a href="@StatementUrl(r.Thes)" target="_blank" title="صورت‌حسابِ این حساب"><b>@(r.ThesName ?? "—")</b></a>
+                                        <small>@r.Thes</small>
+                                    </span>
+                                    <span class="sharh">
+                                        <span title="@r.Sharh">@r.Sharh</span>
+                                        @if (r.Cheque is { } c)
+                                        {
+                                            <span class="chqline" title="@c.NameTah">
+                                                <i class="bi bi-credit-card-2-front"></i><bdi>@c.NSeri.ToString("0")</bdi> · @c.BankName ·
+                                                سررسید <bdi>@ChequeForm.FormatDate(c.DateS)</bdi>
+                                                <span class="st">@TreasuryChequeState.NameOf(c.Vaz, c.Payable && r.Nahva == TreasuryMethod.ChequeReturn)</span>
+                                                @if (!c.Payable && c.Radif is > 0) { <span class="rd">ردیف دفتر @c.Radif?.ToString("0")</span> }
+                                            </span>
+                                        }
+                                    </span>
+                                    <span class="amt">@Money(r.Mabl)</span>
+                                    <span class="act">
+                                        <button type="button" class="atm-icon-btn @(r.HasAttachment ? "has" : "")" title="@(r.HasAttachment ? "تصویر سطر" : "افزودن تصویر")" @onclick="() => AttachmentAsync(r)"
+                                                disabled="@(!r.HasAttachment && _meta?.CanCreate != true && _meta?.CanUpdate != true)">
+                                            <i class="bi @(r.HasAttachment ? "bi-image-fill" : "bi-image")"></i>
+                                        </button>
+                                        @if (_editing)
+                                        {
+                                            @if (_meta?.CanUpdate == true)
+                                            {
+                                                <button type="button" class="atm-icon-btn" title="ویرایش" @onclick="() => EditRow(r)"><i class="bi bi-pencil"></i></button>
+                                            }
+                                            @if (_meta?.CanDelete == true)
+                                            {
+                                                <button type="button" class="atm-icon-btn" title="حذف" @onclick="() => DeleteRowAsync(r)"><i class="bi bi-trash3"></i></button>
+                                            }
+                                        }
+                                    </span>
+                                </div>
+                            }
+                        </div>
+
+                        @* ───── ورودِ سطر ───── *@
+                        @if (_editing && (_meta?.CanCreate == true || _rowEditIdh is not null))
+                        {
+                            var auto = AutoSides;
+                            var picks = TreasuryMethod.PicksCheque(_e.Method);
+                            var newChq = _e.Method == TreasuryMethod.Cheque;
+                            <div class="trs-entry @(_rowEditIdh is not null ? "is-editing" : "")">
+                                <div class="trs-entry__title">
+                                    <i class="bi @(_rowEditIdh is null ? "bi-plus-circle-fill" : "bi-pencil-square")"></i>
+                                    @(_rowEditIdh is null ? "سطر جدید" : "ویرایش سطر")
+                                    <small>Enter در شرح یا مبلغ = ثبت · Esc = انصراف</small>
+                                </div>
+                                <div class="trs-entry__ops">
+                                    <div class="trs-seg2">
+                                        <button type="button" class="rec @(_e.NoAm == 1 ? "is-on" : "")" @onclick="() => SetOp(1)" disabled="@LockKind"><i class="bi bi-arrow-down-left"></i>دریافت</button>
+                                        <button type="button" class="pay @(_e.NoAm == 2 ? "is-on" : "")" @onclick="() => SetOp(2)" disabled="@LockKind"><i class="bi bi-arrow-up-right"></i>پرداخت</button>
+                                    </div>
+                                    <div class="trs-seg2 trs-seg2--methods">
+                                        @foreach (var (m, label, icon) in MethodButtons)
+                                        {
+                                            if (m == TreasuryMethod.ChequeAssign && _e.NoAm == TreasuryOp.Receipt) continue;
+                                            <button type="button" class="@(_e.Method == m ? "is-on" : "")" @onclick="() => SetMethod(m)" disabled="@LockKind"><i class="bi @icon"></i>@label</button>
+                                        }
+                                    </div>
+                                    @if (newChq)
+                                    {
+                                        <label class="trs-check" title="چکِ غیرتجاری (ضمانت) — حساب‌های ADV/APV">
+                                            <input type="checkbox" checked="@_e.NonTrade" @onchange="e => { _e.NonTrade = (bool)(e.Value ?? false); ApplyAuto(); }" disabled="@LockKind" />
+                                            <span>غیرتجاری</span>
+                                        </label>
+                                    }
+                                </div>
+
+                                @if (picks)
+                                {
+                                    <div class="trs-entry__pick">
+                                        <label class="trs-entry__lbl"><i class="bi bi-search"></i>@PickTitle</label>
+                                        <ChequePicker Mode="@PickMode" Selected="_e.Picked" SelectedChanged="OnPicked" Current="_e.Current" />
+                                    </div>
+                                }
+
+                                <div class="trs-entry__grid">
+                                    <AccountPicker Label="از حساب" Value="@_e.Fhes" Name="@_e.FhesName" OnChange="OnFromChanged"
+                                                   Disabled="@auto.From" AutoHint="@AutoHint(true)" />
+                                    <AccountPicker Label="به حساب" Value="@_e.Thes" Name="@_e.ThesName" OnChange="OnToChanged"
+                                                   Disabled="@auto.To" AutoHint="@AutoHint(false)" />
+                                    @if (_e.Method is TreasuryMethod.Cash or TreasuryMethod.Other)
+                                    {
+                                        @* Enter/Esc فقط روی شرح و مبلغ — در انتخابگرِ حساب، Enter یعنی انتخابِ حساب نه ثبتِ سطر *@
+                                        <div class="trs-f trs-f--wide" @onkeydown="OnEntryKey">
+                                            <label>شرح</label>
+                                            <input class="atm-input" maxlength="255" placeholder="مثلاً: بابت فاکتور ۱۲۳۴" @bind="_e.Sharh" @bind:event="oninput" />
+                                        </div>
+                                    }
+                                    @if (!picks)
+                                    {
+                                        <div class="trs-f" @onkeydown="OnEntryKey">
+                                            <label>مبلغ (ریال) <span class="req">*</span> @(newChq && _e.Chq.Group && _rowEditIdh is null ? "— هر فقره" : "")</label>
+                                            @* Pay2NumericInput تا فوکوس دارد مقدارِ تازه‌ی والد را نمی‌پذیرد؛ با کلیدِ تازه بعد از ثبت/ویرایش از نو ساخته می‌شود *@
+                                            <Pay2NumericInput @key="_entryKey" @bind-Value="_e.Mabl" IsDigitGroupActive="true" ThreeTwoZero="true"
+                                                              MaxLength="20" Direction="ltr" CssClass="trs-amount" />
+                                            @if (ParseMoney(_e.Mabl) is > 0 and var m)
+                                            {
+                                                <small class="trs-words">@Money(m) ریال</small>
+                                            }
+                                        </div>
+                                    }
+                                    else
+                                    {
+                                        <div class="trs-f">
+                                            <label>مبلغ (از چک)</label>
+                                            <div class="trs-ro trs-ro--amt">@(_e.Picked is { } pk ? Money(pk.Mabl) : "—")</div>
+                                        </div>
+                                    }
+                                    @if (_e.Method == TreasuryMethod.ChequeAssign || (_e.Method == TreasuryMethod.ChequeReturn && _e.NoAm == TreasuryOp.Payment))
+                                    {
+                                        <div class="trs-f">
+                                            <label>موقعیت چک</label>
+                                            <select class="atm-input" @bind="_e.Sandugh">
+                                                <option value="">—</option>
+                                                @foreach (var f in _meta!.ChequeFunds) { <option value="@f.Id">@f.Name</option> }
+                                            </select>
+                                        </div>
+                                    }
+                                    @if (_e.Method == TreasuryMethod.ChequeReturn)
+                                    {
+                                        <div class="trs-f">
+                                            <label>وضعیتِ چک <span class="req">*</span></label>
+                                            <select class="atm-input" @bind="_e.Vaz">
+                                                <option value="">—</option>
+                                                @foreach (var (vid, vname) in _e.NoAm == TreasuryOp.Payment ? TreasuryChequeState.Received : TreasuryChequeState.PaidReturn)
+                                                {
+                                                    <option value="@vid">@vname</option>
+                                                }
+                                            </select>
+                                        </div>
+                                    }
+                                    @if (_meta?.MarkazEnabled == true)
+                                    {
+                                        <div class="trs-f">
+                                            <label>مرکز هزینه</label>
+                                            <select class="atm-input" @bind="_e.MhazNo">
+                                                <option value="">—</option>
+                                                @foreach (var c in _meta.CostCenters) { <option value="@c.Id">@c.Name</option> }
+                                            </select>
+                                        </div>
+                                    }
+                                </div>
+
+                                @if (newChq)
+                                {
+                                    <ChequeFields Form="_e.Chq" Meta="_meta!" Receive="@(_e.NoAm == TreasuryOp.Receipt)" AllowGroup="@(_rowEditIdh is null)"
+                                                  LockAssign="@(_e.Current?.InCirculation(_meta!.Bankha) == true)" />
+                                }
+                                @if (TreasuryMethod.IsCheque(_e.Nahva))
+                                {
+                                    <div class="trs-entry__hint"><i class="bi bi-magic"></i>شرحِ سطر از روی مشخصاتِ چک ساخته می‌شود (مثل نرم‌افزار ویندوزی).</div>
+                                }
+
+                                <div class="trs-entry__foot">
+                                    @if (_rowEditIdh is not null)
+                                    {
+                                        <button type="button" class="atm-btn atm-btn--ghost" @onclick="ResetEntry" disabled="@_busy">انصراف</button>
+                                    }
+                                    <span style="flex:1"></span>
+                                    <button type="button" class="atm-btn atm-btn--primary" @onclick="SaveRowAsync" disabled="@_busy">
+                                        @if (_busy) { <MudProgressCircular Size="Size.Small" Indeterminate="true" Style="width:18px;height:18px;color:#fff" /> }
+                                        else { <i class="bi bi-check2"></i> }
+                                        @(_rowEditIdh is null ? (newChq && _e.Chq.Group ? $"ثبت {_e.Chq.Count} فقره" : "ثبت سطر") : "ذخیره‌ی تغییرات")
+                                    </button>
+                                </div>
+                            </div>
+                        }
+
+                        @if (_detail.Rows.Count > 0)
+                        {
+                            var rec = _detail.Rows.Where(r => r.NoAm == 1).Sum(r => r.Mabl);
+                            var pay = _detail.Rows.Where(r => r.NoAm == 2).Sum(r => r.Mabl);
+                            <div class="trs-totals">
+                                <span class="rec"><i class="bi bi-arrow-down-left"></i>دریافت <b>@Money(rec)</b></span>
+                                <span class="pay"><i class="bi bi-arrow-up-right"></i>پرداخت <b>@Money(pay)</b></span>
+                                <span class="net">خالص <b>@Money(Math.Abs(rec - pay))</b> @(rec >= pay ? "ورودی" : "خروجی")</span>
+                            </div>
+                        }
+
+                        @if (_showSanad)
+                        {
+                            <div class="trs-sanad">
+                                <div class="trs-sanad__title"><i class="bi bi-journal-text"></i>آرتیکل‌های سند @(h.Ns is > 0 ? $"شماره {h.Ns}" : "")
+                                    <small>برای هر سطر «به حساب» بدهکار و «از حساب» بستانکار — همان منطقِ صدور سندِ نرم‌افزار ویندوزی</small></div>
+                                @if (SanadLines.Count == 0)
+                                {
+                                    <div style="opacity:.6;padding:8px 0">سندِ این خزانه آرتیکلی ندارد.</div>
+                                }
+                                else
+                                {
+                                    <div class="trs-sanad__grid">
+                                        <span class="th">حساب</span><span class="th amt">بدهکار</span><span class="th amt">بستانکار</span>
+                                        @foreach (var l in SanadLines)
+                                        {
+                                            <span class="acc"><b>@(l.Name ?? l.Hes)</b><small>@l.Hes</small></span>
+                                            <span class="amt bed">@(l.Bed > 0 ? Money(l.Bed) : "")</span>
+                                            <span class="amt bes">@(l.Bes > 0 ? Money(l.Bes) : "")</span>
+                                        }
+                                        <span class="sum">جمع</span>
+                                        <span class="amt sum">@Money(SanadLines.Sum(x => x.Bed))</span>
+                                        <span class="amt sum">@Money(SanadLines.Sum(x => x.Bes))</span>
+                                    </div>
+                                    <div class="trs-sanad__ok"><i class="bi bi-check-circle-fill"></i>سند تراز است.</div>
+                                }
+                            </div>
+                        }
+                    </div>
+
+                    @* ───── امضا و ارجاع ───── *@
+                    <TreasurySignPanel Detail="_detail" Meta="_meta!" Busy="_busy" OnSign="SignAsync" OnRefer="ReferAsync" />
+                }
+            </section>
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter] public int? Id { get; set; }
+
+    private sealed class Entry
+    {
+        public int NoAm { get; set; } = TreasuryOp.Receipt;
+        /// <summary>دکمه‌ی نحوه: ۱ نقد، ۲ چک، ۳ سایر، ۴ واگذاری، ۵ برگشت (۶ = چک + «غیرتجاری»).</summary>
+        public int Method { get; set; } = TreasuryMethod.Cash;
+        public bool NonTrade { get; set; }
+        public string? Fhes { get; set; }
+        public string? FhesName { get; set; }
+        public string? Thes { get; set; }
+        public string? ThesName { get; set; }
+        public string? Sharh { get; set; }
+        public string? Mabl { get; set; }
+        public int? MhazNo { get; set; }
+        public ChequeForm Chq { get; set; } = new();
+        public TreasuryChequeDto? Picked { get; set; }
+        /// <summary>چکِ فعلیِ سطرِ در حالِ اصلاح.</summary>
+        public TreasuryChequeDto? Current { get; set; }
+        public int? Sandugh { get; set; }
+        public int? Vaz { get; set; }
+        public int Nahva => Method == TreasuryMethod.Cheque && NonTrade ? TreasuryMethod.NonTradeCheque : Method;
+    }
+
+    private sealed class HeaderForm
+    {
+        public string? Date { get; set; }
+        public int Kind { get; set; }
+        public int? Depatman { get; set; }
+        public int? Shift { get; set; }
+        public string? Molah { get; set; }
+    }
+
+    private sealed record SanadLine(string Hes, string? Name, double Bed, double Bes);
+
+    /// <summary>سطرِ کپی‌شده (فقط نقد و سایر — سطرِ چکی به چکِ یکتا گره خورده).</summary>
+    private sealed class ClipRow
+    {
+        public int NoAm { get; set; }
+        public int Nahva { get; set; }
+        public string? Fhes { get; set; }
+        public string? Thes { get; set; }
+        public string? Sharh { get; set; }
+        public double Mabl { get; set; }
+        public int? MhazNo { get; set; }
+    }
+
+    private static readonly (string Key, string Label)[] Ranges =
+        { ("today", "امروز"), ("month", "این ماه"), ("prev", "ماه قبل"), ("all", "همه") };
+
+    private static readonly (int M, string Label, string Icon)[] MethodButtons =
+    {
+        (TreasuryMethod.Cash, "نقد", "bi-cash-coin"),
+        (TreasuryMethod.Cheque, "چک", "bi-credit-card-2-front"),
+        (TreasuryMethod.Other, "سایر", "bi-arrow-left-right"),
+        (TreasuryMethod.ChequeAssign, "واگذاری چک", "bi-box-arrow-up-left"),
+        (TreasuryMethod.ChequeReturn, "برگشت چک", "bi-arrow-return-left")
+    };
+
+    private const string ClipKey = "trs.clipboard";
+
+    private TreasuryMetaDto? _meta;
+    private List<TreasuryListItemDto> _items = new();
+    private List<TreasuryListItemDto> _filtered = new();
+    private string _range = "month";
+    private string _q = "";
+    private bool _loadingList;
+    private bool _loadingDetail;
+    private int? _selectedId;
+    private TreasuryDetailDto? _detail;
+    private bool _editing;
+    private bool _draft;
+    private bool _busy;
+    private bool _showSanad;
+    private bool _printOpen;
+    private int? _rowEditIdh;
+    private int? _flash;
+    private HeaderForm _hf = new();
+    private HeaderForm _hfOriginal = new();
+    private Entry _e = new();
+    private TreasuryAccountDto? _cashAcc;
+    private int _entryKey;
+    private double? _cashBalance;
+    private int _clipCount;
+    private readonly Dictionary<string, string?> _accNames = new();
+    private DotNetObjectReference<TreasuryPage>? _selfRef;
+
+    private static readonly PersianCalendar Pc = new();
+
+    // ─────────────────────────── راه‌اندازی ───────────────────────────
+
+    protected override async Task OnInitializedAsync()
+    {
+        try { _meta = await Api.MetaAsync(); }
+        catch { Snackbar.Add("تنظیمات خزانه‌داری دریافت نشد.", Severity.Error); }
+        if (_meta?.CanSee != true) return;
+
+        await ReloadListAsync();
+        _ = LoadCashAsync();
+        _ = LoadAutoNamesAsync();
+        if (Id is > 0) await SelectAsync(Id.Value);
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            _selfRef = DotNetObjectReference.Create(this);
+            try { await JS.InvokeVoidAsync("atmKeys.attach", _selfRef); } catch { }
+            await RefreshClipAsync();
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        try { await JS.InvokeVoidAsync("atmKeys.detach"); } catch { }
+        _selfRef?.Dispose();
+    }
+
+    [JSInvokable] public void HotkeyNew() { if (_meta?.CanCreate == true && !_draft) { StartNew(); StateHasChanged(); } }
+    [JSInvokable] public async Task HotkeyRefresh() => await ReloadListAsync();
+    [JSInvokable] public void HotkeyEscape() { if (_printOpen) _printOpen = false; else if (_rowEditIdh is not null) ResetEntry(); StateHasChanged(); }
+
+    private async Task LoadCashAsync()
+    {
+        _cashAcc = await Api.CashAccountAsync(_meta?.DefaultDepatman, _meta?.DefaultShift);
+        if (_cashAcc is null) return;
+        var b = (await Api.BalancesAsync(new[] { _cashAcc.Hes })).FirstOrDefault();
+        _cashBalance = b?.Balance ?? 0;
+        StateHasChanged();
+    }
+
+    /// <summary>نامِ حساب‌های خودکار (اسناد دریافتنی/پرداختنی) برای نمایش در سطرِ چکی.</summary>
+    private async Task LoadAutoNamesAsync()
+    {
+        if (_meta is null) return;
+        foreach (var hes in new[] { _meta.Ada, _meta.Apa, _meta.Adv, _meta.Apv }.Where(x => !string.IsNullOrWhiteSpace(x)).Distinct())
+        {
+            try { _accNames[hes!] = (await Api.AccountsAsync(hes)).FirstOrDefault(a => a.Hes == hes)?.Name; } catch { }
+        }
+    }
+
+    // ─────────────────────────── فهرست ───────────────────────────
+
+    private (long? From, long? To) RangeDates()
+    {
+        var now = DateTime.Now;
+        long Ym(DateTime d) => Pc.GetYear(d) * 10000L + Pc.GetMonth(d) * 100;
+        return _range switch
+        {
+            "today" => (ToLong(now), ToLong(now)),
+            "month" => (Ym(now) + 1, Ym(now) + 31),
+            "prev" => (Ym(Pc.AddMonths(now, -1)) + 1, Ym(Pc.AddMonths(now, -1)) + 31),
+            _ => (null, null)
+        };
+    }
+
+    private async Task ReloadListAsync()
+    {
+        _loadingList = true;
+        StateHasChanged();
+        var (from, to) = RangeDates();
+        var (items, err) = await Api.ListAsync(from, to);
+        _loadingList = false;
+        if (err is not null) { Snackbar.Add(err, Severity.Error); return; }
+        _items = items ?? new();
+        Filter();
+    }
+
+    private async Task SetRange(string key)
+    {
+        _range = key;
+        await ReloadListAsync();
+    }
+
+    private void OnSearch(ChangeEventArgs e)
+    {
+        _q = e.Value?.ToString() ?? "";
+        Filter();
+    }
+
+    private void Filter()
+    {
+        var q = Norm(_q);
+        _filtered = q.Length == 0 ? _items.ToList() : _items.Where(x =>
+            Norm($"{x.Id} {x.Molah} {x.UserName} {x.DepName} {x.Ns} {x.Idk}").Contains(q)).ToList();
+    }
+
+    private double SumRec => _filtered.Sum(x => x.SumReceipt);
+    private double SumPay => _filtered.Sum(x => x.SumPayment);
+    private int ChequeRows => _filtered.Sum(x => x.ChequeRows);
+    private string RangeLabel => _range switch { "today" => "امروز", "month" => "این ماه", "prev" => "ماه قبل", _ => "کل دوره" };
+
+    // ─────────────────────────── انتخاب ───────────────────────────
+
+    private async Task SelectAsync(int id)
+    {
+        if (_selectedId == id && _detail is not null && !_draft) return;
+        _draft = false;
+        _selectedId = id;
+        _editing = false;
+        _showSanad = false;
+        _printOpen = false;
+        ResetEntry();
+        _loadingDetail = true;
+        _detail = null;
+        StateHasChanged();
+        await LoadDetailAsync(id);
+        Nav.NavigateTo($"/treasury/{id}", replace: true);
+    }
+
+    private async Task LoadDetailAsync(int id)
+    {
+        var (d, err) = await Api.GetAsync(id);
+        _loadingDetail = false;
+        if (err is not null) { Snackbar.Add(err, Severity.Error); _detail = null; return; }
+        _detail = d;
+        if (d is not null)
+        {
+            _hf = new HeaderForm
+            {
+                Date = FormatDate(d.Header.Date), Kind = d.Header.Kind, Depatman = d.Header.Depatman,
+                Shift = d.Header.Shift, Molah = d.Header.Molah
+            };
+            _hfOriginal = Clone(_hf);
+            // امضاشده یا قطعی: حالتِ اصلاح بسته می‌شود (مثل SGNx_Click در WPF)
+            if (d.LockReason is not null || d.UnlockBlock is not null) _editing = false;
+            // در صفِ فهرست هم به‌روز شود (جمع‌ها و تعداد سطر)
+            var i = _items.FindIndex(x => x.Id == id);
+            if (i >= 0) { _items[i] = d.Header; Filter(); }
+        }
+        StateHasChanged();
+    }
+
+    // ─────────────────────────── سربرگ ───────────────────────────
+
+    private void StartNew()
+    {
+        _draft = true;
+        _detail = null;
+        _selectedId = null;
+        _editing = false;
+        _hf = new HeaderForm
+        {
+            Date = FormatDate(ToLong(DateTime.Now)), Kind = 0,
+            Depatman = _meta?.DefaultDepatman, Shift = _meta?.DefaultShift
+        };
+    }
+
+    private void CancelNew()
+    {
+        _draft = false;
+        if (_items.FirstOrDefault() is { } first) _ = SelectAsync(first.Id);
+    }
+
+    private TreasuryHeaderSaveRequest? BuildHeader()
+    {
+        var d = ParseDate(_hf.Date);
+        if (d is null) { Snackbar.Add("تاریخ معتبر نیست.", Severity.Warning); return null; }
+        return new TreasuryHeaderSaveRequest { Date = d.Value, Kind = _hf.Kind, Depatman = _hf.Depatman, Shift = _hf.Shift, Molah = _hf.Molah };
+    }
+
+    private async Task CreateAsync()
+    {
+        var req = BuildHeader();
+        if (req is null || _busy) return;
+        _busy = true;
+        var r = await Api.CreateAsync(req);
+        _busy = false;
+        if (!r.Ok) { Snackbar.Add(r.Error ?? "ثبت نشد.", Severity.Error); return; }
+        Snackbar.Add($"خزانه‌ی {r.Id} با سند {r.Ns} ثبت شد.", Severity.Success);
+        _draft = false;
+        await ReloadListAsync();
+        _selectedId = r.Id;
+        _loadingDetail = true;
+        await LoadDetailAsync(r.Id!.Value);
+        _editing = true; // خزانه‌ی تازه: بدونِ «اصلاح» مستقیم سطر می‌پذیرد
+        ResetEntry();
+        Nav.NavigateTo($"/treasury/{r.Id}", replace: true);
+    }
+
+    private bool HeaderDirty => _hf.Date != _hfOriginal.Date || _hf.Kind != _hfOriginal.Kind || _hf.Depatman != _hfOriginal.Depatman
+                                || _hf.Shift != _hfOriginal.Shift || (_hf.Molah ?? "") != (_hfOriginal.Molah ?? "");
+
+    private async Task SaveHeaderAsync()
+    {
+        var req = BuildHeader();
+        if (req is null || _detail is null || _busy) return;
+        _busy = true;
+        var r = await Api.UpdateHeaderAsync(_detail.Header.Id, req);
+        _busy = false;
+        if (!r.Ok) { Snackbar.Add(r.Error ?? "ذخیره نشد.", Severity.Error); return; }
+        Snackbar.Add("سربرگ ذخیره شد و سند به‌روز شد.", Severity.Success);
+        await LoadDetailAsync(_detail.Header.Id);
+        await ApplyCashAsync(); // واحد/شیفت عوض شده باشد، حسابِ صندوقِ سطرِ نقد هم عوض می‌شود
+    }
+
+    private async Task UnlockAsync()
+    {
+        if (_detail is null || _busy) return;
+        _busy = true;
+        var r = await Api.UnlockAsync(_detail.Header.Id);
+        _busy = false;
+        if (!r.Ok) { Snackbar.Add(r.Error ?? "اصلاح ممکن نیست.", Severity.Warning); return; }
+        _editing = true;
+        ResetEntry();
+        Snackbar.Add("حالت اصلاح فعال شد؛ نسخه‌ی قبلی در سابقه ثبت شد.", Severity.Info);
+    }
+
+    private void FinishEditing()
+    {
+        _editing = false;
+        ResetEntry();
+    }
+
+    private async Task DeleteTreasuryAsync()
+    {
+        if (_detail is null || _busy) return;
+        var ok = await DialogService.ShowMessageBox("حذف خزانه", $"خزانه‌ی {_detail.Header.Id} حذف شود؟", yesText: "حذف", cancelText: "انصراف");
+        if (ok != true) return;
+        _busy = true;
+        var r = await Api.DeleteAsync(_detail.Header.Id);
+        _busy = false;
+        if (!r.Ok) { Snackbar.Add(r.Error ?? "حذف نشد.", Severity.Error); return; }
+        Snackbar.Add("خزانه حذف شد.", Severity.Info);
+        _detail = null;
+        _selectedId = null;
+        _editing = false;
+        await ReloadListAsync();
+        Nav.NavigateTo("/treasury", replace: true);
+    }
+
+    private RenderFragment HeaderFields(bool editable) => __builder =>
+    {
+        <div class="trs-head__grid">
+            <div class="trs-f">
+                <label>تاریخ</label>
+                @if (editable)
+                {
+                    <Pay2NumericInput @bind-Value="_hf.Date" InputMode="Pay2NumericInput.NumericInputMode.PersianDate" Direction="ltr" />
+                }
+                else { <div class="trs-ro">@_hf.Date</div> }
+            </div>
+            <div class="trs-f">
+                <label>نوع برگه</label>
+                @if (editable)
+                {
+                    <select class="atm-input" @bind="_hf.Kind">
+                        <option value="0">عادی</option><option value="2">سند دریافت</option><option value="3">سند پرداخت</option>
+                    </select>
+                }
+                else { <div class="trs-ro">@KindName(_hf.Kind)</div> }
+            </div>
+            <div class="trs-f">
+                <label>واحد</label>
+                @if (editable)
+                {
+                    <select class="atm-input" @bind="_hf.Depatman">
+                        <option value="">—</option>
+                        <optgroup label="به‌کاررفته در خزانه">
+                            @foreach (var d in (_meta?.Departments ?? new()).Where(x => x.Frequent)) { <option value="@d.Id">@d.Name</option> }
+                        </optgroup>
+                        <optgroup label="سایر واحدها">
+                            @foreach (var d in (_meta?.Departments ?? new()).Where(x => !x.Frequent)) { <option value="@d.Id">@d.Name</option> }
+                        </optgroup>
+                    </select>
+                }
+                else { <div class="trs-ro">@(_meta?.Departments.FirstOrDefault(x => x.Id == _hf.Depatman)?.Name ?? "—")</div> }
+            </div>
+            <div class="trs-f">
+                <label>شیفت</label>
+                @if (editable)
+                {
+                    <select class="atm-input" @bind="_hf.Shift">
+                        <option value="">—</option>
+                        @foreach (var s in _meta?.Shifts ?? new()) { <option value="@s.Id">@s.Name</option> }
+                    </select>
+                }
+                else { <div class="trs-ro">@(_meta?.Shifts.FirstOrDefault(x => x.Id == _hf.Shift)?.Name ?? "—")</div> }
+            </div>
+            <div class="trs-f trs-f--molah">
+                <label>ملاحظات</label>
+                @if (editable)
+                {
+                    <input class="atm-input" maxlength="60" @bind="_hf.Molah" @bind:event="oninput" placeholder="اختیاری" />
+                }
+                else { <div class="trs-ro">@(string.IsNullOrWhiteSpace(_hf.Molah) ? "—" : _hf.Molah)</div> }
+            </div>
+        </div>
+    };
+
+    // ─────────────────────────── امضا، ارجاع، چاپ ───────────────────────────
+
+    private bool PrintBlocked => _meta?.PrintNeedsSignature == true && _detail?.Header.Signed != true;
+
+    private async Task SignAsync((int Slot, bool On) a)
+    {
+        if (_detail is null || _busy) return;
+        _busy = true;
+        var r = await Api.SignAsync(_detail.Header.Id, a.Slot, a.On);
+        _busy = false;
+        if (!r.Ok) { Snackbar.Add(r.Error ?? "امضا ثبت نشد.", Severity.Error); return; }
+        Snackbar.Add(a.On ? "امضا شد؛ خزانه قفل شد." : "امضا برداشته شد.", a.On ? Severity.Success : Severity.Info);
+        await LoadDetailAsync(_detail.Header.Id);
+    }
+
+    private async Task ReferAsync(int personel)
+    {
+        if (_detail is null || _busy) return;
+        _busy = true;
+        var r = await Api.ReferAsync(_detail.Header.Id, personel);
+        _busy = false;
+        if (!r.Ok) { Snackbar.Add(r.Error ?? "ارجاع ثبت نشد.", Severity.Error); return; }
+        Snackbar.Add(r.Info ?? "ارجاع داده شد.", Severity.Success);
+        await LoadDetailAsync(_detail.Header.Id);
+    }
+
+    private async Task PrintAsync(string kind)
+    {
+        _printOpen = false;
+        if (_detail is null) return;
+        await JS.InvokeVoidAsync("open", $"/treasury/{_detail.Header.Id}/print/{kind}", "_blank");
+    }
+
+    private async Task ExcelAsync()
+    {
+        if (_detail is null) return;
+        var (bytes, err) = await Api.ExcelAsync(_detail.Header.Id);
+        if (bytes is null) { Snackbar.Add(err ?? "خروجی اکسل تهیه نشد.", Severity.Error); return; }
+        await JS.InvokeVoidAsync("downloadFileFromBytes", $"خزانه-{_detail.Header.Id}.xlsx", bytes);
+    }
+
+    // ─────────────────────────── کپی و جای‌گذاری ───────────────────────────
+
+    private async Task RefreshClipAsync()
+    {
+        try
+        {
+            var raw = await JS.InvokeAsync<string?>("localStorage.getItem", ClipKey);
+            _clipCount = string.IsNullOrEmpty(raw) ? 0 : (JsonSerializer.Deserialize<List<ClipRow>>(raw)?.Count ?? 0);
+        }
+        catch { _clipCount = 0; }
+        StateHasChanged();
+    }
+
+    private async Task CopyRowsAsync()
+    {
+        if (_detail is null) return;
+        var rows = _detail.Rows.Where(r => !TreasuryMethod.IsCheque(r.Nahva))
+            .Select(r => new ClipRow { NoAm = r.NoAm, Nahva = r.Nahva, Fhes = r.Fhes, Thes = r.Thes, Sharh = r.Sharh, Mabl = r.Mabl, MhazNo = r.MhazNo })
+            .ToList();
+        var skipped = _detail.Rows.Count - rows.Count;
+        try { await JS.InvokeVoidAsync("localStorage.setItem", ClipKey, JsonSerializer.Serialize(rows)); } catch { }
+        _clipCount = rows.Count;
+        Snackbar.Add($"{rows.Count} سطر کپی شد" + (skipped > 0 ? $"؛ {skipped} سطرِ چکی کپی نمی‌شود (هر چک یکتاست)." : "."), Severity.Info);
+    }
+
+    private async Task PasteRowsAsync()
+    {
+        if (_detail is null || _busy) return;
+        List<ClipRow>? rows = null;
+        try { rows = JsonSerializer.Deserialize<List<ClipRow>>(await JS.InvokeAsync<string?>("localStorage.getItem", ClipKey) ?? "[]"); } catch { }
+        if (rows is not { Count: > 0 }) { _clipCount = 0; return; }
+        _busy = true;
+        int ok = 0;
+        var errors = new List<string>();
+        foreach (var c in rows)
+        {
+            var r = await Api.AddRowAsync(_detail.Header.Id, new TreasuryRowSaveRequest
+            {
+                NoAm = c.NoAm, Nahva = c.Nahva, Fhes = c.Fhes, Thes = c.Thes, Sharh = c.Sharh, Mabl = c.Mabl, MhazNo = c.MhazNo
+            });
+            if (r.Ok) ok++; else errors.Add(r.Error ?? "خطا");
+        }
+        _busy = false;
+        await LoadDetailAsync(_detail.Header.Id);
+        Snackbar.Add($"{ok} سطر جای‌گذاری شد" + (errors.Count > 0 ? $"؛ {errors.Count} سطر نشد: {errors[0]}" : "."), errors.Count > 0 ? Severity.Warning : Severity.Success);
+        _ = LoadCashAsync();
+    }
+
+    // ─────────────────────────── ضمیمه ───────────────────────────
+
+    private async Task AttachmentAsync(TreasuryRowDto r)
+    {
+        if (_detail is null) return;
+        var parameters = new DialogParameters
+        {
+            ["Id"] = _detail.Header.Id, ["Idh"] = r.Idh, ["Radif"] = r.Radif?.ToString("0"), ["HasAttachment"] = r.HasAttachment,
+            ["CanEdit"] = _meta?.CanCreate == true || _meta?.CanUpdate == true,
+            ["CanDelete"] = _meta?.CanDelete == true || _meta?.CanUpdate == true
+        };
+        var dialog = DialogService.Show<RowAttachmentDialog>("تصویر سطر", parameters,
+            new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true, CloseButton = false });
+        var res = await dialog.Result;
+        if (!res.Canceled && res.Data is true) await LoadDetailAsync(_detail.Header.Id);
+    }
+
+    // ─────────────────────────── سطرها ───────────────────────────
+
+    /// <summary>کدام سمت خودکار است — NAHVA_AfterUpdate در WPF.</summary>
+    private (bool From, bool To) AutoSides => (_e.NoAm, _e.Method) switch
+    {
+        (TreasuryOp.Receipt, TreasuryMethod.Cash or TreasuryMethod.Cheque or TreasuryMethod.ChequeReturn) => (false, true),
+        (TreasuryOp.Payment, TreasuryMethod.Cash or TreasuryMethod.Cheque or TreasuryMethod.ChequeAssign or TreasuryMethod.ChequeReturn) => (true, false),
+        _ => (false, false)
+    };
+
+    /// <summary>واگذاری/برگشت: سطر را نمی‌شود به نوعِ دیگری برد (چکش گره خورده).</summary>
+    private bool LockKind => _rowEditIdh is not null && TreasuryMethod.IsCheque(_e.Nahva);
+
+    private string PickMode => (_e.NoAm, _e.Method) switch
+    {
+        (TreasuryOp.Payment, TreasuryMethod.ChequeAssign) => "assign",
+        (TreasuryOp.Payment, TreasuryMethod.ChequeReturn) => "return-received",
+        _ => "return-paid"
+    };
+
+    private string PickTitle => PickMode switch
+    {
+        "assign" => "کدام چکِ دریافتی واگذار می‌شود؟",
+        "return-received" => "کدام چکِ دریافتی به صاحبش برمی‌گردد؟",
+        _ => "کدام چکِ پرداختیِ ما برگشت خورده؟"
+    };
+
+    private string AutoHint(bool from) => (_e.NoAm, _e.Method) switch
+    {
+        (_, TreasuryMethod.Cash) => from ? "در پرداختِ نقد، از حسابِ صندوق خودکار است" : "در دریافتِ نقد، به حسابِ صندوق خودکار است",
+        (TreasuryOp.Receipt, TreasuryMethod.Cheque) => "اسناد دریافتنی (تنظیماتِ سازمان)",
+        (TreasuryOp.Payment, TreasuryMethod.Cheque) => "اسناد پرداختنی (تنظیماتِ سازمان)",
+        (TreasuryOp.Payment, TreasuryMethod.ChequeAssign) => "اسناد دریافتنی — چک از صندوق خارج می‌شود",
+        (TreasuryOp.Payment, TreasuryMethod.ChequeReturn) => "اسناد دریافتنی، یا گیرنده‌ی قبلی اگر چک واگذار شده بود",
+        _ => "اسناد پرداختنی — چکِ ما برگشت خورده"
+    };
+
+    private void ResetEntry()
+    {
+        var keepOp = _e.NoAm;
+        var keepMethod = _e.Method;
+        _e = new Entry { NoAm = keepOp, Method = keepMethod };
+        if (!TreasuryMethod.Allowed(_e.NoAm, _e.Method)) _e.Method = TreasuryMethod.Cash;
+        DefaultsForMethod();
+        _entryKey++;
+        _rowEditIdh = null;
+        ApplyAuto();
+    }
+
+    private void SetOp(int op)
+    {
+        if (_e.NoAm == op) return;
+        ClearAutoSides();
+        _e.NoAm = op;
+        if (!TreasuryMethod.Allowed(op, _e.Method)) _e.Method = TreasuryMethod.Cash;
+        _e.Picked = null;
+        DefaultsForMethod();
+        ApplyAuto();
+    }
+
+    private void SetMethod(int m)
+    {
+        if (_e.Method == m) return;
+        ClearAutoSides();
+        _e.Method = m;
+        _e.Picked = null;
+        DefaultsForMethod();
+        ApplyAuto();
+    }
+
+    private void DefaultsForMethod()
+    {
+        if (_e.Method == TreasuryMethod.ChequeReturn) _e.Vaz ??= _e.NoAm == TreasuryOp.Payment ? 5 : 1;
+        if (_e.Method == TreasuryMethod.ChequeAssign) _e.Sandugh ??= _meta?.ChequeFunds.FirstOrDefault()?.Id;
+    }
+
+    /// <summary>حسابِ خودکارِ سمتِ قبلی پاک شود تا با نوع/نحوه‌ی تازه قاطی نشود.</summary>
+    private void ClearAutoSides()
+    {
+        var a = AutoSides;
+        if (a.From) { _e.Fhes = null; _e.FhesName = null; }
+        if (a.To) { _e.Thes = null; _e.ThesName = null; }
+    }
+
+    private void ApplyAuto()
+    {
+        if (_meta is null) return;
+        switch (_e.NoAm, _e.Method)
+        {
+            case (_, TreasuryMethod.Cash):
+                _ = ApplyCashAsync();
+                return;
+            case (TreasuryOp.Receipt, TreasuryMethod.Cheque):
+                SetSide(false, _e.NonTrade ? _meta.Adv : _meta.Ada);
+                break;
+            case (TreasuryOp.Payment, TreasuryMethod.Cheque):
+                SetSide(true, _e.NonTrade ? _meta.Apv : _meta.Apa);
+                break;
+            case (TreasuryOp.Payment, TreasuryMethod.ChequeAssign):
+                SetSide(true, _e.Picked?.Kind == 0 ? _meta.Adv : _meta.Ada);
+                break;
+            case (TreasuryOp.Payment, TreasuryMethod.ChequeReturn):
+                {
+                    var p = _e.Picked;
+                    var kol = p?.NKol2 is > 0 ? p.NKol2 : p?.NKol;
+                    var assigned = kol is not null && kol != _meta.Bankha;
+                    SetSide(true, assigned ? (p!.Hes1 ?? p.Hes2) : (p?.Kind == 0 ? _meta.Adv : _meta.Ada));
+                    if (string.IsNullOrWhiteSpace(_e.Thes) && !string.IsNullOrWhiteSpace(p?.CustNo))
+                    {
+                        _e.Thes = p!.CustNo!.Trim();
+                        _e.ThesName = null;
+                        _ = NameOfAsync(_e.Thes, false);
+                    }
+                    break;
+                }
+            case (TreasuryOp.Receipt, TreasuryMethod.ChequeReturn):
+                SetSide(false, _e.Picked?.Kind == 0 ? _meta.Apv : _meta.Apa);
+                break;
+        }
+        StateHasChanged();
+    }
+
+    private void SetSide(bool from, string? hes)
+    {
+        if (from) { _e.Fhes = hes; _e.FhesName = hes is null ? null : _accNames.GetValueOrDefault(hes); if (hes is not null && _e.FhesName is null) _ = NameOfAsync(hes, true); }
+        else { _e.Thes = hes; _e.ThesName = hes is null ? null : _accNames.GetValueOrDefault(hes); if (hes is not null && _e.ThesName is null) _ = NameOfAsync(hes, false); }
+    }
+
+    private async Task NameOfAsync(string hes, bool from)
+    {
+        try
+        {
+            var name = (await Api.AccountsAsync(hes)).FirstOrDefault(a => a.Hes == hes)?.Name;
+            _accNames[hes] = name;
+            if (from && _e.Fhes == hes) _e.FhesName = name;
+            if (!from && _e.Thes == hes) _e.ThesName = name;
+            StateHasChanged();
+        }
+        catch { }
+    }
+
+    /// <summary>سطرِ نقد: سمتِ صندوق از واحد و شیفتِ همین خزانه (مثل NO_AM_AfterUpdate در WPF).</summary>
+    private async Task ApplyCashAsync()
+    {
+        if (_e.Method != TreasuryMethod.Cash || _detail is null) return;
+        var acc = await Api.CashAccountAsync(_detail.Header.Depatman, _detail.Header.Shift);
+        if (acc is null) return;
+        if (_e.NoAm == TreasuryOp.Receipt) { _e.Thes = acc.Hes; _e.ThesName = acc.Name; }
+        else { _e.Fhes = acc.Hes; _e.FhesName = acc.Name; }
+        StateHasChanged();
+    }
+
+    private void OnFromChanged(TreasuryAccountDto? a)
+    {
+        _e.Fhes = a?.Hes;
+        _e.FhesName = a?.Name;
+        // GETCHEK: نامِ پرداخت‌کننده = نامِ «از حساب»
+        if (_e.Method == TreasuryMethod.Cheque && _e.NoAm == TreasuryOp.Receipt && string.IsNullOrWhiteSpace(_e.Chq.NameTah)) _e.Chq.NameTah = a?.Name?.Trim();
+    }
+
+    private void OnToChanged(TreasuryAccountDto? a)
+    {
+        _e.Thes = a?.Hes;
+        _e.ThesName = a?.Name;
+        // PAYCHEK: نامِ گیرنده = نامِ «به حساب»
+        if (_e.Method == TreasuryMethod.Cheque && _e.NoAm == TreasuryOp.Payment && string.IsNullOrWhiteSpace(_e.Chq.NameTah)) _e.Chq.NameTah = a?.Name?.Trim();
+    }
+
+    private void OnPicked(TreasuryChequeDto? c)
+    {
+        _e.Picked = c;
+        if (c is not null)
+        {
+            if (_e.Method == TreasuryMethod.ChequeAssign) _e.Sandugh = c.Sandugh ?? _e.Sandugh;
+            if (_e.Method == TreasuryMethod.ChequeReturn && _e.NoAm == TreasuryOp.Payment) _e.Sandugh ??= c.Sandugh;
+        }
+        ApplyAuto();
+    }
+
+    private void EditRow(TreasuryRowDto r)
+    {
+        _rowEditIdh = r.Idh;
+        _entryKey++;
+        _e = new Entry
+        {
+            NoAm = r.NoAm,
+            Method = r.Nahva == TreasuryMethod.NonTradeCheque ? TreasuryMethod.Cheque : r.Nahva,
+            NonTrade = r.Nahva == TreasuryMethod.NonTradeCheque,
+            Fhes = r.Fhes, FhesName = r.FhesName, Thes = r.Thes, ThesName = r.ThesName,
+            Sharh = r.Sharh, Mabl = r.Mabl.ToString("0", CultureInfo.InvariantCulture), MhazNo = r.MhazNo,
+            Current = r.Cheque, Picked = TreasuryMethod.PicksCheque(r.Nahva) ? r.Cheque : null,
+            Sandugh = r.Cheque?.Sandugh, Vaz = r.Cheque?.Vaz is { } v ? (int)v : null
+        };
+        if (r.Cheque is { } c && TreasuryMethod.IsNewCheque(r.Nahva)) _e.Chq = ChequeForm.From(c);
+    }
+
+    private async Task OnEntryKey(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter" && !e.ShiftKey) await SaveRowAsync();
+        else if (e.Key == "Escape") ResetEntry();
+    }
+
+    private async Task SaveRowAsync()
+    {
+        if (_detail is null || _busy) return;
+        var req = new TreasuryRowSaveRequest
+        {
+            NoAm = _e.NoAm, Nahva = _e.Nahva, Fhes = _e.Fhes, Thes = _e.Thes, Sharh = _e.Sharh, MhazNo = _e.MhazNo
+        };
+
+        if (TreasuryMethod.PicksCheque(_e.Method))
+        {
+            if (_e.Picked is null) { Snackbar.Add("چک را از فهرست انتخاب کنید.", Severity.Warning); return; }
+            req.PickedChequeId = _e.Picked.Id;
+            req.Mabl = _e.Picked.Mabl;
+            req.Sandugh = _e.Sandugh;
+            req.Vaz = _e.Vaz;
+        }
+        else
+        {
+            var mabl = ParseMoney(_e.Mabl);
+            if (mabl is not > 0) { Snackbar.Add("مبلغ را وارد کنید.", Severity.Warning); return; }
+            req.Mabl = mabl.Value;
+            if (_e.Method == TreasuryMethod.Cheque)
+            {
+                var (input, err) = _e.Chq.Build(_e.NoAm == TreasuryOp.Receipt, _rowEditIdh is null);
+                if (err is not null) { Snackbar.Add(err, Severity.Warning); return; }
+                req.Cheque = input;
+            }
+        }
+        var auto = AutoSides;
+        if (!auto.From && string.IsNullOrWhiteSpace(_e.Fhes) && _e.Method != TreasuryMethod.ChequeReturn) { Snackbar.Add("«از حساب» را انتخاب کنید.", Severity.Warning); return; }
+        if (!auto.To && string.IsNullOrWhiteSpace(_e.Thes) && _e.Method != TreasuryMethod.ChequeReturn) { Snackbar.Add("«به حساب» را انتخاب کنید.", Severity.Warning); return; }
+
+        _busy = true;
+        StateHasChanged();
+        var r = _rowEditIdh is { } idh
+            ? await Api.UpdateRowAsync(_detail.Header.Id, idh, req)
+            : await Api.AddRowAsync(_detail.Header.Id, req);
+        _busy = false;
+        if (!r.Ok) { Snackbar.Add((r.Error ?? "سطر ذخیره نشد.").Replace("\n", " · "), Severity.Error); StateHasChanged(); return; }
+
+        _flash = r.Idh;
+        var wasEdit = _rowEditIdh is not null;
+        await LoadDetailAsync(_detail.Header.Id);
+        ResetEntry();
+        Snackbar.Add(wasEdit ? "سطر به‌روز شد و سند بازسازی شد." : "سطر ثبت شد و سند بازسازی شد.", Severity.Success);
+        if (!string.IsNullOrWhiteSpace(r.Info)) Snackbar.Add(r.Info, Severity.Info);
+        _ = LoadCashAsync();
+        _ = Task.Delay(1600).ContinueWith(_ => InvokeAsync(() => { _flash = null; StateHasChanged(); }));
+    }
+
+    private async Task DeleteRowAsync(TreasuryRowDto row)
+    {
+        if (_detail is null || _busy) return;
+        var extra = TreasuryMethod.IsCheque(row.Nahva) ? " وضعیتِ چکِ این سطر هم برمی‌گردد." : "";
+        var ok = await DialogService.ShowMessageBox("حذف سطر", $"سطرِ «{row.Sharh}» به مبلغ {Money(row.Mabl)} حذف شود؟{extra}", yesText: "حذف", cancelText: "انصراف");
+        if (ok != true) return;
+        _busy = true;
+        var r = await Api.DeleteRowAsync(_detail.Header.Id, row.Idh);
+        _busy = false;
+        if (!r.Ok) { Snackbar.Add(r.Error ?? "حذف نشد.", Severity.Error); return; }
+        Snackbar.Add("سطر حذف شد و سند بازسازی شد.", Severity.Info);
+        if (_rowEditIdh == row.Idh) ResetEntry();
+        await LoadDetailAsync(_detail.Header.Id);
+        _ = LoadCashAsync();
+    }
+
+    private List<SanadLine> SanadLines => _detail is null ? new() :
+        _detail.Rows.Select(r => new SanadLine(r.Thes ?? "", r.ThesName, r.Mabl, 0))
+            .Concat(_detail.Rows.Select(r => new SanadLine(r.Fhes ?? "", r.FhesName, 0, r.Mabl)))
+            .GroupBy(l => l.Hes)
+            .Select(g => new SanadLine(g.Key, g.First().Name, g.Sum(x => x.Bed), g.Sum(x => x.Bes)))
+            .OrderByDescending(l => l.Bed).ThenByDescending(l => l.Bes)
+            .ToList();
+
+    // ─────────────────────────── قالب‌بندی ───────────────────────────
+
+    private string OpName(int op) => _meta?.Operations.FirstOrDefault(x => x.Id == op)?.Name?.Trim() is { Length: > 0 } n ? n : op == 1 ? "دریافت" : "پرداخت";
+    private string MethodName(int m) => _meta?.Methods.FirstOrDefault(x => x.Id == m)?.Name?.Trim() is { Length: > 0 } n ? n : m.ToString();
+    private static string KindName(int k) => k switch { 2 => "سند دریافت", 3 => "سند پرداخت", _ => "عادی" };
+    private static string Money(double v) => AccountPicker.Money(v);
+    private static string StatementUrl(string? hes) => string.IsNullOrWhiteSpace(hes) ? "javascript:void(0)" : $"/customer-statement/{hes.Trim()}";
+
+    private static double? ParseMoney(string? s)
+    {
+        if (string.IsNullOrWhiteSpace(s)) return null;
+        var digits = ChequeForm.Digits(s);
+        return double.TryParse(digits, NumberStyles.None, CultureInfo.InvariantCulture, out var v) ? v : null;
+    }
+
+    private static long ToLong(DateTime d) => Pc.GetYear(d) * 10000L + Pc.GetMonth(d) * 100 + Pc.GetDayOfMonth(d);
+
+    private static DateTime? FromLong(long d)
+    {
+        try { return Pc.ToDateTime((int)(d / 10000), (int)(d / 100 % 100), (int)(d % 100), 0, 0, 0, 0); }
+        catch { return null; }
+    }
+
+    private static string FormatDate(long d) => ChequeForm.FormatDate(d);
+    private static long? ParseDate(string? s) => ChequeForm.ParseDate(s);
+
+    private static string DateLabel(long d)
+    {
+        var dt = FromLong(d);
+        if (dt is null) return FormatDate(d);
+        var today = DateTime.Now.Date;
+        if (dt.Value.Date == today) return "امروز";
+        if (dt.Value.Date == today.AddDays(-1)) return "دیروز";
+        return $"{AutomationUi.WeekDay(dt.Value.DayOfWeek)} {FormatDate(d)}";
+    }
+
+    private static HeaderForm Clone(HeaderForm h) => new() { Date = h.Date, Kind = h.Kind, Depatman = h.Depatman, Shift = h.Shift, Molah = h.Molah };
+
+    private static string Norm(string? s) => (s ?? "").Replace('ي', 'ی').Replace('ك', 'ک').Replace('‌', ' ').ToLowerInvariant();
+}

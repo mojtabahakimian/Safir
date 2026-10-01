@@ -13,6 +13,8 @@
 @inject ISnackbar Snackbar
 @inject ConnectivityService Connectivity
 @inject ConnectionManagerService ConnectionManager
+@inject WorkspaceApiService WorkspaceApi
+@using Safir.Client.Components.Workspace
 
 <PageTitle>ورود | سفیر</PageTitle>
 
@@ -79,6 +81,44 @@
 
 
 
+        @if (workspace is not null)
+        {
+            @* مرحله‌ی دوم — مثل پنجره‌ی DEFAULT ِ WPF بعد از رمز: واحد جاری و شیفت *@
+            <div class="safir-login-step">
+                <MudText Typo="Typo.subtitle1" Style="font-weight:700">واحد و شیفت کاری</MudText>
+                <MudText Typo="Typo.body2" Class="mb-4" Style="opacity:.75">
+                    خزانه و فرم‌های وابسته به واحد، با همین انتخاب کار می‌کنند.
+                </MudText>
+                @if (!workspace.CanChange)
+                {
+                    <MudAlert Severity="Severity.Info" Dense="true" Class="mb-4">واحد و شیفتِ پیش‌فرضِ شما؛ اجازه‌ی تغییرشان را ندارید.</MudAlert>
+                }
+                <WorkspacePicker Options="workspace" @bind-Depatman="workspaceDep" @bind-Shift="workspaceShift"
+                                 Disabled="@(!workspace.CanChange || isProcessing)" />
+
+                @* Enter همین‌جا = تأییدِ پیش‌فرض‌ها؛ Enter داخلِ انتخابگرها به اینجا نمی‌رسد *@
+                <div class="mt-5" tabindex="-1" style="outline:none" @ref="workspaceActions" @onkeydown="WorkspaceKeyDown">
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary" FullWidth="true" Size="Size.Large"
+                               OnClick="ConfirmWorkspace" Disabled="@isProcessing"
+                               EndIcon="@(isProcessing ? null : Icons.Material.Filled.ArrowForward)"
+                               Style="height: 50px; font-weight: 600;" Class="rounded-lg">
+                        @if (isProcessing)
+                        {
+                            <MudProgressCircular Indeterminate="true" Size="Size.Small" Style="color: inherit;" />
+                        }
+                        else
+                        {
+                            <span>ورود به سیستم</span>
+                        }
+                    </MudButton>
+                    <MudButton Variant="Variant.Text" FullWidth="true" Class="mt-2" OnClick="BackToLogin" Disabled="@isProcessing">
+                        بازگشت
+                    </MudButton>
+                </div>
+            </div>
+        }
+        else
+        {
         <MudForm @ref="form" @bind-IsValid="isValid" ValidationDelay="0">
             @* Username Field - اضافه کردن onkeyup و style *@
             <MudTextField T="string"
@@ -138,6 +178,7 @@
                 }
             </MudButton>
         </MudForm>
+        }
 
     </MudPaper>
 </MudContainer>
@@ -171,6 +212,12 @@
     private MudForm? dbSettingsForm;
     private bool isDbSettingsValid;
     private bool isTestingConnection = false;
+
+    // مرحله‌ی دوم: واحد و شیفت
+    private WorkspaceOptionsDto? workspace;
+    private int? workspaceDep, workspaceShift;
+    private ElementReference workspaceActions;
+    private bool focusWorkspace;
 
     // We inject HttpClient for the connection test endpoint.
     [Inject] private HttpClient HttpClient { get; set; } = default!;
@@ -328,7 +375,17 @@
             var result = await AuthService.Login(request);
             if (result.Successful)
             {
-                NavigationManager.NavigateTo("/", forceLoad: true);
+                // مثل WPF: بعد از رمز، واحد و شیفت. اگر فهرست‌ها نیامد (مثلاً دیتابیسِ بدونِ DEPART)
+                // ورود متوقف نمی‌شود — توکن همان پیش‌فرضِ DEFAULTDEP را دارد.
+                workspace = await WorkspaceApi.OptionsAsync();
+                if (workspace is null)
+                {
+                    NavigationManager.NavigateTo("/", forceLoad: true);
+                    return;
+                }
+                workspaceDep = workspace.Depatman;
+                workspaceShift = workspace.Shift;
+                focusWorkspace = true;
             }
             else
             {
@@ -348,4 +405,50 @@
     }
 
 
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (focusWorkspace && workspace is not null)
+        {
+            focusWorkspace = false;
+            try { await workspaceActions.FocusAsync(); } catch { /* فقط راحتیِ Enter */ }
+        }
+    }
+
+    private async Task WorkspaceKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter" && !isProcessing) await ConfirmWorkspace();
+    }
+
+    private async Task ConfirmWorkspace()
+    {
+        if (workspace is null || isProcessing) return;
+        isProcessing = true;
+        errorMessage = null;
+        StateHasChanged();
+        try
+        {
+            var r = await WorkspaceApi.SaveAsync(workspaceDep, workspaceShift);
+            if (r.Ok)
+            {
+                NavigationManager.NavigateTo("/", forceLoad: true);
+                return;
+            }
+            errorMessage = r.Error;
+        }
+        finally
+        {
+            isProcessing = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    /// <summary>برگشت به رمز — توکنِ مرحله‌ی اول هم پاک می‌شود.</summary>
+    private async Task BackToLogin()
+    {
+        await AuthService.Logout();
+        workspace = null;
+        errorMessage = null;
+        loginRequestModel.Password = string.Empty;
+    }
 }
