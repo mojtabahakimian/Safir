@@ -26,7 +26,7 @@ GO
 
 INSERT INTO GSCADTL ([GSCADTCOD], [GSCANAME], [GSCAGRADE], [GSCAFROM], [GSCATO], [GSCACOD])
 SELECT seed.[GSCADTCOD], seed.[GSCANAME], seed.[GSCAGRADE], seed.[GSCAFROM], seed.[GSCATO], seed.[GSCACOD] FROM (VALUES
-( 1, N'عالی', 100, 0, 0, 1 ), 
+( 1, N'عالی', 100, 0, 0, 1 ),
 									( 2, N'خیلی خوب', 83, 0, 0, 1 ), 
 									( 3, N'خوب', 66, 0, 0, 1 ), 
 									( 4, N'متوسط', 50, 0, 0, 1 ), 
@@ -452,6 +452,58 @@ CREATE TABLE [dbo].[CustomerComplaints](
 END;
 GO
 
+IF OBJECT_ID(N'dbo.RewardRules',N'U') IS NULL
+BEGIN
+CREATE TABLE [dbo].[RewardRules](
+                                        [RuleID] [int] IDENTITY(1,1) NOT NULL,
+                                        [ProductID_Target] [nvarchar](15) NOT NULL,
+                                        [Quantity_Threshold] [int] NOT NULL,
+                                        [Reward_Type] [nvarchar](50) NOT NULL,
+                                        [Reward_ProductID] [nvarchar](15) NOT NULL,
+                                        [Reward_Quantity] [int] NULL,
+                                        [Reward_Discount_Percentage] [decimal](5, 2) NULL,
+                                        [IsActive] [bit] NOT NULL,
+                                        [StartDate] [bigint] NULL,
+                                        [EndDate] [bigint] NULL,
+                                        [Description] [nvarchar](200) NULL,
+                                        [CRT] [datetime] NULL,
+                                        [UID] [int] NULL,
+                                       CONSTRAINT [PK__RewardRu__110458C21C0D3C6E] PRIMARY KEY CLUSTERED
+                                      (
+                                        [RuleID] ASC
+                                      )WITH (PAD_INDEX  = OFF, STATISTICS_NORECOMPUTE  = OFF, IGNORE_DUP_KEY = OFF, ALLOW_ROW_LOCKS  = ON, ALLOW_PAGE_LOCKS  = ON) ON [PRIMARY]
+                                      ) ON [PRIMARY]
+END;
+GO
+
+IF NOT EXISTS (SELECT 1 FROM sys.foreign_keys WHERE parent_object_id=OBJECT_ID(N'dbo.RewardRules') AND name=N'FK_RewardRules_ProductID_Target')
+ALTER TABLE [dbo].[RewardRules]  WITH CHECK ADD  CONSTRAINT [FK_RewardRules_ProductID_Target] FOREIGN KEY([ProductID_Target])
+                                      REFERENCES [dbo].[STUF_DEF] ([CODE])
+GO
+
+ALTER TABLE [dbo].[RewardRules] CHECK CONSTRAINT [FK_RewardRules_ProductID_Target]
+GO
+
+IF NOT EXISTS (SELECT 1 FROM sys.foreign_keys WHERE parent_object_id=OBJECT_ID(N'dbo.RewardRules') AND name=N'FK_RewardRules_Reward_ProductID')
+ALTER TABLE [dbo].[RewardRules]  WITH CHECK ADD  CONSTRAINT [FK_RewardRules_Reward_ProductID] FOREIGN KEY([Reward_ProductID])
+                                      REFERENCES [dbo].[STUF_DEF] ([CODE])
+GO
+
+ALTER TABLE [dbo].[RewardRules] CHECK CONSTRAINT [FK_RewardRules_Reward_ProductID]
+GO
+
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id=OBJECT_ID(N'dbo.RewardRules') AND name=N'Reward_Type' AND default_object_id<>0)
+ALTER TABLE [dbo].[RewardRules] ADD  CONSTRAINT [DF_RewardRules_Reward_Type]  DEFAULT (N'محصول') FOR [Reward_Type]
+GO
+
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id=OBJECT_ID(N'dbo.RewardRules') AND name=N'IsActive' AND default_object_id<>0)
+ALTER TABLE [dbo].[RewardRules] ADD  CONSTRAINT [DF__RewardRul__IsAct__1DF584E0]  DEFAULT ((1)) FOR [IsActive]
+GO
+
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id=OBJECT_ID(N'dbo.RewardRules') AND name=N'CRT' AND default_object_id<>0)
+ALTER TABLE [dbo].[RewardRules] ADD  CONSTRAINT [DF__RewardRules__CRT__1EE9A919]  DEFAULT (getdate()) FOR [CRT]
+GO
+
 IF OBJECT_ID(N'dbo.InvoiceRewards',N'U') IS NULL
 BEGIN
 CREATE TABLE [dbo].[InvoiceRewards](
@@ -483,9 +535,15 @@ ALTER TABLE [dbo].[InvoiceRewards]  WITH CHECK ADD  CONSTRAINT [FK_InvoiceReward
 										REFERENCES [dbo].[HEAD_LST] ([NUMBER], [TAG])
 GO
 
+ALTER TABLE [dbo].[InvoiceRewards] CHECK CONSTRAINT [FK_InvoiceRewards_HEAD_LST]
+GO
+
 IF NOT EXISTS (SELECT 1 FROM sys.foreign_keys WHERE parent_object_id=OBJECT_ID(N'dbo.InvoiceRewards') AND name=N'FK_InvoiceRewards_RewardRule')
 ALTER TABLE [dbo].[InvoiceRewards]  WITH CHECK ADD  CONSTRAINT [FK_InvoiceRewards_RewardRule] FOREIGN KEY([RewardRuleID])
 										REFERENCES [dbo].[RewardRules] ([RuleID])
+GO
+
+ALTER TABLE [dbo].[InvoiceRewards] CHECK CONSTRAINT [FK_InvoiceRewards_RewardRule]
 GO
 
 IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id=OBJECT_ID(N'dbo.InvoiceRewards') AND name=N'CRT' AND default_object_id<>0)
@@ -523,10 +581,16 @@ ALTER TABLE [dbo].[PRICE_ELAMIETF_EXCEPTION]  WITH CHECK ADD  CONSTRAINT [FK_PRI
 								ON UPDATE CASCADE
 GO
 
+ALTER TABLE [dbo].[PRICE_ELAMIETF_EXCEPTION] CHECK CONSTRAINT [FK_PRICE_ELAMIETF_EXCEPTION_DTL]
+GO
+
 IF NOT EXISTS (SELECT 1 FROM sys.foreign_keys WHERE parent_object_id=OBJECT_ID(N'dbo.PRICE_ELAMIETF_EXCEPTION') AND name=N'FK_PRICE_ELAMIETF_EXCEPTION_STUF')
 ALTER TABLE [dbo].[PRICE_ELAMIETF_EXCEPTION]  WITH CHECK ADD  CONSTRAINT [FK_PRICE_ELAMIETF_EXCEPTION_STUF] FOREIGN KEY([CODE])
 								REFERENCES [dbo].[STUF_DEF] ([CODE])
 								ON UPDATE CASCADE
+GO
+
+ALTER TABLE [dbo].[PRICE_ELAMIETF_EXCEPTION] CHECK CONSTRAINT [FK_PRICE_ELAMIETF_EXCEPTION_STUF]
 GO
 
 IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id=OBJECT_ID(N'dbo.PRICE_ELAMIETF_EXCEPTION') AND name=N'EXCEPTION_TF1' AND default_object_id<>0)
@@ -543,52 +607,6 @@ GO
 
 IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id=OBJECT_ID(N'dbo.PRICE_ELAMIETF_EXCEPTION') AND name=N'CRT' AND default_object_id<>0)
 ALTER TABLE [dbo].[PRICE_ELAMIETF_EXCEPTION] ADD  CONSTRAINT [DF_PRICE_ELAMIETF_EXCEPTION_CRT]  DEFAULT (getdate()) FOR [CRT]
-GO
-
-IF OBJECT_ID(N'dbo.RewardRules',N'U') IS NULL
-BEGIN
-CREATE TABLE [dbo].[RewardRules](
-									  	[RuleID] [int] IDENTITY(1,1) NOT NULL,
-									  	[ProductID_Target] [nvarchar](15) NOT NULL,
-									  	[Quantity_Threshold] [int] NOT NULL,
-									  	[Reward_Type] [nvarchar](50) NOT NULL,
-									  	[Reward_ProductID] [nvarchar](15) NOT NULL,
-									  	[Reward_Quantity] [int] NULL,
-									  	[Reward_Discount_Percentage] [decimal](5, 2) NULL,
-									  	[IsActive] [bit] NOT NULL,
-									  	[StartDate] [bigint] NULL,
-									  	[EndDate] [bigint] NULL,
-									  	[Description] [nvarchar](200) NULL,
-									  	[CRT] [datetime] NULL,
-									  	[UID] [int] NULL,
-									   CONSTRAINT [PK__RewardRu__110458C21C0D3C6E] PRIMARY KEY CLUSTERED 
-									  (
-									  	[RuleID] ASC
-									  )WITH (PAD_INDEX  = OFF, STATISTICS_NORECOMPUTE  = OFF, IGNORE_DUP_KEY = OFF, ALLOW_ROW_LOCKS  = ON, ALLOW_PAGE_LOCKS  = ON) ON [PRIMARY]
-									  ) ON [PRIMARY]
-END;
-GO
-
-IF NOT EXISTS (SELECT 1 FROM sys.foreign_keys WHERE parent_object_id=OBJECT_ID(N'dbo.RewardRules') AND name=N'FK_RewardRules_ProductID_Target')
-ALTER TABLE [dbo].[RewardRules]  WITH CHECK ADD  CONSTRAINT [FK_RewardRules_ProductID_Target] FOREIGN KEY([ProductID_Target])
-									  REFERENCES [dbo].[STUF_DEF] ([CODE])
-GO
-
-IF NOT EXISTS (SELECT 1 FROM sys.foreign_keys WHERE parent_object_id=OBJECT_ID(N'dbo.RewardRules') AND name=N'FK_RewardRules_Reward_ProductID')
-ALTER TABLE [dbo].[RewardRules]  WITH CHECK ADD  CONSTRAINT [FK_RewardRules_Reward_ProductID] FOREIGN KEY([Reward_ProductID])
-									  REFERENCES [dbo].[STUF_DEF] ([CODE])
-GO
-
-IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id=OBJECT_ID(N'dbo.RewardRules') AND name=N'Reward_Type' AND default_object_id<>0)
-ALTER TABLE [dbo].[RewardRules] ADD  CONSTRAINT [DF_RewardRules_Reward_Type]  DEFAULT (N'محصول') FOR [Reward_Type]
-GO
-
-IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id=OBJECT_ID(N'dbo.RewardRules') AND name=N'IsActive' AND default_object_id<>0)
-ALTER TABLE [dbo].[RewardRules] ADD  CONSTRAINT [DF__RewardRul__IsAct__1DF584E0]  DEFAULT ((1)) FOR [IsActive]
-GO
-
-IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id=OBJECT_ID(N'dbo.RewardRules') AND name=N'CRT' AND default_object_id<>0)
-ALTER TABLE [dbo].[RewardRules] ADD  CONSTRAINT [DF__RewardRules__CRT__1EE9A919]  DEFAULT (getdate()) FOR [CRT]
 GO
 
 IF OBJECT_ID(N'dbo.USER_PERSONEL_ORDER',N'U') IS NULL
@@ -621,6 +639,17 @@ CREATE TABLE [dbo].[GENERAL_OPTIONS] (
 END;
 GO
 
+IF COL_LENGTH(N'dbo.GENERAL_OPTIONS',N'CRT') IS NULL
+                                   ALTER TABLE [dbo].[GENERAL_OPTIONS]
+                                   ADD [CRT] DATETIME NULL
+                                   CONSTRAINT [DF__GENERAL_OPT__CRT__2C3B9588] DEFAULT (GETDATE());
+GO
+
+IF COL_LENGTH(N'dbo.GENERAL_OPTIONS',N'UID') IS NULL
+                                   ALTER TABLE [dbo].[GENERAL_OPTIONS]
+                                   ADD [UID] bigint NULL;
+GO
+
 IF COL_LENGTH(N'dbo.MESAGEP',N'SNOOZE_COUNT') IS NULL
 ALTER TABLE dbo.MESAGEP ADD SNOOZE_COUNT INT DEFAULT 0;
 IF COL_LENGTH(N'dbo.MESAGEP',N'LAST_NOTIFY_TIME') IS NULL
@@ -629,7 +658,7 @@ GO
 
 INSERT INTO TCOD_Countries ([Code], [CountriesName], [CodeIcon], [THREE_LETTER_CODE])
 SELECT seed.[Code], seed.[CountriesName], seed.[CodeIcon], seed.[THREE_LETTER_CODE] FROM (VALUES
-( 100001, N'آرژانتین', 64, N'ARG' ), 
+( 100001, N'آرژانتین', 64, N'ARG' ),
 						                ( 100002, N'آروبا', 75, N'ABW' ), 
 						                ( 100003, N'آفریقای جنوبی', 66, N'ZAF' ), 
 						                ( 100004, N'آفریقای مرکزی', 65, N'CAF' ), 

@@ -184,13 +184,36 @@
     private bool             _loading;
     private bool             _busy;
     private DbUpgradeExecution? _execution;
-    private CancellationTokenSource _pollCancellation = new();
-    public void Dispose() { _pollCancellation.Cancel(); _pollCancellation.Dispose(); }
+    private CancellationTokenSource? _pollCancellation;
+    private bool _disposed;
+    public void Dispose()
+    {
+        if (_disposed) return;
+        _disposed = true;
+        StopPolling();
+    }
+
+    private void StopPolling() => _pollCancellation?.Cancel();
+
+    private async Task StartPollingAsync(DateTime previousStart)
+    {
+        StopPolling();
+        if (_disposed) return;
+
+        var cancellation = new CancellationTokenSource();
+        _pollCancellation = cancellation;
+        try { await PollAsync(previousStart, cancellation.Token); }
+        finally
+        {
+            if (ReferenceEquals(_pollCancellation, cancellation)) _pollCancellation = null;
+            // The polling task owns this source until its outstanding HTTP request ends.
+            cancellation.Dispose();
+        }
+    }
 
     protected override async Task OnInitializedAsync()
     {
         await LoadAsync();
-        if (_execution?.Running == true) _ = PollAsync(DateTime.MinValue, _pollCancellation.Token);
     }
 
     private async Task PollAsync(DateTime previousStart, CancellationToken ct)
@@ -200,7 +223,9 @@
             using var timer = new PeriodicTimer(TimeSpan.FromSeconds(2));
             while (await timer.WaitForNextTickAsync(ct))
             {
-                var current = await Api.GetExecutionAsync();
+                var current = await Api.GetExecutionAsync(ct);
+                ct.ThrowIfCancellationRequested();
+                if (_disposed) return;
                 if (current is null || current.StartedAtUtc <= previousStart) continue;
                 _execution = current;
                 _busy = current.Running;
@@ -212,6 +237,7 @@
         catch (OperationCanceledException) { }
         catch (Exception ex)
         {
+            if (_disposed || ct.IsCancellationRequested) return;
             _error = "خواندن پیشرفت اجرا ممکن نشد: " + ex.Message;
             await InvokeAsync(StateHasChanged);
         }
@@ -219,22 +245,31 @@
 
     private async Task LoadAsync()
     {
+        if (_disposed) return;
         _loading = true;
         _error   = null;
         StateHasChanged();
 
         var (status, err) = await Api.GetStatusAsync();
+        if (_disposed) return;
         _status = status;
         _error  = err;
         if (err is null)
         {
             try
             {
-                _execution = await Api.GetExecutionAsync();
+                var execution = await Api.GetExecutionAsync();
+                if (_disposed) return;
+                _execution = execution;
                 _busy = _execution?.Running == true;
                 if (_execution?.Result is not null) _result = _execution.Result;
+                if (_busy && _pollCancellation is null) _ = StartPollingAsync(DateTime.MinValue);
             }
-            catch (Exception ex) { _error = "خواندن وضعیت اجرا ممکن نشد: " + ex.Message; }
+            catch (Exception ex)
+            {
+                if (_disposed) return;
+                _error = "خواندن وضعیت اجرا ممکن نشد: " + ex.Message;
+            }
         }
         _loading = false;
     }
@@ -249,7 +284,7 @@
     /// </summary>
     private async Task ConfirmAndRunAsync(bool preview)
     {
-        if (_status is null) return;
+        if (_disposed || _status is null) return;
 
         var parameters = new DialogParameters
         {
@@ -264,7 +299,7 @@
             new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true });
 
         var res = await dlg.Result;
-        if (res.Canceled) return;
+        if (_disposed || res.Canceled) return;
 
         // دیالوگ خودِ انتخابِ «اطلاعات پایه» را برمی‌گرداند.
         var includeBaseData = res.Data as bool? ?? true;
@@ -275,10 +310,7 @@
         StateHasChanged();
 
         var previousStart = _execution?.StartedAtUtc ?? DateTime.MinValue;
-        _pollCancellation.Cancel();
-        _pollCancellation.Dispose();
-        _pollCancellation = new();
-        var polling = preview ? Task.CompletedTask : PollAsync(previousStart, _pollCancellation.Token);
+        var polling = preview ? Task.CompletedTask : StartPollingAsync(previousStart);
         var (result, err) = await Api.RunAsync(new DbUpgradeRequest
         {
             ConfirmDatabase = _status.Database,
@@ -286,8 +318,9 @@
             PreviewOnly     = preview,
             IncludeBaseData = includeBaseData
         });
-        _pollCancellation.Cancel();
+        StopPolling();
         await polling;
+        if (_disposed) return;
 
         _busy   = false;
         _result = result;

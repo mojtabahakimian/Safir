@@ -153,7 +153,16 @@ namespace Safir.Server.Services
 
             // یک رفت‌وبرگشت برای همه‌ی شاخص‌ها. جدا جدا پرسیدن یعنی هشت
             // رفت‌وبرگشت برای کاری که فقط گزارش می‌دهد.
-            var sql = new StringBuilder();
+            // SQL Server resolves table references before evaluating CASE. Keep
+            // the optional table reference in dynamic SQL so old databases can
+            // still reach the upgrade screen that creates this table.
+            var sql = new StringBuilder(@"
+DECLARE @Chk23Present bit = 0;
+IF COL_LENGTH(N'dbo.CC_CheckRule', N'RuleCode') IS NOT NULL
+    EXEC sys.sp_executesql
+        N'SELECT @present=CAST(CASE WHEN EXISTS (SELECT 1 FROM dbo.CC_CheckRule WHERE RuleCode=N''CHK-23'') THEN 1 ELSE 0 END AS bit)',
+        N'@present bit OUTPUT', @present=@Chk23Present OUTPUT;
+");
             for (int i = 0; i < Probes.Length; i++)
             {
                 var p = Probes[i];
@@ -167,8 +176,7 @@ namespace Safir.Server.Services
                     // شاخصِ داده‌ای فقط وقتی معنی دارد که خودِ جدول باشد؛
                     // وگرنه کوئری با «Invalid object name» می‌شکند و کل
                     // صفحه خطا می‌دهد به‌جای اینکه بگوید چه چیزی کم است.
-                    _ => $"SELECT {i} AS Idx, CAST(CASE WHEN OBJECT_ID('dbo.CC_CheckRule') IS NOT NULL " +
-                         $"AND EXISTS (SELECT 1 FROM dbo.CC_CheckRule WHERE RuleCode = '{p.Target}') THEN 1 ELSE 0 END AS BIT) AS Present"
+                    _ => $"SELECT {i} AS Idx, @Chk23Present AS Present"
                 });
             }
 
