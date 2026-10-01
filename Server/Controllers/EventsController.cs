@@ -145,7 +145,8 @@ namespace Safir.Server.Controllers
                     fileBytes = memoryStream.ToArray();
                 }
 
-                _logger.LogInformation("API: Received file '{FileName}' ({ContentType}) with size {Size} bytes for Task {TaskId}.", file.FileName, file.ContentType, file.Length, taskId);
+                // FormFile.ContentType روی بخشی که سربرگ ندارد NullReference می‌دهد؛ فقط برای لاگ است
+                _logger.LogInformation("API: Received file '{FileName}' ({ContentType}) with size {Size} bytes for Task {TaskId}.", file.FileName, file.Headers?.ContentType.ToString(), file.Length, taskId);
 
                 // Option 1: Save to disk and store path/name in DB (Recommended for large files)
                 // If you use this, the 'pic' column in EVENTS should be nvarchar(MAX) for path, not 'image'.

@@ -201,12 +201,7 @@ namespace Safir.Client.Services
                 if (fileStream != null && fileName != null)
                 {
                     var fileContent = new StreamContent(fileStream);
-                    // Determine content type dynamically if possible, or set a default
-                    string contentType;
-                    if (fileName.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase)) contentType = "application/pdf";
-                    else if (fileName.EndsWith(".jpg", StringComparison.OrdinalIgnoreCase) || fileName.EndsWith(".jpeg", StringComparison.OrdinalIgnoreCase)) contentType = "image/jpeg";
-                    else if (fileName.EndsWith(".png", StringComparison.OrdinalIgnoreCase)) contentType = "image/png";
-                    else contentType = "application/octet-stream";
+                    var contentType = Safir.Shared.Models.Automation.EventAttachmentPolicy.ContentTypeOf(fileName);
 
                     fileContent.Headers.ContentType = new MediaTypeHeaderValue(contentType);
                     content.Add(fileContent, "file", fileName); // "file" matches IFormFile parameter name on server

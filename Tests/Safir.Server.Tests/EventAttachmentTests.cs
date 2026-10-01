@@ -27,10 +27,16 @@ public class EventAttachmentTests
         }
     }
 
+    /// <summary>
+    /// اکسل و ورد همان مسیرِ ذخیره‌ی ضمیمه (EVENTS.pic + FXTYPE) را می‌روند — WPF هم فایل را با همان
+    /// پسوند باز می‌کند. FormFile بدونِ سربرگ عمداً: بخشی بدونِ Content-Type نباید کنترلر را بشکند.
+    /// </summary>
     [Theory]
     [InlineData("test.XLSX", ".xlsx")]
     [InlineData("test.xls", ".xls")]
-    public async Task ExcelBytesReachTheExistingAttachmentStorage(string fileName, string extension)
+    [InlineData("report.DOCX", ".docx")]
+    [InlineData("report.doc", ".doc")]
+    public async Task OfficeBytesReachTheExistingAttachmentStorage(string fileName, string extension)
     {
         var db = DispatchProxy.Create<IDatabaseService, DbProxy>();
         var bytes = new byte[] { 80, 75, 3, 4, 1, 2, 3 };
@@ -42,7 +48,9 @@ public class EventAttachmentTests
         using var stream = new MemoryStream(bytes);
         var result = await controller.CreateEvent(1, new CreateEventRequestDto { IDNUM=1, EVENTS="Excel attachment" },
             new FormFile(stream, 0, bytes.Length, "file", fileName));
-        Assert.IsType<CreatedAtActionResult>(result.Result);
+        // CreateEvent «200 + رویداد» برمی‌گرداند و AutomationApiService همان را می‌خواند
+        var ok = Assert.IsType<OkObjectResult>(result.Result);
+        Assert.Equal(extension, Assert.IsType<EventModel>(ok.Value).AttachedFileType);
         var captured = (DbProxy)(object)db;
         Assert.Equal(bytes, captured.Bytes);
         Assert.Equal(extension, captured.Extension);
@@ -51,6 +59,8 @@ public class EventAttachmentTests
     [Theory]
     [InlineData("invoice.xlsx.exe")]
     [InlineData("invoice.xlsm")]
+    [InlineData("report.docm")]
+    [InlineData("report.docx.js")]
     [InlineData("invoice")]
     public void UnsupportedFilesRemainRejected(string fileName) => Assert.False(EventAttachmentPolicy.IsAllowed(fileName));
 }
