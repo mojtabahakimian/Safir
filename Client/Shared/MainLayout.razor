@@ -24,9 +24,6 @@
         <div class="d-flex align-center gap-2 ml-3" style="cursor: pointer;" @onclick='() => NavManager.NavigateTo("/")'>
             <img class="safir-appbar-logo" src="img/safir-logo.png" alt="سفیر" />
             <MudText Typo="Typo.h6" Class="safir-appbar-title" Style="font-weight:800;">سفیر</MudText>
-            <MudTooltip Text="@($"نسخه سامانه سفیر: {appVersion}")" Arrow="true">
-                <span class="safir-appbar-version">v@(appVersion)</span>
-            </MudTooltip>
         </div>
 
         @* شرکت (دیتابیس) این تب با رنگ ثابت خودش، تا وقتی چند شرکت در چند تب باز است سند در شرکت اشتباه زده نشود *@
@@ -217,6 +214,13 @@
             @Body
         </MudContainer>
     </MudMainContent>
+
+    @* نشانگر نسخه سامانه در پایین گوشه سمت چپ صفحه *@
+    <div class="safir-corner-version" style="position: fixed; bottom: 16px; left: 16px; z-index: 999;">
+        <MudTooltip Text="@($"نسخه سامانه سفیر: {appVersion}")" Arrow="true" Placement="Placement.Right">
+            <span>v@(appVersion)</span>
+        </MudTooltip>
+    </div>
 </MudLayout>
 
 @code {
