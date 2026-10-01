@@ -2,7 +2,7 @@
 @using Safir.Shared.Interfaces
 @using MudBlazor
 @using System.ComponentModel.DataAnnotations
-@using System.Globalization // برای PersianCalendar
+@using System.Globalization @* برای PersianCalendar *@
 
 
 @inject IAutomationApiService AutomationService
@@ -35,7 +35,7 @@
                     {
                         <MudButton Size="Size.Small" Variant="Variant.Outlined" Color="Color.Info"
                                OnClick="@(() => DownloadAttachment(context.IDNUM, context.IDD, context.AttachedFileName))"
-                               EndIcon="@Icons.Material.Filled.Attachment"
+                               EndIcon="@FileIcon(context.AttachedFileType)"
                                Title="@context.AttachedFileName">
                             مشاهده
                         </MudButton>
@@ -72,8 +72,8 @@
 
                 @* NEW: Input for file attachment *@
                 <MudItem Class="my-4">
-                    <MudText Typo="Typo.body2" Class="mb-2">فایل ضمیمه (عکس، PDF یا اکسل؛ حداکثر ۱۰ مگابایت):</MudText>
-                    <InputFile OnChange="HandleFileSelection" accept=".jpg,.jpeg,.png,.pdf,.xlsx,.xls" />
+                    <MudText Typo="Typo.body2" Class="mb-2">فایل ضمیمه (عکس، PDF، اکسل یا ورد؛ حداکثر ۱۰ مگابایت):</MudText>
+                    <InputFile OnChange="HandleFileSelection" accept="@string.Join(",", AllowedFileExtensions)" />
                     @if (_selectedFile != null)
                     {
                         <MudText Typo="Typo.body2" Class="mt-2">فایل انتخاب شده: @_selectedFile.Name (@((_selectedFile.Size / 1024).ToString("N0")) KB)</MudText>
@@ -162,6 +162,16 @@
 
         _selectedFile = file;
     }
+
+    /// <summary>آیکونِ ضمیمه بر اساسِ پسوند (FXTYPE).</summary>
+    private static string FileIcon(string? ext) => ext?.ToLowerInvariant() switch
+    {
+        ".xlsx" or ".xls" => Icons.Material.Filled.TableChart,
+        ".docx" or ".doc" => Icons.Material.Filled.Description,
+        ".pdf" => Icons.Material.Filled.PictureAsPdf,
+        ".jpg" or ".jpeg" or ".png" => Icons.Material.Filled.Image,
+        _ => Icons.Material.Filled.Attachment
+    };
 
     private void ClearFileSelection()
     {
