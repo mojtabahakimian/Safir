@@ -1,0 +1,112 @@
+@using Safir.Shared.Models.Treasury
+@using Safir.Client.Pages.Salary.Tabs
+
+@*
+    مشخصاتِ چک — همان فیلدهای GETCHEK (چکِ دریافتی) و PAYCHEK (چکِ خودمان)، به‌اضافه‌ی
+    «چند فقره» که جای پنجره‌های اضافه‌ی چکِ گروهی (CREATE_CHEKDP / CREATE_CHEKPDP) را می‌گیرد.
+*@
+<div class="trs-chq @(Receive ? "is-rec" : "is-pay")">
+    <div class="trs-chq__title">
+        <i class="bi bi-credit-card-2-front"></i>
+        @(Receive ? "مشخصاتِ چکِ دریافتی" : "مشخصاتِ چکِ پرداختی")
+        @if (Form.Group && AllowGroup)
+        {
+            <span class="trs-chq__badge">@Form.Count فقره · هر @Form.Gap ماه</span>
+        }
+    </div>
+    <div class="trs-chq__grid">
+        <div class="trs-f">
+            <label>شماره سریال <span class="req">*</span></label>
+            <Pay2NumericInput @bind-Value="Form.NSeri" MaxLength="16" Direction="ltr" Disabled="@Disabled" Placeholder="۱۲۳۴۵۶" />
+        </div>
+        <div class="trs-f">
+            <label>بانک <span class="req">*</span></label>
+            <select class="atm-input" @bind="Form.Bank" disabled="@Disabled">
+                <option value="">—</option>
+                @foreach (var b in Meta.Banks) { <option value="@b.Id">@b.Name</option> }
+            </select>
+        </div>
+        <div class="trs-f">
+            <label>تاریخ سررسید <span class="req">*</span></label>
+            <Pay2NumericInput @bind-Value="Form.DateS" InputMode="Pay2NumericInput.NumericInputMode.PersianDate" Direction="ltr" Disabled="@Disabled" Placeholder="۱۴۰۵/۰۸/۳۰" />
+        </div>
+        <div class="trs-f">
+            <label>@(Receive ? "تاریخ دریافت" : "تاریخ پرداخت")</label>
+            <Pay2NumericInput @bind-Value="Form.Date" InputMode="Pay2NumericInput.NumericInputMode.PersianDate" Direction="ltr" Disabled="@Disabled" Placeholder="تاریخ خزانه" />
+        </div>
+        <div class="trs-f">
+            <label>نام شعبه</label>
+            <input class="atm-input" maxlength="50" @bind="Form.Shobeh" disabled="@Disabled" />
+        </div>
+        @if (Receive)
+        {
+            <div class="trs-f">
+                <label>کد شعبه <span class="req">*</span></label>
+                <Pay2NumericInput @bind-Value="Form.ListNo" MaxLength="9" Direction="ltr" Disabled="@Disabled" />
+            </div>
+        }
+        <div class="trs-f trs-f--wide">
+            <label>@(Receive ? "نام پرداخت‌کننده" : "نام گیرنده") <span class="req">*</span></label>
+            <input class="atm-input" maxlength="190" @bind="Form.NameTah" disabled="@Disabled" />
+        </div>
+        <div class="trs-f">
+            <label>جاری چک</label>
+            <input class="atm-input" maxlength="50" dir="ltr" @bind="Form.NHesab" disabled="@Disabled" />
+        </div>
+        <div class="trs-f">
+            <label>شماره صیادی</label>
+            <Pay2NumericInput @bind-Value="Form.Sayadi" MaxLength="16" Direction="ltr" Disabled="@Disabled" Placeholder="۱۶ رقم" />
+        </div>
+        @if (Receive)
+        {
+            <div class="trs-f">
+                <label>موقعیت چک</label>
+                <select class="atm-input" @bind="Form.Sandugh" disabled="@Disabled">
+                    @foreach (var f in Meta.ChequeFunds) { <option value="@f.Id">@f.Name</option> }
+                </select>
+            </div>
+            <div class="trs-f">
+                <label>واگذاری به بانک</label>
+                <select class="atm-input" @bind="Form.Hes1" disabled="@(Disabled || LockAssign)" title="@(LockAssign ? "این چک در گردش است؛ حسابِ واگذاری‌اش فقط با عملیاتِ خزانه عوض می‌شود." : "")">
+                    <option value="">— نزد صندوق —</option>
+                    @foreach (var a in Meta.BankAccounts) { <option value="@a.Hes">@a.Name (@a.Hes)</option> }
+                </select>
+            </div>
+        }
+        else
+        {
+            <div class="trs-f trs-f--wide">
+                <label>پرداخت از حساب</label>
+                <select class="atm-input" @bind="Form.Hes1" disabled="@Disabled">
+                    <option value="">— پیش‌فرض (اولین حساب بانکی) —</option>
+                    @foreach (var a in Meta.BankAccounts) { <option value="@a.Hes">@a.Name (@a.Hes)</option> }
+                </select>
+            </div>
+        }
+    </div>
+    @if (AllowGroup)
+    {
+        <div class="trs-chq__group">
+            <label class="trs-check">
+                <input type="checkbox" @bind="Form.Group" disabled="@Disabled" />
+                <span>چند فقره پشتِ سرِ هم (چکِ گروهی)</span>
+            </label>
+            @if (Form.Group)
+            {
+                <span class="trs-chq__gf">تعداد <input type="number" min="2" max="60" class="atm-input" @bind="Form.Count" disabled="@Disabled" /> فقره</span>
+                <span class="trs-chq__gf">فاصله <input type="number" min="1" max="12" class="atm-input" @bind="Form.Gap" disabled="@Disabled" /> ماه</span>
+                <small>سریال یکی‌یکی زیاد و سررسید ماه‌به‌ماه جلو می‌رود؛ مبلغ برای هر فقره.</small>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired] public ChequeForm Form { get; set; } = new();
+    [Parameter, EditorRequired] public TreasuryMetaDto Meta { get; set; } = new();
+    [Parameter] public bool Receive { get; set; }
+    [Parameter] public bool AllowGroup { get; set; }
+    [Parameter] public bool Disabled { get; set; }
+    /// <summary>چکِ در گردش — حسابِ واگذاری قفل.</summary>
+    [Parameter] public bool LockAssign { get; set; }
+}

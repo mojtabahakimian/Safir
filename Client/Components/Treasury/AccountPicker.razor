@@ -1,0 +1,88 @@
+@using Safir.Shared.Models.Treasury
+@using Safir.Client.Components.Automation
+@inject TreasuryApiService Api
+
+@*
+    انتخابِ حساب با جستجو در کد یا نام (CUST_HESAB). بعد از انتخاب، مانده‌ی
+    حساب از روی DEED_DTL نمایش داده می‌شود — همان «MANDS / MANDB» فرمِ WPF.
+*@
+<div class="trs-acc @(Disabled ? "is-auto" : "")">
+    <label>@Label @if (Required) { <span class="req">*</span> }</label>
+    @if (Disabled)
+    {
+        <div class="trs-acc__auto" title="@AutoHint">
+            <i class="bi bi-magic"></i>
+            <span class="nm">@(Name ?? Value ?? "—")</span>
+            <span class="cd">@Value</span>
+        </div>
+    }
+    else
+    {
+        <MudAutocomplete T="TreasuryAccountDto" Value="_selected" ValueChanged="OnPicked"
+                         SearchFuncWithCancel="Search" ToStringFunc="@(a => a == null ? string.Empty : $"{a.Name} — {a.Hes}")"
+                         Variant="Variant.Outlined" Dense="true" Clearable="true" ResetValueOnEmptyText="true" CoerceText="false"
+                         Placeholder="کد یا نام حساب…" MaxItems="40" DebounceInterval="250"
+                         AdornmentIcon="@Icons.Material.Filled.Search" AdornmentColor="Color.Primary">
+            <ItemTemplate Context="a">
+                <span class="trs-acc__item">
+                    <span class="atm-av" style="@AutomationUi.AvatarStyle(a.Name)">@AutomationUi.Initials(a.Name)</span>
+                    <span class="nm">@a.Name</span>
+                    <span class="cd">@a.Hes</span>
+                </span>
+            </ItemTemplate>
+            <NoItemsTemplate><div class="pa-2" style="opacity:.7">حسابی پیدا نشد.</div></NoItemsTemplate>
+        </MudAutocomplete>
+    }
+    @if (_balance is { } b && !string.IsNullOrEmpty(Value))
+    {
+        <div class="trs-acc__bal @(b.Balance >= 0 ? "pos" : "neg")">
+            <i class="bi bi-graph-up"></i>
+            مانده: @Money(Math.Abs(b.Balance)) @(b.Balance >= 0 ? "بدهکار" : "بستانکار")
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter] public string Label { get; set; } = "";
+    [Parameter] public string? Value { get; set; }
+    [Parameter] public string? Name { get; set; }
+    [Parameter] public EventCallback<TreasuryAccountDto?> OnChange { get; set; }
+    [Parameter] public bool Disabled { get; set; }
+    [Parameter] public bool Required { get; set; } = true;
+    [Parameter] public string? AutoHint { get; set; }
+
+    private TreasuryAccountDto? _selected;
+    private TreasuryBalanceDto? _balance;
+    private string? _balanceFor;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (Value is null) _selected = null;
+        else if (_selected?.Hes != Value) _selected = new TreasuryAccountDto { Hes = Value, Name = Name };
+
+        if (Value != _balanceFor)
+        {
+            _balanceFor = Value;
+            _balance = null;
+            if (!string.IsNullOrEmpty(Value))
+            {
+                try { _balance = (await Api.BalancesAsync(new[] { Value })).FirstOrDefault() ?? new TreasuryBalanceDto { Hes = Value }; }
+                catch { /* مانده اختیاری است */ }
+            }
+        }
+    }
+
+    private async Task<IEnumerable<TreasuryAccountDto>> Search(string? q, CancellationToken ct)
+    {
+        try { return await Api.AccountsAsync(q, ct); }
+        catch { return Enumerable.Empty<TreasuryAccountDto>(); }
+    }
+
+    private async Task OnPicked(TreasuryAccountDto? a)
+    {
+        _selected = a;
+        await OnChange.InvokeAsync(a);
+    }
+
+    public static string Money(double v) => v.ToString("#,0", System.Globalization.CultureInfo.InvariantCulture);
+}

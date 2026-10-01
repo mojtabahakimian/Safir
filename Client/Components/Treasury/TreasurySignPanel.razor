@@ -1,0 +1,102 @@
+@using Safir.Shared.Models.Treasury
+@using Safir.Client.Components.Automation
+
+@*
+    امضا و ارجاع — SGN1 «تنظیم کننده»، SGN2 «مدیر مالی»، SGN3 «مدیر عامل» و «ارجاع به» ِ فرمِ WPF.
+    هر امضا فقط با مجوزِ همان ستون در جدولِ SIGN زده یا برداشته می‌شود؛ رویدادها در پرونده‌ی
+    اتوماسیونِ خزانه ثبت می‌شوند و همین‌جا به‌شکلِ خطِ زمانی دیده می‌شوند.
+*@
+<div class="trs-card trs-sign">
+    <div class="trs-sign__head">
+        <b><i class="bi bi-pen"></i> امضا و ارجاع</b>
+        @if (Detail.Task is { } t && !string.IsNullOrWhiteSpace(t.PersonelName))
+        {
+            <span class="trs-sign__now" title="پرونده‌ی اتوماسیونِ این خزانه الان در کارتابلِ این شخص است">
+                <i class="bi bi-inbox"></i>در کارتابلِ <b>@t.PersonelName</b>
+            </span>
+        }
+    </div>
+
+    <div class="trs-stamps">
+        @for (int i = 1; i <= 3; i++)
+        {
+            var slot = i;
+            var on = slot switch { 1 => Detail.Header.Sgn1, 2 => Detail.Header.Sgn2, _ => Detail.Header.Sgn3 };
+            var who = slot switch { 1 => Detail.Sgn1Name, 2 => Detail.Sgn2Name, _ => Detail.Sgn3Name };
+            var can = slot switch { 1 => Meta.CanSign1, 2 => Meta.CanSign2, _ => Meta.CanSign3 };
+            <div class="trs-stamp @(on ? "is-on" : "")" @key="slot">
+                <span class="trs-stamp__seal"><i class="bi @(on ? "bi-patch-check-fill" : "bi-patch-question")"></i></span>
+                <span class="trs-stamp__txt">
+                    <small>@Titles[slot - 1]</small>
+                    <b>@(on ? (who ?? "امضا شده") : "امضا نشده")</b>
+                </span>
+                @if (can)
+                {
+                    <button type="button" class="atm-btn @(on ? "atm-btn--ghost" : "atm-btn--primary") trs-stamp__btn" disabled="@Busy"
+                            @onclick="() => OnSign.InvokeAsync((slot, !on))">
+                        @if (on) { <i class="bi bi-eraser"></i><span>برداشتن</span> }
+                        else { <i class="bi bi-pen-fill"></i><span>امضا</span> }
+                    </button>
+                }
+            </div>
+        }
+    </div>
+
+    <div class="trs-refer">
+        <label><i class="bi bi-send"></i> ارجاع به</label>
+        <select class="atm-input" @bind="_personel" disabled="@Busy">
+            <option value="0">— انتخاب کاربر —</option>
+            @foreach (var p in Meta.Personnel) { <option value="@p.Id">@p.Name</option> }
+        </select>
+        <button type="button" class="atm-btn atm-btn--primary" disabled="@(Busy || _personel <= 0)" @onclick="Refer">
+            <i class="bi bi-send-fill"></i>ارجاع
+        </button>
+    </div>
+
+    @if (Detail.Task is { Events.Count: > 0 } task)
+    {
+        <ol class="trs-timeline">
+            @foreach (var e in task.Events.Take(_all ? 30 : 4))
+            {
+                <li>
+                    <span class="dot @EventClass(e.Text)"></span>
+                    <span class="txt">@e.Text</span>
+                    <span class="when">@When(e)</span>
+                </li>
+            }
+        </ol>
+        @if (task.Events.Count > 4)
+        {
+            <button type="button" class="trs-linkbtn" @onclick="() => _all = !_all">@(_all ? "کمتر" : $"همه‌ی {task.Events.Count} رویداد")</button>
+        }
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired] public TreasuryDetailDto Detail { get; set; } = new();
+    [Parameter, EditorRequired] public TreasuryMetaDto Meta { get; set; } = new();
+    [Parameter] public bool Busy { get; set; }
+    [Parameter] public EventCallback<(int Slot, bool On)> OnSign { get; set; }
+    [Parameter] public EventCallback<int> OnRefer { get; set; }
+
+    private static readonly string[] Titles = { "تنظیم کننده", "مدیر مالی", "مدیر عامل" };
+    private int _personel;
+    private bool _all;
+
+    private async Task Refer()
+    {
+        if (_personel <= 0) return;
+        await OnRefer.InvokeAsync(_personel);
+        _personel = 0;
+    }
+
+    private static string EventClass(string? t)
+        => t is null ? "" : t.Contains("برداشته") ? "off" : t.Contains("امضا") ? "sign" : t.Contains("ارجاع") ? "refer" : "";
+
+    private static string When(TreasuryEventDto e)
+    {
+        var d = e.Date is { } dd && dd.ToString().Length == 8 ? ChequeForm.FormatDate(dd) : "";
+        var t = e.Time is { } tt and >= 0 and < 2400 ? $"{tt / 100:00}:{tt % 100:00}" : "";
+        return $"{e.UserName} · {d} {t}".Trim();
+    }
+}

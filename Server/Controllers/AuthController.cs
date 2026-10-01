@@ -1,4 +1,5 @@
-﻿using Microsoft.AspNetCore.Mvc;
+﻿using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.IdentityModel.Tokens;
 using Safir.Client.Services;
 using Safir.Shared.Constants;
@@ -21,14 +22,16 @@ public class AuthController : ControllerBase
     private readonly IDatabaseService _dbService; // رابط کاربری برای سرویس دیتابیس
     private readonly IConfiguration _configuration;
     private readonly Safir.Server.Services.IConnectionStringProvider _connection;
+    private readonly Safir.Server.Services.WorkspaceService _workspace;
 
     public AuthController(IUserService userService, IDatabaseService dbService, IConfiguration configuration,
-                          Safir.Server.Services.IConnectionStringProvider connection)
+                          Safir.Server.Services.IConnectionStringProvider connection, IPermissionService permissions)
     {
         _userService = userService;
         _dbService = dbService; // تزریق سرویس دیتابیس
         _configuration = configuration;
         _connection = connection;
+        _workspace = new Safir.Server.Services.WorkspaceService(dbService, permissions);
     }
 
 
@@ -92,6 +95,58 @@ public class AuthController : ControllerBase
     }
 
 
+
+    // ─────────────── واحد و شیفتِ کاری (پنجره‌ی DEFAULT ِ WPF) ───────────────
+
+    private int CurrentUserCo => int.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var id) ? id : 0;
+    private int? ClaimInt(string type) => int.TryParse(User.FindFirst(type)?.Value, out var v) ? v : null;
+
+    /// <summary>واحد و شیفتِ همین جلسه (از توکن) با نام — برای منوی کناری.</summary>
+    [Authorize]
+    [HttpGet("workspace")]
+    public async Task<ActionResult<WorkspaceDto>> Workspace()
+    {
+        if (CurrentUserCo <= 0) return Unauthorized();
+        return Ok(await _workspace.DescribeAsync(CurrentUserCo, ClaimInt(BaseknowClaimTypes.TFSAZMAN), ClaimInt(BaseknowClaimTypes.SHIFT)));
+    }
+
+    /// <summary>فهرستِ واحدها و شیفت‌ها + انتخابِ فعلی (توکنِ همین جلسه، وگرنه DEFAULTDEP).</summary>
+    [Authorize]
+    [HttpGet("workspace/options")]
+    public async Task<ActionResult<WorkspaceOptionsDto>> WorkspaceOptions()
+    {
+        if (CurrentUserCo <= 0) return Unauthorized();
+        return Ok(await _workspace.OptionsAsync(CurrentUserCo, ClaimInt(BaseknowClaimTypes.TFSAZMAN), ClaimInt(BaseknowClaimTypes.SHIFT)));
+    }
+
+    /// <summary>
+    /// انتخابِ واحد و شیفت: بررسی (الزامی، موجود، مجوزِ DEFAULT)، ذخیره در DEFAULTDEP و توکنِ
+    /// تازه با همان واحد و شیفت — معادلِ VAHED_OF_USER / SHIFT_OF_USER در WPF.
+    /// </summary>
+    [Authorize]
+    [HttpPost("workspace")]
+    public async Task<ActionResult<WorkspaceSaveResult>> SaveWorkspace([FromBody] WorkspaceSaveRequest req)
+    {
+        var userCo = CurrentUserCo;
+        if (userCo <= 0) return Unauthorized();
+
+        var error = await _workspace.SaveAsync(userCo, req ?? new WorkspaceSaveRequest());
+        if (error is not null) return BadRequest(new WorkspaceSaveResult { Ok = false, Error = error });
+
+        // همان ستون‌ها و همان شرطِ فعال بودنِ ورود (ENABL = 0 — بخش ۲ ِ AGENTS.md)
+        var user = await _dbService.DoGetDataSQLAsyncSingle<SALA_DTL>(
+            "SELECT IDD, SAL_NAME, PSAL_NAME, GRSAL, HES, PORID, erjabe, ENABL FROM SALA_DTL WHERE IDD = @userCo AND ENABL = 0",
+            new { userCo });
+        if (user is null) return Unauthorized(new WorkspaceSaveResult { Ok = false, Error = "کاربر غیرفعال است." });
+
+        var dep = new UserDefaultDep { USERID = userCo, TFSAZMAN = req!.Depatman, SHIFT = req.Shift };
+        return Ok(new WorkspaceSaveResult
+        {
+            Ok = true,
+            Token = GenerateJwtToken(user, dep),
+            Workspace = await _workspace.DescribeAsync(userCo, req.Depatman, req.Shift),
+        });
+    }
 
     private string GenerateJwtToken(SALA_DTL user, UserDefaultDep? defaultDep)
     {

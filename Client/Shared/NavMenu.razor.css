@@ -54,6 +54,49 @@
     text-overflow: ellipsis;
 }
 
+/* واحد و شیفتِ کاری (VAHED_OF_USER / SHIFT_OF_USER) — کلیک = تغییر */
+.safir-nav-unit {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: calc(100% - 24px);
+    margin: -4px 12px 10px;
+    padding: 8px 12px;
+    border-radius: 12px;
+    border: 1px dashed rgba(37, 99, 235, 0.35);
+    background: transparent;
+    color: var(--mud-palette-text-primary);
+    font: inherit;
+    text-align: right;
+    cursor: pointer;
+    transition: background .15s ease, border-color .15s ease;
+}
+
+.safir-nav-unit:hover {
+    background: rgba(37, 99, 235, 0.08);
+    border-color: rgba(37, 99, 235, 0.55);
+}
+
+.safir-nav-unit > .bi { color: #2563eb; font-size: 16px; }
+
+.safir-nav-unit-text {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    line-height: 1.35;
+}
+
+.safir-nav-unit-text b {
+    font-size: 12.5px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.safir-nav-unit-text small { font-size: 11px; color: var(--mud-palette-text-secondary); }
+
+.safir-nav-unit-edit { margin-inline-start: auto; opacity: .55; font-size: 12px; }
+
 /* سرفصل هر گروه از منو */
 .safir-nav-section {
     margin: 14px 20px 4px;

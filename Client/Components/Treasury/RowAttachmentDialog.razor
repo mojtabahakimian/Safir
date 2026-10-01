@@ -1,0 +1,106 @@
+@using Microsoft.AspNetCore.Components.Forms
+@inject TreasuryApiService Api
+@inject ISnackbar Snackbar
+
+@* تصویرِ سطر (معمولاً تصویرِ چک) — BTN_ATTACH و «حذف تصویر سطر» ِ WPF *@
+<MudDialog>
+    <TitleContent>
+        <MudText Typo="Typo.h6"><i class="bi bi-image"></i> تصویر سطر @Radif</MudText>
+    </TitleContent>
+    <DialogContent>
+        <div class="trs-att">
+            @if (_loading)
+            {
+                <div class="d-flex justify-center pa-6"><MudProgressCircular Indeterminate="true" Color="Color.Primary" /></div>
+            }
+            else if (_src is not null)
+            {
+                <a href="@_src" target="_blank" class="trs-att__img" title="نمایش در اندازه‌ی واقعی"><img src="@_src" alt="تصویر سطر" /></a>
+            }
+            else
+            {
+                <div class="trs-att__empty"><i class="bi bi-image"></i>این سطر هنوز تصویری ندارد.</div>
+            }
+
+            @if (CanEdit)
+            {
+                <label class="trs-att__drop @(_busy ? "is-busy" : "")">
+                    <InputFile OnChange="OnFile" accept=".jpg,.jpeg,.png,.bmp" disabled="@_busy" />
+                    <i class="bi bi-cloud-arrow-up"></i>
+                    <span>@(_src is null ? "انتخابِ تصویر" : "جایگزینیِ تصویر") (jpg، png، bmp — حداکثر ۱۰ مگابایت)</span>
+                </label>
+            }
+        </div>
+    </DialogContent>
+    <DialogActions>
+        @if (_src is not null && CanDelete)
+        {
+            <MudButton Color="Color.Error" Variant="Variant.Text" OnClick="DeleteAsync" Disabled="@_busy">حذف تصویر</MudButton>
+        }
+        <MudSpacer />
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="Close">بستن</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] MudDialogInstance MudDialog { get; set; } = default!;
+    [Parameter] public int Id { get; set; }
+    [Parameter] public int Idh { get; set; }
+    [Parameter] public string? Radif { get; set; }
+    [Parameter] public bool HasAttachment { get; set; }
+    [Parameter] public bool CanEdit { get; set; }
+    [Parameter] public bool CanDelete { get; set; }
+
+    private string? _src;
+    private bool _loading;
+    private bool _busy;
+    private bool _changed;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (!HasAttachment) return;
+        _loading = true;
+        var bytes = await Api.AttachmentAsync(Id, Idh);
+        _loading = false;
+        _src = bytes is { Length: > 0 } ? $"data:{Mime(bytes)};base64,{Convert.ToBase64String(bytes)}" : null;
+    }
+
+    private async Task OnFile(InputFileChangeEventArgs e)
+    {
+        var f = e.File;
+        if (f.Size > 10 * 1024 * 1024) { Snackbar.Add("حجمِ تصویر نباید بیشتر از ۱۰ مگابایت باشد.", Severity.Warning); return; }
+        _busy = true;
+        try
+        {
+            using var s = f.OpenReadStream(10 * 1024 * 1024);
+            using var ms = new MemoryStream();
+            await s.CopyToAsync(ms);
+            var bytes = ms.ToArray();
+            var r = await Api.UploadAttachmentAsync(Id, Idh, bytes, f.Name, f.ContentType);
+            if (!r.Ok) { Snackbar.Add(r.Error ?? "تصویر ذخیره نشد.", Severity.Error); return; }
+            _src = $"data:{Mime(bytes)};base64,{Convert.ToBase64String(bytes)}";
+            _changed = true;
+            Snackbar.Add("تصویر ذخیره شد.", Severity.Success);
+        }
+        catch (Exception ex) { Snackbar.Add("خواندنِ فایل ممکن نشد: " + ex.Message, Severity.Error); }
+        finally { _busy = false; }
+    }
+
+    private async Task DeleteAsync()
+    {
+        _busy = true;
+        var r = await Api.DeleteAttachmentAsync(Id, Idh);
+        _busy = false;
+        if (!r.Ok) { Snackbar.Add(r.Error ?? "حذف نشد.", Severity.Error); return; }
+        _src = null;
+        _changed = true;
+        Snackbar.Add("تصویر حذف شد.", Severity.Info);
+    }
+
+    private void Close() => MudDialog.Close(DialogResult.Ok(_changed));
+
+    private static string Mime(byte[] b)
+        => b.Length > 3 && b[0] == 0x89 && b[1] == 0x50 ? "image/png"
+         : b.Length > 2 && b[0] == 0x42 && b[1] == 0x4D ? "image/bmp"
+         : "image/jpeg";
+}

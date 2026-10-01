@@ -58,6 +58,16 @@ async function uiLogin(page, who) {
   await field(page, 'نام کاربری').fill(u.username);
   await field(page, 'رمز عبور').fill(u.password);
   await page.getByRole('button', { name: 'ورود', exact: true }).click();
+
+  // مرحله‌ی دوم مثل پنجره‌ی DEFAULT ِ WPF: واحد و شیفت (پیش‌فرض‌ها را می‌پذیریم).
+  // اگر سرور فهرست را نداد، صفحه مستقیم به خانه می‌رود و این مرحله نیست.
+  const confirm = page.getByRole('button', { name: 'ورود به سیستم' });
+  await Promise.race([
+    confirm.waitFor({ timeout: 60_000 }).catch(() => {}),
+    page.waitForURL(u => !/\/login/.test(u.toString()), { timeout: 60_000 }).catch(() => {}),
+  ]);
+  if (await confirm.isVisible().catch(() => false)) await confirm.click();
+
   await expect(page).not.toHaveURL(/\/login/, { timeout: 60_000 });
 }
 

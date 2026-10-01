@@ -46,7 +46,14 @@
                 </span>
             }
 
-            @if (Item.skid.HasValue && Item.num is > 0)
+            @if (Item.skid == 34 && Item.num is > 0)
+            {
+                @* پرونده‌ی امضا/ارجاعِ خزانه (tg = 34) — مستقیم به همان خزانه *@
+                <a class="atm-pill atm-pill--doc" style="text-decoration:none" href="@($"/treasury/{Item.num}")" title="باز کردنِ خزانه" @onclick:stopPropagation="true">
+                    <i class="bi bi-safe2"></i>خزانه @Item.num
+                </a>
+            }
+            else if (Item.skid.HasValue && Item.num is > 0)
             {
                 <span class="atm-pill atm-pill--doc" title="سند مرتبط">
                     <i class="bi bi-file-earmark-text"></i>@AutomationUi.DocTypeName(Item.skid, DocTypes) @Item.num
