@@ -1,5 +1,6 @@
 ﻿using Microsoft.AspNetCore.Mvc;
 using Safir.Server.Services;
+using Microsoft.AspNetCore.Authorization;
 using Safir.Shared.Interfaces;
 using Safir.Shared.Models;
 using Stimulsoft.Report;
@@ -16,20 +17,37 @@ namespace Safir.Server.Controllers
         private readonly IWebHostEnvironment _env;
         private readonly string _connString;
         private readonly ILogger<ReportsController> _logger;
+        private readonly IDatabaseService _db;
 
-        public ReportsController(IWebHostEnvironment env, IConnectionStringProvider connectionStringProvider, ILogger<ReportsController> logger)
+        public ReportsController(IWebHostEnvironment env, IConnectionStringProvider connectionStringProvider, ILogger<ReportsController> logger, IDatabaseService db)
         {
             _env = env;
             _connString = connectionStringProvider.GetConnectionString();
             _logger = logger;
+            _db = db;
         }
 
         [HttpPost("Generate")]
+        [Authorize]
         public async Task<IActionResult> Generate([FromBody] ReportRequest req)
         {
             // 1. Locate the .mrt file
             var reportsFolder = Path.Combine(_env.ContentRootPath, "Rpts");
-            var path = Path.Combine(reportsFolder, req.ReportName);
+            var path = Path.GetFullPath(Path.Combine(reportsFolder, req.ReportName));
+            if (!path.StartsWith(Path.GetFullPath(reportsFolder) + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
+                return BadRequest("نام گزارش نامعتبر است.");
+
+            if (string.Equals(Path.GetFileName(path).TrimEnd(' ', '.'), "R_DAFTAR_TAFZILY_2_2.mrt", StringComparison.OrdinalIgnoreCase))
+            {
+                // Do not let differently-cased duplicates override the checked
+                // account later when assigning the report's SQL parameters.
+                if (req.Parameters.Keys.Any(key => key != "HESAB" && string.Equals(key, "HESAB", StringComparison.OrdinalIgnoreCase)))
+                    return BadRequest("پارامتر کد حساب نامعتبر است.");
+                if (!req.Parameters.TryGetValue("HESAB", out var account) || string.IsNullOrWhiteSpace(account?.ToString()))
+                    return BadRequest("کد حساب مشتری الزامی است.");
+                if (!await AccountAccessRules.CanAccessAsync(_db, User, account.ToString()!))
+                    return StatusCode(403, AccountAccessRules.DeniedMessage);
+            }
             if (!System.IO.File.Exists(path))
                 return NotFound($"Report template '{req.ReportName}' not found.");
 

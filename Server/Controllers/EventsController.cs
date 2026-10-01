@@ -26,7 +26,7 @@ namespace Safir.Server.Controllers
         private readonly ILogger<EventsController> _logger;
 
         private readonly string? _attachmentsBasePath;
-        private static readonly string[] AllowedFileExtensions = { ".jpg", ".jpeg", ".png", ".pdf" }; // Allowed extensions
+        private static readonly string[] AllowedFileExtensions = EventAttachmentPolicy.AllowedExtensions;
 
         public EventsController(IDatabaseService dbService, ILogger<EventsController> logger, IConfiguration configuration) // Inject IConfiguration
         {
@@ -125,7 +125,7 @@ namespace Safir.Server.Controllers
             if (file != null)
             {
                 // Validate file size
-                const long maxFileSize = 10 * 1024 * 1024; // 10 MB
+                const long maxFileSize = EventAttachmentPolicy.MaxFileSize;
                 if (file.Length > maxFileSize)
                 {
                     return BadRequest($"اندازه فایل ضمیمه نباید بیشتر از {maxFileSize / (1024 * 1024)} مگابایت باشد.");

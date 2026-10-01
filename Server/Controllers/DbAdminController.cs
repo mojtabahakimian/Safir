@@ -46,6 +46,10 @@ namespace Safir.Server.Controllers
             }
         }
 
+        [HttpGet("execution")]
+        [Pay2Authorize(Pay2Forms.AdminAcl, Pay2Perm.See)]
+        public ActionResult<DbUpgradeExecution> GetExecution() => Ok(_svc.GetExecution());
+
         /// <summary>
         /// اجرا — چه خشک و چه واقعی. تأییدیه روی خودِ سرور بررسی می‌شود،
         /// نه فقط در رابط کاربری: اگر فقط آنجا بود، یک POST ساده از بیرون

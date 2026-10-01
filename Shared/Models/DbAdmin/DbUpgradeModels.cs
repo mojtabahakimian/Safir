@@ -83,4 +83,16 @@ namespace Safir.Shared.Models.DbAdmin
         public DateTime StartedAtUtc  { get; set; }
         public bool     WasPreview    { get; set; }
     }
+
+    public class DbUpgradeExecution
+    {
+        public bool Running { get; set; }
+        public DateTime StartedAtUtc { get; set; }
+        public int Step { get; set; }
+        public string Command { get; set; } = string.Empty;
+        public int Executed { get; set; }
+        public int Skipped { get; set; }
+        public int Failed { get; set; }
+        public DbUpgradeResult? Result { get; set; }
+    }
 }

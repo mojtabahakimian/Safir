@@ -853,6 +853,7 @@ VALUES (@N_S, @RADIF, @HES_K, @HES_M, @HES_T, @HES_T2, @HES_T3, @HES_T4, @HES, @
                     .Where(x => (byte)x.INS_TYPE != 3).ToList();
                 var groupedLines = allLines.GroupBy(x => (int)x.RUN_ID).ToDictionary(g => g.Key, g => g.ToList());
                 bool subjectPlusChild = await Safir.Server.Services.Pay2InsuranceListTotal.SubjectPlusChildAsync(_db);
+                reportDto.SubjectPlusChildOnly = subjectPlusChild;
 
                 foreach (var currentRunId in targetRunIds)
                 {
@@ -909,6 +910,8 @@ VALUES (@N_S, @RADIF, @HES_K, @HES_M, @HES_T, @HES_T2, @HES_T3, @HES_T4, @HES, @
                             EmployerPremium = (bool)line.PREMIUM_SNAPSHOT_AVAILABLE ? (long)line.INS_EMPLOYER_BASE : 0,
                             UnemploymentPremium = (bool)line.PREMIUM_SNAPSHOT_AVAILABLE ? (long)line.INS_UNEMPLOYMENT : 0,
                             TaxAmount = (long)line.TAX_AMOUNT,
+                            // باقیمانده کسورات ذخیره‌شده، بدون بازخوانی کارکرد یا محاسبه مجدد حقوق
+                            TotalDeductions = (long)line.TOTAL_DED,
                             // در حالت «مشمول + حق اولاد» مانده از همان جمعِ نمایش‌داده‌شده حساب می‌شود
                             // تا هر ردیف در خودش جمع بخورد (مثل نرم‌افزار قبلی)
                             NetPayable = subjectPlusChild ? grossPay - (long)line.TOTAL_DED : (long)line.NOMINAL_NET_PAYABLE

@@ -17,7 +17,9 @@ namespace Safir.Client.Services
                 Parameters = parameters
             };
 
-            var resp = await _http.PostAsJsonAsync("api/reports/generate", req);
+            using var resp = await _http.PostAsJsonAsync("api/reports/generate", req);
+            if (resp.StatusCode == System.Net.HttpStatusCode.Forbidden)
+                throw new HttpRequestException("شما اجازه دسترسی به این گزارش را ندارید.", null, resp.StatusCode);
             if (!resp.IsSuccessStatusCode) return null;
             return await resp.Content.ReadAsByteArrayAsync();
         }
