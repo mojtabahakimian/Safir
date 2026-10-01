@@ -5,6 +5,7 @@ using Safir.Shared.Interfaces;
 using Safir.Shared.Models.Visitory;
 using System.Security.Claims;
 using Safir.Shared.Constants;
+using Safir.Server.Services;
 
 namespace Safir.Server.Controllers
 {
@@ -42,6 +43,8 @@ namespace Safir.Server.Controllers
         [HttpGet("my-customers")]
         public async Task<ActionResult<IEnumerable<VISITOR_CUSTOMERS>>> GetMyVisitorCustomers([FromQuery] long? visitDate)
         {
+            if (!AccountAccessRules.TryGetUserCo(User, out var userCo))
+                return Unauthorized("اطلاعات کاربر نامعتبر است.");
             var userHes = User.FindFirstValue(BaseknowClaimTypes.USER_HES);
             if (string.IsNullOrEmpty(userHes)) { return BadRequest("HES یافت نشد."); }
 
@@ -56,7 +59,7 @@ namespace Safir.Server.Controllers
             }
 
             // کوئری اصلی بدون صفحه بندی و جستجوی سروری
-            const string sql = @"
+            string sql = $@"
                 SELECT
                     dtl.HES AS userid, dtl.VDATE, dtl.COUST_NO AS hes,
                     qbm.BEDM - qbm.BESM AS mandahh, ch.NAME AS person,
@@ -72,11 +75,12 @@ namespace Safir.Server.Controllers
                 WHERE (vd.OKF = 1)
                   AND (dtl.HES = @UserHes)
                   AND (dtl.VDATE = @VisitDateToQuery)
+                  AND {AccountAccessRules.Predicate("dtl.COUST_NO")}
                 ORDER BY ch.NAME"; // مرتب سازی همچنان خوب است
 
             try
             {
-                var parameters = new { UserHes = userHes, VisitDateToQuery = dateToQuery };
+                var parameters = new { UserHes = userHes, VisitDateToQuery = dateToQuery, AccountAccessUserCo = userCo };
                 var customers = await _dbService.DoGetDataSQLAsync<VISITOR_CUSTOMERS>(sql, parameters);
                 return Ok(customers ?? new List<VISITOR_CUSTOMERS>());
             }

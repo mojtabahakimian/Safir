@@ -43,6 +43,12 @@ public sealed class InsuranceListDocument : IDocument
             row.RelativeItem(2).Text($"شعبه تأمین اجتماعی: {_data.BranchName}");
         });
         col.Item().PaddingTop(2).Text($"نشانی کارگاه: {_data.Address}").FontColor(Colors.Grey.Darken2);
+        col.Item().PaddingTop(4).Text("تمام مبالغ به ریال است. مانده این گزارش = جمع دستمزد و مزایای این گزارش − بیمه سهم کارگر − مالیات − سایر کسورات.");
+        col.Item().PaddingTop(2).Text("سایر کسورات شامل وام، مساعده، کسری کار و سایر کسورات ثبت‌شده است. بیمه سهم کارفرما از مانده پرسنل کسر نمی‌شود.");
+        col.Item().PaddingTop(2).Text(_data.SubjectPlusChildOnly
+            ? "مبنای جمع این گزارش: دستمزد و مزایای مشمول به‌علاوه حق اولاد و مازاد سقف بیمه؛ سایر مزایای غیرمشمول در این جمع نیست. مانده این گزارش، خالص پرداخت واقعی حقوق نیست."
+            : "مبنای جمع این گزارش: کل دستمزد و مزایای اسمیِ اعلامی برای بیمه. مانده این گزارش ممکن است با خالص پرداخت واقعی حقوق تفاوت داشته باشد.")
+            .FontColor(Colors.Grey.Darken2);
     });
 
     private void ComposeContent(IContainer container) => container.Column(main =>
@@ -54,11 +60,11 @@ public sealed class InsuranceListDocument : IDocument
                 c.ConstantColumn(22); c.RelativeColumn(2.5f); c.RelativeColumn(1.25f); c.RelativeColumn(1.1f); c.RelativeColumn(1.1f); c.RelativeColumn(1.25f); c.RelativeColumn(1.5f);
                 c.ConstantColumn(16); c.ConstantColumn(16);
                 c.RelativeColumn(1.05f); c.RelativeColumn(1.05f); c.ConstantColumn(28);
-                for (var i = 0; i < 10; i++) c.RelativeColumn(1.25f);
+                for (var i = 0; i < 11; i++) c.RelativeColumn(1.25f);
             });
             table.Header(h =>
             {
-                foreach (var title in new[] { "ردیف", "نام و نام خانوادگی", "کد ملی", "شماره شناسنامه", "نام پدر", "شماره بیمه", "شغل", "مرد", "زن", "شروع کار", "ترک کار", "روز", "پایه مزد روزانه", "پایه سنوات روزانه", "دستمزد روزانه کل", "دستمزد ماهانه", "مزایای ماهانه مشمول بیمه", "جمع دستمزد و مزایای مشمول بیمه", "جمع دستمزد و مزایای مشمول و غیرمشمول بیمه", "بیمه سهم کارگر", "مالیات حقوق", "مانده قابل پرداخت" })
+                foreach (var title in new[] { "ردیف", "نام و نام خانوادگی", "کد ملی", "شماره شناسنامه", "نام پدر", "شماره بیمه", "شغل", "مرد", "زن", "شروع کار", "ترک کار", "روز", "پایه مزد روزانه", "پایه سنوات روزانه", "دستمزد روزانه کل", "دستمزد ماهانه", "مزایای ماهانه مشمول بیمه", "جمع دستمزد و مزایای مشمول بیمه", _data.GrossPayTitle, "بیمه سهم کارگر", "مالیات حقوق", "سایر کسورات", "مانده بر مبنای این گزارش" })
                     h.Cell().Element(Header).Text(title).SemiBold();
             });
             foreach (var e in _data.Rows)
@@ -68,7 +74,7 @@ public sealed class InsuranceListDocument : IDocument
                 Cell(e.HireDate); Cell(e.FireDate); Cell(e.WorkDays.ToString("0.##", FaCulture));
                 Cell(Money(e.BaseDailyWage)); Cell(Money(e.SeniorityDailyBase)); Cell(Money(e.TotalDailyWage)); Cell(Money(e.MonthlyWage));
                 Cell(Money(e.OtherSubjectBenefits)); Cell(Money(e.TotalSubjectToInsurance)); Cell(Money(e.TotalGrossPay));
-                Cell(Money(e.WorkerPremium)); Cell(Money(e.TaxAmount)); Cell(Money(e.NetPayable));
+                Cell(Money(e.WorkerPremium)); Cell(Money(e.TaxAmount)); Cell(Money(e.OtherDeductions)); Cell(Money(e.NetPayable));
             }
             table.Footer(f =>
             {
@@ -78,6 +84,7 @@ public sealed class InsuranceListDocument : IDocument
                 f.Cell().Element(Footer).Text(Money(_data.TotalMonthlyWage)); f.Cell().Element(Footer).Text(Money(_data.TotalOtherBenefits));
                 f.Cell().Element(Footer).Text(Money(_data.TotalSubjectToInsurance)).Bold(); f.Cell().Element(Footer).Text(Money(_data.TotalGrossPay));
                 f.Cell().Element(Footer).Text(Money(_data.TotalWorkerPremium)).Bold(); f.Cell().Element(Footer).Text(Money(_data.TotalTaxAmount));
+                f.Cell().Element(Footer).Text(Money(_data.TotalOtherDeductions));
                 f.Cell().Element(Footer).Text(Money(_data.TotalNetPayable)).Bold();
             });
             void Cell(string value, bool center = true) => table.Cell().Element(center ? BodyCenter : BodyRight).Text(value);

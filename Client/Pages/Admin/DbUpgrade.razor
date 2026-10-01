@@ -1,4 +1,5 @@
 @page "/admin/db-upgrade"
+@implements IDisposable
 @using Safir.Shared.Models.DbAdmin
 @using Safir.Client.Services
 @inject DbAdminApiService Api
@@ -47,7 +48,7 @@
             @if (_status.UpToDate)
             {
                 <MudChip Color="Color.Success" Icon="@Icons.Material.Filled.CheckCircle">
-                    به‌روز است
+                    شاخص‌ها موجودند
                 </MudChip>
             }
             else
@@ -123,10 +124,19 @@
             {
                 <MudProgressCircular Indeterminate Size="Size.Small" Color="Color.Primary" />
                 <MudText Typo="Typo.body2" Class="align-self-center">
-                    در حال اجرا… این صفحه را نبندید.
+                    در حال اجرا… بستن صفحه اجرا را متوقف نمی‌کند؛ سرور را خاموش نکنید.
                 </MudText>
             }
         </div>
+    </MudPaper>
+}
+
+@if (_execution is not null && _execution.StartedAtUtc != default)
+{
+    <MudPaper Class="pa-4 mb-4">
+        <MudText>مرحله @_execution.Step — @_execution.Command</MudText>
+        <MudText>اجراشده: @_execution.Executed | بدون نیاز به تغییر: @_execution.Skipped | خطا: @_execution.Failed</MudText>
+        <MudText>زمان سپری‌شده: @FormatDuration(_execution.Running ? (long)(DateTime.UtcNow - _execution.StartedAtUtc).TotalMilliseconds : _execution.Result?.DurationMs ?? 0)</MudText>
     </MudPaper>
 }
 
@@ -173,8 +183,39 @@
     private string?          _error;
     private bool             _loading;
     private bool             _busy;
+    private DbUpgradeExecution? _execution;
+    private CancellationTokenSource _pollCancellation = new();
+    public void Dispose() { _pollCancellation.Cancel(); _pollCancellation.Dispose(); }
 
-    protected override Task OnInitializedAsync() => LoadAsync();
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAsync();
+        if (_execution?.Running == true) _ = PollAsync(DateTime.MinValue, _pollCancellation.Token);
+    }
+
+    private async Task PollAsync(DateTime previousStart, CancellationToken ct)
+    {
+        try
+        {
+            using var timer = new PeriodicTimer(TimeSpan.FromSeconds(2));
+            while (await timer.WaitForNextTickAsync(ct))
+            {
+                var current = await Api.GetExecutionAsync();
+                if (current is null || current.StartedAtUtc <= previousStart) continue;
+                _execution = current;
+                _busy = current.Running;
+                if (!current.Running && current.Result is not null) _result = current.Result;
+                await InvokeAsync(StateHasChanged);
+                if (!current.Running) break;
+            }
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception ex)
+        {
+            _error = "خواندن پیشرفت اجرا ممکن نشد: " + ex.Message;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
 
     private async Task LoadAsync()
     {
@@ -185,6 +226,16 @@
         var (status, err) = await Api.GetStatusAsync();
         _status = status;
         _error  = err;
+        if (err is null)
+        {
+            try
+            {
+                _execution = await Api.GetExecutionAsync();
+                _busy = _execution?.Running == true;
+                if (_execution?.Result is not null) _result = _execution.Result;
+            }
+            catch (Exception ex) { _error = "خواندن وضعیت اجرا ممکن نشد: " + ex.Message; }
+        }
         _loading = false;
     }
 
@@ -223,6 +274,11 @@
         _error  = null;
         StateHasChanged();
 
+        var previousStart = _execution?.StartedAtUtc ?? DateTime.MinValue;
+        _pollCancellation.Cancel();
+        _pollCancellation.Dispose();
+        _pollCancellation = new();
+        var polling = preview ? Task.CompletedTask : PollAsync(previousStart, _pollCancellation.Token);
         var (result, err) = await Api.RunAsync(new DbUpgradeRequest
         {
             ConfirmDatabase = _status.Database,
@@ -230,6 +286,8 @@
             PreviewOnly     = preview,
             IncludeBaseData = includeBaseData
         });
+        _pollCancellation.Cancel();
+        await polling;
 
         _busy   = false;
         _result = result;

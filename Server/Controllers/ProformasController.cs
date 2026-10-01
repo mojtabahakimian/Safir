@@ -9,6 +9,7 @@ using Dapper;     // For QuerySingleAsync etc.
 using Safir.Shared.Constants; // For BaseknowClaimTypes
 using System.Data.SqlClient;
 using QuestPDF.Fluent;
+using Safir.Server.Services;
 
 namespace Safir.Server.Controllers
 {
@@ -127,6 +128,8 @@ namespace Safir.Server.Controllers
             }
 
             long currentDate = CL_Tarikh.GetCurrentPersianDateAsLong();
+            if (!await AccountAccessRules.CanAccessAsync(_dbService, User, request.Header.CustomerHesCode))
+                return StatusCode(403, new ProformaSaveResponseDto { Success = false, Message = AccountAccessRules.DeniedMessage });
             int currentTime = int.Parse(DateTime.Now.ToString("HHmmss"));
 
             // Claims for visitor commission logic
@@ -733,6 +736,9 @@ namespace Safir.Server.Controllers
                 }
 
                 // 2. Generate PDF using QuestPDF document class
+                if (!await AccountAccessRules.CanAccessAsync(_dbService, User, printData.Header.CUST_NO))
+                    return StatusCode(403, AccountAccessRules.DeniedMessage);
+
                 _logger.LogInformation("Generating Proforma PDF for Number: {ProformaNumber}", proformaNumber);
                 // Inject IWebHostEnvironment if ProformaDocument needs it (e.g., for logo path)
                 var env = HttpContext.RequestServices.GetRequiredService<IWebHostEnvironment>();

@@ -32,6 +32,8 @@ namespace Safir.Shared.Models.Salary.Reports
         public long EmployerPremium { get; set; }         // سهم کارفرما Snapshot شده
         public long UnemploymentPremium { get; set; }     // بیمه بیکاری Snapshot شده
         public long TaxAmount { get; set; }
+        public long TotalDeductions { get; set; } // جمع کسورات ذخیره‌شده در اجرای حقوق
+        public long OtherDeductions => TotalDeductions - WorkerPremium - TaxAmount;
         public long NetPayable { get; set; }
     }
 
@@ -47,6 +49,10 @@ namespace Safir.Shared.Models.Salary.Reports
 
         public List<InsuranceEmployeeRowDto> Rows { get; set; } = new();
         public bool HasPremiumBreakdownSnapshot { get; set; } = true;
+        public bool SubjectPlusChildOnly { get; set; }
+        public string GrossPayTitle => SubjectPlusChildOnly
+            ? "جمع دستمزد و مزایای مشمول و حق اولاد"
+            : "جمع دستمزد و مزایای مشمول و غیرمشمول بیمه";
 
         public decimal TotalWorkDays => Rows.Sum(x => x.WorkDays);
         public long TotalMonthlyWage => Rows.Sum(x => x.MonthlyWage);
@@ -56,6 +62,7 @@ namespace Safir.Shared.Models.Salary.Reports
         public long TotalGrossPay => Rows.Sum(x => x.TotalGrossPay);
         public long TotalWorkerPremium => Rows.Sum(x => x.WorkerPremium);
         public long TotalTaxAmount => Rows.Sum(x => x.TaxAmount);
+        public long TotalOtherDeductions => Rows.Sum(x => x.OtherDeductions);
         public long TotalNetPayable => Rows.Sum(x => x.NetPayable);
 
         public long TotalEmployerPremium => Rows.Sum(x => x.EmployerPremium);

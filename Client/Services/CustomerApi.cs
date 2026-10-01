@@ -125,10 +125,18 @@ public class CustomerApi
             _logger.LogInformation("Calling API: {RequestUri}", requestUri);
 
             // ارسال درخواست GET و دریافت پاسخ به صورت List<ThePart1>
-            var result = await _httpClient.GetFromJsonAsync<List<QDAFTARTAFZIL2_H>>(requestUri);
+            using var response = await _httpClient.GetAsync(requestUri);
+            if (response.StatusCode == System.Net.HttpStatusCode.Forbidden)
+                throw new HttpRequestException("شما اجازه دسترسی به این حساب را ندارید.", null, response.StatusCode);
+            response.EnsureSuccessStatusCode();
+            var result = await response.Content.ReadFromJsonAsync<List<QDAFTARTAFZIL2_H>>();
 
             _logger.LogInformation("Received {Count} statement items from API.", result?.Count ?? 0);
             return result;
+        }
+        catch (HttpRequestException ex) when (ex.StatusCode == System.Net.HttpStatusCode.Forbidden)
+        {
+            throw;
         }
         catch (HttpRequestException ex) // خطاهای مربوط به درخواست HTTP
         {
@@ -172,7 +180,9 @@ public class CustomerApi
             _logger.LogInformation("Calling API to get PDF bytes: {RequestUri}", requestUri);
 
             // ارسال درخواست GET و دریافت پاسخ
-            var response = await _httpClient.GetAsync(requestUri);
+            using var response = await _httpClient.GetAsync(requestUri);
+            if (response.StatusCode == System.Net.HttpStatusCode.Forbidden)
+                throw new HttpRequestException("شما اجازه دسترسی به این حساب را ندارید.", null, response.StatusCode);
 
             if (response.IsSuccessStatusCode)
             {
@@ -189,6 +199,10 @@ public class CustomerApi
                                 response.StatusCode, response.ReasonPhrase, errorContent);
                 return null; // یا throw کنید
             }
+        }
+        catch (HttpRequestException ex) when (ex.StatusCode == System.Net.HttpStatusCode.Forbidden)
+        {
+            throw;
         }
         catch (HttpRequestException ex)
         {

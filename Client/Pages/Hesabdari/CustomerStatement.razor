@@ -60,6 +60,10 @@
         </div>
     }
     @* نمایش پیام در صورت خالی بودن یا خطا *@
+    else if (!string.IsNullOrEmpty(loadError))
+    {
+        <MudAlert Severity="Severity.Error" Class="mt-4">@loadError</MudAlert>
+    }
     else if (statementItems == null || !statementItems.Any())
     {
         <MudAlert Severity="Severity.Info" Class="mt-4">هیچ موردی برای نمایش در صورت حساب این مشتری در بازه زمانی انتخاب شده یافت نشد.</MudAlert>

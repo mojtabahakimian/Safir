@@ -14,8 +14,11 @@ namespace Safir.Client.Services
         {
             var res = await _http.GetAsync($"api/pay2/run/period-info?wsId={wsId}&periodDate={periodDate}");
 
-            if (!res.IsSuccessStatusCode || res.StatusCode == System.Net.HttpStatusCode.NoContent)
+            if (res.StatusCode == System.Net.HttpStatusCode.NoContent || res.StatusCode == System.Net.HttpStatusCode.NotFound)
                 return null;
+
+            if (!res.IsSuccessStatusCode)
+                throw new HttpRequestException("دریافت اطلاعات دوره حقوق ممکن نشد؛ اتصال و به‌روزرسانی دیتابیس را بررسی کنید.", null, res.StatusCode);
 
             try
             {
@@ -32,8 +35,11 @@ namespace Safir.Client.Services
         {
             var res = await _http.GetAsync($"api/pay2/run/latest?perId={perId}");
 
-            if (!res.IsSuccessStatusCode || res.StatusCode == System.Net.HttpStatusCode.NoContent)
+            if (res.StatusCode == System.Net.HttpStatusCode.NoContent || res.StatusCode == System.Net.HttpStatusCode.NotFound)
                 return null;
+
+            if (!res.IsSuccessStatusCode)
+                throw new HttpRequestException("دریافت محاسبات حقوق ممکن نشد؛ اتصال و به‌روزرسانی دیتابیس را بررسی کنید.", null, res.StatusCode);
 
             try
             {
