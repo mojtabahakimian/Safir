@@ -35,6 +35,11 @@
         }
     </DialogContent>
     <DialogActions>
+        @if (_blobUrl != null && !_isLoading && _error == null)
+        {
+            <MudText Typo="Typo.caption">اگر پیش‌نمایش نمایش داده نمی‌شود، فایل را دانلود و باز کنید.</MudText>
+            <a href="@_blobUrl" download="Report.pdf" class="mud-button-root mud-button mud-button-text mud-button-text-primary">دانلود PDF</a>
+        }
         @if (_error != null)
         {
             <MudButton OnClick="ReloadAsync" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Refresh">تلاش مجدد</MudButton>

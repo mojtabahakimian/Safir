@@ -1,5 +1,8 @@
 using System.Diagnostics;
 using System.Text;
+using System.Collections.Concurrent;
+using System.Security.Cryptography;
+using System.Text.Json;
 using Microsoft.Data.SqlClient;
 using Safir.Shared.Interfaces;
 using Safir.Shared.Models.DbAdmin;
@@ -30,6 +33,45 @@ namespace Safir.Server.Services
         /// خروجی دو اجرا در هم می‌رفت.
         /// </summary>
         private static readonly SemaphoreSlim Gate = new(1, 1);
+        private static readonly ConcurrentDictionary<string, DbUpgradeExecution> Executions = new();
+        private string ExecutionKey()
+        {
+            var b = new SqlConnectionStringBuilder(_conn.GetConnectionString());
+            return b.DataSource.ToUpperInvariant() + "|" + b.InitialCatalog.ToUpperInvariant();
+        }
+        private static string StatePath(string key) => Path.Combine(AppContext.BaseDirectory, "logs", "db-upgrades",
+            Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(key))) + ".json");
+        private void Persist(string key, DbUpgradeExecution execution)
+        {
+            try
+            {
+                var path = StatePath(key);
+                Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+                File.WriteAllText(path + ".tmp", JsonSerializer.Serialize(execution));
+                File.Move(path + ".tmp", path, true);
+            }
+            catch (Exception ex) { _logger.LogError(ex, "ثبت نتیجه به‌روزرسانی ممکن نشد."); }
+        }
+        public DbUpgradeExecution GetExecution()
+        {
+            var key = ExecutionKey();
+            if (Executions.TryGetValue(key, out var current)) return current;
+            var path = StatePath(key);
+            if (!File.Exists(path)) return new();
+            try
+            {
+                var previous = JsonSerializer.Deserialize<DbUpgradeExecution>(File.ReadAllText(path)) ?? new();
+                if (previous.Running)
+                {
+                    previous.Running = false;
+                    previous.Result = new DbUpgradeResult { Success = false, ExitCode = 1,
+                        StartedAtUtc = previous.StartedAtUtc,
+                        Output = "اجرای قبلی با توقف سرور قطع شده است؛ اتمام آن تأیید نشده است." };
+                }
+                return previous;
+            }
+            catch { return new(); }
+        }
 
         public DbUpgradeService(IConnectionStringProvider conn,
                                 IDatabaseService db,
@@ -57,6 +99,8 @@ namespace Safir.Server.Services
 
         private static readonly Probe[] Probes =
         {
+            new(ProbeKind.Object, "dbo.MOGHA_ANBAR", "", "MOGHA_ANBAR", "تابع",
+                "تابع گزارش موجودی و مغایرت انبار باید پس از به‌روزرسانی موجود باشد"),
             new(ProbeKind.Column, "dbo.PAY2_PERIOD", "DEED_BASE",
                 "PAY2_PERIOD.DEED_BASE", "ستون",
                 "بدون آن صدور و لغو صدور سند حقوق کار نمی‌کند؛ پیوند دوره به سند باید با شناسه‌ی ثابتِ سند باشد، نه شماره‌ی سند که WPF عوضش می‌کند"),
@@ -168,7 +212,10 @@ namespace Safir.Server.Services
             var sw    = Stopwatch.StartNew();
             var start = DateTime.UtcNow;
 
-            await Gate.WaitAsync(ct);
+            if (!await Gate.WaitAsync(0, ct))
+                throw new InvalidOperationException("یک به‌روزرسانی در حال اجراست؛ منتظر پایان آن بمانید.");
+            var key = ExecutionKey();
+            var execution = new DbUpgradeExecution { Running = !previewOnly, StartedAtUtc = start };
             try
             {
                 if (previewOnly)
@@ -187,6 +234,8 @@ namespace Safir.Server.Services
                 }
 
                 var buffer = new StringWriter();
+                Executions[key] = execution;
+                Persist(key, execution);
 
                 // ScriptSqly خطاهای SQL را با Console.WriteLine گزارش
                 // می‌دهد و راه دیگری برای گرفتن‌شان ندارد. پس کنسول موقتاً
@@ -199,6 +248,7 @@ namespace Safir.Server.Services
                 Console.SetError(new TeeWriter(prevErr, buffer));
 
                 Exception? failure = null;
+                ScriptSqly.Migrations.MigrationExecutionResult? summary = null;
                 try
                 {
                     // روی نخِ جدا، چون LetsGo همگام است و دقیقه‌ها طول
@@ -207,8 +257,15 @@ namespace Safir.Server.Services
                     // بدون CancellationToken اجرا می‌شود، عمداً: مهاجرتِ
                     // نیمه‌کاره بدتر از مهاجرتِ کند است. اگر کاربر مرورگر
                     // را ببندد، کار تا آخر می‌رود.
-                    await Task.Run(() =>
-                        ScriptSqly.Migrations.ScriptSqly.LetsGo(cs, includeBaseData, 2),
+                    summary = await Task.Run(() =>
+                        ScriptSqly.Migrations.ScriptSqly.RunTracked(cs, includeBaseData, 2, step =>
+                        {
+                            execution.Step = step.Number;
+                            execution.Command = step.Command;
+                            if (step.State == "done") execution.Executed++;
+                            if (step.State == "skipped") execution.Skipped++;
+                            if (step.State == "failed") execution.Failed++;
+                        }),
                         CancellationToken.None);
                 }
                 catch (Exception ex)
@@ -225,20 +282,30 @@ namespace Safir.Server.Services
                 sw.Stop();
 
                 var text = buffer.ToString();
+                if (summary is not null)
+                {
+                    text += $"\nاجراشده: {summary.Executed}؛ بدون نیاز به تغییر: {summary.Skipped}؛ خطا: {summary.Errors.Count}\n";
+                    foreach (var error in summary.Errors)
+                        text += $"\n{error.Command}: SQL {error.ErrorNumber}: {error.Message}\n";
+                }
                 if (failure is not null)
                     text += Environment.NewLine + failure;
                 else if (string.IsNullOrWhiteSpace(text))
                     text = "مهاجرت‌ها بدون خطا اجرا شدند.";
 
-                return new DbUpgradeResult
+                var result = new DbUpgradeResult
                 {
-                    Success      = failure is null,
-                    ExitCode     = failure is null ? 0 : 1,
+                    Success      = failure is null && summary?.Success == true,
+                    ExitCode     = failure is null && summary?.Success == true ? 0 : 1,
                     Output       = text,
                     DurationMs   = sw.ElapsedMilliseconds,
                     StartedAtUtc = start,
                     WasPreview   = false
                 };
+                execution.Result = result;
+                execution.Running = false;
+                Persist(key, execution);
+                return result;
             }
             finally
             {

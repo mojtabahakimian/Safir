@@ -24,6 +24,9 @@
         <div class="d-flex align-center gap-2 ml-3" style="cursor: pointer;" @onclick='() => NavManager.NavigateTo("/")'>
             <img class="safir-appbar-logo" src="img/safir-logo.png" alt="سفیر" />
             <MudText Typo="Typo.h6" Class="safir-appbar-title" Style="font-weight:800;">سفیر</MudText>
+            <MudTooltip Text="@($"نسخه سامانه سفیر: {appVersion}")" Arrow="true">
+                <span class="safir-appbar-version">v@(appVersion)</span>
+            </MudTooltip>
         </div>
 
         @* شرکت (دیتابیس) این تب با رنگ ثابت خودش، تا وقتی چند شرکت در چند تب باز است سند در شرکت اشتباه زده نشود *@
@@ -235,9 +238,20 @@
     private bool showConnectivityWarning = false;
     private string connectivityWarningMessage = "";
     private Timer? _connectivityCheckTimer;
+    private string appVersion = "1.0.0.82";
 
     protected override async Task OnInitializedAsync()
     {
+        try
+        {
+            var ver = typeof(MainLayout).Assembly.GetName().Version;
+            if (ver != null)
+            {
+                appVersion = ver.ToString();
+            }
+        }
+        catch { }
+
         // قبل از اولین درخواست، تا ردِ «دیتابیس دیگر» در همان بالا آمدن هم به صفحه‌ی ورود ببرد
         DbMismatchHandler.Mismatch += OnDbMismatch;
 

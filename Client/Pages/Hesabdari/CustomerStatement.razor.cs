@@ -44,6 +44,7 @@ namespace Safir.Client.Pages.Hesabdari // مطمئن شوید namespace درست
         private List<QDAFTARTAFZIL2_H>? statementItems;
         // فلگی برای نمایش وضعیت لودینگ
         private bool isLoading = false;
+        private string? loadError;
         private bool isDownloading = false; // <<< فلگ برای نمایش وضعیت دانلود
 
         // تاریخ های پیش فرض برای درخواست از سرور (می توانید بعداً امکان تغییرشان را اضافه کنید)
@@ -69,6 +70,7 @@ namespace Safir.Client.Pages.Hesabdari // مطمئن شوید namespace درست
 
             isLoading = true;      // شروع لودینگ
             statementItems = null; // پاک کردن داده های قبلی
+            loadError = null;
             StateHasChanged();     // بروزرسانی UI برای نمایش لودینگ
 
             try
@@ -81,6 +83,7 @@ namespace Safir.Client.Pages.Hesabdari // مطمئن شوید namespace درست
                 // بررسی نتیجه بازگشتی از API
                 if (statementItems == null)
                 {
+                    loadError = "خطا در دریافت اطلاعات صورت حساب از سرور.";
                     Snackbar.Add("خطا در دریافت اطلاعات صورت حساب از سرور.", Severity.Error);
                     Logger.LogWarning("API returned null statement items for {HesabCode}", HesabCode);
                     statementItems = new List<QDAFTARTAFZIL2_H>(); // تنظیم لیست خالی در صورت خطا
@@ -90,8 +93,14 @@ namespace Safir.Client.Pages.Hesabdari // مطمئن شوید namespace درست
                     Logger.LogInformation("Successfully loaded {Count} items for {HesabCode}.", statementItems.Count, HesabCode);
                 }
             }
+            catch (HttpRequestException ex) when (ex.StatusCode == System.Net.HttpStatusCode.Forbidden)
+            {
+                loadError = "شما اجازه دسترسی به این حساب را ندارید.";
+                statementItems = new List<QDAFTARTAFZIL2_H>();
+            }
             catch (Exception ex) // مدیریت خطاهای پیش بینی نشده
             {
+                loadError = "خطا در دریافت اطلاعات صورت حساب از سرور.";
                 Logger.LogError(ex, "Error loading statement for {HesabCode}", HesabCode);
                 Snackbar.Add($"خطای غیرمنتظره: {ex.Message}", Severity.Error);
                 statementItems = new List<QDAFTARTAFZIL2_H>(); // تنظیم لیست خالی در صورت خطا

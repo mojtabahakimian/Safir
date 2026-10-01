@@ -18,6 +18,7 @@ using static Safir.Shared.Utility.CL_Tarikh;
 using Safir.Shared.Models.Hesabdari;
 using QuestPDF.Fluent;
 using Safir.Shared.Models;
+using Safir.Server.Services;
 
 namespace Safir.Server.Controllers
 {
@@ -472,6 +473,8 @@ namespace Safir.Server.Controllers
             try
             {
                 _logger.LogInformation("Fetching statement for HesabCode: {HesabCode} from {StartDate} to {EndDate}", hesabCode, startDate, endDate);
+                if (!await AccountAccessRules.CanAccessAsync(_dbService, User, hesabCode))
+                    return StatusCode(403, AccountAccessRules.DeniedMessage);
 
                 //string query = "SELECT HES_K, HES_M, TAFZILN, HES, SHARH, BED, BES, N_S, DATE_S, MAND " +
                 //               "FROM dbo.QDAFTARTAFZIL2_H(@StartDate, @EndDate, @HesabCode);";   
@@ -620,6 +623,9 @@ ORDER BY DATE_S, BED DESC;
             try
             {
                 // 1. دریافت داده‌های صورت حساب با استفاده از متد کمکی
+                if (!await AccountAccessRules.CanAccessAsync(_dbService, User, hesabCode))
+                    return StatusCode(403, AccountAccessRules.DeniedMessage);
+
                 var statementItems = await FetchStatementDataAsync(hesabCode, startDate, endDate);
 
                 if (statementItems == null)
@@ -712,6 +718,9 @@ ORDER BY DATE_S, BED DESC;
             try
             {
                 // 3. استفاده از پارامتر برای جلوگیری از SQL Injection
+                if (!await AccountAccessRules.CanAccessAsync(_dbService, User, hesCode))
+                    return StatusCode(403, AccountAccessRules.DeniedMessage);
+
                 var parameters = new { HesCode = hesCode };
 
                 // 4. اجرای کوئری با استفاده از سرویس دیتابیس
@@ -750,6 +759,10 @@ ORDER BY DATE_S, BED DESC;
 
             var whereConditions = new List<string>();
             var parameters = new DynamicParameters(); // یک DynamicParameters جدید ایجاد کنید
+            if (!AccountAccessRules.TryGetUserCo(User, out var userCo))
+                return Unauthorized("اطلاعات کاربر نامعتبر است.");
+            parameters.Add("AccountAccessUserCo", userCo);
+            whereConditions.Add(AccountAccessRules.Predicate("CH.HES"));
 
             // 1. فیلتر مشتریان مسدود نشده (این باید همیشه اعمال شود)
             // اطمینان حاصل کنید که منطق ISNULL(BC.ENDBLK, 1) <> 0 با دیتابیس شما همخوانی دارد

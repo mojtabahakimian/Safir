@@ -72,8 +72,8 @@
 
                 @* NEW: Input for file attachment *@
                 <MudItem Class="my-4">
-                    <MudText Typo="Typo.body2" Class="mb-2">فایل ضمیمه (عکس/PDF):</MudText>
-                    <InputFile OnChange="HandleFileSelection" />
+                    <MudText Typo="Typo.body2" Class="mb-2">فایل ضمیمه (عکس، PDF یا اکسل؛ حداکثر ۱۰ مگابایت):</MudText>
+                    <InputFile OnChange="HandleFileSelection" accept=".jpg,.jpeg,.png,.pdf,.xlsx,.xls" />
                     @if (_selectedFile != null)
                     {
                         <MudText Typo="Typo.body2" Class="mt-2">فایل انتخاب شده: @_selectedFile.Name (@((_selectedFile.Size / 1024).ToString("N0")) KB)</MudText>
@@ -123,8 +123,8 @@
 
     private IBrowserFile? _selectedFile;
     private string? _fileUploadError;
-    private const long MaxFileSize = 10 * 1024 * 1024; // 10 MB in bytes
-    private string[] AllowedFileExtensions = { ".jpg", ".jpeg", ".png", ".pdf" };
+    private const long MaxFileSize = EventAttachmentPolicy.MaxFileSize;
+    private string[] AllowedFileExtensions = EventAttachmentPolicy.AllowedExtensions;
 
 
     private bool _isLoadingEvents = false;
