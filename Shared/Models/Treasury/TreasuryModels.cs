@@ -34,6 +34,14 @@ namespace Safir.Shared.Models.Treasury
 
         /// <summary>WPF: «واگذاری» برای دریافت مجاز نیست («مقدار وارده مجاز نیست»).</summary>
         public static bool Allowed(int noAm, int nahva) => !(noAm == TreasuryOp.Receipt && nahva == ChequeAssign);
+
+        /// <summary>
+        /// سطرِ اصلاح‌شده هنوز به همان چک و همان نقش اشاره دارد؟ نقد/سایر چکی ندارند؛ «چک» و «چکِ غیرتجاری»
+        /// با همان نوعِ عملیات در یک جدول‌اند و فقط KIND ِ چک عوض می‌شود. وگرنه چکِ قبلیِ سطر مثلِ حذفِ سطر آزاد می‌شود.
+        /// </summary>
+        public static bool SameChequeRole(int oldNoAm, int oldNahva, int newNoAm, int newNahva)
+            => !IsCheque(oldNahva)
+               || (oldNoAm == newNoAm && (oldNahva == newNahva || (IsNewCheque(oldNahva) && IsNewCheque(newNahva))));
     }
 
     public class TreasuryListItemDto

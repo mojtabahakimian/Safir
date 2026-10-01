@@ -66,12 +66,15 @@ namespace Safir.Server.Treasury
         /// <summary>
         /// فهرستِ چک‌های قابلِ انتخاب برای واگذاری/برگشت — همان RowSourceهای FORCHEK
         /// (FOR_CHK_SERCH)، BAKCHEK و BAKCHEKP. چکِ پارک‌شده روی ۹۱۱ (سطرِ دریافتش حذف شده) نمی‌آید.
+        /// برگشتِ چکِ دریافتی بی‌جستجو فقط چک‌های نزدِ خودمان (صندوق/بانک) را می‌دهد: چک‌های واگذارشده به
+        /// اشخاص هزاران‌اند و صاحبِ چکِ برگشتی سریالش را در دست دارد — با جستجو پیدا می‌شوند.
         /// </summary>
         public async Task<List<TreasuryChequeDto>> PickableChequesAsync(string mode, string? q)
         {
             var (select, where) = mode switch
             {
-                "assign" => (GetdSelect, "g.N_KOL IS NULL AND g.N_KOL2 IS NULL AND g.N_KOL3 IS NULL"),
+                // FORCHEK: N_SERI.RowSource — وصول‌شده (N_S) هم واگذار نمی‌شود
+                "assign" => (GetdSelect, "(g.N_S IS NULL OR g.N_S = 0) AND g.N_KOL IS NULL AND g.N_KOL2 IS NULL AND g.N_KOL3 IS NULL"),
                 "return-received" => (GetdSelect, "(g.N_S IS NULL OR g.N_S = 0) AND g.N_KOL2 IS NULL AND g.N_KOL3 IS NULL AND ISNULL(g.N_KOL, 0) <> 911"),
                 "return-paid" => (GetpSelect, "(g.N_S IS NULL OR g.N_S = 0) AND g.N_KOL2 IS NULL AND g.N_KOL3 IS NULL AND ISNULL(g.N_KOL, 0) <> 911"),
                 _ => (null, null)
@@ -80,6 +83,11 @@ namespace Safir.Server.Treasury
 
             q = NormalizeFa(q);
             var args = new DynamicParameters();
+            if (mode == "return-received" && q.Length == 0)
+            {
+                where += " AND (g.N_KOL IS NULL OR g.N_KOL = @bankha)";
+                args.Add("bankha", (await SazmanAsync()).Bankha);
+            }
             if (q.Length > 0)
             {
                 where += " AND (CAST(CAST(g.N_SERI AS bigint) AS nvarchar(30)) LIKE @q + '%' OR g.NAME_TAH LIKE N'%' + @q + N'%' OR g.NAME_TAH LIKE N'%' + @qa + N'%'" +
@@ -138,29 +146,91 @@ namespace Safir.Server.Treasury
             if ((r.Sharh?.Length ?? 0) > 255) return Fail("شرح عملیات بیش از اندازه‌ی مجاز (۲۵۵ نویسه) است.");
 
             ExistingRow? old = null;
+            Release? release = null;
             if (idh is not null)
             {
                 old = await RowAsync(idh.Value);
                 if (old is null || old.Id != id) return Fail("سطر پیدا نشد.");
-                if (TreasuryMethod.IsCheque(old.Nahva) && (old.NoAm != r.NoAm || old.Nahva != r.Nahva))
-                    return Fail("نوع یا نحوه‌ی سطرِ چکی را نمی‌شود عوض کرد؛ سطر را حذف و دوباره ثبت کنید (وضعیتِ چک هم برمی‌گردد).");
+
+                // نوع یا نحوه‌ی سطرِ چکی عوض شده: چکِ قبلی همان‌طور آزاد می‌شود که با حذفِ سطر، و در همان
+                // تراکنش سطر با نوعِ تازه ذخیره می‌شود (همان IDH و ردیف). WPF این را نمی‌گذاشت و می‌گفت
+                // «سطر را حذف و دوباره ثبت کنید»؛ اینجا همان دو کار یک‌جا و بی‌خطرِ نیمه‌کاره ماندن انجام می‌شود.
+                if (!TreasuryMethod.SameChequeRole(old.NoAm, old.Nahva, r.NoAm, r.Nahva))
+                {
+                    var payable = PayableTable(old.NoAm, old.Nahva);
+                    var oldCheque = old.NSeri is not null && old.Bank is not null ? await CurrentPickedAsync(old, payable) : null;
+                    if (ChequeLockedReason(old.NoAm, old.Nahva, oldCheque, (await SazmanAsync()).Bankha) is { } why)
+                        return Fail($"چکِ این سطر {why}؛ نوع و نحوه‌ی سطر دیگر عوض نمی‌شود.");
+                    if (oldCheque is not null && r.PickedChequeId == oldCheque.Id && PayableTable(r.NoAm, r.Nahva) == payable)
+                        return Fail("همان چکِ این سطر را نمی‌شود با نوعِ تازه دوباره انتخاب کرد؛ سطر را حذف و دوباره ثبت کنید.");
+
+                    var was = old;
+                    release = (conn, tx) => ReleaseRowChequeAsync(conn, tx, was.NoAm, was.Nahva, oldCheque, userName);
+                    // از اینجا سطر «بی‌چک» است: Save* چکِ تازه می‌سازد/انتخاب می‌کند و فقط IDH را نگه می‌دارد
+                    old = new ExistingRow { Idh = was.Idh, Id = was.Id, NoAm = was.NoAm, Nahva = was.Nahva, Mabl = was.Mabl };
+                }
+                // سطرِ نقد/سایر چکی ندارد؛ سریال/بانکِ جامانده از داده‌ی قدیمی نباید چکِ کسِ دیگری را «چکِ فعلی» کند
+                else if (!TreasuryMethod.IsCheque(old.Nahva)) { old.NSeri = null; old.Bank = null; }
             }
 
             return r.Nahva switch
             {
-                TreasuryMethod.Cash or TreasuryMethod.Other => await SavePlainRowAsync(h, idh, r, userCo),
+                TreasuryMethod.Cash or TreasuryMethod.Other => await SavePlainRowAsync(h, idh, r, userCo, release),
                 TreasuryMethod.Cheque or TreasuryMethod.NonTradeCheque => r.NoAm == TreasuryOp.Receipt
-                    ? await SaveReceivedChequeAsync(h, old, r, userName, userCo, clientIp)
-                    : await SavePaidChequeAsync(h, old, r, userName, userCo, clientIp),
-                TreasuryMethod.ChequeAssign => await SaveAssignAsync(h, old, r, userName, userCo),
+                    ? await SaveReceivedChequeAsync(h, old, r, userName, userCo, clientIp, release)
+                    : await SavePaidChequeAsync(h, old, r, userName, userCo, clientIp, release),
+                TreasuryMethod.ChequeAssign => await SaveAssignAsync(h, old, r, userName, userCo, release),
                 _ => r.NoAm == TreasuryOp.Payment
-                    ? await SaveReturnReceivedAsync(h, old, r, userName, userCo, clientIp)
-                    : await SaveReturnPaidAsync(h, old, r, userName, userCo, clientIp)
+                    ? await SaveReturnReceivedAsync(h, old, r, userName, userCo, clientIp, release)
+                    : await SaveReturnPaidAsync(h, old, r, userName, userCo, clientIp, release)
             };
         }
 
+        /// <summary>آزاد کردنِ چکِ قبلیِ سطر، اولِ تراکنشِ ذخیره (وقتی نوع/نحوه‌ی سطرِ چکی عوض شده).</summary>
+        private delegate Task Release(IDbConnection conn, IDbTransaction tx);
+
+        /// <summary>
+        /// چکِ دریافتی/پرداختیِ سطر که دیگر دستِ ما نیست — نه سطرش حذف می‌شود نه نوعش عوض. null = آزاد.
+        /// واگذاری و برگشت همیشه قابلِ برگشت‌اند.
+        /// </summary>
+        public static string? ChequeLockedReason(int noAm, int nahva, TreasuryChequeDto? c, int? bankha)
+        {
+            if (c is null || !TreasuryMethod.IsNewCheque(nahva)) return null;
+            if (noAm == TreasuryOp.Receipt && c.InCirculation(bankha)) return "وصول، واگذار یا برگشت شده";
+            if (noAm == TreasuryOp.Payment && (c.NKol2 is not null and not 911 || c.NKol3 is not null)) return "وصول یا برگشت شده";
+            return null;
+        }
+
+        /// <summary>
+        /// DELETE_FACTOR22_Click روی چکِ سطر: چکِ دریافتی/پرداختی روی حسابِ معلقِ ۹۱۱-۱-۱ پارک می‌شود؛
+        /// واگذاری و برگشت آزاد می‌شوند.
+        /// </summary>
+        private static async Task ReleaseRowChequeAsync(IDbConnection conn, IDbTransaction tx, int noAm, int nahva, TreasuryChequeDto? cheque, string userName)
+        {
+            if (cheque is null) return;
+            switch (noAm, nahva)
+            {
+                case (TreasuryOp.Receipt, TreasuryMethod.Cheque or TreasuryMethod.NonTradeCheque):
+                    await conn.ExecuteAsync("UPDATE dbo.PAY_GETD SET N_KOL = 911, N_MOIN = 1, N_TAF = 1, HES1 = N'911-1-1' WHERE ID = @id", new { id = cheque.Id }, tx);
+                    await LogReceivedAsync(conn, tx, cheque.NSeri, cheque.Bank, cheque.DateS, 1, cheque.Sandugh, userName, setVaz: true);
+                    break;
+                case (TreasuryOp.Payment, TreasuryMethod.Cheque or TreasuryMethod.NonTradeCheque):
+                    await conn.ExecuteAsync("UPDATE dbo.PAY_GETP SET N_KOL = 911, N_MOIN = 1, N_TAF = 1, HES1 = N'911-1-1' WHERE ID = @id", new { id = cheque.Id }, tx);
+                    break;
+                case (TreasuryOp.Payment, TreasuryMethod.ChequeAssign):
+                    await ReleaseAssignAsync(conn, tx, cheque, userName);
+                    break;
+                case (TreasuryOp.Payment, TreasuryMethod.ChequeReturn):
+                    await ReleaseReturnReceivedAsync(conn, tx, cheque, userName);
+                    break;
+                case (TreasuryOp.Receipt, TreasuryMethod.ChequeReturn):
+                    await ReleaseReturnPaidAsync(conn, tx, cheque);
+                    break;
+            }
+        }
+
         /// <summary>نقد و سایر — سمتِ صندوق در «نقد» خودکار است (NO_AM_AfterUpdate).</summary>
-        private async Task<TreasurySaveResult> SavePlainRowAsync(TreasuryListItemDto h, int? idh, TreasuryRowSaveRequest r, int userCo)
+        private async Task<TreasurySaveResult> SavePlainRowAsync(TreasuryListItemDto h, int? idh, TreasuryRowSaveRequest r, int userCo, Release? release)
         {
             if (r.Mabl <= 0 || double.IsNaN(r.Mabl) || double.IsInfinity(r.Mabl)) return Fail("مبلغ صحیح نیست.");
             var fhes = r.Fhes?.Trim() ?? "";
@@ -177,6 +247,7 @@ namespace Safir.Server.Treasury
 
             var newIdh = await _db.ExecuteInTransactionAsync(async (conn, tx) =>
             {
+                if (release is not null) await release(conn, tx);
                 var rowId = await UpsertRowAsync(conn, tx, h.Id, h.Date, idh, d, userCo);
                 await RebuildSanadAsync(conn, tx, h.Id);
                 return rowId;
@@ -302,7 +373,7 @@ namespace Safir.Server.Treasury
         /// به‌حساب = ADA (یا ADV)، از‌حساب = پرداخت‌کننده؛ PAY_GETD درج یا اصلاح، ردیفِ دفتر برای چکِ تازه.
         /// </summary>
         private async Task<TreasurySaveResult> SaveReceivedChequeAsync(TreasuryListItemDto h, ExistingRow? old, TreasuryRowSaveRequest r,
-                                                                       string userName, int userCo, string? clientIp)
+                                                                       string userName, int userCo, string? clientIp, Release? release)
         {
             if (r.Cheque is not { } c) return Fail("مشخصاتِ چک وارد نشده است.");
             var s = await SazmanAsync();
@@ -342,8 +413,8 @@ namespace Safir.Server.Treasury
                 current = (await _db.DoGetDataSQLAsync<TreasuryChequeDto>(GetdSelect + " WHERE g.N_SERI = @s AND g.BANK = @b ORDER BY g.RADIF",
                     new { s = old.NSeri, b = old.Bank })).FirstOrDefault();
             if (current is not null && current.InCirculation(s.Bankha)
-                && (current.NSeri != c.NSeri || current.Bank != c.Bank || current.DateS != c.DateS || current.Mabl != r.Mabl))
-                return Fail("این چک واگذار، وصول یا برگشت شده؛ سریال، بانک، سررسید و مبلغش دیگر از اینجا عوض نمی‌شود.");
+                && (current.NSeri != c.NSeri || current.Bank != c.Bank || current.DateS != c.DateS || current.Mabl != r.Mabl || old!.Nahva != r.Nahva))
+                return Fail("این چک واگذار، وصول یا برگشت شده؛ سریال، بانک، سررسید، مبلغ و تجاری‌بودنش دیگر از اینجا عوض نمی‌شود.");
 
             var bankName = await BankNameAsync(c.Bank);
             var count = group ? c.Count : 1;
@@ -354,6 +425,7 @@ namespace Safir.Server.Treasury
             {
                 var newIdh = await _db.ExecuteInTransactionAsync(async (conn, tx) =>
                 {
+                    if (release is not null) await release(conn, tx);
                     // دفتر اسناد دریافتنی (DAFT_ASN): شماره‌ی شروع و شماره‌ی دفتر — اگر نیست (۱، ۱)
                     var daft = (await conn.QueryAsync<(int First, int Book)>(
                         "SELECT TOP 1 FIRSTNUM, BOOKNUM FROM dbo.DAFT_ASN ORDER BY BOOKNUM DESC", transaction: tx)).FirstOrDefault();
@@ -471,7 +543,7 @@ namespace Safir.Server.Treasury
         /// از‌حساب = APA (یا APV)، به‌حساب = گیرنده؛ N_KOL.. = حسابِ بانکیِ پرداخت (پیش‌فرض اولین تفصیلیِ BANKHA).
         /// </summary>
         private async Task<TreasurySaveResult> SavePaidChequeAsync(TreasuryListItemDto h, ExistingRow? old, TreasuryRowSaveRequest r,
-                                                                   string userName, int userCo, string? clientIp)
+                                                                   string userName, int userCo, string? clientIp, Release? release)
         {
             if (r.Cheque is not { } c) return Fail("مشخصاتِ چک وارد نشده است.");
             var s = await SazmanAsync();
@@ -518,6 +590,7 @@ namespace Safir.Server.Treasury
             {
                 var newIdh = await _db.ExecuteInTransactionAsync(async (conn, tx) =>
                 {
+                    if (release is not null) await release(conn, tx);
                     int firstIdh = 0;
                     for (int i = 0; i < count; i++)
                     {
@@ -595,7 +668,8 @@ namespace Safir.Server.Treasury
         /// واگذاری چکِ دریافتی به شخص — FORCHEK._SaveExit_Click:
         /// به‌حساب = گیرنده، از‌حساب = ADA (چکِ غیرتجاری: ADV)؛ PAY_GETD.N_KOL.. = گیرنده، HES1، VAZ = 4، موقعیت.
         /// </summary>
-        private async Task<TreasurySaveResult> SaveAssignAsync(TreasuryListItemDto h, ExistingRow? old, TreasuryRowSaveRequest r, string userName, int userCo)
+        private async Task<TreasurySaveResult> SaveAssignAsync(TreasuryListItemDto h, ExistingRow? old, TreasuryRowSaveRequest r, string userName, int userCo,
+                                                               Release? release)
         {
             if (r.PickedChequeId is not { } pick) return Fail("چکِ واگذاری را از فهرست انتخاب کنید.");
             if (r.Sandugh is null) return Fail("صندوق (موقعیت چک) نمی‌تواند خالی باشد.");
@@ -621,6 +695,7 @@ namespace Safir.Server.Treasury
 
             var newIdh = await _db.ExecuteInTransactionAsync(async (conn, tx) =>
             {
+                if (release is not null) await release(conn, tx);
                 if (current is not null && current.Id != cheque.Id)
                     await ReleaseAssignAsync(conn, tx, current, userName);
 
@@ -658,7 +733,7 @@ namespace Safir.Server.Treasury
         /// PAY_GETD.N_KOL2.. = به‌حساب، HES2، VAZ و موقعیت.
         /// </summary>
         private async Task<TreasurySaveResult> SaveReturnReceivedAsync(TreasuryListItemDto h, ExistingRow? old, TreasuryRowSaveRequest r,
-                                                                       string userName, int userCo, string? clientIp)
+                                                                       string userName, int userCo, string? clientIp, Release? release)
         {
             if (r.PickedChequeId is not { } pick) return Fail("چکِ برگشتی را از فهرست انتخاب کنید.");
             if (r.Vaz is not (>= 1 and <= 6)) return Fail("وضعیتِ چک را انتخاب کنید.");
@@ -698,6 +773,7 @@ namespace Safir.Server.Treasury
 
             var newIdh = await _db.ExecuteInTransactionAsync(async (conn, tx) =>
             {
+                if (release is not null) await release(conn, tx);
                 if (current is not null && current.Id != cheque.Id)
                     await ReleaseReturnReceivedAsync(conn, tx, current, userName);
 
@@ -727,7 +803,7 @@ namespace Safir.Server.Treasury
         /// PAY_GETP.N_KOL2.. = به‌حساب و VAZ (۱ نزد شخص، ۲ عودت شده).
         /// </summary>
         private async Task<TreasurySaveResult> SaveReturnPaidAsync(TreasuryListItemDto h, ExistingRow? old, TreasuryRowSaveRequest r,
-                                                                   string userName, int userCo, string? clientIp)
+                                                                   string userName, int userCo, string? clientIp, Release? release)
         {
             if (r.PickedChequeId is not { } pick) return Fail("چکِ پرداختیِ برگشتی را از فهرست انتخاب کنید.");
             if (r.Vaz is not (1 or 2)) return Fail("وضعیتِ چک را انتخاب کنید.");
@@ -753,6 +829,7 @@ namespace Safir.Server.Treasury
 
             var newIdh = await _db.ExecuteInTransactionAsync(async (conn, tx) =>
             {
+                if (release is not null) await release(conn, tx);
                 if (current is not null && current.Id != cheque.Id)
                     await ReleaseReturnPaidAsync(conn, tx, current);
 
@@ -786,39 +863,13 @@ namespace Safir.Server.Treasury
             if (TreasuryMethod.IsCheque(row.Nahva) && row.NSeri is not null && row.Bank is not null)
                 cheque = await CurrentPickedAsync(row, PayableTable(row.NoAm, row.Nahva));
 
-            if (cheque is not null && TreasuryMethod.IsNewCheque(row.Nahva))
-            {
-                if (row.NoAm == TreasuryOp.Receipt && cheque.InCirculation(s.Bankha))
-                    return Fail("چکی که وصول، واگذاری یا برگشت خورده قابل حذف نیست.");
-                if (row.NoAm == TreasuryOp.Payment && (cheque.NKol2 is not null and not 911 || cheque.NKol3 is not null))
-                    return Fail("چکی که وصول یا برگشت خورده قابل حذف نیست.");
-            }
+            if (ChequeLockedReason(row.NoAm, row.Nahva, cheque, s.Bankha) is { } why)
+                return Fail($"چکی که {why} قابل حذف نیست.");
 
             await _db.ExecuteInTransactionAsync(async (conn, tx) =>
             {
                 await HistoryAsync(conn, tx, id, userName, clientIp);
-                if (cheque is not null)
-                {
-                    switch (row.NoAm, row.Nahva)
-                    {
-                        case (TreasuryOp.Receipt, TreasuryMethod.Cheque or TreasuryMethod.NonTradeCheque):
-                            await conn.ExecuteAsync("UPDATE dbo.PAY_GETD SET N_KOL = 911, N_MOIN = 1, N_TAF = 1, HES1 = N'911-1-1' WHERE ID = @id", new { id = cheque.Id }, tx);
-                            await LogReceivedAsync(conn, tx, cheque.NSeri, cheque.Bank, cheque.DateS, 1, cheque.Sandugh, userName, setVaz: true);
-                            break;
-                        case (TreasuryOp.Payment, TreasuryMethod.Cheque or TreasuryMethod.NonTradeCheque):
-                            await conn.ExecuteAsync("UPDATE dbo.PAY_GETP SET N_KOL = 911, N_MOIN = 1, N_TAF = 1, HES1 = N'911-1-1' WHERE ID = @id", new { id = cheque.Id }, tx);
-                            break;
-                        case (TreasuryOp.Payment, TreasuryMethod.ChequeAssign):
-                            await ReleaseAssignAsync(conn, tx, cheque, userName);
-                            break;
-                        case (TreasuryOp.Payment, TreasuryMethod.ChequeReturn):
-                            await ReleaseReturnReceivedAsync(conn, tx, cheque, userName);
-                            break;
-                        case (TreasuryOp.Receipt, TreasuryMethod.ChequeReturn):
-                            await ReleaseReturnPaidAsync(conn, tx, cheque);
-                            break;
-                    }
-                }
+                await ReleaseRowChequeAsync(conn, tx, row.NoAm, row.Nahva, cheque, userName);
                 await conn.ExecuteAsync("DELETE FROM dbo.PGET_LST WHERE ID = @id AND IDH = @idh", new { id, idh }, tx);
                 await RebuildSanadAsync(conn, tx, id);
                 return 0;
