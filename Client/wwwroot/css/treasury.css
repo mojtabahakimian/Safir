@@ -461,18 +461,29 @@
 .trs-pick__item .amt { text-align: end; font-variant-numeric: tabular-nums; }
 .trs-pick__empty { display: flex; gap: 8px; align-items: center; justify-content: center; padding: 18px; color: var(--atm-muted); font-size: .84rem; }
 
-/* ─────────────── امضا و ارجاع ─────────────── */
-.trs-sign__head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; }
-.trs-sign__head > b { font-size: 1.02rem; display: inline-flex; gap: 8px; align-items: center; }
+/* ─────────────── امضا و ارجاع ───────────────
+   مثلِ WPF (امضاها و «ارجاع به» پایینِ پنجره ثابت‌اند): یک نوارِ جمع‌وجور که در حالتِ مشاهده
+   (.is-docked) پایینِ صفحه می‌چسبد و با هر تعداد سطر بی‌اسکرول دیده می‌شود. */
+.trs-sign { padding: 12px 14px; }
+.trs-sign.is-docked {
+    position: sticky; bottom: 10px; z-index: 6;
+    box-shadow: 0 -14px 34px -26px rgb(15 23 42 / .55), var(--atm-shadow);
+}
+.trs-sign__bar { display: flex; align-items: center; gap: 10px 14px; flex-wrap: wrap; }
+.trs-sign__lead { display: grid; gap: 4px; justify-items: start; min-width: 0; }
+.trs-sign__meta { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.trs-sign__lead > b { font-size: .95rem; display: inline-flex; gap: 8px; align-items: center; white-space: nowrap; }
 .trs-sign__now {
-    margin-inline-start: auto; display: inline-flex; gap: 6px; align-items: center;
-    font-size: .78rem; padding: 4px 12px; border-radius: 999px;
+    display: inline-flex; gap: 6px; align-items: center; white-space: nowrap;
+    font-size: .72rem; padding: 2px 10px; border-radius: 999px;
     background: color-mix(in srgb, var(--atm-info) 10%, transparent); color: var(--atm-info);
 }
-.trs-stamps { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.trs-sign__now b { display: inline-block; max-width: 130px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: bottom; }
+.trs-stamps { display: flex; gap: 8px; flex: 1 1 400px; min-width: 0; }
 .trs-stamp {
-    display: flex; align-items: center; gap: 10px;
-    padding: 12px; border-radius: 16px;
+    flex: 1 1 0; min-width: 0;
+    display: flex; align-items: center; gap: 8px;
+    padding: 7px 8px 7px 10px; border-radius: 14px;
     border: 1px dashed var(--atm-line); background: var(--atm-soft);
     transition: border-color .2s, background .2s;
 }
@@ -482,23 +493,30 @@
     background: color-mix(in srgb, #0ea5e9 7%, var(--atm-surface));
 }
 .trs-stamp__seal {
-    width: 40px; height: 40px; border-radius: 50%; flex: none;
-    display: grid; place-items: center; font-size: 1.25rem;
+    width: 32px; height: 32px; border-radius: 50%; flex: none;
+    display: grid; place-items: center; font-size: 1.05rem;
     color: var(--atm-muted); background: var(--atm-surface); border: 1px solid var(--atm-line);
 }
 .trs-stamp.is-on .trs-stamp__seal { color: #fff; background: linear-gradient(135deg, #0ea5e9, #6366f1); border-color: transparent; box-shadow: 0 10px 20px -12px #0ea5e9; }
-.trs-stamp__txt { display: grid; min-width: 0; flex: 1; }
-.trs-stamp__txt small { font-size: .72rem; color: var(--atm-muted); }
-.trs-stamp__txt b { font-size: .88rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.trs-stamp__txt { display: grid; min-width: 0; flex: 1; line-height: 1.35; }
+.trs-stamp__txt small { font-size: .68rem; color: var(--atm-muted); }
+.trs-stamp__txt b { font-size: .82rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .trs-stamp:not(.is-on) .trs-stamp__txt b { color: var(--atm-muted); font-weight: 600; }
-.trs-stamp .atm-btn.trs-stamp__btn { height: 34px; padding: 0 12px; font-size: .8rem; }
+.trs-stamp .atm-btn.trs-stamp__btn { width: 32px; height: 32px; padding: 0; font-size: .9rem; flex: none; }
 
-.trs-refer { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 12px; }
-.trs-refer > label { font-size: .82rem; font-weight: 700; color: var(--atm-muted); display: inline-flex; gap: 6px; align-items: center; }
-.trs-refer select { flex: 1; min-width: 200px; max-width: 360px; height: 40px; }
-.trs-refer .atm-btn { height: 40px; }
+.trs-refer { display: flex; align-items: center; gap: 8px; flex: 0 1 310px; min-width: 0; }
+.trs-refer > label { font-size: .8rem; font-weight: 700; color: var(--atm-muted); display: inline-flex; gap: 6px; align-items: center; white-space: nowrap; }
+.trs-refer select { flex: 1; min-width: 140px; height: 36px; }
+.trs-refer .atm-btn { height: 36px; flex: none; }
 
-.trs-timeline { list-style: none; margin: 14px 0 0; padding: 0; display: grid; gap: 2px; border-top: 1px dashed var(--atm-line); padding-top: 10px; }
+.trs-sign__ev {
+    display: inline-flex; align-items: center; gap: 4px; height: 22px; padding: 0 9px;
+    border-radius: 999px; border: 1px solid var(--atm-line); background: var(--atm-surface);
+    color: var(--atm-muted); font: inherit; font-size: .72rem; cursor: pointer; white-space: nowrap;
+}
+.trs-sign__ev:hover, .trs-sign__ev.is-on { color: var(--atm-primary); border-color: color-mix(in srgb, var(--atm-primary) 40%, transparent); }
+
+.trs-timeline { list-style: none; margin: 10px 0 0; padding: 0; display: grid; gap: 2px; border-top: 1px dashed var(--atm-line); padding-top: 10px; }
 .trs-timeline li { display: grid; grid-template-columns: 14px minmax(0, 1fr) auto; align-items: center; gap: 8px; font-size: .8rem; padding: 4px 0; }
 .trs-timeline .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--atm-muted); justify-self: center; }
 .trs-timeline .dot.sign { background: #0ea5e9; }
@@ -596,7 +614,9 @@
     .trs-tr .acc, .trs-tr .sharh { grid-column: 2 / -1; }
     .trs-tr .act { grid-column: 1 / -1; justify-content: flex-start; }
     .trs-bar__title small { display: none; }
-    .trs-stamps { grid-template-columns: minmax(0, 1fr); }
+    .trs-sign.is-docked { position: static; }
+    .trs-stamps { flex-direction: column; flex-basis: 100%; }
+    .trs-refer { flex-basis: 100%; }
     .trs-chq__grid { grid-template-columns: minmax(0, 1fr); }
     .trs-chq__grid .trs-f--wide { grid-column: auto; }
     .trs-head__title .trs-tools { margin-inline-start: 0; }

@@ -360,7 +360,7 @@
                     </div>
 
                     @* ───── امضا و ارجاع ───── *@
-                    <TreasurySignPanel Detail="_detail" Meta="_meta!" Busy="_busy" OnSign="SignAsync" OnRefer="ReferAsync" />
+                    <TreasurySignPanel Detail="_detail" Meta="_meta!" Busy="_busy" Docked="@(!_editing)" OnSign="SignAsync" OnRefer="ReferAsync" />
                 }
             </section>
         </div>
