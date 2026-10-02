@@ -1,0 +1,108 @@
+@using Safir.Shared.Models.Sanad
+@using Safir.Client.Pages.Salary.Tabs
+@inject SanadApiService Api
+@inject ISnackbar Snackbar
+@inject IDialogService DialogService
+
+@*
+    «تایید و قطعی کردن اسناد تایید نشده» (F_MENU_ASNAD) — GHATEI ِ سندهای یک بازه‌ی شماره = ۱.
+    برگشت‌ناپذیر است؛ پس اول پیش‌نمایش (چند سند، چندتا ناتراز و بی‌امضا) و بعد تأییدِ صریح.
+*@
+<MudDialog>
+    <TitleContent>
+        <MudText Typo="Typo.h6"><i class="bi bi-lock"></i> تایید و قطعی کردنِ اسناد</MudText>
+    </TitleContent>
+    <DialogContent>
+        <div class="snd-fin">
+            <div class="snd-fin__warn"><i class="bi bi-exclamation-octagon-fill"></i>سندِ قطعی‌شده دیگر نه اصلاح می‌شود، نه حذف، نه امضایش عوض می‌شود.</div>
+            <div class="snd-fin__range">
+                <div class="trs-f">
+                    <label>از سند شماره</label>
+                    <Pay2NumericInput @bind-Value="_from" MaxLength="10" Direction="ltr" />
+                </div>
+                <div class="trs-f">
+                    <label>تا سند شماره</label>
+                    <Pay2NumericInput @bind-Value="_to" MaxLength="10" Direction="ltr" />
+                </div>
+                <button type="button" class="atm-btn atm-btn--ghost" @onclick="PreviewAsync" disabled="@_busy"><i class="bi bi-search"></i>بررسی</button>
+            </div>
+            @if (_preview is { } p)
+            {
+                <div class="snd-fin__stats">
+                    <span><b>@p.Count</b> سند در این بازه</span>
+                    @if (p.AlreadyFinal > 0) { <span><b>@p.AlreadyFinal</b> از قبل قطعی</span> }
+                    @if (p.Unbalanced > 0) { <span class="bad"><i class="bi bi-exclamation-triangle-fill"></i><b>@p.Unbalanced</b> ناتراز</span> }
+                    @if (p.Unsigned > 0) { <span class="warn"><b>@p.Unsigned</b> بی‌امضا</span> }
+                </div>
+                @if (p.Applied > 0)
+                {
+                    <div class="snd-fin__done"><i class="bi bi-check-circle-fill"></i>تعدادِ @p.Applied سند قطعی شد.</div>
+                }
+            }
+        </div>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="() => MudDialog.Close(DialogResult.Ok(_applied))">بستن</MudButton>
+        <MudButton Color="Color.Error" Variant="Variant.Filled" OnClick="ApplyAsync"
+                   Disabled="@(_busy || _preview is null || _preview.Count - _preview.AlreadyFinal <= 0 || _preview.Applied > 0)">
+            قطعی کردن
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] MudDialogInstance MudDialog { get; set; } = default!;
+    [Parameter] public double? From { get; set; }
+    [Parameter] public double? To { get; set; }
+
+    private string? _from;
+    private string? _to;
+    private bool _busy;
+    private bool _applied;
+    private SanadFinalizePreviewDto? _preview;
+
+    protected override void OnInitialized()
+    {
+        _from = From?.ToString("0");
+        _to = To?.ToString("0");
+    }
+
+    private SanadFinalizeRequest? Build(bool apply)
+    {
+        if (!double.TryParse(_from, out var f) || !double.TryParse(_to, out var t) || f <= 0 || t <= 0)
+        {
+            Snackbar.Add("پارامترها كافي نيست! شماره‌ی سندِ شروع و پایان را وارد کنید.", Severity.Warning);
+            return null;
+        }
+        return new SanadFinalizeRequest { From = f, To = t, Apply = apply };
+    }
+
+    private async Task PreviewAsync()
+    {
+        var req = Build(false);
+        if (req is null) return;
+        _busy = true;
+        var (r, err) = await Api.FinalizeAsync(req);
+        _busy = false;
+        if (r is null) { Snackbar.Add(err ?? "بررسی نشد.", Severity.Error); return; }
+        _preview = r;
+    }
+
+    private async Task ApplyAsync()
+    {
+        var req = Build(true);
+        if (req is null || _preview is null) return;
+        var ok = await DialogService.ShowMessageBox("قطعی کردنِ اسناد",
+            $"آيا براي تائيد اسناد اطمينان داريد؟ {_preview.Count - _preview.AlreadyFinal} سند قطعی می‌شود و ديگر امكان تغيير در آن‌ها وجود نخواهد داشت."
+            + (_preview.Unbalanced > 0 ? $" ({_preview.Unbalanced} سندِ ناتراز هم در این بازه است.)" : ""),
+            yesText: "قطعی کن", cancelText: "انصراف");
+        if (ok != true) return;
+        _busy = true;
+        var (r, err) = await Api.FinalizeAsync(req);
+        _busy = false;
+        if (r is null) { Snackbar.Add(err ?? "قطعی نشد.", Severity.Error); return; }
+        _preview = r;
+        _applied = r.Applied > 0;
+        Snackbar.Add($"تعدادِ {r.Applied} سند قطعی شد.", Severity.Success);
+    }
+}

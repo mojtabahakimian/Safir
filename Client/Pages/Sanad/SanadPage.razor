@@ -1,0 +1,1048 @@
+@page "/sanad"
+@page "/sanad/{Ns:double}"
+@page "/sanad/base/{Base:int}"
+@using System.Globalization
+@using System.Text.Json
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Web.Virtualization
+@using Safir.Shared.Models.Sanad
+@using Safir.Shared.Models.Treasury
+@using Safir.Client.Components.Automation
+@using Safir.Client.Components.Treasury
+@using Safir.Client.Components.Accounting
+@using Safir.Client.Components.Sanad
+@using Safir.Client.Pages.Salary.Tabs
+@inject SanadApiService Api
+@inject ISnackbar Snackbar
+@inject IDialogService DialogService
+@inject NavigationManager Nav
+@inject IJSRuntime JS
+@implements IAsyncDisposable
+@attribute [Authorize]
+
+<PageTitle>صدور و ویرایش اسناد</PageTitle>
+
+<div class="atm trs snd">
+
+    @* ═════════════ نوارِ بالا ═════════════ *@
+    <header class="trs-bar">
+        <div class="trs-bar__title">
+            <span class="ic"><i class="bi bi-journal-text"></i></span>
+            <div>
+                <b>صدور و ویرایش اسناد</b>
+                <small>@AutomationUi.LongDate(DateTime.Now) · @RangeLabel</small>
+            </div>
+        </div>
+        <div class="trs-bar__stats">
+            <span title="سندهای این بازه"><i class="bi bi-journals"></i><b>@_filtered.Count</b> سند</span>
+            <span class="rec" title="جمعِ گردشِ بدهکارِ سندهای این بازه"><i class="bi bi-arrow-left-right"></i>گردش <b>@Money(_filtered.Sum(x => x.SumBed))</b></span>
+            @if (UnbalancedCount > 0)
+            {
+                <button type="button" class="snd-bar__warn" @onclick='() => SetKind("unbalanced")' title="نمایشِ سندهای ناتراز">
+                    <i class="bi bi-exclamation-triangle-fill"></i><b>@UnbalancedCount</b> ناتراز
+                </button>
+            }
+        </div>
+        <div class="trs-bar__actions">
+            @if (_meta?.CanCreate == true)
+            {
+                <button type="button" class="atm-btn atm-btn--light" @onclick="StartNew" title="سندِ جدید (N)"><i class="bi bi-plus-lg"></i>سند جدید</button>
+            }
+            @if (_meta?.CanFinalize == true)
+            {
+                <button type="button" class="atm-btn atm-btn--glass" @onclick="OpenFinalize" title="تایید و قطعی کردنِ اسناد (برگشت‌ناپذیر)"><i class="bi bi-lock"></i>قطعی کردن</button>
+            }
+            <button type="button" class="atm-btn atm-btn--glass atm-btn--icon" @onclick="ReloadListAsync" title="بروزرسانی (R)"><i class="bi bi-arrow-clockwise"></i></button>
+        </div>
+    </header>
+
+    @if (_meta is not null && !_meta.CanSee)
+    {
+        <EmptyState Title="اجازه‌ی دیدنِ اسناد را ندارید" Text="دسترسیِ فرم «صدور و ویرایش اسناد» را از نرم‌افزار ویندوزی به کاربر شما بدهند." />
+    }
+    else
+    {
+        <div class="trs-layout">
+            @* ═════════════ فهرست ═════════════ *@
+            <aside class="trs-list">
+                <div class="trs-list__bar">
+                    <div class="atm-search">
+                        <i class="bi bi-search"></i>
+                        <input id="atm-search" type="search" placeholder="شماره سند، مبنا، بایگانی، شرح، کاربر…" value="@_q" @oninput="OnSearch" autocomplete="off" />
+                    </div>
+                    <div class="atm-seg">
+                        @foreach (var (key, label) in Ranges)
+                        {
+                            <button type="button" class="@(_range == key ? "is-active" : "")" @onclick="() => SetRange(key)">@label</button>
+                        }
+                    </div>
+                    <div class="atm-seg snd-kinds">
+                        @foreach (var (key, label) in Kinds)
+                        {
+                            <button type="button" class="@(_kind == key ? "is-active" : "")" @onclick="() => SetKind(key)">@label</button>
+                        }
+                    </div>
+                </div>
+                @if (_loadingList && _items.Count == 0)
+                {
+                    @for (int i = 0; i < 6; i++) { <div class="atm-skel" style="height:84px;margin-bottom:8px"></div> }
+                }
+                else if (_filtered.Count == 0)
+                {
+                    <div class="trs-list__empty">
+                        <i class="bi bi-inbox"></i>سندی پیدا نشد.
+                        @if (_range != "all" && !string.IsNullOrWhiteSpace(_q))
+                        {
+                            <button type="button" class="trs-linkbtn" @onclick='() => SetRange("all")'>جستجو در همه‌ی اسناد</button>
+                        }
+                    </div>
+                }
+                else
+                {
+                    <div class="trs-list__items">
+                        <Virtualize Items="_filtered" Context="x" ItemSize="96" OverscanCount="6">
+                            <div style="padding-bottom:8px" @key="x.Ns">
+                                <button type="button" class="trs-item snd-item @(x.Ns == _selectedNs ? "is-active" : "")" @onclick="() => SelectAsync(x.Ns)">
+                                    <div class="trs-item__top">
+                                        <b>#@N(x.Ns)</b>
+                                        <span class="kind @(x.Manual ? "k-manual" : "k-auto")">@SanadKinds.NameOf(x.NoS)</span>
+                                        <span class="dt">@DateLabel(x.Date)</span>
+                                    </div>
+                                    <div class="trs-item__amts">
+                                        @if (x.RowCount == 0) { <span class="none">بدونِ ردیف</span> }
+                                        else { <span class="snd-amt">@Money(x.SumBed)</span> }
+                                        @if (!x.Balanced) { <span class="snd-unbal" title="@($"اختلاف: {Money(Math.Abs(x.Difference))}")"><i class="bi bi-exclamation-triangle-fill"></i>ناتراز</span> }
+                                    </div>
+                                    <div class="trs-item__meta">
+                                        <span><i class="bi bi-list-ol"></i>@x.RowCount</span>
+                                        @if (!string.IsNullOrWhiteSpace(x.UserName)) { <span><i class="bi bi-person"></i>@x.UserName</span> }
+                                        @if (!string.IsNullOrWhiteSpace(x.Sharh)) { <span class="molah">@x.Sharh</span> }
+                                        <span class="flags">
+                                            @if (x.Signed) { <i class="bi bi-pen-fill" title="امضا شده"></i> }
+                                            @if (x.Final) { <i class="bi bi-lock-fill" title="قطعی"></i> }
+                                        </span>
+                                    </div>
+                                </button>
+                            </div>
+                        </Virtualize>
+                    </div>
+                }
+            </aside>
+
+            @* ═════════════ جزئیات ═════════════ *@
+            <section class="trs-detail">
+                @if (_draft)
+                {
+                    <div class="trs-card trs-head is-new" @key="@("draft")">
+                        <div class="trs-head__title">
+                            <span class="gl"><i class="bi bi-plus-lg"></i></span>
+                            <div><b>سندِ جدید</b><small>تاریخ و شرحِ سند را بنویسید؛ با «ایجاد»، شماره‌ی سند و بایگانی گرفته می‌شود و ردیف‌ها را وارد می‌کنید.</small></div>
+                        </div>
+                        @HeaderFields(true)
+                        <div class="trs-head__actions">
+                            <button type="button" class="atm-btn atm-btn--ghost" @onclick="CancelNew" disabled="@_busy">انصراف</button>
+                            <button type="button" class="atm-btn atm-btn--primary" @onclick="CreateAsync" disabled="@_busy"><i class="bi bi-check2"></i>ایجاد سند</button>
+                        </div>
+                    </div>
+                }
+                else if (_detail is null)
+                {
+                    @if (_loadingDetail)
+                    {
+                        <div class="atm-skel" style="height:180px;margin-bottom:12px"></div>
+                        <div class="atm-skel" style="height:360px"></div>
+                    }
+                    else
+                    {
+                        <EmptyState Title="یک سند را انتخاب کنید" Text="از فهرست یک سند را باز کنید یا سندِ جدید صادر کنید.">
+                            @if (_meta?.CanCreate == true)
+                            {
+                                <button type="button" class="atm-btn atm-btn--primary" @onclick="StartNew"><i class="bi bi-plus-lg"></i>سند جدید</button>
+                            }
+                        </EmptyState>
+                    }
+                }
+                else
+                {
+                    var h = _detail.Header;
+                    var lockMsg = _detail.LockReason;
+                    <div class="trs-card trs-head" @key="@($"h{h.Ns}")">
+                        <div class="trs-head__title">
+                            <span class="gl"><i class="bi bi-journal-text"></i></span>
+                            <div>
+                                <b>سند شماره @N(h.Ns)</b>
+                                <small>@AutomationUi.LongDate(FromLong(h.Date) ?? DateTime.Now)</small>
+                            </div>
+                            <div class="snd-nav">
+                                <button type="button" class="atm-icon-btn" title="سندِ قبلی" @onclick="() => NavigateAsync(false)" disabled="@_busy"><i class="bi bi-chevron-right"></i></button>
+                                <button type="button" class="atm-icon-btn" title="سندِ بعدی" @onclick="() => NavigateAsync(true)" disabled="@_busy"><i class="bi bi-chevron-left"></i></button>
+                            </div>
+                            <div class="trs-chips">
+                                <span class="chip @(h.Manual ? "k-manual" : "k-auto")">@SanadKinds.NameOf(h.NoS)</span>
+                                <span class="chip" title="شماره‌ی مبنا — پرونده‌ی اتوماسیونِ سند با همین شماره است"><i class="bi bi-hash"></i>مبنا @h.Base</span>
+                                @if (h.Bayeg is > 0) { <span class="chip" title="شماره‌ی بایگانی"><i class="bi bi-archive"></i>@h.Bayeg</span> }
+                                @if (!string.IsNullOrWhiteSpace(h.UserName)) { <span class="chip"><i class="bi bi-person"></i>@h.UserName</span> }
+                                @if (h.Final) { <span class="chip lock"><i class="bi bi-lock-fill"></i>قطعی</span> }
+                                @if (h.Signed) { <span class="chip sign"><i class="bi bi-pen-fill"></i>امضا شده</span> }
+                                else if (h.Okf) { <span class="chip" title="تأیید/چاپ شده — برای ویرایش «اصلاح سند» بزنید"><i class="bi bi-check2-circle"></i>تأیید شده</span> }
+                                @if (_detail.Printed) { <span class="chip"><i class="bi bi-printer"></i>چاپ شده</span> }
+                            </div>
+
+                            @* ───── ابزارها ───── *@
+                            <div class="trs-tools">
+                                @if (!_editing && _meta?.CanUpdate == true && h.Manual)
+                                {
+                                    <button type="button" class="atm-btn atm-btn--primary" @onclick="UnlockAsync" disabled="@(_busy || lockMsg is not null)"
+                                            title="@(lockMsg ?? "نسخه‌ی فعلی در سوابقِ اصلاح نگه داشته می‌شود")">
+                                        <i class="bi bi-pencil-square"></i>اصلاح سند
+                                    </button>
+                                }
+                                @if (_editing)
+                                {
+                                    <button type="button" class="atm-btn atm-btn--ghost" @onclick="FinishEditingAsync" disabled="@_busy"><i class="bi bi-check2-all"></i>پایان اصلاح</button>
+                                }
+                                <div class="trs-menu @(_printOpen ? "is-open" : "")">
+                                    <button type="button" class="atm-btn atm-btn--ghost" @onclick="() => _printOpen = !_printOpen" title="@(PrintBlock ?? "چاپ")">
+                                        <i class="bi bi-printer"></i>چاپ<i class="bi bi-chevron-down" style="font-size:.7em"></i>
+                                    </button>
+                                    @if (_printOpen)
+                                    {
+                                        <div class="trs-menu__pop" @onclick="() => _printOpen = false">
+                                            @if (PrintBlock is { } pb)
+                                            {
+                                                <div class="trs-menu__note"><i class="bi bi-info-circle"></i>@pb</div>
+                                            }
+                                            <button type="button" disabled="@(PrintBlock is not null)" @onclick='() => PrintAsync(1)'><i class="bi bi-file-earmark-text"></i>چاپ سند</button>
+                                            <button type="button" disabled="@(PrintBlock is not null)" @onclick='() => PrintAsync(2)'><i class="bi bi-file-earmark"></i>چاپ سند ۲ (بدونِ مبنا و شرح)</button>
+                                        </div>
+                                    }
+                                </div>
+                                <button type="button" class="atm-btn atm-btn--ghost atm-btn--icon" title="خروجی اکسل" @onclick="ExcelAsync" disabled="@_busy"><i class="bi bi-file-earmark-spreadsheet"></i></button>
+                                @if (_detail.Rows.Count > 0)
+                                {
+                                    <button type="button" class="atm-btn atm-btn--ghost atm-btn--icon" title="کپیِ ردیف‌ها برای جای‌گذاری در سندِ دیگر (چک‌ها کپی نمی‌شوند)" @onclick="CopyRowsAsync"><i class="bi bi-copy"></i></button>
+                                }
+                                @if (_editing && _clipCount > 0 && _meta?.CanCreate == true)
+                                {
+                                    <button type="button" class="atm-btn atm-btn--ghost" title="جای‌گذاریِ ردیف‌های کپی‌شده" @onclick="PasteRowsAsync" disabled="@_busy"><i class="bi bi-clipboard-plus"></i>جای‌گذاری @_clipCount</button>
+                                }
+                                <button type="button" class="atm-btn atm-btn--ghost @(_detail.HistoryCount > 0 ? "" : "atm-btn--icon")" title="سوابقِ اصلاحِ این سند" @onclick="OpenHistory" disabled="@(_detail.HistoryCount == 0)">
+                                    <i class="bi bi-clock-history"></i>@(_detail.HistoryCount > 0 ? $"سوابق {_detail.HistoryCount}" : "")
+                                </button>
+                                @if (_editing && _meta?.CanDelete == true)
+                                {
+                                    <button type="button" class="atm-btn atm-btn--danger atm-btn--icon" title="حذفِ سند" @onclick="DeleteDocumentAsync" disabled="@_busy"><i class="bi bi-trash"></i></button>
+                                }
+                            </div>
+                        </div>
+
+                        @if (lockMsg is not null)
+                        {
+                            <div class="trs-lock">
+                                <i class="bi bi-shield-lock-fill"></i>
+                                <span>@lockMsg</span>
+                                @if (_detail.Source is { } src)
+                                {
+                                    @if (!string.IsNullOrWhiteSpace(src.Link))
+                                    {
+                                        <a class="snd-src" href="@src.Link"><i class="bi bi-box-arrow-up-left"></i>باز کردنِ @src.Title</a>
+                                    }
+                                    else
+                                    {
+                                        <span class="snd-src"><i class="bi bi-diagram-2"></i>مبدأ: @src.Title</span>
+                                    }
+                                }
+                            </div>
+                        }
+
+                        @HeaderFields(_editing && _meta?.CanUpdate == true)
+
+                        @if (_editing && HeaderDirty && _meta?.CanUpdate == true)
+                        {
+                            <div class="trs-head__actions">
+                                <span style="flex:1"></span>
+                                <button type="button" class="atm-btn atm-btn--ghost" @onclick="() => { _hf = Clone(_hfOriginal); _hfKey++; }" disabled="@_busy">بازگردانی</button>
+                                <button type="button" class="atm-btn atm-btn--primary" @onclick="SaveHeaderAsync" disabled="@_busy"><i class="bi bi-check2"></i>ذخیره‌ی سربرگ</button>
+                            </div>
+                        }
+                    </div>
+
+                    @* ───── ردیف‌ها ───── *@
+                    var sumBed = _detail.Rows.Sum(r => r.Bed);
+                    var sumBes = _detail.Rows.Sum(r => r.Bes);
+                    var diff = Math.Round(sumBed - sumBes, 0);
+                    <div class="trs-card snd-rows" @key="@($"r{h.Ns}")">
+                        <div class="trs-rows__head">
+                            <b><i class="bi bi-list-ol"></i> ردیف‌های سند</b>
+                            <span class="count">@_detail.Rows.Count ردیف</span>
+                            <span style="flex:1"></span>
+                            @if (_detail.Rows.Count > 0)
+                            {
+                                @if (diff == 0)
+                                {
+                                    <span class="snd-bal ok"><i class="bi bi-check-circle-fill"></i>سند تراز است</span>
+                                }
+                                else
+                                {
+                                    <span class="snd-bal bad" title="جمعِ بدهکار و بستانکارِ سند باید مساوی باشد">
+                                        <i class="bi bi-exclamation-triangle-fill"></i>ناتراز — اختلاف @Money(Math.Abs(diff)) @(diff > 0 ? "(بدهکار بیشتر)" : "(بستانکار بیشتر)")
+                                    </span>
+                                }
+                            }
+                        </div>
+
+                        @if (_detail.Rows.Count == 0 && !_editing)
+                        {
+                            <div class="trs-rows__empty"><i class="bi bi-inbox"></i>این سند هنوز ردیفی ندارد.</div>
+                        }
+
+                        <div class="snd-table @(_meta?.MarkazEnabled == true ? "with-mhaz" : "")">
+                            @if (_detail.Rows.Count > 0)
+                            {
+                                <div class="snd-tr snd-th">
+                                    <span>#</span><span>حساب</span><span>شرح</span><span class="amt">بدهکار</span><span class="amt">بستانکار</span>
+                                    @if (_meta?.MarkazEnabled == true) { <span>مرکز هزینه</span> }
+                                    <span></span>
+                                </div>
+                            }
+                            @{ int n = 0; }
+                            @foreach (var r in _detail.Rows)
+                            {
+                                n++;
+                                var idx = n;
+                                if (_editRowId == r.Id && _editEntry is not null)
+                                {
+                                    <div class="snd-tr-editing" @key="@($"e{r.Id}")">
+                                        <SanadRowEditor @ref="_rowEditor" Entry="_editEntry" Meta="_meta!" IsNew="false" Busy="_busy"
+                                                        Above="@(idx > 1 ? _detail.Rows[idx - 2] : null)" Descriptions="_descriptions"
+                                                        Searcher="Api.AccountsAsync" BalanceLoader="Api.BalanceAsync"
+                                                        OnSave="SaveEditedRowAsync" OnCancel="CancelRowEdit" />
+                                    </div>
+                                }
+                                else
+                                {
+                                    <div class="snd-tr @(r.Bed > 0 ? "bed" : "bes") @(_selectedRowId == r.Id ? "is-selected" : "") @(_flash == r.Id ? "is-flash" : "")"
+                                         @key="r.Id" @onclick="() => SelectRow(r.Id)" @ondblclick="() => BeginRowEdit(r)">
+                                        <span class="no">@idx</span>
+                                        <span class="acc">
+                                            <a href="@StatementUrl(r.Hes)" target="_blank" title="صورت‌حسابِ این حساب" @onclick:stopPropagation="true"><b>@(r.HesName ?? "—")</b></a>
+                                            <small>@r.Hes</small>
+                                        </span>
+                                        <span class="sharh">
+                                            <span title="@r.Sharh">@r.Sharh</span>
+                                            @if (r.Cheque is { } c)
+                                            {
+                                                <span class="chqline" title="@c.NameTah">
+                                                    <i class="bi bi-credit-card-2-front"></i><bdi>@c.NSeri.ToString("0")</bdi> · @c.BankName ·
+                                                    سررسید <bdi>@ChequeForm.FormatDate(c.DateS)</bdi>
+                                                    <span class="st">@TreasuryChequeState.NameOf(c.Vaz, c.Payable)</span>
+                                                    @if (!c.Payable && c.Radif is > 0) { <span class="rd">ردیف دفتر @c.Radif?.ToString("0")</span> }
+                                                    @if (!string.IsNullOrWhiteSpace(r.ChequeOwnerName)) { <span class="rd">صاحب: @r.ChequeOwnerName</span> }
+                                                </span>
+                                            }
+                                            else if (r.NSeri is > 0)
+                                            {
+                                                <span class="chqline"><i class="bi bi-credit-card-2-front"></i><bdi>@r.NSeri?.ToString("0")</bdi> · @r.BankName</span>
+                                            }
+                                        </span>
+                                        <span class="amt bed">@(r.Bed > 0 ? Money(r.Bed) : "")</span>
+                                        <span class="amt bes">@(r.Bes > 0 ? Money(r.Bes) : "")</span>
+                                        @if (_meta?.MarkazEnabled == true)
+                                        {
+                                            <span class="mhaz">@(r.MhazNo is { } m ? _meta.CostCenters.FirstOrDefault(c2 => c2.Id == m)?.Name ?? m.ToString() : "")</span>
+                                        }
+                                        <span class="act" @onclick:stopPropagation="true">
+                                            @if (_editing)
+                                            {
+                                                @if (_meta?.CanUpdate == true)
+                                                {
+                                                    <button type="button" class="atm-icon-btn" title="ویرایش (دوبار کلیک)" @onclick="() => BeginRowEdit(r)" disabled="@_busy"><i class="bi bi-pencil"></i></button>
+                                                }
+                                                @if (_meta?.CanDelete == true)
+                                                {
+                                                    <button type="button" class="atm-icon-btn" title="حذف" @onclick="() => DeleteRowAsync(r)" disabled="@_busy"><i class="bi bi-trash3"></i></button>
+                                                }
+                                            }
+                                        </span>
+                                    </div>
+                                }
+                            }
+
+                            @* ───── ردیفِ تازه — مثلِ سطرِ خالیِ تهِ گریدِ WPF ───── *@
+                            @if (_editing && _editRowId is null && _meta?.CanCreate == true)
+                            {
+                                <SanadRowEditor @ref="_newEditor" Entry="_entry" Meta="_meta!" IsNew="true" Busy="_busy" Difference="diff"
+                                                Above="_detail.Rows.LastOrDefault()" Descriptions="_descriptions"
+                                                Searcher="Api.AccountsAsync" BalanceLoader="Api.BalanceAsync"
+                                                OnSave="SaveNewRowAsync" OnCancel="ClearNewRow" />
+                            }
+                        </div>
+
+                        @if (_detail.Rows.Count > 0)
+                        {
+                            <div class="snd-totals @(_meta?.MarkazEnabled == true ? "with-mhaz" : "")">
+                                <span class="lbl">جمعِ سند</span>
+                                <span class="amt bed">@Money(sumBed)</span>
+                                <span class="amt bes">@Money(sumBes)</span>
+                            </div>
+                            var si = _selectedRowId is { } sel ? _detail.Rows.FindIndex(r => r.Id == sel) : -1;
+                            @if (si >= 0)
+                            {
+                                var upto = _detail.Rows.Take(si + 1).ToList();
+                                <div class="snd-totals is-upto @(_meta?.MarkazEnabled == true ? "with-mhaz" : "")">
+                                    <span class="lbl">جمع تا ردیفِ @(si + 1)</span>
+                                    <span class="amt bed">@Money(upto.Sum(r => r.Bed))</span>
+                                    <span class="amt bes">@Money(upto.Sum(r => r.Bes))</span>
+                                </div>
+                            }
+                        }
+                    </div>
+
+                    @* ───── امضا و ارجاع ───── *@
+                    <SignBar Subject="سند" Sgn1="h.Sgn1" Sgn2="h.Sgn2" Sgn3="h.Sgn3"
+                             Sgn1Name="@_detail.Sgn1Name" Sgn2Name="@_detail.Sgn2Name" Sgn3Name="@_detail.Sgn3Name"
+                             CanSign1="@(_meta!.CanSign1 && !h.Final)" CanSign2="@(_meta.CanSign2 && !h.Final)" CanSign3="@(_meta.CanSign3 && !h.Final)"
+                             SlotBlock="@(slot => SlotBlock(slot, h))"
+                             Task="_detail.Task" Personnel="_meta.Personnel" Busy="_busy" Docked="@(!_editing)"
+                             OnSign="SignAsync" OnRefer="ReferAsync" />
+                }
+            </section>
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter] public double? Ns { get; set; }
+    [Parameter] public int? Base { get; set; }
+
+    private sealed class HeaderForm
+    {
+        public string? Date { get; set; }
+        public string? Sharh { get; set; }
+    }
+
+    /// <summary>ردیفِ کپی‌شده — بدونِ چک (هر چک یکتاست).</summary>
+    private sealed class ClipRow
+    {
+        public string? Hes { get; set; }
+        public string? Sharh { get; set; }
+        public double Bed { get; set; }
+        public double Bes { get; set; }
+        public int? MhazNo { get; set; }
+    }
+
+    private static readonly (string Key, string Label)[] Ranges =
+        { ("today", "امروز"), ("month", "این ماه"), ("prev", "ماه قبل"), ("all", "همه") };
+
+    private static readonly (string Key, string Label)[] Kinds =
+        { ("all", "همه"), ("manual", "دستی"), ("auto", "خودکار"), ("unbalanced", "ناتراز") };
+
+    private const string ClipKey = "snd.clipboard";
+
+    private SanadMetaDto? _meta;
+    private List<SanadListItemDto> _items = new();
+    private List<SanadListItemDto> _filtered = new();
+    private string _range = "month";
+    private string _kind = "all";
+    private string _q = "";
+    private bool _loadingList;
+    private bool _loadingDetail;
+    private double? _selectedNs;
+    private SanadDetailDto? _detail;
+    private bool _editing;
+    private bool _draft;
+    private bool _busy;
+    private bool _printOpen;
+    private HeaderForm _hf = new();
+    private HeaderForm _hfOriginal = new();
+    private int _hfKey;
+    private SanadEntry _entry = new();
+    private long? _editRowId;
+    private SanadEntry? _editEntry;
+    private long? _selectedRowId;
+    private long? _flash;
+    private int _clipCount;
+    private List<TreasuryLookupItem> _descriptions = new();
+    private SanadRowEditor? _newEditor;
+    private SanadRowEditor? _rowEditor;
+    private bool _focusNew;
+    private bool _focusEdit;
+    private double? _loadedRouteNs;
+    private int? _loadedRouteBase;
+    private DotNetObjectReference<SanadPage>? _selfRef;
+
+    private static readonly PersianCalendar Pc = new();
+
+    // ─────────────────────────── راه‌اندازی ───────────────────────────
+
+    protected override async Task OnInitializedAsync()
+    {
+        try { _meta = await Api.MetaAsync(); }
+        catch { Snackbar.Add("تنظیماتِ صدورِ سند دریافت نشد.", Severity.Error); }
+        if (_meta?.CanSee != true) return;
+        await ReloadListAsync();
+        _ = LoadDescriptionsAsync();
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (_meta?.CanSee != true) return;
+        if (Base is > 0 && Base != _loadedRouteBase)
+        {
+            _loadedRouteBase = Base;
+            var ns = await Api.ByBaseAsync(Base.Value);
+            if (ns is null) { Snackbar.Add($"سندی با شماره‌ی مبنا {Base} پیدا نشد.", Severity.Warning); return; }
+            await SelectAsync(ns.Value);
+        }
+        else if (Ns is > 0 && Ns != _loadedRouteNs && Ns != _selectedNs)
+        {
+            _loadedRouteNs = Ns;
+            await SelectAsync(Ns.Value);
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            _selfRef = DotNetObjectReference.Create(this);
+            try { await JS.InvokeVoidAsync("atmKeys.attach", _selfRef); } catch { }
+            await RefreshClipAsync();
+        }
+        if (_focusNew && _newEditor is not null)
+        {
+            _focusNew = false;
+            await _newEditor.FocusAccountAsync();
+        }
+        if (_focusEdit && _rowEditor is not null)
+        {
+            _focusEdit = false;
+            await _rowEditor.FocusAccountAsync();
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        try { await JS.InvokeVoidAsync("atmKeys.detach"); } catch { }
+        _selfRef?.Dispose();
+    }
+
+    [JSInvokable] public void HotkeyNew() { if (_meta?.CanCreate == true && !_draft) { StartNew(); StateHasChanged(); } }
+    [JSInvokable] public async Task HotkeyRefresh() => await ReloadListAsync();
+    [JSInvokable]
+    public void HotkeyEscape()
+    {
+        if (_printOpen) _printOpen = false;
+        StateHasChanged();
+    }
+
+    private async Task LoadDescriptionsAsync()
+    {
+        try { _descriptions = await Api.DescriptionsAsync(); } catch { }
+    }
+
+    // ─────────────────────────── فهرست ───────────────────────────
+
+    private (long? From, long? To) RangeDates()
+    {
+        var now = DateTime.Now;
+        long Ym(DateTime d) => Pc.GetYear(d) * 10000L + Pc.GetMonth(d) * 100;
+        return _range switch
+        {
+            "today" => (ToLong(now), ToLong(now)),
+            "month" => (Ym(now) + 1, Ym(now) + 31),
+            "prev" => (Ym(Pc.AddMonths(now, -1)) + 1, Ym(Pc.AddMonths(now, -1)) + 31),
+            _ => (null, null)
+        };
+    }
+
+    private async Task ReloadListAsync()
+    {
+        _loadingList = true;
+        StateHasChanged();
+        var (from, to) = RangeDates();
+        var kind = _kind is "manual" or "auto" ? _kind : null;
+        var (items, err) = await Api.ListAsync(from, to, kind, null);
+        _loadingList = false;
+        if (err is not null) { Snackbar.Add(err, Severity.Error); return; }
+        _items = items ?? new();
+        Filter();
+    }
+
+    private async Task SetRange(string key)
+    {
+        _range = key;
+        await ReloadListAsync();
+    }
+
+    /// <summary>«دستی» و «خودکار» روی سرور فیلتر می‌شوند؛ «همه» و «ناتراز» روی همان فهرست.</summary>
+    private async Task SetKind(string key)
+    {
+        static string? ServerKind(string k) => k is "manual" or "auto" ? k : null;
+        var reload = ServerKind(_kind) != ServerKind(key);
+        _kind = key;
+        if (reload) await ReloadListAsync();
+        else Filter();
+    }
+
+    private void OnSearch(ChangeEventArgs e)
+    {
+        _q = e.Value?.ToString() ?? "";
+        Filter();
+    }
+
+    private void Filter()
+    {
+        var q = Norm(_q);
+        IEnumerable<SanadListItemDto> list = _items;
+        if (_kind == "unbalanced") list = list.Where(x => !x.Balanced);
+        if (q.Length > 0)
+            list = list.Where(x => Norm($"{N(x.Ns)} {x.Base} {x.Bayeg} {x.Sharh} {x.UserName} {SanadKinds.NameOf(x.NoS)}").Contains(q));
+        _filtered = list.ToList();
+    }
+
+    private int UnbalancedCount => _items.Count(x => !x.Balanced);
+    private string RangeLabel => _range switch { "today" => "امروز", "month" => "این ماه", "prev" => "ماه قبل", _ => "کلِ دوره" };
+
+    // ─────────────────────────── انتخاب ───────────────────────────
+
+    private async Task SelectAsync(double ns)
+    {
+        if (_selectedNs == ns && _detail is not null && !_draft) return;
+        _draft = false;
+        _selectedNs = ns;
+        _editing = false;
+        _printOpen = false;
+        _selectedRowId = null;
+        CancelRowEdit();
+        _entry = new SanadEntry();
+        _loadingDetail = true;
+        _detail = null;
+        StateHasChanged();
+        await LoadDetailAsync(ns);
+        Nav.NavigateTo($"/sanad/{N(ns)}", replace: true);
+    }
+
+    private async Task LoadDetailAsync(double ns)
+    {
+        var (d, err) = await Api.GetAsync(ns);
+        _loadingDetail = false;
+        if (err is not null) { Snackbar.Add(err, Severity.Error); _detail = null; return; }
+        _detail = d;
+        if (d is not null)
+        {
+            _hf = new HeaderForm { Date = FormatDate(d.Header.Date), Sharh = d.Header.Sharh };
+            _hfOriginal = Clone(_hf);
+            _hfKey++;
+            // امضا/قطعی/خودکار: حالتِ اصلاح بسته می‌شود
+            if (d.LockReason is not null) { _editing = false; CancelRowEdit(); }
+            if (_selectedRowId is { } sel && d.Rows.All(r => r.Id != sel)) _selectedRowId = null;
+            var i = _items.FindIndex(x => x.Ns == ns);
+            if (i >= 0) { _items[i] = d.Header; Filter(); }
+        }
+        StateHasChanged();
+    }
+
+    private async Task NavigateAsync(bool next)
+    {
+        if (_detail is null) return;
+        var ns = await Api.NeighbourAsync(_detail.Header.Ns, next);
+        if (ns is null) { Snackbar.Add(next ? "این آخرین سند است." : "این اولین سند است.", Severity.Info); return; }
+        await SelectAsync(ns.Value);
+    }
+
+    // ─────────────────────────── سربرگ ───────────────────────────
+
+    private void StartNew()
+    {
+        _draft = true;
+        _detail = null;
+        _selectedNs = null;
+        _editing = false;
+        _hf = new HeaderForm { Date = FormatDate(ToLong(DateTime.Now)) };
+        _hfKey++;
+    }
+
+    private void CancelNew()
+    {
+        _draft = false;
+        if (_items.FirstOrDefault() is { } first) _ = SelectAsync(first.Ns);
+    }
+
+    private SanadHeaderSaveRequest? BuildHeader()
+    {
+        var d = ParseDate(_hf.Date);
+        if (d is null) { Snackbar.Add("تاریخِ سند معتبر نیست.", Severity.Warning); return null; }
+        return new SanadHeaderSaveRequest { Date = d.Value, Sharh = _hf.Sharh?.Trim() };
+    }
+
+    private async Task CreateAsync()
+    {
+        var req = BuildHeader();
+        if (req is null || _busy) return;
+        _busy = true;
+        var r = await Api.CreateAsync(req);
+        _busy = false;
+        if (!r.Ok) { Snackbar.Add(r.Error ?? "سند ثبت نشد.", Severity.Error); return; }
+        Snackbar.Add($"سندِ شماره {N(r.Ns ?? 0)} صادر شد؛ ردیف‌ها را وارد کنید.", Severity.Success);
+        _draft = false;
+        await ReloadListAsync();
+        _selectedNs = r.Ns;
+        _loadingDetail = true;
+        await LoadDetailAsync(r.Ns!.Value);
+        _editing = true; // سندِ تازه بدونِ «اصلاح» ردیف می‌پذیرد
+        _entry = new SanadEntry();
+        _focusNew = true;
+        Nav.NavigateTo($"/sanad/{N(r.Ns.Value)}", replace: true);
+    }
+
+    private bool HeaderDirty => _hf.Date != _hfOriginal.Date || (_hf.Sharh ?? "") != (_hfOriginal.Sharh ?? "");
+
+    private async Task SaveHeaderAsync()
+    {
+        var req = BuildHeader();
+        if (req is null || _detail is null || _busy) return;
+        _busy = true;
+        var r = await Api.UpdateHeaderAsync(_detail.Header.Ns, req);
+        _busy = false;
+        if (!r.Ok) { Snackbar.Add(r.Error ?? "ذخیره نشد.", Severity.Error); return; }
+        Snackbar.Add("سربرگِ سند ذخیره شد.", Severity.Success);
+        await LoadDetailAsync(_detail.Header.Ns);
+    }
+
+    private async Task UnlockAsync()
+    {
+        if (_detail is null || _busy) return;
+        _busy = true;
+        var r = await Api.UnlockAsync(_detail.Header.Ns);
+        _busy = false;
+        if (!r.Ok) { Snackbar.Add(r.Error ?? "اصلاح ممکن نیست.", Severity.Warning); return; }
+        _editing = true;
+        _entry = new SanadEntry();
+        _focusNew = true;
+        await LoadDetailAsync(_detail.Header.Ns); // تعدادِ سوابق
+        Snackbar.Add("حالتِ اصلاح فعال شد؛ نسخه‌ی قبلی در سوابق ثبت شد.", Severity.Info);
+    }
+
+    /// <summary>Btn_Close_Click → IsBalanceSanadOk: سندِ ناتراز با هشدار.</summary>
+    private async Task FinishEditingAsync()
+    {
+        if (_detail is null) return;
+        var diff = Math.Round(_detail.Rows.Sum(r => r.Bed) - _detail.Rows.Sum(r => r.Bes), 0);
+        if (diff != 0)
+        {
+            var ok = await DialogService.ShowMessageBox("سند تراز نیست",
+                $"جمعِ بدهکار و بستانکارِ سند باید مساوی باشد. مبلغِ اختلاف: {Money(Math.Abs(diff))}. با این حال از حالتِ اصلاح خارج شوید؟",
+                yesText: "خارج شو", cancelText: "برگرد");
+            if (ok != true) return;
+        }
+        _editing = false;
+        CancelRowEdit();
+        _entry = new SanadEntry();
+    }
+
+    private async Task DeleteDocumentAsync()
+    {
+        if (_detail is null || _busy) return;
+        var count = _detail.Rows.Count;
+        var chq = _detail.Rows.Count(r => r.Cheque is not null);
+        var ok = await DialogService.ShowMessageBox("حذفِ سند",
+            $"سندِ شماره {N(_detail.Header.Ns)}" + (count > 0 ? $" با {count} ردیف" : "") + " حذف شود؟" +
+            (chq > 0 ? $" وضعیتِ {chq} چکِ آن هم برمی‌گردد." : "") + " نسخه‌ای از آن در سوابق می‌ماند.",
+            yesText: "حذف", cancelText: "انصراف");
+        if (ok != true) return;
+        _busy = true;
+        var r = await Api.DeleteAsync(_detail.Header.Ns);
+        _busy = false;
+        if (!r.Ok) { Snackbar.Add(r.Error ?? "حذف نشد.", Severity.Error); return; }
+        Snackbar.Add($"سندِ {N(_detail.Header.Ns)} حذف شد.", Severity.Info);
+        var deleted = _detail.Header.Ns;
+        _detail = null;
+        _selectedNs = null;
+        _editing = false;
+        await ReloadListAsync();
+        var next = _filtered.FirstOrDefault(x => x.Ns < deleted) ?? _filtered.FirstOrDefault();
+        if (next is not null) await SelectAsync(next.Ns);
+        else Nav.NavigateTo("/sanad", replace: true);
+    }
+
+    private RenderFragment HeaderFields(bool editable) => __builder =>
+    {
+        <div class="trs-head__grid snd-head__grid" @key="@($"hf{_hfKey}")">
+            <div class="trs-f">
+                <label>تاریخِ سند</label>
+                @if (editable)
+                {
+                    <Pay2NumericInput @bind-Value="_hf.Date" InputMode="Pay2NumericInput.NumericInputMode.PersianDate" Direction="ltr" />
+                }
+                else { <div class="trs-ro">@_hf.Date</div> }
+            </div>
+            <div class="trs-f trs-f--molah">
+                <label>شرحِ سند</label>
+                @if (editable)
+                {
+                    <input class="atm-input" maxlength="255" @bind="_hf.Sharh" @bind:event="oninput" placeholder="مثلاً: سند اصلاحی بابت …" />
+                }
+                else { <div class="trs-ro">@(string.IsNullOrWhiteSpace(_hf.Sharh) ? "—" : _hf.Sharh)</div> }
+            </div>
+            @if (!_draft && _detail is not null)
+            {
+                <div class="trs-f">
+                    <label>شماره‌ی بایگانی</label>
+                    <div class="trs-ro">@(_detail.Header.Bayeg?.ToString() ?? "—")</div>
+                </div>
+                <div class="trs-f">
+                    <label>ثبت</label>
+                    <div class="trs-ro" title="تاریخ و ساعتِ ثبتِ سند">@(_detail.Header.Created is { } c ? $"{FormatDate(ToLong(c))} {c:HH:mm}" : "—")</div>
+                </div>
+            }
+        </div>
+    };
+
+    // ─────────────────────────── ردیف‌ها ───────────────────────────
+
+    private void SelectRow(long id) => _selectedRowId = _selectedRowId == id ? null : id;
+
+    private void BeginRowEdit(SanadRowDto r)
+    {
+        if (!_editing || _meta?.CanUpdate != true || _busy) return;
+        _editRowId = r.Id;
+        _editEntry = SanadEntry.From(r);
+        _selectedRowId = r.Id;
+        _focusEdit = true;
+    }
+
+    private void CancelRowEdit()
+    {
+        _editRowId = null;
+        _editEntry = null;
+    }
+
+    private void ClearNewRow()
+    {
+        _entry = new SanadEntry();
+        _newEditor?.Reset();
+        _focusNew = true;
+    }
+
+    private async Task SaveNewRowAsync()
+    {
+        if (_detail is null || _meta is null || _busy) return;
+        var (req, err) = _entry.Build(_meta);
+        if (req is null) { Snackbar.Add(err!, Severity.Warning); return; }
+        _busy = true;
+        StateHasChanged();
+        var r = await Api.AddRowAsync(_detail.Header.Ns, req);
+        _busy = false;
+        if (!r.Ok) { Snackbar.Add((r.Error ?? "ردیف ثبت نشد.").Replace("\n", " · "), Severity.Error); StateHasChanged(); return; }
+        if (!string.IsNullOrWhiteSpace(r.Info)) Snackbar.Add(r.Info, Severity.Info);
+        _flash = r.RowId;
+        await LoadDetailAsync(_detail.Header.Ns);
+        _entry = new SanadEntry();
+        _newEditor?.Reset();
+        _focusNew = true;
+        ClearFlashLater();
+    }
+
+    private async Task SaveEditedRowAsync()
+    {
+        if (_detail is null || _meta is null || _editEntry is null || _editRowId is null || _busy) return;
+        var (req, err) = _editEntry.Build(_meta);
+        if (req is null) { Snackbar.Add(err!, Severity.Warning); return; }
+        _busy = true;
+        StateHasChanged();
+        var r = await Api.UpdateRowAsync(_detail.Header.Ns, _editRowId.Value, req);
+        _busy = false;
+        if (!r.Ok) { Snackbar.Add((r.Error ?? "ردیف ذخیره نشد.").Replace("\n", " · "), Severity.Error); StateHasChanged(); return; }
+        if (!string.IsNullOrWhiteSpace(r.Info)) Snackbar.Add(r.Info, Severity.Info);
+        _flash = _editRowId;
+        CancelRowEdit();
+        await LoadDetailAsync(_detail.Header.Ns);
+        _focusNew = true;
+        ClearFlashLater();
+    }
+
+    private async Task DeleteRowAsync(SanadRowDto row)
+    {
+        if (_detail is null || _busy) return;
+        var extra = row.Cheque is not null ? " وضعیتِ چکِ این ردیف هم برمی‌گردد." : "";
+        var ok = await DialogService.ShowMessageBox("حذفِ ردیف",
+            $"ردیفِ «{row.HesName ?? row.Hes}» به مبلغ {Money(row.Bed + row.Bes)} حذف شود؟{extra}", yesText: "حذف", cancelText: "انصراف");
+        if (ok != true) return;
+        _busy = true;
+        var r = await Api.DeleteRowAsync(_detail.Header.Ns, row.Id);
+        _busy = false;
+        if (!r.Ok) { Snackbar.Add(r.Error ?? "حذف نشد.", Severity.Error); return; }
+        Snackbar.Add("ردیف حذف شد.", Severity.Info);
+        if (_editRowId == row.Id) CancelRowEdit();
+        await LoadDetailAsync(_detail.Header.Ns);
+    }
+
+    private void ClearFlashLater()
+        => _ = Task.Delay(1600).ContinueWith(_ => InvokeAsync(() => { _flash = null; StateHasChanged(); }));
+
+    // ─────────────────────────── کپی و جای‌گذاری ───────────────────────────
+
+    private async Task RefreshClipAsync()
+    {
+        try
+        {
+            var raw = await JS.InvokeAsync<string?>("localStorage.getItem", ClipKey);
+            _clipCount = string.IsNullOrEmpty(raw) ? 0 : (JsonSerializer.Deserialize<List<ClipRow>>(raw)?.Count ?? 0);
+        }
+        catch { _clipCount = 0; }
+        StateHasChanged();
+    }
+
+    private async Task CopyRowsAsync()
+    {
+        if (_detail is null) return;
+        var rows = _detail.Rows.Select(r => new ClipRow { Hes = r.Hes, Sharh = r.Sharh, Bed = r.Bed, Bes = r.Bes, MhazNo = r.MhazNo }).ToList();
+        try { await JS.InvokeVoidAsync("localStorage.setItem", ClipKey, JsonSerializer.Serialize(rows)); } catch { }
+        _clipCount = rows.Count;
+        var chq = _detail.Rows.Count(r => r.Cheque is not null);
+        Snackbar.Add($"{rows.Count} ردیف کپی شد" + (chq > 0 ? $"؛ {chq} ردیفِ چکی بدونِ چک جای‌گذاری می‌شود (هر چک یکتاست)." : "."), Severity.Info);
+    }
+
+    private async Task PasteRowsAsync()
+    {
+        if (_detail is null || _busy) return;
+        List<ClipRow>? rows = null;
+        try { rows = JsonSerializer.Deserialize<List<ClipRow>>(await JS.InvokeAsync<string?>("localStorage.getItem", ClipKey) ?? "[]"); } catch { }
+        if (rows is not { Count: > 0 }) { _clipCount = 0; return; }
+        _busy = true;
+        var r = await Api.AddRowsAsync(_detail.Header.Ns, rows.Select(c => new SanadRowSaveRequest
+        {
+            Hes = c.Hes, Sharh = c.Sharh, Bed = c.Bed, Bes = c.Bes, MhazNo = _meta?.MarkazEnabled == true ? c.MhazNo : null
+        }).ToList());
+        _busy = false;
+        if (!r.Ok) { Snackbar.Add((r.Error ?? "جای‌گذاری نشد.").Replace("\n", " · "), Severity.Error); return; }
+        Snackbar.Add($"{r.Count} ردیف جای‌گذاری شد.", Severity.Success);
+        await LoadDetailAsync(_detail.Header.Ns);
+    }
+
+    // ─────────────────────────── امضا، ارجاع، چاپ ───────────────────────────
+
+    private static string? SlotBlock(int slot, SanadListItemDto h)
+    {
+        if (slot < 3 && h.Sgn3) return "مدیر عامل امضا کرده؛ اول امضای او برداشته شود.";
+        if (slot < 2 && h.Sgn2) return "مدیر مالی امضا کرده؛ اول امضای او برداشته شود.";
+        return null;
+    }
+
+    /// <summary>چاپ فقط بعد از دستِ‌کم یک امضا (Window_Loaded ِ WPF) و برای سندِ تراز.</summary>
+    private string? PrintBlock
+    {
+        get
+        {
+            if (_detail is null) return "سندی انتخاب نشده.";
+            if (!_detail.Header.Signed) return "چاپ بعد از دستِ‌کم یک امضا مجاز است.";
+            var diff = Math.Round(_detail.Rows.Sum(r => r.Bed) - _detail.Rows.Sum(r => r.Bes), 0);
+            if (diff != 0) return $"سند تراز نیست (اختلاف {Money(Math.Abs(diff))})؛ چاپ نمی‌شود.";
+            if (_detail.Rows.Count == 0) return "سند ردیفی ندارد.";
+            return null;
+        }
+    }
+
+    private async Task SignAsync((int Slot, bool On) a)
+    {
+        if (_detail is null || _busy) return;
+        if (a.On && !_detail.Header.Balanced)
+        {
+            var ok = await DialogService.ShowMessageBox("سند تراز نیست",
+                $"اختلافِ بدهکار و بستانکار: {Money(Math.Abs(_detail.Header.Difference))}. سندِ ناتراز امضا شود؟", yesText: "امضا", cancelText: "انصراف");
+            if (ok != true) return;
+        }
+        _busy = true;
+        var r = await Api.SignAsync(_detail.Header.Ns, a.Slot, a.On);
+        _busy = false;
+        if (!r.Ok) { Snackbar.Add(r.Error ?? "امضا ثبت نشد.", Severity.Error); return; }
+        Snackbar.Add(a.On ? "امضا شد؛ سند قفل شد." : "امضا برداشته شد.", a.On ? Severity.Success : Severity.Info);
+        if (a.On) { _editing = false; CancelRowEdit(); }
+        await LoadDetailAsync(_detail.Header.Ns);
+    }
+
+    private async Task ReferAsync(int personel)
+    {
+        if (_detail is null || _busy) return;
+        _busy = true;
+        var r = await Api.ReferAsync(_detail.Header.Ns, personel);
+        _busy = false;
+        if (!r.Ok) { Snackbar.Add(r.Error ?? "ارجاع ثبت نشد.", Severity.Error); return; }
+        Snackbar.Add(r.Info ?? "ارجاع داده شد.", Severity.Success);
+        await LoadDetailAsync(_detail.Header.Ns);
+    }
+
+    private async Task PrintAsync(int variant)
+    {
+        _printOpen = false;
+        if (_detail is null || PrintBlock is not null) return;
+        await JS.InvokeVoidAsync("open", $"/sanad/{N(_detail.Header.Ns)}/print/{variant}", "_blank");
+    }
+
+    private async Task ExcelAsync()
+    {
+        if (_detail is null) return;
+        var (bytes, err) = await Api.ExcelAsync(_detail.Header.Ns);
+        if (bytes is null) { Snackbar.Add(err ?? "خروجی اکسل تهیه نشد.", Severity.Error); return; }
+        await JS.InvokeVoidAsync("downloadFileFromBytes", $"سند-{N(_detail.Header.Ns)}.xlsx", bytes);
+    }
+
+    // ─────────────────────────── سوابق و قطعی کردن ───────────────────────────
+
+    private async Task OpenHistory()
+    {
+        if (_detail is null) return;
+        var parameters = new DialogParameters<SanadHistoryDialog> { { x => x.Ns, _detail.Header.Ns } };
+        await DialogService.ShowAsync<SanadHistoryDialog>($"سوابقِ اصلاحِ سند {N(_detail.Header.Ns)}", parameters,
+            new DialogOptions { MaxWidth = MaxWidth.Large, FullWidth = true, CloseButton = true, CloseOnEscapeKey = true });
+    }
+
+    private async Task OpenFinalize()
+    {
+        var parameters = new DialogParameters<SanadFinalizeDialog>
+        {
+            { x => x.From, _filtered.Count > 0 ? _filtered.Min(x => x.Ns) : null },
+            { x => x.To, _filtered.Count > 0 ? _filtered.Max(x => x.Ns) : null }
+        };
+        var dlg = await DialogService.ShowAsync<SanadFinalizeDialog>("تایید و قطعی کردنِ اسناد", parameters,
+            new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true, CloseButton = true, CloseOnEscapeKey = true });
+        var res = await dlg.Result;
+        if (res is { Canceled: false })
+        {
+            await ReloadListAsync();
+            if (_detail is not null) await LoadDetailAsync(_detail.Header.Ns);
+        }
+    }
+
+    // ─────────────────────────── قالب‌بندی ───────────────────────────
+
+    private static string N(double ns) => ns.ToString("0", CultureInfo.InvariantCulture);
+    private static string Money(double v) => AccountPicker.Money(v);
+    private static string StatementUrl(string? hes) => string.IsNullOrWhiteSpace(hes) ? "javascript:void(0)" : $"/customer-statement/{hes.Trim()}";
+
+    private static long ToLong(DateTime d) => Pc.GetYear(d) * 10000L + Pc.GetMonth(d) * 100 + Pc.GetDayOfMonth(d);
+
+    private static DateTime? FromLong(long d)
+    {
+        try { return Pc.ToDateTime((int)(d / 10000), (int)(d / 100 % 100), (int)(d % 100), 0, 0, 0, 0); }
+        catch { return null; }
+    }
+
+    private static string FormatDate(long d) => ChequeForm.FormatDate(d);
+    private static long? ParseDate(string? s) => ChequeForm.ParseDate(s);
+
+    private static string DateLabel(long d)
+    {
+        var dt = FromLong(d);
+        if (dt is null) return FormatDate(d);
+        var today = DateTime.Now.Date;
+        if (dt.Value.Date == today) return "امروز";
+        if (dt.Value.Date == today.AddDays(-1)) return "دیروز";
+        return $"{AutomationUi.WeekDay(dt.Value.DayOfWeek)} {FormatDate(d)}";
+    }
+
+    private static HeaderForm Clone(HeaderForm h) => new() { Date = h.Date, Sharh = h.Sharh };
+
+    private static string Norm(string? s) => (s ?? "").Replace('ي', 'ی').Replace('ك', 'ک').Replace('‌', ' ').ToLowerInvariant();
+}

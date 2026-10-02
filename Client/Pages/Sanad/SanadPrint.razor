@@ -1,0 +1,146 @@
+@page "/sanad/{Ns:double}/print/{Variant:int}"
+@layout EmptyLayout
+@using Microsoft.AspNetCore.Authorization
+@using Safir.Shared.Models.Sanad
+@using Safir.Client.Components.Treasury
+@inject SanadApiService Api
+@inject IJSRuntime JS
+@attribute [Authorize]
+
+@*
+    چاپِ سند — Command22 «چاپ سند» (R_SANAD_PRINT) و Command3 «چاپ سند ۲» (R_SANAD_PRINT_B، بی مبنا و شرحِ سند).
+    ردیف‌ها زیرِ حسابِ کل: سرِ گروه کد و نامِ کل با جمعِ بدهکار/بستانکارش، و هر ردیف با «مبلغ جزء».
+*@
+<PageTitle>سند حسابداری @Ns.ToString("0")</PageTitle>
+
+<div class="trs-print-page">
+    <div class="trs-print-tools">
+        <button type="button" onclick="window.print()"><i class="bi bi-printer"></i> چاپ</button>
+        <button type="button" onclick="window.close()"><i class="bi bi-x-lg"></i> بستن</button>
+        <span>سند حسابداری @Ns.ToString("0") @(Variant == 2 ? "— چاپ ۲" : "")</span>
+    </div>
+
+    @if (_error is not null)
+    {
+        <div class="trs-print-error"><i class="bi bi-exclamation-triangle"></i> @_error</div>
+    }
+    else if (_doc is null)
+    {
+        <div class="trs-print-error">در حال آماده‌سازی…</div>
+    }
+    else
+    {
+        var d = _doc;
+        <article class="trs-sheet snd-sheet">
+            <header class="trs-sheet__head">
+                <div class="co">
+                    <b>@d.CompanyName</b>
+                    @if (!string.IsNullOrWhiteSpace(d.FiscalYear)) { <small>@d.FiscalYear</small> }
+                </div>
+                <div class="ttl">
+                    <h1>سند حسابداری</h1>
+                </div>
+                <dl class="meta">
+                    <div><dt>شماره سند</dt><dd>@d.Ns.ToString("0")</dd></div>
+                    <div><dt>تاریخ</dt><dd><bdi>@ChequeForm.FormatDate(d.Date)</bdi></dd></div>
+                    @if (d.Full) { <div><dt>شماره مبنا</dt><dd>@d.Base</dd></div> }
+                    @if (d.Full && d.Bayeg is > 0) { <div><dt>بایگانی</dt><dd>@d.Bayeg</dd></div> }
+                </dl>
+            </header>
+            @if (d.Full && !string.IsNullOrWhiteSpace(d.Sharh))
+            {
+                <p class="snd-sheet__sharh"><b>شرح سند:</b> @d.Sharh</p>
+            }
+
+            <table class="trs-sheet__tbl snd-sheet__tbl">
+                <thead>
+                    <tr><th>نام حساب</th><th>شرح</th><th class="n">مبلغ جزء</th><th class="n">مبلغ بدهکار</th><th class="n">مبلغ بستانکار</th></tr>
+                </thead>
+                <tbody>
+                    @foreach (var g in d.Groups)
+                    {
+                        <tr class="grp">
+                            <td colspan="3"><bdi>@g.Kol</bdi> — @g.KolName</td>
+                            <td class="n">@(g.Debit ? AccountPicker.Money(g.Sum) : "")</td>
+                            <td class="n">@(g.Debit ? "" : AccountPicker.Money(g.Sum))</td>
+                        </tr>
+                        @foreach (var r in g.Rows)
+                        {
+                            <tr>
+                                <td class="acc">@r.Name<small><bdi>@r.Hes</bdi></small></td>
+                                <td class="sh">@r.Sharh</td>
+                                <td class="n">@AccountPicker.Money(r.Amount)</td>
+                                <td></td><td></td>
+                            </tr>
+                        }
+                    }
+                </tbody>
+                <tfoot>
+                    <tr><td colspan="3">جمع</td><td class="n">@AccountPicker.Money(d.TotalBed)</td><td class="n">@AccountPicker.Money(d.TotalBes)</td></tr>
+                </tfoot>
+            </table>
+
+            @if (!string.IsNullOrWhiteSpace(d.TotalInWords))
+            {
+                <p class="trs-sheet__words"><b>جمع به حروف:</b> @d.TotalInWords</p>
+            }
+
+            <footer class="trs-sheet__signs">
+                @foreach (var s in d.Signers)
+                {
+                    <div class="sg" @key="s.Slot">
+                        <small>@s.Title</small>
+                        @if (_signs.TryGetValue(s.Slot, out var src)) { <img src="@src" alt="امضا" /> }
+                        else { <span class="ph"></span> }
+                        <b>@s.Name</b>
+                    </div>
+                }
+                @if (d.Signers.Count == 0)
+                {
+                    <div class="sg"><small>تنظیم کننده</small><span class="ph"></span></div>
+                    <div class="sg"><small>مدیر مالی</small><span class="ph"></span></div>
+                    <div class="sg"><small>مدیر عامل</small><span class="ph"></span></div>
+                }
+            </footer>
+            <div class="trs-sheet__foot">کاربر: @d.UserName · تاریخ چاپ: <bdi>@ChequeForm.FormatDate(d.PrintedOn)</bdi></div>
+        </article>
+    }
+</div>
+
+@code {
+    [Parameter] public double Ns { get; set; }
+    /// <summary>۱ «چاپ سند»، ۲ «چاپ سند ۲».</summary>
+    [Parameter] public int Variant { get; set; } = 1;
+
+    private SanadPrintDto? _doc;
+    private string? _error;
+    private readonly Dictionary<int, string> _signs = new();
+    private bool _printed;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        var (doc, err) = await Api.PrintAsync(Ns, Variant != 2);
+        _doc = doc;
+        _error = err;
+        if (doc is null) return;
+        foreach (var s in doc.Signers.Where(s => s.HasImage))
+        {
+            var bytes = await Api.SignatureAsync(Ns, s.Slot);
+            if (bytes is { Length: > 0 })
+            {
+                var mime = bytes[0] == 0x89 ? "image/png" : bytes[0] == 0x42 ? "image/bmp" : "image/jpeg";
+                _signs[s.Slot] = $"data:{mime};base64,{Convert.ToBase64String(bytes)}";
+            }
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_doc is not null && !_printed)
+        {
+            _printed = true;
+            await Task.Delay(300); // فونت و تصویرِ امضاها
+            try { await JS.InvokeVoidAsync("print"); } catch { }
+        }
+    }
+}

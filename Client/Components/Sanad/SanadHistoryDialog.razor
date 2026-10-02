@@ -1,0 +1,108 @@
+@using Safir.Shared.Models.Sanad
+@using Safir.Client.Components.Treasury
+@inject SanadApiService Api
+
+@*
+    سوابقِ اصلاحِ یک سند — همان TR_DEED_HED / TR_DEED_DTL که «اصلاح سند» و حذف می‌نویسند
+    (پنجره‌ی «سوابق سند دستی» ِ WPF، اینجا فقط برای همین سند). هر نسخه ردیف‌هایش را نشان می‌دهد.
+*@
+<MudDialog>
+    <TitleContent>
+        <MudText Typo="Typo.h6"><i class="bi bi-clock-history"></i> سوابقِ اصلاحِ سند @Ns.ToString("0")</MudText>
+    </TitleContent>
+    <DialogContent>
+        <div class="snd-hist">
+            @if (_loading)
+            {
+                <div class="d-flex justify-center pa-6"><MudProgressCircular Indeterminate="true" Color="Color.Primary" /></div>
+            }
+            else if (_items.Count == 0)
+            {
+                <div class="trs-rows__empty"><i class="bi bi-inbox"></i>نسخه‌ای ثبت نشده است.</div>
+            }
+            else
+            {
+                <div class="snd-hist__list">
+                    @foreach (var v in _items)
+                    {
+                        <button type="button" class="snd-hist__item @(v.Tridd == _selected?.Tridd ? "is-active" : "")" @onclick="() => SelectAsync(v)" @key="v.Tridd">
+                            <span class="when"><i class="bi bi-calendar3"></i><bdi>@ChequeForm.FormatDate(v.UpDate)</bdi> <bdi>@Time(v.UpTime)</bdi></span>
+                            <span class="who"><i class="bi bi-person"></i>@(v.User ?? "—")@(string.IsNullOrWhiteSpace(v.Pc) ? "" : $" · {v.Pc}")</span>
+                            <span class="sum">@v.RowCount ردیف · @AccountPicker.Money(v.SumBed)</span>
+                        </button>
+                    }
+                </div>
+                <div class="snd-hist__rows">
+                    @if (_selected is { } s)
+                    {
+                        <div class="snd-hist__head">
+                            <b>نسخه‌ی <bdi>@ChequeForm.FormatDate(s.UpDate)</bdi> <bdi>@Time(s.UpTime)</bdi></b>
+                            <small>تاریخِ سند <bdi>@ChequeForm.FormatDate(s.Date)</bdi>@(string.IsNullOrWhiteSpace(s.Sharh) ? "" : $" · {s.Sharh}")</small>
+                        </div>
+                        @if (_rowsLoading)
+                        {
+                            <div class="atm-skel" style="height:160px"></div>
+                        }
+                        else
+                        {
+                            <table class="snd-hist__tbl">
+                                <thead><tr><th>#</th><th>حساب</th><th>شرح</th><th class="n">بدهکار</th><th class="n">بستانکار</th></tr></thead>
+                                <tbody>
+                                    @{ int i = 0; }
+                                    @foreach (var r in _rows)
+                                    {
+                                        i++;
+                                        <tr>
+                                            <td class="c">@i</td>
+                                            <td>@(r.HesName ?? "—")<small><bdi>@r.Hes</bdi></small></td>
+                                            <td>@r.Sharh</td>
+                                            <td class="n">@(r.Bed > 0 ? AccountPicker.Money(r.Bed) : "")</td>
+                                            <td class="n">@(r.Bes > 0 ? AccountPicker.Money(r.Bes) : "")</td>
+                                        </tr>
+                                    }
+                                </tbody>
+                                <tfoot><tr><td colspan="3">جمع</td><td class="n">@AccountPicker.Money(_rows.Sum(r => r.Bed))</td><td class="n">@AccountPicker.Money(_rows.Sum(r => r.Bes))</td></tr></tfoot>
+                            </table>
+                        }
+                    }
+                </div>
+            }
+        </div>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="() => MudDialog.Close()">بستن</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] MudDialogInstance MudDialog { get; set; } = default!;
+    [Parameter] public double Ns { get; set; }
+
+    private List<SanadHistoryItemDto> _items = new();
+    private SanadHistoryItemDto? _selected;
+    private List<SanadHistoryRowDto> _rows = new();
+    private bool _loading = true;
+    private bool _rowsLoading;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try { _items = await Api.HistoryAsync(Ns); } catch { _items = new(); }
+        _loading = false;
+        if (_items.Count > 0) await SelectAsync(_items[0]);
+    }
+
+    private async Task SelectAsync(SanadHistoryItemDto v)
+    {
+        _selected = v;
+        _rowsLoading = true;
+        StateHasChanged();
+        try { _rows = await Api.HistoryRowsAsync(Ns, v.Tridd); } catch { _rows = new(); }
+        _rowsLoading = false;
+    }
+
+    /// <summary>UP_TIME همان ToOADate است — ساعت از بخشِ اعشاری.</summary>
+    private static string Time(double oa)
+    {
+        try { return DateTime.FromOADate(oa).ToString("HH:mm"); } catch { return ""; }
+    }
+}

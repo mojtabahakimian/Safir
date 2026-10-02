@@ -1,0 +1,417 @@
+@using Safir.Shared.Models.Sanad
+@using Safir.Shared.Models.Treasury
+@using Safir.Client.Components.Treasury
+@using Safir.Client.Components.Automation
+@using Safir.Client.Pages.Salary.Tabs
+@inject IJSRuntime JS
+
+@*
+    ورودِ سریعِ ردیفِ سند — جای گریدِ Child14 ِ WPF با همان عادت‌های صفحه‌کلید:
+      Enter به خانه‌ی بعد و در آخرِ ردیف ثبت · Esc انصراف · «+» در مبلغ = 000 و «-» = 00
+      Ctrl+" مقدارِ همان خانه از ردیفِ بالا · شرحِ تمام‌شده به «+» فهرستِ شرح‌های آماده (SHARH_LIST)
+    ردیفِ بدهکارِ اسناد دریافتنی / بستانکارِ اسناد پرداختنی مشخصاتِ چک می‌گیرد (SGETCHEK / SPAYCHEK).
+*@
+<div class="snd-ed @(IsNew ? "is-new" : "is-edit")" id="@_id" data-enter-nav="off">
+    <div class="snd-ed__row">
+        <span class="snd-ed__no"><i class="bi @(IsNew ? "bi-plus-lg" : "bi-pencil-fill")"></i></span>
+
+        <div class="snd-ed__acc" data-f="acc" @onkeydown="OnAccKey">
+            <MudAutocomplete @ref="_acc" T="TreasuryAccountDto" Value="_selected" ValueChanged="OnAccountPicked"
+                             SearchFuncWithCancel="Search" ToStringFunc="AccText"
+                             ItemDisabledFunc="@(a => a.IsGroup)" SelectValueOnTab="true"
+                             Variant="Variant.Outlined" Dense="true" Margin="Margin.Dense" ResetValueOnEmptyText="true" CoerceText="false"
+                             Placeholder="کد یا نام حساب…" MaxItems="40" DebounceInterval="200" Disabled="@Busy">
+                <ItemTemplate Context="a">
+                    <span class="trs-acc__item">
+                        <span class="atm-av" style="@AutomationUi.AvatarStyle(a.Name)">@AutomationUi.Initials(a.Name)</span>
+                        <span class="nm">@a.Name</span>
+                        <span class="cd">@a.Hes</span>
+                    </span>
+                </ItemTemplate>
+                <ItemDisabledTemplate Context="a">
+                    <span class="trs-acc__item is-group" title="این حساب زیرحساب دارد؛ باید تفصیلیِ آن را انتخاب کنید.">
+                        <span class="atm-av"><i class="bi bi-diagram-3"></i></span>
+                        <span class="nm">@a.Name</span>
+                        <span class="cd">@a.Hes</span>
+                        <span class="tag">زیرحساب دارد</span>
+                    </span>
+                </ItemDisabledTemplate>
+                <NoItemsTemplate><div class="pa-2" style="opacity:.7">حسابی پیدا نشد.</div></NoItemsTemplate>
+            </MudAutocomplete>
+        </div>
+
+        <div class="snd-ed__sharh" data-f="sharh" @onkeydown="OnSharhKey">
+            <input class="atm-input" maxlength="250" placeholder="@(ChequeRole != SanadChequeRole.None && Entry.WithCheque ? "خالی = از روی مشخصاتِ چک" : "شرحِ ردیف (+ = شرح‌های آماده)")"
+                   value="@Entry.Sharh" @oninput="OnSharhInput" disabled="@Busy" autocomplete="off" />
+            @if (_canned is { Count: > 0 })
+            {
+                <div class="snd-canned">
+                    <div class="snd-canned__head"><i class="bi bi-card-text"></i>شرح‌های آماده</div>
+                    @for (int i = 0; i < _canned.Count; i++)
+                    {
+                        var item = _canned[i];
+                        var idx = i;
+                        <button type="button" class="@(idx == _cannedIndex ? "is-on" : "")" @onmousedown:preventDefault="true" @onclick="() => PickCanned(item)">@item.Name</button>
+                    }
+                </div>
+            }
+        </div>
+
+        <div class="snd-ed__amt bed" data-f="bed" @onkeydown="OnBedKey">
+            <Pay2NumericInput @key="@($"bed{_key}")" @bind-Value="Entry.Bed" IsDigitGroupActive="true" ThreeTwoZero="true"
+                              MaxLength="20" Direction="ltr" CssClass="snd-amount" Placeholder="بدهکار" Disabled="@Busy" />
+        </div>
+        <div class="snd-ed__amt bes" data-f="bes" @onkeydown="OnBesKey">
+            <Pay2NumericInput @key="@($"bes{_key}")" @bind-Value="Entry.Bes" IsDigitGroupActive="true" ThreeTwoZero="true"
+                              MaxLength="20" Direction="ltr" CssClass="snd-amount" Placeholder="بستانکار" Disabled="@Busy" />
+        </div>
+
+        @if (Meta.MarkazEnabled)
+        {
+            <div class="snd-ed__mhaz" data-f="mhaz">
+                <select class="atm-input" @bind="Entry.MhazNo" disabled="@Busy" title="مرکز هزینه">
+                    <option value="">— مرکز هزینه —</option>
+                    @foreach (var c in Meta.CostCenters) { <option value="@c.Id">@c.Name</option> }
+                </select>
+            </div>
+        }
+
+        <div class="snd-ed__act">
+            <button type="button" class="atm-btn atm-btn--primary atm-btn--icon" title="@(IsNew ? "ثبتِ ردیف (Enter)" : "ذخیره‌ی تغییرات (Enter)")"
+                    disabled="@Busy" @onclick="Save">
+                @if (Busy) { <MudProgressCircular Size="Size.Small" Indeterminate="true" Style="width:16px;height:16px;color:#fff" /> }
+                else { <i class="bi bi-check2"></i> }
+            </button>
+            <button type="button" class="atm-btn atm-btn--ghost atm-btn--icon" title="@(IsNew ? "پاک کردنِ ردیف (Esc)" : "انصراف (Esc)")"
+                    disabled="@Busy" @onclick="Cancel"><i class="bi bi-x-lg"></i></button>
+        </div>
+    </div>
+
+    <div class="snd-ed__aux">
+        @if (_balance is { } b && !string.IsNullOrEmpty(Entry.Hes))
+        {
+            <span class="bal @(b.Balance >= 0 ? "pos" : "neg")" title="مانده‌ی فعلیِ این حساب در کلِ اسناد">
+                <i class="bi bi-graph-up"></i>مانده: @AccountPicker.Money(Math.Abs(b.Balance)) @(b.Balance >= 0 ? "بدهکار" : "بستانکار")
+            </span>
+        }
+        @if (IsNew && Difference != 0)
+        {
+            <button type="button" class="snd-ed__fill" @onclick="FillDifference" disabled="@Busy"
+                    title="مبلغِ لازم برای ترازِ سند در همین ردیف گذاشته می‌شود">
+                <i class="bi bi-magic"></i>تراز کن: @AccountPicker.Money(Math.Abs(Difference)) @(Difference > 0 ? "بستانکار" : "بدهکار")
+            </button>
+        }
+        <span class="keys">Enter = بعدی/ثبت · Esc = انصراف · + = 000 · Ctrl+" = مثلِ ردیفِ بالا</span>
+    </div>
+
+    @if (ChequeRole != SanadChequeRole.None)
+    {
+        <div class="snd-ed__chq" @onkeydown="OnChequeKey">
+            <label class="trs-check">
+                <input type="checkbox" checked="@Entry.WithCheque" disabled="@Busy"
+                       @onchange="e => Entry.WithCheque = (bool)(e.Value ?? false)" />
+                <span>@(ChequeRole == SanadChequeRole.Received ? "ثبتِ مشخصاتِ چکِ دریافتی (اسناد دریافتنی)" : "ثبتِ مشخصاتِ چکِ پرداختی (اسناد پرداختنی)")</span>
+            </label>
+            @if (Entry.WithCheque)
+            {
+                <ChequeFields Form="Entry.Chq" Meta="ChequeMeta" Receive="@(ChequeRole == SanadChequeRole.Received)" AllowGroup="false"
+                              LockAssign="@(Entry.Current?.InCirculation(Meta.Bankha) == true)" Disabled="@Busy" />
+                @if (ChequeRole == SanadChequeRole.Received)
+                {
+                    <div class="snd-ed__owner">
+                        <AccountPicker Label="صاحبِ چک (اختیاری)" Value="@Entry.Owner" Name="@Entry.OwnerName" Required="false"
+                                       Searcher="Searcher" BalanceLoader="BalanceLoader" Placeholder="حسابِ پرداخت‌کننده‌ی چک…"
+                                       OnChange="OnOwnerPicked" />
+                    </div>
+                }
+                <div class="trs-entry__hint"><i class="bi bi-magic"></i>اگر شرح خالی بماند، از روی مشخصاتِ چک ساخته می‌شود (مثل نرم‌افزار ویندوزی).</div>
+            }
+            else
+            {
+                <div class="trs-entry__hint"><i class="bi bi-info-circle"></i>این ردیف بدونِ چک ثبت می‌شود (مثل «خروج» از پنجره‌ی چک).</div>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired] public SanadEntry Entry { get; set; } = new();
+    [Parameter, EditorRequired] public SanadMetaDto Meta { get; set; } = new();
+    [Parameter] public bool IsNew { get; set; } = true;
+    [Parameter] public bool Busy { get; set; }
+    /// <summary>جمعِ بدهکار منهای بستانکارِ سند (بدونِ این ردیف) — برای «تراز کن».</summary>
+    [Parameter] public double Difference { get; set; }
+    /// <summary>ردیفِ بالا — برای Ctrl+".</summary>
+    [Parameter] public SanadRowDto? Above { get; set; }
+    [Parameter] public List<TreasuryLookupItem> Descriptions { get; set; } = new();
+    [Parameter] public Func<string?, CancellationToken, Task<List<TreasuryAccountDto>>> Searcher { get; set; } = default!;
+    [Parameter] public Func<string, Task<TreasuryBalanceDto?>> BalanceLoader { get; set; } = default!;
+    [Parameter] public EventCallback OnSave { get; set; }
+    [Parameter] public EventCallback OnCancel { get; set; }
+
+    private readonly string _id = "snd-ed-" + Guid.NewGuid().ToString("N")[..8];
+    private MudAutocomplete<TreasuryAccountDto>? _acc;
+    private TreasuryAccountDto? _selected;
+    private TreasuryBalanceDto? _balance;
+    private string? _balanceFor;
+    private int _key;
+    private List<TreasuryLookupItem>? _canned;
+    private int _cannedIndex;
+    private TreasuryMetaDto? _chequeMeta;
+
+    private SanadChequeRole ChequeRole => Entry.Role(Meta);
+
+    /// <summary>ChequeFields فهرست‌ها را از مدلِ خزانه می‌خواند.</summary>
+    private TreasuryMetaDto ChequeMeta => _chequeMeta ??= new TreasuryMetaDto
+    {
+        Banks = Meta.Banks, ChequeFunds = Meta.ChequeFunds, BankAccounts = Meta.BankAccounts, Bankha = Meta.Bankha,
+        Ada = Meta.Ada, Adv = Meta.Adv, Apa = Meta.Apa, Apv = Meta.Apv
+    };
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (string.IsNullOrWhiteSpace(Entry.Hes)) _selected = null;
+        else if (_selected?.Hes != Entry.Hes) _selected = new TreasuryAccountDto { Hes = Entry.Hes, Name = Entry.HesName };
+
+        await LoadBalanceAsync();
+    }
+
+    private async Task LoadBalanceAsync()
+    {
+        if (Entry.Hes == _balanceFor) return;
+        _balanceFor = Entry.Hes;
+        _balance = null;
+        if (!string.IsNullOrWhiteSpace(Entry.Hes))
+        {
+            try { _balance = await BalanceLoader(Entry.Hes); } catch { /* مانده اختیاری است */ }
+        }
+    }
+
+    // ─────────────── فوکوس ───────────────
+
+    public async Task FocusAccountAsync()
+    {
+        await Task.Yield();
+        try { await JS.InvokeVoidAsync("sndFocus", $"#{_id} [data-f=acc] input"); } catch { }
+    }
+
+    private async Task Focus(string field)
+    {
+        try { await JS.InvokeVoidAsync("sndFocus", $"#{_id} [data-f={field}] input"); } catch { }
+    }
+
+    /// <summary>بعد از ثبت/انصراف ورودی‌های عددی از نو ساخته شوند (Pay2NumericInput تا فوکوس دارد مقدارِ تازه نمی‌گیرد).</summary>
+    public void Reset()
+    {
+        _key++;
+        _canned = null;
+        StateHasChanged();
+    }
+
+    // ─────────────── حساب ───────────────
+
+    private static string AccText(TreasuryAccountDto? a) => a == null ? string.Empty : $"{a.Name} — {a.Hes}";
+
+    private async Task<IEnumerable<TreasuryAccountDto>> Search(string? q, CancellationToken ct)
+    {
+        try { return await Searcher(q, ct); }
+        catch { return Enumerable.Empty<TreasuryAccountDto>(); }
+    }
+
+    private async Task OnAccountPicked(TreasuryAccountDto? a)
+    {
+        if (a?.IsGroup == true) return;
+        _selected = a;
+        Entry.Hes = a?.Hes;
+        Entry.HesName = a?.Name;
+        if (a is null) return;
+        // MudAutocomplete منتظرِ همین متد می‌ماند و بعد فوکوس را به خودش برمی‌گرداند؛ پس فوکوس به شرح
+        // بعد از تمام شدنِ کارِ او (بی‌انتظار) منتقل می‌شود.
+        _ = FocusLaterAsync("sharh");
+        await LoadBalanceAsync();
+    }
+
+    private async Task FocusLaterAsync(string field)
+    {
+        await Task.Delay(120);
+        await InvokeAsync(() => Focus(field));
+    }
+
+    private async Task OnAccKey(KeyboardEventArgs e)
+    {
+        if (IsCopyAbove(e)) { await CopyAbove("acc"); return; }
+        // حسابِ انتخاب‌شده‌ی دست‌نخورده (مثلاً در ویرایشِ ردیف): Enter مثلِ گرید به شرح می‌رود،
+        // نه اینکه MudAutocomplete فهرستِ خالی باز کند. فوکوس پیش از keyup جابه‌جا می‌شود و Mud آن را نمی‌بیند.
+        if (e.Key == "Enter" && _acc is { IsOpen: false } && _selected is not null && _acc.Text == AccText(_selected))
+        {
+            await Focus("sharh");
+            return;
+        }
+        if (e.Key == "Escape") await Cancel();
+    }
+
+    // ─────────────── شرح ───────────────
+
+    private void OnSharhInput(ChangeEventArgs e)
+    {
+        Entry.Sharh = e.Value?.ToString();
+        UpdateCanned();
+    }
+
+    /// <summary>SHARH_LIST: وقتی شرح به «+» تمام می‌شود، فهرستِ شرح‌های آماده؛ متنِ قبل از «+» فیلتر است.</summary>
+    private void UpdateCanned()
+    {
+        var s = Entry.Sharh ?? "";
+        var plus = s.LastIndexOf('+');
+        if (plus < 0 || Descriptions.Count == 0) { _canned = null; return; }
+        var tail = s[(plus + 1)..].Trim();
+        _canned = Descriptions.Where(d => tail.Length == 0 || d.Name.Contains(tail)).Take(12).ToList();
+        _cannedIndex = 0;
+        if (_canned.Count == 0) _canned = null;
+    }
+
+    private async Task PickCanned(TreasuryLookupItem item)
+    {
+        var s = Entry.Sharh ?? "";
+        var plus = s.LastIndexOf('+');
+        Entry.Sharh = (plus >= 0 ? s[..plus] : s) + item.Name;
+        _canned = null;
+        await Focus("sharh");
+    }
+
+    private async Task OnSharhKey(KeyboardEventArgs e)
+    {
+        if (_canned is { Count: > 0 })
+        {
+            if (e.Key == "ArrowDown") { _cannedIndex = Math.Min(_canned.Count - 1, _cannedIndex + 1); return; }
+            if (e.Key == "ArrowUp") { _cannedIndex = Math.Max(0, _cannedIndex - 1); return; }
+            if (e.Key == "Enter") { await PickCanned(_canned[_cannedIndex]); return; }
+            if (e.Key == "Escape") { _canned = null; return; }
+        }
+        if (IsCopyAbove(e)) { await CopyAbove("sharh"); return; }
+        if (e.Key == "Enter") await Focus(Entry.BesValue > 0 && Entry.BedValue == 0 ? "bes" : "bed");
+        else if (e.Key == "Escape") await Cancel();
+    }
+
+    // ─────────────── مبلغ ───────────────
+
+    private async Task OnBedKey(KeyboardEventArgs e)
+    {
+        if (IsCopyAbove(e)) { await CopyAbove("bed"); return; }
+        if (e.Key == "Enter")
+        {
+            if (Entry.BedValue > 0) await SaveOrChequeAsync();
+            else await Focus("bes");
+        }
+        else if (e.Key == "Escape") await Cancel();
+    }
+
+    private async Task OnBesKey(KeyboardEventArgs e)
+    {
+        if (IsCopyAbove(e)) { await CopyAbove("bes"); return; }
+        if (e.Key == "Enter") await SaveOrChequeAsync();
+        else if (e.Key == "Escape") await Cancel();
+    }
+
+    /// <summary>ردیفِ چکی با مشخصاتِ چکِ خالی: اول به پنجره‌ی چک (مثل باز شدنِ SGETCHEK/SPAYCHEK)، بعد ثبت.</summary>
+    private async Task SaveOrChequeAsync()
+    {
+        if (ChequeRole != SanadChequeRole.None && Entry.WithCheque && string.IsNullOrWhiteSpace(Entry.Chq.NSeri))
+        {
+            StateHasChanged();
+            await Task.Yield();
+            try { await JS.InvokeVoidAsync("sndFocus", $"#{_id} .snd-ed__chq .trs-chq input"); } catch { }
+            return;
+        }
+        await Save();
+    }
+
+    /// <summary>Enter در مشخصاتِ چک: خانه‌ی بعد؛ در آخرین خانه ثبت.</summary>
+    private async Task OnChequeKey(KeyboardEventArgs e)
+    {
+        if (e.Key == "Escape") { await Cancel(); return; }
+        if (e.Key != "Enter" || e.ShiftKey) return;
+        string where;
+        try { where = await JS.InvokeAsync<string>("sndNext", _id); } catch { return; }
+        if (where == "end") await Save();
+    }
+
+    /// <summary>صاحبِ چک آخرین خانه است؛ بعد از انتخابش فوکوس روی «ثبت» تا Enter بعدی ردیف را ثبت کند.</summary>
+    private void OnOwnerPicked(TreasuryAccountDto? a)
+    {
+        Entry.Owner = a?.Hes;
+        Entry.OwnerName = a?.Name;
+        if (string.IsNullOrWhiteSpace(Entry.Chq.NameTah)) Entry.Chq.NameTah = a?.Name?.Trim();
+        if (a is not null) _ = FocusSaveLaterAsync();
+    }
+
+    private async Task FocusSaveLaterAsync()
+    {
+        await Task.Delay(120);
+        await InvokeAsync(async () =>
+        {
+            try { await JS.InvokeVoidAsync("sndFocus", $"#{_id} .snd-ed__act .atm-btn--primary"); } catch { }
+        });
+    }
+
+    private async Task FillDifference()
+    {
+        var d = Math.Round(Math.Abs(Difference), 0).ToString("0", System.Globalization.CultureInfo.InvariantCulture);
+        if (Difference > 0) { Entry.Bes = d; Entry.Bed = null; }
+        else { Entry.Bed = d; Entry.Bes = null; }
+        _key++;
+        // فوکوس روی همان مبلغ تا Enter ردیف را ثبت کند
+        StateHasChanged();
+        await Task.Yield();
+        await Focus(Difference > 0 ? "bes" : "bed");
+    }
+
+    // ─────────────── Ctrl+" ───────────────
+
+    private static bool IsCopyAbove(KeyboardEventArgs e) => e.CtrlKey && (e.Code == "Quote" || e.Key is "'" or "\"");
+
+    private async Task CopyAbove(string field)
+    {
+        if (Above is null) return;
+        switch (field)
+        {
+            case "acc":
+                Entry.Hes = Above.Hes;
+                Entry.HesName = Above.HesName;
+                _selected = new TreasuryAccountDto { Hes = Above.Hes, Name = Above.HesName };
+                StateHasChanged();
+                _ = FocusLaterAsync("sharh");
+                await LoadBalanceAsync();
+                return;
+            case "sharh":
+                Entry.Sharh = Above.Sharh;
+                break;
+            case "bed":
+                Entry.Bed = Above.Bed > 0 ? Above.Bed.ToString("0", System.Globalization.CultureInfo.InvariantCulture) : null;
+                _key++;
+                break;
+            case "bes":
+                Entry.Bes = Above.Bes > 0 ? Above.Bes.ToString("0", System.Globalization.CultureInfo.InvariantCulture) : null;
+                _key++;
+                break;
+        }
+        StateHasChanged();
+        await Task.Yield();
+        await Focus(field);
+    }
+
+    // ─────────────── ثبت / انصراف ───────────────
+
+    private async Task Save()
+    {
+        if (Busy) return;
+        _canned = null;
+        await OnSave.InvokeAsync();
+    }
+
+    private async Task Cancel()
+    {
+        _canned = null;
+        await OnCancel.InvokeAsync();
+    }
+}

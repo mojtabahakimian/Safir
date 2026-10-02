@@ -555,8 +555,9 @@ namespace Safir.Server.Treasury
         /// CL_HESABDARI.TR: ستون‌های مشترکِ جدول و نسخه‌ی TR_ (GETfldlist) + زمانِ تغییر.
         /// flag 1 (سربرگ/چک) کاربر و دستگاه را هم دارد؛ flag 2 (سطر) فقط زمان را.
         /// </summary>
+        /// <param name="at">زمانِ نسخه؛ سربرگ و ردیف‌های یک نسخه با یک زمان نوشته شوند تا در سوابق دقیق جفت شوند.</param>
         internal static async Task CopyToHistoryAsync(IDbConnection conn, IDbTransaction tx, string table, string where, object args,
-                                                      bool withUser, string userName, string? clientIp)
+                                                      bool withUser, string userName, string? clientIp, DateTime? at = null)
         {
             var cols = (await conn.QueryAsync<string>(@"
                 SELECT c.name FROM sys.columns c
@@ -566,7 +567,7 @@ namespace Safir.Server.Treasury
                 new { table }, tx)).ToList();
             if (cols.Count == 0) return; // جدولِ TR هنوز ساخته نشده — WPF اولین بار می‌سازدش
 
-            var now = DateTime.Now;
+            var now = at ?? DateTime.Now;
             var pc = new PersianCalendar();
             long faDate = pc.GetYear(now) * 10000L + pc.GetMonth(now) * 100 + pc.GetDayOfMonth(now);
             var fl = string.Join(",", cols.Select(c => $"[{c}]"));
@@ -653,8 +654,10 @@ namespace Safir.Server.Treasury
         /// <summary>
         /// یک شماره سند (DEED_HED) — همان قفلِ نام‌گذاری‌شده‌ی SanadNumbering و Pay2RunController،
         /// داخلِ تراکنشِ فراخوان تا سند و خزانه با هم ثبت یا با هم برگردانده شوند.
+        /// سندِ دستیِ «صدور و ویرایش اسناد» همین را با NO_S = 0 و OKF = 0 می‌خواند.
         /// </summary>
-        public static async Task<double> ReserveSanadAsync(IDbConnection conn, IDbTransaction tx, long date, string sharh, string userName)
+        public static async Task<double> ReserveSanadAsync(IDbConnection conn, IDbTransaction tx, long date, string sharh, string userName,
+                                                           byte noS = SanadKind, bool okf = true, int? uid = null)
         {
             await conn.ExecuteAsync(
                 "EXEC sp_getapplock @Resource = 'DeedNumberAllocation', @LockMode = 'Exclusive', @LockOwner = 'Transaction', @LockTimeout = 15000",
@@ -665,8 +668,8 @@ namespace Safir.Server.Treasury
             var bg = maxBg.HasValue ? maxBg.Value + 1 : 100000000;
             await conn.ExecuteAsync(@"
                 INSERT INTO dbo.DEED_HED (N_S, DATE_S, SHARH_S, GHATEI, NO_S, OKF, USER_NAME, CRT, uid, BAYEG)
-                VALUES (@ns, @date, @sharh, 0, 5, 1, @user, GETDATE(), NULL, @bg)",
-                new { ns, date, sharh, user = userName, bg }, tx);
+                VALUES (@ns, @date, @sharh, 0, @noS, @okf, @user, GETDATE(), @uid, @bg)",
+                new { ns, date, sharh, user = userName, bg, noS, okf, uid }, tx);
             return ns;
         }
 
@@ -690,7 +693,7 @@ namespace Safir.Server.Treasury
 
         internal static int NowTime() => DateTime.Now.Hour * 100 + DateTime.Now.Minute;
 
-        private static bool IsDuplicate(Exception ex)
+        internal static bool IsDuplicate(Exception ex)
             => ex is System.Data.SqlClient.SqlException { Number: 2627 or 2601 }
                || ex.InnerException is System.Data.SqlClient.SqlException { Number: 2627 or 2601 };
 
