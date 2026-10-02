@@ -3,6 +3,14 @@
     overflow-x: hidden;
 }
 
+/* With overflow-x: hidden, body becomes a scroll container of its own (one that never scrolls —
+   the viewport does), which silently disables every page-level position: sticky
+   (treasury list and sign bar, automation toolbar). clip cuts the overflow the same way
+   without creating a scroll container; browsers without clip keep the hidden above. */
+body {
+    overflow-x: clip;
+}
+
 /* Additional custom styles */
 .loading-progress {
     display: flex;
