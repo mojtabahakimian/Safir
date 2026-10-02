@@ -31,7 +31,7 @@ namespace Safir.Server.Treasury
             => (noAm == TreasuryOp.Payment && TreasuryMethod.IsNewCheque(nahva))
                || (noAm == TreasuryOp.Receipt && nahva == TreasuryMethod.ChequeReturn);
 
-        private const string GetdSelect = @"
+        internal const string GetdSelect = @"
             SELECT g.ID Id, CAST(0 AS bit) Payable, g.N_SERI NSeri, g.BANK Bank, CAST(b.NAMES AS nvarchar(200)) BankName,
                    g.DATE_S DateS, g.DATE Date, g.SHOBEH Shobeh, g.MABL Mabl, g.NAME_TAH NameTah, g.N_HESAB NHesab,
                    g.LIST_NO ListNo, g.SANDUGH Sandugh, g.SAYADI Sayadi, g.HES1 Hes1, g.HES2 Hes2, g.VAZ Vaz, g.KIND Kind,
@@ -39,7 +39,7 @@ namespace Safir.Server.Treasury
                    CAST(g.N_S AS float) Ns
             FROM dbo.PAY_GETD g LEFT JOIN dbo.TCOD_BANKS b ON b.CODE = g.BANK";
 
-        private const string GetpSelect = @"
+        internal const string GetpSelect = @"
             SELECT g.ID Id, CAST(1 AS bit) Payable, g.N_SERI NSeri, g.BANK Bank, CAST(b.NAMES AS nvarchar(200)) BankName,
                    g.DATE_S DateS, g.DATE Date, g.SHOBEH Shobeh, g.MABL Mabl, g.NAME_TAH NameTah, g.N_HESAB NHesab,
                    CAST(NULL AS int) ListNo, CAST(NULL AS int) Sandugh, g.SAYADI Sayadi, g.HES1 Hes1, g.HES2 Hes2, g.VAZ Vaz,
@@ -60,7 +60,7 @@ namespace Safir.Server.Treasury
             return c;
         }
 
-        private static async Task<TreasuryChequeDto?> ChequeByIdAsync(IDbConnection conn, IDbTransaction? tx, bool payable, long id)
+        internal static async Task<TreasuryChequeDto?> ChequeByIdAsync(IDbConnection conn, IDbTransaction? tx, bool payable, long id)
             => (await conn.QueryAsync<TreasuryChequeDto>((payable ? GetpSelect : GetdSelect) + " WHERE g.ID = @id", new { id }, tx)).FirstOrDefault();
 
         /// <summary>
@@ -205,7 +205,7 @@ namespace Safir.Server.Treasury
         /// DELETE_FACTOR22_Click روی چکِ سطر: چکِ دریافتی/پرداختی روی حسابِ معلقِ ۹۱۱-۱-۱ پارک می‌شود؛
         /// واگذاری و برگشت آزاد می‌شوند.
         /// </summary>
-        private static async Task ReleaseRowChequeAsync(IDbConnection conn, IDbTransaction tx, int noAm, int nahva, TreasuryChequeDto? cheque, string userName)
+        internal static async Task ReleaseRowChequeAsync(IDbConnection conn, IDbTransaction tx, int noAm, int nahva, TreasuryChequeDto? cheque, string userName)
         {
             if (cheque is null) return;
             switch (noAm, nahva)
@@ -272,7 +272,7 @@ namespace Safir.Server.Treasury
             return null;
         }
 
-        private async Task<bool> TafExistsAsync(int[] a)
+        internal async Task<bool> TafExistsAsync(int[] a)
             => await _db.DoGetDataSQLAsyncSingle<int?>(
                    "SELECT TOP 1 1 FROM dbo.TDETA_HES WHERE N_KOL = @k AND NUMBER = @m AND TNUMBER = @t", new { k = a[0], m = a[1], t = a[2] }) is not null;
 
@@ -315,16 +315,16 @@ namespace Safir.Server.Treasury
 
         // ─────────────────────────── چکِ دریافتی (GETCHEK) ───────────────────────────
 
-        private static string ChequeSerial(double nSeri) => nSeri.ToString("0", CultureInfo.InvariantCulture);
+        internal static string ChequeSerial(double nSeri) => nSeri.ToString("0", CultureInfo.InvariantCulture);
 
-        private static string Left255(string s) => s.Length > 255 ? s[..255] : s;
+        internal static string Left255(string s) => s.Length > 255 ? s[..255] : s;
         private static string Right255(string s) => s.Length > 255 ? s[^255..] : s;
 
-        private async Task<string> BankNameAsync(int bank)
+        internal async Task<string> BankNameAsync(int bank)
             => NormalizeFa(await _db.DoGetDataSQLAsyncSingle<string?>("SELECT TOP 1 CAST(NAMES AS nvarchar(200)) FROM dbo.TCOD_BANKS WHERE CODE = @bank", new { bank }));
 
         /// <summary>مشترکِ GETCHEK و PAYCHEK — پیام‌ها همان MsgListwin.</summary>
-        private async Task<List<string>> ValidateChequeInputAsync(TreasuryChequeInput c, long treasuryDate, bool receive, bool group)
+        internal async Task<List<string>> ValidateChequeInputAsync(TreasuryChequeInput c, long treasuryDate, bool receive, bool group)
         {
             var errors = new List<string>();
             if (receive && c.ListNo is null) errors.Add("کد شعبه صحیح نیست.");
@@ -426,84 +426,21 @@ namespace Safir.Server.Treasury
                 var newIdh = await _db.ExecuteInTransactionAsync(async (conn, tx) =>
                 {
                     if (release is not null) await release(conn, tx);
-                    // دفتر اسناد دریافتنی (DAFT_ASN): شماره‌ی شروع و شماره‌ی دفتر — اگر نیست (۱، ۱)
-                    var daft = (await conn.QueryAsync<(int First, int Book)>(
-                        "SELECT TOP 1 FIRSTNUM, BOOKNUM FROM dbo.DAFT_ASN ORDER BY BOOKNUM DESC", transaction: tx)).FirstOrDefault();
-                    if (daft == default)
-                    {
-                        await conn.ExecuteAsync("INSERT INTO dbo.DAFT_ASN (FIRSTNUM, BOOKNUM) VALUES (1, 1)", transaction: tx);
-                        daft = (1, 1);
-                    }
+                    var daft = await DaftAsync(conn, tx);
 
                     int firstIdh = 0;
                     for (int i = 0; i < count; i++)
                     {
                         var serial = c.NSeri + i;
                         var dateS = AddMonthsFa(c.DateS, i * c.GapMonths);
-                        var curId = i == 0 ? current?.Id : null;
-
-                        // تکراری: همان سریال و بانک (GETCHEK: «چکی با همین سریال و بانک قبلاً ثبت شده است»).
-                        // چکِ پارک‌شده روی ۹۱۱ (سطرِ دریافتش حذف شده) دوباره به کار می‌رود.
-                        var dup = (await conn.QueryAsync<ChequeKey>(
-                            "SELECT TOP 1 ID Id, RADIF Radif, N_KOL NKol FROM dbo.PAY_GETD WITH (UPDLOCK, HOLDLOCK) WHERE N_SERI = @serial AND BANK = @bank AND ID <> ISNULL(@curId, -1)",
-                            new { serial, bank = c.Bank, curId }, tx)).FirstOrDefault();
-                        if (dup is not null)
+                        var info = await WriteReceivedChequeAsync(conn, tx, new ReceivedChequeWrite
                         {
-                            if (dup.NKol == 911 && curId is null) curId = dup.Id;
-                            else throw new UserError($"چکی با سریالِ {ChequeSerial(serial)} و همین بانک قبلاً ثبت شده است (ردیف دفتر {dup.Radif:0}).");
-                        }
-
-                        var existing = curId is null ? null : await ChequeByIdAsync(conn, tx, false, curId.Value);
-                        var keepAssign = existing is not null && existing.InCirculation(s.Bankha) && existing.NKol != 911;
-                        double? radif = existing?.Radif;
-                        double? anbar = null;
-                        if (radif is null or 0)
-                        {
-                            var maxR = await conn.ExecuteScalarAsync<double?>(
-                                "SELECT MAX(RADIF) FROM dbo.PAY_GETD WITH (UPDLOCK, HOLDLOCK) WHERE ANBAR = @dfn", new { dfn = daft.Book }, tx);
-                            radif = maxR is null ? daft.First : maxR + 1;
-                            anbar = daft.Book;
-                            infos.Add($"شماره دفتر: {radif:0}");
-                        }
-
-                        var args = new
-                        {
-                            ID = curId,
-                            N_SERI = serial, BANK = c.Bank, DATE_S = dateS, DATE = date,
-                            SHOBEH = c.Shobeh?.Trim(), MABL = r.Mabl, NAME_TAH = c.NameTah!.Trim(), N_HESAB = c.NHesab?.Trim(),
-                            ANBAR = anbar, RADIF = radif, CUST_NO = fhes.Length > 20 ? fhes[..20] : fhes,
-                            VAZ = existing is not null && existing.NKol != 911 ? existing.Vaz ?? 1 : 1,
-                            LIST_NO = c.ListNo, KIND = kind, SANDUGH = sandugh, SAYADI = c.Sayadi?.Trim(),
-                            N_KOL = keepAssign ? existing!.NKol : (int?)hes1?[0],
-                            KEEP = keepAssign ? 1 : 0,
-                            N_MOIN = hes1?[1], N_TAF = hes1?[2], HES1 = hes1Text
-                        };
-
-                        if (curId is not null)
-                        {
-                            await CopyToHistoryAsync(conn, tx, "PAY_GETD", "ID = @id", new { id = curId }, true, userName, clientIp);
-                            // در گردش: حسابِ واگذاری فقط با FORCHEK/BAKCHEK/وصول عوض می‌شود
-                            await conn.ExecuteAsync(@"
-                                UPDATE dbo.PAY_GETD SET N_SERI = @N_SERI, BANK = @BANK, DATE_S = @DATE_S, DATE = @DATE, SHOBEH = @SHOBEH,
-                                       MABL = @MABL, NAME_TAH = @NAME_TAH, N_HESAB = @N_HESAB,
-                                       ANBAR = ISNULL(@ANBAR, ANBAR), RADIF = @RADIF, CUST_NO = @CUST_NO, VAZ = @VAZ, LIST_NO = @LIST_NO,
-                                       KIND = @KIND, SANDUGH = @SANDUGH, SAYADI = @SAYADI,
-                                       N_KOL = CASE WHEN @KEEP = 1 THEN N_KOL ELSE @N_KOL END,
-                                       N_MOIN = CASE WHEN @KEEP = 1 THEN N_MOIN ELSE @N_MOIN END,
-                                       N_TAF = CASE WHEN @KEEP = 1 THEN N_TAF ELSE @N_TAF END,
-                                       HES1 = CASE WHEN @KEEP = 1 THEN HES1 ELSE @HES1 END
-                                WHERE ID = @ID", args, tx);
-                        }
-                        else
-                        {
-                            await conn.ExecuteAsync(@"
-                                INSERT INTO dbo.PAY_GETD (N_SERI, BANK, DATE_S, DATE, SHOBEH, MABL, NAME_TAH, ANBAR, RADIF, CUST_NO, VAZ,
-                                                          LIST_NO, KIND, SANDUGH, N_HESAB, SAYADI, N_KOL, N_MOIN, N_TAF, HES1)
-                                VALUES (@N_SERI, @BANK, @DATE_S, @DATE, @SHOBEH, @MABL, @NAME_TAH, @ANBAR, @RADIF, @CUST_NO, @VAZ,
-                                        @LIST_NO, @KIND, @SANDUGH, @N_HESAB, @SAYADI, @N_KOL, @N_MOIN, @N_TAF, @HES1)", args, tx);
-                        }
-
-                        await LogReceivedAsync(conn, tx, serial, c.Bank, dateS, 1, sandugh, userName, setVaz: false);
+                            CurrentId = i == 0 ? current?.Id : null,
+                            Serial = serial, Bank = c.Bank, DateS = dateS, Date = date, Shobeh = c.Shobeh, Mabl = r.Mabl,
+                            NameTah = c.NameTah!, NHesab = c.NHesab, CustNo = fhes, ListNo = c.ListNo, Kind = kind,
+                            Sandugh = sandugh, Sayadi = c.Sayadi, Hes1 = hes1, Hes1Text = hes1Text
+                        }, daft, s.Bankha, userName, clientIp);
+                        if (info is not null) infos.Add(info);
 
                         var row = new RowData
                         {
@@ -524,7 +461,7 @@ namespace Safir.Server.Treasury
         }
 
         /// <summary>GETDLOG / GETCHEK: ردیفِ PAY_GETD_LOG و (در GETDLOG) VAZ ِ چک.</summary>
-        private static async Task LogReceivedAsync(IDbConnection conn, IDbTransaction tx, double serial, int bank, long dateS, int vaz, int? sandugh,
+        internal static async Task LogReceivedAsync(IDbConnection conn, IDbTransaction tx, double serial, int bank, long dateS, int vaz, int? sandugh,
                                                    string userName, bool setVaz)
         {
             await conn.ExecuteAsync(@"
@@ -596,44 +533,12 @@ namespace Safir.Server.Treasury
                     {
                         var serial = c.NSeri + i;
                         var dateS = AddMonthsFa(c.DateS, i * c.GapMonths);
-                        var curId = i == 0 ? current?.Id : null;
-                        var dup = (await conn.QueryAsync<ChequeKey>(
-                            "SELECT TOP 1 ID Id, CAST(RADIF AS float) Radif, N_KOL NKol FROM dbo.PAY_GETP WITH (UPDLOCK, HOLDLOCK) WHERE N_SERI = @serial AND BANK = @bank AND ID <> ISNULL(@curId, -1)",
-                            new { serial, bank = c.Bank, curId }, tx)).FirstOrDefault();
-                        if (dup is not null)
+                        await WritePaidChequeAsync(conn, tx, new PaidChequeWrite
                         {
-                            if (dup.NKol == 911 && curId is null) curId = dup.Id;
-                            else throw new UserError($"چکی با سریالِ {ChequeSerial(serial)} و همین بانک قبلاً پرداخت شده است.");
-                        }
-
-                        var args = new
-                        {
-                            ID = curId, N_SERI = serial, BANK = c.Bank, DATE_S = dateS, DATE = date,
-                            SHOBEH = c.Shobeh?.Trim() ?? "", MABL = r.Mabl, NAME_TAH = c.NameTah!.Trim(), N_HESAB = c.NHesab?.Trim() ?? "",
-                            KIND = kind, HES1 = hes1Text, SAYADI = string.IsNullOrWhiteSpace(c.Sayadi) ? "0" : c.Sayadi.Trim(),
-                            N_KOL = hes1?[0], N_MOIN = hes1?[1], N_TAF = hes1?[2]
-                        };
-                        if (curId is not null)
-                        {
-                            await CopyToHistoryAsync(conn, tx, "PAY_GETP", "ID = @id", new { id = curId }, true, userName, clientIp);
-                            await conn.ExecuteAsync(@"
-                                UPDATE dbo.PAY_GETP SET N_SERI = @N_SERI, BANK = @BANK, DATE_S = @DATE_S, DATE = @DATE, SHOBEH = @SHOBEH,
-                                       MABL = @MABL, NAME_TAH = @NAME_TAH, N_HESAB = @N_HESAB, KIND = @KIND, HES1 = @HES1, SAYADI = @SAYADI,
-                                       N_KOL = @N_KOL, N_MOIN = @N_MOIN, N_TAF = @N_TAF,
-                                       N_S = NULL, N_KOL2 = NULL, N_MOIN2 = NULL, N_TAF2 = NULL, N_KOL3 = NULL, N_MOIN3 = NULL, N_TAF3 = NULL,
-                                       NUMBER = NULL, TAG = NULL, ANBAR = NULL, RADIF = NULL, CUST_NO = DEFAULT, VAZ = NULL, HES2 = NULL, HES3 = NULL
-                                WHERE ID = @ID", args, tx);
-                        }
-                        else
-                        {
-                            await conn.ExecuteAsync(@"
-                                INSERT INTO dbo.PAY_GETP (N_SERI, BANK, DATE_S, DATE, SHOBEH, MABL, NAME_TAH, N_HESAB, N_S, N_KOL, N_MOIN, N_TAF,
-                                                          N_KOL2, N_MOIN2, N_TAF2, N_KOL3, N_MOIN3, N_TAF3, NUMBER, TAG, ANBAR, RADIF, CUST_NO, KIND, VAZ,
-                                                          HES1, HES2, HES3, SAYADI)
-                                VALUES (@N_SERI, @BANK, @DATE_S, @DATE, @SHOBEH, @MABL, @NAME_TAH, @N_HESAB, NULL, @N_KOL, @N_MOIN, @N_TAF,
-                                        NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, @KIND, NULL,
-                                        @HES1, NULL, NULL, @SAYADI)", args, tx);
-                        }
+                            CurrentId = i == 0 ? current?.Id : null,
+                            Serial = serial, Bank = c.Bank, DateS = dateS, Date = date, Shobeh = c.Shobeh, Mabl = r.Mabl,
+                            NameTah = c.NameTah!, NHesab = c.NHesab, Kind = kind, Sayadi = c.Sayadi, Hes1 = hes1, Hes1Text = hes1Text
+                        }, userName, clientIp);
 
                         var row = new RowData
                         {
@@ -878,7 +783,7 @@ namespace Safir.Server.Treasury
         }
 
         /// <summary>خطایِ قابلِ نمایش به کاربر از داخلِ تراکنش (تراکنش برگردانده می‌شود).</summary>
-        private sealed class UserError : Exception
+        internal sealed class UserError : Exception
         {
             public UserError(string message) : base(message) { }
         }
