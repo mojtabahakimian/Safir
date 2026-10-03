@@ -93,17 +93,17 @@
 
                 <div class="safir-nav-section">مالی</div>
 
-                <MudNavLink Href="/sanad" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.ReceiptLong">
-                    صدور و ویرایش اسناد
-                </MudNavLink>
-
-                <MudNavLink Href="/treasury" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.AccountBalance">
-                    خزانه‌داری
-                </MudNavLink>
-
-                <MudNavLink Href="/trial-balance" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.TableChart">
-                    تراز آزمایشی
-                </MudNavLink>
+                <MudNavGroup Title="حسابداری و خزانه" Icon="@Icons.Material.Filled.Payments" Expanded="false">
+                    <MudNavLink Href="/sanad" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.ReceiptLong">
+                        صدور و ویرایش اسناد
+                    </MudNavLink>
+                    <MudNavLink Href="/treasury" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.AccountBalance">
+                        خزانه‌داری
+                    </MudNavLink>
+                    <MudNavLink Href="/trial-balance" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.TableChart">
+                        تراز آزمایشی
+                    </MudNavLink>
+                </MudNavGroup>
 
                 <div class="safir-nav-section">حقوق و دستمزد</div>
 
