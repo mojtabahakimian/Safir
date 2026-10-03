@@ -1,0 +1,348 @@
+/* «نبض سازمان» — همه‌ی کلاس‌ها با p- یا .pulse شروع می‌شوند تا به بقیه‌ی برنامه دست نزنند. */
+
+.pulse {
+  --p-sales: #6366f1;
+  --p-pre: #06b6d4;
+  --p-ratio: #f43f5e;
+  --p-cash: #10b981;
+  --p-cheq: #8b5cf6;
+  --p-tasks: #f59e0b;
+  --p-events: #ec4899;
+  --p-card: #ffffff;
+  --p-card-solid: #ffffff;
+  --p-card-border: rgba(15, 23, 42, 0.07);
+  --p-text: #0f172a;
+  --p-muted: #64748b;
+  --p-grid: rgba(100, 116, 139, 0.18);
+  --p-track: rgba(100, 116, 139, 0.12);
+  --p-shadow: 0 1px 2px rgba(15, 23, 42, 0.04), 0 14px 34px -14px rgba(15, 23, 42, 0.16);
+  direction: rtl;
+  color: var(--p-text);
+  font-family: inherit;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding: 4px 0 40px;
+  container-type: inline-size;
+  container-name: pulse;
+}
+
+html.dark-theme .pulse {
+  --p-sales: #818cf8;
+  --p-pre: #22d3ee;
+  --p-ratio: #fb7185;
+  --p-cash: #34d399;
+  --p-cheq: #a78bfa;
+  --p-tasks: #fbbf24;
+  --p-events: #f472b6;
+  --p-card: rgba(15, 23, 42, 0.72);
+  --p-card-solid: #0f172a;
+  --p-card-border: rgba(148, 163, 184, 0.14);
+  --p-text: #e2e8f0;
+  --p-muted: #94a3b8;
+  --p-grid: rgba(148, 163, 184, 0.16);
+  --p-track: rgba(148, 163, 184, 0.14);
+  --p-shadow: 0 24px 48px -24px rgba(0, 0, 0, 0.7);
+}
+
+.pulse svg text { direction: rtl; font-family: inherit; }
+
+/* ─────────── سربرگ ─────────── */
+.p-hero {
+  position: relative;
+  overflow: hidden;
+  overflow: clip; /* hidden قابلِ اسکرول است: فوکوسِ دکمه کلِ سربرگ را به‌خاطرِ حباب‌ها کنار می‌کشید */
+  isolation: isolate;
+  border-radius: 26px;
+  padding: 24px 28px;
+  color: #fff;
+  background: radial-gradient(120% 150% at 100% 0%, #1e1b4b 0%, #0b1022 55%, #050816 100%);
+  box-shadow: 0 30px 60px -30px rgba(30, 27, 75, 0.6);
+}
+.p-aurora { position: absolute; inset: 0; z-index: -1; overflow: hidden; overflow: clip; filter: blur(52px); opacity: 0.8; }
+.p-blob { position: absolute; width: 380px; height: 380px; border-radius: 50%; mix-blend-mode: screen; }
+.p-blob.b1 { background: #6366f1; top: -170px; right: -80px; }
+.p-blob.b2 { background: #06b6d4; bottom: -220px; right: 32%; opacity: 0.8; }
+.p-blob.b3 { background: #ec4899; top: -160px; left: -100px; opacity: 0.65; }
+
+.p-hero-main { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; }
+.p-hero-title { display: flex; align-items: center; gap: 14px; }
+.p-hero-ic {
+  width: 56px; height: 56px; flex: 0 0 auto;
+  display: grid; place-items: center;
+  border-radius: 18px;
+  font-size: 1.65rem;
+  color: #fb7185;
+  background: rgba(255, 255, 255, 0.1);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.18), 0 0 30px -6px rgba(251, 113, 133, 0.65);
+  backdrop-filter: blur(8px);
+}
+.p-hero h1 {
+  margin: 0;
+  font-size: 1.7rem;
+  font-weight: 800;
+  background: linear-gradient(90deg, #ffffff, #c7d2fe 60%, #fbcfe8);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.p-hero p { margin: 3px 0 0; color: rgba(226, 232, 240, 0.72); font-size: 0.85rem; }
+
+.p-ecg { width: 170px; height: 48px; flex: 0 0 auto; margin-inline-start: auto; }
+.p-ecg-base { fill: none; stroke: rgba(255, 255, 255, 0.12); stroke-width: 2; stroke-linejoin: round; }
+.p-ecg-line {
+  fill: none;
+  stroke: #fb7185;
+  stroke-width: 2.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  filter: drop-shadow(0 0 6px #fb7185);
+}
+
+.p-hero-actions { display: flex; align-items: center; gap: 10px; }
+.p-tabs {
+  display: inline-flex;
+  padding: 4px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.08);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.12);
+}
+.p-tabs button {
+  position: relative;
+  border: 0;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.76);
+  padding: 8px 16px;
+  border-radius: 10px;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+  transition: color 0.2s;
+}
+.p-tabs button:hover { color: #fff; }
+.p-tabs button.is-on { color: #1e1b4b; }
+.p-tab-pill { position: absolute; inset: 0; border-radius: 10px; background: #fff; box-shadow: 0 8px 18px -8px rgba(0, 0, 0, 0.45); }
+.p-tab-text { position: relative; z-index: 1; }
+
+.p-refresh {
+  width: 42px; height: 42px;
+  display: grid; place-items: center;
+  border: 0;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.1);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.14);
+  color: #fff;
+  font-size: 1.1rem;
+  cursor: pointer;
+}
+.p-refresh:hover { background: rgba(255, 255, 255, 0.18); }
+.p-refresh:disabled { opacity: 0.65; cursor: default; }
+
+.p-note {
+  margin-top: 14px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  border-radius: 10px;
+  font-size: 0.8rem;
+  color: #fde68a;
+  background: rgba(251, 191, 36, 0.14);
+  box-shadow: inset 0 0 0 1px rgba(251, 191, 36, 0.25);
+}
+
+/* ─────────── کارت‌های شاخص ─────────── */
+/* ستون‌ها از عرضِ خودِ داشبورد (نه پنجره) — با منوی باز و بسته هم ۶، ۳، ۲ یا ۱ ستونِ کامل */
+.p-kpis { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; perspective: 1100px; }
+@container pulse (min-width: 700px) { .p-kpis { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@container pulse (min-width: 1240px) { .p-kpis { grid-template-columns: repeat(6, minmax(0, 1fr)); } }
+@container pulse (max-width: 420px) { .p-kpis { grid-template-columns: minmax(0, 1fr); } }
+.p-kpi {
+  position: relative;
+  overflow: hidden;
+  min-height: 154px;
+  padding: 16px 18px 46px;
+  border-radius: 20px;
+  background: var(--p-card);
+  border: 1px solid var(--p-card-border);
+  box-shadow: var(--p-shadow);
+  backdrop-filter: blur(14px);
+  transform-style: preserve-3d;
+  will-change: transform;
+}
+.p-kpi::before {
+  content: '';
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 3px;
+  background: linear-gradient(90deg, transparent, var(--c), transparent);
+}
+.p-kpi-shine { position: absolute; inset: 0; pointer-events: none; }
+.p-kpi-head { position: relative; display: flex; align-items: center; gap: 10px; }
+.p-kpi-ic {
+  width: 36px; height: 36px; flex: 0 0 auto;
+  display: grid; place-items: center;
+  border-radius: 12px;
+  font-size: 1.05rem;
+  color: var(--c);
+  background: color-mix(in srgb, var(--c) 14%, transparent);
+}
+.p-kpi-title { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-weight: 700; font-size: 0.88rem; color: var(--p-muted); }
+.p-kpi-value { position: relative; margin-top: 12px; font-size: 1.75rem; font-weight: 800; font-variant-numeric: tabular-nums; }
+.p-kpi-sub { position: relative; margin-top: 2px; font-size: 0.75rem; color: var(--p-muted); }
+.p-spark { position: absolute; inset: auto 0 0 0; width: 100%; height: 46px; }
+.p-kpi--ring .p-kpi-value, .p-kpi--ring .p-kpi-sub { padding-inline-end: 78px; }
+.p-ring { position: absolute; left: 16px; top: 62px; }
+.p-ring-bg { fill: none; stroke: var(--p-track); stroke-width: 7; }
+.p-ring-fg { fill: none; stroke-width: 7; stroke-linecap: round; }
+
+.p-delta {
+  margin-inline-start: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 800;
+  white-space: nowrap;
+}
+.p-delta.is-up { color: #059669; background: rgba(16, 185, 129, 0.13); }
+.p-delta.is-down { color: #e11d48; background: rgba(244, 63, 94, 0.13); }
+.p-delta.is-flat { color: var(--p-muted); background: var(--p-track); font-weight: 500; }
+html.dark-theme .pulse .p-delta.is-up { color: #34d399; }
+html.dark-theme .pulse .p-delta.is-down { color: #fb7185; }
+
+/* ─────────── کارتِ بخش ─────────── */
+.p-card {
+  min-width: 0;
+  padding: 18px 20px 14px;
+  border-radius: 22px;
+  background: var(--p-card);
+  border: 1px solid var(--p-card-border);
+  box-shadow: var(--p-shadow);
+  backdrop-filter: blur(14px);
+}
+.p-card-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 6px; }
+.p-card-title { display: flex; align-items: flex-start; gap: 12px; }
+.p-card-title > i {
+  width: 38px; height: 38px; flex: 0 0 auto;
+  display: grid; place-items: center;
+  border-radius: 12px;
+  font-size: 1.1rem;
+  color: #fff;
+  background: linear-gradient(135deg, var(--p-sales), var(--p-events));
+  box-shadow: 0 10px 20px -10px var(--p-sales);
+}
+.p-card-title h3 { margin: 0; font-size: 1.02rem; font-weight: 800; }
+.p-card-title small { display: block; margin-top: 3px; font-size: 0.76rem; line-height: 1.7; color: var(--p-muted); }
+
+.p-grid2 { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 18px; }
+.p-grid2--wide { grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); }
+
+/* ─────────── نمودار ─────────── */
+.p-chart { position: relative; }
+.p-plot { position: relative; width: 100%; touch-action: pan-y; }
+.p-plot svg { display: block; overflow: visible; }
+.p-grid { stroke: var(--p-grid); stroke-dasharray: 3 6; }
+.p-baseline { stroke: var(--p-grid); stroke-width: 1.3; }
+.p-axis { fill: var(--p-muted); font-size: 11px; }
+.p-cross { stroke: var(--p-muted); stroke-dasharray: 4 4; opacity: 0.7; }
+.p-hover-dot { stroke: var(--p-card-solid); stroke-width: 3; }
+.p-plot rect.is-hover, .p-plot g.is-hover rect { filter: brightness(1.18) saturate(1.2); }
+.p-empty-overlay { position: absolute; inset: 0; display: grid; place-items: center; color: var(--p-muted); font-size: 0.9rem; pointer-events: none; }
+
+.p-legend { display: flex; flex-wrap: wrap; gap: 8px; margin: 4px 0 12px; }
+.p-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--p-card-border);
+  background: color-mix(in srgb, var(--c) 8%, transparent);
+  font: inherit;
+  font-size: 0.82rem;
+  color: var(--p-text);
+  transition: opacity 0.25s, filter 0.25s;
+}
+button.p-legend-item { cursor: pointer; }
+.p-legend-item b { font-weight: 800; color: var(--c); }
+.p-legend-item.is-off { opacity: 0.42; filter: grayscale(1); }
+.p-dot {
+  width: 10px; height: 10px; flex: 0 0 auto;
+  border-radius: 50%;
+  background: var(--c);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--c) 25%, transparent);
+}
+
+.p-tip { position: absolute; top: 6px; left: 0; z-index: 5; pointer-events: none; }
+.p-tip-box {
+  width: max-content;
+  min-width: 190px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  font-size: 0.8rem;
+  color: #fff;
+  background: rgba(15, 23, 42, 0.92);
+  box-shadow: 0 18px 40px -12px rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(8px);
+}
+.p-tip-box.is-flip { transform: translateX(-100%); }
+html.dark-theme .pulse .p-tip-box { background: rgba(30, 41, 59, 0.96); box-shadow: 0 18px 40px -12px rgba(0, 0, 0, 0.7), inset 0 0 0 1px rgba(148, 163, 184, 0.22); }
+.p-tip-day { display: flex; flex-direction: column; margin-bottom: 6px; }
+.p-tip-day span { font-size: 0.72rem; color: rgba(226, 232, 240, 0.7); }
+.p-tip-row { display: flex; align-items: center; gap: 8px; padding: 2px 0; white-space: nowrap; }
+.p-tip-row .p-dot { box-shadow: none; }
+.p-tip-label { color: rgba(226, 232, 240, 0.82); }
+.p-tip-row b { margin-inline-start: auto; padding-inline-start: 14px; font-variant-numeric: tabular-nums; }
+
+/* ─────────── نقشه‌ی حرارتی ─────────── */
+.p-heat svg { display: block; max-height: 200px; }
+.p-heat-cell { fill: var(--p-track); cursor: pointer; transform-box: fill-box; transform-origin: center; }
+.p-heat-foot { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-height: 24px; margin-top: 10px; font-size: 0.8rem; color: var(--p-muted); }
+.p-heat-foot b { color: var(--p-text); }
+.p-heat-scale { display: inline-flex; align-items: center; gap: 4px; font-size: 0.72rem; white-space: nowrap; }
+.p-heat-scale i { display: inline-block; width: 12px; height: 12px; border-radius: 3px; }
+
+/* ─────────── روزهای هفته و پرفروش‌ترین روزها ─────────── */
+.p-wd { display: flex; flex-direction: column; gap: 11px; padding-top: 4px; }
+.p-wd-row { display: grid; grid-template-columns: 70px minmax(0, 1fr) 96px 20px; align-items: center; gap: 10px; font-size: 0.84rem; }
+.p-wd-name { font-weight: 600; color: var(--p-muted); }
+.p-wd-row.is-best .p-wd-name { color: var(--p-text); font-weight: 800; }
+.p-wd-val { font-weight: 700; font-variant-numeric: tabular-nums; text-align: left; }
+.p-wd-crown { color: #f59e0b; filter: drop-shadow(0 0 6px rgba(245, 158, 11, 0.6)); }
+.p-wd-track, .p-top-track { height: 10px; border-radius: 999px; overflow: hidden; background: var(--p-track); }
+.p-wd-bar, .p-top-bar { height: 100%; border-radius: 999px; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.15); }
+
+.p-top { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 12px; }
+.p-top li { display: flex; align-items: center; gap: 12px; }
+.p-rank {
+  width: 34px; height: 34px; flex: 0 0 auto;
+  display: grid; place-items: center;
+  border-radius: 11px;
+  font-weight: 800;
+  color: var(--p-muted);
+  background: var(--p-track);
+}
+.p-rank.r1 { color: #fff; background: linear-gradient(135deg, #fcd34d, #f59e0b); box-shadow: 0 8px 18px -8px #f59e0b; }
+.p-rank.r2 { color: #fff; background: linear-gradient(135deg, #e2e8f0, #94a3b8); }
+.p-rank.r3 { color: #fff; background: linear-gradient(135deg, #fdba74, #c2410c); }
+.p-top-main { flex: 1; min-width: 0; }
+.p-top-line { display: flex; align-items: baseline; gap: 8px; margin-bottom: 6px; }
+.p-top-line small { font-size: 0.74rem; color: var(--p-muted); }
+.p-top-val { margin-inline-start: auto; font-weight: 800; font-variant-numeric: tabular-nums; }
+.p-empty { padding: 26px 0; text-align: center; color: var(--p-muted); }
+
+/* ─────────── واکنش‌گرا ─────────── */
+@container pulse (max-width: 1050px) {
+  .p-grid2, .p-grid2--wide { grid-template-columns: minmax(0, 1fr); }
+}
+@container pulse (max-width: 640px) {
+  .p-hero { padding: 18px; border-radius: 20px; }
+  .p-ecg { display: none; }
+  .p-hero-actions { width: 100%; justify-content: space-between; }
+  .p-tabs button { padding: 7px 12px; }
+  .p-card { padding: 14px; }
+  .p-wd-row { grid-template-columns: 58px minmax(0, 1fr) 80px 18px; }
+}
