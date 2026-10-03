@@ -1,7 +1,6 @@
 using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Safir.Server.Hesabdari;
 using Safir.Server.Pulse;
 using Safir.Shared.Interfaces;
 using Safir.Shared.Models.Pulse;
@@ -10,8 +9,7 @@ namespace Safir.Server.Controllers
 {
     /// <summary>
     /// «نبض سازمان» — فروش، پیش‌فاکتور، فعالیت‌ها، نقد و چک در ۱۸۰ روزِ اخیر.
-    /// پنجره‌های نبضِ WPF در TFORMS تعریف نشده‌اند و دسترسی ندارند؛ چون اینجا از بیرون هم در دسترس است و
-    /// جمعِ فروش و صندوق را نشان می‌دهد، همان مجوزِ «تراز آزمایشی چهارستونی کل» (TARAZ_4، SEE) لازم است.
+    /// دسترسی با فرم اختصاصی PULSE («نبض سازمان») در TFORMS و تیک‌های RUN و SEE در SAL_CHEK کنترل می‌شود.
     /// </summary>
     [ApiController]
     [Route("api/pulse")]
@@ -33,9 +31,8 @@ namespace Safir.Server.Controllers
         public async Task<ActionResult<PulseDto>> Get()
         {
             if (UserCo <= 0) return Unauthorized();
-            var access = await new TrialBalanceService(_db).GetAccessAsync(UserCo);
-            if (!access.Kol)
-                return StatusCode(403, "برای دیدنِ نبض سازمان، دسترسیِ «تراز آزمایشی» لازم است.");
+            if (!await CanAccessPulseAsync(UserCo))
+                return StatusCode(403, "برای دیدنِ نبض سازمان، دسترسیِ «نبض سازمان» لازم است.");
             try
             {
                 return Ok(await new PulseService(_db).LoadAsync(DateTime.Now));
@@ -45,6 +42,17 @@ namespace Safir.Server.Controllers
                 _logger.LogError(ex, "Pulse dashboard failed");
                 return StatusCode(500, "خواندنِ داده‌ی نبض سازمان با خطا روبه‌رو شد.");
             }
+        }
+
+        private async Task<bool> CanAccessPulseAsync(int userCo)
+        {
+            const string sql = @"
+                SELECT TOP 1
+                    CAST(CASE WHEN ISNULL(sc.RUN, 0) = 1 AND ISNULL(sc.SEE, 0) = 1 THEN 1 ELSE 0 END AS bit)
+                FROM dbo.TFORMS f
+                JOIN dbo.SAL_CHEK sc ON sc.[OBJECT] = f.IDH AND sc.USERCO = @userCo
+                WHERE f.FORMNAME = N'PULSE'";
+            return await _db.DoGetDataSQLAsyncSingle<bool>(sql, new { userCo });
         }
     }
 }

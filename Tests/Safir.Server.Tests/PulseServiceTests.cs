@@ -1,4 +1,11 @@
+using System.Reflection;
+using System.Security.Claims;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Logging.Abstractions;
+using Safir.Server.Controllers;
 using Safir.Server.Pulse;
+using Safir.Shared.Interfaces;
 using Xunit;
 
 namespace Safir.Server.Tests;
@@ -6,6 +13,49 @@ namespace Safir.Server.Tests;
 /// <summary>تقویمِ «نبض سازمان» — سری‌ها روزبه‌روز و بی‌جاافتادگی، حتی از روی مرزِ ماه و سال.</summary>
 public class PulseServiceTests
 {
+    public class DatabaseProxy : DispatchProxy
+    {
+        public Func<MethodInfo, object?[], object?> Handler { get; set; } = (_, _) => throw new InvalidOperationException();
+        protected override object? Invoke(MethodInfo? method, object?[]? args) => Handler(method!, args!);
+    }
+
+    private static IDatabaseService Db(Func<MethodInfo, object?[], object?> handler)
+    {
+        var db = DispatchProxy.Create<IDatabaseService, DatabaseProxy>();
+        ((DatabaseProxy)(object)db).Handler = handler;
+        return db;
+    }
+
+    [Fact]
+    public async Task PulseController_DeniesAccess_WhenPulsePermissionMissing()
+    {
+        var db = Db((method, args) =>
+        {
+            Assert.Equal("DoGetDataSQLAsyncSingle", method.Name);
+            Assert.Contains("PULSE", (string)args[0]!);
+            return Task.FromResult(false);
+        });
+
+        var controller = new PulseController(db, NullLogger<PulseController>.Instance)
+        {
+            ControllerContext = new ControllerContext
+            {
+                HttpContext = new DefaultHttpContext
+                {
+                    User = new ClaimsPrincipal(new ClaimsIdentity(new[]
+                    {
+                        new Claim(ClaimTypes.NameIdentifier, "133")
+                    }, "test"))
+                }
+            }
+        };
+
+        var result = await controller.Get();
+        var status = Assert.IsType<ObjectResult>(result.Result);
+        Assert.Equal(403, status.StatusCode);
+        Assert.Equal("برای دیدنِ نبض سازمان، دسترسیِ «نبض سازمان» لازم است.", status.Value);
+    }
+
     [Fact]
     public void Days_are_consecutive_and_end_on_the_given_day()
     {
