@@ -93,6 +93,17 @@ public class PulseServiceTests
         => Assert.Equal(expected, PulseService.LastDayOfYear(year));
 
     [Fact]
+    public void Day_count_reaches_back_to_esfand_of_previous_year_for_month_tabs()
+    {
+        // ۱۱ مهر ۱۴۰۵: از ۱ اسفند ۱۴۰۴ (۲۹ روزه) = ۲۹ + ۶×۳۱ + ۱۱ = ۲۲۶ روز
+        var n = PulseService.DayCountFor(14050711, 1405);
+        Assert.Equal(226, n);
+        Assert.Equal(14041201, PulseService.PersianDays(14050711, n)[0]);
+        // اوایلِ سال حداقلِ ۱۸۰ روز می‌ماند تا بازه‌ی ۹۰روزه مقایسه داشته باشد
+        Assert.Equal(PulseService.DayCount, PulseService.DayCountFor(14050115, 1405));
+    }
+
+    [Fact]
     public void Weekday_counts_from_saturday()
     {
         Assert.Equal(0, PulseService.PersianWeekday(PulseService.FromPersian(14050711))); // شنبه ۱۱ مهر ۱۴۰۵

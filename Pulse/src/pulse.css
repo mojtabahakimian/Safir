@@ -99,7 +99,9 @@ html.dark-theme .pulse {
   filter: drop-shadow(0 0 6px #fb7185);
 }
 
-.p-hero-actions { display: flex; align-items: center; gap: 10px; }
+.p-hero-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: flex-end; }
+.p-tabs--months { max-width: 100%; overflow-x: auto; scrollbar-width: none; }
+.p-tabs--months button { padding: 8px 12px; white-space: nowrap; }
 .p-tabs {
   display: inline-flex;
   padding: 4px;

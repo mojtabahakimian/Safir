@@ -18,7 +18,7 @@ namespace Safir.Server.Pulse
     /// </summary>
     public sealed class PulseService
     {
-        /// <summary>۹۰ روزِ نمایش + ۹۰ روزِ قبلش برای مقایسه.</summary>
+        /// <summary>۹۰ روزِ نمایش + ۹۰ روزِ قبلش برای مقایسه — حداقل؛ اگر ماه‌های سال بیشتر بخواهند، بیشتر.</summary>
         public const int DayCount = 180;
 
         private static readonly PersianCalendar Pc = new();
@@ -54,7 +54,7 @@ namespace Safir.Server.Pulse
                 new { y1 = year * 10000L + 101, y2 = year * 10000L + 1230 });
 
             var end = EndDay(today, year, lastData);
-            var days = PersianDays(end, DayCount);
+            var days = PersianDays(end, DayCountFor(end, year));
             var p = new { from = days[0], to = end };
 
             var sales = await _db.DoGetDataSQLAsync<DayValue>(@"
@@ -121,6 +121,17 @@ namespace Safir.Server.Pulse
             if (fiscalYear == todayYear) return today;
             if (lastData is > 0) return lastData.Value;
             return LastDayOfYear(fiscalYear);
+        }
+
+        /// <summary>
+        /// تعدادِ روزها: دست‌کم <see cref="DayCount"/>، و آن‌قدر که از ۱ اسفندِ سالِ قبل شروع شود تا تبِ هر ماهِ
+        /// سالِ مالی (فروردین تا ماهِ جاری) کامل باشد و فروردین هم ماهِ قبلی برای مقایسه داشته باشد.
+        /// </summary>
+        public static int DayCountFor(long end, int fiscalYear)
+        {
+            var from = FromPersian((fiscalYear - 1) * 10000L + 1201);
+            var span = (int)(FromPersian(end) - from).TotalDays + 1;
+            return Math.Max(DayCount, span);
         }
 
         /// <summary>شنبه = ۰ … جمعه = ۶.</summary>

@@ -74,6 +74,33 @@ test('داشبوردِ نبض سوار می‌شود و با عوض شدنِ ب�
   expect(errors, errors.join('\n')).toHaveLength(0);
 });
 
+test('تبِ ماه فقط روزهای همان ماه را جمع می‌زند و با ماهِ قبل مقایسه می‌کند', async ({ page }) => {
+  const errors = [];
+  page.on('pageerror', e => errors.push(e.message));
+  const data = pulseData();
+  await openPulse(page, route => route.fulfill({ json: data }));
+
+  // ماه‌های سالِ مالی که در داده هستند، به ترتیب
+  const months = page.locator('.p-tabs--months button');
+  await expect(months).toHaveText(['فروردین', 'اردیبهشت', 'خرداد', 'تیر', 'مرداد', 'شهریور', 'مهر']);
+
+  const total = ym => data.days.reduce((a, d, i) => (Math.floor(d / 100) === ym ? a + (i + 1) : a), 0);
+  await months.filter({ hasText: 'شهریور' }).click();
+  await expect(page.locator('.p-hero p')).toContainText('۱۴۰۵/۰۶/۰۱ تا ۱۴۰۵/۰۶/۳۱');
+  const sales = page.locator('.p-kpi').first().locator('.p-kpi-value');
+  await expect(sales).toHaveText(`${fa(total(140506))} میلیارد`, { timeout: 5000 });
+  const up = ((total(140506) - total(140505)) / total(140505)) * 100;
+  await expect(page.locator('.p-kpi').first().locator('.p-delta'))
+    .toContainText(new Intl.NumberFormat('fa-IR', { maximumFractionDigits: 1 }).format(Math.abs(up)));
+
+  // برگشت به «۷ روز»: تبِ ماه دیگر انتخاب‌شده نیست
+  await page.locator('.p-tabs button', { hasText: '۷ روز' }).click();
+  await expect(months.filter({ hasText: 'شهریور' })).toHaveAttribute('aria-selected', 'false');
+  await expect(sales).toHaveText(`${fa(174 + 175 + 176 + 177 + 178 + 179 + 180)} میلیارد`, { timeout: 5000 });
+
+  expect(errors, errors.join('\n')).toHaveLength(0);
+});
+
 test('بدونِ مجوز، پیامِ سرور نشان داده می‌شود نه صفحه‌ی خالی', async ({ page }) => {
   await openPulse(page, route => route.fulfill({
     status: 403, contentType: 'text/plain; charset=utf-8',
