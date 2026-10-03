@@ -1,0 +1,19 @@
+{
+  "name": "safir-pulse",
+  "private": true,
+  "description": "«نبض سازمان» — داشبوردِ React + Motion که در صفحه‌ی /pulse ِ Safir سوار می‌شود. خروجی: Client/wwwroot/js/pulse/",
+  "type": "module",
+  "scripts": {
+    "build": "node build.mjs",
+    "watch": "node build.mjs --watch"
+  },
+  "dependencies": {
+    "d3-shape": "3.2.0",
+    "motion": "14.0.0",
+    "react": "19.3.0",
+    "react-dom": "19.3.0"
+  },
+  "devDependencies": {
+    "esbuild": "0.28.2"
+  }
+}

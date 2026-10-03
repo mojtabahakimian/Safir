@@ -159,6 +159,14 @@ python3 .github/scripts/check_pay2_acl.py   # نگهبان کنترل دسترس
 `SALA_DTL` و `SAL_CHEK` ارجاع می‌دهد) و `test_auth_and_acl_users.sql` بعد
 از مهاجرت سه کاربر آزمایشی درج می‌کند. ترتیب کامل در بخش ۴.
 
+### داشبوردِ «نبض سازمان» یک برنامه‌ی React است با خروجیِ commit‌شده
+
+صفحه‌ی `/pulse` (`Client/Pages/Pulse/PulsePage.razor`) خودش نمودار نمی‌کشد؛ برنامه‌ی React + Motion ِ
+پوشه‌ی `Pulse/` (ریشه‌ی مخزن، بیرون از پروژه‌ی Client تا `node_modules` در build ِ .NET نیاید) را با
+`import()` بار می‌کند. خروجیِ `npm run build` در `Client/wwwroot/js/pulse/` **commit می‌شود**؛ پس اگر
+`Pulse/src` را عوض کردید، build بگیرید و نسخه‌ی `?v=` ِ `Bundle` در همان صفحه را بالا ببرید —
+وگرنه تغییرتان دیده نمی‌شود یا مرورگرها نسخه‌ی کهنه را نگه می‌دارند. جزئیات: `Pulse/README.md`.
+
 ### یکدستی ظاهری بخش حقوق و دستمزد
 
 همه‌ی تب‌های `Client/Pages/Salary/Tabs/` از یک زبان طراحی مشترک استفاده
