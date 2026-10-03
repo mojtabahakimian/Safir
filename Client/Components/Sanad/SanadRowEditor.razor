@@ -170,6 +170,7 @@
 
     protected override async Task OnParametersSetAsync()
     {
+        _skipRender = false; // پارامترِ تازه از والد همیشه رندر می‌شود
         if (string.IsNullOrWhiteSpace(Entry.Hes)) _selected = null;
         else if (_selected?.Hes != Entry.Hes) _selected = new TreasuryAccountDto { Hes = Entry.Hes, Name = Entry.HesName };
 
@@ -247,7 +248,20 @@
             await Focus("sharh");
             return;
         }
-        if (e.Key == "Escape") await Cancel();
+        if (e.Key == "Escape") { await Cancel(); return; }
+        _skipRender = true; // تایپِ معمولی — ShouldRender را ببینید
+    }
+
+    // MudBaseInput.SetParametersAsync در WebAssembly با هر رندر، متنِ ورودی را از روی Value بازنویسی می‌کند
+    // (حتی وقتی فوکوس دارد). رندرِ این فرم بعد از هر keydown، متنِ در حالِ تایپِ «حساب» و «صاحب چک» را
+    // پیش از نشستنِ حرفِ تازه پاک می‌کرد و فقط آخرین حرف می‌ماند. کلیدی که اینجا کاری نمی‌کند، رندر هم نمی‌خواهد.
+    private bool _skipRender;
+
+    protected override bool ShouldRender()
+    {
+        if (!_skipRender) return true;
+        _skipRender = false;
+        return false;
     }
 
     // ─────────────── شرح ───────────────
@@ -330,10 +344,12 @@
     private async Task OnChequeKey(KeyboardEventArgs e)
     {
         if (e.Key == "Escape") { await Cancel(); return; }
+        _skipRender = true; // تایپ در خانه‌های چک، از جمله «صاحب چک» (MudAutocomplete)
         if (e.Key != "Enter" || e.ShiftKey) return;
         string where;
         try { where = await JS.InvokeAsync<string>("sndNext", _id); } catch { return; }
         if (where == "end") await Save();
+        else _skipRender = true; // رندرِ بعد از تمام شدنِ متد هم لازم نیست
     }
 
     /// <summary>صاحبِ چک آخرین خانه است؛ بعد از انتخابش فوکوس روی «ثبت» تا Enter بعدی ردیف را ثبت کند.</summary>
