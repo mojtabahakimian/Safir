@@ -1,0 +1,94 @@
+/* ═══════════════════════════════════════════════════════════════════
+   تراز آزمایشی چهارستونی — /trial-balance
+   روی توکن‌ها و کلاس‌های automation.css (.atm-*) و نوارِ بالای
+   treasury.css (.trs-bar) ساخته شده؛ اینجا فقط اجزای خاصِ تراز با
+   پیشوندِ .tb-* هستند.
+   ═══════════════════════════════════════════════════════════════════ */
+
+.tb { --tb-bed: #0ea5e9; --tb-bes: #f59e0b; }
+
+.tb .trs-bar__stats .ok i { color: #34d399; }
+.tb .trs-bar__stats .bad { background: rgb(244 63 94 / .18); border-color: rgb(244 63 94 / .4); }
+.tb .trs-bar__stats .bad i { color: #fb7185; }
+
+/* ─────────────── فیلترها ─────────────── */
+.tb-filter {
+    display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px;
+    padding: 14px; margin-bottom: 14px;
+    background: var(--atm-surface); border: 1px solid var(--atm-line);
+    border-radius: var(--atm-radius); box-shadow: var(--atm-shadow);
+}
+.tb-f { display: flex; flex-direction: column; gap: 4px; width: 150px; }
+.tb-f--sm { width: 120px; }
+.tb-f label { font-size: .75rem; font-weight: 700; color: var(--atm-muted); }
+.tb-f label small { font-weight: 400; opacity: .8; }
+.tb-quick { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; height: 40px; }
+.tb-chip {
+    height: 32px; padding: 0 12px; border-radius: 999px; cursor: pointer;
+    font: inherit; font-size: .78rem; color: var(--atm-text);
+    background: var(--atm-soft); border: 1px solid var(--atm-line);
+    transition: border-color .15s, color .15s;
+}
+.tb-chip:hover { border-color: var(--atm-primary); color: var(--atm-primary); }
+.tb-go { margin-inline-start: auto; height: 40px; }
+.tb-big { font-size: 3.4rem; color: var(--atm-primary); opacity: .5; display: block; margin-bottom: 8px; }
+
+/* ─────────────── مسیر (breadcrumb) ─────────────── */
+.tb-crumbs { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
+.tb-sep { color: var(--atm-muted); font-size: .75rem; }
+.tb-crumb {
+    display: inline-flex; align-items: baseline; gap: 6px;
+    padding: 6px 12px; border-radius: 12px; cursor: pointer;
+    font: inherit; color: var(--atm-text);
+    background: var(--atm-surface); border: 1px solid var(--atm-line);
+}
+.tb-crumb small { color: var(--atm-muted); font-size: .72rem; }
+.tb-crumb b { font-size: .84rem; }
+.tb-crumb:hover:not(:disabled) { border-color: var(--atm-primary); }
+.tb-crumb.is-on { cursor: default; border-color: var(--atm-primary); background: color-mix(in srgb, var(--atm-primary) 8%, var(--atm-surface)); }
+.tb-crumb:disabled:not(.is-on) { opacity: .5; cursor: progress; }
+
+/* ─────────────── جدول ─────────────── */
+.tb-card {
+    padding: 12px; background: var(--atm-surface); border: 1px solid var(--atm-line);
+    border-radius: var(--atm-radius); box-shadow: var(--atm-shadow);
+}
+.tb-tools { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 10px; }
+.tb-tools .atm-search { flex: 1; min-width: 220px; max-width: 420px; }
+.tb-check { display: inline-flex; align-items: center; gap: 6px; font-size: .8rem; color: var(--atm-muted); cursor: pointer; }
+.tb-count { margin-inline-start: auto; font-size: .78rem; color: var(--atm-muted); }
+
+.tb-scroll { overflow: auto; max-height: calc(100vh - 330px); border-radius: 12px; border: 1px solid var(--atm-line); }
+.tb-table { width: 100%; border-collapse: collapse; font-size: .85rem; }
+.tb-table th {
+    position: sticky; top: 0; z-index: 1;
+    padding: 10px 12px; text-align: start; white-space: nowrap; cursor: pointer; user-select: none;
+    font-size: .75rem; font-weight: 800; color: var(--atm-muted);
+    background: color-mix(in srgb, var(--atm-text) 5%, var(--atm-surface));
+    border-bottom: 1px solid var(--atm-line);
+}
+.tb-table td { padding: 8px 12px; border-bottom: 1px solid var(--atm-line); white-space: nowrap; }
+.tb-table tbody tr:nth-child(even) td { background: color-mix(in srgb, var(--atm-text) 2%, transparent); }
+.tb-table tbody tr.can { cursor: pointer; }
+.tb-table tbody tr:hover td { background: color-mix(in srgb, var(--atm-primary) 7%, transparent); }
+.tb-table .num { width: 90px; font-variant-numeric: tabular-nums; color: var(--atm-muted); }
+.tb-table .name { white-space: normal; min-width: 200px; font-weight: 600; }
+.tb-table .amt { text-align: end; font-variant-numeric: tabular-nums; direction: ltr; }
+.tb-table th.amt { text-align: end; direction: rtl; }
+.tb-table td.bed { color: var(--tb-bed); font-weight: 700; }
+.tb-table td.bes { color: var(--tb-bes); font-weight: 700; }
+.tb-table .act { width: 84px; text-align: end; }
+.tb-table .act .atm-icon-btn { display: inline-grid; place-items: center; text-decoration: none; }
+.tb-table tfoot td {
+    position: sticky; bottom: 0;
+    font-weight: 800; background: color-mix(in srgb, var(--atm-primary) 9%, var(--atm-surface));
+    border-top: 2px solid color-mix(in srgb, var(--atm-primary) 35%, transparent);
+}
+.tb-sort { font-size: .65rem; margin-inline-start: 2px; }
+.tb-next:disabled { opacity: .4; cursor: not-allowed; }
+
+@media (max-width: 720px) {
+    .tb-f, .tb-f--sm { width: calc(50% - 6px); }
+    .tb-go { width: 100%; }
+    .tb-scroll { max-height: none; }
+}

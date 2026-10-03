@@ -1,0 +1,346 @@
+@page "/trial-balance"
+@using System.Globalization
+@using Microsoft.AspNetCore.Authorization
+@using Safir.Shared.Models.Hesabdari
+@using Safir.Client.Components.Automation
+@using Safir.Client.Components.Treasury
+@using Safir.Client.Pages.Salary.Tabs
+@inject TrialBalanceApiService Api
+@inject ISnackbar Snackbar
+
+@attribute [Authorize]
+
+@* تراز آزمایشی چهارستونی — کل ← معین ← تفصیلی ← تفصیلی ۲ ← ۳ ← ۴.
+   همان زنجیره‌ی پنجره‌های WPF (TARAZ_4 و TARAZ_TAF*_DIRECT)؛ عددها را همان
+   رویه‌های دیتابیس می‌سازند (TrialBalanceService). *@
+
+<PageTitle>تراز آزمایشی</PageTitle>
+
+<div class="atm trs tb">
+
+    <header class="trs-bar">
+        <div class="trs-bar__title">
+            <span class="ic"><i class="bi bi-columns-gap"></i></span>
+            <div>
+                <b>تراز آزمایشی چهارستونی</b>
+                <small>@AutomationUi.LongDate(DateTime.Now) · @(_shown is null ? "بازه را انتخاب کنید" : $"{FormatDate(_shown.From)} تا {FormatDate(_shown.To)}")</small>
+            </div>
+        </div>
+        @if (_rows is not null)
+        {
+            <div class="trs-bar__stats">
+                <span title="جمع گردش بدهکارِ سطرهای این سطح"><i class="bi bi-arrow-down-left"></i>گردش بدهکار <b>@Money(TotSumBed)</b></span>
+                <span title="جمع گردش بستانکارِ سطرهای این سطح"><i class="bi bi-arrow-up-right"></i>گردش بستانکار <b>@Money(TotSumBes)</b></span>
+                @if (Current?.Query.Level == TrialBalanceLevel.Kol)
+                {
+                    <span class="@(Balanced ? "ok" : "bad")" title="جمع مانده‌ی بدهکار و بستانکارِ همه‌ی حساب‌های کل باید برابر باشد">
+                        <i class="bi @(Balanced ? "bi-check-circle-fill" : "bi-exclamation-triangle-fill")"></i>@(Balanced ? "تراز است" : $"اختلاف {Money(Math.Abs(TotBed - TotBes))}")
+                    </span>
+                }
+            </div>
+        }
+    </header>
+
+    @* ─────────── فیلترها — همان فرمِ FMENU_TARAZ_4 ─────────── *@
+    <section class="tb-filter">
+        <div class="tb-f">
+            <label>از تاریخ</label>
+            <Pay2NumericInput @bind-Value="_from" InputMode="Pay2NumericInput.NumericInputMode.PersianDate" Direction="ltr" />
+        </div>
+        <div class="tb-f">
+            <label>تا تاریخ</label>
+            <Pay2NumericInput @bind-Value="_to" InputMode="Pay2NumericInput.NumericInputMode.PersianDate" Direction="ltr" />
+        </div>
+        <div class="tb-f tb-f--sm">
+            <label>از سند <small>(اختیاری)</small></label>
+            <Pay2NumericInput @bind-Value="_sanadFrom" InputMode="Pay2NumericInput.NumericInputMode.None" Direction="ltr" Placeholder="همه" />
+        </div>
+        <div class="tb-f tb-f--sm">
+            <label>تا سند <small>(اختیاری)</small></label>
+            <Pay2NumericInput @bind-Value="_sanadTo" InputMode="Pay2NumericInput.NumericInputMode.None" Direction="ltr" Placeholder="همه" />
+        </div>
+        <div class="tb-quick">
+            <button type="button" class="tb-chip" @onclick="ThisYear">از ابتدای سال</button>
+            <button type="button" class="tb-chip" @onclick="() => Month(0)">این ماه</button>
+            <button type="button" class="tb-chip" @onclick="() => Month(-1)">ماه قبل</button>
+        </div>
+        <button type="button" class="atm-btn atm-btn--primary tb-go" @onclick="ShowAsync" disabled="@(_busy || _meta?.CanKol != true)">
+            <i class="bi bi-funnel"></i>نمایش تراز کل
+        </button>
+    </section>
+
+    @if (_metaError is not null)
+    {
+        <div class="atm-empty"><h3>@_metaError</h3></div>
+    }
+    else if (_meta is { CanKol: false })
+    {
+        <div class="atm-empty">
+            <i class="bi bi-shield-lock tb-big"></i>
+            <h3>اجازه‌ی دیدن تراز آزمایشی را ندارید</h3>
+            <p>دسترسیِ فرمِ «تراز آزمایشی چهارستونی کل» (TARAZ_4) از تعیین سطح دسترسیِ نرم‌افزار ویندوزی داده می‌شود.</p>
+        </div>
+    }
+    else if (_stack.Count == 0)
+    {
+        <div class="atm-empty">
+            <i class="bi bi-columns-gap tb-big"></i>
+            <h3>بازه را انتخاب کنید و «نمایش» را بزنید</h3>
+            <p>از هر حساب کل می‌شود به معین، تفصیلی و تفصیلی‌های بعدی رفت؛ از تفصیلی هم صورت‌حساب باز می‌شود.</p>
+        </div>
+    }
+    else
+    {
+        @* ─────────── مسیر: کل › معین › تفصیلی … ─────────── *@
+        <nav class="tb-crumbs">
+            @for (int i = 0; i < _stack.Count; i++)
+            {
+                var idx = i;
+                var f = _stack[i];
+                var last = i == _stack.Count - 1;
+                if (i > 0) { <i class="bi bi-chevron-left tb-sep"></i> }
+                @* هر قدم حسابی است که از آن پایین آمده‌ایم، با سطحِ خودِ آن حساب *@
+                <button type="button" class="tb-crumb @(last ? "is-on" : "")" disabled="@(last || _busy)" @onclick="() => BackToAsync(idx)">
+                    @if (f.Title is null) { <b>تراز کل</b> }
+                    else { <small>@LevelName(f.Query.Level - 1)</small><b>@f.Title</b> }
+                </button>
+            }
+        </nav>
+
+        <section class="tb-card">
+            <div class="tb-tools">
+                <div class="atm-search">
+                    <i class="bi bi-search"></i>
+                    <input type="search" placeholder="شماره یا نام حساب…" value="@_q" @oninput="e => _q = e.Value?.ToString() ?? string.Empty" autocomplete="off" />
+                </div>
+                <label class="tb-check"><input type="checkbox" @bind="_hideZero" /> بدون حساب‌های بی‌گردش</label>
+                <span class="tb-count">@Visible.Count() حساب @LevelName(Current!.Query.Level)</span>
+            </div>
+
+            @if (_busy)
+            {
+                @for (int i = 0; i < 8; i++) { <div class="atm-skel" style="height:44px;margin-bottom:6px"></div> }
+            }
+            else if (_rows is { Count: 0 })
+            {
+                <div class="atm-empty"><h3>در این بازه گردشی نیست</h3></div>
+            }
+            else if (_rows is not null)
+            {
+                var level = Current!.Query.Level;
+                var canNext = CanDrill(level);
+                <div class="tb-scroll">
+                    <table class="tb-table">
+                        <thead>
+                            <tr>
+                                <th class="num" @onclick='() => SortBy("code")'>شماره @SortMark("code")</th>
+                                <th @onclick='() => SortBy("name")'>نام حساب @SortMark("name")</th>
+                                <th class="amt" @onclick='() => SortBy("sbed")'>گردش بدهکار @SortMark("sbed")</th>
+                                <th class="amt" @onclick='() => SortBy("sbes")'>گردش بستانکار @SortMark("sbes")</th>
+                                <th class="amt" @onclick='() => SortBy("bed")'>مانده بدهکار @SortMark("bed")</th>
+                                <th class="amt" @onclick='() => SortBy("bes")'>مانده بستانکار @SortMark("bes")</th>
+                                <th class="act"></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var r in Visible)
+                            {
+                                var row = r;
+                                <tr class="@(canNext ? "can" : "")" @ondblclick="() => DrillAsync(row)">
+                                    <td class="num"><bdi>@Code(level, row)</bdi></td>
+                                    <td class="name">@(row.Name ?? "—")</td>
+                                    <td class="amt">@Money(row.SumBed)</td>
+                                    <td class="amt">@Money(row.SumBes)</td>
+                                    <td class="amt bed">@Money(row.Bed)</td>
+                                    <td class="amt bes">@Money(row.Bes)</td>
+                                    <td class="act">
+                                        @if (level >= TrialBalanceLevel.Tafsili)
+                                        {
+                                            <a class="atm-icon-btn" href="@($"/customer-statement/{Hes(row)}")" target="_blank" title="صورت‌حسابِ این حساب"><i class="bi bi-receipt"></i></a>
+                                        }
+                                        @if (canNext)
+                                        {
+                                            <button type="button" class="atm-icon-btn tb-next" title="@($"ریز {LevelName(level + 1)}")" @onclick="() => DrillAsync(row)"><i class="bi bi-chevron-left"></i></button>
+                                        }
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                        <tfoot>
+                            <tr>
+                                <td colspan="2">جمع @(string.IsNullOrWhiteSpace(_q) && !_hideZero ? "" : "(سطرهای نمایش‌داده‌شده)")</td>
+                                <td class="amt">@Money(Visible.Sum(x => x.SumBed))</td>
+                                <td class="amt">@Money(Visible.Sum(x => x.SumBes))</td>
+                                <td class="amt bed">@Money(Visible.Sum(x => x.Bed))</td>
+                                <td class="amt bes">@Money(Visible.Sum(x => x.Bes))</td>
+                                <td></td>
+                            </tr>
+                        </tfoot>
+                    </table>
+                </div>
+            }
+        </section>
+    }
+</div>
+
+@code {
+    private static readonly PersianCalendar Pc = new();
+
+    /// <summary>یک سطح از مسیر: پرس‌وجو، عنوانِ حسابی که از آن آمده‌ایم و نتیجه‌اش.</summary>
+    private sealed record Frame(TrialBalanceQuery Query, string? Title, List<TrialBalanceRowDto> Rows);
+
+    private readonly List<Frame> _stack = new();
+    private Frame? Current => _stack.Count > 0 ? _stack[^1] : null;
+    private List<TrialBalanceRowDto>? _rows;
+    private TrialBalanceQuery? _shown;
+
+    private TrialBalanceMetaDto? _meta;
+    private string? _metaError;
+    private bool _busy;
+
+    private string? _from, _to, _sanadFrom, _sanadTo;
+    private string _q = string.Empty;
+    private bool _hideZero;
+    private string _sort = "code";
+    private bool _desc;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var (meta, err) = await Api.MetaAsync();
+        _meta = meta; _metaError = err;
+        var today = ToLong(DateTime.Now);
+        var year = meta?.FiscalYear is > 0 ? meta.FiscalYear : (int)(today / 10000);
+        _from = FormatDate(year * 10000L + 101);     // مثل WPF: ابتدای سال مالی
+        _to = FormatDate(today / 10000 == year ? today : year * 10000L + 1230);
+    }
+
+    private void ThisYear()
+    {
+        var year = _meta?.FiscalYear is > 0 ? _meta.FiscalYear : (int)(ToLong(DateTime.Now) / 10000);
+        _from = FormatDate(year * 10000L + 101);
+        _to = FormatDate(year * 10000L + 1230);
+    }
+
+    /// <summary>همان دوبار-کلیکِ WPF روی تاریخ‌ها: این ماه / ماه قبل.</summary>
+    private void Month(int offset)
+    {
+        var today = ToLong(DateTime.Now);
+        int y = (int)(today / 10000), m = (int)(today / 100 % 100) + offset;
+        if (m < 1) { m += 12; y--; }
+        _from = FormatDate(y * 10000L + m * 100 + 1);
+        _to = FormatDate(y * 10000L + m * 100 + 31);
+    }
+
+    private async Task ShowAsync()
+    {
+        var from = ParseDate(_from); var to = ParseDate(_to);
+        if (from is null || to is null) { Snackbar.Add("تاریخ‌ها را کامل وارد کنید.", Severity.Warning); return; }
+        var q = new TrialBalanceQuery
+        {
+            Level = TrialBalanceLevel.Kol, From = from.Value, To = to.Value,
+            SanadFrom = ParseNum(_sanadFrom), SanadTo = ParseNum(_sanadTo)
+        };
+        _stack.Clear();
+        await LoadAsync(q, null);
+    }
+
+    private async Task LoadAsync(TrialBalanceQuery q, string? title)
+    {
+        _busy = true; _q = string.Empty;
+        StateHasChanged();
+        var (rows, err) = await Api.LoadAsync(q);
+        _busy = false;
+        if (rows is null) { Snackbar.Add(err ?? "تراز خوانده نشد.", Severity.Error); _rows = Current?.Rows; return; }
+        _stack.Add(new Frame(q, title, rows));
+        _rows = rows; _shown = q;
+    }
+
+    private bool CanDrill(TrialBalanceLevel level) =>
+        level < TrialBalanceLevel.Tafsili4 &&
+        (level + 1 == TrialBalanceLevel.Moin ? _meta?.CanMoin == true : _meta?.CanTafsili == true);
+
+    private async Task DrillAsync(TrialBalanceRowDto row)
+    {
+        if (_busy || Current is null || !CanDrill(Current.Query.Level)) return;
+        var p = Current.Query;
+        var q = new TrialBalanceQuery
+        {
+            Level = p.Level + 1, From = p.From, To = p.To, SanadFrom = p.SanadFrom, SanadTo = p.SanadTo,
+            Kol = row.Kol, Moin = row.Moin, Tafsili = row.Tafsili, Tafsili2 = row.Tafsili2, Tafsili3 = row.Tafsili3
+        };
+        await LoadAsync(q, $"{Code(p.Level, row)} {row.Name}".Trim());
+    }
+
+    private Task BackToAsync(int index)
+    {
+        if (index < 0 || index >= _stack.Count - 1) return Task.CompletedTask;
+        _stack.RemoveRange(index + 1, _stack.Count - index - 1);
+        _rows = Current!.Rows; _shown = Current.Query; _q = string.Empty;
+        return Task.CompletedTask;
+    }
+
+    // ── نمایش ──
+    private IEnumerable<TrialBalanceRowDto> Visible
+    {
+        get
+        {
+            IEnumerable<TrialBalanceRowDto> rows = _rows ?? new();
+            var level = Current?.Query.Level ?? TrialBalanceLevel.Kol;
+            if (_hideZero) rows = rows.Where(r => r.SumBed != 0 || r.SumBes != 0 || r.Bed != 0 || r.Bes != 0);
+            var q = _q.Trim();
+            if (q.Length > 0)
+                rows = rows.Where(r => (r.Name ?? "").Contains(q, StringComparison.OrdinalIgnoreCase) || Code(level, r).Contains(q));
+            Func<TrialBalanceRowDto, object> key = _sort switch
+            {
+                "name" => r => r.Name ?? "",
+                "sbed" => r => r.SumBed,
+                "sbes" => r => r.SumBes,
+                "bed" => r => r.Bed,
+                "bes" => r => r.Bes,
+                _ => r => (long)(LevelCode(level, r) ?? 0)
+            };
+            return _desc ? rows.OrderByDescending(key) : rows.OrderBy(key);
+        }
+    }
+
+    private void SortBy(string k) { if (_sort == k) _desc = !_desc; else { _sort = k; _desc = k is not ("code" or "name"); } }
+    private MarkupString SortMark(string k) => _sort != k ? new("") : new($"<i class=\"bi bi-caret-{(_desc ? "down" : "up")}-fill tb-sort\"></i>");
+
+    private double TotSumBed => _rows?.Sum(x => x.SumBed) ?? 0;
+    private double TotSumBes => _rows?.Sum(x => x.SumBes) ?? 0;
+    private double TotBed => _rows?.Sum(x => x.Bed) ?? 0;
+    private double TotBes => _rows?.Sum(x => x.Bes) ?? 0;
+    /// <summary>فقط در سطح کل نشان داده می‌شود (زیرسطح‌ها بخشی از یک حساب‌اند)؛ یک ریال اختلاف را گردکردن می‌گیرد.</summary>
+    private bool Balanced => Math.Abs(TotBed - TotBes) < 1;
+
+    private static int? LevelCode(TrialBalanceLevel level, TrialBalanceRowDto r) => level switch
+    {
+        TrialBalanceLevel.Kol => r.Kol,
+        TrialBalanceLevel.Moin => r.Moin,
+        TrialBalanceLevel.Tafsili => r.Tafsili,
+        TrialBalanceLevel.Tafsili2 => r.Tafsili2,
+        TrialBalanceLevel.Tafsili3 => r.Tafsili3,
+        _ => r.Tafsili4
+    };
+    private static string Code(TrialBalanceLevel level, TrialBalanceRowDto r) => LevelCode(level, r)?.ToString() ?? "—";
+
+    /// <summary>کدِ حساب برای صورت‌حساب: کل-معین-تفصیلی[-تفصیلی۲…] — همان قالب DEED_DTL.HES.</summary>
+    private static string Hes(TrialBalanceRowDto r) =>
+        string.Join("-", new[] { r.Kol, r.Moin, r.Tafsili, r.Tafsili2, r.Tafsili3, r.Tafsili4 }.TakeWhile(x => x is not null));
+
+    private static string LevelName(TrialBalanceLevel l) => l switch
+    {
+        TrialBalanceLevel.Kol => "کل",
+        TrialBalanceLevel.Moin => "معین",
+        TrialBalanceLevel.Tafsili => "تفصیلی",
+        TrialBalanceLevel.Tafsili2 => "تفصیلی ۲",
+        TrialBalanceLevel.Tafsili3 => "تفصیلی ۳",
+        _ => "تفصیلی ۴"
+    };
+
+    private static string Money(double v) => v == 0 ? "—" : v.ToString("N0", CultureInfo.InvariantCulture);
+    private static double? ParseNum(string? s) => double.TryParse(s?.Replace(",", ""), NumberStyles.Any, CultureInfo.InvariantCulture, out var d) ? d : null;
+    private static long ToLong(DateTime d) => Pc.GetYear(d) * 10000L + Pc.GetMonth(d) * 100 + Pc.GetDayOfMonth(d);
+    private static string FormatDate(long d) => ChequeForm.FormatDate(d);
+    private static long? ParseDate(string? s) => ChequeForm.ParseDate(s);
+}
