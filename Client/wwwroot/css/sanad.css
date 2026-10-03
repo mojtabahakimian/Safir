@@ -204,7 +204,8 @@ a.snd-src:hover { text-decoration: underline; }
 /* ─────────────── واکنش‌گرا ─────────────── */
 @container atm (max-width: 1250px) {
     .snd .snd-head__grid { grid-template-columns: 170px minmax(0, 1fr) 150px; }
-    .snd .snd-head__grid .trs-f:last-child { display: none; }
+    /* فقط «ثبت»؛ :last-child در فرمِ «سند جدید» خودِ «شرحِ سند» را پنهان می‌کرد */
+    .snd .snd-head__grid .snd-f--created { display: none; }
 }
 @container atm (max-width: 1100px) {
     .snd-table, .snd-table.with-mhaz { --snd-cols: 30px minmax(0, 1fr) 120px 120px 64px; }

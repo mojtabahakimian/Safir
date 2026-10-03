@@ -791,7 +791,7 @@
                     <label>شماره‌ی بایگانی</label>
                     <div class="trs-ro">@(_detail.Header.Bayeg?.ToString() ?? "—")</div>
                 </div>
-                <div class="trs-f">
+                <div class="trs-f snd-f--created">
                     <label>ثبت</label>
                     <div class="trs-ro" title="تاریخ و ساعتِ ثبتِ سند">@(_detail.Header.Created is { } c ? $"{FormatDate(ToLong(c))} {c:HH:mm}" : "—")</div>
                 </div>
