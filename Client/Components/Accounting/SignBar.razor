@@ -1,10 +1,10 @@
 @using Safir.Shared.Models.Treasury
-@using Safir.Client.Components.Automation
+@using Safir.Client.Components.Treasury
 
 @*
-    امضا و ارجاع — SGN1 «تنظیم کننده»، SGN2 «مدیر مالی»، SGN3 «مدیر عامل» و «ارجاع به» ِ فرمِ WPF.
-    هر امضا فقط با مجوزِ همان ستون در جدولِ SIGN زده یا برداشته می‌شود؛ رویدادها در پرونده‌ی
-    اتوماسیونِ خزانه ثبت می‌شوند و همین‌جا به‌شکلِ خطِ زمانی دیده می‌شوند.
+    امضا و ارجاع — SGN1 «تنظیم کننده»، SGN2 «مدیر مالی»، SGN3 «مدیر عامل» و «ارجاع به»؛ مشترکِ
+    خزانه (PGET_HED) و سندِ حسابداری (DEED_HEAD). هر امضا فقط با مجوزِ همان ستون در جدولِ SIGN
+    زده یا برداشته می‌شود؛ رویدادها در پرونده‌ی اتوماسیون ثبت و همین‌جا به‌شکلِ خطِ زمانی دیده می‌شوند.
     مثلِ WPF (که امضاها و «ارجاع به» پایینِ پنجره ثابت‌اند) یک نوارِ جمع‌وجور است که با Docked
     پایینِ صفحه می‌چسبد تا با هر تعداد سطر بی‌اسکرول دیده شود.
 *@
@@ -13,16 +13,16 @@
         <div class="trs-sign__lead">
             <b><i class="bi bi-pen"></i> امضا و ارجاع</b>
             <span class="trs-sign__meta">
-                @if (Detail.Task is { } t && !string.IsNullOrWhiteSpace(t.PersonelName))
+                @if (Task is { } t && !string.IsNullOrWhiteSpace(t.PersonelName))
                 {
-                    <span class="trs-sign__now" title="پرونده‌ی اتوماسیونِ این خزانه الان در کارتابلِ این شخص است">
+                    <span class="trs-sign__now" title="@($"پرونده‌ی اتوماسیونِ این {Subject} الان در کارتابلِ این شخص است")">
                         <i class="bi bi-inbox"></i>در کارتابلِ <b>@t.PersonelName</b>
                     </span>
                 }
-                @if (Detail.Task is { Events.Count: > 0 } tk)
+                @if (Task is { Events.Count: > 0 } tk)
                 {
                     <button type="button" class="trs-sign__ev @(_showEvents ? "is-on" : "")" @onclick="() => _showEvents = !_showEvents"
-                            title="رویدادهای امضا و ارجاعِ این خزانه">
+                            title="@($"رویدادهای امضا و ارجاعِ این {Subject}")">
                         <i class="bi bi-clock-history"></i>@tk.Events.Count رویداد<i class="bi @(_showEvents ? "bi-chevron-down" : "bi-chevron-up")"></i>
                     </button>
                 }
@@ -33,9 +33,10 @@
             @for (int i = 1; i <= 3; i++)
             {
                 var slot = i;
-                var on = slot switch { 1 => Detail.Header.Sgn1, 2 => Detail.Header.Sgn2, _ => Detail.Header.Sgn3 };
-                var who = slot switch { 1 => Detail.Sgn1Name, 2 => Detail.Sgn2Name, _ => Detail.Sgn3Name };
-                var can = slot switch { 1 => Meta.CanSign1, 2 => Meta.CanSign2, _ => Meta.CanSign3 };
+                var on = slot switch { 1 => Sgn1, 2 => Sgn2, _ => Sgn3 };
+                var who = slot switch { 1 => Sgn1Name, 2 => Sgn2Name, _ => Sgn3Name };
+                var can = slot switch { 1 => CanSign1, 2 => CanSign2, _ => CanSign3 };
+                var block = SlotBlock?.Invoke(slot);
                 <div class="trs-stamp @(on ? "is-on" : "")" @key="slot">
                     <span class="trs-stamp__seal"><i class="bi @(on ? "bi-patch-check-fill" : "bi-patch-question")"></i></span>
                     <span class="trs-stamp__txt">
@@ -45,8 +46,8 @@
                     @if (can)
                     {
                         @* فقط آیکن تا نوار در یک خط جا شود؛ متن در title/aria-label *@
-                        <button type="button" class="atm-btn @(on ? "atm-btn--ghost" : "atm-btn--primary") atm-btn--icon trs-stamp__btn" disabled="@Busy"
-                                title="@(on ? $"برداشتنِ امضای {Titles[slot - 1]}" : $"امضا به‌عنوانِ {Titles[slot - 1]}")"
+                        <button type="button" class="atm-btn @(on ? "atm-btn--ghost" : "atm-btn--primary") atm-btn--icon trs-stamp__btn" disabled="@(Busy || block is not null)"
+                                title="@(block ?? (on ? $"برداشتنِ امضای {Titles[slot - 1]}" : $"امضا به‌عنوانِ {Titles[slot - 1]}"))"
                                 aria-label="@(on ? "برداشتنِ امضا" : "امضا")" @onclick="() => OnSign.InvokeAsync((slot, !on))">
                             <i class="bi @(on ? "bi-eraser" : "bi-pen-fill")"></i>
                         </button>
@@ -59,7 +60,7 @@
             <label><i class="bi bi-send"></i> ارجاع به</label>
             <select class="atm-input" @bind="_personel" disabled="@Busy">
                 <option value="0">— انتخاب کاربر —</option>
-                @foreach (var p in Meta.Personnel) { <option value="@p.Id">@p.Name</option> }
+                @foreach (var p in Personnel) { <option value="@p.Id">@p.Name</option> }
             </select>
             <button type="button" class="atm-btn atm-btn--primary" disabled="@(Busy || _personel <= 0)" @onclick="Refer">
                 <i class="bi bi-send-fill"></i>ارجاع
@@ -68,7 +69,7 @@
 
     </div>
 
-    @if (_showEvents && Detail.Task is { Events.Count: > 0 } task)
+    @if (_showEvents && Task is { Events.Count: > 0 } task)
     {
         <ol class="trs-timeline">
             @foreach (var e in task.Events.Take(_all ? 30 : 4))
@@ -88,8 +89,21 @@
 </div>
 
 @code {
-    [Parameter, EditorRequired] public TreasuryDetailDto Detail { get; set; } = new();
-    [Parameter, EditorRequired] public TreasuryMetaDto Meta { get; set; } = new();
+    [Parameter] public bool Sgn1 { get; set; }
+    [Parameter] public bool Sgn2 { get; set; }
+    [Parameter] public bool Sgn3 { get; set; }
+    [Parameter] public string? Sgn1Name { get; set; }
+    [Parameter] public string? Sgn2Name { get; set; }
+    [Parameter] public string? Sgn3Name { get; set; }
+    [Parameter] public bool CanSign1 { get; set; }
+    [Parameter] public bool CanSign2 { get; set; }
+    [Parameter] public bool CanSign3 { get; set; }
+    /// <summary>چرا دکمه‌ی یک امضا بسته است (مثلاً امضای بالاتر زده شده)؛ null = باز.</summary>
+    [Parameter] public Func<int, string?>? SlotBlock { get; set; }
+    [Parameter] public TreasuryTaskDto? Task { get; set; }
+    [Parameter] public List<TreasuryLookupItem> Personnel { get; set; } = new();
+    /// <summary>«خزانه» یا «سند» — در متن‌های راهنما.</summary>
+    [Parameter] public string Subject { get; set; } = "سند";
     [Parameter] public bool Busy { get; set; }
     /// <summary>پایینِ صفحه بچسبد (در حالتِ اصلاح نه، تا روی فرمِ سطر نیفتد).</summary>
     [Parameter] public bool Docked { get; set; }

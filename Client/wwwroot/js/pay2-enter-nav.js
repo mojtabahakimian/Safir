@@ -25,6 +25,8 @@
 
         const target = e.target;
         if (!target || !target.matches || !target.matches(PAY2_INPUT_CLASSES)) return;
+        // فرم‌هایی که Enter را خودشان مدیریت می‌کنند (مثلاً ورودِ ردیفِ سند) — دو بار جابه‌جا نشود
+        if (target.closest && target.closest('[data-enter-nav="off"]')) return;
 
         // اگر دراپ‌داون Pay2Select باز است، هندلر Blazor ابتدا آیتم را انتخاب می‌کند؛
         // سپس فوکوس به فیلد بعدی می‌رود.

@@ -213,6 +213,8 @@ namespace Safir.Shared.Models.Treasury
     {
         public string Hes { get; set; } = "";
         public string? Name { get; set; }
+        /// <summary>زیرحساب (تفصیلیِ سطحِ بعد) دارد — در سند فقط آخرین سطح ثبت می‌شود (ISTAF).</summary>
+        public bool IsGroup { get; set; }
     }
 
     public class TreasuryMetaDto

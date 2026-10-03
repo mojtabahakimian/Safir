@@ -73,3 +73,32 @@ window.trsReveal = function (el) {
     if (fits) el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     else (row || el).scrollIntoView({ behavior: 'smooth', block: 'start' });
 };
+
+// Accounting document: focus one field of the row editor (input inside a [data-f] cell) and select its text.
+window.sndFocus = function (selector) {
+    const el = document.querySelector(selector);
+    if (!el) return;
+    el.focus();
+    if (typeof el.select === 'function') el.select();
+};
+
+// Accounting document: Enter inside the cheque section moves to the next field (like WPF's Enter→Tab).
+// 'moved' = went to the next field, 'end' = was the last one (caller saves), 'skip' = an autocomplete owns Enter.
+window.sndNext = function (rootId) {
+    const root = document.getElementById(rootId);
+    const active = document.activeElement;
+    if (!root || !active) return 'skip';
+    // MudAutocomplete acts on Enter's keyup, so focus moved there on keydown would open (and later pick from) its list:
+    // autocompletes (the optional cheque owner) stay out of the Enter chain and are reached with Tab or a click.
+    if (active.closest('.mud-autocomplete')) return 'skip';
+    const els = [...root.querySelectorAll('.snd-ed__chq input:not([type=checkbox]):not([disabled]), .snd-ed__chq select:not([disabled])')]
+        .filter(e => !e.closest('.mud-autocomplete'));
+    const i = els.indexOf(active);
+    if (i < 0) return 'skip';
+    if (i < els.length - 1) {
+        els[i + 1].focus();
+        if (typeof els[i + 1].select === 'function') els[i + 1].select();
+        return 'moved';
+    }
+    return 'end';
+};

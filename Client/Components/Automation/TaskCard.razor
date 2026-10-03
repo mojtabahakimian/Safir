@@ -53,6 +53,13 @@
                     <i class="bi bi-safe2"></i>خزانه @Item.num
                 </a>
             }
+            else if (Item.skid == 0 && Item.tg == 0 && Item.num is > 0)
+            {
+                @* پرونده‌ی امضا/ارجاعِ سندِ حسابداری (tg = 0، num = شماره‌ی مبنا) — MenuBaseOnKindOpen(0, …) *@
+                <a class="atm-pill atm-pill--doc" style="text-decoration:none" href="@($"/sanad/base/{Item.num}")" title="باز کردنِ سندِ حسابداری" @onclick:stopPropagation="true">
+                    <i class="bi bi-journal-text"></i>سند (مبنا @Item.num)
+                </a>
+            }
             else if (Item.skid.HasValue && Item.num is > 0)
             {
                 <span class="atm-pill atm-pill--doc" title="سند مرتبط">

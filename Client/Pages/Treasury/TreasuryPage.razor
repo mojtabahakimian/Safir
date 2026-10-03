@@ -7,6 +7,7 @@
 @using Safir.Shared.Models.Treasury
 @using Safir.Client.Components.Automation
 @using Safir.Client.Components.Treasury
+@using Safir.Client.Components.Accounting
 @using Safir.Client.Pages.Salary.Tabs
 @inject TreasuryApiService Api
 @inject ISnackbar Snackbar
@@ -360,7 +361,11 @@
                     </div>
 
                     @* ───── امضا و ارجاع ───── *@
-                    <TreasurySignPanel Detail="_detail" Meta="_meta!" Busy="_busy" Docked="@(!_editing)" OnSign="SignAsync" OnRefer="ReferAsync" />
+                    <SignBar Subject="خزانه" Sgn1="h.Sgn1" Sgn2="h.Sgn2" Sgn3="h.Sgn3"
+                             Sgn1Name="@_detail.Sgn1Name" Sgn2Name="@_detail.Sgn2Name" Sgn3Name="@_detail.Sgn3Name"
+                             CanSign1="_meta!.CanSign1" CanSign2="_meta.CanSign2" CanSign3="_meta.CanSign3"
+                             Task="_detail.Task" Personnel="_meta.Personnel" Busy="_busy" Docked="@(!_editing)"
+                             OnSign="SignAsync" OnRefer="ReferAsync" />
                 }
             </section>
         </div>

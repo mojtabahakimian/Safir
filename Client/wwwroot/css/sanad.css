@@ -1,0 +1,237 @@
+/* ═══════════════════════════════════════════════════════════════════
+   صدور و ویرایشِ اسناد (/sanad) — روی همان توکن‌ها و کلاس‌های خزانه (.trs-*)؛
+   اینجا فقط آنچه سند لازم دارد: جدولِ بدهکار/بستانکار، ورودِ سریعِ ردیف و جمع‌ها.
+   ═══════════════════════════════════════════════════════════════════ */
+
+.snd { --snd-bed: #2563eb; --snd-bes: #db2777; }
+
+/* ─────────────── نوارِ بالا و فهرست ─────────────── */
+.snd-bar__warn {
+    display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 12px;
+    border: 0; border-radius: 999px; cursor: pointer; font: inherit; font-size: .8rem;
+    color: #fde68a; background: rgb(245 158 11 / .18);
+}
+.snd-bar__warn:hover { background: rgb(245 158 11 / .3); }
+.snd-kinds button { flex: 1; justify-content: center; padding: 0 6px; }
+.trs-list__bar .snd-kinds { width: 100%; }
+
+.trs-item .kind.k-manual, .trs-chips .chip.k-manual { color: var(--atm-primary); background: color-mix(in srgb, var(--atm-primary) 10%, transparent); }
+.trs-item .kind.k-auto, .trs-chips .chip.k-auto { color: var(--atm-muted); background: var(--atm-soft); }
+.snd-item .snd-amt { color: var(--atm-text); }
+.snd-unbal {
+    display: inline-flex; align-items: center; gap: 4px; font-size: .72rem; font-weight: 700;
+    padding: 0 8px; border-radius: 999px; color: var(--atm-urgent); background: color-mix(in srgb, var(--atm-urgent) 10%, transparent);
+}
+.trs-list__empty .trs-linkbtn { font-size: .82rem; }
+
+/* ─────────────── سربرگ ─────────────── */
+.snd-nav { display: inline-flex; gap: 2px; }
+.snd-nav .atm-icon-btn { width: 30px; height: 30px; }
+.snd .snd-head__grid { grid-template-columns: 170px minmax(0, 2.4fr) 150px 170px; }
+.snd-src {
+    margin-inline-start: auto; display: inline-flex; align-items: center; gap: 6px;
+    font-weight: 700; color: var(--atm-primary); text-decoration: none;
+}
+a.snd-src:hover { text-decoration: underline; }
+
+/* ─────────────── تراز ─────────────── */
+.snd-bal { display: inline-flex; align-items: center; gap: 6px; font-size: .8rem; font-weight: 700; padding: 4px 12px; border-radius: 999px; }
+.snd-bal.ok { color: var(--trs-rec); background: color-mix(in srgb, var(--trs-rec) 10%, transparent); }
+.snd-bal.bad { color: var(--atm-urgent); background: color-mix(in srgb, var(--atm-urgent) 10%, transparent); }
+
+/* ─────────────── جدولِ ردیف‌ها ─────────────── */
+.snd-table { display: grid; gap: 6px; --snd-cols: 34px minmax(170px, 1.35fr) minmax(0, 2fr) 150px 150px 76px; }
+.snd-table.with-mhaz { --snd-cols: 34px minmax(170px, 1.35fr) minmax(0, 2fr) 140px 140px 130px 76px; }
+.snd-tr {
+    --c: var(--atm-muted);
+    position: relative;
+    display: grid; grid-template-columns: var(--snd-cols); gap: 12px; align-items: center;
+    padding: 9px 12px 9px 8px; border-radius: 14px;
+    border: 1px solid var(--atm-line); background: var(--atm-surface);
+    font-size: .88rem; cursor: default;
+    transition: border-color .2s, background .4s;
+}
+.snd-tr::before { content: ""; position: absolute; inset-inline-start: 0; top: 10px; bottom: 10px; width: 3px; border-radius: 0 3px 3px 0; background: var(--c); }
+.snd-tr.bed { --c: var(--snd-bed); }
+.snd-tr.bes { --c: var(--snd-bes); }
+.snd-tr:hover:not(.snd-th) { border-color: color-mix(in srgb, var(--atm-primary) 25%, transparent); }
+.snd-tr.is-selected { border-color: var(--atm-primary); background: color-mix(in srgb, var(--atm-primary) 5%, var(--atm-surface)); }
+.snd-tr.is-flash { animation: trs-flash 1.6s ease-out; }
+.snd-th { background: transparent; border-color: transparent; font-size: .74rem; color: var(--atm-muted); font-weight: 700; padding-top: 0; padding-bottom: 0; }
+.snd-th::before { display: none; }
+.snd-tr .no { color: var(--atm-muted); font-size: .76rem; text-align: center; font-variant-numeric: tabular-nums; }
+.snd-tr .acc { display: grid; min-width: 0; }
+.snd-tr .acc a { color: inherit; text-decoration: none; min-width: 0; display: grid; }
+.snd-tr .acc a:hover b { color: var(--atm-primary); text-decoration: underline; }
+.snd-tr .acc b { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.snd-tr .acc small { color: var(--atm-muted); font-size: .72rem; direction: ltr; text-align: end; font-variant-numeric: tabular-nums; }
+.snd-tr .sharh { min-width: 0; display: grid; gap: 3px; color: var(--atm-muted); }
+.snd-tr .sharh > span:first-child { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.snd-tr .chqline { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: .72rem; color: var(--atm-warn); }
+.snd-tr .chqline bdi { direction: ltr; }
+.snd-tr .chqline .st, .snd-tr .chqline .rd { padding: 1px 8px; border-radius: 999px; font-weight: 700; }
+.snd-tr .chqline .st { background: color-mix(in srgb, var(--atm-warn) 12%, transparent); }
+.snd-tr .chqline .rd { background: var(--atm-soft); color: var(--atm-muted); }
+.snd-tr .amt, .snd-th .amt { text-align: end; font-variant-numeric: tabular-nums; }
+.snd-tr .amt { font-weight: 800; font-size: .96rem; }
+.snd-tr .amt.bed { color: var(--snd-bed); }
+.snd-tr .amt.bes { color: var(--snd-bes); }
+.snd-tr .mhaz { font-size: .78rem; color: var(--atm-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.snd-tr .act { display: flex; gap: 2px; justify-content: flex-end; align-items: center; }
+
+/* ─────────────── جمع‌ها ─────────────── */
+.snd-totals {
+    display: grid; grid-template-columns: var(--snd-cols, 34px minmax(170px, 1.35fr) minmax(0, 2fr) 150px 150px 76px);
+    gap: 12px; align-items: center; margin-top: 10px; padding: 10px 12px 10px 8px;
+    border-radius: 14px; background: var(--atm-soft); font-variant-numeric: tabular-nums;
+}
+.snd-totals.with-mhaz { grid-template-columns: 34px minmax(170px, 1.35fr) minmax(0, 2fr) 140px 140px 130px 76px; }
+.snd-totals .lbl { grid-column: 1 / 4; font-weight: 800; }
+.snd-totals .amt { text-align: end; font-weight: 900; font-size: 1.02rem; }
+.snd-totals .amt.bed { color: var(--snd-bed); }
+.snd-totals .amt.bes { color: var(--snd-bes); }
+.snd-totals.is-upto { margin-top: 4px; background: transparent; border: 1px dashed var(--atm-line); }
+.snd-totals.is-upto .lbl { font-weight: 600; color: var(--atm-muted); }
+.snd-totals.is-upto .amt { font-weight: 700; font-size: .92rem; }
+
+/* ─────────────── ورودِ ردیف ─────────────── */
+.snd-ed {
+    padding: 10px 12px 12px 8px; border-radius: 16px;
+    border: 1.5px dashed color-mix(in srgb, var(--atm-primary) 45%, transparent);
+    background: linear-gradient(135deg, color-mix(in srgb, var(--atm-primary) 5%, var(--atm-surface)), var(--atm-surface));
+}
+.snd-ed.is-edit { border-style: solid; border-color: var(--atm-primary); box-shadow: 0 18px 40px -32px color-mix(in srgb, var(--atm-primary) 80%, transparent); }
+.snd-ed__row { display: grid; grid-template-columns: 34px minmax(170px, 1.35fr) minmax(0, 2fr) 150px 150px 76px; gap: 12px; align-items: center; }
+.with-mhaz .snd-ed__row { grid-template-columns: 34px minmax(170px, 1.35fr) minmax(0, 2fr) 140px 140px 130px 76px; }
+.snd-ed__no { display: grid; place-items: center; width: 28px; height: 28px; border-radius: 50%; color: #fff; background: var(--atm-primary); font-size: .8rem; }
+.snd-ed__acc, .snd-ed__sharh, .snd-ed__amt, .snd-ed__mhaz { min-width: 0; position: relative; }
+.snd-ed__acc .mud-input-control { margin: 0; }
+.snd-ed__acc .mud-input.mud-input-outlined { border-radius: 12px; background: var(--atm-surface); }
+.snd-ed__acc .mud-input-outlined-border { border-radius: 12px; }
+.snd-ed .atm-input { width: 100%; height: 40px; }
+.snd-ed__mhaz select.atm-input { appearance: auto; padding: 0 8px; }
+.snd .snd-amount {
+    width: 100%; height: 40px; padding: 0 12px;
+    border-radius: 12px; border: 1px solid var(--atm-line);
+    background: var(--atm-surface); color: var(--atm-text);
+    font-family: inherit; font-size: 1.02rem; font-weight: 800; letter-spacing: .02em; outline: none;
+    font-variant-numeric: tabular-nums;
+}
+.snd .snd-ed__amt.bed .snd-amount { color: var(--snd-bed); }
+.snd .snd-ed__amt.bes .snd-amount { color: var(--snd-bes); }
+.snd .snd-amount:focus {
+    border-color: color-mix(in srgb, var(--atm-primary) 60%, transparent);
+    box-shadow: 0 0 0 4px color-mix(in srgb, var(--atm-primary) 14%, transparent);
+}
+.snd-ed__act { display: flex; gap: 4px; justify-content: flex-end; }
+.snd-ed__act .atm-btn--icon { width: 34px; height: 34px; padding: 0; }
+
+.snd-ed__aux { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 8px; padding-inline-start: 46px; font-size: .74rem; color: var(--atm-muted); }
+.snd-ed__aux .bal { display: inline-flex; gap: 5px; align-items: center; font-variant-numeric: tabular-nums; font-weight: 700; }
+.snd-ed__aux .bal.pos { color: var(--trs-rec); }
+.snd-ed__aux .bal.neg { color: var(--trs-pay); }
+.snd-ed__aux .keys { margin-inline-start: auto; opacity: .8; }
+.snd-ed__fill {
+    display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 10px;
+    border: 1px dashed color-mix(in srgb, var(--atm-primary) 50%, transparent); border-radius: 999px;
+    background: color-mix(in srgb, var(--atm-primary) 6%, transparent); color: var(--atm-primary);
+    font: inherit; font-size: .74rem; font-weight: 700; cursor: pointer; font-variant-numeric: tabular-nums;
+}
+.snd-ed__fill:hover:not(:disabled) { background: color-mix(in srgb, var(--atm-primary) 12%, transparent); }
+.snd-ed__fill:disabled { opacity: .45; cursor: not-allowed; }
+
+.snd-ed__chq { margin-top: 10px; padding-inline-start: 46px; display: grid; gap: 8px; }
+.snd-ed__chq .trs-chq { margin-top: 0; }
+.snd-ed__owner { max-width: 520px; }
+
+/* شرح‌های آماده (SHARH_LIST) */
+.snd-canned {
+    position: absolute; inset-inline: 0; top: calc(100% + 4px); z-index: 20;
+    max-height: 280px; overflow-y: auto; padding: 6px;
+    border-radius: 14px; border: 1px solid var(--atm-line); background: var(--atm-surface); box-shadow: var(--atm-shadow-lg);
+}
+.snd-canned__head { display: flex; gap: 6px; align-items: center; padding: 4px 8px 6px; font-size: .72rem; font-weight: 700; color: var(--atm-muted); }
+.snd-canned button {
+    display: block; width: 100%; text-align: start; padding: 7px 10px; border: 0; border-radius: 10px;
+    background: transparent; color: var(--atm-text); font: inherit; font-size: .84rem; cursor: pointer;
+}
+.snd-canned button:hover, .snd-canned button.is-on { background: color-mix(in srgb, var(--atm-primary) 10%, transparent); color: var(--atm-primary); }
+
+/* حسابِ گروهی در فهرستِ انتخاب */
+.trs-acc__item.is-group { opacity: .6; }
+.trs-acc__item.is-group .tag { font-size: .68rem; padding: 0 8px; border-radius: 999px; background: var(--atm-soft); color: var(--atm-muted); }
+
+/* ─────────────── سوابق ─────────────── */
+.snd-hist { display: grid; grid-template-columns: 280px minmax(0, 1fr); gap: 14px; min-height: 320px; direction: rtl; }
+.snd-hist__list { display: grid; gap: 6px; align-content: start; max-height: 60vh; overflow-y: auto; padding: 2px; }
+.snd-hist__item {
+    display: grid; gap: 3px; text-align: start; padding: 10px 12px; border-radius: 12px; cursor: pointer;
+    border: 1px solid var(--mud-palette-lines-default); background: transparent; color: inherit; font: inherit; font-size: .8rem;
+}
+.snd-hist__item.is-active { border-color: var(--mud-palette-primary); background: color-mix(in srgb, var(--mud-palette-primary) 7%, transparent); }
+.snd-hist__item .when { font-weight: 700; display: inline-flex; gap: 6px; }
+.snd-hist__item .who, .snd-hist__item .sum { color: var(--mud-palette-text-secondary); font-size: .74rem; }
+.snd-hist__item bdi, .snd-hist__head bdi { direction: ltr; }
+.snd-hist__rows { min-width: 0; overflow: auto; max-height: 60vh; }
+.snd-hist__head { display: grid; gap: 2px; margin-bottom: 10px; }
+.snd-hist__head small { color: var(--mud-palette-text-secondary); }
+.snd-hist__tbl { width: 100%; border-collapse: collapse; font-size: .82rem; }
+.snd-hist__tbl th, .snd-hist__tbl td { border-bottom: 1px solid var(--mud-palette-lines-default); padding: 6px 8px; text-align: start; vertical-align: top; }
+.snd-hist__tbl th { color: var(--mud-palette-text-secondary); font-weight: 700; }
+.snd-hist__tbl td small { display: block; color: var(--mud-palette-text-secondary); direction: ltr; text-align: end; font-size: .7rem; }
+.snd-hist__tbl .n { text-align: end; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.snd-hist__tbl .c { text-align: center; }
+.snd-hist__tbl tfoot td { font-weight: 800; }
+
+/* ─────────────── قطعی کردن ─────────────── */
+.snd-fin { display: grid; gap: 14px; direction: rtl; }
+.snd-fin__warn, .snd-fin__done { display: flex; gap: 8px; align-items: center; padding: 10px 12px; border-radius: 12px; font-size: .86rem; }
+.snd-fin__warn { color: #b91c1c; background: rgb(220 38 38 / .08); }
+.snd-fin__done { color: #047857; background: rgb(16 185 129 / .1); }
+.snd-fin__range { display: grid; grid-template-columns: 1fr 1fr auto; gap: 10px; align-items: end; }
+.snd-fin__range .pay2-input { width: 100%; height: 40px; padding: 0 12px; border-radius: 10px; border: 1px solid var(--mud-palette-lines-default); background: var(--mud-palette-surface); color: var(--mud-palette-text-primary); font: inherit; }
+.snd-fin__stats { display: flex; gap: 8px; flex-wrap: wrap; }
+.snd-fin__stats span { padding: 4px 12px; border-radius: 999px; background: var(--mud-palette-background-grey); font-size: .82rem; display: inline-flex; gap: 5px; align-items: center; }
+.snd-fin__stats .bad { color: #b91c1c; background: rgb(220 38 38 / .08); }
+.snd-fin__stats .warn { color: #b45309; background: rgb(245 158 11 / .12); }
+
+/* ─────────────── چاپ ─────────────── */
+.snd-sheet__sharh { margin: 0; font-size: 10.5pt; }
+.snd-sheet__tbl tr.grp td { background: #f1f5f9; font-weight: 800; }
+.snd-sheet__tbl td.acc small { display: block; color: #64748b; direction: ltr; text-align: end; font-size: 8pt; }
+.snd-sheet__tbl td.sh { max-width: 70mm; }
+
+/* ─────────────── واکنش‌گرا ─────────────── */
+@container atm (max-width: 1250px) {
+    .snd .snd-head__grid { grid-template-columns: 170px minmax(0, 1fr) 150px; }
+    .snd .snd-head__grid .trs-f:last-child { display: none; }
+}
+@container atm (max-width: 1100px) {
+    .snd-table, .snd-table.with-mhaz { --snd-cols: 30px minmax(0, 1fr) 120px 120px 64px; }
+    .snd-tr .sharh { grid-column: 2 / -1; grid-row: 2; }
+    .snd-tr .mhaz { display: none; }
+    .snd-th > span:nth-child(3) { display: none; }
+    .snd-th > span:nth-child(6):not(:last-child) { display: none; }
+    .snd-totals, .snd-totals.with-mhaz { grid-template-columns: 30px minmax(0, 1fr) 120px 120px 64px; }
+    .snd-totals .lbl { grid-column: 1 / 3; }
+    .snd-ed__row, .with-mhaz .snd-ed__row { grid-template-columns: 30px minmax(0, 1fr) minmax(0, 1fr); }
+    .snd-ed__acc, .snd-ed__sharh { grid-column: 2 / -1; }
+    /* بی‌جای صریح، بدهکار در ستونِ ۳۰پیکسلیِ شماره می‌افتاد */
+    .snd-ed__amt.bed { grid-column: 2 / 3; }
+    .snd-ed__amt.bes { grid-column: 3 / 4; }
+    .snd-ed__mhaz { grid-column: 2 / 3; }
+    .snd-ed__act { grid-column: 1 / -1; }
+    .snd-ed__aux, .snd-ed__chq { padding-inline-start: 0; }
+    .snd-ed__aux .keys { display: none; }
+}
+@container atm (max-width: 760px) {
+    .snd .snd-head__grid { grid-template-columns: minmax(0, 1fr); }
+    .snd-table, .snd-table.with-mhaz { --snd-cols: 26px minmax(0, 1fr) auto; }
+    .snd-tr .amt { grid-column: 3; }
+    .snd-tr .amt.bed:empty, .snd-tr .amt.bes:empty { display: none; }
+    .snd-tr .act { grid-column: 1 / -1; justify-content: flex-start; }
+    .snd-th { display: none; }
+    .snd-totals, .snd-totals.with-mhaz { grid-template-columns: minmax(0, 1fr) auto auto; }
+    .snd-totals .lbl { grid-column: 1; }
+    .snd-hist { grid-template-columns: minmax(0, 1fr); }
+}

@@ -21,7 +21,7 @@
         <MudAutocomplete T="TreasuryAccountDto" Value="_selected" ValueChanged="OnPicked"
                          SearchFuncWithCancel="Search" ToStringFunc="@(a => a == null ? string.Empty : $"{a.Name} — {a.Hes}")"
                          Variant="Variant.Outlined" Dense="true" Clearable="true" ResetValueOnEmptyText="true" CoerceText="false"
-                         Placeholder="کد یا نام حساب…" MaxItems="40" DebounceInterval="250"
+                         Placeholder="@Placeholder" MaxItems="40" DebounceInterval="250"
                          AdornmentIcon="@Icons.Material.Filled.Search" AdornmentColor="Color.Primary">
             <ItemTemplate Context="a">
                 <span class="trs-acc__item">
@@ -50,6 +50,11 @@
     [Parameter] public bool Disabled { get; set; }
     [Parameter] public bool Required { get; set; } = true;
     [Parameter] public string? AutoHint { get; set; }
+    /// <summary>جستجوی حساب؛ خالی = API ِ خزانه (صفحه‌ی سند API ِ خودش را می‌دهد).</summary>
+    [Parameter] public Func<string?, CancellationToken, Task<List<TreasuryAccountDto>>>? Searcher { get; set; }
+    /// <summary>مانده‌ی یک حساب؛ خالی = API ِ خزانه.</summary>
+    [Parameter] public Func<string, Task<TreasuryBalanceDto?>>? BalanceLoader { get; set; }
+    [Parameter] public string Placeholder { get; set; } = "کد یا نام حساب…";
 
     private TreasuryAccountDto? _selected;
     private TreasuryBalanceDto? _balance;
@@ -66,7 +71,12 @@
             _balance = null;
             if (!string.IsNullOrEmpty(Value))
             {
-                try { _balance = (await Api.BalancesAsync(new[] { Value })).FirstOrDefault() ?? new TreasuryBalanceDto { Hes = Value }; }
+                try
+                {
+                    _balance = BalanceLoader is not null
+                        ? await BalanceLoader(Value)
+                        : (await Api.BalancesAsync(new[] { Value })).FirstOrDefault() ?? new TreasuryBalanceDto { Hes = Value };
+                }
                 catch { /* مانده اختیاری است */ }
             }
         }
@@ -74,7 +84,7 @@
 
     private async Task<IEnumerable<TreasuryAccountDto>> Search(string? q, CancellationToken ct)
     {
-        try { return await Api.AccountsAsync(q, ct); }
+        try { return Searcher is not null ? await Searcher(q, ct) : await Api.AccountsAsync(q, ct); }
         catch { return Enumerable.Empty<TreasuryAccountDto>(); }
     }
 

@@ -260,6 +260,32 @@ test.describe('سلامت کلاینت', () => {
   });
 
   /**
+   * صدور و ویرایش اسناد (/sanad) روی کلاس‌های خزانه + css/sanad.css سوار است و
+   * API اش [Authorize] است؛ سند، چاپ، امضا و اکسل بدون توکن نباید چیزی برگردانند.
+   */
+  test('صدور و ویرایش اسناد سیم‌کشی شده و بدون ورود نمی‌شکند', async ({ page }) => {
+    const errors = collectPageErrors(page);
+    await page.goto('/sanad', { waitUntil: 'networkidle' });
+    await page.waitForTimeout(3000);
+
+    const cssRules = await page.evaluate(() => {
+      const sheet = [...document.styleSheets].find(s => (s.href || '').includes('css/sanad.css'));
+      return sheet ? sheet.cssRules.length : 0;
+    });
+    expect(cssRules, 'css/sanad.css بارگذاری نشده یا خالی است').toBeGreaterThan(50);
+
+    for (const url of ['/api/sanad/meta', '/api/sanad', '/api/sanad/1', '/api/sanad/1/print', '/api/sanad/1/signature/1', '/api/sanad/1/excel']) {
+      expect((await page.request.get(url)).status(), `${url} بدون توکن باز است`).toBe(401);
+    }
+    expect((await page.request.post('/api/sanad', { data: { Date: 14050101, Sharh: 'x' } })).status(), 'ساختِ سند بدون توکن').toBe(401);
+
+    const crashed = errors.filter(e => /Unhandled exception rendering component/i.test(e));
+    expect(crashed, `کامپوننت کرش کرد:\n${crashed.join('\n')}`).toHaveLength(0);
+    const sndErrors = errors.filter(e => /SanadApiService|Sanad\.SanadPage/i.test(e));
+    expect(sndErrors, `خطای مدیریت‌نشده در صدور اسناد:\n${sndErrors.join('\n')}`).toHaveLength(0);
+  });
+
+  /**
    * واحد و شیفتِ کاری (پنجره‌ی DEFAULT ِ WPF) توکنِ تازه صادر می‌کند؛ هیچ‌کدام از
    * سه مسیرش نباید بدونِ توکن کار کند.
    */

@@ -108,6 +108,7 @@ builder.Services.AddScoped<IProductionReportApiService, ProductionReportApiServi
 builder.Services.AddScoped<CostCloseApiService>();
 builder.Services.AddScoped<ItemConversionApiService>();
 builder.Services.AddScoped<TreasuryApiService>();
+builder.Services.AddScoped<SanadApiService>();
 builder.Services.AddScoped<WorkspaceApiService>();
 // دستیار همان HttpClient مشترک را می‌گیرد، چون توکن ورود روی همان نمونه
 // نشسته است. کلاینتِ بلندمدتِ لازم برای خودِ گفتگو داخل AiApiService ساخته
