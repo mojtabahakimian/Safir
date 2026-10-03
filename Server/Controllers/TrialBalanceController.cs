@@ -48,7 +48,7 @@ namespace Safir.Server.Controllers
 
             var access = await _svc.GetAccessAsync(UserCo);
             if (!TrialBalanceService.Allowed(access, q.Level))
-                return StatusCode(403, $"اجازه‌ی دیدن این تراز (فرم {TrialBalanceService.FormFor(q.Level)}) را ندارید.");
+                return StatusCode(403, "اجازه‌ی دیدن این تراز را ندارید.");
 
             try
             {
@@ -76,7 +76,7 @@ namespace Safir.Server.Controllers
 
             var access = await _svc.GetAccessAsync(UserCo);
             if (!TrialBalanceService.Allowed(access, q.Level))
-                return StatusCode(403, $"اجازه‌ی دیدن این تراز (فرم {TrialBalanceService.FormFor(q.Level)}) را ندارید.");
+                return StatusCode(403, "اجازه‌ی دیدن این تراز را ندارید.");
 
             try
             {

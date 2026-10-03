@@ -35,7 +35,7 @@ namespace Safir.Server.Controllers
             if (UserCo <= 0) return Unauthorized();
             var access = await new TrialBalanceService(_db).GetAccessAsync(UserCo);
             if (!access.Kol)
-                return StatusCode(403, $"برای دیدنِ نبض سازمان، دسترسیِ «تراز آزمایشی» (فرم {TrialBalanceService.FormKol}) لازم است.");
+                return StatusCode(403, "برای دیدنِ نبض سازمان، دسترسیِ «تراز آزمایشی» لازم است.");
             try
             {
                 return Ok(await new PulseService(_db).LoadAsync(DateTime.Now));
