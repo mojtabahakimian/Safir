@@ -17,9 +17,9 @@ export function Counter({ value, format }) {
 }
 
 /** انتخابِ بازه؛ پس‌زمینه‌ی انتخاب‌شده با layoutId بینِ گزینه‌ها می‌لغزد. */
-export function RangeTabs({ value, options, onChange }) {
+export function RangeTabs({ value, options, onChange, className = '' }) {
   return (
-    <div className="p-tabs" role="tablist">
+    <div className={`p-tabs ${className}`} role="tablist">
       {options.map(o => (
         <button key={o.value} type="button" role="tab" aria-selected={value === o.value}
                 className={value === o.value ? 'is-on' : ''} onClick={() => onChange(o.value)}>

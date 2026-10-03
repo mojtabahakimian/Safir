@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { motion, MotionConfig } from 'motion/react';
 import { KpiCard, RangeTabs, Ecg, Ring, Section } from './ui.jsx';
 import { TrendChart, ActivityChart, FinanceChart, Heatmap, WeekdayBars, TopDays } from './charts.jsx';
-import { num, short, pct, sum, delta, dayLabel, dateFull } from './format.js';
+import { num, short, pct, sum, delta, dayLabel, dateFull, MONTHS } from './format.js';
 
 const RANGES = [
   { value: 7, label: '۷ روز' },
@@ -10,6 +10,35 @@ const RANGES = [
   { value: 90, label: '۹۰ روز' }
 ];
 const faPlain = new Intl.NumberFormat('fa-IR', { useGrouping: false });
+
+/** بازه‌ی انتخاب‌شده → [شروع، پایان) در آرایه‌ی روزها و بازه‌ی قبلی برای مقایسه.
+ *  عدد = چند روزِ آخر؛ «m<ماه>» = یک ماهِ سالِ مالی، که با ماهِ قبلش مقایسه می‌شود. */
+export function windowOf(days, fiscalYear, range) {
+  const total = days.length;
+  if (typeof range === 'number') {
+    const a = Math.max(0, total - range);
+    return { a, b: total, pa: Math.max(0, a - range), pb: a };
+  }
+  const m = Number(range.slice(1));
+  const ym = fiscalYear * 100 + m;
+  const prev = m > 1 ? ym - 1 : (fiscalYear - 1) * 100 + 12;
+  const span = key => {
+    const a = days.findIndex(d => Math.floor(d / 100) === key);
+    if (a < 0) return [0, 0];
+    let b = a;
+    while (b < total && Math.floor(days[b] / 100) === key) b++;
+    return [a, b];
+  };
+  const [a, b] = span(ym);
+  const [pa, pb] = span(prev);
+  return { a, b, pa, pb };
+}
+
+/** ماه‌های سالِ مالی که در داده هستند (فروردین تا ماهِ جاری). */
+export function monthOptions(days, fiscalYear) {
+  const seen = new Set(days.filter(d => Math.floor(d / 10000) === fiscalYear).map(d => Math.floor(d / 100) % 100));
+  return [...seen].sort((x, y) => x - y).map(m => ({ value: `m${m}`, label: MONTHS[m - 1] }));
+}
 
 /** حبابِ رنگیِ پس‌زمینه‌ی سربرگ که آرام شناور است. */
 function Blob({ className, dur, path }) {
@@ -25,10 +54,13 @@ export function App({ data, dotnet }) {
   const stamp = useMemo(() => Math.random().toString(36).slice(2), [data]);
 
   const total = data.days.length;
-  const start = Math.max(0, total - range);
-  const cut = (arr, back = 0) => arr.slice(Math.max(0, total - range * (back + 1)), total - range * back);
+  const months = useMemo(() => monthOptions(data.days, data.fiscalYear), [data]);
+  const { a: start, b: stop, pa, pb } = windowOf(data.days, data.fiscalYear, range);
+  const cut = (arr, back = 0) => (back ? arr.slice(pa, pb) : arr.slice(start, stop));
   const fw = (data.firstWeekday + start) % 7;
   const days = cut(data.days);
+  const len = Math.max(1, days.length);
+  const rangeLabel = typeof range === 'number' ? `${RANGES.find(r => r.value === range).label}ِ اخیر` : `${MONTHS[Number(range.slice(1)) - 1]} ${faPlain.format(data.fiscalYear)}`;
 
   const s = {
     sales: cut(data.sales), salesPrev: cut(data.sales, 1), salesCount: cut(data.salesCount),
@@ -80,6 +112,9 @@ export function App({ data, dotnet }) {
             <Ecg />
             <div className="p-hero-actions">
               <RangeTabs value={range} options={RANGES} onChange={setRange} />
+              {months.length > 0 && (
+                <RangeTabs value={range} options={months} onChange={setRange} className="p-tabs--months" />
+              )}
               <motion.button type="button" className="p-refresh" onClick={refresh} disabled={busy}
                              whileTap={{ scale: 0.9 }} title="به‌روزرسانی از دیتابیس">
                 <motion.i className="bi bi-arrow-clockwise" animate={busy ? { rotate: 360 } : { rotate: 0 }}
@@ -96,7 +131,7 @@ export function App({ data, dotnet }) {
 
         <div className="p-kpis">
           <KpiCard index={0} title="فروش" icon="bi-bag-check-fill" color="--p-sales" value={T.sales} format={short}
-                   delta={delta(T.sales, T.salesPrev)} spark={s.sales} sub={`${num(T.salesCount)} فاکتور · میانگینِ روزانه ${short(T.sales / range)}`} />
+                   delta={delta(T.sales, T.salesPrev)} spark={s.sales} sub={`${num(T.salesCount)} فاکتور · میانگینِ روزانه ${short(T.sales / len)}`} />
           <KpiCard index={1} title="پیش‌فاکتور" icon="bi-file-earmark-text-fill" color="--p-pre" value={T.pre} format={short}
                    delta={delta(T.pre, T.prePrev)} spark={s.pre} sub={`${num(T.preCount)} پیش‌فاکتور`} />
           <KpiCard index={2} title="نرخِ تبدیل" icon="bi-bullseye" color="--p-ratio" value={ratio * 100} format={pct}
@@ -121,7 +156,7 @@ export function App({ data, dotnet }) {
         </Section>
 
         <div className="p-grid2">
-          <Section title="پرفروش‌ترین روزها" icon="bi-award-fill" hint={`${RANGES.find(r => r.value === range).label}ِ اخیر`}>
+          <Section title="پرفروش‌ترین روزها" icon="bi-award-fill" hint={rangeLabel}>
             <TopDays days={days} firstWeekday={fw} values={s.sales} counts={s.salesCount} />
           </Section>
           <Section title="فروش در روزهای هفته" icon="bi-calendar-week-fill" hint="کدام روزِ هفته بیشتر می‌فروشیم؟">
