@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http;
+using Safir.Client.Components.Hesabdari;
 using Safir.Client.Services;
 using Safir.Server.Hesabdari;
 using Safir.Shared.Models.Hesabdari;
@@ -160,6 +161,105 @@ public class TrialBalanceServiceTests
                                      "kol=104", "moin=9", "tafsili=2044", "tafsili2=3", "tafsili3=7" })
             Assert.Contains(part, s.Split('&'));
         Assert.DoesNotContain("sanadFrom", TrialBalanceApiService.QueryString(Q(L.Kol)));
+    }
+
+    // ───────────── تراز تفصیلیِ همه‌ی معین‌ها (FT4T با فیلد معینِ خالی) ─────────────
+
+    [Fact]
+    public void AllMoinsSendsPercentLikeWpf()
+    {
+        var q = new TrialBalanceQuery { Level = L.Tafsili, From = 14050101, To = 14051230, Kol = 104, AllMoins = true };
+        Assert.Null(TrialBalanceService.Validate(q));
+        Assert.Equal("%", TrialBalanceService.BuildParameters(q)["MOIN"]);
+    }
+
+    [Theory]
+    [InlineData(L.Kol)]
+    [InlineData(L.Moin)]
+    [InlineData(L.Tafsili2)]
+    public void AllMoinsIsOnlyForTheTafsiliLevel(L level)
+    {
+        var q = Q(level); q.AllMoins = true;
+        Assert.NotNull(TrialBalanceService.Validate(q));
+    }
+
+    // ───────────── تراز ماهانه ─────────────
+
+    [Fact]
+    public void MonthlyGoesOnlyDownToTafsili()
+    {
+        Assert.Null(TrialBalanceService.ValidateMonthly(new TrialBalanceQuery { Level = L.Kol, From = 14050101, To = 14051230 }));
+        Assert.Null(TrialBalanceService.ValidateMonthly(new TrialBalanceQuery { Level = L.Moin, From = 14050101, To = 14051230, Kol = 104 }));
+        // تفصیلیِ ماهانه بدون معین = همه‌ی معین‌های آن کل
+        Assert.Null(TrialBalanceService.ValidateMonthly(new TrialBalanceQuery { Level = L.Tafsili, From = 14050101, To = 14051230, Kol = 104 }));
+        Assert.NotNull(TrialBalanceService.ValidateMonthly(new TrialBalanceQuery { Level = L.Moin, From = 14050101, To = 14051230 }));
+        Assert.NotNull(TrialBalanceService.ValidateMonthly(Q(L.Tafsili2)));
+    }
+
+    [Fact]
+    public void MonthlySqlGroupsByYearMonthAndUsesSafirNameTables()
+    {
+        var kol = TrialBalanceService.MonthlySql(L.Kol);
+        Assert.Contains("dbo.TOTA_HES", kol);
+        Assert.DoesNotContain("@kol", kol);
+        Assert.Contains("H.DATE_S / 100", kol);     // YYYYMM، نه فقط ماه — سال‌ها قاطی نشوند
+        Assert.Contains("H.N_S BETWEEN @sf AND @st", kol);
+
+        var moin = TrialBalanceService.MonthlySql(L.Moin);
+        Assert.Contains("dbo.DETA_HES", moin);
+        Assert.Contains("D.HES_K = @kol", moin);
+
+        var taf = TrialBalanceService.MonthlySql(L.Tafsili);
+        Assert.Contains("dbo.TDETA_HES", taf);
+        Assert.Contains("@moin IS NULL OR D.HES_M = @moin", taf);
+        Assert.Contains("D.HES_K, D.HES_M, D.HES_T", taf);
+        // جدول‌هایی که پنجره‌ی WPF حدس زده و در schema نیستند
+        Assert.DoesNotContain("TAFZILI", taf);
+    }
+
+    // ───────────── منطقِ نمایش (مشترکِ صفحه و چاپ) ─────────────
+
+    [Fact]
+    public void MonthlyPivotNetsEachMonthAndTotals()
+    {
+        var rows = new List<TrialBalanceMonthlyRowDto>
+        {
+            new() { Kol = 104, Name = "موجودی", Ym = 140501, Bed = 100 },
+            new() { Kol = 104, Name = "موجودی", Ym = 140503, Bes = 30 },
+            new() { Kol = 201, Name = "پرداختنی", Ym = 140502, Bes = 50 },
+        };
+        var pv = TrialBalanceView.Pivot(rows, L.Kol);
+        Assert.Equal(new[] { 140501, 140502, 140503 }, pv.Months);
+        Assert.Equal(new int?[] { 104, 201 }, pv.Accounts.Select(a => a.Kol));
+        Assert.Equal(70, pv.Accounts[0].Total);              // ۱۰۰ بدهکار − ۳۰ بستانکار
+        Assert.Equal(-50, pv.MonthTotal(140502));
+        Assert.Equal(20, pv.Total);
+        Assert.Single(TrialBalanceView.Pivot(rows, L.Kol, q: "پرداختنی").Accounts);
+        Assert.Equal("خرداد", TrialBalanceView.MonthName(140503));
+    }
+
+    [Fact]
+    public void AllMoinsCodesShowTheMoinToo()
+    {
+        var a = new TrialBalanceRowDto { Kol = 104, Moin = 9, Tafsili = 2044, Name = "a" };
+        var b = new TrialBalanceRowDto { Kol = 104, Moin = 3, Tafsili = 7000, Name = "b" };
+        Assert.Equal("9/2044", TrialBalanceView.Code(L.Tafsili, a, withMoin: true));
+        Assert.Equal("2044", TrialBalanceView.Code(L.Tafsili, a));
+        // مرتب‌سازی پیش‌فرض: اول معین، بعد تفصیلی
+        Assert.Equal(new[] { "b", "a" }, TrialBalanceView.Filter(new[] { a, b }, L.Tafsili, null, false, "code", false, withMoin: true).Select(r => r.Name));
+        Assert.Equal("104-9-2044", TrialBalanceView.Hes(a));
+    }
+
+    [Fact]
+    public void PrintUrlCarriesTheViewState()
+    {
+        var q = new TrialBalanceQuery { Level = L.Tafsili, From = 14050101, To = 14050131, Kol = 104, AllMoins = true };
+        var url = TrialBalanceView.PrintUrl(q, monthly: true, path: "تراز کل › ۱۰۴", q: "خامه", hideZero: true, sort: "bed", desc: true);
+        Assert.StartsWith("/trial-balance/print?", url);
+        foreach (var part in new[] { "level=Tafsili", "kol=104", "allMoins=true", "monthly=true", "hideZero=true", "sort=bed", "desc=true" })
+            Assert.Contains(part, url.Split('?')[1].Split('&'));
+        Assert.Contains("path=" + Uri.EscapeDataString("تراز کل › ۱۰۴"), url);
+        Assert.Contains("q=" + Uri.EscapeDataString("خامه"), url);
     }
 
     private sealed class ResponseHandler(HttpStatusCode status, string body) : HttpMessageHandler

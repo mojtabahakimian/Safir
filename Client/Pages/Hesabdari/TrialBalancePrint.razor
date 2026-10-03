@@ -1,0 +1,209 @@
+@page "/trial-balance/print"
+@layout EmptyLayout
+@using Microsoft.AspNetCore.Authorization
+@using Safir.Shared.Models.Hesabdari
+@using Safir.Client.Components.Treasury
+@using V = Safir.Client.Components.Hesabdari.TrialBalanceView
+@inject TrialBalanceApiService Api
+@attribute [Authorize]
+
+@*
+    چاپِ تراز آزمایشی — هر سطحی که روی /trial-balance باز است (کل، معین، تفصیلی ۱ تا ۴
+    یا ماهانه)، با همان جستجو، «بدون بی‌گردش‌ها» و مرتب‌سازی. داده دوباره از همان
+    API خوانده می‌شود تا چاپ از حالتِ صفحه‌ی دیگر جدا بماند.
+    کاغذ A4؛ ماهانه افقی چون ستونِ ماه‌ها زیاد است.
+*@
+<PageTitle>چاپ @Title</PageTitle>
+
+<div class="trs-print-page @(Monthly ? "tb-landscape" : "")">
+    <div class="trs-print-tools">
+        <button type="button" onclick="window.print()"><i class="bi bi-printer"></i> چاپ</button>
+        <button type="button" onclick="window.close()"><i class="bi bi-x-lg"></i> بستن</button>
+        <span>@Title</span>
+    </div>
+
+    @if (_error is not null)
+    {
+        <div class="trs-print-error"><i class="bi bi-exclamation-triangle"></i> @_error</div>
+    }
+    else if (_query is null || (_rows is null && _mrows is null))
+    {
+        <div class="trs-print-error">در حال آماده‌سازی…</div>
+    }
+    else
+    {
+        var level = _query.Level;
+        <article class="trs-sheet tb-sheet">
+            <header class="trs-sheet__head">
+                <div class="co">
+                    <b>@(_meta?.CompanyName ?? "")</b>
+                    @if (_meta?.FiscalYear is > 0) { <small>سال مالی @_meta.FiscalYear</small> }
+                </div>
+                <div class="ttl">
+                    <h1>@Title</h1>
+                    @if (!string.IsNullOrWhiteSpace(Path)) { <small>@Path</small> }
+                </div>
+                <dl class="meta">
+                    <div><dt>از تاریخ</dt><dd>@ChequeForm.FormatDate(_query.From)</dd></div>
+                    <div><dt>تا تاریخ</dt><dd>@ChequeForm.FormatDate(_query.To)</dd></div>
+                    @if (_query.SanadFrom is not null || _query.SanadTo is not null)
+                    {
+                        <div><dt>اسناد</dt><dd>@(_query.SanadFrom ?? 0) تا @(_query.SanadTo?.ToString() ?? "آخر")</dd></div>
+                    }
+                    <div><dt>تاریخ چاپ</dt><dd>@ChequeForm.FormatDate(Today())</dd></div>
+                </dl>
+            </header>
+
+            @if (!string.IsNullOrWhiteSpace(Q) || HideZero)
+            {
+                <p class="tb-sheet__note">
+                    @if (!string.IsNullOrWhiteSpace(Q)) { <span>فقط حساب‌های شاملِ «@Q»</span> }
+                    @if (HideZero) { <span>بدون حساب‌های بی‌گردش</span> }
+                </p>
+            }
+
+            @if (_mrows is not null)
+            {
+                var pv = V.Pivot(_mrows, level, Q, HideZero);
+                <table class="trs-sheet__tbl tb-sheet__tbl">
+                    <thead>
+                        <tr>
+                            <th class="c">شماره</th>
+                            <th>نام حساب</th>
+                            @foreach (var ym in pv.Months) { <th class="n">@V.MonthName(ym)</th> }
+                            <th class="n">جمع</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var a in pv.Accounts)
+                        {
+                            <tr>
+                                <td class="c">@(level == TrialBalanceLevel.Tafsili && _query.Moin is null ? $"{a.Moin}/{a.Tafsili}" : a.Code(level)?.ToString())</td>
+                                <td>@a.Name</td>
+                                @foreach (var ym in pv.Months) { @Net(a.Net.GetValueOrDefault(ym)) }
+                                @Net(a.Total)
+                            </tr>
+                        }
+                    </tbody>
+                    <tfoot>
+                        <tr>
+                            <td colspan="2">جمع</td>
+                            @foreach (var ym in pv.Months) { @Net(pv.MonthTotal(ym)) }
+                            @Net(pv.Total)
+                        </tr>
+                    </tfoot>
+                </table>
+                <p class="tb-sheet__note">«بد» = مانده‌ی بدهکارِ همان ماه · «بس» = مانده‌ی بستانکار</p>
+            }
+            else
+            {
+                var rows = V.Filter(_rows!, level, Q, HideZero, Sort ?? "code", Desc, _query.AllMoins).ToList();
+                <table class="trs-sheet__tbl tb-sheet__tbl">
+                    <thead>
+                        <tr>
+                            <th class="c">ردیف</th>
+                            <th class="c">شماره</th>
+                            <th>نام حساب</th>
+                            <th class="n">گردش بدهکار</th>
+                            <th class="n">گردش بستانکار</th>
+                            <th class="n">مانده بدهکار</th>
+                            <th class="n">مانده بستانکار</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @for (int i = 0; i < rows.Count; i++)
+                        {
+                            var r = rows[i];
+                            <tr>
+                                <td class="c">@(i + 1)</td>
+                                <td class="c">@V.Code(level, r, _query.AllMoins)</td>
+                                <td>@r.Name</td>
+                                <td class="n">@V.Money(r.SumBed)</td>
+                                <td class="n">@V.Money(r.SumBes)</td>
+                                <td class="n">@V.Money(r.Bed)</td>
+                                <td class="n">@V.Money(r.Bes)</td>
+                            </tr>
+                        }
+                    </tbody>
+                    <tfoot>
+                        <tr>
+                            <td colspan="3">جمع (@rows.Count حساب)</td>
+                            <td class="n">@V.Money(rows.Sum(x => x.SumBed))</td>
+                            <td class="n">@V.Money(rows.Sum(x => x.SumBes))</td>
+                            <td class="n">@V.Money(rows.Sum(x => x.Bed))</td>
+                            <td class="n">@V.Money(rows.Sum(x => x.Bes))</td>
+                        </tr>
+                    </tfoot>
+                </table>
+            }
+            <footer class="trs-sheet__foot">سفیر — تراز آزمایشی</footer>
+        </article>
+    }
+</div>
+
+@code {
+    [SupplyParameterFromQuery] public string? Level { get; set; }
+    [SupplyParameterFromQuery] public long From { get; set; }
+    [SupplyParameterFromQuery] public long To { get; set; }
+    [SupplyParameterFromQuery] public double? SanadFrom { get; set; }
+    [SupplyParameterFromQuery] public double? SanadTo { get; set; }
+    [SupplyParameterFromQuery] public int? Kol { get; set; }
+    [SupplyParameterFromQuery] public int? Moin { get; set; }
+    [SupplyParameterFromQuery] public bool AllMoins { get; set; }
+    [SupplyParameterFromQuery] public int? Tafsili { get; set; }
+    [SupplyParameterFromQuery] public int? Tafsili2 { get; set; }
+    [SupplyParameterFromQuery] public int? Tafsili3 { get; set; }
+    [SupplyParameterFromQuery] public bool Monthly { get; set; }
+    [SupplyParameterFromQuery] public string? Path { get; set; }
+    [SupplyParameterFromQuery] public string? Q { get; set; }
+    [SupplyParameterFromQuery] public bool HideZero { get; set; }
+    [SupplyParameterFromQuery] public string? Sort { get; set; }
+    [SupplyParameterFromQuery] public bool Desc { get; set; }
+
+    private TrialBalanceQuery? _query;
+    private TrialBalanceMetaDto? _meta;
+    private List<TrialBalanceRowDto>? _rows;
+    private List<TrialBalanceMonthlyRowDto>? _mrows;
+    private string? _error;
+
+    private string Title => _query is null ? "تراز آزمایشی"
+        : Monthly ? $"تراز ماهانه — {V.LevelName(_query.Level)}"
+        : $"تراز آزمایشی چهارستونی — {V.LevelName(_query.Level)}";
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (!Enum.TryParse<TrialBalanceLevel>(Level, out var level))
+        {
+            _error = "سطح تراز مشخص نیست.";
+            return;
+        }
+        _query = new TrialBalanceQuery
+        {
+            Level = level, From = From, To = To, SanadFrom = SanadFrom, SanadTo = SanadTo,
+            Kol = Kol, Moin = Moin, AllMoins = AllMoins, Tafsili = Tafsili, Tafsili2 = Tafsili2, Tafsili3 = Tafsili3
+        };
+        (_meta, _) = await Api.MetaAsync();
+        if (Monthly)
+        {
+            var (rows, err) = await Api.MonthlyAsync(_query);
+            _mrows = rows; _error = err;
+        }
+        else
+        {
+            var (rows, err) = await Api.LoadAsync(_query);
+            _rows = rows; _error = err;
+        }
+    }
+
+    private RenderFragment Net(double v) => __builder =>
+    {
+        <td class="n">@(v == 0 ? "—" : $"{V.Money(Math.Abs(v))} {(v > 0 ? "بد" : "بس")}")</td>
+    };
+
+    private static long Today()
+    {
+        var pc = new System.Globalization.PersianCalendar();
+        var d = DateTime.Now;
+        return pc.GetYear(d) * 10000L + pc.GetMonth(d) * 100 + pc.GetDayOfMonth(d);
+    }
+}
