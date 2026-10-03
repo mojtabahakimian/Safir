@@ -223,8 +223,9 @@
 }
 
 /* ═══════════════════════════ نمودارهای صورت‌های مالی ═══════════════════════════
-   رنگ‌ها از متغیرهای همان تمِ صفحه می‌آیند، نه ثابت — تا با تمِ روشن/تاریک
-   و با پوسته‌های neon/party هم بخوانند. */
+   رنگِ متن، خط و ستونِ اصلیِ نمودارها از توکن‌های --cc-ch-* می‌آید و پیش‌فرضش رنگِ تمِ
+   روشن است. پوسته‌های تیره (neon/party) این توکن‌ها را در cost-close-neon.css روشن می‌کنند —
+   بدونِ آن، متنِ #1e293b روی کارتِ بنفش‌آبیِ نئون عملاً دیده نمی‌شد. */
 
 .cc-charts {
     display: grid;
@@ -235,23 +236,25 @@
 
 .cc-svg { width: 100%; height: auto; display: block; }
 
-.cc-axis { stroke: var(--p2-border); stroke-width: 1; }
+.cc-svg .cc-axis { stroke: var(--cc-ch-line, var(--p2-border)); stroke-width: 1.2; }
 
 .cc-bar { transition: opacity .15s; }
 .cc-bar:hover { opacity: .78; }
-.cc-bar.pos  { fill: var(--p2-primary); }
+.cc-bar.pos  { fill: var(--cc-ch-primary, var(--p2-primary)); }
 .cc-bar.neg  { fill: #f59e0b; }
 .cc-bar.sum  { fill: #10b981; }
 .cc-bar.loss { fill: #ef4444; }
 
+/* هاله‌ای به رنگِ کارت دورِ حروف: عدد روی خط و لبه‌ی ستون هم خوانا می‌ماند */
 .cc-bar-val {
-    font-size: 11px; font-weight: 600;
-    text-anchor: middle; fill: var(--p2-text-main);
+    font-size: 12.5px; font-weight: 700;
+    text-anchor: middle; fill: var(--cc-ch-text, var(--p2-text-main));
+    paint-order: stroke; stroke: var(--cc-ch-halo, #fff); stroke-width: 3px; stroke-linejoin: round;
 }
 
 .cc-bar-lbl {
-    font-size: 11px;
-    text-anchor: middle; fill: var(--p2-text-muted);
+    font-size: 11.5px; font-weight: 500;
+    text-anchor: middle; fill: var(--cc-ch-muted, var(--p2-text-muted));
 }
 
 /* ── دونات ── */
@@ -264,16 +267,16 @@
 
 .cc-seg { transition: opacity .15s; }
 .cc-seg:hover { opacity: .8; }
-.cc-seg.c1 { stroke: var(--p2-primary); }
+.cc-seg.c1 { stroke: var(--cc-ch-primary, var(--p2-primary)); }
 .cc-seg.c2 { stroke: #10b981; }
 .cc-seg.c3 { stroke: #f59e0b; }
 
 .cc-donut-top {
-    font-size: 13px; font-weight: 700;
-    text-anchor: middle; fill: var(--p2-text-main);
+    font-size: 13.5px; font-weight: 800;
+    text-anchor: middle; fill: var(--cc-ch-text, var(--p2-text-main));
 }
 .cc-donut-sub {
-    font-size: 9px; text-anchor: middle; fill: var(--p2-text-muted);
+    font-size: 9.5px; text-anchor: middle; fill: var(--cc-ch-muted, var(--p2-text-muted));
 }
 
 .cc-legend { flex: 1 1 180px; min-width: 180px; }
@@ -282,12 +285,12 @@
     display: flex; align-items: center; gap: 8px;
     padding: 3px 0; font-size: 12px;
 }
-.cc-legend-row .lbl { flex: 1 1 auto; color: var(--p2-text-main); }
-.cc-legend-row .pct { color: var(--p2-text-muted); min-width: 44px; text-align: left; }
-.cc-legend-row .val { min-width: 92px; text-align: left; }
+.cc-legend-row .lbl { flex: 1 1 auto; color: var(--cc-ch-text, var(--p2-text-main)); }
+.cc-legend-row .pct { color: var(--cc-ch-muted, var(--p2-text-muted)); min-width: 44px; text-align: left; }
+.cc-legend-row .val { min-width: 92px; text-align: left; font-weight: 600; color: var(--cc-ch-text, var(--p2-text-main)); }
 
 .cc-dot { width: 10px; height: 10px; border-radius: 3px; flex: 0 0 auto; }
-.cc-dot.c1 { background: var(--p2-primary); }
+.cc-dot.c1 { background: var(--cc-ch-primary, var(--p2-primary)); }
 .cc-dot.c2 { background: #10b981; }
 .cc-dot.c3 { background: #f59e0b; }
 .cc-dot.c4 { background: #8b5cf6; }
@@ -299,12 +302,12 @@
     display: flex; align-items: center; gap: 10px;
     padding: 5px 0; font-size: 12px;
 }
-.cc-hbar-row .lbl { flex: 0 0 72px; color: var(--p2-text-main); }
-.cc-hbar-row .val { flex: 0 0 110px; text-align: left; }
+.cc-hbar-row .lbl { flex: 0 0 72px; color: var(--cc-ch-text, var(--p2-text-main)); }
+.cc-hbar-row .val { flex: 0 0 110px; text-align: left; font-weight: 600; color: var(--cc-ch-text, var(--p2-text-main)); }
 
 .cc-hbar-row .track {
     flex: 1 1 auto; height: 10px; border-radius: 5px;
-    background: var(--p2-border); overflow: hidden;
+    background: var(--cc-ch-track, var(--p2-border)); overflow: hidden;
 }
 .cc-hbar-row .fill {
     height: 100%; border-radius: 5px;
@@ -336,16 +339,19 @@
 
 /* ── نمودار روند چندماهه ── */
 .cc-trend { width: 100%; height: auto; display: block; }
-.cc-trend .grid { stroke: var(--p2-border); stroke-width: 1; stroke-dasharray: 3 3; }
+.cc-trend .grid { stroke: var(--cc-ch-line, var(--p2-border)); stroke-width: 1; stroke-dasharray: 3 3; }
 .cc-trend .ln   { fill: none; stroke-width: 2.5; }
-.cc-trend .ln.sales { stroke: var(--p2-primary); }
+.cc-trend .ln.sales { stroke: var(--cc-ch-primary, var(--p2-primary)); }
 .cc-trend .ln.gross { stroke: #10b981; }
 .cc-trend .ln.oper  { stroke: #f59e0b; }
 .cc-trend .pt { r: 3.5; }
-.cc-trend .pt.sales { fill: var(--p2-primary); }
+.cc-trend .pt.sales { fill: var(--cc-ch-primary, var(--p2-primary)); }
 .cc-trend .pt.gross { fill: #10b981; }
 .cc-trend .pt.oper  { fill: #f59e0b; }
-.cc-trend text { font-size: 11px; fill: var(--p2-text-muted); }
+.cc-trend text {
+    font-size: 11.5px; font-weight: 500; fill: var(--cc-ch-muted, var(--p2-text-muted));
+    paint-order: stroke; stroke: var(--cc-ch-halo, #fff); stroke-width: 3px; stroke-linejoin: round;
+}
 
 /* ───────────────── فرم تبدیل کالا ─────────────────
    دوستونی روی دسکتاپ، یک‌ستونه زیر ۹۶۰ پیکسل (خودِ MudGrid با md="6"

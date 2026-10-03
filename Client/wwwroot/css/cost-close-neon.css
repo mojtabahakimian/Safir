@@ -249,6 +249,19 @@ body.cc-fx {
     box-shadow: inset 3px 0 0 var(--ccn-cyan);
 }
 
+/* ── نمودارهای صورت‌های مالی روی کارتِ تیره ──────────────────────
+   متن و خطِ نمودارها پیش‌فرض رنگِ تمِ روشن دارند (cost-close.css → --cc-ch-*)؛ روی کارتِ
+   بنفش‌آبیِ نئون و بنفشِ party آن رنگ‌ها دیده نمی‌شدند. فقط classic کارتِ سفید دارد. */
+
+body.cc-fx:not(.cc-theme-classic) .cc-page {
+    --cc-ch-text:    #ffffff;
+    --cc-ch-muted:   #ddd6fe;
+    --cc-ch-line:    rgba(221, 214, 254, .34);
+    --cc-ch-track:   rgba(255, 255, 255, .14);
+    --cc-ch-halo:    rgba(30, 14, 74, .88);
+    --cc-ch-primary: var(--ccn-cyan);
+}
+
 /* ── اعداد: تنها جایی که رنگ معنا دارد ──────────────────────────── */
 
 .cc-fx .cc-page .cc-num {
