@@ -220,23 +220,24 @@ GROUP BY {group}, CAST(H.DATE_S / 100 AS int)";
         {
             public string FORMNAME { get; set; } = "";
             public bool? SEE { get; set; }
+            public bool? RUN { get; set; }
         }
 
         /// <summary>
-        /// مثل SETSECURITY: پنجره فقط وقتی باز می‌شود که SEE روی همان فرم روشن باشد.
+        /// مثل SETSECURITY: پنجره فقط وقتی باز می‌شود که هم SEE و هم RUN روی همان فرم روشن باشد.
         /// ردیفِ نبودِ SAL_CHEK یعنی «اجازه ندارد» (WPF در آن حالت ردیف صفر می‌سازد و
         /// باز هم پنجره را می‌بندد؛ ما چیزی نمی‌نویسیم).
         /// </summary>
         public async Task<(bool Kol, bool Moin, bool Tafsili)> GetAccessAsync(int userCo)
         {
             var rows = (await _db.DoGetDataSQLAsync<PermRow>(@"
-                SELECT f.FORMNAME, CAST(sc.SEE AS bit) SEE
+                SELECT f.FORMNAME, CAST(sc.SEE AS bit) SEE, CAST(sc.RUN AS bit) RUN
                 FROM dbo.TFORMS f
                 JOIN dbo.SAL_CHEK sc ON sc.OBJECT = f.IDH AND sc.USERCO = @userCo
                 WHERE f.FORMNAME IN (@k, @m, @t)",
                 new { userCo, k = FormKol, m = FormMoin, t = FormTafsili })).ToList();
-            bool See(string f) => rows.Any(r => string.Equals(r.FORMNAME, f, StringComparison.OrdinalIgnoreCase) && r.SEE == true);
-            return (See(FormKol), See(FormMoin), See(FormTafsili));
+            bool Allowed(string f) => rows.Any(r => string.Equals(r.FORMNAME, f, StringComparison.OrdinalIgnoreCase) && r.SEE == true && r.RUN == true);
+            return (Allowed(FormKol), Allowed(FormMoin), Allowed(FormTafsili));
         }
 
         public static bool Allowed((bool Kol, bool Moin, bool Tafsili) a, TrialBalanceLevel level) => level switch

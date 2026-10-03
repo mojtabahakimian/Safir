@@ -77,8 +77,8 @@ test('داشبوردِ نبض سوار می‌شود و با عوض شدنِ ب�
 test('بدونِ مجوز، پیامِ سرور نشان داده می‌شود نه صفحه‌ی خالی', async ({ page }) => {
   await openPulse(page, route => route.fulfill({
     status: 403, contentType: 'text/plain; charset=utf-8',
-    body: 'برای دیدنِ نبض سازمان، دسترسیِ «تراز آزمایشی» لازم است.'
+    body: 'برای دیدنِ نبض سازمان، دسترسیِ «نبض سازمان» لازم است.'
   }));
-  await expect(page.locator('.pulse-msg')).toContainText('دسترسیِ «تراز آزمایشی» لازم است');
+  await expect(page.locator('.pulse-msg')).toContainText('دسترسیِ «نبض سازمان» لازم است');
   await expect(page.locator('.pulse')).toHaveCount(0);
 });
