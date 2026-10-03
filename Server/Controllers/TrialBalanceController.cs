@@ -36,8 +36,8 @@ namespace Safir.Server.Controllers
         {
             if (UserCo <= 0) return Unauthorized();
             var a = await _svc.GetAccessAsync(UserCo);
-            var year = (await _settings.GetSazmanSettingsAsync())?.YEA ?? 0;
-            return Ok(new TrialBalanceMetaDto { FiscalYear = year, CanKol = a.Kol, CanMoin = a.Moin, CanTafsili = a.Tafsili });
+            var sazman = await _settings.GetSazmanSettingsAsync();
+            return Ok(new TrialBalanceMetaDto { CompanyName = sazman?.NAME?.Trim(), FiscalYear = sazman?.YEA ?? 0, CanKol = a.Kol, CanMoin = a.Moin, CanTafsili = a.Tafsili });
         }
 
         [HttpGet]
@@ -65,6 +65,38 @@ namespace Safir.Server.Controllers
                 _logger.LogError(ex, "Trial balance failed for level {Level}", q.Level);
                 return StatusCode(500, "خواندن تراز با خطا روبه‌رو شد.");
             }
+        }
+
+        /// <summary>تراز ماهانه — کل، معین (یک کل) یا تفصیلی (یک کل، یک یا همه‌ی معین‌ها).</summary>
+        [HttpGet("monthly")]
+        public async Task<ActionResult<List<TrialBalanceMonthlyRowDto>>> Monthly([FromQuery] TrialBalanceQuery q)
+        {
+            if (UserCo <= 0) return Unauthorized();
+            if (TrialBalanceService.ValidateMonthly(q) is { } bad) return BadRequest(bad);
+
+            var access = await _svc.GetAccessAsync(UserCo);
+            if (!TrialBalanceService.Allowed(access, q.Level))
+                return StatusCode(403, $"اجازه‌ی دیدن این تراز (فرم {TrialBalanceService.FormFor(q.Level)}) را ندارید.");
+
+            try
+            {
+                return Ok(await _svc.LoadMonthlyAsync(q));
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Monthly trial balance failed for level {Level}", q.Level);
+                return StatusCode(500, "خواندن تراز ماهانه با خطا روبه‌رو شد.");
+            }
+        }
+
+        /// <summary>حساب‌های کل، یا معین‌های یک کل — برای فیلترِ تراز معین و تفصیلی.</summary>
+        [HttpGet("accounts")]
+        public async Task<ActionResult<List<TrialBalanceAccountDto>>> Accounts([FromQuery] int? kol)
+        {
+            if (UserCo <= 0) return Unauthorized();
+            var a = await _svc.GetAccessAsync(UserCo);
+            if (!a.Kol && !a.Moin && !a.Tafsili) return StatusCode(403, "اجازه‌ی دیدن تراز آزمایشی را ندارید.");
+            return Ok(await _svc.AccountsAsync(kol));
         }
     }
 }

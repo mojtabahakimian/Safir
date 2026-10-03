@@ -55,7 +55,8 @@ namespace Safir.Server.Hesabdari
             if (q.From > q.To) return "«از تاریخ» بعد از «تا تاریخ» است.";
             if (q.SanadFrom is { } sf && q.SanadTo is { } st && sf > st) return "«از سند» بزرگ‌تر از «تا سند» است.";
             if (q.Level >= TrialBalanceLevel.Moin && q.Kol is null) return "حساب کل مشخص نیست.";
-            if (q.Level >= TrialBalanceLevel.Tafsili && q.Moin is null) return "حساب معین مشخص نیست.";
+            if (q.AllMoins && q.Level != TrialBalanceLevel.Tafsili) return "«همه‌ی معین‌ها» فقط در تراز تفصیلی معنی دارد.";
+            if (q.Level >= TrialBalanceLevel.Tafsili && q.Moin is null && !q.AllMoins) return "حساب معین مشخص نیست.";
             if (q.Level >= TrialBalanceLevel.Tafsili2 && q.Tafsili is null) return "حساب تفصیلی مشخص نیست.";
             if (q.Level >= TrialBalanceLevel.Tafsili3 && q.Tafsili2 is null) return "حساب تفصیلی ۲ مشخص نیست.";
             if (q.Level >= TrialBalanceLevel.Tafsili4 && q.Tafsili3 is null) return "حساب تفصیلی ۳ مشخص نیست.";
@@ -76,7 +77,8 @@ namespace Safir.Server.Hesabdari
                 ["Forms___FMENU_TARAZ_4___SNDNUM2"] = q.SanadTo ?? AllSanadTo,
             };
             if (q.Level >= TrialBalanceLevel.Moin) p["KOL"] = q.Kol?.ToString();
-            if (q.Level >= TrialBalanceLevel.Tafsili) p["MOIN"] = q.Moin?.ToString();
+            // «%» همان چیزی است که WPF وقتی فیلد معین خالی است می‌فرستد (FMENU_TARAZ_4 → TARAZ_TAF_DIRECT).
+            if (q.Level >= TrialBalanceLevel.Tafsili) p["MOIN"] = q.Level == TrialBalanceLevel.Tafsili && q.AllMoins ? "%" : q.Moin?.ToString();
             if (q.Level >= TrialBalanceLevel.Tafsili2) p["TAF"] = q.Tafsili?.ToString();
             if (q.Level >= TrialBalanceLevel.Tafsili3) p["TAF2"] = q.Tafsili2?.ToString();
             if (q.Level >= TrialBalanceLevel.Tafsili4) p["TAF3"] = q.Tafsili3?.ToString();
@@ -140,6 +142,79 @@ namespace Safir.Server.Hesabdari
                 ProcedureFor(q.Level), new Dapper.DynamicParameters(BuildParameters(q)), commandTimeout: 600);
             return rows.Select(r => Map(q.Level, r)).ToList();
         }
+
+        // ───────────── تراز ماهانه (TARAZ_4_MAH / TARAZ_4_MAH_TAF) ─────────────
+        //
+        // WPF این دو پنجره را با SQL درون‌خطی می‌سازد، نه با رویه؛ اینجا همان
+        // گروه‌بندی روی DEED_HED/DEED_DTL است با سه تفاوتِ آگاهانه:
+        //   ۱. بازه‌ی تاریخ و سند صفحه اعمال می‌شود (WPF کل دیتابیس سال را می‌گیرد،
+        //      که با بازه‌ی پیش‌فرضِ «از ابتدای سال» همان است).
+        //   ۲. ماه از خودِ DATE_S درمی‌آید (YYYYMM) به‌جای dbo.Umonth، تا به یک تابع
+        //      قدیمیِ دیگر وابسته نباشد و سال‌ها هم با هم قاطی نشوند.
+        //   ۳. سطح معین هم دارد (WPF از کل مستقیم به تفصیلی می‌رود)، و نام‌ها از همان
+        //      جدول‌هایی می‌آیند که سفیر همه‌جا می‌خواند: TOTA_HES، DETA_HES، TDETA_HES.
+        //      (جدول‌های MOIN/TAFZILI که پنجره‌ی WPF صدا می‌زند در schema نیستند.)
+        //
+        // بدهکار و بستانکار را خالص می‌کنیم مثل WPF: یکی از دو ستون صفر است.
+
+        public static string? ValidateMonthly(TrialBalanceQuery q)
+        {
+            if (q.Level > TrialBalanceLevel.Tafsili) return "تراز ماهانه تا سطح تفصیلی است.";
+            var probe = new TrialBalanceQuery
+            {
+                Level = q.Level, From = q.From, To = q.To, SanadFrom = q.SanadFrom, SanadTo = q.SanadTo,
+                Kol = q.Kol, Moin = q.Moin, AllMoins = q.Level == TrialBalanceLevel.Tafsili && q.Moin is null
+            };
+            return Validate(probe);
+        }
+
+        public static string MonthlySql(TrialBalanceLevel level)
+        {
+            var (cols, join, where, group) = level switch
+            {
+                TrialBalanceLevel.Kol => ("D.HES_K AS Kol, MAX(T.NAME) AS Name",
+                                          "LEFT JOIN dbo.TOTA_HES T ON T.NUMBER = D.HES_K", "", "D.HES_K"),
+                TrialBalanceLevel.Moin => ("D.HES_K AS Kol, D.HES_M AS Moin, MAX(M.NAME) AS Name",
+                                           "LEFT JOIN dbo.DETA_HES M ON M.N_KOL = D.HES_K AND M.NUMBER = D.HES_M",
+                                           " AND D.HES_K = @kol", "D.HES_K, D.HES_M"),
+                _ => ("D.HES_K AS Kol, D.HES_M AS Moin, D.HES_T AS Tafsili, MAX(TD.NAME) AS Name",
+                      "LEFT JOIN dbo.TDETA_HES TD ON TD.N_KOL = D.HES_K AND TD.NUMBER = D.HES_M AND TD.TNUMBER = D.HES_T",
+                      " AND D.HES_K = @kol AND (@moin IS NULL OR D.HES_M = @moin)", "D.HES_K, D.HES_M, D.HES_T"),
+            };
+            return $@"
+SELECT  {cols},
+        CAST(H.DATE_S / 100 AS int) AS Ym,
+        CASE WHEN SUM(D.BED) - SUM(D.BES) > 0 THEN SUM(D.BED) - SUM(D.BES) ELSE 0 END AS Bed,
+        CASE WHEN SUM(D.BED) - SUM(D.BES) < 0 THEN SUM(D.BES) - SUM(D.BED) ELSE 0 END AS Bes
+FROM    dbo.DEED_HED H
+JOIN    dbo.DEED_DTL D ON D.N_S = H.N_S
+{join}
+WHERE   H.DATE_S BETWEEN @from AND @to AND H.N_S BETWEEN @sf AND @st{where}
+GROUP BY {group}, CAST(H.DATE_S / 100 AS int)";
+        }
+
+        public async Task<List<TrialBalanceMonthlyRowDto>> LoadMonthlyAsync(TrialBalanceQuery q)
+        {
+            var rows = await _db.DoGetDataSQLAsync<TrialBalanceMonthlyRowDto>(MonthlySql(q.Level), new
+            {
+                from = q.From, to = q.To,
+                sf = q.SanadFrom ?? AllSanadFrom, st = q.SanadTo ?? AllSanadTo,
+                kol = q.Kol, moin = q.Moin
+            });
+            foreach (var r in rows) { r.Bed = Math.Abs(Math.Truncate(r.Bed)); r.Bes = Math.Abs(Math.Truncate(r.Bes)); }
+            return rows.ToList();
+        }
+
+        // ───────────── فهرست حساب‌ها برای فیلترها ─────────────
+
+        /// <summary>بدون kol: حساب‌های کل (TOTA_HES، همان کمبوی HHHS در WPF)؛ با kol: معین‌های آن کل.</summary>
+        public async Task<List<TrialBalanceAccountDto>> AccountsAsync(int? kol) =>
+            (kol is null
+                ? await _db.DoGetDataSQLAsync<TrialBalanceAccountDto>(
+                    "SELECT NUMBER AS Number, NAME AS Name FROM dbo.TOTA_HES ORDER BY NUMBER")
+                : await _db.DoGetDataSQLAsync<TrialBalanceAccountDto>(
+                    "SELECT NUMBER AS Number, NAME AS Name FROM dbo.DETA_HES WHERE N_KOL = @kol ORDER BY NUMBER", new { kol }))
+            .ToList();
 
         private sealed class PermRow
         {

@@ -73,8 +73,9 @@
 .tb-table tbody tr:hover td { background: color-mix(in srgb, var(--atm-primary) 7%, transparent); }
 .tb-table .num { width: 90px; font-variant-numeric: tabular-nums; color: var(--atm-muted); }
 .tb-table .name { white-space: normal; min-width: 200px; font-weight: 600; }
-.tb-table .amt { text-align: end; font-variant-numeric: tabular-nums; direction: ltr; }
-.tb-table th.amt { text-align: end; direction: rtl; }
+/* عدد و عنوانش هر دو لبه‌ی چپِ خانه — وگرنه در جدولِ راست‌به‌چپ عنوان یک طرف و رقم طرفِ دیگر می‌افتد */
+.tb-table .amt { text-align: left; font-variant-numeric: tabular-nums; }
+.tb-table td.amt { direction: ltr; }
 .tb-table td.bed { color: var(--tb-bed); font-weight: 700; }
 .tb-table td.bes { color: var(--tb-bes); font-weight: 700; }
 .tb-table .act { width: 84px; text-align: end; }
@@ -91,4 +92,43 @@
     .tb-f, .tb-f--sm { width: calc(50% - 6px); }
     .tb-go { width: 100%; }
     .tb-scroll { max-height: none; }
+}
+
+/* ─────────────── نوعِ تراز (کل / معین / تفصیلی / ماهانه) ─────────────── */
+.tb-modes { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
+.tb-mode {
+    display: inline-flex; align-items: center; gap: 6px;
+    height: 38px; padding: 0 14px; border-radius: 12px; cursor: pointer;
+    font: inherit; font-size: .84rem; font-weight: 700; color: var(--atm-muted);
+    background: var(--atm-surface); border: 1px solid var(--atm-line);
+}
+.tb-mode:hover:not(:disabled) { color: var(--atm-primary); border-color: var(--atm-primary); }
+.tb-mode.is-on { color: #fff; background: var(--atm-primary); border-color: var(--atm-primary); }
+.tb-mode:disabled { opacity: .45; cursor: not-allowed; }
+.tb-f--acc { width: 240px; }
+.tb-f--acc select { height: 40px; }
+.tb-f .req { color: var(--atm-urgent); }
+.tb-chip:disabled { opacity: .5; cursor: progress; }
+.tb-print { height: 36px; }
+
+/* ─────────────── تراز ماهانه ─────────────── */
+.tb-table--month td.amt, .tb-table--month th.amt { min-width: 104px; }
+.tb-table--month td.bes { color: var(--tb-bes); }
+.tb-table--month td.bed { color: var(--tb-bed); }
+.tb-table--month td.tot { font-weight: 800; background: color-mix(in srgb, var(--atm-primary) 5%, transparent); }
+.tb-legend { margin: 8px 2px 0; font-size: .75rem; color: var(--atm-muted); }
+.tb-legend .bed { color: var(--tb-bed); font-weight: 700; }
+.tb-legend .bes { color: var(--tb-bes); font-weight: 700; }
+
+/* ─────────────── چاپ (روی .trs-sheet خزانه) ─────────────── */
+.tb-sheet__tbl { font-size: 9pt; }
+.tb-sheet__tbl td, .tb-sheet__tbl th { vertical-align: middle; }
+.tb-sheet__note { margin: 0; font-size: 9pt; color: #475569; display: flex; gap: 14px; }
+.tb-landscape .trs-sheet { max-width: 297mm; min-height: 190mm; }
+.tb-landscape .tb-sheet__tbl { font-size: 8pt; }
+@media print {
+    .tb-landscape { page: tb-wide; }
+    @page tb-wide { size: A4 landscape; margin: 8mm; }
+    .tb-sheet__tbl thead { display: table-header-group; }
+    .tb-sheet__tbl tr { break-inside: avoid; }
 }

@@ -24,6 +24,11 @@ namespace Safir.Shared.Models.Hesabdari
         public double? SanadTo { get; set; }
         public int? Kol { get; set; }
         public int? Moin { get; set; }
+        /// <summary>
+        /// فقط برای سطح تفصیلی: همه‌ی معین‌های یک کل (همان «%» در فیلد معینِ
+        /// «لیست تراز آزمایشی چهارستونی تفصیلی» در WPF).
+        /// </summary>
+        public bool AllMoins { get; set; }
         public int? Tafsili { get; set; }
         public int? Tafsili2 { get; set; }
         public int? Tafsili3 { get; set; }
@@ -46,8 +51,32 @@ namespace Safir.Shared.Models.Hesabdari
         public double Bes { get; set; }
     }
 
+    /// <summary>
+    /// تراز ماهانه — همان TARAZ_4_MAH و TARAZ_4_MAH_TAF در WPF: گردشِ هر حساب در هر ماه
+    /// به‌صورت مانده‌ی بدهکار یا بستانکارِ همان ماه.
+    /// </summary>
+    public class TrialBalanceMonthlyRowDto
+    {
+        public int? Kol { get; set; }
+        public int? Moin { get; set; }
+        public int? Tafsili { get; set; }
+        public string? Name { get; set; }
+        /// <summary>سال و ماه به‌صورت YYYYMM.</summary>
+        public int Ym { get; set; }
+        public double Bed { get; set; }
+        public double Bes { get; set; }
+    }
+
+    /// <summary>برای انتخاب حساب کل یا معین در فیلترها.</summary>
+    public class TrialBalanceAccountDto
+    {
+        public int Number { get; set; }
+        public string? Name { get; set; }
+    }
+
     public class TrialBalanceMetaDto
     {
+        public string? CompanyName { get; set; }
         public int FiscalYear { get; set; }
         public bool CanKol { get; set; }
         public bool CanMoin { get; set; }
